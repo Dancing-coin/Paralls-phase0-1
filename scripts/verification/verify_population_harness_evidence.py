@@ -20,6 +20,7 @@ from scripts.verification.aggregate_population_closure import _identity
 from scripts.verification.harness import _profile_command, _profiles_for_selection
 from scripts.verification.population_godot_runner import child_environment, write_json
 from scripts.verification.registry import load_profile_registry
+from scripts.verification.run_context import _export_destination
 from scripts.verification.verify_population_godot_runtime import read_json
 from scripts.verification.verify_population_runtime_correctness import environment, git_head, run_logged
 
@@ -53,7 +54,8 @@ def _required_results(payload, required):
     return index
 
 
-def _profile_report(name, payload, *, origin, python, godot, registry, raw_path, inputs, ancestors):
+def _profile_report(name, payload, *, origin, python, godot, registry, raw_path, inputs, ancestors,
+                    exported_run_id=None):
     flags = [value for key, value in payload.items() if key.startswith("overall_") and isinstance(value, bool)]
     if not flags or not all(flags):
         raise ValueError(f"harness_profile_result_failed:{name}")
@@ -63,6 +65,11 @@ def _profile_report(name, payload, *, origin, python, godot, registry, raw_path,
             raise ValueError("harness_evidence_reference_invalid")
         relative = PurePosixPath(value.replace("\\", "/"))
         if PureWindowsPath(value).drive or relative.is_absolute():
+            if exported_run_id is not None:
+                parts = _path(value).parts
+                marker = 'paralls-harness-' + exported_run_id
+                if marker in parts:
+                    return raw_path('artifacts/' + '/'.join(parts[parts.index(marker) + 1:]))
             try:
                 relative = PurePosixPath(_path(value).relative_to(origin).as_posix())
             except ValueError:
@@ -88,11 +95,16 @@ def _profile_report(name, payload, *, origin, python, godot, registry, raw_path,
         rows = _required_results(payload, MAINLINE_EVIDENCE)
         artifacts = payload.get("artifacts", {})
         for key, (artifact, log, report) in MAINLINE_EVIDENCE.items():
-            expected = [str(origin / ".harness/verification" / log)]
+            expected = [artifacts.get(artifact + "_log")]
+            if not isinstance(expected[0], str) or Path(expected[0]).name != log:
+                raise ValueError("harness_required_result_evidence_missing")
             if artifacts.get(artifact + "_log") != expected[0]:
                 raise ValueError("harness_required_result_evidence_missing")
             if report is not None:
-                expected.append(str(origin / ".harness/verification" / report))
+                candidate = artifacts.get(artifact + "_report")
+                if not isinstance(candidate, str) or Path(candidate).name != report:
+                    raise ValueError("harness_required_result_evidence_missing")
+                expected.append(candidate)
                 if artifacts.get(artifact + "_report") != expected[-1]:
                     raise ValueError("harness_required_result_evidence_missing")
             if rows[key].get("evidence") != expected:
@@ -101,14 +113,17 @@ def _profile_report(name, payload, *, origin, python, godot, registry, raw_path,
                 path = reference(value)
                 if path.suffix == ".json":
                     _profile_report(key, _load(path), origin=origin, python=python, godot=godot,
-                        registry=registry, raw_path=raw_path, inputs=inputs, ancestors=ancestors)
+                        registry=registry, raw_path=raw_path, inputs=inputs, ancestors=ancestors,
+                        exported_run_id=exported_run_id)
     elif name == "gameplay-patch-runtime":
         from scripts.verification.verify_gameplay_patch_runtime import TEST_GROUPS
         rows = _required_results(payload, [key for key, _, _ in TEST_GROUPS])
         logs = payload.get("artifacts", {}).get("pytest_logs", {})
         for key, _, _ in TEST_GROUPS:
-            expected = str(origin / ".harness/verification" / f"gameplay-patch-runtime-{key}.log")
-            if logs.get(key) != expected or rows[key].get("evidence") != [expected]:
+            expected = logs.get(key)
+            if (not isinstance(expected, str)
+                    or Path(expected).name != f"gameplay-patch-runtime-{key}.log"
+                    or rows[key].get("evidence") != [expected]):
                 raise ValueError("harness_required_result_evidence_missing")
             reference(expected)
     elif name in {"gameplay-foundation-all", "embodied-interaction-foundation-all"}:
@@ -132,18 +147,39 @@ def _profile_report(name, payload, *, origin, python, godot, registry, raw_path,
             profiles = [*embodied.PHASE_PROFILES, *phases.values()]
         rows = _required_results(payload, profiles)
         for child in profiles:
-            log = str(origin / ".harness/verification" / f"{name}-{child}.log")
-            evidence = [log]
-            if name == "gameplay-foundation-all":
-                report = str(origin / registry.profiles[child]["result_artifact"])
-                evidence.append(report)
-                if not _child_report_passed(child, _load(reference(report))):
-                    raise ValueError("harness_child_report_failed")
-            if rows[child].get("evidence") != evidence:
+            evidence = rows[child].get("evidence")
+            if (not isinstance(evidence, list) or not evidence
+                    or not isinstance(evidence[0], str)
+                    or Path(evidence[0]).name != f"{name}-{child}.log"):
                 raise ValueError("harness_required_result_evidence_missing")
-            _check_run(reference(log).read_text(encoding="utf-8").splitlines(), child,
-                origin=origin, python=python, godot=godot, registry=registry, raw_path=raw_path,
-                inputs=inputs, ancestors=ancestors)
+            log = reference(evidence[0])
+            if name == "gameplay-foundation-all":
+                required = Path(registry.profiles[child]["result_artifact"]).name
+                if len(evidence) != 2 or not isinstance(evidence[1], str) or Path(evidence[1]).name != required:
+                    raise ValueError("harness_required_result_evidence_missing")
+                if not _child_report_passed(child, _load(reference(evidence[1]))):
+                    raise ValueError("harness_child_report_failed")
+            elif len(evidence) != 1:
+                raise ValueError("harness_required_result_evidence_missing")
+            if child in ancestors:
+                raise ValueError("harness_dependency_cycle")
+            child_export = log.parent / f"child-{child}"
+            outer_prefix = f"profiles/{name}/{Path(log).parent.name}/child-{child}/"
+            def nested_raw_path(relative):
+                if relative == "process.log":
+                    return log
+                if not relative.startswith("artifacts/") or ".." in PurePosixPath(relative).parts:
+                    raise ValueError("harness_required_raw_file_missing")
+                subpath = relative.removeprefix("artifacts/")
+                if subpath.startswith(outer_prefix):
+                    subpath = subpath[len(outer_prefix):]
+                target = child_export / subpath
+                if not target.is_file():
+                    raise ValueError("harness_required_raw_file_missing")
+                return target
+            _check_exported_run(child, origin=origin, python=python, godot=godot,
+                registry=registry, raw_path=nested_raw_path, inputs=inputs, nested=True,
+                evidence_prefix=outer_prefix)
     else:
         # 保留各叶子 producer 的异构验收规则；只绑定其明确列出的文件产物。
         for value in payload.get("artifacts", {}).values():
@@ -158,7 +194,7 @@ def _hash(path: Path) -> str:
 
 def harness_inputs() -> dict:
     """广泛 profile 还读取文档、规则和场景；保留输入摘要，不封存私密配置。"""
-    names = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT, text=True).split("\0")
+    names = subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT, encoding="utf-8").split("\0")
     paths = {ROOT / name for name in names if name and not name.startswith((".harness/verification/", ".superpowers/", ".runtime/"))
              and not Path(name).name.startswith(".env")}
     for folder in ("docs", ".harness/rules", ".harness/templates", ".harness/changes"):
@@ -204,10 +240,12 @@ def _raw(directory: Path) -> dict:
             for name, (_, size) in _files(directory).items() if name != "manifest.json"}
 
 
-def _expected_command(profile, origin, python, godot):
+def _expected_command(profile, origin, python, godot, export=None):
     command = [python, str(origin / "scripts/verification/harness.py"), "--profile", profile, "--python-exe", python]
     if godot:
         command += ["--godot-exe", godot]
+    if export is not None:
+        command += ["--export-evidence", str(export)]
     return command
 
 
@@ -226,7 +264,10 @@ def _check(directory: Path, manifest: dict, profile: str) -> dict:
             raise ValueError("explicit_godot_executable_required")
     elif godot is not None:
         raise ValueError("unexpected_godot_executable")
-    if (manifest.get("command") != _expected_command(profile, origin, python, godot)
+    exported = directory / "artifacts/harness-run-report.json"
+    export = manifest.get("export_directory")
+    expected = _expected_command(profile, origin, python, godot, export)
+    if (manifest.get("command") != expected
             or type(manifest.get("exit_code")) is not int or manifest["exit_code"] != 0
             or type(manifest.get("timeout_seconds")) is not int or not 1 <= manifest["timeout_seconds"] <= TIMEOUT):
         raise ValueError("harness_command_or_exit_invalid")
@@ -241,69 +282,81 @@ def _check(directory: Path, manifest: dict, profile: str) -> dict:
         if name not in raw or not path.resolve().is_relative_to(directory):
             raise ValueError("harness_required_raw_file_missing")
         return path
-    return _check_run(raw_path("process.log").read_text(encoding="utf-8").splitlines(), profile,
-        origin=origin, python=python, godot=godot, registry=registry, raw_path=raw_path,
-        inputs=manifest.get("harness_inputs", {}), ancestors=())
+    if not exported.is_file():
+        raise ValueError("fresh_harness_export_missing")
+    return _check_exported_run(profile, origin=origin, python=python, godot=godot,
+        registry=registry, raw_path=raw_path, inputs=manifest.get("harness_inputs", {}))
 
 
-def _check_run(lines, profile, *, origin, python, godot, registry, raw_path, inputs, ancestors):
-    if profile in ancestors:
-        raise ValueError("harness_dependency_cycle")
-    ancestors = (*ancestors, profile)
+def _check_exported_run(profile, *, origin, python, godot, registry, raw_path, inputs,
+                        nested=False, evidence_prefix=""):
+    report = _load(raw_path("artifacts/harness-run-report.json"))
+    original_manifest = _load(raw_path("artifacts/run-manifest.json"))
     selected = _profiles_for_selection(profile, registry)
-    needs_godot = any(registry.profiles[name].get("requires_godot") for name in selected)
-    runs = [line.removeprefix("harness_run_dir=") for line in lines if line.startswith("harness_run_dir=")]
-    if len(runs) != 1:
-        raise ValueError("fresh_harness_archive_missing")
-    run_path = _path(runs[0])
-    if run_path.parent != origin / ".harness/verification/runs":
-        raise ValueError("harness_archive_outside_original_root")
-    run_id = run_path.name
-    archive = f"artifacts/runs/{run_id}"
-    report = _load(raw_path(archive + "/harness-run-report.json"))
-    original_manifest = _load(raw_path(archive + "/run-manifest.json"))
-    if (report.get("run_id") != run_id or report.get("suite_id") != profile
+    run_id = report.get("run_id")
+    if (not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id)
+            or report.get("schema_version") != 2 or report.get("suite_id") != profile
             or report.get("overall_harness_passed") is not True
-            or [row.get("profile") for row in report.get("profiles", [])] != selected
-            or original_manifest.get("schema_version") != 1 or original_manifest.get("run_id") != run_id
-            or original_manifest.get("suite_id") != profile or original_manifest.get("overall_harness_passed") is not True
-            or original_manifest.get("profile_exit_codes") != [dict(profile=name, exit_code=0) for name in selected]):
+            or report.get("cleanup_status") != ("pending" if nested else "passed")
+            or report.get("not_executed") or report.get("revision") != git_head(ROOT)
+            or original_manifest.get("run_id") != run_id
+            or original_manifest.get("overall_harness_passed") is not True
+            or len(report.get("profiles", [])) != len(selected)
+            or [row.get("profile") for row in report["profiles"]] != selected):
         raise ValueError("harness_archive_coverage_or_result_invalid")
-    controls = [line for line in lines if line.startswith(("harness_profile=", "harness_run=", "harness_exit_code="))]
-    index = 0
+    codes = [dict(profile=name, exit_code=0) for name in selected]
+    if original_manifest.get("profile_exit_codes") != codes:
+        raise ValueError("harness_profile_exit_codes_invalid")
+    controls = [line for line in raw_path("process.log").read_text(encoding="utf-8").splitlines()
+                if line.startswith("harness_profile=")]
+    if len(controls) != len(selected) or any(
+            not line.startswith(f"harness_profile={name} status=passed")
+            for line, name in zip(controls, selected)):
+        raise ValueError("harness_profile_log_coverage_invalid")
     for row, name in zip(report["profiles"], selected):
         config = registry.profiles[name]
-        expected = _profile_command(name, origin, python, godot, registry.profiles)
-        attempts, maximum = row.get("attempts"), max(1, int(config.get("max_attempts", 1)))
-        if (row.get("command") != expected or type(row.get("exit_code")) is not int or row["exit_code"] != 0
-                or type(attempts) is not int or not 1 <= attempts <= maximum or row.get("max_attempts") != maximum):
+        command = _profile_command(name, origin, python, godot, registry.profiles)
+        attempt, attempts = row.get("attempt"), row.get("attempts")
+        if (row.get("command") != command or row.get("status") != "passed"
+                or row.get("exit_code") != 0 or not isinstance(attempts, int)
+                or not 1 <= attempts <= max(1, int(config.get("max_attempts", 1)))
+                or attempt != attempts):
             raise ValueError("harness_profile_command_attempts_invalid")
-        if controls[index:index + 1] != [f"harness_profile={name}"]:
-            raise ValueError("harness_profile_log_coverage_invalid")
-        index += 1
-        for attempt in range(attempts):
-            pair = controls[index:index + 2]
-            if (len(pair) != 2 or pair[0] != f"harness_run={' '.join(expected)}"
-                    or not re.fullmatch(r"harness_exit_code=-?\d+", pair[1])):
-                raise ValueError("harness_attempt_log_missing")
-            code = int(pair[1].split("=", 1)[1])
-            if (code == 0) != (attempt == attempts - 1):
-                raise ValueError("harness_attempt_exit_mismatch")
-            index += 2
+        for index in range(1, attempts + 1):
+            attempt_root = f"artifacts/profiles/{name}/{index}/"
+            outcome = _load(raw_path(attempt_root + "profile-result.json"))
+            if (outcome.get("run_id") != run_id or outcome.get("profile") != name
+                    or outcome.get("command") != command or outcome.get("attempt") != index
+                    or outcome.get("status") != ("passed" if index == attempts else "failed")
+                    or (outcome.get("exit_code") == 0) != (index == attempts)):
+                raise ValueError("harness_attempt_result_invalid")
+            raw_path(attempt_root + "command.log")
+        evidence = row.get("evidence", {})
+        path = evidence.get("path") if isinstance(evidence, dict) else None
         required = config.get("result_artifact")
         if name in {"mainline-unified-runtime", "change-lifecycle"}:
             required = f".harness/verification/{name}-report.json"
-        if required:
-            relative = PurePosixPath(str(required).replace("\\", "/"))
-            if not relative.is_relative_to(".harness/verification") or ".." in relative.parts:
-                raise ValueError("harness_result_artifact_outside_verification")
-            payload = _load(raw_path("artifacts/" + relative.relative_to(".harness/verification").as_posix()))
-            _profile_report(name, payload, origin=origin, python=python, godot=godot,
-                registry=registry, raw_path=raw_path, inputs=inputs, ancestors=ancestors)
-    if index != len(controls):
-        raise ValueError("harness_unaccounted_attempts")
+        if required is None:
+            if evidence:
+                raise ValueError("harness_unexpected_profile_report")
+            continue
+        required_name = PurePosixPath(str(required).replace("\\", "/"))
+        if (not required_name.is_relative_to(".harness/verification")
+                or ".." in required_name.parts):
+            raise ValueError("harness_result_artifact_outside_verification")
+        expected_path = f"{evidence_prefix}profiles/{name}/{attempts}/{required_name.name}"
+        if path is not None and path != expected_path:
+            raise ValueError("harness_profile_report_missing")
+        if path is None and config.get("result_artifact"):
+            raise ValueError("harness_profile_report_missing")
+        report_path = raw_path("artifacts/" + expected_path)
+        if path is not None and _hash(report_path) != evidence.get("sha256"):
+            raise ValueError("harness_profile_report_digest_invalid")
+        _profile_report(name, _load(report_path), origin=origin, python=python, godot=godot,
+            registry=registry, raw_path=raw_path, inputs=inputs, ancestors=(), exported_run_id=run_id)
     return dict(passed=True, profile=profile, profiles=len(selected), run_id=run_id,
-                godot_status="harness_verified" if needs_godot else "godot_unverified")
+                godot_status="harness_verified" if any(registry.profiles[name].get("requires_godot") for name in selected)
+                else "godot_unverified")
 
 
 def verify_artifacts(directory: Path, *, expected_commit: str, profile: str) -> dict:
@@ -322,17 +375,14 @@ def verify_artifacts(directory: Path, *, expected_commit: str, profile: str) -> 
 
 
 def collect(output: Path, *, profile: str, godot_exe: Path | None = None, timeout: int = TIMEOUT) -> dict:
+    _export_destination(ROOT, output)
     output = output.resolve()
     output.mkdir(parents=True, exist_ok=False)
-    latest = ROOT / ".harness/verification"
-    latest.mkdir(parents=True, exist_ok=True)
     manifest = dict(schema_version=1, profile=profile, status="running", godot_status="godot_unverified",
                     started_at=datetime.now(timezone.utc).isoformat(), project_root=str(ROOT.resolve()),
                     python_executable=sys.executable, godot_executable=None, environment=environment(),
-                    timeout_seconds=timeout, raw_files={})
+                    timeout_seconds=timeout, export_directory=str(output / "artifacts"), raw_files={})
     write_json(output / "manifest.json", manifest)
-    prior = _files(latest, exclude=output)
-    prior_runs = {path.name for path in (latest / "runs").glob("*") if path.is_dir()}
     try:
         if profile not in PROFILES or type(timeout) is not int or not 1 <= timeout <= TIMEOUT:
             raise ValueError("unsupported_profile_or_timeout")
@@ -344,7 +394,7 @@ def collect(output: Path, *, profile: str, godot_exe: Path | None = None, timeou
             if godot_exe is None or not godot_exe.is_file():
                 raise ValueError("explicit_godot_executable_required")
             manifest.update(godot_executable=str(godot_exe.resolve()), godot_sha256=_hash(godot_exe))
-        command = _expected_command(profile, ROOT.resolve(), sys.executable, manifest["godot_executable"])
+        command = _expected_command(profile, ROOT.resolve(), sys.executable, manifest["godot_executable"], output / "artifacts")
         manifest["command"] = command
         env = child_environment()
         env.update(PYTHONPATH=os.pathsep.join((str(ROOT), str(ROOT / "backend"))), PYTHONUNBUFFERED="1",
@@ -359,18 +409,10 @@ def collect(output: Path, *, profile: str, godot_exe: Path | None = None, timeou
     finally:
         # 失败也保留本轮已生成的原始文件；不移动或删除其他会话的旧证据。
         try:
-            for name, stamp in _files(latest, exclude=output).items():
-                if prior.get(name) == stamp:
-                    continue
-                target = output / "artifacts" / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(latest / name, target)
             manifest["finished_at"] = datetime.now(timezone.utc).isoformat()
             manifest["raw_files"] = _raw(output)
             if "error" not in manifest:
                 result = _check(output, manifest, profile)
-                if result["run_id"] in prior_runs:
-                    raise ValueError("fresh_harness_archive_required")
                 if _identity(revision)[1] != source or harness_inputs() != inputs:
                     raise ValueError("harness_source_changed_during_capture")
                 manifest.update(status="passed", godot_status=result["godot_status"])
@@ -397,7 +439,9 @@ def main() -> int:
         result = verify_artifacts(args.verify_artifacts, expected_commit=args.require_fresh_commit, profile=args.profile)
         print(f"harness_evidence_passed={result['passed']}")
         return 0
-    output = args.output or ROOT / ".harness/verification" / (args.profile + "-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
+    if args.output is None:
+        parser.error("collection requires --output outside the repository")
+    output = args.output
     result = collect(output, profile=args.profile, godot_exe=args.godot_exe, timeout=args.timeout_seconds)
     print(f"harness_evidence_manifest={output / 'manifest.json'}")
     print(f"harness_evidence_status={result['status']}")

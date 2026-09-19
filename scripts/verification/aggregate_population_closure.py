@@ -56,8 +56,8 @@ def _identity(expected_commit: str) -> tuple[dict, dict]:
     if not re.fullmatch(r"[0-9a-f]{40}", expected_commit) or revision != expected_commit:
         raise ValueError("current_commit_mismatch")
     runtime, complete = source_manifest(), source_snapshot(ROOT)
-    changed = subprocess.check_output(["git", "diff", "--name-only", "--no-renames", "-z", "HEAD"], cwd=ROOT, text=True).split("\0")
-    tracked = set(subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT, text=True).split("\0"))
+    changed = subprocess.check_output(["git", "diff", "--name-only", "--no-renames", "-z", "HEAD"], cwd=ROOT, encoding="utf-8").split("\0")
+    tracked = set(subprocess.check_output(["git", "ls-files", "-z"], cwd=ROOT, encoding="utf-8").split("\0"))
     if any(_verification_source_path(path) for path in changed) or complete["files"].keys() - tracked:
         raise ValueError("uncommitted_verification_source")
     return runtime, complete

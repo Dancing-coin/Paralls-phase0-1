@@ -133,7 +133,7 @@ def configure(directory, stack, *, mode, provider_mode):
     if provider_mode == "live":
         validate_live_provider_settings(settings)
     secret = secrets.token_urlsafe(32)
-    config.settings = settings.model_copy(update=dict(
+    configured = settings.model_copy(update=dict(
         heavenly_graph_path=str(directory / "state" / "graph.sqlite3"),
         population_roster_path=str(directory / "roster.json"),
         population_runtime_profile="benchmark_1x" if mode == "one_x" else "benchmark_10x",
@@ -142,6 +142,9 @@ def configure(directory, stack, *, mode, provider_mode):
         gameplay_mirror_trusted_local_launch_profiles=[config.GameplayMirrorTrustedLocalLaunchProfileSettings(
             profile_ref="population-mixed", principal_ref="population-mixed",
             allowed_actor_refs=tuple("character:" + actor for actor in actors), credential_ttl_seconds=300)]))
+    # 提前导入的模块仍引用原对象；统一更新，防止本地探针沿旧配置调用真实模型。
+    for field in config.Settings.model_fields:
+        setattr(config.settings, field, getattr(configured, field))
     from app import main
     install_mixed_fixtures(main, stack)
     return main, actors, secret

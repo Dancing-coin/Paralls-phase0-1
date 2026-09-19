@@ -3,22 +3,31 @@ import json
 import os
 import time
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 
 from scripts.verification import verify_population_runtime_correctness as gate
 
 
+@pytest.fixture
+def short_tmp_path():
+    # 此处模拟嵌套仓库，不把外层pytest和长用例名再次叠加到报告路径。
+    with TemporaryDirectory(prefix="pc-") as temporary:
+        yield Path(temporary)
+
+
 @pytest.mark.parametrize("fault", [None, "stale", "missing", "false", "skipped", "timeout", "source_changed", "future_stale", "raw_missing", "raw_timeout", "raw_corrupt", "raw_null", "raw_array", "long_temp"])
-def test_correctness_gate_requires_fresh_complete_results(tmp_path, monkeypatch, fault):
-    root = tmp_path / "repo"
-    latest = root / ".harness/verification"
+def test_correctness_gate_requires_fresh_complete_results(short_tmp_path, monkeypatch, fault):
+    root = short_tmp_path / "repo"
+    latest = root / ".harness/verification/correctness-live"
     latest.mkdir(parents=True)
-    output = latest / "run-test"
+    output = latest.parent / "run-test"
     calls = []
     owned_temporary = []
     registry = gate.load_profile_registry(gate.ROOT)
     monkeypatch.setattr(gate, "load_profile_registry", lambda _root: registry)
+    monkeypatch.setattr(gate, "verification_dir", lambda _root: latest.parent)
     monkeypatch.setattr(gate, "source_snapshot", lambda _root: {"source_sha256": "before" if not calls or fault != "source_changed" else "after", "files": {}})
     monkeypatch.setattr(gate, "environment", lambda: {"python": "3.12.14", "sqlite": "test", "godot": "not_run"})
     monkeypatch.setattr(gate, "git_head", lambda _root: "a" * 40)
@@ -31,6 +40,10 @@ def test_correctness_gate_requires_fresh_complete_results(tmp_path, monkeypatch,
         calls.append(command)
         log.write_text("本轮执行\n", encoding="utf-8")
         if command[1:3] == ["-m", "pytest"]:
+            temporary_root = Path(command[command.index("--basetemp") + 1])
+            # 验收器嵌套执行自身测试时，临时仓库不能叠加在工作树内。
+            assert not temporary_root.is_relative_to(root)
+            owned_temporary.append(temporary_root)
             if fault == "long_temp":
                 temporary = Path(command[command.index("--basetemp") + 1])
                 extended = str(temporary.resolve())

@@ -10,7 +10,7 @@
 
 **Spec:** [六项闭环设计](../specs/2026-09-16-population-production-runtime-closure-design.md)；继承 [前序五阶段计划](2026-09-15-population-data-oriented-optimization-implementation-plan.md)、[mainline 设计入口](../specs/world-character-siming-authority-mainline/README.md)、[恢复和 B0 边界 ADR](../../adr/0001-population-continuity-recovery-and-b0-boundary.md)。
 
-**Status:** `execution_in_progress; godot_unverified; godot_runtime_on_external_machine; current_population_ceiling_1000`。用户于2026-09-16指定 Godot 在另一台机器验证；2026-09-18进一步确认保留万人能力，但当前先完成最高1,000人闭环。本机只做后端、协议与静态检查；真实渲染门禁等待该机器导出的证据。本文件完整覆盖六项；勾选只依据执行证据，最终 G0—G9 门禁未全过前，总目标始终未完成。执行工作树为 `.worktrees/population-runtime-closure`；持久进度见该工作树 `.harness/verification/population-runtime-closure/progress.json`。
+**Status:** `execution_in_progress; godot_unverified; godot_runtime_on_external_machine; current_population_ceiling_1000`。用户于2026-09-16指定 Godot 在另一台机器验证；2026-09-18进一步确认保留万人能力，但当前先完成最高1,000人闭环；2026-09-19要求先忽略Godot表现、继续其他缺口。本机只做后端、协议与静态检查；真实渲染门禁等待该机器导出的证据。本文件完整覆盖六项；勾选只依据执行证据，最终 G0—G9 门禁未全过前，总目标始终未完成。最新续作分支为 `codex/population-backend-closure`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pop/Paralls-phase0-1`；持久进度见该树 `.superpowers/sdd/2026-09-16-population-production-runtime-closure-implementation-plan/backend-continuation-ledger.md` 及[版本化交接](../../verification/population-runtime-closure.md)。旧工作树的progress只作历史记录；新证据按当前run_scope契约导出到仓库外。
 
 ## Global Constraints
 
@@ -24,7 +24,7 @@
 - 使用既有 Python/SQLite/WebSocket 工具，不增加任务调度平台、通用 repository 抽象或新的事件总线。
 - 1× 100／1,000 人两档 p95 ≤ 800 ms、30 窗不持续积压、最大推进延迟 ≤ 1 窗为必过；两档 10× 运行完整且如实报告，性能结果独立。10,000 人参数与实现保留，但不进入本轮 G0—G9。
 - 无真实 Godot runtime 与可见变化证据时仍为 `godot_unverified`；editor import 和 headless 协议检查不足以证明渲染帧时间。
-- `docs/superpowers/` 本地保留，不提交；工作树回主分支用 cherry-pick。按完整交付边界合并提交，中文 commit，不能用大范围 add 带入无关文件。
+- 本项目 `docs/superpowers/` 按用户明确要求随相关代码提交；该目录的禁止提交约定只适用于 `D:/minigameserver`。工作树回主分支用 cherry-pick。按完整交付边界合并提交，中文 commit，不能用大范围 add 带入无关文件。
 - 执行范围不包含动态换 roster、在线热升级旧规则、跨机器共享同局多 writer。遇到 roster/kernel/context 漂移继续 fail closed。
 
 ## 0. 当前事实、范围与执行顺序

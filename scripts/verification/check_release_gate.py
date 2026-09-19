@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import yaml
 
 from common import read_text, repo_root, verification_dir, write_json, write_markdown
 
@@ -21,6 +22,22 @@ def _metadata(path: Path) -> dict[str, object]:
         return {}
     payload = json.loads(path.read_text(encoding="utf-8"))
     return payload if isinstance(payload, dict) else {}
+
+
+class _UniqueKeyLoader(yaml.SafeLoader):
+    def construct_mapping(self, node, deep=False):
+        keys = [self.construct_object(key, deep=deep) for key, _ in node.value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("CI workflow contains duplicate YAML keys")
+        return super().construct_mapping(node, deep=deep)
+
+
+def _valid_workflow(text: str) -> bool:
+    try:
+        workflow = yaml.load(text, Loader=_UniqueKeyLoader)
+        return isinstance(workflow, dict) and isinstance(workflow.get("jobs"), dict)
+    except (ValueError, yaml.YAMLError, TypeError):
+        return False
 
 
 def evaluate_release_gate(project_root: Path) -> dict[str, object]:
@@ -44,6 +61,12 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
             "ci_harness_workflow_exists",
             "CI harness workflow exists",
             workflow_path.exists(),
+            [".github/workflows/harness.yml"],
+        ),
+        _result(
+            "ci_workflow_yaml_valid",
+            "CI workflow has valid YAML without duplicate keys",
+            _valid_workflow(workflow_text),
             [".github/workflows/harness.yml"],
         ),
         _result(

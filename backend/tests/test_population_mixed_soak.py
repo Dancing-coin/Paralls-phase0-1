@@ -19,6 +19,45 @@ def test_live_child_environment_preserves_only_explicit_model_configuration():
     assert not set(values).intersection(soak.backend_environment('local_probe', values))
 
 
+@pytest.mark.parametrize('provider_mode', ['local_probe', 'live'])
+def test_mixed_configuration_reaches_preimported_model_modules(tmp_path, provider_mode):
+    from scripts.verification.population_godot_runner import child_environment
+    (tmp_path / 'roster.json').write_text(json.dumps({'actor_ids': ['char_a', 'char_b', 'char_c',
+        *[f'resident_{index:05d}' for index in range(97)]]}), encoding='utf-8')
+    code = '''
+import sys
+from contextlib import ExitStack
+from pathlib import Path
+from unittest.mock import patch
+from app import config
+config.settings = config.Settings(dialogue_mode='online', character_model_provider_kind='openai_compatible',
+    character_model_endpoint='https://example.invalid', character_model_api_key='test-key',
+    character_model_model='test-model', siming_llm_mode='http', siming_llm_api_key='test-key')
+from app.character_agent.gateway import model_provider, model_router
+from scripts.verification.population_mixed_backend import configure
+with ExitStack() as stack:
+    stack.enter_context(patch.object(model_provider, 'urlopen', side_effect=AssertionError('local probe attempted network')))
+    main, _, _ = configure(Path(sys.argv[1]), stack, mode='one_x', provider_mode=sys.argv[2])
+    live = sys.argv[2] == 'live'
+    expected = 'openai_compatible' if live else 'local'
+    route = model_router.CharacterModelRouter().resolve_route()
+    assert route['provider_kind'] == expected, route
+    provider = model_provider.CharacterModelProvider()
+    assert provider._provider_kind == expected
+    assert model_provider.settings.character_model_require_online == live
+    assert model_router.settings.population_roster_path == str(Path(sys.argv[1]) / 'roster.json')
+    if live:
+        assert provider._model_name == 'test-model' and main.settings.siming_llm_mode == 'http'
+    else:
+        result = provider.complete(dict(task_kind='dialogue_generation', route=route, context={}, prompt={}, policy={}))
+        assert result['content'] and not provider.last_call_evidence.transport_attempted
+        assert main.settings.siming_llm_mode == 'disabled'
+'''
+    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), provider_mode],
+        cwd=soak.ROOT, env=child_environment(), capture_output=True, text=True, encoding='utf-8', timeout=20)
+    assert result.returncode == 0, result.stderr
+
+
 def test_drain_waits_for_domain_indexed_cognition_and_live_holders():
     from types import SimpleNamespace
     entries = [('actor', 'projection:organization-window-due:tail', 3, 1)]

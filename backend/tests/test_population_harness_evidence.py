@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import hashlib
+import shutil
 
 import pytest
 
@@ -33,13 +35,58 @@ def test_raw_excludes_storage_names_and_sqlite_magic(tmp_path, name, content):
     assert set(gate._raw(tmp_path)) == {'real-report.json', 'real.log'}
 
 
+def test_capture_rejects_repo_or_existing_output_before_creating_evidence(tmp_path, monkeypatch):
+    root = tmp_path / 'repo'
+    root.mkdir()
+    monkeypatch.setattr(gate, 'ROOT', root)
+    inside = root / '.harness/verification/invalid'
+    with pytest.raises(ValueError):
+        gate.collect(inside, profile='change-lifecycle')
+    assert not inside.exists()
+    existing = tmp_path / 'owned-by-someone-else'
+    existing.mkdir()
+    (existing / 'keep.txt').write_text('preserve', encoding='utf-8')
+    with pytest.raises(ValueError):
+        gate.collect(existing, profile='change-lifecycle')
+    assert (existing / 'keep.txt').read_text(encoding='utf-8') == 'preserve'
+
+
+def test_exported_run_scope_evidence_is_verified_without_repo_archive(capture, monkeypatch):
+    root, latest, output, _ = capture
+    run_id = 'a' * 32
+    def exported(command, *, cwd, env, log, timeout):
+        export = Path(command[command.index('--export-evidence') + 1])
+        attempt = export / 'profiles/change-lifecycle/1'
+        attempt.mkdir(parents=True)
+        (attempt / 'command.log').write_text('original child stdout', encoding='utf-8')
+        command_profile = [command[0], str(root / 'scripts/verification/change-lifecycle.py')]
+        report = dict(overall_change_lifecycle_passed=True,
+            results=[dict(id=key, status='proved', evidence=['AGENTS.md']) for key in sorted(REQUIRED_RULE_IDS)])
+        write_json(attempt / 'change-lifecycle-report.json', report)
+        row = dict(run_id=run_id, profile='change-lifecycle', command=command_profile,
+            attempt=1, attempts=1, exit_code=0, status='passed')
+        write_json(attempt / 'profile-result.json', row)
+        summary = dict(schema_version=2, run_id=run_id, suite_id='change-lifecycle',
+            revision=SHA, overall_harness_passed=True, cleanup_status='passed',
+            profiles=[row], not_executed=[])
+        write_json(export / 'harness-run-report.json', summary)
+        write_json(export / 'run-manifest.json', {**summary,
+            'profile_exit_codes': [dict(profile='change-lifecycle', exit_code=0)]})
+        log.write_text('harness_profile=change-lifecycle status=passed failure=None\n', encoding='utf-8')
+        return 0
+    monkeypatch.setattr(gate, 'run_logged', exported)
+    result = gate.collect(output, profile='change-lifecycle')
+    assert result['status'] == 'passed'
+    assert not latest.exists()
+    assert gate.verify_artifacts(output, expected_commit=SHA, profile='change-lifecycle')['passed']
+
+
 @pytest.fixture
 def capture(tmp_path, monkeypatch):
     root = tmp_path / "repo"
     latest = root / ".harness/verification"
-    latest.mkdir(parents=True)
     profile_dir = root / ".harness/profiles"
-    profile_dir.mkdir()
+    profile_dir.mkdir(parents=True)
     script_dir = root / "scripts/verification"
     script_dir.mkdir(parents=True)
     for name, godot in (("change-lifecycle", False), ("mainline-unified-runtime", True)):
@@ -55,37 +102,45 @@ def capture(tmp_path, monkeypatch):
     def run(command, *, cwd, env, log, timeout):
         selection = command[command.index("--profile") + 1]
         names = [selection] if selection != "all" else ["change-lifecycle", "mainline-unified-runtime"]
-        run_id = "run-20260917-040000-123456"
-        run_dir = latest / "runs" / run_id
-        run_dir.mkdir(parents=True)
-        rows, lines = [], []
+        run_id = "a" * 32
+        export = Path(command[command.index('--export-evidence') + 1])
+        export.mkdir(parents=True)
+        rows = []
         for name in names:
             args = [command[0], str(root / f"scripts/verification/{name}.py")]
             if name == "mainline-unified-runtime":
                 args += ["--godot-exe", command[command.index("--godot-exe") + 1], "--python-exe", command[0]]
-            rows.append(dict(profile=name, command=args, exit_code=0, attempts=1, max_attempts=2))
-            lines += [f"harness_profile={name}", f"harness_run={' '.join(args)}", "harness_exit_code=0"]
+            attempt = export / 'profiles' / name / '1'
+            attempt.mkdir(parents=True)
+            (attempt / 'command.log').write_text('original child stdout', encoding='utf-8')
             payload = {f"overall_{name.replace('-', '_')}_passed": True}
             if name == 'change-lifecycle':
                 payload['results'] = [dict(id=key, status='proved', evidence=['AGENTS.md']) for key in sorted(REQUIRED_RULE_IDS)]
             elif name == 'mainline-unified-runtime':
                 payload.update(results=[], artifacts={})
                 for key, (artifact, child_log, child_report) in gate.MAINLINE_EVIDENCE.items():
-                    (latest / child_log).write_text('original child stdout', encoding='utf-8')
-                    evidence = [str(latest / child_log)]
+                    (attempt / child_log).write_text('original child stdout', encoding='utf-8')
+                    logical = Path.home() / f'paralls-harness-{run_id}' / 'profiles' / name / '1'
+                    evidence = [str(logical / child_log)]
                     payload['artifacts'][artifact + '_log'] = evidence[0]
                     if child_report:
-                        write_json(latest / child_report, {f'overall_{key}_passed': True})
-                        evidence.append(str(latest / child_report))
+                        write_json(attempt / child_report, {f'overall_{key}_passed': True})
+                        evidence.append(str(logical / child_report))
                         payload['artifacts'][artifact + '_report'] = evidence[-1]
                     payload['results'].append(dict(id=key, status='proved', evidence=evidence))
-            write_json(latest / f"{name}-report.json", payload)
-        report = dict(run_id=run_id, suite_id=selection, overall_harness_passed=True, profiles=rows)
-        write_json(run_dir / "harness-run-report.json", report)
-        write_json(run_dir / "run-manifest.json", dict(schema_version=1, run_id=run_id, suite_id=selection,
-            overall_harness_passed=True, profile_exit_codes=[dict(profile=name, exit_code=0) for name in names]))
-        lines += [f"harness_run_dir={run_dir}"]
-        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            report_file = attempt / f'{name}-report.json'
+            write_json(report_file, payload)
+            row = dict(run_id=run_id, profile=name, command=args, exit_code=0, status='passed',
+                attempt=1, attempts=1, evidence=dict(path=f'profiles/{name}/1/{name}-report.json',
+                    sha256=hashlib.sha256(report_file.read_bytes()).hexdigest()))
+            write_json(attempt / 'profile-result.json', row)
+            rows.append(row)
+        report = dict(schema_version=2, run_id=run_id, suite_id=selection, revision=SHA,
+            overall_harness_passed=True, cleanup_status='passed', profiles=rows, not_executed=[])
+        write_json(export / 'harness-run-report.json', report)
+        write_json(export / 'run-manifest.json', {**report,
+            'profile_exit_codes': [dict(profile=name, exit_code=0) for name in names]})
+        log.write_text('\n'.join(f'harness_profile={name} status=passed failure=None' for name in names), encoding='utf-8')
         return 0
 
     monkeypatch.setattr(gate, "run_logged", run)
@@ -96,13 +151,17 @@ def capture(tmp_path, monkeypatch):
 def test_offline_rejects_missing_required_lifecycle_results_after_rehash(capture, defect):
     _, _, output, _ = capture
     assert gate.collect(output, profile='change-lifecycle')['status'] == 'passed'
-    path = output / 'artifacts/change-lifecycle-report.json'
+    path = output / 'artifacts/profiles/change-lifecycle/1/change-lifecycle-report.json'
     report = json.loads(path.read_text(encoding='utf-8'))
     if defect == 'missing':
         report['results'][0]['status'] = 'missing'
     else:
         report['results'] = []
     write_json(path, report)
+    exported = output / 'artifacts/harness-run-report.json'
+    summary = json.loads(exported.read_text(encoding='utf-8'))
+    summary['profiles'][0]['evidence']['sha256'] = hashlib.sha256(path.read_bytes()).hexdigest()
+    write_json(exported, summary)
     manifest = json.loads((output / 'manifest.json').read_text(encoding='utf-8'))
     manifest['raw_files'] = gate._raw(output)
     write_json(output / 'manifest.json', manifest)
@@ -116,7 +175,7 @@ def test_mainline_requires_real_child_log_and_report_even_after_rehash(capture, 
     engine = root / 'godot.exe'
     engine.write_bytes(b'test double')
     assert gate.collect(output, profile='mainline-unified-runtime', godot_exe=engine)['status'] == 'passed'
-    (output / 'artifacts' / missing).unlink()
+    (output / 'artifacts/profiles/mainline-unified-runtime/1' / missing).unlink()
     manifest = json.loads((output / 'manifest.json').read_text(encoding='utf-8'))
     manifest['raw_files'] = gate._raw(output)
     write_json(output / 'manifest.json', manifest)
@@ -126,12 +185,19 @@ def test_mainline_requires_real_child_log_and_report_even_after_rehash(capture, 
 
 @pytest.mark.parametrize('aggregate', ['gameplay-foundation-all', 'embodied-interaction-foundation-all'])
 @pytest.mark.parametrize('defect', ['none', 'log', 'report', 'command', 'exit', 'archive', 'status'])
-def test_nested_gameplay_evidence(tmp_path, defect, aggregate):
+def test_nested_gameplay_evidence(request, defect, aggregate):
+    import tempfile
+    tmp_path = Path(tempfile.mkdtemp(prefix='pg-'))
+    request.addfinalizer(lambda: shutil.rmtree(tmp_path))
     from pathlib import PureWindowsPath
     from scripts.verification.verify_gameplay_foundation_all import GAMEPLAY_FOUNDATION_PROFILES, PROFILE_OVERALL_KEYS
     registry = gate.load_profile_registry(Path(__file__).resolve().parents[2])
     origin = PureWindowsPath('D:/original/repo')
     python, godot = 'D:\\runtime\\python.exe', 'D:\\tools\\godot.exe'
+    run_id = 'b' * 32
+    logical = Path.home() / f'paralls-harness-{run_id}' / 'profiles' / aggregate / '1'
+    aggregate_dir = tmp_path / 'artifacts/profiles' / aggregate / '1'
+    aggregate_dir.mkdir(parents=True)
     payload = dict(overall_gameplay_foundation_all_passed=True,
         dependency_profiles=GAMEPLAY_FOUNDATION_PROFILES, results=[])
     profiles = GAMEPLAY_FOUNDATION_PROFILES
@@ -147,51 +213,54 @@ def test_nested_gameplay_evidence(tmp_path, defect, aggregate):
             phase_6_interaction_session_status='backend_websocket_and_godot_live_runtime_verified',
             phase_7_handoff_status='backend_websocket_and_godot_live_runtime_verified',
             phase_7_carry_place_status='backend_websocket_and_godot_live_runtime_verified')
-    (tmp_path / 'artifacts').mkdir()
     for child in profiles:
         report_name = registry.profiles[child].get('result_artifact', '').removeprefix('.harness/verification/')
         report = {PROFILE_OVERALL_KEYS.get(child, 'overall_child_passed'): True, 'adventure_basic_required_scenarios_complete': True}
+        child_root = aggregate_dir / f'child-{child}'
+        attempt = child_root / 'profiles' / child / '1'
+        attempt.mkdir(parents=True)
+        (attempt / 'command.log').write_text('child process stdout', encoding='utf-8')
         if child == 'gameplay-patch-runtime':
             from scripts.verification.verify_gameplay_patch_runtime import TEST_GROUPS
-            logs = {key: str(origin / '.harness/verification' / f'gameplay-patch-runtime-{key}.log') for key, _, _ in TEST_GROUPS}
+            logs = {key: str(logical / f'child-{child}' / 'profiles' / child / '1' / f'gameplay-patch-runtime-{key}.log') for key, _, _ in TEST_GROUPS}
             report.update(artifacts=dict(pytest_logs=logs),
                 results=[dict(id=key, status='proved', evidence=[value]) for key, value in logs.items()])
             for key in logs:
-                (tmp_path / 'artifacts' / f'gameplay-patch-runtime-{key}.log').write_text('pytest output', encoding='utf-8')
+                (attempt / f'gameplay-patch-runtime-{key}.log').write_text('pytest output', encoding='utf-8')
         if report_name:
-            write_json(tmp_path / 'artifacts' / report_name, report)
+            write_json(attempt / report_name, report)
         log_name = f'{aggregate}-{child}.log'
-        run_id = 'run-' + child
         command = gate._profile_command(child, origin, python, godot, registry.profiles)
-        maximum = max(1, int(registry.profiles[child].get('max_attempts', 1)))
-        row = dict(profile=child, command=command, exit_code=0, attempts=1, max_attempts=maximum)
+        row = dict(run_id=run_id, profile=child, command=command, exit_code=0,
+            attempt=1, attempts=1, status='passed',
+            evidence=dict(path=f'profiles/{aggregate}/1/child-{child}/profiles/{child}/1/{report_name}',
+                          sha256=hashlib.sha256((attempt / report_name).read_bytes()).hexdigest()))
         if child == profiles[0]:
             if defect == 'command':
                 row['command'] = command + ['--skip']
             if defect == 'exit':
                 row['exit_code'] = 1
-        archive = tmp_path / 'artifacts/runs' / run_id
-        archive.mkdir(parents=True)
-        write_json(archive / 'harness-run-report.json', dict(run_id=run_id, suite_id=child,
-            overall_harness_passed=True, profiles=[row]))
-        write_json(archive / 'run-manifest.json', dict(schema_version=1, run_id=run_id, suite_id=child,
-            overall_harness_passed=True, profile_exit_codes=[dict(profile=child, exit_code=0)]))
-        log = tmp_path / 'artifacts' / log_name
-        log.write_text(f'harness_profile={child}\nharness_run={" ".join(command)}\nharness_exit_code=0\n'
-            f'harness_run_dir={origin / ".harness/verification/runs" / run_id}\n', encoding='utf-8')
-        evidence = [str(origin / '.harness/verification' / log_name)]
+        write_json(attempt / 'profile-result.json', row)
+        summary = dict(schema_version=2, run_id=run_id, suite_id=child, revision=gate.git_head(gate.ROOT),
+            overall_harness_passed=True, cleanup_status='pending', profiles=[row], not_executed=[])
+        write_json(child_root / 'harness-run-report.json', summary)
+        write_json(child_root / 'run-manifest.json', {**summary,
+            'profile_exit_codes': [dict(profile=child, exit_code=0)]})
+        log = aggregate_dir / log_name
+        log.write_text(f'harness_profile={child} status=passed failure=None\n', encoding='utf-8')
+        evidence = [str(logical / log_name)]
         if aggregate == 'gameplay-foundation-all':
-            evidence.append(str(origin / registry.profiles[child]['result_artifact']))
+            evidence.append(str(logical / f'child-{child}' / 'profiles' / child / '1' / report_name))
         payload['results'].append(dict(id=child, status='missing' if defect == 'status' and child == profiles[0] else 'proved', evidence=evidence))
         if child == profiles[0]:
             if defect == 'log':
                 log.unlink()
             elif defect == 'report' and report_name:
-                (tmp_path / 'artifacts' / report_name).unlink()
+                (attempt / report_name).unlink()
             elif defect == 'report':
-                (archive / 'harness-run-report.json').unlink()
+                (child_root / 'harness-run-report.json').unlink()
             elif defect == 'archive':
-                (archive / 'run-manifest.json').unlink()
+                (child_root / 'run-manifest.json').unlink()
     raw = gate._raw(tmp_path)
     def raw_path(name):
         if name not in raw:
@@ -199,7 +268,8 @@ def test_nested_gameplay_evidence(tmp_path, defect, aggregate):
         return tmp_path / name
     def verify():
         gate._profile_report(aggregate, payload, origin=origin, python=python,
-            godot=godot, registry=registry, raw_path=raw_path, inputs={}, ancestors=('all', aggregate))
+            godot=godot, registry=registry, raw_path=raw_path, inputs={}, ancestors=('all', aggregate),
+            exported_run_id=run_id)
     if defect == 'none':
         verify()
     else:
@@ -259,16 +329,23 @@ def test_all_uses_registry_coverage_and_explicit_engine_for_nested_harness(captu
 
 
 def test_existing_retry_contract_keeps_both_attempts(capture, monkeypatch):
-    _, latest, output, original = capture
+    _, _, output, original = capture
     def run(command, **kwargs):
         result = original(command, **kwargs)
-        log = kwargs["log"]
-        lines = log.read_text(encoding="utf-8").splitlines()
-        lines[1:1] = [lines[1], "harness_exit_code=1"]
-        log.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        path = latest / "runs/run-20260917-040000-123456/harness-run-report.json"
+        export = Path(command[command.index('--export-evidence') + 1])
+        path = export / 'harness-run-report.json'
         report = json.loads(path.read_text(encoding="utf-8"))
+        prior = export / 'profiles/change-lifecycle/1'
+        second = export / 'profiles/change-lifecycle/2'
+        shutil.copytree(prior, second)
+        write_json(prior / 'profile-result.json', {**report['profiles'][0], 'attempt': 1,
+            'status': 'failed', 'exit_code': 1})
+        write_json(second / 'profile-result.json', {**report['profiles'][0], 'attempt': 2,
+            'attempts': 2, 'evidence': {'path': 'profiles/change-lifecycle/2/change-lifecycle-report.json',
+                'sha256': report['profiles'][0]['evidence']['sha256']}})
         report["profiles"][0]["attempts"] = 2
+        report["profiles"][0]["attempt"] = 2
+        report["profiles"][0]['evidence']['path'] = 'profiles/change-lifecycle/2/change-lifecycle-report.json'
         write_json(path, report)
         return result
     monkeypatch.setattr(gate, "run_logged", run)
@@ -288,25 +365,25 @@ def test_godot_profiles_require_explicit_executable_before_any_launch(capture, m
 
 @pytest.mark.parametrize("defect", ["exit", "stale", "no_log", "summary", "profile_order", "attempts", "source_changed"])
 def test_capture_keeps_failed_evidence(capture, monkeypatch, defect):
-    root, latest, output, original = capture
-    if defect == "stale":
-        stale = latest / "runs/run-20260917-040000-123456"
-        stale.mkdir(parents=True)
+    root, _, output, original = capture
 
     def broken(command, **kwargs):
         if defect == "stale":
-            # 模拟只重用旧报告和run_id，未生成本轮archive。
-            kwargs["log"].write_text(f"harness_run_dir={latest / 'runs/run-20260917-040000-123456'}\n", encoding="utf-8")
+            # 未形成当前 export，旧仓库报告不能补齐。
+            (root / '.harness/verification').mkdir(parents=True)
+            write_json(root / '.harness/verification/harness-run-report.json', {'overall_harness_passed': True})
+            kwargs["log"].write_text('old report exists only in repository\n', encoding='utf-8')
             return 0
         result = original(command, **kwargs)
-        archive = latest / "runs/run-20260917-040000-123456/harness-run-report.json"
+        export = Path(command[command.index('--export-evidence') + 1])
+        archive = export / 'harness-run-report.json'
         report = json.loads(archive.read_text(encoding="utf-8"))
         if defect == "exit":
             return 124
         if defect == "no_log":
             kwargs["log"].write_text("", encoding="utf-8")
         if defect == "summary":
-            write_json(latest / "change-lifecycle-report.json", {"overall_change_lifecycle_passed": False})
+            write_json(export / 'profiles/change-lifecycle/1/change-lifecycle-report.json', {"overall_change_lifecycle_passed": False})
         if defect == "profile_order":
             report["profiles"] = []
         if defect == "attempts":

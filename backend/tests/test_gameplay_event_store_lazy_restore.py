@@ -37,16 +37,17 @@ def test_reopen_and_bounded_reads_do_not_materialize_history(tmp_path, monkeypat
             return self.cursor(factory=CountingCursor).execute(sql, parameters)
     monkeypatch.setattr(sqlite3, "connect", lambda *args, **kwargs: connect(*args, **kwargs, factory=CountingConnection))
     store = DurableGameplayEventStore(path)
-    assert len(reads) == 3
+    assert len(reads) == 4
+    assert reads[3] == ("wal",)
     assert not store._events and not store._transactions and not store._outbox
     assert store.get_last_global_sequence() == count
     assert [event.global_sequence for event in store.read_stream("stream:history", from_revision=count-1, limit=1)] == [count-1]
     assert len(store.list_outbox(include_delivered=False, limit=1)) == 1
     assert store.get_event(f"evt:{count-1}").global_sequence == count
     assert store.get_by_idempotency("player:local", "idempotency:handoff:1").global_sequence_range == (1, count)
-    # 常驻连接首次开启核验一次 WAL；实际元数据与五个查询行数不变。
-    assert reads[3] == ("wal",)
-    assert len(reads) == 9
+    # 装配与常驻连接各核验一次 WAL；实际元数据与五个查询行数不变。
+    assert reads[4] == ("wal",)
+    assert len(reads) == 10
 
 
 @pytest.mark.parametrize("durable", [False, True])

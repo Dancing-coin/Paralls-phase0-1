@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 from pathlib import Path
 
-from common import artifact_path, repo_root, resolve_python_exe, verification_dir, write_json, write_markdown
+from common import repo_root, resolve_python_exe, verification_dir, write_json, write_markdown
+from run_context import current_run
 
 
 GAMEPLAY_FOUNDATION_PROFILES = [
@@ -74,6 +76,8 @@ def main() -> int:
     profile_results: list[dict[str, object]] = []
 
     for profile in GAMEPLAY_FOUNDATION_PROFILES:
+        child_export = log_dir / f"child-{profile}"
+        child_export.mkdir()
         command = [
             python_exe,
             str(project_root / "scripts" / "verification" / "harness.py"),
@@ -85,6 +89,8 @@ def main() -> int:
         if args.godot_exe:
             command.extend(["--godot-exe", args.godot_exe])
         log_path = log_dir / f"gameplay-foundation-all-{profile}.log"
+        child_env = {**os.environ, "HARNESS_ATTEMPT_ROOT": str(child_export),
+                     "HARNESS_ATTEMPT_ID": f"child-{profile}"}
         with log_path.open("w", encoding="utf-8") as log_handle:
             result = subprocess.run(
                 command,
@@ -95,12 +101,21 @@ def main() -> int:
                 encoding="utf-8",
                 errors="replace",
                 check=False,
+                env=child_env,
             )
 
         profile_manifest = _read_json_object(project_root / ".harness" / "profiles" / f"{profile}.json")
-        result_artifact = artifact_path(project_root, str(profile_manifest.get("result_artifact", "")))
+        child_summary = _read_json_object(child_export / "harness-run-report.json")
+        rows = child_summary.get("profiles", [])
+        evidence = rows[0].get("evidence", {}) if len(rows) == 1 and isinstance(rows[0], dict) else {}
+        logical_name = Path(str(profile_manifest.get("result_artifact", ""))).name
+        result_artifact = current_run(project_root).evidence_root / str(evidence.get("path", ""))
         report = _read_json_object(result_artifact)
-        passed = result.returncode == 0 and _child_report_passed(profile, report)
+        passed = (result.returncode == 0 and child_summary.get("overall_harness_passed") is True
+                  and len(rows) == 1
+                  and rows[0].get("profile") == profile and result_artifact.name == logical_name
+                  and result_artifact.resolve().is_relative_to(child_export.resolve())
+                  and result_artifact.is_file() and _child_report_passed(profile, report))
         profile_results.append(
             {
                 "id": profile,

@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT / 'backend')]
 
 from scripts.verification.aggregate_population_closure import _identity
+from scripts.verification.common import collection_output_path, collection_report_path
 from scripts.verification.population_godot_runner import write_json
 from scripts.verification.population_mixed_verification import verify_case
 from scripts.verification.verify_population_godot_runtime import read_json
@@ -107,9 +108,9 @@ def main():
     if args.verify_artifacts:
         result = verify_matrix(args.verify_artifacts, expected_commit=revision, kind=args.kind)
     else:
-        directory = args.output or ROOT / '.harness/verification' / ('population-mixed-'+args.kind+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
+        directory = args.output or collection_output_path(ROOT, 'population-mixed-'+args.kind+'-'+datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
         result = collect_matrix(directory, expected_commit=revision, kind=args.kind)
-        write_json(ROOT / '.harness/verification' / ('population-mixed-'+args.kind+'-report.json'), result)
+        write_json(collection_report_path(ROOT, directory, 'population-mixed-'+args.kind+'-report.json'), result)
     print(json.dumps(result, ensure_ascii=False))
     return 0 if result['passed'] else 1
 
