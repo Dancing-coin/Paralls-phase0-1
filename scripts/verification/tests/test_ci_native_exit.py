@@ -47,6 +47,25 @@ def test_hosted_harness_installs_pinned_engine_and_preserves_separate_gates():
     assert upload["with"]["include-hidden-files"] is True
 
 
+@pytest.mark.parametrize('job_name', [
+    'population-performance-fixed-runner', 'population-godot-runtime',
+    'population-correctness', 'harness',
+])
+def test_runtime_jobs_can_install_security_only_python_on_windows(job_name):
+    root = Path(__file__).resolve().parents[3]
+    job = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs'][job_name]
+    # setup-python 的 Windows 发布清单不包含 3.12.14；使用已发布该版本的托管构建。
+    installer = next(step for step in job['steps'] if step.get('uses', '').startswith('astral-sh/setup-uv@'))
+    assert installer['uses'] == 'astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4'
+    assert installer['with']['version'] == '0.12.17'
+    assert installer['with']['python-version'] == '3.12.14'
+    assert installer['with']['activate-environment'] is True
+    assert installer['with']['venv-path'].startswith('${{ runner.temp }}/')
+    install = next(step['run'] for step in job['steps'] if step.get('name') == 'Install pinned backend and test dependencies')
+    # Godot 证据采集使用 python -m pip freeze，uv 的空环境需要显式安装 pip。
+    assert install == 'uv pip install pip -c backend/ci-constraints.txt "./backend[dev]"'
+
+
 def test_performance_job_is_explicit_fixed_machine_and_retains_all_raw_runs():
     root = Path(__file__).resolve().parents[3]
     job = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs']['population-performance-fixed-runner']
