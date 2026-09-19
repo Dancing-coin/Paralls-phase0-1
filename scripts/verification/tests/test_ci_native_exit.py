@@ -43,7 +43,7 @@ def test_hosted_harness_installs_pinned_engine_and_preserves_separate_gates():
     assert {command.split("--profile ", 1)[1].split()[0] for command in runs} == {"all", "mainline-unified-runtime", "change-lifecycle"}
     assert all(command.count("python ") == 1 for command in runs)
     upload = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))
-    assert upload["if"] == "always()"
+    assert upload["if"] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
     assert upload["with"]["include-hidden-files"] is True
 
 
@@ -59,10 +59,11 @@ def test_performance_job_is_explicit_fixed_machine_and_retains_all_raw_runs():
     assert 'verify_population_multi_game_capacity.py' in commands
     assert 'verify_population_long_session_recovery.py' in commands
     assert 'verify_population_service_isolation.py' in commands and 'verify_population_transport_cost.py' in commands
-    assert all(step['if'] == '${{ !cancelled() }}' for step in runs)
+    assert all(step['if'] == "${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}" for step in runs)
     assert 'godot' not in commands.lower()
     upload = next(step for step in job['steps'] if step.get('uses', '').startswith('actions/upload-artifact@'))
-    assert upload['if'] == 'always()' and upload['with']['include-hidden-files'] is True
+    assert upload['if'] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
+    assert upload['with']['include-hidden-files'] is True
     paths = upload['with']['path'].splitlines()
     assert paths[0] == '${{ env.HARNESS_CI_EVIDENCE }}/'
     assert '!${{ env.HARNESS_CI_EVIDENCE }}/**/state/**' in paths
@@ -107,15 +108,48 @@ def test_ci_evidence_is_exported_uploaded_and_owned_output_cleaned():
         upload = next(step for step in steps if step.get('uses', '').startswith('actions/upload-artifact@'))
         assert '--export-evidence "$env:HARNESS_CI_EVIDENCE"' in run
         assert upload['with']['path'] == '${{ env.HARNESS_CI_EVIDENCE }}/'
-        assert upload['if'] == 'always()'
+        assert upload['if'] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
         cleanup = next(step for step in steps if 'Remove-Item' in step.get('run', ''))
         assert cleanup['if'] == "${{ always() && steps." + upload['id'] + ".outcome == 'success' }}"
     for name in ('population-performance-fixed-runner', 'harness'):
         steps = jobs[name]['steps']
         upload = next(step for step in steps if step.get('uses', '').startswith('actions/upload-artifact@'))
         assert '${{ env.HARNESS_CI_EVIDENCE }}' in upload['with']['path']
+        assert upload['if'] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
         cleanup = next(step for step in steps if 'Remove-Item' in step.get('run', ''))
         assert cleanup['if'] == "${{ always() && steps." + upload['id'] + ".outcome == 'success' }}"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows runner 的证据路径初始化")
+@pytest.mark.parametrize('job_name,suffix', [
+    ('population-performance-fixed-runner', 'performance'),
+    ('population-godot-runtime', 'godot'),
+    ('population-correctness', 'correctness'),
+    ('harness', 'harness'),
+])
+def test_ci_evidence_path_is_initialized_on_runner(tmp_path, job_name, suffix):
+    root = Path(__file__).resolve().parents[3]
+    job = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs'][job_name]
+    # GitHub 在分配 runner 前解析 job.env，此处不能引用 runner 上下文。
+    assert all('runner.' not in str(value) for value in job.get('env', {}).values())
+    initialization = job['steps'][0]['run']
+    environment_file = tmp_path / 'github-env.txt'
+    runner_temp = tmp_path / 'runner temp'
+    runner_temp.mkdir()
+    env = dict(os.environ, RUNNER_TEMP=str(runner_temp), GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2',
+               GITHUB_ENV=str(environment_file))
+    result = subprocess.run([shutil.which('powershell'), '-NoProfile', '-NonInteractive', '-Command', initialization],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    assert environment_file.read_text(encoding='utf-8-sig').splitlines() == [
+        f'HARNESS_CI_EVIDENCE={runner_temp / ("paralls-123-2-" + suffix)}']
+    environment_file.unlink()
+    env['RUNNER_TEMP'] = ''
+    failed = subprocess.run([shutil.which('powershell'), '-NoProfile', '-NonInteractive', '-Command', initialization],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert failed.returncode != 0
+    assert not environment_file.exists()
+    assert job['steps'][0]['id'] == 'initialize_evidence'
 
 
 def test_collection_report_follows_explicit_output_or_active_attempt(tmp_path):

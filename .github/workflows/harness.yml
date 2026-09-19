@@ -51,7 +51,6 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONHASHSEED: "0"
-      HARNESS_CI_EVIDENCE: ${{ runner.temp }}/paralls-${{ github.run_id }}-${{ github.run_attempt }}-performance
       CHARACTER_MODEL_PROVIDER_KIND: ${{ vars.CHARACTER_MODEL_PROVIDER_KIND }}
       CHARACTER_MODEL_ENDPOINT: ${{ vars.CHARACTER_MODEL_ENDPOINT }}
       CHARACTER_MODEL_MODEL: ${{ vars.CHARACTER_MODEL_MODEL }}
@@ -61,6 +60,13 @@ jobs:
       SIMING_LLM_MODEL: ${{ vars.SIMING_LLM_MODEL }}
       SIMING_LLM_API_KEY: ${{ secrets.SIMING_LLM_API_KEY }}
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-performance"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -70,26 +76,26 @@ jobs:
       - name: Install pinned backend and test dependencies
         run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
       - name: Capture service isolation for 100 and 1,000 populations
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
         run: python scripts/verification/verify_population_service_isolation.py --output "$env:HARNESS_CI_EVIDENCE/service"
       - name: Capture long-history recovery
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
         run: python scripts/verification/verify_population_long_session_recovery.py --output "$env:HARNESS_CI_EVIDENCE/recovery"
       - name: Capture paired transport cost
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
         run: python scripts/verification/verify_population_transport_cost.py --output "$env:HARNESS_CI_EVIDENCE/transport-cost"
       - name: Verify unprofiled realtime short matrix
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
         run: python scripts/verification/population_mixed_matrix.py --kind short --output "$env:HARNESS_CI_EVIDENCE/realtime-short" --require-fresh-commit $env:GITHUB_SHA
       - name: Verify full soak and acceleration matrix
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
         run: python scripts/verification/population_mixed_matrix.py --kind soak --output "$env:HARNESS_CI_EVIDENCE/mixed-soak" --require-fresh-commit $env:GITHUB_SHA
       - name: Verify two and four independent games
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
         run: python scripts/verification/verify_population_multi_game_capacity.py --output "$env:HARNESS_CI_EVIDENCE/multi-game" --require-fresh-commit $env:GITHUB_SHA
       - name: Preserve performance evidence even when a threshold fails
         id: upload_performance
-        if: always()
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: population-performance-${{ github.run_id }}-${{ github.run_attempt }}
@@ -111,9 +117,14 @@ jobs:
     if: github.event_name == 'workflow_dispatch' && inputs.run_population_godot
     runs-on: [self-hosted, Windows, X64, paralls-godot-4-6-3]
     timeout-minutes: 30
-    env:
-      HARNESS_CI_EVIDENCE: ${{ runner.temp }}/paralls-${{ github.run_id }}-${{ github.run_attempt }}-godot
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-godot"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -130,7 +141,7 @@ jobs:
         run: python scripts/verification/harness.py --profile population-godot-runtime --export-evidence "$env:HARNESS_CI_EVIDENCE"
       - name: Preserve rendered verification evidence
         id: upload_godot
-        if: always()
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: population-godot-${{ github.run_id }}-${{ github.run_attempt }}
@@ -146,9 +157,14 @@ jobs:
   population-correctness:
     runs-on: windows-latest
     timeout-minutes: 105
-    env:
-      HARNESS_CI_EVIDENCE: ${{ runner.temp }}/paralls-${{ github.run_id }}-${{ github.run_attempt }}-correctness
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-correctness"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -165,7 +181,7 @@ jobs:
         run: python scripts/verification/harness.py --profile population-runtime-correctness --export-evidence "$env:HARNESS_CI_EVIDENCE"
       - name: Preserve raw verification evidence
         id: upload_correctness
-        if: always()
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: population-correctness-${{ github.run_id }}-${{ github.run_attempt }}
@@ -184,8 +200,14 @@ jobs:
     env:
       PYTHONUTF8: "1"
       PYTHONHASHSEED: "0"
-      HARNESS_CI_EVIDENCE: ${{ runner.temp }}/paralls-${{ github.run_id }}-${{ github.run_attempt }}-harness
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-harness"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
@@ -215,7 +237,7 @@ jobs:
         run: python scripts/verification/verify_population_harness_evidence.py --profile mainline-unified-runtime --godot-exe "$env:GODOT_EXE" --output "$env:HARNESS_CI_EVIDENCE/ci-mainline"
       - name: Preserve broad harness evidence on success or failure
         id: upload_harness
-        if: always()
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: harness-${{ github.run_id }}-${{ github.run_attempt }}
