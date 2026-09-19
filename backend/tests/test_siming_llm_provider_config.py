@@ -478,7 +478,8 @@ def test_http_provider_returns_validated_candidates(monkeypatch: pytest.MonkeyPa
     assert "candidates" not in request_payload
 
 
-def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.mark.parametrize("environment_only", [False, True])
+def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: pytest.MonkeyPatch, environment_only) -> None:
     provider = HttpSimingLlmCandidateProvider(
         api_key="test-key",
         endpoint="https://api.deepseek.com/chat/completions",
@@ -499,7 +500,7 @@ def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: p
                 "choices": [
                     {
                         "message": {
-                            "content": '{"candidates":[%s]}' % json_module.dumps(make_candidate_payload())
+                            "content": '{"candidates":[%s]}' % json_module.dumps(make_candidate_payload(target_actor_id=None) if environment_only else make_candidate_payload())
                         }
                     }
                 ]
@@ -508,9 +509,14 @@ def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: p
 
     monkeypatch.setattr("app.services.siming_llm_provider.httpx.post", fake_post)
 
+    snapshot = make_snapshot()
+    event = make_event()
+    if environment_only:
+        snapshot.eligible_actor_ids = []
+        event.payload['target_environment_id'] = 'env_lamp'
     candidates = provider.generate_candidates(
-        snapshot=make_snapshot(),
-        recent_events=[make_event()],
+        snapshot=snapshot,
+        recent_events=[event],
         recent_audit=[],
     )
 
@@ -521,6 +527,7 @@ def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: p
     assert captured["timeout"] == 1.5
     request_payload = captured["json"]
     assert request_payload["model"] == "deepseek-chat"
+    assert request_payload["thinking"] == {"type": "disabled"}
     assert request_payload["response_format"] == {"type": "json_object"}
     assert request_payload["messages"][0]["role"] == "system"
     assert request_payload["messages"][1]["role"] == "user"
@@ -534,6 +541,14 @@ def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: p
     assert "Use null" in system_prompt
     assert "snapshot.eligible_actor_ids" in system_prompt
     assert "recent_events" in system_prompt
+    assert "At least one of target_actor_id or target_environment_id must be non-null" in system_prompt
+    assert "If no eligible target exists, return an empty candidates array" in system_prompt
+
+
+    if environment_only:
+        assert candidates[0].target_actor_id is None
+        assert candidates[0].target_environment_id == 'env_lamp'
+        assert "fact_reveal may use target_actor_id=null" in system_prompt
 
 
 @pytest.mark.parametrize("missing_field", ["source", "explanation", "confidence", "reason_tags"])

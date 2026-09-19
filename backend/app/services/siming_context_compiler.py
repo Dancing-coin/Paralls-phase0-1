@@ -3,6 +3,7 @@ import json
 
 from pydantic import TypeAdapter
 
+from app.models.siming_heavenly_graph import HeavenlyGraphNode
 from app.models.siming_heavenly_memory import (
     SimingCompiledContext,
     SimingContextRequest,
@@ -16,7 +17,7 @@ class SimingContextCompiler:
         self._graph = graph
         self._entry_adapter = TypeAdapter(SimingHeavenlyMemoryEntry)
 
-    def compile(self, request: SimingContextRequest) -> SimingCompiledContext:
+    def compile(self, request: SimingContextRequest, *, planned_nodes: tuple[HeavenlyGraphNode, ...] | list[HeavenlyGraphNode] = ()) -> SimingCompiledContext:
         seed_node_ids = sorted(set(request.seed_node_ids))
         subgraph = self._graph.query_subgraph(
             scope=request.scope,
@@ -28,6 +29,7 @@ class SimingContextCompiler:
             recorded_at=request.recorded_at,
             node_limit=request.node_limit,
             relation_limit=request.relation_limit,
+            **({"planned_nodes": planned_nodes} if planned_nodes else {}),
         )
         entries = []
         for node in sorted(subgraph.nodes, key=lambda node: node.node_id):

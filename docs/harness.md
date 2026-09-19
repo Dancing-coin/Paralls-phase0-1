@@ -15,6 +15,48 @@ python scripts/verification/harness.py --suite release --export-evidence D:\Harn
 
 默认运行输出位于系统临时目录，正常、失败及可捕获取消后由顶层清理；必要证据在清理前用 `--export-evidence` 导出到仓库外不存在或为空的目录。保留契约见 `.harness/retention-policy.json`。最终摘要必须区分验证失败、环境缺失和清理失败；已有 backend 的生命周期不属于本轮。
 
+## Population runtime correctness
+
+`population-runtime-correctness` 显式运行持久化、增量读取、连续运行、热状态等价四个既有
+profile，以及执行域、continuation、恢复、授权镜像和传输新增回归；它也进入 `all`。
+使用 Python 3.12.14，先运行 `python -m pip install -c backend/ci-constraints.txt "./backend[dev]"`，
+再运行 `python scripts/verification/harness.py --profile population-runtime-correctness`。
+
+每步串行执行，超时 1,200 秒，失败也保留其它步骤诊断。新目录
+`.harness/verification/population-correctness-<UTC>/manifest.json` 记录 commit、源码/测试/依赖
+摘要、Python/SQLite/OS/CPU、固定 seed、命令、开始/结束时间、状态和原始文件摘要。
+旧报告、缺失/跳过测试、运行期间变码均不通过。GitHub 的 `population-correctness` job
+安装固定依赖并在失败时保留日志；真实远端运行结果仍需从对应 workflow run 取得。
+
+这个 profile 使用受控测试 provider，明确保留 `performance_status=not_run` 与
+`godot_status=godot_unverified`。固定机器性能、真实 provider、外部 Godot 和六项总聚合
+仍是独立必过门禁，不能由本 profile 替代。Godot 外机操作见
+`docs/verification/population-runtime-closure.md`。
+
+外机真实渲染使用显式 `population-godot-runtime` profile，传 `--godot-exe` 或在外机设置
+`GODOT_EXE`。它不加入本机 `all`，每次生成独立 `population-godot-<UTC>` 证据目录，
+入口摘要指向原始 manifest。CI 仅在手动选择 `run_population_godot` 时调度固定标签的
+外机 runner；本机静态检查、未调度或等待 runner 均不构成 `runtime_verified`。
+
+`population-runtime-closure` 是显式离线聚合 profile，不加入 `all`、不启动 Godot。
+它读取验收根目录的 `evidence.json`，通过各自复验器核对六项原始证据，再生成 JSON、Markdown、
+JUnit 报告；缺证据或缺复验入口保持 `incomplete`。目录格式和外机交接命令见上述交接文档。
+
+`population-long-session-recovery` 每次新建 `evidence-<UTC>`，只封存 fixture 的
+manifest/oracle/roster 和各次恢复的 child JSON、父进程单调时钟、stdout/stderr；不会把大数据库
+及 WAL/SHM 加入离线摘要。原存档与恢复副本继续保留在采集机器，旧 fixture 缺新来源信息时拒绝复用。
+短配置只能形成诊断结果，不能作为1,000 人、1,000/10,000 窗、各五次冷恢复通过证据。
+
+`verify_population_harness_evidence.py` 封存既有 `mainline-unified-runtime`、`change-lifecycle`、
+`all` 的真实执行；离线入口校验源身份、原命令、完整 profile 顺序、重试记录和本轮产物。
+`mainline`/`all` 必须在外机显式提供 `--godot-exe`，本机只执行不需要引擎的
+`change-lifecycle`。命令与证据复制方式见 `docs/verification/population-runtime-closure.md`。
+
+GitHub hosted `harness` job 从官方 release 安装固定 Godot 4.6.3，并核对压缩包 SHA256；
+checkout 启用 LFS。change-lifecycle、all、mainline 分步骤执行并分别封存，失败时仍上传已有证据。
+本地 `.harness/ci/local-ci-gate.ps1` 遇到任一 native 命令非零立即返回该退出码。
+CI 配置与静态检查通过不等于远端 workflow 已运行，也不代替专用桌面机器的真实帧性能门禁。
+
 ## 3D scripted-mystery action platform
 
 The opt-in profile `3d-scripted-mystery-action-platform` runs the procedural

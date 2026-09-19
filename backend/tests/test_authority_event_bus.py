@@ -200,6 +200,34 @@ def test_bounded_history_keeps_delivery_and_does_not_copy_payload_for_ledger(mon
     assert not ledger.is_complete_across_restart
 
 
+def test_default_history_limit_bounds_unlisted_event_types() -> None:
+    bus = InMemoryAuthorityEventBus(default_history_limit=3)
+    for index in range(5):
+        bus.publish(make_authority_event(event_id=f"evt:default:{index}"))
+
+    assert [event.event_id for event in bus.list_events()] == [
+        "evt:default:2",
+        "evt:default:3",
+        "evt:default:4",
+    ]
+    assert bus.authority_recovery_ledger().event_ids == frozenset(
+        {"evt:default:2", "evt:default:3", "evt:default:4"}
+    )
+
+
+def test_cursor_returns_new_event_after_bounded_history_evicts_old_event() -> None:
+    bus = InMemoryAuthorityEventBus(default_history_limit=2)
+    bus.publish(make_authority_event(event_id="evt:cursor:1"))
+    bus.publish(make_authority_event(event_id="evt:cursor:2"))
+    cursor = bus.cursor()
+
+    bus.publish(make_authority_event(event_id="evt:cursor:3"))
+
+    assert [event.event_id for event in bus.list_events(after_cursor=cursor)] == [
+        "evt:cursor:3"
+    ]
+
+
 def test_in_memory_bus_filters_events_by_room_and_type() -> None:
     bus = InMemoryAuthorityEventBus()
     bus.publish(make_authority_event(event_id="evt:1", room_id="room_demo", event_type="visual_fact_event"))
@@ -322,3 +350,52 @@ def test_in_memory_bus_recovery_ledger_is_explicitly_not_restart_complete() -> N
 
     assert ledger.event_ids == frozenset({"evt:recovery"})
     assert ledger.is_complete_across_restart is False
+
+
+def test_subscription_exclusion_is_frozen_exact_and_before_materialization(monkeypatch):
+    import app.services.authority_event_bus as module
+    original = module.pickle.loads
+    loads = []
+    monkeypatch.setattr(module.pickle, 'loads', lambda value: (loads.append(1), original(value))[1])
+    event = make_authority_event(event_type='population_cadence_event', durability='realtime')
+    counts = []
+    for excluded in (set(), {'population_cadence_event'}):
+        bus = InMemoryAuthorityEventBus()
+        delivered = []
+        bus.subscribe(event.event_type, lambda value: delivered.append(('business', value.payload)))
+        bus.subscribe('*', lambda value: delivered.append(('graph', value.payload)),
+                      excluded_event_types=excluded)
+        excluded.clear()
+        loads.clear()
+        bus.publish(event)
+        counts.append(len(loads))
+        assert delivered[0] == ('business', event.payload)
+        assert len(delivered) == counts[-1]
+        assert bus.list_events(include_realtime=True)[0] == event
+        delivered.clear()
+        suffix = event.model_copy(update={'event_id': 'suffix', 'event_type': event.event_type + '.future'})
+        bus.publish(suffix)
+        assert delivered == [('graph', event.payload)]
+    assert counts == [2, 1]
+
+
+def test_exclusion_preserves_other_routes_isolation_and_failure_retry():
+    bus = InMemoryAuthorityEventBus()
+    seen = []
+    def first(event):
+        seen.append('exact')
+        event.payload['fact_type'] = 'changed'
+    def last(event):
+        seen.append(event.payload['fact_type'])
+        if len(seen) == 2:
+            raise RuntimeError('retry')
+    bus.subscribe('visual_fact_event', first, consumer_id='siming')
+    bus.subscribe('*', lambda event: pytest.fail('wrong route'), consumer_id='other',
+                  excluded_event_types={'population_cadence_event'})
+    bus.subscribe('*', last, excluded_event_types={'population_cadence_event'})
+    event = make_authority_event()
+    with pytest.raises(RuntimeError, match='retry'):
+        bus.publish(event)
+    bus.publish(event)
+    assert seen == ['exact', 'light_level_drop', 'exact', 'light_level_drop']
+    assert all(value.payload == event.payload for value in bus.list_events())

@@ -149,31 +149,35 @@ def _with_checksum(snapshot: CharacterGameRuntimeSnapshot) -> CharacterGameRunti
     )
 
 
+def snapshot_checksum_payload(snapshot: CharacterGameRuntimeSnapshot) -> dict[str, Any]:
+    """复制原有 checksum 的完整输入，供跨语言 mirror 验证同一对象。"""
+    return {
+        "actor_ref": snapshot.actor_ref,
+        "facade_revision": snapshot.facade_revision,
+        "source_revision_vector": dict(snapshot.source_revision_vector),
+        "schema_capabilities": list(snapshot.schema_capabilities),
+        "enabled_state_groups": list(snapshot.enabled_state_groups),
+        "groups": {
+            group_id: {
+                "definition_version": envelope.definition_version,
+                "projection_schema_version": envelope.projection_schema_version,
+                "projection_revision": envelope.projection_revision,
+                "source_revision_vector": dict(envelope.source_revision_vector),
+                "payload": _thaw(envelope.payload),
+            }
+            for group_id, envelope in snapshot.groups.items()
+        },
+    }
+
+
+def snapshot_canonical_json(snapshot: CharacterGameRuntimeSnapshot) -> str:
+    # 保持既有规范字节；Godot 不再猜测 Python 的浮点和 Unicode 编码规则。
+    return json.dumps(snapshot_checksum_payload(snapshot), ensure_ascii=True,
+                      sort_keys=True, separators=(",", ":"))
+
+
 def _snapshot_checksum(snapshot: CharacterGameRuntimeSnapshot) -> str:
-    return "sha256:" + sha256(
-        json.dumps(
-            {
-                "actor_ref": snapshot.actor_ref,
-                "facade_revision": snapshot.facade_revision,
-                "source_revision_vector": dict(snapshot.source_revision_vector),
-                "schema_capabilities": snapshot.schema_capabilities,
-                "enabled_state_groups": snapshot.enabled_state_groups,
-                "groups": {
-                    group_id: {
-                        "definition_version": envelope.definition_version,
-                        "projection_schema_version": envelope.projection_schema_version,
-                        "projection_revision": envelope.projection_revision,
-                        "source_revision_vector": dict(envelope.source_revision_vector),
-                        "payload": _thaw(envelope.payload),
-                    }
-                    for group_id, envelope in snapshot.groups.items()
-                },
-            },
-            ensure_ascii=True,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
+    return "sha256:" + sha256(snapshot_canonical_json(snapshot).encode("utf-8")).hexdigest()
 
 
 def _freeze_revisions(revisions: Mapping[str, int]) -> Mapping[str, int]:

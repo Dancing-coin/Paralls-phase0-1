@@ -85,6 +85,7 @@ def _scan_siming_llm_side_channels(project_root: Path) -> str:
         )
         if references_siming_llm and "generate_candidates(" in text and rel not in {
             "backend/app/services/siming_runtime.py",
+            "backend/app/services/siming_continuation.py",
             "backend/app/services/siming_llm_provider.py",
         }:
             offenders.append(f"{rel}:llm-provider-call")

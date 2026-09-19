@@ -4,6 +4,17 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      run_population_godot:
+        description: 在已配置的外机真实渲染 runner 验证 100/1,000 人
+        type: boolean
+        default: false
+        required: true
+      run_population_performance:
+        description: 在专用固定机器运行完整人口性能与容量矩阵（耗时数小时）
+        type: boolean
+        default: false
+        required: true
 
 jobs:
   static-contract:
@@ -13,6 +24,8 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v4
+        with:
+          lfs: true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
@@ -28,3 +41,168 @@ jobs:
           "### Verification scope" >> $env:GITHUB_STEP_SUMMARY
           "This job covers offline Harness tests and static contract checks only." >> $env:GITHUB_STEP_SUMMARY
           "Godot/backend runtime and release acceptance are not covered by this hosted job." >> $env:GITHUB_STEP_SUMMARY
+  population-performance-fixed-runner:
+  population-performance-fixed-runner:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_population_performance
+    runs-on: [self-hosted, Windows, X64, paralls-population-performance]
+    timeout-minutes: 720
+    concurrency:
+      group: population-performance-fixed-machine
+      cancel-in-progress: false
+    env:
+      PYTHONUTF8: "1"
+      PYTHONHASHSEED: "0"
+      CHARACTER_MODEL_PROVIDER_KIND: ${{ vars.CHARACTER_MODEL_PROVIDER_KIND }}
+      CHARACTER_MODEL_ENDPOINT: ${{ vars.CHARACTER_MODEL_ENDPOINT }}
+      CHARACTER_MODEL_MODEL: ${{ vars.CHARACTER_MODEL_MODEL }}
+      CHARACTER_MODEL_API_KEY: ${{ secrets.CHARACTER_MODEL_API_KEY }}
+      SIMING_LLM_MODE: http
+      SIMING_LLM_ENDPOINT: ${{ vars.SIMING_LLM_ENDPOINT }}
+      SIMING_LLM_MODEL: ${{ vars.SIMING_LLM_MODEL }}
+      SIMING_LLM_API_KEY: ${{ secrets.SIMING_LLM_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+      - name: Install pinned backend and test dependencies
+        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+      - name: Capture service isolation for 100 and 1,000 populations
+        if: ${{ !cancelled() }}
+        run: python scripts/verification/verify_population_service_isolation.py --output .harness/verification/ci-performance/service
+      - name: Capture long-history recovery
+        if: ${{ !cancelled() }}
+        run: python scripts/verification/verify_population_long_session_recovery.py --output .harness/verification/ci-performance/recovery
+      - name: Capture paired transport cost
+        if: ${{ !cancelled() }}
+        run: python scripts/verification/verify_population_transport_cost.py --output .harness/verification/ci-performance/transport-cost
+      - name: Verify unprofiled realtime short matrix
+        if: ${{ !cancelled() }}
+        run: python scripts/verification/population_mixed_matrix.py --kind short --output .harness/verification/ci-performance/realtime-short --require-fresh-commit $env:GITHUB_SHA
+      - name: Verify full soak and acceleration matrix
+        if: ${{ !cancelled() }}
+        run: python scripts/verification/population_mixed_matrix.py --kind soak --output .harness/verification/ci-performance/mixed-soak --require-fresh-commit $env:GITHUB_SHA
+      - name: Verify two and four independent games
+        if: ${{ !cancelled() }}
+        run: python scripts/verification/verify_population_multi_game_capacity.py --output .harness/verification/ci-performance/multi-game --require-fresh-commit $env:GITHUB_SHA
+      - name: Preserve performance evidence even when a threshold fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: population-performance-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .harness/verification/ci-performance/
+            !.harness/verification/ci-performance/**/state/**
+            !.harness/verification/ci-performance/recovery/fixture-*/**
+            !.harness/verification/ci-performance/recovery/run-*/**
+            !.harness/verification/ci-performance/transport-cost/seed-state/graph.sqlite3*
+          include-hidden-files: true
+          if-no-files-found: error
+  population-godot-runtime:
+    if: github.event_name == 'workflow_dispatch' && inputs.run_population_godot
+    runs-on: [self-hosted, Windows, X64, paralls-godot-4-6-3]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+      - name: Install pinned backend and test dependencies
+        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+      - name: Verify real rendered population on the external machine
+        env:
+          PYTHONUTF8: "1"
+          PYTHONHASHSEED: "0"
+        # GODOT_EXE 由这台专用机器配置；不可用时 harness 失败，不能按静态通过。
+        run: python scripts/verification/harness.py --profile population-godot-runtime
+      - name: Preserve rendered verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: population-godot-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .harness/verification/population-godot-*/
+            .harness/verification/population-godot-runtime-report.json
+            .harness/verification/harness-run-*.json
+            .harness/verification/runs/
+          include-hidden-files: true
+          if-no-files-found: error
+  population-correctness:
+    runs-on: windows-latest
+    timeout-minutes: 105
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+      - name: Install pinned backend and test dependencies
+        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+      - name: Run population correctness gate
+        env:
+          PYTHONUTF8: "1"
+          PYTHONHASHSEED: "0"
+          PARALLS_HEAVENLY_GRAPH_PATH: ":memory:"
+        run: python scripts/verification/harness.py --profile population-runtime-correctness
+      - name: Preserve raw verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: population-correctness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .harness/verification/population-correctness-*/
+            .harness/verification/population-runtime-correctness-report.json
+            .harness/verification/harness-run-*.json
+            .harness/verification/runs/
+          include-hidden-files: true
+          if-no-files-found: error
+  harness:
+    runs-on: windows-latest
+    timeout-minutes: 180
+    env:
+      PYTHONUTF8: "1"
+      PYTHONHASHSEED: "0"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12.14"
+      - name: Install pinned backend and test dependencies
+        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+      - name: Install verified Godot 4.6.3 on the hosted runner
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'godot-4.6.3.zip'
+          Invoke-WebRequest -Uri 'https://github.com/godotengine/godot-builds/releases/download/4.6.3-stable/Godot_v4.6.3-stable_win64.exe.zip' -OutFile $archive
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne 'e39986a178d585ce7ac198fb8de6ea436366dc0cc00e594810c2e3e104c04b90') { throw 'Godot archive checksum mismatch' }
+          $engineDir = Join-Path $env:RUNNER_TEMP 'godot-4.6.3'
+          Expand-Archive -LiteralPath $archive -DestinationPath $engineDir
+          $godot = Join-Path $engineDir 'Godot_v4.6.3-stable_win64_console.exe'
+          if (-not (Test-Path -LiteralPath $godot -PathType Leaf)) { throw 'Godot executable missing' }
+          "GODOT_EXE=$godot" >> $env:GITHUB_ENV
+      - name: Verify harness tooling
+        run: python -m pytest -q scripts/verification/tests
+      - name: Capture change lifecycle evidence
+        run: python scripts/verification/verify_population_harness_evidence.py --profile change-lifecycle --output .harness/verification/ci-change-lifecycle
+      - name: Capture full harness evidence
+        run: python scripts/verification/verify_population_harness_evidence.py --profile all --godot-exe "$env:GODOT_EXE" --output .harness/verification/ci-all
+      - name: Capture mainline runtime evidence
+        run: python scripts/verification/verify_population_harness_evidence.py --profile mainline-unified-runtime --godot-exe "$env:GODOT_EXE" --output .harness/verification/ci-mainline
+      - name: Preserve broad harness evidence on success or failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: harness-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            .harness/verification/ci-change-lifecycle/
+            .harness/verification/ci-all/
+            .harness/verification/ci-mainline/
+          include-hidden-files: true
+          if-no-files-found: warn

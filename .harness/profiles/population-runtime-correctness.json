@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-runtime-correctness",
+  "order": 200,
+  "include_in_profile_order": true,
+  "include_in_all": true,
+  "script": "scripts/verification/verify_population_runtime_correctness.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-runtime-correctness-report.json",
+  "description": "四个人口正确性 profile 加执行域、恢复和传输回归；独立归档新鲜证据，Godot和性能仍需各自验收"
+}

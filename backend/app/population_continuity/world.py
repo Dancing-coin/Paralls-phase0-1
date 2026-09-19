@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import asdict, dataclass, replace
 import hashlib
 import json
 from collections.abc import Mapping
@@ -76,6 +76,70 @@ class WorldContinuityRuntime:
     @property
     def latest_confirmation(self) -> PopulationCadenceConfirmationReceipt | None:
         return self.last_population_confirmation
+
+    def _recovery_context_digest(self) -> str:
+        from .recovery import recovery_digest
+
+        return recovery_digest({"mode": self.mode.model_dump(mode="json"),
+                                "roster": list(self.roster.actor_ids),
+                                "authorized_actor_refs": (sorted(self.authorized_actor_refs)
+                                                          if self.authorized_actor_refs is not None else None)})
+
+    def export_recovery_state(self) -> dict[str, object]:
+        """导出最近一次完整确认的派生态；不携带全历史 receipts 或预计算缓存。"""
+        from .recovery import PopulationRecoveryState
+
+        return PopulationRecoveryState.model_validate_json(
+            json.dumps(self._build_recovery_state_payload())
+        ).model_dump(mode="json")
+
+    def _build_recovery_state_payload(self) -> dict[str, object]:
+        """构造独立快照；调用方须在公开输出或持久化前完整验证。"""
+        from .recovery import recovery_digest
+
+        receipt = self.last_population_confirmation
+        state = {
+            "schema_version": 1,
+            "context_digest": self._recovery_context_digest(),
+            "confirmed_tick": self._confirmed_window_end,
+            "rule_identity": list(self._confirmed_rule_identity) if self._confirmed_rule_identity else None,
+            "actors": [{"actor_id": actor_id, **row,
+                        **{key: float(row[key]) for key in ("fatigue", "need_pressure", "starvation_credit")}}
+                       for actor_id, row in self.population_hot_state.export_rows()],
+            "due_entries": [dict(actor_id=actor_id, obligation_id=obligation_id, due_tick=tick, revision=revision)
+                            for actor_id, obligation_id, tick, revision in self._population_due_index.export_entries()],
+            "last_receipt": asdict(receipt) if receipt is not None else None,
+            "last_fingerprint": self._confirmed_fingerprints[receipt.cadence_id] if receipt is not None else None,
+        }
+        state["state_digest"] = recovery_digest(state)
+        return state
+
+    def restore_recovery_state(self, state: dict[str, object]) -> None:
+        """先完整验证并构建临时热表，成功后一次安装；不追加权威事实。"""
+        from .recovery import PopulationRecoveryState
+
+        parsed = PopulationRecoveryState.model_validate_json(json.dumps(state, allow_nan=False))
+        if parsed.context_digest != self._recovery_context_digest():
+            raise ValueError("population_recovery_context_mismatch")
+        if tuple(actor.actor_id for actor in parsed.actors) != tuple(sorted(self.roster.actor_ids)):
+            raise ValueError("population_recovery_roster_mismatch")
+        hot = PopulationHotState()
+        for actor in parsed.actors:
+            hot.upsert(actor.actor_id, actor.model_dump(exclude={"actor_id", "revision"}), actor.revision)
+        due = PopulationDueIndex()
+        due.rebuild((entry.actor_id, entry.obligation_id, entry.due_tick, entry.revision) for entry in parsed.due_entries)
+        self.population_hot_state = hot
+        self._population_due_index = due
+        self._confirmed_window_end = parsed.confirmed_tick
+        self._confirmed_rule_identity = parsed.rule_identity
+        self.last_population_confirmation = parsed.last_receipt
+        self._confirmed_receipts = ({parsed.last_receipt.cadence_id: parsed.last_receipt}
+                                    if parsed.last_receipt is not None else {})
+        self._confirmed_fingerprints = ({parsed.last_receipt.cadence_id: parsed.last_fingerprint}
+                                        if parsed.last_receipt is not None else {})
+        self._cadence_cache.clear()
+        self._projection_cache.clear()
+        self._preview_results.clear()
 
     def pause(
         self, *, reason: str, expected_mode_revision: str | None = None
@@ -171,7 +235,7 @@ class WorldContinuityRuntime:
         source_revision = self.store.get_stream_head(world_stream)
         if source_revision <= 0:
             raise ValueError("population_cadence_source_missing")
-        source_heads = self.store.get_stream_heads()
+        source_heads = {world_stream: source_revision}
         cache_key = (
             cadence_id,
             window_start,
@@ -182,7 +246,7 @@ class WorldContinuityRuntime:
             ruleset_revision,
             report_scope,
             budget,
-            tuple(sorted(source_heads.items())),
+            source_revision,
             tuple(self.roster.actor_ids),
             tuple(sorted(self.authorized_actor_refs or ())),
         )
@@ -335,6 +399,12 @@ class WorldContinuityRuntime:
         """在 cadence 已发布后确认同一纯计算结果，重复确认保持幂等。"""
         fingerprint = self._cadence_fingerprint(cadence)
         previous = self._confirmed_receipts.get(cadence.cadence_id)
+        if previous is None and self._confirmed_window_end is not None and cadence.window_end <= self._confirmed_window_end:
+            from .recovery import durable_population_receipt
+
+            previous = durable_population_receipt(self, cadence)
+            if previous is not None:
+                return replace(previous, status="idempotent_replay")
         if previous is not None:
             if self._confirmed_fingerprints[cadence.cadence_id] != fingerprint:
                 raise ValueError("population_cadence_confirmation_conflict")
@@ -423,6 +493,10 @@ class WorldContinuityRuntime:
         )
         self._confirmed_receipts[cadence.cadence_id] = receipt
         self._confirmed_fingerprints[cadence.cadence_id] = fingerprint
+        while len(self._confirmed_receipts) > 2:
+            oldest = next(iter(self._confirmed_receipts))
+            self._confirmed_receipts.pop(oldest)
+            self._confirmed_fingerprints.pop(oldest)
         self._confirmed_window_end = cadence.window_end
         self._confirmed_rule_identity = self._rule_identity(cadence)
         self.last_population_confirmation = receipt

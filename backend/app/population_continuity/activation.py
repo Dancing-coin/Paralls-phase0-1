@@ -7,7 +7,7 @@ from typing import Sequence
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment
+from app.gameplay.models import GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment, ReplayResult
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.settlement_plan import (
     AppendDerivedSettlementRecipe,
@@ -173,6 +173,7 @@ class ProfileActivationAuthority:
         self.grants = grants
         self._locks: dict[str, ActivationLock] = {}
         self._pending: dict[str, list[PendingChange]] = {}
+        self._replay_result: ReplayResult | None = None
 
     def resolve(self, profile_ref: str):
         """Resolve an existing authored profile without materializing state."""
@@ -364,14 +365,11 @@ class ProfileActivationAuthority:
         stream = f"population:{lock.world_ref}"
         if self.store.get_stream_head(stream) != expected_revision:
             return ActivationReceipt(committed=False, status="rejected", profile_ref=lock.profile_ref, zero_write=True, stop_reason="revision_conflict")
-        pending = [
-            item for item in self.pending_projection(lock.world_ref).values()
-            if item["lock_ref"] == lock_ref and item["status"] == "recorded"
-        ]
+        pending = self._pending.get(lock_ref, ())
         digest = self.registry.authored_identity_digest(lock.profile_ref)
         batch = build_atomic_event_batch(
             command_id=f"release:{lock_ref}:{expected_revision}", principal_ref="world_runtime.activation_authority", stream_id=stream, expected_revision=expected_revision,
-            event_specs=[("population.activation.released", {"profile_ref": lock.profile_ref, "identity_digest": digest, "lock_ref": lock_ref, "pending_change_refs": [str(item["change_ref"]) for item in pending]})],
+            event_specs=[("population.activation.released", {"profile_ref": lock.profile_ref, "identity_digest": digest, "lock_ref": lock_ref, "pending_change_refs": [item.change_ref for item in pending]})],
             idempotency_key=f"release:{lock_ref}:{expected_revision}", causation_id=lock_ref, correlation_id=f"correlation:{lock.world_ref}",
         )
         result = self.store.append_batch(batch)
@@ -700,9 +698,16 @@ class ProfileActivationAuthority:
         *,
         scope: tuple[str, ...] = (),
     ) -> ActivationReceipt:
-        replay = GameplayProjectionReplay(
-            projector_id="population-activation", projector_version="1"
-        ).full_replay(self.store.read_events())
+        projector = GameplayProjectionReplay(projector_id="population-activation", projector_version="1")
+        previous = self._replay_result
+        if previous is None or previous.last_global_sequence > self.store.get_last_global_sequence():
+            replay = projector.full_replay(self.store.read_events())
+        else:
+            replay = projector.continue_replay(
+                previous, self.store.read_events(global_sequence_after=previous.last_global_sequence)
+            )
+        if replay.succeeded:
+            self._replay_result = replay
         return ActivationReceipt(
             committed=True,
             status=status,

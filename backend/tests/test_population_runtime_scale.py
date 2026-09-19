@@ -16,7 +16,7 @@ def _load_scale():
 def test_scale_matrix_uses_required_populations_windows_and_independent_budgets() -> None:
     scale = _load_scale()
 
-    assert scale.POPULATION_SIZES == (100, 1000, 10000)
+    assert scale.POPULATION_SIZES == (100, 1000)
     assert scale.WINDOW_COUNT == 30
     assert scale.PRESSURE_PROFILES == {
         "one_x": {"wall_budget_seconds": 1.0},
@@ -35,6 +35,10 @@ def test_small_real_runtime_probe_restarts_with_identical_hot_state(tmp_path) ->
     )
 
     assert result["status"] == "completed"
+    assert result["authority_graph_verified"] is True
+    assert result["authority_graph_event_count"] == 0
+    assert result["authority_graph_probe"]["projected_count"] == 1
+    assert result["passed"] is True
     assert result["windows_completed"] == 2
     assert result["published_event_count"] == 2
     assert result["retained_event_count"] == 2
@@ -144,3 +148,15 @@ def test_admission_fails_closed_when_any_required_evidence_is_missing() -> None:
     assert scale.scenario_passed(scenario) is True
     scenario["serial_parallel_equivalent"] = None
     assert scale.scenario_passed(scenario) is False
+
+
+def test_scale_graph_gate_rejects_missing_real_non_population_projection(tmp_path, monkeypatch):
+    scale = _load_scale()
+    monkeypatch.setattr(scale.HeavenlyAuthorityEventProjector, 'project', lambda self, event: None)
+    result = scale.measure_scenario(population=3, window_count=1, wall_budget_seconds=1.0,
+                                    storage_path=tmp_path / 'gameplay.json')
+    assert result['status'] == 'completed'
+    assert result['authority_graph_event_count'] == 0
+    assert result['authority_graph_probe']['projected_count'] == 0
+    assert result['authority_graph_verified'] is False
+    assert result['passed'] is False

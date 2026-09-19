@@ -160,7 +160,8 @@ class PopulationSimulationCapability:
             policy_revision=cadence.policy_revision,
             default_fidelity_tier="B1",
             budget=cadence.budget,
-            max_candidates=cadence.catch_up_limit,
+            # 时钟追赶窗口数不应限制同一窗口的领域候选；角色额度由 selector 统一约束。
+            max_candidates=cadence.budget,
         )
 
     @classmethod

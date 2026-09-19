@@ -35,7 +35,7 @@ def main() -> int:
         result = subprocess.run(command, cwd=root, capture_output=True, text=True, timeout=180)
         report["editor_import"] = {"command": command, "exit_code": result.returncode,
                                    "output": result.stdout + result.stderr}
-        report["blocked_reason"] = "编辑器导入不能证明三档表现成本和真实可见结果，仍需运行时采样"
+        report["blocked_reason"] = "编辑器导入不能证明100/1,000人两档表现成本和真实可见结果，仍需运行时采样"
     target = artifact_path(root, ".harness/verification/population-presentation-lod-report.json")
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")

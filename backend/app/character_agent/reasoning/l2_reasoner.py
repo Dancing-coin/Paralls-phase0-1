@@ -37,9 +37,9 @@ class CharacterAgentL2Service:
         self,
         *,
         snapshot: CharacterPrivateWorldSnapshot,
-        event: CharacterPerceivedEvent | SelfBodyPerceivedEvent,
-        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
-        control_mode: str,
+        event: CharacterPerceivedEvent | SelfBodyPerceivedEvent | dict[str, object],
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        control_mode: str = "agent_full_auto",
         working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
         current_goal_state: dict[str, object] | None = None,
         goal_state_history: list[dict[str, object]] | None = None,
@@ -54,7 +54,7 @@ class CharacterAgentL2Service:
             context=self._reasoning_context(
                 actor_id=snapshot.actor_id,
                 snapshot=snapshot.model_dump(),
-                event=event.model_dump(),
+                event=event if isinstance(event, dict) else event.model_dump(),
                 memory_bundle=memory_bundle,
                 control_mode=control_mode,
                 working_memory_state=working_memory_state,
@@ -153,6 +153,38 @@ class CharacterAgentL2Service:
             fallback_mode=str(output.get("fallback_mode", "") or "") or None,
         )
 
+    def prepare_perceived_event(
+        self,
+        snapshot: CharacterPrivateWorldSnapshot,
+        event: CharacterPerceivedEvent,
+        *,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        control_mode: str = "agent_full_auto",
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+    ) -> bytes:
+        request = self.prepare_reasoning_request(
+            snapshot=snapshot,
+            event=event,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+            effective_profile=effective_profile,
+            need_tension_state=need_tension_state,
+        )
+        return CharacterModelGateway.freeze_prepared_request(request)
+
     def interpret_perceived_event(
         self,
         snapshot: CharacterPrivateWorldSnapshot,
@@ -169,25 +201,49 @@ class CharacterAgentL2Service:
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
-        model_output = self._gateway.run_task(
-            task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=event.model_dump(),
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-                effective_profile=effective_profile,
-                need_tension_state=need_tension_state,
-            ),
+        request_json = self.prepare_perceived_event(
+            snapshot, event,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+            effective_profile=effective_profile,
+            need_tension_state=need_tension_state,
         )
+        model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
+
+    def prepare_self_body_event(
+        self,
+        snapshot: CharacterPrivateWorldSnapshot,
+        event: SelfBodyPerceivedEvent,
+        *,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        control_mode: str = "agent_full_auto",
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
+    ) -> bytes:
+        request = self.prepare_reasoning_request(
+            snapshot=snapshot,
+            event=event,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+        )
+        return CharacterModelGateway.freeze_prepared_request(request)
 
     def interpret_self_body_event(
         self,
@@ -203,23 +259,47 @@ class CharacterAgentL2Service:
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
-        model_output = self._gateway.run_task(
-            task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=event.model_dump(),
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-            ),
+        request_json = self.prepare_self_body_event(
+            snapshot, event,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
         )
+        model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
+
+    def prepare_siming_output(
+        self,
+        snapshot: CharacterPrivateWorldSnapshot,
+        payload: dict[str, object],
+        *,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        control_mode: str = "agent_full_auto",
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
+    ) -> bytes:
+        request = self.prepare_reasoning_request(
+            snapshot=snapshot,
+            event=payload,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+        )
+        return CharacterModelGateway.freeze_prepared_request(request)
 
     def interpret_siming_output(
         self,
@@ -235,23 +315,47 @@ class CharacterAgentL2Service:
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
-        model_output = self._gateway.run_task(
-            task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=payload,
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-            ),
+        request_json = self.prepare_siming_output(
+            snapshot, payload,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
         )
+        model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=snapshot.actor_id, output=model_output)
+
+    def prepare_background_state(
+        self,
+        snapshot: CharacterPrivateWorldSnapshot,
+        payload: dict[str, object],
+        *,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        control_mode: str = "agent_full_auto",
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | None = None,
+        goal_state_history: list[dict[str, object]] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
+    ) -> bytes:
+        request = self.prepare_reasoning_request(
+            snapshot=snapshot,
+            event=payload,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+        )
+        return CharacterModelGateway.freeze_prepared_request(request)
 
     def interpret_background_state(
         self,
@@ -267,22 +371,18 @@ class CharacterAgentL2Service:
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
-        model_output = self._gateway.run_task(
-            task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=payload,
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-            ),
+        request_json = self.prepare_background_state(
+            snapshot, payload,
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
         )
+        model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=snapshot.actor_id, output=model_output)
 
     def _reasoning_context(

@@ -185,3 +185,19 @@ def test_attractor_allows_new_causal_instance_after_original_route_closes(
     )
 
     assert obligations.evaluate_attractor(scope=scope, attractor_id="A1", valid_at=30).reachability == "reachable"
+
+
+def test_obligation_seed_transform_plans_accept_frozen_source_without_writing(graph, obligations):
+    seed = obligations.plan_seed(scope=_scope(), obligation=obligation_o2(),
+        provenance=_provenance('story:O2'), recorded_at=10)
+    assert not graph._nodes
+    plan = obligations.plan_transform(scope=_scope(), source_obligation_id='O2',
+        source_prior=seed.nodes[0], replacement_prior=None, replacement=obligation_o6(),
+        authority_result_ref='esm:destroy:1', correlation_id='corr:destroy:1', recorded_at=100)
+    plan = type(plan).model_validate_json(plan.model_dump_json())
+    assert not graph._nodes
+    graph.write_batch(seed)
+    graph.write_batch(plan.batch)
+    assert obligations.transform(scope=_scope(), source_obligation_id='O2', replacement=obligation_o6(),
+        authority_result_ref='esm:destroy:1', correlation_id='corr:destroy:1', recorded_at=100) == plan.result
+    assert graph.write_batch(plan.batch).replayed

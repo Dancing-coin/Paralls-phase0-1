@@ -1,5 +1,8 @@
 extends Node
 
+# 仅供表现验收记录实际收到的公开mirror包；不包含enrollment或其它业务消息。
+signal gameplay_mirror_packet_observed(raw_text: String, packet_bytes: int)
+
 var ws := WebSocketPeer.new()
 var last_ready_state := WebSocketPeer.STATE_CLOSED
 var last_requested_url := ""
@@ -119,8 +122,8 @@ func _process(_delta: float) -> void:
         return
 
     while ws.get_available_packet_count() > 0:
-        var raw_text := ws.get_packet().get_string_from_utf8()
-        _dispatch_message(raw_text)
+        var packet := ws.get_packet()
+        _dispatch_message(packet.get_string_from_utf8(), packet.size())
 
     _handle_state_transition()
 
@@ -143,7 +146,7 @@ func _handle_state_transition() -> void:
             _bus_log("backend_closed:%s" % ws.get_close_code())
             _bus_emit("backend_disconnected", [ws.get_close_code()])
 
-func _dispatch_message(raw_text: String) -> void:
+func _dispatch_message(raw_text: String, packet_bytes: int = -1) -> void:
     _bus_log("backend_message_raw:%s" % raw_text)
     var parsed: Variant = JSON.parse_string(raw_text)
     if typeof(parsed) != TYPE_DICTIONARY:
@@ -152,6 +155,8 @@ func _dispatch_message(raw_text: String) -> void:
 
     var parsed_dict: Dictionary = parsed
     var message_type: String = str(parsed_dict.get("message_type", ""))
+    if packet_bytes >= 0 and message_type in ["gameplay_mirror_delivery", "gameplay_runtime_state_projection", "gameplay_mirror_resync_required", "government_drought_advisory_delivery"]:
+        gameplay_mirror_packet_observed.emit(raw_text, packet_bytes)
     var payload: Dictionary = parsed_dict.get("payload", {})
     _bus_log("backend_message_type:%s" % message_type)
 
@@ -259,6 +264,8 @@ func _dispatch_message(raw_text: String) -> void:
             _bus_log("websocket_session_revoked:%s" % JSON.stringify(payload))
             _bus_emit("websocket_session_revoked_received", [payload])
             send_envelope({"message_type": "websocket_session_revocation_received", "payload": payload.duplicate(true)})
+        "websocket_session_renewal_enrollment":
+            _bus_emit("websocket_session_renewal_enrollment_received", [payload])
         "gameplay_runtime_state_projection":
             var projection := parsed_dict.duplicate(true)
             projection.erase("message_type")

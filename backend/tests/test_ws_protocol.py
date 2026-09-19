@@ -21,7 +21,7 @@ from app.models.world_result import (
 from app.models.siming_output import NarrativeNudge
 from fastapi.testclient import TestClient
 import app.main as main
-from app.main import app, reset_runtime_state
+from app.main import component_app as app, reset_runtime_state
 from app.l6.authority_bus.router import handle_envelope_entry
 from app.services.character_agent_runtime import CharacterAgentRuntime
 from app.ws_protocol import Envelope
@@ -50,12 +50,20 @@ class _LocalGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall=None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override or "local_only",
+            prepared_recall=prepared_recall,
         )
+
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
+
+    def stream_prepared_request(self, request_json, *, cancelled):
+        yield from self._gateway.stream_prepared_request(request_json, cancelled=cancelled)
 
 
 def _reset_runtime_state_with_local_character_model() -> None:

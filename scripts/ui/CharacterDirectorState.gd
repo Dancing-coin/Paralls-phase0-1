@@ -356,7 +356,6 @@ func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:
 		)
 	return rows
 
-
 func _queue_state_refresh() -> void:
 	if _state_refresh_queued:
 		return
@@ -369,7 +368,6 @@ func _request_observatory_refresh() -> void:
 		return
 	_observatory_refresh_queued = true
 	call_deferred("_emit_observatory_state_changed")
-
 
 func _emit_state_changed() -> void:
 	_state_refresh_queued = false
@@ -539,7 +537,12 @@ func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_v
 				var incoming_value: Variant = incoming_row.get(field_name, "")
 				if incoming_value is String and incoming_value.is_empty() and str(existing_row.get(field_name, "") or "") != "":
 					incoming_row[field_name] = existing_row[field_name]
-			pairs_by_key[incoming_pair_key] = incoming_row
+			for field_name in incoming_row.keys():
+				var incoming_value: Variant = incoming_row.get(field_name)
+				if existing_row.has(field_name) and incoming_value is String and incoming_value.is_empty():
+					continue
+				existing_row[field_name] = incoming_value
+			pairs_by_key[incoming_pair_key] = existing_row
 	var merged_rows: Array[Dictionary] = []
 	for pair_key in pairs_by_key.keys():
 		merged_rows.append((pairs_by_key[pair_key] as Dictionary).duplicate(true))

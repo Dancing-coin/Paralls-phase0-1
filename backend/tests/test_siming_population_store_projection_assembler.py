@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import pytest
+
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.population_continuity.siming_contracts import PopulationCadenceInput
@@ -75,6 +77,90 @@ def _organization_projection(*, revision: int = 2, scope: str = "organization:su
             "work_order_ref": "work-order:1",
         },
     }
+
+
+def test_incremental_assembler_rejects_relevant_stream_revision_gap() -> None:
+    store = GameplayEventStore()
+    stream = "gameplay:social:population:signal:gap"
+    _commit(
+        store,
+        event_id="event:social:gap:1",
+        event_type="gameplay.social.population_signal_recorded@1",
+        stream_id=stream,
+        payload={"committed": True},
+        visibility_policy="public",
+    )
+    cadence = _cadence(scope="public", revision_vector={stream: 1})
+    assemble_committed_population_projections(
+        store=store,
+        cadence=cadence,
+        organization_projection={},
+        incremental=True,
+    )
+    checkpoint = store.list_projection_checkpoints(projector_id="population-continuity")[0]
+    source = store.read_stream(stream)[0]
+    gap = source.model_copy(update={
+        "event_id": "event:social:gap:3",
+        "global_sequence": 2,
+        "stream_revision": 3,
+    })
+    store.get_last_global_sequence = lambda: 2  # type: ignore[method-assign]
+    store.read_events = lambda **_kwargs: [gap]  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="projection_gap"):
+        assemble_committed_population_projections(
+            store=store,
+            cadence=cadence,
+            organization_projection={},
+            checkpoint=checkpoint,
+        )
+
+
+def test_incremental_assembler_accepts_private_then_public_tail_revision() -> None:
+    store = GameplayEventStore()
+    stream = "gameplay:social:population:signal:transition"
+    _commit(
+        store,
+        event_id="event:social:transition:1",
+        event_type="gameplay.unrelated",
+        stream_id=stream,
+        payload={"committed": True},
+        visibility_policy="public",
+    )
+    initial = _cadence(scope="public", revision_vector={stream: 1})
+    assemble_committed_population_projections(
+        store=store,
+        cadence=initial,
+        organization_projection={"scope": "public"},
+        incremental=True,
+    )
+    checkpoint = store.list_projection_checkpoints(projector_id="population-continuity")[0]
+    for revision, visibility in ((2, "actor:self"), (3, "public")):
+        _commit(
+            store,
+            event_id=f"event:social:transition:{revision}",
+            event_type="gameplay.social.population_signal_recorded@1",
+            stream_id=stream,
+            payload={
+                "signal_ref": "signal:transition@1",
+                "provenance_ref": f"provenance:transition:{revision}@1",
+                "source_revision_pin": revision,
+                "source_stream_ref": stream,
+                "materialization_state": "proposed",
+                "visibility_scope": visibility,
+            },
+            visibility_policy=visibility,
+        )
+
+    projections = assemble_committed_population_projections(
+        store=store,
+        cadence=_cadence(scope="public", revision_vector={stream: 3}),
+        organization_projection={"scope": "public"},
+        checkpoint=checkpoint,
+    )
+    assert [item.payload["candidate_kind"] for item in projections] == [
+        "social_population_signal"
+    ]
 
 
 def test_assembler_emits_production_candidate_only_from_committed_evidence() -> None:

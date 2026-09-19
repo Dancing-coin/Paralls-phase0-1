@@ -195,3 +195,23 @@ def test_locked_fact_conflict_still_does_not_update_narrative_core() -> None:
     assert any(audit.reason == "fact_veto:locked_fact_conflict" for audit in result.audit_records)
     assert result.checkpoints == []
     assert result.read_model is None
+
+
+def test_derived_snapshots_plan_without_installing_runtime_state():
+    runtime = SimingRuntime()
+    observed = runtime._observe_pipeline.observe([make_visual_fact_event()])
+    state_tree = runtime._state_tree.plan_from_observed(observed, sim_tick_ts=301)
+    storyline = runtime._storyline_state.plan_from_state_tree(state_tree)
+    ledger = runtime._obligation_ledger.plan_from_storyline(storyline)
+    assert runtime._state_tree.latest_snapshot is None
+    assert runtime._storyline_state.latest_snapshot is None
+    assert runtime._obligation_ledger.latest_snapshot is None
+    for service, snapshot in ((runtime._state_tree, state_tree), (runtime._storyline_state, storyline),
+                              (runtime._obligation_ledger, ledger)):
+        restored = type(snapshot).model_validate_json(snapshot.model_dump_json())
+        service.install_snapshot(restored)
+        service.install_snapshot(restored)
+        assert service.latest_snapshot == snapshot
+    assert runtime._state_tree.update_from_observed(observed, sim_tick_ts=301) == state_tree
+    assert runtime._storyline_state.update_from_state_tree(state_tree) == storyline
+    assert runtime._obligation_ledger.update_from_storyline(storyline) == ledger

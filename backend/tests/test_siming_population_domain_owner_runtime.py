@@ -29,6 +29,7 @@ ADMITTED_CAPABILITIES = {
 def _runtime(tmp_path: Path, monkeypatch):
     import app.main as main
 
+    main.reset_runtime_state()
     store = GameplayEventStore()
     monkeypatch.setattr(main, "gameplay_event_store", store)
     state = main.build_runtime_state(

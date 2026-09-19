@@ -171,8 +171,9 @@ def _bridge_setup(
     actor_autonomy: bool = True,
     recorded_at: int = 100,
     lineage_only: bool = False,
+    graph=None,
 ) -> _BridgeSetup:
-    graph = InMemoryHeavenlyGraphAdapter()
+    graph = graph if graph is not None else InMemoryHeavenlyGraphAdapter()
     scope = _scope()
     memory = SimingHeavenlyMemoryService(graph)
     fact = WorldFactMemoryEntry(
@@ -399,3 +400,42 @@ def test_bridge_leaves_actor_private_memory_unchanged() -> None:
     assert setup.graph.query_nodes(
         HeavenlyNodeQuery(scope=actor_scope, valid_at=100, limit=None)
     ) == before
+
+
+def test_bridge_plan_is_json_recoverable_and_zero_write_before_apply():
+    setup = _bridge_setup()
+    from copy import deepcopy
+    before = deepcopy((setup.graph._nodes, setup.graph._idempotency))
+    plan = setup.bridge.plan_commit(_proposal(), provider_audit=_audit())
+    assert (setup.graph._nodes, setup.graph._idempotency) == before
+    assert plan.result.accepted
+    assert len(plan.batches) == 3
+    restored = type(plan).model_validate_json(plan.model_dump_json())
+    # 每一项均使用冻结的原batch；重放前缀不产生第二份事实。
+    for batch in restored.batches:
+        assert setup.graph.write_batch(batch).applied
+        assert setup.graph.write_batch(batch).replayed
+    assert setup.bridge.validate_and_commit(_proposal(), provider_audit=_audit()) == restored.result
+
+
+@pytest.mark.parametrize('prefix', [0, 1, 2, 3])
+def test_bridge_frozen_plan_reopens_and_reconciles_exact_prefix(tmp_path, prefix):
+    from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
+    from app.models.siming_adaptive_bridge import AdaptiveBridgeCommitPlan
+    path = tmp_path / 'bridge.db'
+    graph = SQLiteHeavenlyGraphAdapter(path)
+    setup = _bridge_setup(graph=graph)
+    plan = setup.bridge.plan_commit(_proposal(), provider_audit=_audit())
+    frozen = plan.model_dump_json()
+    for batch in plan.batches[:prefix]:
+        graph.write_batch(batch)
+    graph.close()
+    graph = SQLiteHeavenlyGraphAdapter(path)
+    restored = AdaptiveBridgeCommitPlan.model_validate_json(frozen)
+    for ordinal, batch in enumerate(restored.batches):
+        receipt = graph.write_batch(batch)
+        assert receipt.replayed == (ordinal < prefix)
+    for batch in restored.batches:
+        for node in batch.nodes:
+            assert graph.get_node(node_id=node.node_id, scope=node.scope, valid_at=100).model_dump() == node.model_dump()
+    graph.close()

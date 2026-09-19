@@ -16,6 +16,19 @@ class InMemorySimingStateTree:
         *,
         sim_tick_ts: int,
     ) -> StateTreeSnapshot:
+        snapshot = self.plan_from_observed(observed_events, sim_tick_ts=sim_tick_ts)
+        self.install_snapshot(snapshot)
+        return snapshot
+
+    def install_snapshot(self, snapshot: StateTreeSnapshot) -> None:
+        self._latest_snapshot = snapshot
+
+    def plan_from_observed(
+        self,
+        observed_events: list[ObservedSimingEvent],
+        *,
+        sim_tick_ts: int,
+    ) -> StateTreeSnapshot:
         if not observed_events:
             raise ValueError("at least one observed event is required")
 
@@ -65,7 +78,6 @@ class InMemorySimingStateTree:
             ),
             group_simulation=GroupSimulationBranchSnapshot(status="unavailable", summary={}),
         )
-        self._latest_snapshot = snapshot
         return snapshot
 
     @property

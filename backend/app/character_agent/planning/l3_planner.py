@@ -1,3 +1,9 @@
+from copy import deepcopy
+from dataclasses import dataclass
+import json
+
+from pydantic import TypeAdapter
+
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import CharacterHigherOrderDelta
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
@@ -16,6 +22,38 @@ from app.character_agent.planning.triple_filter import CharacterTripleFilter
 from app.character_agent.profile.personality_projection import PersonalityProjectionResolver
 from app.models.character_agent_runtime import CharacterActiveGoalFrame
 from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation, CharacterSuggestionPacket
+
+
+@dataclass(frozen=True)
+class PreparedCharacterIntentPlan:
+    """Owner 局部续执行数据；不保存 runtime、store 或 actor 引用。"""
+    request_json: bytes
+    interpretation: CharacterInterpretation
+    control_mode: str
+    snapshot: dict[str, object]
+    profile: dict[str, object]
+    effective_profile: dict[str, object]
+    memory_bundle: CharacterMemoryRecordBundle
+    working_memory_state: dict[str, object]
+    need_tension_state: dict[str, object]
+    dynamic_state: dict[str, object]
+    verification: dict[str, object]
+    behavior_policy: dict[str, object]
+    local_active_goal_tags: list[str]
+    active_goal_frame: CharacterActiveGoalFrame
+    memory_recall: dict[str, object]
+
+    def to_json_value(self) -> dict[str, object]:
+        """按明确字段结构冻结续执行帧，不保存运行时引用。"""
+        return {'schema_version': 1, 'prepared': TypeAdapter(type(self)).dump_python(self, mode='json')}
+
+    @classmethod
+    def from_json_value(cls, value: dict[str, object]) -> 'PreparedCharacterIntentPlan':
+        if set(value) != {'schema_version', 'prepared'} or type(value['schema_version']) is not int or value['schema_version'] != 1:
+            raise ValueError('character_intent_frame_schema_invalid')
+        if not isinstance(value['prepared'], dict) or set(value['prepared']) != set(cls.__dataclass_fields__):
+            raise ValueError('character_intent_frame_fields_invalid')
+        return TypeAdapter(cls).validate_json(json.dumps(value['prepared'], ensure_ascii=False), strict=True)
 
 
 class CharacterAgentL3Service:
@@ -48,6 +86,45 @@ class CharacterAgentL3Service:
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        prepared = self.prepare_intent_plan(
+            interpretation=interpretation,
+            control_mode=control_mode,
+            snapshot=snapshot,
+            profile=profile,
+            effective_profile=effective_profile,
+            memory_bundle=memory_bundle,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+            need_tension_state=need_tension_state,
+            dynamic_state=dynamic_state,
+            skill_affordance_summary=skill_affordance_summary,
+        )
+        output = self._gateway.complete_prepared_request(prepared.request_json)
+        return self.finish_intent_plan(prepared, output)
+
+    def prepare_intent_plan(
+        self,
+        *,
+        interpretation: CharacterInterpretation,
+        control_mode: str,
+        snapshot: dict[str, object] | None = None,
+        profile: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+        working_memory_state: dict[str, object] | CharacterWorkingMemoryState | None = None,
+        current_goal_state: dict[str, object] | CharacterGoalStateRecord | None = None,
+        goal_state_history: list[dict[str, object] | CharacterGoalStateRecord] | None = None,
+        supervision_state: dict[str, object] | None = None,
+        unresolved_tensions: list[dict[str, object]] | None = None,
+        background_agenda_state: dict[str, object] | None = None,
+        need_tension_state: dict[str, object] | None = None,
+        dynamic_state: dict[str, object] | None = None,
+        skill_affordance_summary: dict[str, object] | None = None,
+    ) -> PreparedCharacterIntentPlan:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
         normalized_profile = self._normalize_profile(profile)
@@ -109,9 +186,9 @@ class CharacterAgentL3Service:
             working_memory_state=normalized_working_memory_state,
             current_goal_state=normalized_current_goal_state,
         )
-        model_output = self._gateway.run_task(
+        request = self._gateway.prepare_run_request(
             task_kind="l3_planning",
-            **({"prepared_recall": recall} if isinstance(self._gateway, CharacterModelGateway) else {}),
+            prepared_recall=recall,
             context={
                 "actor_id": interpretation.actor_id,
                 "control_mode": control_mode,
@@ -136,6 +213,51 @@ class CharacterAgentL3Service:
                 "skill_affordance_summary": normalized_skill_affordance_summary,
             },
         )
+        return PreparedCharacterIntentPlan(
+            snapshot=deepcopy(normalized_snapshot),
+            profile=deepcopy(normalized_profile),
+            effective_profile=deepcopy(normalized_effective_profile),
+            working_memory_state=deepcopy(normalized_working_memory_state),
+            need_tension_state=deepcopy(normalized_need_tension_state),
+            dynamic_state=deepcopy(normalized_dynamic_state),
+            request_json=CharacterModelGateway.freeze_prepared_request(request),
+            interpretation=deepcopy(interpretation),
+            control_mode=control_mode,
+            memory_bundle=deepcopy(recalled_memory_bundle),
+            verification=deepcopy(verification),
+            behavior_policy=deepcopy(behavior_policy),
+            local_active_goal_tags=deepcopy(local_active_goal_tags),
+            active_goal_frame=deepcopy(active_goal_frame),
+            memory_recall=deepcopy(recall.metadata),
+        )
+
+    def finish_intent_plan(
+        self, prepared: PreparedCharacterIntentPlan, output: dict[str, object],
+    ) -> dict[str, object]:
+        """回到 owner 后消费 policy 并执行本地候选过滤和打分。"""
+        candidate_id = str(prepared.behavior_policy.get("candidate_id", "") or "")
+        if candidate_id:
+            self._consumed_behavior_policy_ids.add(candidate_id)
+        return self.plan_intent_completion(prepared, output)
+
+    def plan_intent_completion(
+        self, prepared: PreparedCharacterIntentPlan, output: dict[str, object],
+    ) -> dict[str, object]:
+        """纯计算原候选结果；持久续执行在原提交成功后才消费 policy。"""
+        model_output = output
+        normalized_snapshot = prepared.snapshot
+        normalized_profile = prepared.profile
+        normalized_effective_profile = prepared.effective_profile
+        normalized_working_memory_state = prepared.working_memory_state
+        normalized_need_tension_state = prepared.need_tension_state
+        normalized_dynamic_state = prepared.dynamic_state
+        interpretation = prepared.interpretation
+        control_mode = prepared.control_mode
+        recalled_memory_bundle = prepared.memory_bundle
+        verification = prepared.verification
+        behavior_policy = prepared.behavior_policy
+        local_active_goal_tags = prepared.local_active_goal_tags
+        active_goal_frame = prepared.active_goal_frame
         local_affordances = self._generate_candidates(interpretation, control_mode)
         candidates = self._model_owned_candidates(
             model_candidates=model_output.get("candidate_intents", []),
@@ -178,7 +300,7 @@ class CharacterAgentL3Service:
             "model_output": model_output,
             "candidates": candidates,
             "filter_results": filter_results,
-            "memory_recall": recall.metadata,
+            "memory_recall": prepared.memory_recall,
             "verification": verification,
             "behavior_policy": behavior_policy,
         }
@@ -219,6 +341,11 @@ class CharacterAgentL3Service:
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
         )
+        return self.decision_from_plan(plan, interpretation=interpretation)
+
+    def decision_from_plan(
+        self, plan: dict[str, object], *, interpretation: CharacterInterpretation,
+    ) -> CharacterIntentDecision:
         model_selected_candidate = str(plan.get("model_output", {}).get("selected_intent", "") or "")
         model_recommended_candidates = self._as_string_list(plan.get("model_output", {}).get("recommended_intents", []))
         planning_status = str(plan.get("model_output", {}).get("planning_status", "") or "model")
@@ -312,6 +439,21 @@ class CharacterAgentL3Service:
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
+        )
+        return self.suggestion_from_plan(
+            plan, interpretation=interpretation, snapshot=normalized_snapshot,
+            memory_bundle=normalized_memory_bundle,
+        )
+
+    def suggestion_from_plan(
+        self, plan: dict[str, object], *, interpretation: CharacterInterpretation,
+        snapshot: dict[str, object] | None = None,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
+    ) -> dict[str, object]:
+        interpretation = self._normalize_interpretation(interpretation)
+        normalized_snapshot = self._normalize_snapshot(snapshot)
+        normalized_memory_bundle = CharacterContextBuilder.normalize_memory_bundle(
+            self._memory_bundle_mapping(memory_bundle)
         )
         relational_memories = self._list_entries(normalized_memory_bundle.get("relational_memories"))
         guarded_relation_note = self._guarded_relational_note(
@@ -445,7 +587,6 @@ class CharacterAgentL3Service:
             candidate_id = str(payload.get("candidate_id", "") or "")
             if candidate_id == "" or candidate_id in self._consumed_behavior_policy_ids:
                 continue
-            self._consumed_behavior_policy_ids.add(candidate_id)
             return {
                 "candidate_id": candidate_id,
                 "policy_type": str(payload.get("policy_type", "") or ""),

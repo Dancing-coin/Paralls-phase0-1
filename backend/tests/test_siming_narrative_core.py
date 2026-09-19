@@ -130,3 +130,20 @@ def test_repeated_processing_uses_new_snapshot_and_obligation_ids() -> None:
     assert first.ledger.obligations[0].obligation_id != second.ledger.obligations[0].obligation_id
     assert first.seeds[0].basis_obligation_refs != second.seeds[0].basis_obligation_refs
     assert all(seed.source == "narrative_core" for seed in second.seeds)
+
+
+def test_narrative_plan_freezes_after_state_and_restart_installs_without_increment():
+    core = SimingNarrativeCore()
+    events = [observed(make_event('visual_fact_event', {'established_fact_id': 'fact:1'}))]
+    core.update(events)
+    plan = core.plan_update(events)
+    assert core._revision_by_room == {'room_demo': 1}
+    assert core._open_counts_by_room == {'room_demo': 1}
+    restored = type(plan).model_validate_json(plan.model_dump_json())
+    fresh = SimingNarrativeCore()
+    fresh.install_room_state(restored.after)
+    fresh.install_room_state(restored.after)
+    assert fresh._revision_by_room == {'room_demo': 2}
+    assert fresh._open_counts_by_room == {'room_demo': 2}
+    assert core.update(events) == restored.result
+    assert fresh.update(events) == core.update(events)

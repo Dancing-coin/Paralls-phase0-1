@@ -58,6 +58,35 @@ class CharacterGameRuntimeStateView:
     view_checksum: str
 
 
+def combine_godot_views(*views: CharacterGameRuntimeStateView) -> CharacterGameRuntimeStateView:
+    """合并已过滤的公开groups；不放宽来源权限，不覆盖同名group。"""
+    if not views or any(view.consumer != "godot" or view.actor_ref != views[0].actor_ref for view in views):
+        raise StateGroupViewError("godot_view_composition_scope")
+    groups, revisions = {}, {}
+    for view in views:
+        if groups.keys() & view.groups.keys():
+            raise StateGroupViewError("godot_view_composition_duplicate_group")
+        groups.update(view.groups)
+        for stream, revision in view.source_revision_vector.items():
+            revisions[stream] = max(revisions.get(stream, 0), revision)
+    groups = dict(sorted(groups.items()))
+    body = {"actor_ref": views[0].actor_ref, "source_revision_vector": revisions, "groups": {
+        key: {"definition_version": envelope.definition_version,
+              "projection_schema_version": envelope.projection_schema_version,
+              "projection_revision": envelope.projection_revision,
+              "source_revision_vector": _thaw(envelope.source_revision_vector), "payload": _thaw(envelope.payload)}
+        for key, envelope in groups.items()
+    }}
+    facade_revision = "facade:" + _digest(body)[:16]
+    checksum = _digest({"actor_ref": views[0].actor_ref, "consumer": "godot",
+                        "source_facade_revision": facade_revision, "groups": {
+                            key: {"projection_revision": value.projection_revision, "payload": _thaw(value.payload)}
+                            for key, value in groups.items()}})
+    return CharacterGameRuntimeStateView(actor_ref=views[0].actor_ref, consumer="godot",
+        source_facade_revision=facade_revision, source_revision_vector=_freeze_mapping(revisions),
+        groups=MappingProxyType(groups), view_checksum="sha256:" + checksum)
+
+
 class StateGroupViewProjector:
     """Creates presentation/read views without changing state, lifecycle, or authority."""
 
@@ -243,6 +272,7 @@ def _thaw(value: Any) -> Any:
 
 
 __all__ = [
+    "combine_godot_views",
     "CharacterGameRuntimeStateView",
     "StateGroupConsumerViewPolicy",
     "StateGroupRuntimeViewEnvelope",

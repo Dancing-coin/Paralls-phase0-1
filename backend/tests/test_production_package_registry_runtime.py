@@ -59,6 +59,7 @@ def test_default_runtime_injects_active_registry_into_population_owners(
 ) -> None:
     import app.main as main
 
+    main.reset_runtime_state()
     store = GameplayEventStore()
     monkeypatch.setattr(main, "gameplay_event_store", store)
     monkeypatch.setattr(main, "production_package_registry", build_production_package_registry(Path(__file__).resolve().parents[2]))
@@ -98,6 +99,8 @@ def test_runtime_refuses_population_owner_without_exact_unique_bindings(
     family_ref: str,
 ) -> None:
     import app.main as main
+
+    main.reset_runtime_state()
 
     registry = build_production_package_registry(Path(__file__).resolve().parents[2])
     active = registry.active_patch_set

@@ -12,6 +12,14 @@ class InMemoryStorylineState:
         self._latest_snapshot: StorylineStateSnapshot | None = None
 
     def update_from_state_tree(self, state_tree: StateTreeSnapshot) -> StorylineStateSnapshot:
+        snapshot = self.plan_from_state_tree(state_tree)
+        self.install_snapshot(snapshot)
+        return snapshot
+
+    def install_snapshot(self, snapshot: StorylineStateSnapshot) -> None:
+        self._latest_snapshot = snapshot
+
+    def plan_from_state_tree(self, state_tree: StateTreeSnapshot) -> StorylineStateSnapshot:
         markers: list[StorylineMarker] = []
         if self._has_complete_visibility_surface(state_tree):
             markers.append(
@@ -35,7 +43,6 @@ class InMemoryStorylineState:
             active_phase=str(state_tree.storyline.summary.get("active_phase", "rising")),
             markers=markers,
         )
-        self._latest_snapshot = storyline
         return storyline
 
     @property
@@ -63,6 +70,17 @@ class InMemoryNarrativeObligationLedger:
         self,
         storyline: StorylineStateSnapshot,
     ) -> NarrativeObligationLedgerSnapshot:
+        snapshot = self.plan_from_storyline(storyline)
+        self.install_snapshot(snapshot)
+        return snapshot
+
+    def install_snapshot(self, snapshot: NarrativeObligationLedgerSnapshot) -> None:
+        self._latest_snapshot = snapshot
+
+    def plan_from_storyline(
+        self,
+        storyline: StorylineStateSnapshot,
+    ) -> NarrativeObligationLedgerSnapshot:
         obligations = [
             NarrativeObligation(
                 obligation_id=f"obligation:{marker.marker_id}",
@@ -85,7 +103,6 @@ class InMemoryNarrativeObligationLedger:
             correlation_id=storyline.correlation_id,
             obligations=obligations,
         )
-        self._latest_snapshot = ledger
         return ledger
 
     @property

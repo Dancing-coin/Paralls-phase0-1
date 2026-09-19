@@ -156,6 +156,7 @@ async def test_runtime_uses_fake_clock_for_catch_up(monkeypatch: pytest.MonkeyPa
 @pytest.mark.asyncio
 async def test_runtime_clock_failure_is_observable(monkeypatch: pytest.MonkeyPatch) -> None:
     main.stop_population_runtime()
+    main.reset_runtime_state()
 
     def fail_clock(_current: int, _window: int) -> int:
         raise RuntimeError("clock_down")
@@ -197,4 +198,188 @@ async def test_application_reopens_persistent_store_and_resumes_without_reseedin
         assert main.gameplay_event_store.get_last_global_sequence() == initial_events + 1
     finally:
         await main._shutdown_population_runtime()
+        main.reset_runtime_state()
+
+@pytest.mark.asyncio
+async def test_production_lifecycle_assembles_and_closes_on_same_owner(tmp_path, monkeypatch):
+    from threading import get_ident
+    monkeypatch.setattr(main.settings, 'heavenly_graph_path', str(tmp_path / 'owner.sqlite3'))
+    monkeypatch.setattr(main, '_population_runtime_sleep', _stop_after_one_sleep(main))
+    seen = []
+    original_reset = main._reset_runtime_state
+    original_close = main.close_runtime_resources
+    def reset(**kwargs):
+        seen.append(('reset', get_ident()))
+        return original_reset(**kwargs)
+    def close():
+        seen.append(('close', get_ident()))
+        return original_close()
+    monkeypatch.setattr(main, '_reset_runtime_state', reset)
+    monkeypatch.setattr(main, 'close_runtime_resources', close)
+    try:
+        await main._start_population_runtime_on_startup()
+        owner = main.runtime_execution
+        task = main._population_runtime_task
+        await main._start_population_runtime_on_startup()
+        assert main.runtime_execution is owner
+        assert main._population_runtime_task is task
+        await task
+        await main._stop_population_runtime_on_shutdown()
+        assert seen[0][0] == 'reset' and seen[-1][0] == 'close'
+        assert seen[0][1] == seen[-1][1] != get_ident()
+        assert main.runtime_execution is None
+    finally:
+        await main._stop_population_runtime_on_shutdown()
+        main.reset_runtime_state()
+
+
+def test_health_exposes_runtime_failure(monkeypatch):
+    monkeypatch.setattr(main, '_population_runtime_failure', RuntimeError('private details'))
+    assert main.health()['status'] == 'unhealthy'
+    assert 'private details' not in str(main.health())
+
+@pytest.mark.asyncio
+async def test_shutdown_timeout_retains_owner_and_rejects_second_start(tmp_path, monkeypatch):
+    from threading import Event
+    from app.services.runtime_execution import RuntimeStopped
+    monkeypatch.setattr(main.settings, 'heavenly_graph_path', str(tmp_path / 'timeout.sqlite3'))
+    monkeypatch.setattr(main, '_population_runtime_sleep', _stop_after_one_sleep(main))
+    await main._start_population_runtime_on_startup()
+    await main._population_runtime_task
+    owner = main.runtime_execution
+    entered, release = Event(), Event()
+    def block():
+        entered.set()
+        release.wait(3)
+    future = owner.submit(block)
+    assert await asyncio.to_thread(entered.wait, 2)
+    original_stop = owner.stop
+    monkeypatch.setattr(owner, 'stop', lambda **_: original_stop(timeout_seconds=0.01))
+    try:
+        await main._stop_population_runtime_on_shutdown()
+        assert main.runtime_execution is owner
+        assert main.health()['status'] == 'unhealthy'
+        with pytest.raises(RuntimeStopped):
+            await main._start_population_runtime_on_startup()
+    finally:
+        release.set()
+        await asyncio.wrap_future(future)
+        monkeypatch.setattr(owner, 'stop', original_stop)
+        await main._stop_population_runtime_on_shutdown()
+        main.reset_runtime_state()
+
+
+@pytest.mark.asyncio
+async def test_failed_population_task_still_closes_owner(tmp_path, monkeypatch):
+    monkeypatch.setattr(main.settings, 'heavenly_graph_path', str(tmp_path / 'failed.sqlite3'))
+    def fail_clock(current, window):
+        raise ValueError('failed')
+    monkeypatch.setattr(main, '_population_runtime_clock', fail_clock)
+    await main._start_population_runtime_on_startup()
+    try:
+        with pytest.raises(ValueError):
+            await main._population_runtime_task
+        assert main.health()['status'] == 'unhealthy'
+        await main._stop_population_runtime_on_shutdown()
+        assert main.runtime_execution is None
+    finally:
+        await main._stop_population_runtime_on_shutdown()
+        main.reset_runtime_state()
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('failure_stage', ['reset', 'build'])
+async def test_startup_failure_closes_owner_without_shutdown_event(tmp_path, monkeypatch, failure_stage):
+    from threading import get_ident
+    from app.services.runtime_execution import RuntimeExecution, RuntimeStopped
+    monkeypatch.setattr(main.settings, 'heavenly_graph_path', str(tmp_path / 'startup.sqlite3'))
+    created, closed = [], []
+    def create(**kwargs):
+        owner = RuntimeExecution(**kwargs)
+        created.append(owner)
+        return owner
+    original_reset = main._reset_runtime_state
+    original_close = main.close_runtime_resources
+    def fail_reset(**kwargs):
+        original_reset(**kwargs)
+        raise ValueError('startup_failed')
+    def fail_build():
+        raise ValueError('startup_failed')
+    def close():
+        closed.append(get_ident())
+        original_close()
+    monkeypatch.setattr(main, 'RuntimeExecution', create)
+    monkeypatch.setattr(main, 'close_runtime_resources', close)
+    monkeypatch.setattr(main, '_reset_runtime_state' if failure_stage == 'reset' else '_build_population_driver',
+                        fail_reset if failure_stage == 'reset' else fail_build)
+    try:
+        with pytest.raises(ValueError, match='startup_failed'):
+            await main._start_population_runtime_on_startup()
+        assert main.runtime_execution is None
+        assert created[0].closed.done()
+        assert closed == [created[0]._owner]
+        assert closed[0] != get_ident()
+        with pytest.raises(RuntimeStopped):
+            created[0].submit(get_ident)
+        assert main.health()['status'] == 'unhealthy'
+        from app.world_runtime.storage_lease import RuntimeStorageLease
+        with RuntimeStorageLease(main.settings.heavenly_graph_path):
+            pass
+    finally:
+        monkeypatch.setattr(main, '_reset_runtime_state', original_reset)
+        await main._stop_population_runtime_on_shutdown()
+        main.reset_runtime_state()
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('cancel_startup', [False, True])
+async def test_startup_cleanup_timeout_retains_owner_and_original_failure(tmp_path, monkeypatch, cancel_startup):
+    from threading import Event
+    from app.services.runtime_execution import RuntimeExecution, RuntimeStopped
+    monkeypatch.setattr(main.settings, 'heavenly_graph_path', str(tmp_path / 'startup-timeout.sqlite3'))
+    entered, release = Event(), Event()
+    created = []
+    def create(**kwargs):
+        owner = RuntimeExecution(**kwargs)
+        created.append(owner)
+        original_stop = owner.stop
+        monkeypatch.setattr(owner, 'stop', lambda **_: original_stop(timeout_seconds=0.01))
+        return owner
+    original_reset, original_close = main._reset_runtime_state, main.close_runtime_resources
+    def reset(**kwargs):
+        original_reset(**kwargs)
+        if cancel_startup:
+            entered.set()
+            release.wait(3)
+        else:
+            raise ValueError('original_startup_failure')
+    def close():
+        if not cancel_startup:
+            entered.set()
+            release.wait(3)
+        original_close()
+    monkeypatch.setattr(main, 'RuntimeExecution', create)
+    monkeypatch.setattr(main, '_reset_runtime_state', reset)
+    monkeypatch.setattr(main, 'close_runtime_resources', close)
+    task = asyncio.create_task(main._start_population_runtime_on_startup())
+    try:
+        assert await asyncio.to_thread(entered.wait, 2)
+        if cancel_startup:
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+        else:
+            with pytest.raises(ValueError, match='original_startup_failure'):
+                await task
+        assert main.runtime_execution is created[0]
+        assert main.health()['status'] == 'unhealthy'
+        with pytest.raises(RuntimeStopped):
+            await main._start_population_runtime_on_startup()
+        assert len(created) == 1
+        with pytest.raises(RuntimeStopped):
+            created[0].submit(lambda: None)
+    finally:
+        release.set()
+        await asyncio.wrap_future(created[0].closed)
+        monkeypatch.setattr(created[0], 'stop', RuntimeExecution.stop.__get__(created[0]))
+        await main._stop_population_runtime_on_shutdown()
+        monkeypatch.setattr(main, '_reset_runtime_state', original_reset)
         main.reset_runtime_state()

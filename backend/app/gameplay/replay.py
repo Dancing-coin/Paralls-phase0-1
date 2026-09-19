@@ -99,6 +99,18 @@ class GameplayProjectionReplay:
     def full_replay(self, events: list[GameplayEvent]) -> ReplayResult:
         return self._replay(events, initial_state={}, initial_vector={}, applied_event_ids=set(), last_global_sequence=0)
 
+    def continue_replay(self, previous: ReplayResult, tail_events: list[GameplayEvent]) -> ReplayResult:
+        """续放本实例产生的可信结果；持久化检查点须使用 checkpoint_plus_tail_replay。"""
+        if not previous.succeeded or previous.projector_id != self.projector_id or previous.projector_version != self.projector_version:
+            return self._failed("replay_context_mismatch", "previous replay does not match projector", "replay_context")
+        return self._replay(
+            tail_events,
+            initial_state=previous.state,
+            initial_vector=previous.source_revision_vector,
+            applied_event_ids=set(previous.applied_event_ids),
+            last_global_sequence=previous.last_global_sequence,
+        )
+
     def replay_with_context(self, events: list[GameplayEvent], context: ReplayContext) -> ReplayEvidence:
         if context.projector_id != self.projector_id or context.projector_version != self.projector_version:
             failure = GameplayFailure(

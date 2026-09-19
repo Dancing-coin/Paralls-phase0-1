@@ -234,3 +234,44 @@ def test_transition_rejects_stale_expected_lifecycle(
             reason="stale client",
             recorded_at=100,
         )
+
+
+def test_authority_outcome_plan_uses_frozen_unwritten_nodes(graph, runtime):
+    blueprints = _blueprints()
+    seeds = [runtime.plan_seed_blueprint(scope=_scope(), blueprint=item,
+        provenance=_provenance(item.blueprint_id), recorded_at=10) for item in blueprints]
+    nodes = [runtime.plan_runtime_node(scope=_scope(), blueprint_id=item.blueprint_id,
+        node_id=f'runtime:{item.blueprint_id}:main', causal_basis_refs=[], recorded_at=10) for item in blueprints]
+    outcome = AuthorityStoryOutcome(result_type='object_state_result', target_ref='obj_letter',
+        current_state='removed_from_surface', authority_result_ref='esm:destroy:1', correlation_id='corr:1', recorded_at=100)
+    plan = runtime.plan_authority_outcome(scope=_scope(), outcome=outcome,
+        planned_nodes=[batch.nodes[0] for batch in nodes], planned_blueprints=blueprints)
+    plan = type(plan).model_validate_json(plan.model_dump_json())
+    assert not graph._nodes
+    for batch in [*seeds, *nodes, plan.batch]:
+        graph.write_batch(batch)
+    assert runtime.apply_authority_outcome(scope=_scope(), outcome=outcome) == plan.result
+    assert graph.write_batch(plan.batch).replayed
+
+def test_authority_outcome_overlay_preserves_existing_and_planned_node_order(graph, runtime):
+    late = StoryNodeBlueprint(blueprint_id="ZZZ", title="Existing later node", outcome_ports=[
+        StoryOutcomePort(port_id="late", required_result_type="object_state_result",
+            target_ref="obj_letter", required_state="removed_from_surface", outcome_semantic="ZZZ",
+            effects=[StoryOutcomeEffect(target_blueprint_id="N4", effect="make_eligible", reason="existing route")])])
+    graph.write_batch(runtime.plan_seed_blueprint(scope=_scope(), blueprint=late,
+        provenance=_provenance("ZZZ"), recorded_at=10))
+    graph.write_batch(runtime.plan_runtime_node(scope=_scope(), blueprint_id="ZZZ",
+        node_id="runtime:ZZZ:main", causal_basis_refs=[], recorded_at=10))
+    blueprints = _blueprints()
+    seeds = [runtime.plan_seed_blueprint(scope=_scope(), blueprint=item,
+        provenance=_provenance(item.blueprint_id), recorded_at=10) for item in blueprints]
+    nodes = [runtime.plan_runtime_node(scope=_scope(), blueprint_id=item.blueprint_id,
+        node_id=f"runtime:{item.blueprint_id}:main", causal_basis_refs=[], recorded_at=10) for item in blueprints]
+    planned = runtime.plan_authority_outcome(scope=_scope(), outcome=_outcome(),
+        planned_nodes=[batch.nodes[0] for batch in reversed(nodes)], planned_blueprints=blueprints)
+    for batch in [*seeds, *nodes]:
+        graph.write_batch(batch)
+    synchronous_plan = runtime.plan_authority_outcome(scope=_scope(), outcome=_outcome())
+    assert planned == synchronous_plan
+    assert runtime.apply_authority_outcome(scope=_scope(), outcome=_outcome()) == planned.result
+    assert planned.result.nodes["N4"].lifecycle == "eligible"

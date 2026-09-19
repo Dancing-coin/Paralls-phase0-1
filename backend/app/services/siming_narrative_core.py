@@ -1,6 +1,8 @@
 from app.models.siming_narrative import (
     InterventionSeed,
     NarrativeCoreResult,
+    NarrativeRoomState,
+    NarrativeUpdatePlan,
     NarrativeMarker,
     NarrativeObligation,
     NarrativeObligationLedger,
@@ -17,16 +19,24 @@ class SimingNarrativeCore:
         self._revision_by_room: dict[str, int] = {}
 
     def update(self, observed_events: list[ObservedSimingEvent]) -> NarrativeCoreResult:
+        plan = self.plan_update(observed_events)
+        self.install_room_state(plan.after)
+        return plan.result
+
+    def install_room_state(self, state: NarrativeRoomState) -> None:
+        # 恢复确定after-state只赋值，不重放update再次累计。
+        self._revision_by_room[state.room_id] = state.revision
+        self._open_counts_by_room[state.room_id] = state.open_count
+
+    def plan_update(self, observed_events: list[ObservedSimingEvent]) -> NarrativeUpdatePlan:
         if not observed_events:
             raise ValueError("observed_events must contain at least one event")
 
         event = observed_events[-1]
         room_id = event.room_id
         revision = self._revision_by_room.get(room_id, 0) + 1
-        self._revision_by_room[room_id] = revision
         obligations = self._obligations_for_batch(observed_events, revision)
         open_count = self._open_counts_by_room.get(room_id, 0) + len(obligations)
-        self._open_counts_by_room[room_id] = open_count
         pressure = self._pressure_for(open_count)
         markers = [
             NarrativeMarker(
@@ -71,11 +81,9 @@ class SimingNarrativeCore:
             causation_id=event.causation_id,
             correlation_id=event.correlation_id,
         )
-        return NarrativeCoreResult(
-            state=state,
-            ledger=ledger,
-            seeds=[self._seed_for(state, item) for item in obligations],
-        )
+        return NarrativeUpdatePlan(result=NarrativeCoreResult(
+            state=state, ledger=ledger, seeds=[self._seed_for(state, item) for item in obligations]),
+            after=NarrativeRoomState(room_id=room_id, revision=revision, open_count=open_count))
 
     def _obligations_for_batch(
         self,

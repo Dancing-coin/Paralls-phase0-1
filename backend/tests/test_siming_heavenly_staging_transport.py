@@ -57,6 +57,31 @@ def test_repeated_godot_staging_ack_is_published_once_per_correlation_and_source
     ]
 
 
+def test_staging_ack_deduplication_survives_bus_history_eviction() -> None:
+    main.reset_runtime_state()
+    base = {
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "producer_ts": 500,
+        "accepted": True,
+        "reason": "scene_ready",
+    }
+    for index in range(40):
+        main._handle_envelope(Envelope(
+            message_type="siming_staging_ack",
+            payload={**base, "correlation_id": f"corr:bounded:{index}"},
+        ))
+
+    duplicate = main._handle_envelope(Envelope(
+        message_type="siming_staging_ack",
+        payload={**base, "correlation_id": "corr:bounded:0"},
+    ))
+
+    assert duplicate[0]["payload"]["route"] == "siming_staging_ack_duplicate"
+    assert main.authority_event_bus.event_counts()["siming_staging_ack"] == 32
+
+
 def test_character_execution_envelope_retains_siming_staging_correlation() -> None:
     main.reset_runtime_state()
     command = CharacterGoalCommand(

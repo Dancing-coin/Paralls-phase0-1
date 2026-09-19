@@ -107,7 +107,7 @@ def _configured_runtime_issuer():
 
 def test_runtime_issuer_route_requires_loopback_bootstrap_and_profile_only_payload() -> None:
     main = _configured_runtime_issuer()
-    client = TestClient(main.app, client=("127.0.0.1", 47003))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47003))
 
     denied = client.post(
         "/internal/trusted-local-gameplay-mirror-enrollment",
@@ -136,8 +136,8 @@ def test_runtime_issuer_route_requires_loopback_bootstrap_and_profile_only_paylo
 
 def test_runtime_issuer_route_credential_binds_once_and_remote_call_is_rejected() -> None:
     main = _configured_runtime_issuer()
-    loopback = TestClient(main.app, client=("127.0.0.1", 47004))
-    remote = TestClient(main.app, client=("203.0.113.9", 47005))
+    loopback = TestClient(main.component_app, client=("127.0.0.1", 47004))
+    remote = TestClient(main.component_app, client=("203.0.113.9", 47005))
 
     issued = loopback.post(
         "/internal/trusted-local-gameplay-mirror-enrollment",
@@ -183,7 +183,7 @@ def test_live_probe_commit_route_uses_only_configured_actor_and_existing_after_c
     }
     monkeypatch.setattr(main.settings, "gameplay_mirror_phase3_actor_configs", [configuration])
     main = _configured_runtime_issuer()
-    client = TestClient(main.app, client=("127.0.0.1", 47006))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47006))
 
     denied = client.post("/internal/trusted-local-gameplay-mirror-live-probe-commit")
     accepted = client.post(
@@ -229,7 +229,7 @@ def test_live_reconnect_probe_commit_uses_second_server_configured_actor(monkeyp
     ]
     monkeypatch.setattr(main.settings, "gameplay_mirror_phase3_actor_configs", configurations)
     main = _configured_runtime_issuer()
-    client = TestClient(main.app, client=("127.0.0.1", 47007))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47007))
 
     committed = client.post(
         "/internal/trusted-local-gameplay-mirror-live-probe-reconnect-commit",
@@ -262,7 +262,7 @@ def test_live_probe_repeat_commit_keeps_existing_phase3_source_available(monkeyp
     }
     monkeypatch.setattr(main.settings, "gameplay_mirror_phase3_actor_configs", [configuration])
     main = _configured_runtime_issuer()
-    client = TestClient(main.app, client=("127.0.0.1", 47008))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47008))
     headers = {"X-Gameplay-Mirror-Launcher-Secret": "launcher-test-secret"}
 
     assert client.post("/internal/trusted-local-gameplay-mirror-live-probe-commit", headers=headers, json={}).status_code == 200
@@ -297,7 +297,7 @@ def test_live_probe_controlled_close_route_revokes_only_the_registered_transport
     )
     main.websocket_transport_closers["connection:controlled-close"] = close_requests.append
     authority_snapshot = main.gameplay_event_store.export_snapshot()
-    client = TestClient(main.app, client=("127.0.0.1", 47009))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47009))
 
     denied = client.post(
         "/internal/trusted-local-gameplay-mirror-live-probe-controlled-close",

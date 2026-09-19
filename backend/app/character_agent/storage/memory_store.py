@@ -24,6 +24,9 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 
 
 class CharacterMemoryStorePort(Protocol):
+    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+        raise NotImplementedError
+
     def write_event(self, event: dict[str, object]) -> None:
         raise NotImplementedError
 
@@ -58,6 +61,8 @@ class CharacterAgentMemoryStore:
     }
 
     def __init__(self, storage_root: str | Path | None = None) -> None:
+        self._session_reader = None
+        self._working_reader = None
         self._working = CharacterWorkingMemory()
         self._event = CharacterEventMemory()
         self._observation = CharacterObservationMemory()
@@ -74,6 +79,9 @@ class CharacterAgentMemoryStore:
             self._load()
 
     def write_event(self, event: dict[str, object]) -> None:
+        if self._session_reader is not None:
+            # 事实已在 session 提交；完整投影只由显式读取创建，不常驻全史。
+            return
         actor_id = str(event.get("actor_id", "") or "")
         if actor_id == "":
             return
@@ -95,11 +103,12 @@ class CharacterAgentMemoryStore:
         if event_id:
             self._seen_event_ids.add((actor_id, event_id))
 
-    def _ingest_event(self, event: dict[str, object]) -> None:
+    def _ingest_event(self, event: dict[str, object], *, include_working: bool = True) -> None:
         actor_id = str(event.get("actor_id", "") or "")
         if actor_id == "":
             return
-        self._working.remember_event(actor_id, self._sanitize_working_memory_event(event))
+        if include_working:
+            self._working.remember_event(actor_id, self._sanitize_working_memory_event(event))
 
         event_type = str(event.get("event_type", "") or "")
         payload = event.get("payload", {})
@@ -312,7 +321,19 @@ class CharacterAgentMemoryStore:
                 source_event_refs=[str(ref) for ref in payload.get("source_ref_lineage", []) if str(ref)] if isinstance(payload.get("source_ref_lineage", []), list) else [],
             )
 
+    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+        self._session_reader = reader
+        self._working_reader = working_reader
+
+    def _history_projection(self, actor_id: str, *, include_working: bool = True):
+        projection = CharacterAgentMemoryStore()
+        for event in self._session_reader(actor_id):
+            projection._ingest_event(event, include_working=include_working)
+        return projection
+
     def retrieval_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
+        if self._session_reader is not None:
+            return self._history_projection(actor_id).retrieval_bundle(actor_id)
         event_memories = self._event.recall(actor_id)
         observation_memories = self._observation.recall(actor_id)
         knowledge_memories = self._knowledge.recall(actor_id)
@@ -336,6 +357,8 @@ class CharacterAgentMemoryStore:
         story_branch_id: str | None = None,
         valid_at: int | None = None,
     ) -> CharacterMemoryRecordBundle:
+        if self._session_reader is not None:
+            return self._history_projection(actor_id, include_working=False).retrieval_record_bundle(actor_id, story_branch_id=story_branch_id, valid_at=valid_at)
         return CharacterMemoryRecordBundle(
             event_memories=self._event.recall_records(actor_id),
             observation_memories=self._observation.recall_records(actor_id),
@@ -350,6 +373,11 @@ class CharacterAgentMemoryStore:
         private_snapshot: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
     ) -> CharacterWorkingMemoryState:
+        if self._session_reader is not None:
+            working = CharacterWorkingMemory()
+            for event in (self._working_reader or self._session_reader)(actor_id):
+                working.remember_event(actor_id, self._sanitize_working_memory_event(event))
+            return working.build_state(actor_id, private_snapshot=private_snapshot, dynamic_state=dynamic_state)
         return self._working.build_state(
             actor_id,
             private_snapshot=private_snapshot,

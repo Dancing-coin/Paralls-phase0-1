@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from app.character_agent.storage.ask_storage import AskAppend
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id
@@ -119,10 +121,33 @@ class ActorSceneKnowledgeUpdate(BaseModel):
 class ActorSceneKnowledgeStore:
     def __init__(self) -> None:
         self._entries: dict[tuple[str, str, str, str, KnowledgeType], ActorSceneKnowledgeEntry] = {}
-        self.trace: list[dict[str, object]] = []
+        self._trace_entries: list[dict[str, object]] = []
+        self._persistence = None
+
+    def bind_persistence(self, persistence) -> None:
+        self._persistence = persistence
+
+    @property
+    def trace(self) -> list[dict[str, object]]:
+        return self._persistence.read_ask_trace() if self._persistence is not None else self._trace_entries
+
+    def __deepcopy__(self, memo):
+        # verification preflight 是纯内存试算，不能复制 SQLite 连接或写回持久投影。
+        from copy import deepcopy
+        result = type(self)()
+        entries = self._all_entries()
+        result._entries = {self._key(entry): entry.model_copy(deep=True) for entry in entries}
+        result._trace_entries = deepcopy(self.trace, memo)
+        return result
+
+    def _all_entries(self):
+        if self._persistence is not None:
+            return [ActorSceneKnowledgeEntry.model_validate(value) for value in self._persistence.read_ask()]
+        return list(self._entries.values())
 
     def entries_for_actor(self, actor_id: str, *, session_id: str | None = None, scene_id: str | None = None) -> list[ActorSceneKnowledgeEntry]:
-        entries = [entry for key, entry in self._entries.items() if key[0] == actor_id]
+        entries = ([ActorSceneKnowledgeEntry.model_validate(value) for value in self._persistence.read_ask(actor_id=actor_id)]
+                   if self._persistence is not None else [entry for key, entry in self._entries.items() if key[0] == actor_id])
         if session_id is not None:
             entries = [entry for entry in entries if entry.session_id == session_id]
         if scene_id is not None:
@@ -139,13 +164,35 @@ class ActorSceneKnowledgeStore:
         knowledge_type: KnowledgeType,
     ) -> ActorSceneKnowledgeEntry | None:
         world_anchor_id = derive_world_anchor_id(target_ref=subject_ref)
+        if self._persistence is not None:
+            key = self._persistence._json([actor_id,session_id,scene_id,world_anchor_id,knowledge_type])
+            rows = self._persistence.read_ask(entry_key=key)
+            if not rows and world_anchor_id != subject_ref:
+                key = self._persistence._json([actor_id,session_id,scene_id,subject_ref,knowledge_type])
+                rows = self._persistence.read_ask(entry_key=key)
+            return ActorSceneKnowledgeEntry.model_validate(rows[0]) if rows else None
         return self._entries.get((actor_id, session_id, scene_id, world_anchor_id, knowledge_type)) or self._entries.get(
             (actor_id, session_id, scene_id, subject_ref, knowledge_type)
         )
 
+    def record(self, incoming: ActorSceneKnowledgeEntry, *, producer_ts: int) -> None:
+        self._upsert(incoming, producer_ts=producer_ts, record_only=True)
+
     def upsert(self, incoming: ActorSceneKnowledgeEntry, *, producer_ts: int) -> ActorSceneKnowledgeUpdate:
+        return self._upsert(incoming, producer_ts=producer_ts)
+
+    def _upsert(self, incoming: ActorSceneKnowledgeEntry, *, producer_ts: int, record_only: bool = False) -> ActorSceneKnowledgeUpdate:
         key = self._key(incoming)
-        existing = self._entries.get(key)
+        counts = None
+        if self._persistence is not None and record_only:
+            current = self._persistence.read_ask_current(self._persistence._json(list(key)))
+            existing = ActorSceneKnowledgeEntry.model_validate(current[0]) if current else None
+            counts = current[1] if current else None
+        elif self._persistence is not None:
+            rows = self._persistence.read_ask(entry_key=self._persistence._json(list(key)))
+            existing = ActorSceneKnowledgeEntry.model_validate(rows[0]) if rows else None
+        else:
+            existing = self._entries.get(key)
         if existing is None:
             entry = incoming.model_copy(
                 update={
@@ -164,12 +211,12 @@ class ActorSceneKnowledgeStore:
             )
             self._entries[key] = entry
             update = ActorSceneKnowledgeUpdate(operation="add", entry=entry)
-            self._trace(update)
+            self._trace(update, counts=counts)
             return update
 
         if self._is_conflict(existing, incoming):
             conflict = ActorSceneKnowledgeConflict(
-                conflict_id=f"ask_conflict:{incoming.actor_id}:{incoming.world_anchor_id}:{producer_ts}:{len(existing.conflicts) + 1}",
+                conflict_id=f"ask_conflict:{incoming.actor_id}:{incoming.world_anchor_id}:{producer_ts}:{(counts['conflicts'] if counts else len(existing.conflicts)) + 1}",
                 world_anchor_id=incoming.world_anchor_id,
                 subject_ref=incoming.subject_ref,
                 target_ref=incoming.target_ref,
@@ -199,7 +246,7 @@ class ActorSceneKnowledgeStore:
                 conflict=conflict,
                 active_perception_reasons=["conflict"],
             )
-            self._trace(update)
+            self._trace(update, counts=counts)
             return update
 
         operation: RevisionOperation = "hit"
@@ -236,7 +283,7 @@ class ActorSceneKnowledgeStore:
         )
         self._entries[key] = entry
         update = ActorSceneKnowledgeUpdate(operation=operation, entry=entry)
-        self._trace(update)
+        self._trace(update, counts=counts)
         return update
 
     def apply_canonical_percept_bundle(
@@ -409,7 +456,7 @@ class ActorSceneKnowledgeStore:
 
     def expire(self, *, now: int) -> list[ActorSceneKnowledgeUpdate]:
         updates: list[ActorSceneKnowledgeUpdate] = []
-        for entry in list(self._entries.values()):
+        for entry in self._all_entries():
             if entry.freshness.expires_at is None or now < entry.freshness.expires_at:
                 continue
             if entry.freshness.state == "expired":
@@ -454,6 +501,11 @@ class ActorSceneKnowledgeStore:
         return update
 
     def _entry_by_id(self, entry_id: str) -> ActorSceneKnowledgeEntry:
+        if self._persistence is not None:
+            rows = self._persistence.read_ask(entry_id=entry_id)
+            if rows:
+                return ActorSceneKnowledgeEntry.model_validate(rows[0])
+            raise KeyError(entry_id)
         for entry in self._entries.values():
             if entry.entry_id == entry_id:
                 return entry
@@ -493,9 +545,8 @@ class ActorSceneKnowledgeStore:
             confidence=incoming.confidence,
         )
 
-    def _trace(self, update: ActorSceneKnowledgeUpdate) -> None:
-        self.trace.append(
-            {
+    def _trace(self, update: ActorSceneKnowledgeUpdate, *, counts: dict | None = None) -> None:
+        trace = {
                 "operation": update.operation,
                 "entry_id": update.entry.entry_id,
                 "actor_id": update.entry.actor_id,
@@ -505,19 +556,28 @@ class ActorSceneKnowledgeStore:
                 "subject_ref": update.entry.subject_ref,
                 "target_ref": update.entry.target_ref,
                 "freshness": update.entry.freshness.state,
-                "conflict_state": update.entry.conflict_state,
+                "conflict_state": "conflicted" if counts and counts["unresolved"] else update.entry.conflict_state,
                 "active_perception_reasons": list(update.active_perception_reasons),
             }
-        )
+        if self._persistence is not None:
+            try:
+                value = update.entry.model_dump(mode='json')
+                self._persistence.write_ask(AskAppend(value, counts) if counts is not None else value, trace)
+            finally:
+                self._entries.clear()
+        else:
+            self._trace_entries.append(trace)
 
     def _key(self, entry: ActorSceneKnowledgeEntry) -> tuple[str, str, str, str, KnowledgeType]:
         return (entry.actor_id, entry.session_id, entry.scene_id, entry.world_anchor_id or entry.subject_ref, entry.knowledge_type)
 
     def _append_unique(self, existing: list[str], incoming: list[str]) -> list[str]:
         merged = list(existing)
+        seen = set(merged)
         for value in incoming:
-            if value not in merged:
+            if value not in seen:
                 merged.append(value)
+                seen.add(value)
         return merged
 
     def _bundle_target_ref(self, bundle: CanonicalPerceptBundle) -> str:

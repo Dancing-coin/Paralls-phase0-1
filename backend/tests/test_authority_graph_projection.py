@@ -46,6 +46,8 @@ def _event() -> AuthorityEvent:
     ("event_type", "domain"),
     [
         ("gameplay.inventory.item_moved", "inventory"),
+        ("gameplay.inventory.future_unlisted_event", "inventory"),
+        ("constraint_state_event", "esm_world"),
         ("gameplay.organization.production_work_contribution_accepted", "organization"),
         ("gameplay.ownership.right_transferred", "ownership"),
         ("gameplay.economy.account_credited", "economy"),
@@ -60,7 +62,11 @@ def test_authority_domain_event_maps_to_typed_projection_domain(
     graph = SQLiteHeavenlyGraphAdapter(tmp_path / f"{domain}.sqlite3")
     projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _event: _scope())
     event = _event().model_copy(update={"event_id": f"{event_type}:1", "event_type": event_type})
-    projector.project(event)
+    from app.services.authority_event_bus import InMemoryAuthorityEventBus
+    bus = InMemoryAuthorityEventBus()
+    bus.subscribe("*", projector.project, excluded_event_types=frozenset({"population_cadence_event"}))
+    assert projector._domain_for("population_cadence_event") is None
+    bus.publish(event)
     nodes = graph.query_nodes(
         HeavenlyNodeQuery(scope=_scope(), valid_at=1, node_types=["causal_event"])
     )

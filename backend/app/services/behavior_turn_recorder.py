@@ -23,6 +23,24 @@ class BehaviorTurnRecorder:
         self._graph = graph
 
     def record(self, request: BehaviorTurnRecordRequest) -> HeavenlyGraphWriteResult:
+        return self._graph.write_batch(self.plan_record(request))
+
+    def has_recorded_turn(self, request: BehaviorTurnRecordRequest) -> bool:
+        if not self._graph.has_idempotency_key(scope=request.scope, idempotency_key=request.idempotency_key):
+            return False
+        # correlation 回合只审计首次来源；后续同因果事件不能改写原 batch。
+        anchor = self._graph.get_node_revision(node_id=f'behavior-turn:{request.turn_id}',
+            scope=request.scope, revision=1)
+        if (anchor is None or anchor.node_type != 'behavior_turn' or anchor.revision != 1
+                or anchor.attributes.get('entity_kind') != 'turn'
+                or anchor.attributes.get('turn_id') != request.turn_id
+                or anchor.attributes.get('correlation_id') != request.provenance.correlation_id
+                or anchor.provenance.correlation_id != request.provenance.correlation_id
+                or anchor.provenance.source_kind != request.provenance.source_kind):
+            raise ValueError('behavior_turn_receipt_invalid')
+        return True
+
+    def plan_record(self, request: BehaviorTurnRecordRequest) -> HeavenlyGraphWriteBatch:
         self._validate_stage_order(request.stages)
         anchor_id = f"behavior-turn:{request.turn_id}"
         metadata = GraphSemanticMetadata(
@@ -104,14 +122,12 @@ class BehaviorTurnRecorder:
                     semantic_metadata=stage_metadata,
                 )
             )
-        return self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
-                transaction_id=request.transaction_id,
-                idempotency_key=request.idempotency_key,
-                scope=request.scope,
-                nodes=nodes,
-                relations=relations,
-            )
+        return HeavenlyGraphWriteBatch(
+            transaction_id=request.transaction_id,
+            idempotency_key=request.idempotency_key,
+            scope=request.scope,
+            nodes=nodes,
+            relations=relations,
         )
 
     @staticmethod

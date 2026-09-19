@@ -60,6 +60,67 @@ def _godot_view(actor_ref: str, *, include_resources: bool = True, include_statu
     ]).godot_view(state, allowed_group_ids=("core.resources", "core.status"))
 
 
+def test_snapshot_wire_contains_the_exact_checksum_input_and_full_group_metadata() -> None:
+    from hashlib import sha256
+    import json
+
+    adapter = GameplayGodotMirrorSyncAdapter()
+    snapshot = adapter.snapshot(_godot_view('character:角色\\"🌏'))
+    payload = adapter.snapshot_payload(snapshot)
+    canonical = payload["canonical_snapshot_json"]
+    assert "sha256:" + sha256(canonical.encode("utf-8")).hexdigest() == snapshot.snapshot_checksum
+    body = json.loads(canonical)
+    assert body == {name: payload[name] for name in (
+        "actor_ref", "facade_revision", "source_revision_vector", "schema_capabilities",
+        "enabled_state_groups", "groups",
+    )}
+    assert body["groups"]["core.resources"]["definition_version"] == "1"
+    assert body["groups"]["core.resources"]["projection_schema_version"] == 1
+    assert body["groups"]["core.resources"]["source_revision_vector"] == {"stream": 1}
+
+
+def test_delta_wire_checksum_input_matches_full_target_including_removed_groups() -> None:
+    from hashlib import sha256
+    import json
+
+    adapter = GameplayGodotMirrorSyncAdapter()
+    base = adapter.snapshot(_godot_view("actor:a"))
+    target = adapter.snapshot(_godot_view("actor:a", include_resources=False, include_status=True))
+    delta = adapter.delta(base, target)
+    wire = adapter.delta_payload(base, delta)
+    assert wire["canonical_snapshot_json"] == adapter.snapshot_payload(target)["canonical_snapshot_json"]
+    assert "sha256:" + sha256(wire["canonical_snapshot_json"].encode("utf-8")).hexdigest() == target.snapshot_checksum
+    candidate = json.loads(adapter.snapshot_payload(base)["canonical_snapshot_json"])
+    for group in wire["removed_group_ids"]:
+        candidate["groups"].pop(group)
+    candidate["groups"].update(wire["groups"])
+    for name in ("facade_revision", "source_revision_vector", "schema_capabilities", "enabled_state_groups"):
+        candidate[name] = wire[name]
+    assert candidate == json.loads(wire["canonical_snapshot_json"])
+
+
+@pytest.mark.parametrize("case", ["base", "target", "other"])
+def test_cross_language_golden_vectors_preserve_existing_canonical_checksum(case) -> None:
+    from hashlib import sha256
+    import json
+    from pathlib import Path
+    from app.gameplay.runtime_state import StateGroupProjectionEnvelope
+    from app.gameplay.state_group_sync import CharacterGameRuntimeSnapshot, snapshot_canonical_json
+
+    fixtures = Path(__file__).resolve().parents[2] / "scripts/verification/fixtures/gameplay-mirror-checksum-vectors.json"
+    wire = json.loads(fixtures.read_text(encoding="utf-8"))[case]
+    body = json.loads(wire["canonical_snapshot_json"])
+    snapshot = CharacterGameRuntimeSnapshot(
+        actor_ref=body["actor_ref"], facade_revision=body["facade_revision"],
+        source_revision_vector=body["source_revision_vector"],
+        schema_capabilities=tuple(body["schema_capabilities"]), enabled_state_groups=tuple(body["enabled_state_groups"]),
+        groups={key: StateGroupProjectionEnvelope(group_id=key, **value) for key, value in body["groups"].items()},
+        snapshot_checksum=wire["snapshot_checksum"],
+    )
+    assert snapshot_canonical_json(snapshot) == wire["canonical_snapshot_json"]
+    assert "sha256:" + sha256(wire["canonical_snapshot_json"].encode("utf-8")).hexdigest() == wire["snapshot_checksum"]
+
+
 def test_subscription_requires_backend_grant_and_only_delivers_filtered_actor_view() -> None:
     registry = GameplayMirrorSubscriptionRegistry(projection_source=_godot_view)
     with pytest.raises(GameplayMirrorDeliveryError, match="mirror_scope_unauthorized"):
@@ -242,6 +303,25 @@ def test_saturated_queue_does_not_block_a_separate_connection_queue() -> None:
     assert saturated.dirty_actor_count == 1
 
 
+@pytest.mark.parametrize("pop_before_drop", [False, True])
+def test_outbound_drop_actor_discards_queued_dirty_and_resync_but_preserves_others(pop_before_drop):
+    queue = GameplayMirrorOutboundQueue(projection_capacity=3, control_capacity=1, dirty_actor_limit=1)
+    queue.enqueue_projection(_delivery_envelope("actor:a", 1))
+    queue.enqueue_projection(_delivery_envelope("actor:b", 2))
+    advisory = {"message_type": "government_drought_advisory_delivery", "payload": {"jurisdiction_ref": "room:a"}}
+    queue.enqueue_delivery(advisory)
+    queue.enqueue_projection(_delivery_envelope("actor:a", 4))
+    if pop_before_drop:
+        assert queue.pop_next()["payload"]["actor_ref"] == "actor:a"
+    queue.drop_actor("actor:a")
+    assert queue.dirty_actor_count == 0
+    assert queue.pop_next()["payload"]["actor_ref"] == "actor:b"
+    assert queue.pop_next() == advisory
+    assert queue.pop_next() is None
+    queue.enqueue_projection(_delivery_envelope("actor:a", 5))
+    assert queue.pop_next()["payload"]["delivery_sequence"] == 5
+
+
 def test_projection_publisher_refreshes_explicit_transaction_actors_and_removes_stale_views() -> None:
     repository = GameplayGodotProjectionRepository()
     publisher = GameplayGodotProjectionPublisher(repository=repository)
@@ -380,3 +460,32 @@ def test_connection_registry_delivers_fixed_government_advisory_without_an_actor
         }
     ]
     assert "actor_ref" not in str(sent)
+
+
+@pytest.mark.parametrize("drop_control", [False, True])
+def test_outbound_drop_last_item_recovers_remaining_dirty_actor(drop_control):
+    queue = GameplayMirrorOutboundQueue(projection_capacity=1, control_capacity=1, dirty_actor_limit=2)
+    def delivery(actor_ref, sequence):
+        return {"message_type": "gameplay_mirror_delivery",
+                "payload": {"actor_ref": actor_ref, "delivery_sequence": sequence}}
+
+    first = delivery("actor:a", 1)
+    assert queue.enqueue_projection(first)
+    if drop_control:
+        assert not queue.enqueue_projection(delivery("actor:a", 2))
+    assert not queue.enqueue_projection(delivery("actor:b", 3))
+    latest = delivery("actor:b", 4)
+    assert not queue.enqueue_projection(latest)
+    if drop_control:
+        assert queue.pop_next() == first
+    queue.drop_actor("actor:a")
+    queue.drop_actor("actor:a")
+    assert queue.dirty_actor_count == 1
+
+    control = queue.pop_next()
+    assert control == {"message_type": "gameplay_mirror_resync_required",
+                       "payload": {"actor_ref": "actor:b", "reason_code": "mirror_backpressure"}}
+    assert len(queue._controls) <= 1 and len(queue._projections) <= 1
+    assert queue.pop_next() == latest
+    assert queue.dirty_actor_count == 0
+    assert queue.pop_next() is None

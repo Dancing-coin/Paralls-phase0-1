@@ -57,6 +57,20 @@ def test_world_runtime_cadence_uses_revision_heads_without_scanning_history() ->
     assert cadence.cadence_source_revision == 1
 
 
+def test_world_runtime_cadence_does_not_read_unrelated_stream_heads() -> None:
+    store = GameplayEventStore()
+    runtime = WorldContinuityRuntime(store=store, mode=_mode())
+    runtime.resume()
+
+    store.get_stream_heads = lambda: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        AssertionError("cadence construction must only read its declared world stream")
+    )
+
+    cadence = runtime.build_population_cadence(window_start=10, window_end=11)
+
+    assert cadence.base_revision_vector == {"world:world:test": 1}
+
+
 def test_world_runtime_rejects_an_empty_population_window() -> None:
     runtime = WorldContinuityRuntime(store=GameplayEventStore(), mode=_mode())
 

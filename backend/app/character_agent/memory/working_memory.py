@@ -5,6 +5,12 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 
 
 class CharacterWorkingMemory:
+    RELEVANT_EVENT_TYPES = frozenset({
+        "character_perceived_event", "self_body_perceived_event",
+        "character_agent_settlement_result", "character_agent_dialogue_response",
+        "siming_output_event",
+    })
+
     def __init__(self) -> None:
         self._entries_by_actor: dict[str, list[dict[str, object]]] = {}
 

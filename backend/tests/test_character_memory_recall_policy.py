@@ -1,3 +1,4 @@
+import json
 from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.gateway.model_provider import CharacterModelProvider
@@ -249,6 +250,13 @@ def test_l3_exposes_own_dispute_and_personality_verification_bias_without_forcin
         def run_task(self, *, context, **kwargs):
             self.context = context
             return {"candidate_intents": ["observe", "defer"], "selected_intent": "defer"}
+
+        def complete_prepared_request(self, request_json):
+            request = json.loads(request_json)
+            return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
+
+        def prepare_run_request(self, *, task_kind, context, route_override=None, prepared_recall=None):
+            return {"task_kind": task_kind, "context": context, "route_override": route_override}
 
     gateway = CapturingGateway()
     planner = CharacterAgentL3Service(gateway=gateway)

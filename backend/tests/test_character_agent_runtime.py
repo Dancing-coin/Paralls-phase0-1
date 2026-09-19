@@ -1,3 +1,4 @@
+import json
 import pytest
 from pydantic import ValidationError
 
@@ -42,12 +43,17 @@ class _LocalGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall=None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override or "local_only",
+            prepared_recall=prepared_recall,
         )
+
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
 
 
 class _FailingGateway:
@@ -69,12 +75,18 @@ class _FailingGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall=None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override or "online_default",
+            prepared_recall=prepared_recall,
         )
+
+    def complete_prepared_request(self, request_json):
+        request = json.loads(request_json)
+        return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
 
 
 def _local_runtime() -> CharacterAgentRuntime:
@@ -314,13 +326,13 @@ def test_character_agent_runtime_accepts_char_c_into_the_shared_runtime_species(
 def test_character_agent_runtime_passes_profile_into_l3_decision_path() -> None:
     runtime = _local_runtime()
     captured: dict[str, object] = {}
-    original = runtime._l3.select_intent
+    original = runtime._l3.prepare_intent_plan
 
     def wrapped(*args, **kwargs):
         captured["kwargs"] = dict(kwargs)
         return original(*args, **kwargs)
 
-    runtime._l3.select_intent = wrapped
+    runtime._l3.prepare_intent_plan = wrapped
     event = CharacterPerceivedEvent(
         actor_id="char_b",
         percept_channel="auditory",
@@ -377,13 +389,13 @@ def test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_un
 def test_character_agent_runtime_passes_typed_working_memory_state_into_l2_reasoning_path() -> None:
     runtime = _local_runtime()
     captured: dict[str, object] = {}
-    original = runtime._l2.interpret_perceived_event
+    original = runtime._l2.prepare_perceived_event
 
     def wrapped(*args, **kwargs):
         captured["kwargs"] = dict(kwargs)
         return original(*args, **kwargs)
 
-    runtime._l2.interpret_perceived_event = wrapped
+    runtime._l2.prepare_perceived_event = wrapped
     event = CharacterPerceivedEvent(
         actor_id="char_a",
         percept_channel="auditory",
@@ -575,8 +587,8 @@ def test_character_agent_runtime_normalizes_whitespace_only_siming_hints() -> No
     assert siming_event["payload"]["summary"] == ""
     assert siming_event["payload"]["pressure_hint"] == ""
     assert siming_event["payload"]["reason_scope"] == ""
-    assert reasoning_request["payload"]["context"]["event"]["pressure_hint"] == ""
-    assert reasoning_request["payload"]["context"]["event"]["reason_scope"] == ""
+    assert "pressure_hint" not in reasoning_request["payload"]["context"]["event"]
+    assert "reason_scope" not in reasoning_request["payload"]["context"]["event"]
     assert interpretation["risk_level"] == "low"
     assert interpretation["ambiguity_level"] == "high"
     assert interpretation["cognition_status"] == "continuity_floor"
@@ -631,11 +643,11 @@ def test_character_agent_runtime_routes_siming_high_level_hints_through_reasonin
     assert hinted_request_event["percept_channel"] == "siming"
     assert base_request_event["perceived_summary"] == "watch env_lamp"
     assert hinted_request_event["perceived_summary"] == "watch env_lamp"
-    assert base_request_event["pressure_hint"] == ""
+    assert "pressure_hint" not in base_request_event
     assert hinted_request_event["pressure_hint"] == "crowd closing in"
-    assert base_request_event["salience_boost"] is None
+    assert "salience_boost" not in base_request_event
     assert hinted_request_event["salience_boost"] == 0.85
-    assert base_request_event["reason_scope"] == ""
+    assert "reason_scope" not in base_request_event
     assert hinted_request_event["reason_scope"] == "threat_scan"
 
     base_interpretation = next(entry["payload"] for entry in base_timeline if entry["event_type"] == "character_interpretation_event")
@@ -875,8 +887,13 @@ def test_character_agent_runtime_feeds_previous_goal_portfolio_back_into_next_mo
             task_kind: str,
             context: dict[str, object],
             route_override: str | None = None,
+            prepared_recall=None,
         ) -> dict[str, object]:
             return {"task_kind": task_kind, "context": context, "route_override": route_override}
+
+        def complete_prepared_request(self, request_json):
+            request = json.loads(request_json)
+            return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
 
     runtime = CharacterAgentRuntime()
     gateway = _GoalLoopGateway()
@@ -1050,8 +1067,13 @@ def test_background_cognition_tick_runs_under_authorized_quiet_supervision_witho
             task_kind: str,
             context: dict[str, object],
             route_override: str | None = None,
+            prepared_recall=None,
         ) -> dict[str, object]:
             return {"task_kind": task_kind, "context": context, "route_override": route_override}
+
+        def complete_prepared_request(self, request_json):
+            request = json.loads(request_json)
+            return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
 
     runtime = CharacterAgentRuntime()
     gateway = _BackgroundGateway()
@@ -1208,8 +1230,13 @@ def test_run_scheduled_background_cognition_ticks_respects_schedulable_actor_ids
             task_kind: str,
             context: dict[str, object],
             route_override: str | None = None,
+            prepared_recall=None,
         ) -> dict[str, object]:
             return {"task_kind": task_kind, "context": context, "route_override": route_override}
+
+        def complete_prepared_request(self, request_json):
+            request = json.loads(request_json)
+            return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
 
     runtime = CharacterAgentRuntime()
     gateway = _ScheduledGateway()
@@ -1359,12 +1386,18 @@ def test_character_agent_runtime_goal_state_event_records_changed_fields() -> No
             task_kind: str,
             context: dict[str, object],
             route_override: str | None = None,
+            prepared_recall=None,
         ) -> dict[str, object]:
             return CharacterModelGateway().prepare_run_request(
                 task_kind=task_kind,
                 context=context,
                 route_override=route_override or "online_default",
+                prepared_recall=prepared_recall,
             )
+
+        def complete_prepared_request(self, request_json):
+            request = json.loads(request_json)
+            return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
 
     runtime = CharacterAgentRuntime()
     gateway = _GoalShiftGateway()

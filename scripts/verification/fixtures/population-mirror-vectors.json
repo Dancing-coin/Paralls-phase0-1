@@ -1,0 +1,156 @@
+{
+  "base": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "character:one",
+    "facade_revision": "facade:19b73bb605dc1ebb",
+    "source_revision_vector": {},
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "population_public"
+    ],
+    "groups": {
+      "population_public": {
+        "definition_version": "1",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:02766c27db62b22305b7a497f469b92f8e24d3ad848b2833ec52bd2e5004fc87",
+        "source_revision_vector": {},
+        "payload": {
+          "actor_id": "one",
+          "animation_tag": "idle",
+          "confirmed_tick": 0,
+          "presentation_position": [
+            -1.32563,
+            0.0,
+            -7.00754
+          ],
+          "public_digest": "sha256:623e3fa77119defc88837f3778a4b3931cde0c13fb334ccf6bfa45d6f0472e94"
+        }
+      }
+    },
+    "snapshot_checksum": "sha256:5836338b54dde56e6f82e92889d321ab52e0825ffdb5746ac879c85a3326c24a",
+    "canonical_snapshot_json": "{\"actor_ref\":\"character:one\",\"enabled_state_groups\":[\"population_public\"],\"facade_revision\":\"facade:19b73bb605dc1ebb\",\"groups\":{\"population_public\":{\"definition_version\":\"1\",\"payload\":{\"actor_id\":\"one\",\"animation_tag\":\"idle\",\"confirmed_tick\":0,\"presentation_position\":[-1.32563,0.0,-7.00754],\"public_digest\":\"sha256:623e3fa77119defc88837f3778a4b3931cde0c13fb334ccf6bfa45d6f0472e94\"},\"projection_revision\":\"projection:02766c27db62b22305b7a497f469b92f8e24d3ad848b2833ec52bd2e5004fc87\",\"projection_schema_version\":1,\"source_revision_vector\":{}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{}}"
+  },
+  "target": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "character:one",
+    "facade_revision": "facade:9e90950fe98419bc",
+    "source_revision_vector": {
+      "population-cadence:world": 1
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "population_public"
+    ],
+    "groups": {
+      "population_public": {
+        "definition_version": "1",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:a2e3325b686f1c8541e8be41d39e13bdf84a864c3a697cb1c66aa8eb28b40e0c",
+        "source_revision_vector": {
+          "population-cadence:world": 1
+        },
+        "payload": {
+          "actor_id": "one",
+          "animation_tag": "rest",
+          "confirmed_tick": 60,
+          "presentation_position": [
+            -1.32563,
+            0.0,
+            -7.00754
+          ],
+          "public_digest": "sha256:ed7290e49d81a139bab588e9d54f9b1bc0c4610f4768e0425052c451820a7a93"
+        }
+      }
+    },
+    "snapshot_checksum": "sha256:d2f41b8a6919d69916ad3064ec16fad6e790ce7095bb87d702d68ceffa0b5846",
+    "canonical_snapshot_json": "{\"actor_ref\":\"character:one\",\"enabled_state_groups\":[\"population_public\"],\"facade_revision\":\"facade:9e90950fe98419bc\",\"groups\":{\"population_public\":{\"definition_version\":\"1\",\"payload\":{\"actor_id\":\"one\",\"animation_tag\":\"rest\",\"confirmed_tick\":60,\"presentation_position\":[-1.32563,0.0,-7.00754],\"public_digest\":\"sha256:ed7290e49d81a139bab588e9d54f9b1bc0c4610f4768e0425052c451820a7a93\"},\"projection_revision\":\"projection:a2e3325b686f1c8541e8be41d39e13bdf84a864c3a697cb1c66aa8eb28b40e0c\",\"projection_schema_version\":1,\"source_revision_vector\":{\"population-cadence:world\":1}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"population-cadence:world\":1}}"
+  },
+  "delta": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "character:one",
+    "facade_revision": "facade:9e90950fe98419bc",
+    "base_facade_revision": "facade:19b73bb605dc1ebb",
+    "base_snapshot_checksum": "sha256:5836338b54dde56e6f82e92889d321ab52e0825ffdb5746ac879c85a3326c24a",
+    "target_snapshot_checksum": "sha256:d2f41b8a6919d69916ad3064ec16fad6e790ce7095bb87d702d68ceffa0b5846",
+    "source_revision_vector": {
+      "population-cadence:world": 1
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "population_public"
+    ],
+    "removed_group_ids": [],
+    "confirmed_prediction_ids": [],
+    "rejected_predictions": [],
+    "groups": {
+      "population_public": {
+        "definition_version": "1",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:a2e3325b686f1c8541e8be41d39e13bdf84a864c3a697cb1c66aa8eb28b40e0c",
+        "source_revision_vector": {
+          "population-cadence:world": 1
+        },
+        "payload": {
+          "actor_id": "one",
+          "animation_tag": "rest",
+          "confirmed_tick": 60,
+          "presentation_position": [
+            -1.32563,
+            0.0,
+            -7.00754
+          ],
+          "public_digest": "sha256:ed7290e49d81a139bab588e9d54f9b1bc0c4610f4768e0425052c451820a7a93"
+        }
+      }
+    },
+    "canonical_snapshot_json": "{\"actor_ref\":\"character:one\",\"enabled_state_groups\":[\"population_public\"],\"facade_revision\":\"facade:9e90950fe98419bc\",\"groups\":{\"population_public\":{\"definition_version\":\"1\",\"payload\":{\"actor_id\":\"one\",\"animation_tag\":\"rest\",\"confirmed_tick\":60,\"presentation_position\":[-1.32563,0.0,-7.00754],\"public_digest\":\"sha256:ed7290e49d81a139bab588e9d54f9b1bc0c4610f4768e0425052c451820a7a93\"},\"projection_revision\":\"projection:a2e3325b686f1c8541e8be41d39e13bdf84a864c3a697cb1c66aa8eb28b40e0c\",\"projection_schema_version\":1,\"source_revision_vector\":{\"population-cadence:world\":1}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"population-cadence:world\":1}}"
+  },
+  "removed": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "character:one",
+    "facade_revision": "facade:1ab0beb97b5348d5",
+    "source_revision_vector": {
+      "population-cadence:world": 2
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [],
+    "groups": {},
+    "snapshot_checksum": "sha256:ca0c02b73c5127a3a3c483062c8e9df73c8dceeb972a169b240d6463ef57ab25",
+    "canonical_snapshot_json": "{\"actor_ref\":\"character:one\",\"enabled_state_groups\":[],\"facade_revision\":\"facade:1ab0beb97b5348d5\",\"groups\":{},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"population-cadence:world\":2}}"
+  },
+  "remove_delta": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "character:one",
+    "facade_revision": "facade:1ab0beb97b5348d5",
+    "base_facade_revision": "facade:9e90950fe98419bc",
+    "base_snapshot_checksum": "sha256:d2f41b8a6919d69916ad3064ec16fad6e790ce7095bb87d702d68ceffa0b5846",
+    "target_snapshot_checksum": "sha256:ca0c02b73c5127a3a3c483062c8e9df73c8dceeb972a169b240d6463ef57ab25",
+    "source_revision_vector": {
+      "population-cadence:world": 2
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [],
+    "removed_group_ids": [
+      "population_public"
+    ],
+    "confirmed_prediction_ids": [],
+    "rejected_predictions": [],
+    "groups": {},
+    "canonical_snapshot_json": "{\"actor_ref\":\"character:one\",\"enabled_state_groups\":[],\"facade_revision\":\"facade:1ab0beb97b5348d5\",\"groups\":{},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"population-cadence:world\":2}}"
+  }
+}

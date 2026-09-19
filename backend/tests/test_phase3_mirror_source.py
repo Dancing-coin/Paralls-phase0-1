@@ -258,7 +258,7 @@ def test_websocket_reads_a_configured_phase3_source_through_backend_session_scop
         expires_at=now + 60,
     )
 
-    client = TestClient(main.app, client=("127.0.0.1", 47001))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47001))
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
             {

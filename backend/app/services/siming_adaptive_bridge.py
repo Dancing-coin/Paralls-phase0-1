@@ -6,6 +6,7 @@ from collections.abc import Callable
 from app.models.siming_actor_memory_read import ActorMemoryReadRequest
 from app.models.siming_adaptive_bridge import (
     AdaptiveBridgeNodeProposal,
+    AdaptiveBridgeCommitPlan,
     AdaptiveBridgeValidationResult,
     SimingLlmProposalAudit,
 )
@@ -85,6 +86,12 @@ class SimingAdaptiveBridge:
         if prior is not None:
             return prior
 
+        plan = self.plan_commit(proposal, provider_audit=provider_audit)
+        for batch in plan.batches:
+            self._graph.write_batch(batch)
+        return plan.result
+
+    def plan_commit(self, proposal, *, provider_audit) -> AdaptiveBridgeCommitPlan:
         checks = (
             self._validate_schema_and_pattern,
             self._validate_existing_facts,
@@ -105,12 +112,11 @@ class SimingAdaptiveBridge:
                 proposal_id=proposal.proposal_id,
                 reason_codes=reasons,
             )
-            self._write_audit(proposal, provider_audit, result)
-            return result
+            return AdaptiveBridgeCommitPlan(result=result, batches=[self._plan_audit(proposal, provider_audit, result)])
 
-        result = self._commit_new_runtime_node(proposal)
-        self._write_audit(proposal, provider_audit, result)
-        return result
+        result, batches = self._plan_new_runtime_node(proposal)
+        batches.append(self._plan_audit(proposal, provider_audit, result))
+        return AdaptiveBridgeCommitPlan(result=result, batches=batches)
 
     def _validate_schema_and_pattern(
         self,
@@ -233,21 +239,22 @@ class SimingAdaptiveBridge:
         )
         return [] if match.accepted else ["resource_unavailable"]
 
-    def _commit_new_runtime_node(
+    def _plan_new_runtime_node(
         self,
         proposal: AdaptiveBridgeNodeProposal,
-    ) -> AdaptiveBridgeValidationResult:
+    ) -> tuple[AdaptiveBridgeValidationResult, list[HeavenlyGraphWriteBatch]]:
         node_id = self._runtime_node_id(proposal)
         blueprint = StoryNodeBlueprint(
             blueprint_id=self._bridge_blueprint_id(proposal),
             title=self._PATTERN_TITLES[proposal.pattern],
         )
-        self._story_runtime.seed_blueprint(
+        seed = self._story_runtime.plan_seed_blueprint(
             scope=self._scope,
             blueprint=blueprint,
             provenance=self._provenance(proposal),
             recorded_at=self._recorded_at,
         )
+        batches = [] if seed is None else [seed]
         existing = self._story_runtime.read_runtime_node(
             scope=self._scope,
             node_id=node_id,
@@ -263,19 +270,19 @@ class SimingAdaptiveBridge:
             ):
                 raise SimingAdaptiveBridgeError("proposal ID was reused with different bridge inputs")
         else:
-            self._story_runtime.instantiate(
+            batches.append(self._story_runtime.plan_runtime_node(
                 scope=self._scope,
                 blueprint_id=blueprint.blueprint_id,
                 node_id=node_id,
                 causal_basis_refs=causal_basis_refs,
                 recorded_at=self._recorded_at,
-            )
+            ))
         return AdaptiveBridgeValidationResult(
             accepted=True,
             proposal_id=proposal.proposal_id,
             graph_transaction_ref=f"story_instantiate:{node_id}",
             runtime_node_ref=node_id,
-        )
+        ), batches
 
     def _read_audit(
         self,
@@ -307,15 +314,14 @@ class SimingAdaptiveBridge:
             raise SimingAdaptiveBridgeError("proposal ID was reused with different bridge inputs")
         return AdaptiveBridgeValidationResult.model_validate(node.attributes["validation"])
 
-    def _write_audit(
+    def _plan_audit(
         self,
         proposal: AdaptiveBridgeNodeProposal,
         provider_audit: SimingLlmProposalAudit,
         result: AdaptiveBridgeValidationResult,
-    ) -> None:
+    ) -> HeavenlyGraphWriteBatch:
         audit_id = self._audit_node_id(proposal)
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+        return HeavenlyGraphWriteBatch(
                 transaction_id=audit_id,
                 idempotency_key=audit_id,
                 scope=self._scope,
@@ -337,7 +343,6 @@ class SimingAdaptiveBridge:
                         },
                     )
                 ],
-            )
         )
 
     @staticmethod

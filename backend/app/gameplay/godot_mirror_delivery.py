@@ -2,17 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from dataclasses import dataclass
 from collections import deque
 from collections.abc import Iterable
+from threading import RLock
 from types import MappingProxyType
 from typing import Callable
 
 from app.gameplay.godot_mirror_projection import project_godot_runtime_state
 from app.gameplay.models import AtomicEventBatch
 from app.gameplay.runtime_state import CharacterGameRuntimeState, StateGroupProjectionEnvelope
-from app.gameplay.state_group_sync import CharacterGameRuntimeDelta, CharacterGameRuntimeSnapshot, StateGroupSyncService
-from app.gameplay.state_group_views import CharacterGameRuntimeStateView
+from app.gameplay.state_group_sync import CharacterGameRuntimeDelta, CharacterGameRuntimeSnapshot, StateGroupSyncService, snapshot_canonical_json, snapshot_checksum_payload
+from app.gameplay.state_group_views import CharacterGameRuntimeStateView, _freeze_mapping
 from app.ws_protocol import (
     GameplayMirrorDeliveryEnvelope,
     GameplayMirrorReceipt,
@@ -28,6 +31,115 @@ class GameplayMirrorConnectionError(ValueError):
     """Raised when a committed presentation refresh has no usable local transport."""
 
 
+class GameplayMirrorTransportSink:
+    """将固定 mirror 通知有界交接给创建连接的 loop，不接收 runtime 对象。"""
+
+    def __init__(self, *, deliver: Callable[[str, dict[str, object]], None], capacity: int) -> None:
+        if capacity < 1:
+            raise GameplayMirrorDeliveryError("mirror_delivery_limits_invalid")
+        self._loop = asyncio.get_running_loop()
+        self._deliver = deliver
+        self._capacity = capacity
+        self._pending: deque[tuple[str, str, str]] = deque()
+        self._drops: set[str] = set()
+        self._lock = RLock()
+        self._scheduled = self._closed = False
+        self._terminal_reason: str | None = None
+
+    @property
+    def pending_count(self) -> int:
+        with self._lock:
+            return len(self._pending) + len(self._drops)
+
+    @property
+    def closed(self) -> bool:
+        with self._lock:
+            return self._closed
+
+    def post_snapshot(self, projection: dict[str, object]) -> None:
+        self._post("snapshot", projection, actor_ref=str(projection.get("actor_ref", "")))
+
+    def post_initial_snapshot(self, ack: dict[str, object], projection: dict[str, object]) -> None:
+        self._post("initial_snapshot", {"ack": ack, "projection": projection},
+                   actor_ref=str(projection.get("actor_ref", "")))
+
+    def post_advisory(self, projection: dict[str, object]) -> None:
+        self._post("advisory", projection)
+
+    def post_prediction(self, payload: dict[str, object]) -> None:
+        self._post("prediction", payload, actor_ref=str(payload.get("actor_ref", "")))
+
+    def _post(self, kind: str, payload: dict[str, object], *, actor_ref: str = "") -> None:
+        encoded = json.dumps(payload, ensure_ascii=True, allow_nan=False, separators=(",", ":"))
+        with self._lock:
+            if self._closed:
+                raise GameplayMirrorConnectionError("mirror_connection_unavailable")
+            if len(self._pending) + len(self._drops) >= self._capacity:
+                self.close("mirror_backpressure")
+                raise GameplayMirrorConnectionError("mirror_backpressure")
+            self._pending.append((kind, encoded, actor_ref))
+            self._schedule()
+
+    def drop_actor(self, actor_ref: str) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._pending = deque(item for item in self._pending if item[2] != actor_ref)
+            if actor_ref not in self._drops and len(self._pending) + len(self._drops) >= self._capacity:
+                self.close("mirror_backpressure")
+                return
+            self._drops.add(actor_ref)
+            self._schedule()
+
+    def close(self, reason_code: str) -> None:
+        with self._lock:
+            if self._closed:
+                return
+            self._closed = True
+            self._terminal_reason = reason_code
+            self._pending.clear()
+            self._drops.clear()
+            self._schedule()
+
+    def _schedule(self) -> None:
+        if self._scheduled:
+            return
+        self._scheduled = True
+        try:
+            self._loop.call_soon_threadsafe(self._drain)
+        except RuntimeError:
+            self._scheduled = False
+            self._closed = True
+            self._pending.clear()
+            self._drops.clear()
+            raise GameplayMirrorConnectionError("mirror_connection_unavailable") from None
+
+    def _drain(self) -> None:
+        # 每次最多处理 capacity 项，让活跃 owner 也不能持续占住 loop。
+        try:
+            for _ in range(self._capacity):
+                with self._lock:
+                    if self._terminal_reason is not None:
+                        kind, encoded = "close", json.dumps({"reason_code": self._terminal_reason})
+                        self._terminal_reason = None
+                    elif self._drops:
+                        kind, encoded = "drop_actor", json.dumps({"actor_ref": self._drops.pop()})
+                    elif self._pending:
+                        kind, encoded, _actor_ref = self._pending.popleft()
+                    else:
+                        break
+                try:
+                    self._deliver(kind, json.loads(encoded))
+                except Exception:
+                    if kind != "close":
+                        self.close("mirror_delivery_unrecoverable")
+        finally:
+            with self._lock:
+                self._scheduled = False
+                if self._pending or self._drops or self._terminal_reason is not None:
+                    self._schedule()
+
+
 class GameplayMirrorOutboundQueue:
     """Bounded per-connection presentation queue with latest-only dirty actor recovery."""
 
@@ -40,6 +152,11 @@ class GameplayMirrorOutboundQueue:
         self._projections: deque[dict[str, object]] = deque()
         self._controls: deque[dict[str, object]] = deque()
         self._dirty_by_actor: dict[str, dict[str, object]] = {}
+
+    @property
+    def pending_count(self) -> int:
+        """loop 队列实际占用；与 sink.pending_count 相加统计交接和待发缓冲。"""
+        return len(self._projections) + len(self._controls) + len(self._dirty_by_actor)
 
     @property
     def dirty_actor_count(self) -> int:
@@ -59,17 +176,26 @@ class GameplayMirrorOutboundQueue:
         """Queue only the two fixed backend presentation message families."""
 
         message_type = payload.get("message_type")
-        if message_type == "gameplay_mirror_delivery":
+        if message_type == "gameplay_mirror_delivery" and payload.get("payload", {}).get("delivery_kind") != "prediction":
             return self.enqueue_projection(payload)
-        if message_type != "government_drought_advisory_delivery":
+        if message_type not in {"government_drought_advisory_delivery", "gameplay_mirror_delivery"}:
             raise GameplayMirrorConnectionError("mirror_delivery_message_invalid")
         if len(self._projections) >= self._projection_capacity:
             raise GameplayMirrorConnectionError("mirror_backpressure")
         self._projections.append(payload)
         return True
 
+    def enqueue_initial_batch(self, ack: dict[str, object], delivery: dict[str, object]) -> None:
+        """首份与 ACK 共用一个有界槽，不能进入 latest-wins 合并路径。"""
+        if len(self._projections) >= self._projection_capacity:
+            raise GameplayMirrorConnectionError("mirror_backpressure")
+        self._projections.append({**delivery, "_initial_batch": [ack, delivery]})
+
     def pop_next(self) -> dict[str, object] | None:
-        if self._controls:
+        if not self._projections:
+            # 退订可能移除最后一个普通/control 项，剩余 dirty 仍须自主恢复。
+            self._schedule_dirty_recovery()
+        if self._controls and len(self._projections) < self._projection_capacity:
             control = self._controls.popleft()
             actor_ref = str(control["payload"]["actor_ref"])
             recovered = self._dirty_by_actor.pop(actor_ref, None)
@@ -79,6 +205,10 @@ class GameplayMirrorOutboundQueue:
         if not self._projections:
             return None
         projection = self._projections.popleft()
+        self._schedule_dirty_recovery()
+        return projection
+
+    def _schedule_dirty_recovery(self) -> None:
         if self._dirty_by_actor and not self._controls:
             actor_ref = next(iter(self._dirty_by_actor))
             self._controls.append(
@@ -87,12 +217,17 @@ class GameplayMirrorOutboundQueue:
                     "payload": {"actor_ref": actor_ref, "reason_code": "mirror_backpressure"},
                 }
             )
-        return projection
 
     def clear(self) -> None:
         self._projections.clear()
         self._controls.clear()
         self._dirty_by_actor.clear()
+
+    def drop_actor(self, actor_ref: str) -> None:
+        """退订清除该角色的全部待发状态，不影响其它订阅。"""
+        self._projections = deque(item for item in self._projections if item.get("payload", {}).get("actor_ref") != actor_ref)
+        self._controls = deque(item for item in self._controls if item.get("payload", {}).get("actor_ref") != actor_ref)
+        self._dirty_by_actor.pop(actor_ref, None)
 
 
 class GameplayGodotMirrorSyncAdapter:
@@ -142,20 +277,31 @@ class GameplayGodotMirrorSyncAdapter:
         return {
             "message_type": "gameplay_runtime_state_projection",
             "projection_kind": "gameplay_runtime_state.godot.v1",
-            "actor_ref": snapshot.actor_ref,
-            "facade_revision": snapshot.facade_revision,
-            "source_revision_vector": dict(snapshot.source_revision_vector),
-            "schema_capabilities": list(snapshot.schema_capabilities),
-            "enabled_state_groups": list(snapshot.enabled_state_groups),
+            **snapshot_checksum_payload(snapshot),
             "snapshot_checksum": snapshot.snapshot_checksum,
-            "groups": {
-                group_id: {
-                    "projection_revision": envelope.projection_revision,
-                    "payload": _json_ready(envelope.payload),
-                }
-                for group_id, envelope in snapshot.groups.items()
-            },
+            "canonical_snapshot_json": snapshot_canonical_json(snapshot),
         }
+
+    def snapshot_from_payload(self, payload: dict[str, object]) -> CharacterGameRuntimeSnapshot:
+        """还原 owner 已过滤的完整 JSON 快照，供 loop 复用原有 exact-base 算法。"""
+        snapshot = CharacterGameRuntimeSnapshot(
+            actor_ref=payload["actor_ref"], facade_revision=payload["facade_revision"],
+            source_revision_vector=_freeze_mapping(payload["source_revision_vector"]),
+            schema_capabilities=tuple(payload["schema_capabilities"]),
+            enabled_state_groups=tuple(payload["enabled_state_groups"]),
+            groups=MappingProxyType({group_id: StateGroupProjectionEnvelope(
+                group_id=group_id, definition_version=group["definition_version"],
+                projection_schema_version=group["projection_schema_version"],
+                projection_revision=group["projection_revision"],
+                source_revision_vector=_freeze_mapping(group["source_revision_vector"]),
+                payload=_freeze_mapping(group["payload"]),
+            ) for group_id, group in payload["groups"].items()}),
+            snapshot_checksum=payload["snapshot_checksum"],
+        )
+        self._sync._validate_snapshot(snapshot)
+        if self.snapshot_payload(snapshot) != payload:
+            raise GameplayMirrorDeliveryError("mirror_snapshot_payload_invalid")
+        return snapshot
 
     @staticmethod
     def delta_payload(
@@ -164,6 +310,10 @@ class GameplayGodotMirrorSyncAdapter:
     ) -> dict[str, object]:
         """Serialize a filtered exact-base delta without consulting a client cache."""
 
+        target = StateGroupSyncService().apply_delta(
+            base, delta, supported_schema_capabilities=GameplayGodotMirrorSyncAdapter.schema_capabilities,
+        )
+        target_body = snapshot_checksum_payload(target)
         return {
             "message_type": "gameplay_runtime_state_projection",
             "projection_kind": "gameplay_runtime_state.godot.v1",
@@ -178,13 +328,9 @@ class GameplayGodotMirrorSyncAdapter:
             "removed_group_ids": list(delta.removed_group_ids),
             "confirmed_prediction_ids": list(delta.confirmed_prediction_ids),
             "rejected_predictions": list(delta.rejected_predictions),
-            "groups": {
-                group_id: {
-                    "projection_revision": envelope.projection_revision,
-                    "payload": _json_ready(envelope.payload),
-                }
-                for group_id, envelope in delta.changed_group_envelopes.items()
-            },
+            "groups": {group_id: target_body["groups"][group_id] for group_id in delta.changed_group_envelopes},
+            # ponytail: 完整目标规范文本保证跨语言校验；带宽画像发现瓶颈后再优化编码。
+            "canonical_snapshot_json": snapshot_canonical_json(target),
         }
 
     @staticmethod
@@ -225,23 +371,38 @@ class GameplayMirrorReceiptLedger:
         self._connection_epoch = connection_epoch
         self._sent_sequences: deque[int] = deque(maxlen=receipt_window)
         self._last_sent_sequence = 0
+        self._retired_through = 0
 
     def record_sent(self, delivery_sequence: int) -> None:
         if delivery_sequence < 1 or delivery_sequence <= self._last_sent_sequence:
             raise GameplayMirrorDeliveryError("mirror_sequence_invalid")
+        self._retain_sent(delivery_sequence)
+        # 原同步 API 仍按递增序列的最早保留项判定过窗。
+        self._retired_through = max(self._retired_through, self._sent_sequences[0] - 1)
+
+    def record_actual_sent(self, delivery_sequence: int) -> None:
+        """生产 loop 在成功写出后调用；dirty 恢复可能晚于更高的 allocated 序号。"""
+        if delivery_sequence < 1:
+            raise GameplayMirrorDeliveryError("mirror_sequence_invalid")
+        if delivery_sequence not in self._sent_sequences:
+            self._retain_sent(delivery_sequence)
+
+    def _retain_sent(self, delivery_sequence: int) -> None:
+        if len(self._sent_sequences) == self._sent_sequences.maxlen:
+            self._retired_through = max(self._retired_through, self._sent_sequences[0])
         self._sent_sequences.append(delivery_sequence)
-        self._last_sent_sequence = delivery_sequence
+        self._last_sent_sequence = max(self._last_sent_sequence, delivery_sequence)
 
     def acknowledge(self, receipt) -> bool:
         if receipt.connection_epoch != self._connection_epoch:
             raise GameplayMirrorDeliveryError("mirror_receipt_stale_epoch")
         if receipt.delivery_sequence > self._last_sent_sequence:
             raise GameplayMirrorDeliveryError("mirror_receipt_unknown")
-        if not self._sent_sequences or receipt.delivery_sequence < self._sent_sequences[0]:
+        if receipt.delivery_sequence in self._sent_sequences:
+            return True
+        if receipt.delivery_sequence <= self._retired_through:
             raise GameplayMirrorDeliveryError("mirror_receipt_out_of_window")
-        if receipt.delivery_sequence not in self._sent_sequences:
-            raise GameplayMirrorDeliveryError("mirror_receipt_unknown")
-        return True
+        raise GameplayMirrorDeliveryError("mirror_receipt_unknown")
 
 
 class GameplayGodotProjectionRepository:
@@ -265,6 +426,62 @@ class GameplayGodotProjectionRepository:
         return view
 
 
+class GameplayMirrorDeltaEncoder:
+    """连接 loop 的最多 160 份实际已发送基底；队列项和失败发送不能推进它。"""
+
+    def __init__(self) -> None:
+        self._sync = GameplayGodotMirrorSyncAdapter()
+        self._bases: dict[str, CharacterGameRuntimeSnapshot] = {}
+        self._epoch = self._sequence = 0
+
+    def clear(self) -> None:
+        self._bases.clear()
+        self._epoch = self._sequence = 0
+
+    def drop_actor(self, actor_ref: str) -> None:
+        self._bases.pop(actor_ref, None)
+
+    def prepare(self, message: dict, *, force_snapshot: bool = False) -> tuple[dict, CharacterGameRuntimeSnapshot | None]:
+        wire = message.get("payload", {})
+        if message.get("message_type") != "gameplay_mirror_delivery" or wire.get("delivery_kind") != "snapshot":
+            return message, None
+        target = self._sync.snapshot_from_payload(wire["payload"])
+        base = self._bases.get(target.actor_ref)
+        if (force_snapshot or base is None or wire["connection_epoch"] != self._epoch
+                or wire["delivery_sequence"] != self._sequence + 1):
+            return message, target
+        delta = self._sync.delta_payload(base, self._sync.delta(base, target))
+        return {**message, "payload": {**wire, "delivery_kind": "delta", "payload": delta,
+            "base_facade_revision": delta["base_facade_revision"],
+            "base_snapshot_checksum": delta["base_snapshot_checksum"],
+            "target_snapshot_checksum": delta["target_snapshot_checksum"],
+        }}, target
+
+    def sent(self, message: dict, target: CharacterGameRuntimeSnapshot | None) -> None:
+        wire = message.get("payload", {})
+        if message.get("message_type") == "gameplay_mirror_resync_required":
+            self.drop_actor(str(wire.get("actor_ref", "")))
+            return
+        if message.get("message_type") not in {"gameplay_mirror_delivery", "government_drought_advisory_delivery"}:
+            return
+        epoch, sequence = wire["connection_epoch"], wire["delivery_sequence"]
+        if epoch < self._epoch:
+            return
+        if epoch != self._epoch:
+            self.clear()
+            self._epoch = epoch
+        if sequence <= self._sequence:
+            return  # dirty 恢复晚到的旧序号，客户端也会丢弃，不能倒退基底。
+        contiguous = sequence == self._sequence + 1
+        self._sequence = sequence
+        if not contiguous:
+            self._bases.clear()  # 共享序号缺口使所有 actor 在客户端要求全量恢复。
+        elif target is not None:
+            if target.actor_ref not in self._bases and len(self._bases) >= 160:
+                self._bases.pop(next(iter(self._bases)))
+            self._bases[target.actor_ref] = target
+
+
 class GameplayMirrorConnectionRegistry:
     """Connection-local delivery callbacks keyed by opaque backend session references."""
 
@@ -278,6 +495,8 @@ class GameplayMirrorConnectionRegistry:
         connection_ref: str,
         connection_epoch: int = 1,
         deliver: Callable[[dict[str, object]], None],
+        defer_receipts: bool = False,
+        receipt_window: int = 32,
     ) -> None:
         if not session_ref or not connection_ref:
             raise GameplayMirrorConnectionError("mirror_connection_invalid")
@@ -285,7 +504,8 @@ class GameplayMirrorConnectionRegistry:
             connection_ref=connection_ref,
             connection_epoch=connection_epoch,
             deliver=deliver,
-            receipt_ledger=GameplayMirrorReceiptLedger(connection_epoch=connection_epoch, receipt_window=32),
+            receipt_ledger=GameplayMirrorReceiptLedger(connection_epoch=connection_epoch, receipt_window=receipt_window),
+            defer_receipts=defer_receipts,
         )
 
     def unregister(self, *, session_ref: str, connection_ref: str) -> bool:
@@ -314,7 +534,8 @@ class GameplayMirrorConnectionRegistry:
             source_revision_vector=dict(payload.get("source_revision_vector", {})),
             payload=payload,
         )
-        connection.receipt_ledger.record_sent(sequence)
+        if not connection.defer_receipts:
+            connection.receipt_ledger.record_sent(sequence)
         connection.next_delivery_sequence += 1
         connection.deliver({"message_type": "gameplay_mirror_delivery", "payload": envelope.model_dump(mode="json")})
 
@@ -336,7 +557,8 @@ class GameplayMirrorConnectionRegistry:
             source_revision_vector=dict(payload.get("source_revision_vector", {})),
             projection_hash=str(payload.get("projection_hash", "")),
         )
-        connection.receipt_ledger.record_sent(sequence)
+        if not connection.defer_receipts:
+            connection.receipt_ledger.record_sent(sequence)
         connection.next_delivery_sequence += 1
         connection.deliver(
             {
@@ -344,6 +566,17 @@ class GameplayMirrorConnectionRegistry:
                 "payload": envelope.model_dump(mode="json"),
             }
         )
+
+    def mark_sent(self, *, session_ref: str, connection_ref: str, connection_epoch: int,
+                  delivery_sequence: int) -> bool:
+        """只允许创建此消息的固定连接 token 登记实际发送，旧连接不能改新 ledger。"""
+        connection = self._connections.get(session_ref)
+        if connection is None or connection.connection_ref != connection_ref or connection.connection_epoch != connection_epoch:
+            return False
+        if not 0 < delivery_sequence < connection.next_delivery_sequence:
+            raise GameplayMirrorDeliveryError("mirror_receipt_unknown")
+        connection.receipt_ledger.record_actual_sent(delivery_sequence)
+        return True
 
     def acknowledge(self, *, session_ref: str, receipt: GameplayMirrorReceipt) -> bool:
         connection = self._connections.get(session_ref)
@@ -377,7 +610,8 @@ class GameplayMirrorConnectionRegistry:
             payload={},
             prediction_resolutions=tuple(resolutions),
         )
-        connection.receipt_ledger.record_sent(sequence)
+        if not connection.defer_receipts:
+            connection.receipt_ledger.record_sent(sequence)
         connection.next_delivery_sequence += 1
         connection.deliver({"message_type": "gameplay_mirror_delivery", "payload": envelope.model_dump(mode="json")})
 
@@ -388,6 +622,7 @@ class _GameplayMirrorConnection:
     connection_epoch: int
     deliver: Callable[[dict[str, object]], None]
     receipt_ledger: GameplayMirrorReceiptLedger
+    defer_receipts: bool = False
     next_delivery_sequence: int = 1
 
 
@@ -413,8 +648,16 @@ class GameplayGodotProjectionPublisher:
         self._sources.pop(actor_ref, None)
         self._repository.remove(actor_ref)
 
+    def discard_actor_view(self, *, actor_ref: str) -> None:
+        """最后一个可见订阅退出时释放投影，保留后端来源配置。"""
+        self._repository.remove(actor_ref)
+
     def has_actor_source(self, *, actor_ref: str) -> bool:
         return actor_ref in self._sources
+
+    def actor_source(self, *, actor_ref: str) -> Callable[[], CharacterGameRuntimeStateView] | None:
+        """组合过滤来源时取得原callback，不提前物化公开视图。"""
+        return self._sources.get(actor_ref)
 
     def refresh_actor(self, *, actor_ref: str) -> CharacterGameRuntimeStateView:
         """Refresh one explicit backend source for an authorized snapshot request."""
@@ -491,6 +734,14 @@ class GameplayMirrorSubscriptionRegistry:
         self._sync_adapter = sync_adapter or GameplayGodotMirrorSyncAdapter()
         self._grants: set[tuple[str, str]] = set()
         self._subscriptions: set[tuple[str, str]] = set()
+        self._population_actor_refs: frozenset[str] = frozenset()
+
+    def configure_population_actor_refs(self, actor_refs: Iterable[str]) -> None:
+        """启动期安装人口身份集；限制去重可见人口，不改变普通actor合同。"""
+        refs = frozenset(actor_refs)
+        if len(refs.intersection(self.subscribed_actor_refs())) > 160:
+            raise GameplayMirrorDeliveryError("population_mirror_subscription_limit")
+        self._population_actor_refs = refs
 
     def grant_read_scope(self, *, session_ref: str, actor_ref: str) -> None:
         if not session_ref or not actor_ref:
@@ -501,11 +752,30 @@ class GameplayMirrorSubscriptionRegistry:
         scope = (session_ref, actor_ref)
         if scope not in self._grants:
             raise GameplayMirrorDeliveryError("mirror_scope_unauthorized")
+        self.ensure_can_subscribe(session_ref=session_ref, actor_ref=actor_ref)
         view = self._projection_source(actor_ref)
         if view.actor_ref != actor_ref:
             raise GameplayMirrorDeliveryError("mirror_projection_actor_mismatch")
         self._subscriptions.add(scope)
         return GameplayMirrorSubscription(session_ref=session_ref, actor_ref=actor_ref), self._snapshot_payload(view)
+
+    def ensure_can_subscribe(self, *, session_ref: str, actor_ref: str) -> None:
+        """先检查容量，再构建公开视图；重复订阅不占新名额。"""
+        if not self.is_subscribed(session_ref=session_ref, actor_ref=actor_ref) and sum(
+            owner == session_ref for owner, _ in self._subscriptions
+        ) >= 160:
+            raise GameplayMirrorDeliveryError("mirror_subscription_limit")
+        if actor_ref in self._population_actor_refs:
+            visible = self._population_actor_refs.intersection(self.subscribed_actor_refs())
+            if actor_ref not in visible and len(visible) >= 160:
+                raise GameplayMirrorDeliveryError("population_mirror_subscription_limit")
+
+    def is_subscribed(self, *, session_ref: str, actor_ref: str) -> bool:
+        return (session_ref, actor_ref) in self._subscriptions
+
+    def subscribed_actor_refs(self, *, session_ref: str | None = None) -> tuple[str, ...]:
+        """遍历活动订阅，不扫描整局人口。"""
+        return tuple(sorted({actor for owner, actor in self._subscriptions if session_ref is None or owner == session_ref}))
 
     def unsubscribe(self, *, session_ref: str, actor_ref: str) -> bool:
         """Remove a read subscription without changing the underlying server grant."""
@@ -614,16 +884,6 @@ class GameplayMirrorOutboxRefreshConsumer:
         if not actor_refs:
             return
         self.results.append(self._delivery.deliver_for_committed_actor_refs(affected_actor_refs=actor_refs))
-
-
-def _json_ready(value: object) -> object:
-    if isinstance(value, dict):
-        return {str(key): _json_ready(item) for key, item in value.items()}
-    if hasattr(value, "items"):
-        return {str(key): _json_ready(item) for key, item in value.items()}
-    if isinstance(value, tuple):
-        return [_json_ready(item) for item in value]
-    return value
 
 
 def _delivery_actor_ref(payload: dict[str, object]) -> str:

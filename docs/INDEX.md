@@ -41,6 +41,7 @@
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
 - `docs/population-roster.md`：群体居民名单配置、结构化剧本角色表导入与自然语言草稿审阅。
 - `docs/verification/population-data-oriented-closure.md`：群体优化缺陷修复、持久化恢复、规模验收与 Godot 未验证交接。
+- `docs/verification/population-runtime-closure.md`：六项补齐状态、外机 Godot 显式 profile/手动 CI 与证据交接；真实引擎验收前保持 Godot 未验证。
 - `docs/production-readiness.md`：生产级在线 provider、图谱连续性、Authority 与 Godot 发布门禁。
 - `docs/knowledge-graph-future-optimization.md`：当前运行时可用领域知识图谱的通用化、规模化、运维和治理后期优化项。
 

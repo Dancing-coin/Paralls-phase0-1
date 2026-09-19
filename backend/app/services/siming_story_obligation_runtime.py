@@ -16,6 +16,7 @@ from app.models.siming_story_graph import (
     NarrativeAttractor,
     NarrativeObligation,
     ObligationTransformResult,
+    ObligationTransformPlan,
     RuntimeStoryNode,
 )
 from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
@@ -47,6 +48,20 @@ class SimingStoryObligationRuntime:
         provenance: GraphProvenance,
         recorded_at: int,
     ) -> HeavenlyGraphWriteResult:
+        batch = self.plan_seed(scope=scope, obligation=obligation, provenance=provenance, recorded_at=recorded_at)
+        if batch is None:
+            return HeavenlyGraphWriteResult(transaction_id=f"story_obligation_seed:{obligation.obligation_id}",
+                idempotency_key=f"story_obligation_seed:{obligation.obligation_id}", applied=False, replayed=True)
+        return self._graph.write_batch(batch)
+
+    def plan_seed(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        obligation: NarrativeObligation,
+        provenance: GraphProvenance,
+        recorded_at: int,
+    ) -> HeavenlyGraphWriteBatch | None:
         existing = self.read(
             scope=scope,
             obligation_id=obligation.obligation_id,
@@ -57,14 +72,8 @@ class SimingStoryObligationRuntime:
                 raise StoryObligationError(
                     f"narrative obligation {obligation.obligation_id!r} already exists"
                 )
-            return HeavenlyGraphWriteResult(
-                transaction_id=f"story_obligation_seed:{obligation.obligation_id}",
-                idempotency_key=f"story_obligation_seed:{obligation.obligation_id}",
-                applied=False,
-                replayed=True,
-            )
-        return self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+            return None
+        return HeavenlyGraphWriteBatch(
                 transaction_id=f"story_obligation_seed:{obligation.obligation_id}",
                 idempotency_key=f"story_obligation_seed:{obligation.obligation_id}",
                 scope=scope,
@@ -77,7 +86,6 @@ class SimingStoryObligationRuntime:
                         provenance=provenance,
                     )
                 ],
-            )
         )
 
     def read(
@@ -105,13 +113,33 @@ class SimingStoryObligationRuntime:
     ) -> ObligationTransformResult:
         if replacement.status != "open":
             raise StoryObligationError("replacement obligation must begin open")
-        source_prior = self._obligation_graph_node_at(
-            scope=scope,
-            obligation_id=source_obligation_id,
-            valid_at=recorded_at,
-        )
-        source = NarrativeObligation.model_validate(source_prior.attributes)
+        source_prior = self._obligation_graph_node_at(scope=scope, obligation_id=source_obligation_id, valid_at=recorded_at)
         replacement_prior = self._semantic_node(scope, self._obligation_node_id(replacement.obligation_id), recorded_at, None)
+        plan = self.plan_transform(scope=scope, source_obligation_id=source_obligation_id,
+            source_prior=source_prior, replacement_prior=replacement_prior, replacement=replacement,
+            authority_result_ref=authority_result_ref, correlation_id=correlation_id, recorded_at=recorded_at)
+        if plan.batch is not None:
+            self._graph.write_batch(plan.batch)
+        return plan.result
+
+    def plan_transform(
+        self,
+        *,
+        source_prior: HeavenlyGraphNode,
+        replacement_prior: HeavenlyGraphNode | None,
+        scope: HeavenlyGraphScope,
+        source_obligation_id: str,
+        replacement: NarrativeObligation,
+        authority_result_ref: str,
+        correlation_id: str,
+        recorded_at: int,
+    ) -> ObligationTransformPlan:
+        if replacement.status != "open":
+            raise StoryObligationError("replacement obligation must begin open")
+        if (source_prior.scope != scope or source_prior.node_id != self._obligation_node_id(source_obligation_id)
+                or source_prior.node_type != self._OBLIGATION_NODE_TYPE):
+            raise StoryObligationError("planned obligation identity mismatch")
+        source = NarrativeObligation.model_validate(source_prior.attributes)
         transformed_refs = sorted(
             set([*source.transformed_to_refs, replacement.obligation_id])
         )
@@ -135,19 +163,15 @@ class SimingStoryObligationRuntime:
                     replacement_prior.attributes
                 )
                 if existing_replacement == replacement:
-                    return ObligationTransformResult(
-                        source=source,
-                        replacement=existing_replacement,
-                        graph_transaction_ref=transaction_id,
-                    )
+                    return ObligationTransformPlan(result=ObligationTransformResult(
+                        source=source, replacement=existing_replacement, graph_transaction_ref=transaction_id))
             raise StoryObligationError("obligation was already transformed")
         if replacement_prior is not None:
             raise StoryObligationError(
                 f"replacement obligation {replacement.obligation_id!r} already exists"
             )
 
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+        batch = HeavenlyGraphWriteBatch(
                 transaction_id=transaction_id,
                 idempotency_key=transaction_id,
                 scope=scope,
@@ -167,13 +191,12 @@ class SimingStoryObligationRuntime:
                         provenance=provenance,
                     ),
                 ],
-            )
         )
-        return ObligationTransformResult(
+        return ObligationTransformPlan(batch=batch, result=ObligationTransformResult(
             source=transformed,
             replacement=replacement,
             graph_transaction_ref=transaction_id,
-        )
+        ))
 
     def seed_attractor(
         self,

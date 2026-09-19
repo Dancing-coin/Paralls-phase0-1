@@ -5,6 +5,15 @@ from dataclasses import dataclass
 from app.gameplay.shared_contracts import ScheduledObligation
 
 
+def population_clock_profile(name: str) -> dict[str, str | int]:
+    """启动时固定的时间语义；生产兼容窗口不伪装成一秒benchmark。"""
+    if name not in ("production", "benchmark_1x", "benchmark_10x"):
+        raise ValueError("population_clock_profile_unknown")
+    window = 86400 if name == "production" else 1
+    return dict(simulation_tick_unit="second", window_ticks=window,
+                wall_period_seconds=window, speed=10 if name == "benchmark_10x" else 1)
+
+
 def calculate_window_bounds(
     previous_tick: int, target_tick: int, window_size: int
 ) -> tuple[tuple[int, int], ...]:

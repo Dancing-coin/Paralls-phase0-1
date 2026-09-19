@@ -106,3 +106,16 @@ class NarrativeCoreResult(BaseModel):
     state: NarrativeStateSnapshot
     ledger: NarrativeObligationLedger
     seeds: list[InterventionSeed] = Field(default_factory=list)
+
+
+class NarrativeRoomState(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    room_id: str = Field(min_length=1)
+    revision: int = Field(ge=0)
+    open_count: int = Field(ge=0)
+
+
+class NarrativeUpdatePlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    result: NarrativeCoreResult
+    after: NarrativeRoomState

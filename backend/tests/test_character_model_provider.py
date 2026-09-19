@@ -134,6 +134,7 @@ def test_model_provider_builds_deepseek_chat_completion_request() -> None:
     assert '["content", "tone"]' in payload["messages"][1]["content"]
     assert payload["response_format"] == {"type": "json_object"}
     assert payload["temperature"] == 0.2
+    assert payload["thinking"] == {"type": "disabled"}
 
 
 def test_model_provider_normalizes_deepseek_chat_completion_response() -> None:

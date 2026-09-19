@@ -259,3 +259,77 @@ async def test_window_period_includes_processing_time(driver, monkeypatch):
 
     await driver.run_forever(stop, sleep)
     assert waits == [3588.0]
+
+@pytest.mark.asyncio
+async def test_execution_dispatch_yields_between_windows_and_honors_pause(driver):
+    from app.services.runtime_execution import RuntimeExecution
+    from threading import get_ident
+    execution = RuntimeExecution()
+    stop = asyncio.Event()
+    calls = []
+    original = driver.publish_window
+    def publish(cadence):
+        calls.append(get_ident())
+        event = original(cadence)
+        driver.world_runtime.pause(reason='boundary')
+        return event
+    driver.publish_window = publish
+    async def sleep(_):
+        stop.set()
+    try:
+        await driver.run_forever(stop, sleep, lambda current, window: current + 3 * window, execution=execution)
+        assert len(calls) == 1
+        assert calls[0] != get_ident()
+        assert driver.current_tick == 3600
+    finally:
+        assert execution.stop(timeout_seconds=2)
+
+
+@pytest.mark.asyncio
+async def test_async_driver_failure_is_raised_without_advancing(driver):
+    driver.publish_window = lambda cadence: None
+    stop = asyncio.Event()
+    async def sleep(_):
+        stop.set()
+    with pytest.raises(RuntimeError, match='population_window_failed'):
+        await driver.run_forever(stop, sleep)
+    assert driver.current_tick == 0
+
+@pytest.mark.asyncio
+async def test_pause_resume_between_polls_does_not_catch_up_wall_time(driver, monkeypatch):
+    from app.world_runtime import population_driver
+    values = iter((0.0, 0.0, 0.0, 360000.0, 360000.0))
+    monkeypatch.setattr(population_driver, 'monotonic', lambda: next(values))
+    stop = asyncio.Event()
+    sleeps = 0
+    async def sleep(_):
+        nonlocal sleeps
+        sleeps += 1
+        if sleeps == 1:
+            driver.world_runtime.pause(reason='test')
+            driver.world_runtime.resume()
+        else:
+            stop.set()
+    await driver.run_forever(stop, sleep)
+    assert driver.current_tick == 7200
+
+@pytest.mark.asyncio
+async def test_pause_resume_at_window_boundary_discards_old_catch_up_target(driver):
+    driver.catch_up_limit = 3
+    stop = asyncio.Event()
+    original = driver.publish_window
+    published = []
+    def transition():
+        driver.world_runtime.pause(reason='window-boundary')
+        driver.world_runtime.resume()
+    def publish(cadence):
+        published.append(cadence.cadence_id)
+        if len(published) == 1:
+            asyncio.get_running_loop().call_soon(transition)
+        return original(cadence)
+    driver.publish_window = publish
+    async def sleep(_):
+        stop.set()
+    await driver.run_forever(stop, sleep, lambda current, window: current + 3 * window)
+    assert published == ['cadence:world:0']
+    assert driver.current_tick == 3600

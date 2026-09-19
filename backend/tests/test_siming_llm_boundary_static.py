@@ -8,7 +8,7 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_llm_provider_is_only_invoked_from_siming_runtime() -> None:
+def test_llm_provider_is_only_invoked_from_pure_siming_worker() -> None:
     offenders: list[str] = []
     for path in (ROOT / "app").rglob("*.py"):
         rel = path.relative_to(ROOT).as_posix()
@@ -18,12 +18,14 @@ def test_llm_provider_is_only_invoked_from_siming_runtime() -> None:
             or "SimingLlm" in text
             or "_llm_provider" in text
         )
-        if not references_siming_llm or "generate_candidates(" not in text:
+        if not references_siming_llm or not any(call in text for call in ("generate_candidates(", "generate_adaptive_bridge_proposals(")):
             continue
-        if rel not in {"app/services/siming_runtime.py", "app/services/siming_llm_provider.py"}:
+        if rel not in {"app/services/siming_continuation.py", "app/services/siming_llm_provider.py"}:
             offenders.append(rel)
 
     assert offenders == []
+    assert "generate_candidates(" not in read("app/services/siming_runtime.py")
+    assert "generate_adaptive_bridge_proposals(" not in read("app/services/siming_heavenly_runtime_support.py")
 
 
 def test_narrative_core_does_not_import_or_call_llm_provider() -> None:

@@ -103,7 +103,13 @@ def _proposal_batch(correlation_id: str) -> GeneratedAdaptiveBridgeProposalBatch
     )
 
 
-class _AcceptedBridge:
+class _BridgePlanStub:
+    def plan_commit(self, proposal, *, provider_audit):
+        from app.models.siming_adaptive_bridge import AdaptiveBridgeCommitPlan
+        return AdaptiveBridgeCommitPlan(result=self.validate_and_commit(proposal, provider_audit=provider_audit))
+
+
+class _AcceptedBridge(_BridgePlanStub):
     def validate_and_commit(self, proposal, *, provider_audit):
         assert proposal.proposal_id == "proposal:destroy:1"
         assert provider_audit.correlation_id == proposal.correlation_id
@@ -115,7 +121,7 @@ class _AcceptedBridge:
         )
 
 
-class _CapturingBridge:
+class _CapturingBridge(_BridgePlanStub):
     def __init__(self) -> None:
         self.proposal = None
 
@@ -130,7 +136,7 @@ class _CapturingBridge:
         )
 
 
-class _AutonomyAwareBridge:
+class _AutonomyAwareBridge(_BridgePlanStub):
     def __init__(self, *, actor_autonomy, **kwargs) -> None:
         del kwargs
         self._actor_autonomy = actor_autonomy
@@ -1007,9 +1013,9 @@ def test_preparation_graph_failure_is_non_activatable_degraded(
             )
         else:
             monkeypatch.setattr(
-                support._memory,
-                "write_entry",
-                lambda **kwargs: (_ for _ in ()).throw(OSError("graph offline")),
+                support._memory._graph,
+                "write_batch",
+                lambda batch: (_ for _ in ()).throw(OSError("graph offline")),
             )
 
         prepared = support.prepare(_destruction_input())
@@ -1031,3 +1037,128 @@ def test_heavenly_mode_rejects_unknown_values(monkeypatch, mode) -> None:
 
     with pytest.raises(ValidationError):
         importlib.reload(config_module)
+
+
+@pytest.mark.parametrize('cut', range(14))
+def test_authority_prefix_plan_is_pure_and_reopens_each_exact_batch_prefix(tmp_path, cut):
+    settings = config_module.Settings(siming_heavenly_mode='active', heavenly_graph_path=str(tmp_path / 'prefix.sqlite3'))
+    state = main.build_runtime_state(settings)
+    event = _authority_destruction_event()
+    try:
+        support = state.siming_runtime.heavenly_support
+        changes = state.heavenly_graph._connection.total_changes
+        plan = support.plan_authority_outcome(event)
+        plan = type(plan).model_validate_json(plan.model_dump_json())
+        assert state.heavenly_graph._connection.total_changes == changes
+        assert not support._authority_seeded_correlations
+        assert len(plan.batches) == 13
+        for batch in plan.batches[:cut]:
+            state.heavenly_graph.write_batch(batch)
+    finally:
+        state.close()
+    restored = main.build_runtime_state(settings)
+    try:
+        for index, batch in enumerate(plan.batches):
+            receipt = restored.heavenly_graph.write_batch(batch)
+            assert receipt.replayed == (index < cut)
+        support = restored.siming_runtime.heavenly_support
+        assert support.record_authority_outcome(event) == plan.entry_ref
+        scope = support._scope_for(event)
+        assert support._story.read_runtime_node(scope=scope, node_id='runtime:N3:main', valid_at=event.producer_ts).lifecycle == 'resolved'
+        assert support._obligations.read(scope=scope, obligation_id='O2', valid_at=event.producer_ts).status == 'transformed'
+        assert support._obligations.read(scope=scope, obligation_id='O6', valid_at=event.producer_ts).status == 'open'
+    finally:
+        restored.close()
+
+@pytest.mark.parametrize("path_kind", ["memory", "sqlite"])
+def test_compiler_reads_frozen_authority_prefix_without_applying_it(tmp_path, path_kind):
+    from app.models.siming_heavenly_memory import SimingContextRequest
+    settings = config_module.Settings(siming_heavenly_mode="active",
+        heavenly_graph_path=":memory:" if path_kind == "memory" else str(tmp_path / "compiler.sqlite3"))
+    state = main.build_runtime_state(settings)
+    try:
+        support = state.siming_runtime.heavenly_support
+        event = _authority_destruction_event()
+        prefix = support.plan_authority_outcome(event)
+        request = SimingContextRequest(scope=support._scope_for(event), valid_at=event.producer_ts,
+            recorded_at=event.producer_ts, seed_node_ids=support._seed_node_ids(event))
+        nodes = [node for batch in prefix.batches for node in batch.nodes]
+        before = support._compiler.compile(request)
+        planned = support._compiler.compile(request, planned_nodes=nodes)
+        assert support._compiler.compile(request) == before
+        assert planned != before
+        for batch in prefix.batches:
+            state.heavenly_graph.write_batch(batch)
+        assert support._compiler.compile(request) == planned
+    finally:
+        state.close()
+
+def test_initial_authority_plan_compiles_its_unwritten_prefix(tmp_path):
+    settings = config_module.Settings(siming_heavenly_mode="active", heavenly_graph_path=str(tmp_path / "initial-prefix.sqlite3"))
+    state = main.build_runtime_state(settings)
+    try:
+        runtime = state.siming_runtime
+        event = _authority_destruction_event()
+        item = SimingInput(input_type="esm_result_event", source_event=event)
+        before = state.heavenly_graph._connection.total_changes
+        plan = runtime.plan_initial(item)
+        assert state.heavenly_graph._connection.total_changes == before
+        assert len(plan.effects.batches) >= 13
+        assert runtime.pending_count == 0
+        runtime.record_authority_outcome(event)
+        runtime._actor_pin_reader = lambda _: 1
+        runtime._source_pin_reader = lambda _: True
+        pending = runtime.prepare_tick(item)
+        assert pending.job is None
+        assert plan.after.request is None
+        assert plan.after.result == pending.result
+        assert type(plan).model_validate_json(plan.model_dump_json()) == plan
+        assert all(state.heavenly_graph.write_batch(batch).replayed for batch in plan.effects.batches)
+    finally:
+        state.close()
+
+def test_heavenly_preparation_rejects_invalid_frozen_prefix_without_fallback():
+    state = main.build_runtime_state(config_module.Settings(siming_heavenly_mode="active", heavenly_graph_path=":memory:"))
+    try:
+        support = state.siming_runtime.heavenly_support
+        event = _authority_destruction_event()
+        prefix = support.plan_authority_outcome(event)
+        batch = prefix.batches[0]
+        bad = batch.nodes[0].model_copy(update={"recorded_at": event.producer_ts + 1})
+        with pytest.raises(ValueError, match="planned subgraph node"):
+            support.prepare_request(SimingInput(input_type="esm_result_event", source_event=event),
+                planned_batches=[batch.model_copy(update={"nodes": [bad]})])
+        assert not state.heavenly_graph._nodes
+    finally:
+        state.close()
+
+
+def test_dispatch_record_plans_freeze_both_revisions_without_writes(tmp_path):
+    state = main.build_runtime_state(config_module.Settings(siming_heavenly_mode='active', heavenly_graph_path=str(tmp_path / 'dispatch.db')))
+    try:
+        support = state.siming_runtime.heavenly_support
+        event = _authority_destruction_event()
+        args = dict(scope=support._scope_for(event), recorded_at=event.producer_ts,
+            correlation_id=event.correlation_id, dispatch_event_id='dispatch:frozen')
+        before = state.heavenly_graph._connection.total_changes
+        entry_id, unconfirmed = support._plan_dispatch_state(**args, state='sent_unconfirmed')
+        _, confirmed = support._plan_dispatch_state(**args, state='authority_confirmed', prior_batch=unconfirmed)
+        assert state.heavenly_graph._connection.total_changes == before
+        with pytest.raises(ValueError, match='dispatch_prior_batch_invalid'):
+            support._plan_dispatch_state(**args, state='authority_confirmed',
+                prior_batch=unconfirmed.model_copy(update={'idempotency_key': 'unapproved:replacement'}))
+        assert state.heavenly_graph._connection.total_changes == before
+        assert unconfirmed.nodes[0].revision == 1
+        assert confirmed.nodes[0].revision == 2 and confirmed.nodes[0].supersedes_revision == 1
+        assert support._record_dispatch_state(**args, state='sent_unconfirmed') == entry_id
+        assert state.heavenly_graph.write_batch(unconfirmed).replayed
+        state.close()
+        state = main.build_runtime_state(config_module.Settings(siming_heavenly_mode='active', heavenly_graph_path=str(tmp_path / 'dispatch.db')))
+        support = state.siming_runtime.heavenly_support
+        with pytest.raises(ValueError, match='dispatch_prior_batch_invalid'):
+            support._plan_dispatch_state(**args, state='authority_confirmed', prior_batch=unconfirmed.model_copy(
+                update={'transaction_id': 'forged:transaction', 'idempotency_key': 'forged:key'}))
+        assert support._record_dispatch_state(**args, state='authority_confirmed') == entry_id
+        assert state.heavenly_graph.write_batch(confirmed).replayed
+    finally:
+        state.close()

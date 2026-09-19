@@ -93,3 +93,23 @@ def test_runtime_persists_behavior_evaluation_and_candidate_after_settlement() -
     assert evaluations[-1]["payload"]["behavior_score"] < 0.75
     assert candidates
     assert candidates[-1]["payload"]["status"] == "candidate_only"
+
+
+def test_runtime_settlement_does_not_scan_unrelated_session_history(monkeypatch) -> None:
+    runtime = CharacterAgentRuntime()
+
+    def reject_full_timeline_scan(actor_id: str):
+        raise AssertionError(f"unexpected full timeline scan for {actor_id}")
+
+    monkeypatch.setattr(runtime, "get_session_timeline", reject_full_timeline_scan)
+    runtime.record_settlement_result(
+        actor_id="char_a",
+        producer_ts=101,
+        payload={
+            "settlement_status": "rejected",
+            "result_type": "constraint_state_result",
+            "constraint_summary": "requires a key",
+        },
+    )
+
+    assert runtime.get_memory_revision("char_a") == 3

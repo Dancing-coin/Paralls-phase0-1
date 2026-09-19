@@ -15,7 +15,7 @@ from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
-from app.gameplay.models import AppendBatchResult, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch_from_fragments
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
@@ -5348,6 +5348,7 @@ class OrganizationAuthority:
             self._PRINCIPAL, batch_idempotency_key
         )
         results: dict[str, AppendBatchResult] = {}
+        events_by_transaction: dict[str, dict[str, list[GameplayEvent]]] = {}
 
         def result_for_stream(
             result: AppendBatchResult,
@@ -5356,11 +5357,14 @@ class OrganizationAuthority:
             duplicate: bool = False,
         ) -> AppendBatchResult:
             stream_id = f"gameplay:organization:window:{request.window_ref}"
-            events = [
-                self._store.get_event(event_id)
-                for event_id in result.committed_event_ids
-                if self._store.get_event(event_id).stream_id == stream_id
-            ]
+            # 仅在本次调用内分组原已提交事件，避免每个窗口重读整个批次。
+            if result.transaction_id not in events_by_transaction:
+                by_stream: dict[str, list[GameplayEvent]] = {}
+                for event_id in result.committed_event_ids:
+                    event = self._store.get_event(event_id)
+                    by_stream.setdefault(event.stream_id, []).append(event)
+                events_by_transaction[result.transaction_id] = by_stream
+            events = events_by_transaction[result.transaction_id].get(stream_id, [])
             event_ids = [event.event_id for event in events]
             sequence_range = (
                 (events[0].global_sequence, events[-1].global_sequence)

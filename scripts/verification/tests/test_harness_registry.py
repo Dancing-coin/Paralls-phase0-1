@@ -96,6 +96,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "econ1-organization-government",
         "phase1d-econ1-bakery",
         "phase1e-generalization-gate",
+        "population-runtime-correctness",
     ]
     assert registry.profiles["docs"]["script"] == "scripts/verification/check_docs.py"
     assert registry.profiles["backend-contract"]["script"] == "scripts/verification/check_backend_contract.py"

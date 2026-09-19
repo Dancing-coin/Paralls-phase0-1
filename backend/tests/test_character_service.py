@@ -1,17 +1,16 @@
+import json
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.services.character_service import CharacterService
 from app.models.dialogue_audio import DialogueAudio
 from app.models.player_input import DialogueSubmit, FocusTargetChange
 
 
 def test_character_service_returns_dialogue_response() -> None:
-    class _Gateway:
-        def run_task(
-            self,
-            *,
-            task_kind: str,
-            context: dict[str, object],
-            route_override: str | None = None,
-        ) -> dict[str, object]:
+    class _Gateway(CharacterModelGateway):
+        def complete_prepared_request(self, request_json: bytes) -> dict[str, object]:
+            request = json.loads(request_json)
+            task_kind, context = request['task_kind'], request['context']
+            route_override = request['route']['route_mode']
             return {
                 "content": "I saw something move near the desk.",
                 "tone": "alert",
@@ -37,17 +36,15 @@ def test_character_service_returns_dialogue_response() -> None:
 
 
 def test_character_service_routes_dialogue_generation_through_character_model_gateway() -> None:
-    class _Gateway:
+    class _Gateway(CharacterModelGateway):
         def __init__(self) -> None:
+            super().__init__()
             self.calls: list[dict[str, object]] = []
 
-        def run_task(
-            self,
-            *,
-            task_kind: str,
-            context: dict[str, object],
-            route_override: str | None = None,
-        ) -> dict[str, object]:
+        def complete_prepared_request(self, request_json: bytes) -> dict[str, object]:
+            request = json.loads(request_json)
+            task_kind, context = request['task_kind'], request['context']
+            route_override = request['route']['route_mode']
             self.calls.append(
                 {
                     "task_kind": task_kind,
@@ -83,16 +80,18 @@ def test_character_service_routes_dialogue_generation_through_character_model_ga
 
 
 def test_tts_fallback_preserves_completed_dialogue_text_without_a_second_generation_call() -> None:
-    class _Gateway:
+    class _Gateway(CharacterModelGateway):
         def __init__(self) -> None:
+            super().__init__()
             self.calls = 0
 
-        def run_task(self, **_kwargs: object) -> dict[str, object]:
+        def complete_prepared_request(self, request_json: bytes) -> dict[str, object]:
             self.calls += 1
             return {"content": "The message remains unchanged.", "tone": "neutral"}
 
     class _FallbackTTS:
         def __init__(self) -> None:
+            super().__init__()
             self.calls: list[tuple[str, str]] = []
 
         def synthesize(self, actor_id: str, content: str) -> DialogueAudio:
@@ -144,14 +143,11 @@ def test_character_service_summarizes_focus_target_change() -> None:
 
 
 def test_agent_initiated_utterance_preserves_speaking_actor() -> None:
-    class _Gateway:
-        def run_task(
-            self,
-            *,
-            task_kind: str,
-            context: dict[str, object],
-            route_override: str | None = None,
-        ) -> dict[str, object]:
+    class _Gateway(CharacterModelGateway):
+        def complete_prepared_request(self, request_json: bytes) -> dict[str, object]:
+            request = json.loads(request_json)
+            task_kind, context = request['task_kind'], request['context']
+            route_override = request['route']['route_mode']
             return {
                 "content": "approach greeting",
                 "tone": "warm",

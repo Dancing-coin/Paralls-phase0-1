@@ -163,6 +163,7 @@ def test_adaptive_bridge_prompt_pins_the_main_demo_target_actor() -> None:
     )
     prompt = payload["messages"][0]["content"]
 
+    assert payload["thinking"] == {"type": "disabled"}
     assert "target_actor_id=char_b exactly" in prompt
     assert "Never use siming as target_actor_id" in prompt
 

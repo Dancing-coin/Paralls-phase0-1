@@ -85,8 +85,7 @@ def _read_sources(
     checkpoint_id = "checkpoint:population:" + _digest(context).split(":", 1)[1]
     if incremental and checkpoint is None:
         checkpoint = store.get_projection_checkpoint(checkpoint_id)
-    cursor, current = 0, {}
-    revisions: dict[str, int] = {}
+    cursor, current, revisions = 0, {}, {}
     if checkpoint is not None:
         if (checkpoint.projector_id != "population-continuity" or checkpoint.projector_version != "2"
                 or checkpoint.projection_schema_version != 2):
@@ -108,24 +107,55 @@ def _read_sources(
                     or revisions.get(event.stream_id) != event.stream_revision):
                 raise ValueError("projection_checkpoint_state_invalid")
             current[event.stream_id] = event
-    tail = store.read_events(global_sequence_after=cursor if checkpoint is not None else None)
+    high_water = store.get_last_global_sequence()
     expected = cursor + 1
-    for event in tail:
-        # 在过滤私有/无关事件前检查全局序号，正常过滤不能被误判为缺口。
-        if event.global_sequence != expected:
+    tail_revisions = dict(revisions)
+    seen_tail_revisions: dict[str, int] = {}
+    while expected <= high_water:
+        tail = store.read_events(global_sequence_after=expected - 1, limit=min(256, high_water - expected + 1))
+        if not tail:
             raise ValueError("projection_gap")
-        if event.stream_revision != revisions.get(event.stream_id, 0) + 1:
-            raise ValueError("projection_gap")
-        revisions[event.stream_id] = event.stream_revision
-        current.pop(event.stream_id, None)
-        # 只保留当前流头，撤销或转为私有时必须移除旧公开来源。
-        if _event_allowed_for_scope(event, cadence.report_scope) and event.event_type in {
-            _SOCIAL_EVENT, "gameplay.construction_production.work_completion_evidence_recorded",
-            "gameplay.construction_production.production_output_certified@1",
-        }:
-            current[event.stream_id] = event
-        expected += 1
-    if expected - 1 != store.get_last_global_sequence() or revisions != store.get_stream_heads():
+        for event in tail:
+            # 在过滤私有/无关事件前检查全局序号，分页不能跳过缺口或重置流版本。
+            if event.global_sequence != expected:
+                raise ValueError("projection_gap")
+            admitted = (
+                _event_allowed_for_scope(event, cadence.report_scope)
+                and event.event_type in {
+                    _SOCIAL_EVENT, "gameplay.construction_production.work_completion_evidence_recorded",
+                    "gameplay.construction_production.production_output_certified@1",
+                }
+            )
+            previous_revision = tail_revisions.get(
+                event.stream_id, seen_tail_revisions.get(event.stream_id)
+            )
+            if previous_revision is not None or admitted:
+                if previous_revision is None and event.stream_revision > 1:
+                    previous = store.read_stream(
+                        event.stream_id,
+                        from_revision=event.stream_revision - 1,
+                        to_revision=event.stream_revision - 1,
+                        limit=1,
+                    )
+                    if (len(previous) != 1
+                            or previous[0].stream_revision != event.stream_revision - 1
+                            or previous[0].global_sequence > cursor):
+                        raise ValueError("projection_gap")
+                    previous_revision = previous[0].stream_revision
+                if event.stream_revision != (previous_revision or 0) + 1:
+                    raise ValueError("projection_gap")
+            seen_tail_revisions[event.stream_id] = event.stream_revision
+            if event.stream_id in tail_revisions or admitted:
+                tail_revisions[event.stream_id] = event.stream_revision
+            current.pop(event.stream_id, None)
+            # 只保留当前流头，撤销或转为私有时必须移除旧公开来源。
+            if admitted:
+                current[event.stream_id] = event
+            expected += 1
+    if expected - 1 != store.get_last_global_sequence():
+        raise ValueError("projection_gap")
+    revisions = {event.stream_id: event.stream_revision for event in current.values()}
+    if any(store.get_stream_head(stream_id) != revision for stream_id, revision in revisions.items()):
         raise ValueError("projection_gap")
     sources = tuple(sorted(current.values(), key=lambda event: event.global_sequence))
     next_checkpoint = ProjectionCheckpoint(

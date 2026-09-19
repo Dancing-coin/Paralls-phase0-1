@@ -4,7 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.character_agent.skills.models import PrimitiveActionPlan, SkillEvaluationResult
-from app.main import app
+from app.main import component_app as app
 from app.services.interaction_orchestration_service import InteractionOrchestrationService, StructuredInteractionRequest
 from app.world_runtime.intelligence_upgrade import InteractionIntentFrame
 
@@ -132,54 +132,54 @@ def test_degrade_paths_do_not_apply_physical_effects_or_bypass_authority() -> No
 
 
 def test_route_accepts_structured_intent_and_rejects_raw_input_noise() -> None:
-    client = TestClient(app)
-    response = client.post(
-        "/interaction/orchestrate",
-        json={
-            "intent": {
-                "intent_id": "intent:inspect",
-                "actor_id": "char_a",
-                "target_refs": {"object_ids": ["obj_box"]},
-                "semantic_intent": "inspect",
+    with TestClient(app) as client:
+        response = client.post(
+            "/interaction/orchestrate",
+            json={
+                "intent": {
+                    "intent_id": "intent:inspect",
+                    "actor_id": "char_a",
+                    "target_refs": {"object_ids": ["obj_box"]},
+                    "semantic_intent": "inspect",
+                },
+                "player_id": "player",
+                "target_object_id": "obj_box",
+                "producer_ts": 1,
+                "skill_evaluation_result": {
+                    "actor_id": "char_a",
+                    "action_id": "inspect",
+                    "selected_path": {},
+                    "viable_paths": [],
+                    "blocked_paths": [{"binding_id": "observe_to_inspect"}],
+                    "recommendation_reason": ["advisory only"],
+                    "learning_policy_snapshot": {"advisory": True},
+                },
+                "primitive_action_plan": {
+                    "composite_action_id": "inspect",
+                    "skill_path_id": "observe_to_inspect",
+                    "primitive_actions": ["look_closer"],
+                    "realization_keys": ["steady_gaze"],
+                },
             },
-            "player_id": "player",
-            "target_object_id": "obj_box",
-            "producer_ts": 1,
-            "skill_evaluation_result": {
-                "actor_id": "char_a",
-                "action_id": "inspect",
-                "selected_path": {},
-                "viable_paths": [],
-                "blocked_paths": [{"binding_id": "observe_to_inspect"}],
-                "recommendation_reason": ["advisory only"],
-                "learning_policy_snapshot": {"advisory": True},
+        )
+        rejected = client.post(
+            "/interaction/orchestrate",
+            json={
+                "intent": {
+                    "intent_id": "intent:bad",
+                    "actor_id": "char_a",
+                    "semantic_intent": "inspect",
+                },
+                "raw_keyboard": {"space": True},
             },
-            "primitive_action_plan": {
-                "composite_action_id": "inspect",
-                "skill_path_id": "observe_to_inspect",
-                "primitive_actions": ["look_closer"],
-                "realization_keys": ["steady_gaze"],
-            },
-        },
-    )
-    rejected = client.post(
-        "/interaction/orchestrate",
-        json={
-            "intent": {
-                "intent_id": "intent:bad",
-                "actor_id": "char_a",
-                "semantic_intent": "inspect",
-            },
-            "raw_keyboard": {"space": True},
-        },
-    )
+        )
 
-    assert response.status_code == 200
-    assert response.json()["plan"]["policy"] == "semantic-only"
-    assert response.json()["plan"]["advisory_metadata"]["skill_evaluation_result"]["action_id"] == "inspect"
-    assert response.json()["advisory_metadata"]["primitive_action_plan"]["primitive_actions"] == ["look_closer"]
-    assert rejected.status_code == 422
-    assert "raw input" in rejected.text
+        assert response.status_code == 200
+        assert response.json()["plan"]["policy"] == "semantic-only"
+        assert response.json()["plan"]["advisory_metadata"]["skill_evaluation_result"]["action_id"] == "inspect"
+        assert response.json()["advisory_metadata"]["primitive_action_plan"]["primitive_actions"] == ["look_closer"]
+        assert rejected.status_code == 422
+        assert "raw input" in rejected.text
 
 
 def test_advisory_metadata_isolated_from_request_payload_mutations() -> None:

@@ -110,7 +110,7 @@ def _configured_runtime_issuer():
 
 def test_runtime_issuer_route_requires_loopback_bootstrap_and_profile_only_payload() -> None:
     main = _configured_runtime_issuer()
-    client = TestClient(main.app, client=("127.0.0.1", 47031))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47031))
 
     denied = client.post(
         "/internal/trusted-local-embodied-controller-enrollment",
@@ -149,8 +149,8 @@ def test_runtime_issuer_route_requires_loopback_bootstrap_and_profile_only_paylo
 
 def test_runtime_issuer_route_credential_binds_once_and_remote_call_is_rejected() -> None:
     main = _configured_runtime_issuer()
-    loopback = TestClient(main.app, client=("127.0.0.1", 47032))
-    remote = TestClient(main.app, client=("203.0.113.9", 47033))
+    loopback = TestClient(main.component_app, client=("127.0.0.1", 47032))
+    remote = TestClient(main.component_app, client=("203.0.113.9", 47033))
 
     issued = loopback.post(
         "/internal/trusted-local-embodied-controller-enrollment",

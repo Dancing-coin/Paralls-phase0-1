@@ -35,7 +35,7 @@ def test_read_content_stays_in_actor_memory_and_out_of_debug_websocket(monkeypat
     assert source_ref not in json.dumps(later_messages)
     history = main.debug_stream.history()
     assert history
-    with TestClient(main.app).websocket_connect("/debug/ws") as websocket:
+    with TestClient(main.component_app).websocket_connect("/debug/ws") as websocket:
         received = [websocket.receive_json() for _ in history]
     public = json.dumps(received)
     assert content not in public

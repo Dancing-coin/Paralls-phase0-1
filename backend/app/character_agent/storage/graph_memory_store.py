@@ -16,6 +16,7 @@ from app.character_agent.models.observation_memory import (
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 from app.character_agent.models.dynamic_state import CharacterDynamicState
+from app.character_agent.models.memory_consistency import MemoryFactClaim, memory_claim_key
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.models.siming_heavenly_graph import (
     GraphReaderContext,
@@ -28,7 +29,6 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphWriteBatch,
     NodeLookupQuery,
     HeavenlyNodeQuery,
-    HeavenlyRelationQuery,
 )
 from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 
@@ -66,6 +66,7 @@ class CharacterGraphMemoryStore:
         self._require_continuity_snapshot = require_continuity_snapshot
         self._lock = RLock()
         self._normalizer = CharacterAgentMemoryStore()
+        self._session_reader = None
         self._source_batches: dict[
             tuple[str, str, str], tuple[dict[str, object], HeavenlyGraphWriteBatch]
         ] = {}
@@ -73,6 +74,10 @@ class CharacterGraphMemoryStore:
     @property
     def graph(self) -> HeavenlyGraphPort:
         return self._graph
+
+    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+        self._session_reader = reader
+        self._normalizer.bind_session_reader(reader, working_reader=working_reader)
 
     def write_event(self, event: dict[str, object]) -> None:
         with self._lock:
@@ -91,20 +96,32 @@ class CharacterGraphMemoryStore:
                 idempotency_key=f"character-memory:{actor_id}:{source_event_id}",
             ):
                 return
-            already_deposited = bool(source_event_id) and self._has_source_event(
+            # session 投影以原子图谱收据去重；独立图存储仍核对旧来源投影。
+            already_deposited = self._session_reader is None and bool(source_event_id) and self._has_source_event(
                 scope,
                 source_event_id,
                 recorded_at=int(event.get("producer_ts", 0) or 0),
             )
-            self._normalizer.write_event(event)
+            normalizer = self._normalizer
+            if self._session_reader is not None:
+                # 写入只归一化本事件。claim 的历史依赖由精确 graph key 取得。
+                normalizer = CharacterAgentMemoryStore()
+                claim_payload = event.get('payload', {}).get('fact_claim')
+                if isinstance(claim_payload, dict):
+                    key = memory_claim_key(MemoryFactClaim.model_validate(claim_payload))
+                    prior = self._latest_node(scope, f'actor-memory:knowledge:knowledge:{actor_id}:{key}')
+                    if prior is not None:
+                        normalizer._knowledge._entries_by_actor[actor_id] = [deepcopy(prior.attributes['record'])]
+            normalizer.write_event(event)
             if source_event_id and not already_deposited:
                 batch = self._deposit_bundle(
                     actor_id,
                     scope,
-                    self._normalizer.retrieval_record_bundle(actor_id),
+                    normalizer.retrieval_record_bundle(actor_id),
                     source_event_id,
                 )
                 if batch is not None:
+                    self._source_batches.clear()
                     self._source_batches[source_key] = (deepcopy(event), batch)
 
     def _has_source_event(
@@ -175,7 +192,7 @@ class CharacterGraphMemoryStore:
         higher_order_memories = [
             item.model_dump() for item in records.higher_order_memories
         ]
-        continuity = self._continuity_reader(actor_id) if self._continuity_reader else None
+        continuity = self._continuity_reader(actor_id) if self._continuity_reader and self._session_reader is None else None
         graph_working_memory = continuity.get("working_memory") if isinstance(continuity, dict) else None
         if self._require_continuity_snapshot and isinstance(continuity, dict) and not isinstance(graph_working_memory, dict):
             raise RuntimeError(
@@ -487,22 +504,10 @@ class CharacterGraphMemoryStore:
         )
 
     def _latest_valid_time(self, scope: HeavenlyGraphScope) -> int:
-        nodes = self._graph.query_nodes(
-            HeavenlyNodeQuery(scope=scope, valid_at=self._MAX_TIME, limit=None)
-        )
-        return max((node.validity.valid_from for node in nodes), default=0)
+        return self._graph.scope_current_time_bounds(scope)[0]
 
     def _latest_recorded_at(self, scope: HeavenlyGraphScope) -> int:
-        nodes = self._graph.query_nodes(
-            HeavenlyNodeQuery(scope=scope, valid_at=self._MAX_TIME, limit=None)
-        )
-        relations = self._graph.query_relations(
-            HeavenlyRelationQuery(scope=scope, valid_at=self._MAX_TIME, limit=None)
-        )
-        return max(
-            [entity.recorded_at for entity in [*nodes, *relations]],
-            default=0,
-        )
+        return self._graph.scope_current_time_bounds(scope)[1]
 
     def _latest_node(
         self, scope: HeavenlyGraphScope, node_id: str

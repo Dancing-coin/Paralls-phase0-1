@@ -4,8 +4,10 @@ import asyncio
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 from time import monotonic
+from math import floor, isfinite
 
 from app.models.authority_event import AuthorityEvent
+from app.services.runtime_execution import RuntimeExecution
 from app.population_continuity.siming_contracts import PopulationCadenceInput
 from app.population_continuity.world import WorldContinuityRuntime
 
@@ -32,24 +34,24 @@ class PopulationCadenceDriver:
         window_size: int,
         catch_up_limit: int,
         initial_tick: int = 0,
+        wall_period_seconds: float | None = None,
     ) -> None:
         if window_size <= 0 or catch_up_limit < 0 or initial_tick < 0:
+            raise ValueError("population_driver_invalid")
+        if wall_period_seconds is not None and (not isfinite(wall_period_seconds) or wall_period_seconds <= 0):
             raise ValueError("population_driver_invalid")
         self.world_runtime = world_runtime
         self.publish_window = publish_window
         self.window_size = window_size
         self.catch_up_limit = catch_up_limit
+        self.wall_period_seconds = wall_period_seconds
         self.clock = SimulationClock(
             world_ref=world_runtime.mode.world_ref,
             initial_tick=initial_tick,
             catch_up_budget=catch_up_limit,
         )
-        self._runtime_history = set(
-            getattr(world_runtime, "published_population_cadence_ids", ())
-        )
-        setattr(world_runtime, "published_population_cadence_ids", self._runtime_history)
-        self._published_cadence_ids = self._history_ids()
-        self.clock.tick = self._confirmed_history_tick(initial_tick)
+        self.clock.tick = int(getattr(publish_window, "confirmed_tick",
+                              max(initial_tick, getattr(world_runtime, "_population_driver_confirmed_tick", initial_tick))))
 
     @property
     def current_tick(self) -> int:
@@ -72,19 +74,9 @@ class PopulationCadenceDriver:
             return PopulationDriverTickResult(
                 deferred_windows=tuple(item[0] for item in window_items)
             )
-        pending = []
-        deferred_after_gap: list[str] = []
         confirmed_tick = previous_tick
-        for item in window_items:
-            if item[0] in self._published_cadence_ids and not pending:
-                confirmed_tick = item[2]
-                continue
-            if item[0] in self._published_cadence_ids:
-                deferred_after_gap.append(item[0])
-            else:
-                pending.append(item)
-        selected = pending[: self.catch_up_limit]
-        deferred = tuple(item[0] for item in pending[self.catch_up_limit :]) + tuple(deferred_after_gap)
+        selected = window_items[: self.catch_up_limit]
+        deferred = tuple(item[0] for item in window_items[self.catch_up_limit :])
         published: list[str] = []
         rejected: list[tuple[str, str]] = []
         advanced_count = due_count = deferred_count = rejected_count = 0
@@ -108,8 +100,6 @@ class PopulationCadenceDriver:
                 rejected.append((cadence_id, "publisher_rejected"))
                 deferred = tuple(item[0] for item in selected[index + 1 :]) + deferred
                 break
-            self._published_cadence_ids.add(cadence_id)
-            self._runtime_history.add(cadence_id)
             published.append(cadence_id)
             confirmed_tick = window_end
             receipt = getattr(self.world_runtime, "last_population_confirmation", None)
@@ -119,6 +109,7 @@ class PopulationCadenceDriver:
                 deferred_count += receipt.deferred_count
                 rejected_count += receipt.rejected_count
         self.clock.tick = confirmed_tick
+        self.world_runtime._population_driver_confirmed_tick = confirmed_tick
         return PopulationDriverTickResult(
             published_cadence_ids=tuple(published),
             deferred_windows=deferred,
@@ -134,36 +125,73 @@ class PopulationCadenceDriver:
         stop_event: asyncio.Event,
         sleep: Callable[[float], Awaitable[None]],
         advance_clock: Callable[[int, int], int] | None = None,
+        *,
+        execution: RuntimeExecution | None = None,
     ) -> None:
-        started_at = monotonic()
-        origin_tick = self.current_tick
+        if self.wall_period_seconds is not None and advance_clock is not None:
+            raise ValueError("population_wall_clock_override_forbidden")
+
+        async def command(fn):
+            if execution is None:
+                return fn()  # 保留独立驱动器的同步测试入口。
+            return await asyncio.wrap_future(execution.submit(fn))
+
+        world_stream = f"world:{self.world_runtime.mode.world_ref}"
+        origin_tick, mode_revision, started_at = await command(lambda: (
+            self.current_tick, self.world_runtime.store.get_stream_head(world_stream), monotonic()
+        ))
+        was_paused = False
+        period = self.wall_period_seconds or self.window_size
         while not stop_event.is_set():
             iteration_started = monotonic()
-            due_tick = origin_tick + int((iteration_started - started_at) // self.window_size) * self.window_size
-            current = max(self.current_tick, due_tick)
-            target = advance_clock(current, self.window_size) if advance_clock else current + self.window_size
-            self.tick(target)
+            cursor, paused, revision, observed_at = await command(lambda: (
+                self.current_tick, self.world_runtime.is_paused(),
+                self.world_runtime.store.get_stream_head(world_stream),
+                iteration_started if self.wall_period_seconds is None else monotonic(),
+            ))
+            if paused or was_paused or revision != mode_revision:
+                # 暂停的墙钟时间不计入恢复后的追赶预算。
+                started_at, origin_tick = observed_at, cursor
+            was_paused = paused
+            mode_revision = revision
+            due_tick = origin_tick + floor((observed_at - started_at) / period) * self.window_size
+            current = max(cursor, due_tick)
+            target = (current if self.wall_period_seconds is not None else
+                      advance_clock(current, self.window_size) if advance_clock else current + self.window_size)
+            if not paused:
+                for _ in range(self.catch_up_limit):
+                    if stop_event.is_set():
+                        break
+
+                    def window():
+                        nonlocal started_at, origin_tick, mode_revision
+                        boundary_revision = self.world_runtime.store.get_stream_head(world_stream)
+                        if boundary_revision != mode_revision:
+                            # 窗间即使已 pause 后 resume，也必须丢弃旧追赶目标。
+                            started_at, origin_tick = monotonic(), self.current_tick
+                            mode_revision = boundary_revision
+                            return None
+                        if self.world_runtime.is_paused() or self.current_tick + self.window_size > target:
+                            return None
+                        result = self.tick(self.current_tick + self.window_size)
+                        if result.rejected_windows:
+                            raise RuntimeError("population_window_failed")
+                        return result
+
+                    result = await command(window)
+                    if result is None or not result.published_cadence_ids:
+                        break
+                    # 每个完整窗口独立入队，让其他已接纳命令先执行。
+                    await asyncio.sleep(0)
             # 处理耗时包含在窗口周期内；过载时由下一轮有限 catch-up 追赶。
-            await sleep(max(0.0, self.window_size - (monotonic() - iteration_started)))
-
-    def _history_ids(self) -> set[str]:
-        existing = getattr(self.world_runtime, "published_population_cadence_ids", ())
-        ids = {str(value) for value in existing}
-        history = getattr(self.publish_window, "published_events", ())
-        for event in history:
-            payload = getattr(event, "payload", {})
-            cadence = payload.get("population_cadence", {}) if isinstance(payload, dict) else {}
-            cadence_id = cadence.get("cadence_id") if isinstance(cadence, dict) else None
-            if isinstance(cadence_id, str):
-                ids.add(cadence_id)
-        return ids
-
-    def _confirmed_history_tick(self, initial_tick: int) -> int:
-        cursor = initial_tick
-        prefix = f"cadence:{self.world_runtime.mode.world_ref}:"
-        while f"{prefix}{cursor}" in self._published_cadence_ids:
-            cursor += self.window_size
-        return cursor
-
+            if self.wall_period_seconds is None:
+                await sleep(max(0.0, self.window_size - (monotonic() - iteration_started)))
+            else:
+                cursor = await command(lambda: self.current_tick)
+                now = monotonic()
+                # 墙钟已到期的窗立即进入下一轮有限追赶；暂停或零预算不能忙等。
+                next_window = (floor((now - started_at) / period) + 1 if paused or not self.catch_up_limit
+                               else (cursor - origin_tick) // self.window_size + 1)
+                await sleep(max(0.0, started_at + next_window * period - now))
 
 __all__ = ["PopulationCadenceDriver", "PopulationDriverTickResult"]

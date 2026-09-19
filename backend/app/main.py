@@ -2,22 +2,28 @@ import asyncio
 import hashlib
 import json
 import os
+from collections import OrderedDict
 from collections.abc import Callable, Mapping
+from contextlib import ExitStack, suppress
+from app.services.cognition_output_route import CognitionOrigin, CognitionOutputRoutes, CognitionOutputSink
+from contextvars import ContextVar
 from secrets import compare_digest
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, replace
 from queue import Empty, Queue
 from pathlib import Path
-from threading import RLock
-from time import time
+from threading import RLock, Event as ThreadEvent, BoundedSemaphore
+from time import time, monotonic
 from uuid import uuid4
 
 
+from anyio import CancelScope
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, Response
 from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import Settings, settings
+from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -68,6 +74,9 @@ from app.gameplay.godot_mirror_delivery import (
     GameplayMirrorAfterCommitDelivery,
     GameplayMirrorConnectionRegistry,
     GameplayMirrorOutboundQueue,
+    GameplayMirrorDeltaEncoder,
+    GameplayMirrorTransportSink,
+    GameplayMirrorConnectionError,
     GameplayMirrorDeliveryError,
     GameplayMirrorOutboxRefreshConsumer,
     GameplayMirrorSubscriptionRegistry,
@@ -130,6 +139,10 @@ from app.services.session_input_router import SessionInputRouter
 from app.population_continuity.activation import ProfileActivationAuthority
 from app.population_continuity.activation_policy import ActivationPolicy
 from app.world_runtime.population_driver import PopulationCadenceDriver
+from app.services.runtime_execution import RuntimeExecution, RuntimeQueueFull, RuntimeStopped
+from app.world_runtime.storage_lease import RuntimeStorageLease
+from app.services.dialogue_continuation import DialogueCoordinator, DialogueProviderSlots
+from app.character_agent.runtime.cognition_continuation import CognitionAdvance
 from app.services.gameplay_mirror_session_access_service import (
     GameplayMirrorActorRequest,
     GameplayMirrorSessionAccessError,
@@ -201,11 +214,13 @@ from app.population_continuity.runtime_publication import RuntimeCadencePublishe
 from app.population_continuity.roster import PopulationRoster, load_population_roster
 from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
+from app.population_continuity.presentation import PopulationMirrorSource
+from app.world_runtime.simulation_clock import population_clock_profile
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.script_beat_projection import ScriptBeatProjection
 from app.services.world_outcome_debug_projection import WorldOutcomeDebugProjection
-from app.ws_protocol import Envelope, GameplayMirrorCapabilityOffer, GameplayMirrorCapabilityProfile, GameplayMirrorPredictionResolution, GameplayMirrorReceipt, WebSocketSessionRenewalRequest
+from app.ws_protocol import RuntimeEnqueueRequest, Envelope, GameplayMirrorCapabilityOffer, GameplayMirrorCapabilityProfile, GameplayMirrorPredictionResolution, GameplayMirrorReceipt, WebSocketSessionRenewalRequest
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 
@@ -215,11 +230,25 @@ WORKTREE_ROOT = str(Path(__file__).resolve().parents[2])
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 _pending_siming_character_dispatch_messages: dict[str, list[dict[str, object]]] = {}
 _raw_fact_followup_lock = RLock()
+_STAGING_ACK_DEDUP_LIMIT = 4096
+_staging_ack_keys: OrderedDict[tuple[str, str], None] = OrderedDict()
+_staging_ack_lock = RLock()
 _PLAYER_SHELL_ACTOR_IDS = {"char_c"}
 _SPEECH_REQUEST_TYPES = {"speak_public", "speak_private", "share_info", "withhold"}
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 websocket_transport_closers: dict[str, Callable[[str], None]] = {}
+# 此表仅由逻辑 owner 访问；value 不暴露 loop registry/queue。
+_mirror_transport_routes: dict[str, tuple[str, GameplayMirrorTransportSink]] = {}
+_mirror_transport_generation = 0
+_mirror_transport_accepting = True
 _population_runtime_driver: PopulationCadenceDriver | None = None
+_population_mirror_source: PopulationMirrorSource | None = None
+runtime_execution: RuntimeExecution | None = None
+_runtime_execution_credit = None
+_runtime_storage_lease: RuntimeStorageLease | None = None
+_failed_runtime_resources: list[object] = []
+_dialogue_coordinator: DialogueCoordinator | None = None
+_dialogue_provider_slots = None
 _population_runtime_task: asyncio.Task[None] | None = None
 _population_runtime_stop_event: asyncio.Event | None = None
 _population_runtime_failure: BaseException | None = None
@@ -227,10 +256,265 @@ _population_runtime_sleep: Callable[[float], object] = asyncio.sleep
 _population_runtime_clock: Callable[[int, int], int] = lambda current, window: current + window
 
 
+_character_cognition_driver = None
+_scheduled_cognition_source = None
+_cognition_output_routes = CognitionOutputRoutes()
+_cognition_origin = ContextVar("cognition_origin", default=None)
+_character_cognition_task = None
+_character_cognition_failure = None
+
+
+_siming_cognition_driver = None
+_siming_cognition_task = None
+_siming_cognition_failure = None
+
+
+def _build_siming_cognition(pipeline):
+    """持久生产入口只在 owner 保存原事件，模型交由原四槽 driver。"""
+    global _siming_cognition_driver
+    connection = character_agent_runtime._session_store._connection
+    if runtime_execution is None or connection is None or not any(
+            name == 'main' and filename for _, name, filename in connection.execute('PRAGMA database_list')):
+        return
+    from app.services.siming_admission import SimingAdmissionService
+    from app.services.siming_coordinator import SimingCoordinator
+    from app.services.siming_driver import SimingDriver
+    from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
+    rt = pipeline._runtime
+    def source_pin(event):
+        scope = SimingHeavenlyRuntimeSupport._scope_for(event)
+        target = (event.payload.get('target_ref') or event.payload.get('target_object_id')
+            or event.payload.get('entity_id'))
+        object_pin = None
+        if isinstance(target, str) and target:
+            coordinates = dict(room_id=event.room_id, scene_id=event.scene_id,
+                zone_id=event.zone_id, target_object_id=target)
+            object_pin = dict(state=esm_service.interaction_state_for(**coordinates),
+                owner=esm_service.interaction_owner_for(**coordinates))
+        return dict(scope=scope.model_dump(mode='json'),
+            branch_revision=heavenly_graph.scope_revision_vector(scope).branch_revision,
+            packages=asdict(production_package_registry.active_patch_set),
+            environment=esm_service.get_environment_field(event.room_id, event.zone_id).model_dump(mode='json'),
+            object=object_pin)
+    def invalidation(event):
+        scope = SimingHeavenlyRuntimeSupport._scope_for(event)
+        if heavenly_graph._branch_status.get(heavenly_graph._scope_key(scope)) in {'discarded', 'admitted'}:
+            return 'branch_reset'
+        return None
+    rt._source_pin_reader = source_pin
+    rt._actor_pin_reader = lambda actor: (character_agent_runtime._capture_cognition_pin(actor)
+        if character_agent_runtime.supports_actor(actor) else {'supported': False})
+    coordinator = SimingCoordinator(runtime=rt, graph=heavenly_graph,
+        admissions=SimingAdmissionService(SimingHeavenlyMemoryService(heavenly_graph)),
+        invalidation_reader=invalidation, output_pipeline=pipeline)
+    async def owner_call(command):
+        return await _dialogue_owner_call(runtime_execution, command)
+    _siming_cognition_driver = SimingDriver(coordinator=coordinator, owner_call=owner_call,
+        slots=_dialogue_provider_slots)
+
+
+def _handle_siming_authority_event(event):
+    driver = _siming_cognition_driver
+    if driver is None or event.event_type == 'population_cadence_event':
+        return siming_event_pipeline.handle_event(event)
+    now = time()
+    receipt = driver.coordinator.admit_event(event, now=now, expires_at=now+30.,
+        policy_version='production-siming-v1')
+    origin = _cognition_origin.get()
+    if (not receipt.replayed and origin is not None and origin.binding_pin
+            and _get_dialogue_coordinator()._connection_current(origin.connection_ref, origin.binding_pin)):
+        _cognition_output_routes.remember(event.event_id, origin, receipt.entry.expires_at)
+    return receipt
+
+
+async def _run_siming_cognition():
+    global _siming_cognition_failure
+    driver = _siming_cognition_driver
+    try:
+        while True:
+            await driver.poll()
+            await asyncio.sleep(.02)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        _siming_cognition_failure = error
+        raise
+    finally:
+        await driver.close()
+
+
+async def _shutdown_siming_cognition():
+    global _siming_cognition_task
+    task = _siming_cognition_task
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _siming_cognition_task = None
+
+
+def _build_conflict_cognition(world):
+    """真实 owner 装配同世界来源、持久子入站与原 activation，不注入 project 感知。"""
+    global _character_cognition_driver, _scheduled_cognition_source
+    from app.character_agent.services.cognition_admission import CharacterCognitionAdmissionService
+    from app.character_agent.services.cognition_coordinator import CharacterCognitionCoordinator
+    from app.character_agent.services.cognition_driver import CharacterCognitionDriver
+    from app.population_continuity.conflict_activation import PopulationConflictSource, prepare_conflict_activation
+    from app.population_continuity.conflict_cadence import PopulationConflictPump
+    if runtime_execution is None:
+        return None
+    rt = character_agent_runtime
+    # 内存smoke保留原路径，不能把临时SQLite声称为持久子入站。
+    connection = rt._session_store._connection
+    if connection is None or not any(name == 'main' and filename for _, name, filename in connection.execute('PRAGMA database_list')):
+        return None
+    rt.set_background_cognition_enabled(True)
+    from app.character_agent.services.scheduled_cognition import ScheduledCognitionSource
+    scheduled = ScheduledCognitionSource(runtime=rt, policy=activation_policy)
+    _scheduled_cognition_source = scheduled
+    def delivery_pins(event, delivery):
+        parent = _siming_cognition_driver.coordinator
+        active = production_package_registry.active_patch_set
+        return {'siming_delivery': parent.character_delivery_proof(event, delivery.model_dump(mode='json')),
+            'package_registry_revision': active.registry_revision,
+            'active_patch_set_revision': active.active_patch_set_revision,
+            'activation_policy_revision': activation_policy.policy_revision}
+    def validate(entry):
+        if entry.source_kind == 'run_background_cognition_tick':
+            return scheduled.validate(entry) if 'scheduled_session' in entry.source_pins else pump.validate_admission(entry)
+        from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
+        event = AuthorityEvent.model_validate(entry.source_event)
+        pins = delivery_pins(event, SimingCharacterCompatibilityInput.model_validate(entry.payload))
+        if (pins != entry.source_pins or pins['siming_delivery']['effect_key'] != entry.parent_effect_key
+                or pins['siming_delivery']['expires_at'] != entry.expires_at
+                or _siming_cognition_driver.coordinator._invalidation(event) is not None):
+            raise ValueError('siming_character_source_stale')
+    admissions = CharacterCognitionAdmissionService(store=rt._session_store, assert_owner=rt._assert_cognition_owner,
+        validate_source=validate, activation_is_current=rt.activation_is_current, delivery_pin_reader=delivery_pins)
+    scheduled.admissions = admissions
+    source = PopulationConflictSource(store=gameplay_event_store, world_ref=world.mode.world_ref,
+        roster=world.roster, package_registry=production_package_registry, profiles=rt._profile_registry,
+        policy=activation_policy, admissions=admissions)
+    pump = PopulationConflictPump(source=source, store=gameplay_event_store, world=world,
+        admissions=admissions, ttl_seconds=30.)
+    async def owner_call(command):
+        return await _dialogue_owner_call(runtime_execution, command)
+    def begin(entry):
+        validate(entry)
+        if entry.source_kind == 'run_background_cognition_tick' and 'scheduled_session' in entry.source_pins:
+            decision = activation_policy.evaluate_scheduled_background(actor_id=entry.actor_id,
+                eligible=(rt.get_background_cognition_enabled() and rt.get_background_mode(entry.actor_id) in {'active', 'quiet'}
+                    and entry.actor_id in rt.get_schedulable_actor_ids()),
+                budget=int(rt.get_runtime_population_policy()['max_active_actors_per_tick']), supported_actor=rt.supports_actor(entry.actor_id))
+        elif entry.source_kind == 'run_background_cognition_tick':
+            wake = prepare_conflict_activation(store=gameplay_event_store, package_registry=production_package_registry,
+                profiles=rt._profile_registry, policy=activation_policy, source_event_id=entry.source_event['event_id'],
+                actor_id=entry.actor_id, budget=4)
+            decision = wake.decision
+        else:
+            from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
+            decision = activation_policy.evaluate_siming_delivery(actor_id=entry.actor_id,
+                delivery=SimingCharacterCompatibilityInput.model_validate(entry.payload),
+                budget=int(rt.get_runtime_population_policy()['max_active_actors_per_tick']),
+                supported_actor=rt.supports_actor(entry.actor_id), stale_revision=False)
+        return rt.begin_actor_activation(entry.actor_id, decision, producer_ts=entry.producer_ts,
+            deadline_monotonic=monotonic()+max(0., entry.expires_at-time()))[0]
+    def completed(entry, progress):
+        if entry.source_kind == 'run_background_cognition_tick':
+            if progress.frame.get('commands') != []:
+                raise ValueError('background_cognition_output_invalid')
+            return
+        original_entry = admissions.read_progress(entry.child_key, revision=1)
+        plan = original_entry.plan
+        if plan and plan['events']:
+            event = rt._session_store.read_event(entry.actor_id, event_index=plan['expected_revision']+len(plan['events']))
+            _schedule_background_cognition(entry.actor_id, entry.producer_ts, source_event=event)
+        _complete_siming_character_transport(entry, progress)
+    _character_cognition_driver = CharacterCognitionDriver(
+        coordinator=CharacterCognitionCoordinator(runtime=rt, admissions=admissions),
+        owner_call=owner_call, slots=_dialogue_provider_slots, begin_activation=begin, on_completed=completed)
+    if _siming_cognition_driver is not None:
+        _siming_cognition_driver.coordinator.character_admissions = admissions
+    return pump
+
+
+def _cognition_origin_current(origin, actor_id):
+    if origin is None or not origin.binding_pin:
+        return False
+    coordinator = _get_dialogue_coordinator()
+    if not coordinator._connection_current(origin.connection_ref, origin.binding_pin):
+        return False
+    binding = coordinator.auth.resolve_binding(origin.binding_pin[0])
+    return binding is not None and 'character:'+actor_id in binding.allowed_actor_refs
+
+
+def _complete_siming_character_transport(entry, progress):
+    from app.services.siming_continuation import digest
+    store = character_agent_runtime._session_store
+    identity = {'child_key': entry.child_key, 'progress_digest': progress.progress_digest,
+        'payload_digest': digest({'commands': progress.frame.get('commands', []), 'suggestion': progress.frame.get('suggestion')})}
+    prior = store.read_receipt(entry.actor_id, kind='cognition_output', key=entry.child_key)
+    if prior is not None:
+        if any(prior.get(key) != value for key, value in identity.items()):
+            raise ValueError('cognition_output_receipt_conflict')
+        return
+    origin = _cognition_output_routes.resolve(entry.source_event['causation_id'])
+    sink = _cognition_output_routes.connections.get(origin.connection_ref) if origin is not None else None
+    if sink is None or not _cognition_origin_current(origin, entry.actor_id):
+        store.save_receipt(entry.actor_id, kind='cognition_output', key=entry.child_key,
+            receipt={**identity, 'status': 'not_routed', 'reason': 'no_origin_connection' if origin is None else 'origin_connection_unauthorized'})
+        return
+    commands = [CharacterGoalCommand.model_validate(value) for value in progress.frame.get('commands', [])]
+    suggestion = progress.frame.get('suggestion')
+    messages = [*_as_character_agent_execution_envelopes(commands),
+        *_as_character_agent_suggestion_envelopes([CharacterSuggestionPacket.model_validate(suggestion)] if suggestion else [])]
+    # 发送尝试先留原回执；进程中断不得把未知文本传输重复当成新投递。
+    store.save_receipt(entry.actor_id, kind='cognition_output', key=entry.child_key,
+        receipt={**identity, 'status': 'handoff_started', 'reason': 'transport_outcome_pending'})
+    posted = sink.post({'child_key': entry.child_key, 'actor_id': entry.actor_id, 'binding_pin': list(origin.binding_pin),
+        'connection_ref': origin.connection_ref, 'messages': messages})
+    if not posted:
+        store.save_receipt(entry.actor_id, kind='cognition_transport', key=entry.child_key,
+            receipt={'status': 'not_sent', 'reason': 'origin_queue_unavailable', 'sent_frames': 0})
+
+
+async def _run_character_cognition():
+    global _character_cognition_failure
+    driver = _character_cognition_driver
+    try:
+        while True:
+            await driver.poll()
+            await asyncio.sleep(.02)
+    except asyncio.CancelledError:
+        raise
+    except Exception as error:
+        _character_cognition_failure = error
+        raise
+    finally:
+        await driver.close()
+
+
+async def _shutdown_character_cognition():
+    global _character_cognition_task
+    task = _character_cognition_task
+    if task is not None:
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        finally:
+            _character_cognition_task = None
+
+
 async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: asyncio.Event) -> None:
     global _population_runtime_failure
     try:
-        await driver.run_forever(stop_event, _population_runtime_sleep, _population_runtime_clock)  # type: ignore[arg-type]
+        clock_override = _population_runtime_clock if driver.wall_period_seconds is None else None
+        await driver.run_forever(stop_event, _population_runtime_sleep, clock_override, execution=runtime_execution)  # type: ignore[arg-type]
     except asyncio.CancelledError:
         raise
     except BaseException as exc:
@@ -238,37 +522,60 @@ async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: a
         raise
 
 
-def start_population_runtime() -> asyncio.Task[None] | None:
-    """Start the singleton population cadence driver for the current runtime."""
-    global _population_runtime_driver, _population_runtime_task, _population_runtime_stop_event
-    global _population_runtime_failure
-    if _population_runtime_task is not None and not _population_runtime_task.done():
-        return _population_runtime_task
+def _build_population_driver() -> PopulationCadenceDriver | None:
+    global _population_mirror_source
     if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
         return None
     mode = _bakery_population_mode()
     world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster)
     world_stream_ref = f"world:{mode.world_ref}"
-    window_size = 86400
+    clock_profile = population_clock_profile(settings.population_runtime_profile)
+    window_size = int(clock_profile["window_ticks"])
     if gameplay_event_store.get_stream_head(world_stream_ref) <= 0:
         return None
     publisher = RuntimeCadencePublisher(
         world_runtime=world_runtime, event_bus=authority_event_bus,
         room_id="room:bakery", scene_id="scene:bakery", zone_id="zone:bakery",
+        conflict_pump=_build_conflict_cognition(world_runtime),
     )
-    _population_runtime_failure = None
+    mirror = PopulationMirrorSource(world=world_runtime, publisher=gameplay_godot_projection_publisher,
+                                   registry=gameplay_mirror_subscription_registry,
+                                   delivery=gameplay_mirror_after_commit_delivery)
+    _population_mirror_source = mirror
     def publish(cadence):
         event = publisher(cadence)
         if event is not None:
             siming_event_pipeline.drain_observatory_messages()
+            try:
+                mirror.refresh_confirmed()
+            except Exception as error:
+                # 确认已落盘；显示故障只记录最近诊断，不重放authority窗口。
+                mirror.last_error = type(error).__name__
         return event
-    _population_runtime_driver = PopulationCadenceDriver(
+    return PopulationCadenceDriver(
         world_runtime=world_runtime,
         publish_window=publish,
         window_size=window_size,
         catch_up_limit=mode.catch_up_limit,
         initial_tick=publisher.confirmed_tick,
+        wall_period_seconds=(None if settings.population_runtime_profile == "production" else
+                             float(clock_profile["wall_period_seconds"]) / int(clock_profile["speed"])),
     )
+
+
+def start_population_runtime() -> asyncio.Task[None] | None:
+    """同步测试入口；生产路径先在 owner 内完成装配。"""
+    global _population_runtime_driver, _population_runtime_task, _population_runtime_stop_event
+    global _population_runtime_failure
+    if _population_runtime_task is not None and not _population_runtime_task.done():
+        return _population_runtime_task
+    if runtime_execution is None:
+        _population_runtime_driver = _build_population_driver()
+    elif runtime_execution.snapshot()["state"] != "running":
+        raise RuntimeStopped("runtime_not_running")
+    if _population_runtime_driver is None:
+        return None
+    _population_runtime_failure = None
     _population_runtime_stop_event = asyncio.Event()
     _population_runtime_task = asyncio.create_task(
         _run_population_runtime(_population_runtime_driver, _population_runtime_stop_event),
@@ -278,7 +585,7 @@ def start_population_runtime() -> asyncio.Task[None] | None:
 
 
 def get_population_runtime_failure() -> BaseException | None:
-    return _population_runtime_failure
+    return _population_runtime_failure or _character_cognition_failure or _siming_cognition_failure
 
 
 def stop_population_runtime() -> None:
@@ -302,16 +609,78 @@ async def _shutdown_population_runtime() -> None:
             await task
         except asyncio.CancelledError:
             pass
+        except Exception:
+            # 失败已记录供 health 查询，资源关闭不能被失败任务阻断。
+            pass
 
 
 @app.on_event("startup")
 async def _start_population_runtime_on_startup() -> None:
-    start_population_runtime()
+    global runtime_execution, _population_runtime_driver, _population_runtime_failure, gameplay_mirror_connection_registry
+    global _character_cognition_task, _character_cognition_failure
+    global _siming_cognition_task, _siming_cognition_failure
+    global _mirror_transport_generation, _mirror_transport_accepting
+    if runtime_execution is not None:
+        if runtime_execution.snapshot()["state"] != "running":
+            raise RuntimeStopped("previous_runtime_not_stopped")
+        if _population_runtime_task is not None:
+            return
+    try:
+        if runtime_execution is None:
+            _mirror_transport_generation += 1
+            _mirror_transport_accepting = True
+            gameplay_mirror_connection_registry = GameplayMirrorConnectionRegistry()
+            runtime_execution = RuntimeExecution(on_stop=lambda: close_runtime_resources(),
+                                                 execution_credit=_runtime_execution_credit)
+
+            def initialize() -> None:
+                global _runtime_storage_lease
+                if Path(settings.heavenly_graph_path).name != ":memory:":
+                    _runtime_storage_lease = RuntimeStorageLease(settings.heavenly_graph_path)
+                _reset_runtime_state(restore_gameplay=True)
+
+            await asyncio.wrap_future(runtime_execution.submit(initialize))
+        _population_runtime_driver = await asyncio.wrap_future(runtime_execution.submit(_build_population_driver))
+        start_population_runtime()
+        if _siming_cognition_driver is not None and _siming_cognition_task is None:
+            _siming_cognition_failure = None
+            _siming_cognition_task = asyncio.create_task(_run_siming_cognition(), name="siming-cognition")
+        if _character_cognition_driver is not None and _character_cognition_task is None:
+            _character_cognition_failure = None
+            _character_cognition_task = asyncio.create_task(_run_character_cognition(), name="character-cognition")
+    except BaseException as exc:
+        _population_runtime_failure = exc
+        try:
+            # ASGI 启动失败不会保证再调用 shutdown，必须主动由原 owner 排空关闭。
+            await asyncio.shield(_stop_population_runtime_on_shutdown())
+        except BaseException:
+            # 保留原启动异常；关闭失败或超时仍由原实例阻止再次启动。
+            pass
+        raise
 
 
 @app.on_event("shutdown")
 async def _stop_population_runtime_on_shutdown() -> None:
-    await _shutdown_population_runtime()
+    global runtime_execution, _mirror_transport_generation, _mirror_transport_accepting
+    _mirror_transport_accepting = False
+    _mirror_transport_generation += 1
+    for closer in tuple(websocket_transport_closers.values()):
+        closer("runtime_shutdown")
+    await asyncio.sleep(0)
+    try:
+        await _shutdown_population_runtime()
+        try:
+            await _shutdown_character_cognition()
+        finally:
+            await _shutdown_siming_cognition()
+    finally:
+        execution = runtime_execution
+        if execution is not None:
+            # join 不占用 ASGI loop，超时仍保留实例，禁止产生第二个 writer。
+            stopped = await asyncio.to_thread(execution.stop, timeout_seconds=10.0)
+            if stopped:
+                await asyncio.wrap_future(execution.closed)
+                runtime_execution = None
 
 
 class TrustedLocalGameplayMirrorEnrollmentRequest(BaseModel):
@@ -371,14 +740,40 @@ class RuntimeState:
     siming_runtime: SimingRuntime
 
     def close(self) -> None:
-        self.heavenly_graph.close()
+        try:
+            self.character_agent_runtime.close()
+        finally:
+            self.heavenly_graph.close()
+
+
+def _close_constructed_runtime_resource(resource) -> None:
+    try:
+        resource.close()
+    except BaseException:
+        # 局部构造尚未绑定全局；失败资源必须保留给 owner 终结器重试。
+        _failed_runtime_resources.append(resource)
+        raise
+
+
+def _close_failed_runtime_resources() -> None:
+    for resource in tuple(_failed_runtime_resources):
+        resource.close()
+        _failed_runtime_resources.remove(resource)
 
 
 def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
+    with ExitStack() as cleanup:
+        state = _assemble_runtime_state(runtime_settings, cleanup)
+        cleanup.pop_all()
+        return state
+
+
+def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> RuntimeState:
     roster = load_population_roster(runtime_settings.population_roster_path)
     graph_path = Path(runtime_settings.heavenly_graph_path)
     graph_path.parent.mkdir(parents=True, exist_ok=True)
     heavenly_graph = SQLiteHeavenlyGraphAdapter(graph_path)
+    cleanup.callback(_close_constructed_runtime_resource, heavenly_graph)
     require_graph_continuity = os.environ.get("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1"
     character_agent_storage_root = (
         None
@@ -410,9 +805,14 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
         graph_store=graph_memory,
         heavy_actor_ids=frozenset(runtime_settings.character_graph_memory_heavy_actor_ids),
     )
+    # 构造 runtime 自身也可能失败；连接在传入构造器前就登记到失败清理栈。
+    session_store = CharacterAgentSessionStore(storage_root=character_agent_storage_root,
+        database_path=graph_path if graph_path.name != ':memory:' else None)
+    cleanup.callback(_close_constructed_runtime_resource, session_store)
     character_agent_runtime = CharacterAgentRuntime(
         continuity_actor_ids=frozenset(roster.actor_ids),
         storage_root=character_agent_storage_root,
+        session_store=session_store,
         memory_store=memory_router,
         continuity_store=continuity_store,
         state_group_registry=state_group_registry,
@@ -587,8 +987,111 @@ def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
     )
 
 
+def _close_character_continuations(*, reason: str) -> None:
+    if _dialogue_coordinator is not None:
+        _dialogue_coordinator.close(reason=reason)
+        return
+    previous = globals().get("character_agent_runtime")
+    if previous is None:
+        return
+    first_error = None
+    for cleanup in (previous.reset_cognition_jobs, previous.reset_actor_activations):
+        try:
+            cleanup()
+        except Exception as error:
+            first_error = first_error or error
+    if first_error is not None:
+        raise first_error
+
+
 def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+    """仅供无生产 owner 的同步测试及离线工具重建状态。"""
+    global _population_runtime_failure
+    if runtime_execution is not None:
+        raise RuntimeError("reset_requires_runtime_owner")
     stop_population_runtime()
+    _reset_runtime_state(restore_gameplay=restore_gameplay)
+    _population_runtime_failure = None
+
+
+def _mirror_send_lease(context: WebSocketConnectionContext, sink: GameplayMirrorTransportSink) -> int | None:
+    """owner 复核原 token 的实时授权；返回的整数是 loop 唯一需要的 lease 快照。"""
+    binding = context.binding
+    if binding is None:
+        return None
+    route = _mirror_transport_routes.get(binding.session_ref)
+    if route != (context.connection_ref, sink):
+        return None
+    now = int(time())
+    current = websocket_session_auth_service.resolve_binding(binding.session_ref)
+    if current == binding and current.binding_state == "bound_active" and now < current.lease_expires_at:
+        return current.lease_expires_at
+    reason = ("websocket_session_lease_expired" if now >= binding.lease_expires_at
+              else "websocket_session_renewal_required")
+    # auth 已移除时 revoke 返回 False，原 token 的 disposable scope 仍必须清理。
+    if not _revoke_websocket_session_for_transport(session_ref=binding.session_ref,
+            connection_ref=context.connection_ref, reason_code=reason, now=now):
+        sink.close(reason)
+        _drop_mirror_transport_session(context, binding.session_ref)
+    return None
+
+
+def _post_mirror_snapshot(session_ref: str, projection: dict[str, object]) -> None:
+    if runtime_execution is None:
+        gameplay_mirror_connection_registry.deliver(session_ref, projection)
+    else:
+        _mirror_sink_for(session_ref).post_snapshot(projection)
+
+
+def _post_mirror_advisory(session_ref: str, projection: dict[str, object]) -> None:
+    if runtime_execution is None:
+        gameplay_mirror_connection_registry.deliver_government_drought_advisory(session_ref, projection)
+    else:
+        _mirror_sink_for(session_ref).post_advisory(projection)
+
+
+def _mirror_sink_for(session_ref: str) -> GameplayMirrorTransportSink:
+    route = _mirror_transport_routes.get(session_ref)
+    if route is None:
+        raise GameplayMirrorConnectionError("mirror_connection_unavailable")
+    return route[1]
+
+
+def _install_mirror_route(session_ref: str, connection_ref: str, sink: GameplayMirrorTransportSink) -> None:
+    previous = _mirror_transport_routes.get(session_ref)
+    if previous is not None:
+        previous[1].close("session_replaced")
+    _mirror_transport_routes[session_ref] = (connection_ref, sink)
+
+
+def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+    global _dialogue_provider_slots
+    if _dialogue_provider_slots is None:
+        _dialogue_provider_slots = DialogueProviderSlots()
+    global _character_cognition_driver, _character_cognition_failure, _scheduled_cognition_source
+    global _siming_cognition_driver, _siming_cognition_failure
+    _siming_cognition_driver = None
+    _siming_cognition_failure = None
+    _character_cognition_driver = None
+    _scheduled_cognition_source = None
+    _character_cognition_failure = None
+    _transient_cognition_turns.clear()
+    with _staging_ack_lock:
+        _staging_ack_keys.clear()
+    for connection_ref in tuple(_cognition_output_routes.connections):
+        _cognition_output_routes.disconnect(connection_ref)
+    _cognition_output_routes.sources.clear()
+    global _dialogue_coordinator, _mirror_transport_accepting, _mirror_transport_generation, _population_mirror_source
+    _population_mirror_source = None
+    if runtime_execution is None:
+        _mirror_transport_accepting = True
+        _mirror_transport_generation += 1
+    for session_ref, (connection_ref, sink) in tuple(_mirror_transport_routes.items()):
+        sink.close("runtime_reset")
+        _drop_mirror_transport_session(WebSocketConnectionContext(remote_host="", observed_at=int(time()),
+            connection_ref=connection_ref), session_ref)
+    _close_character_continuations(reason="reset")
+    _dialogue_coordinator = None
     global population_roster
     global runtime
     global character_service
@@ -625,6 +1128,7 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global gameplay_mirror_session_access_service
     global gameplay_mirror_connection_registry
     global gameplay_mirror_outbox_refresh_consumer
+    global gameplay_mirror_after_commit_delivery
     global government_drought_advisory_presentation_service
     global gameplay_godot_projection_publisher
     global embodied_execution_ingress
@@ -652,9 +1156,16 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global websocket_transport_closers
     global activation_policy
 
+    _close_failed_runtime_resources()
+    previous_character = globals().get("character_agent_runtime")
+    if isinstance(previous_character, CharacterAgentRuntime):
+        previous_character.close()
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
+    previous_gameplay = globals().get('gameplay_event_store')
+    if isinstance(previous_gameplay, DurableGameplayEventStore):
+        previous_gameplay.close()
     previous_trace = globals().get("harness_execution_trace")
     if isinstance(previous_trace, HarnessExecutionTraceService):
         previous_trace.close()
@@ -675,7 +1186,8 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     population_roster = runtime_state.population_roster
     heavenly_graph = runtime_state.heavenly_graph
     runtime = SessionInputRouter()
-    websocket_transport_closers = {}
+    if runtime_execution is None:
+        websocket_transport_closers = {}
     character_agent_runtime = runtime_state.character_agent_runtime
     character_agent_runtime.set_activation_authority(
         ProfileActivationAuthority(
@@ -766,16 +1278,17 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     )
     gameplay_mirror_session_access_service = GameplayMirrorSessionAccessService(
         registry=gameplay_mirror_subscription_registry,
+        binding_resolver=websocket_session_auth_service.resolve_binding,
         projection_publisher=gameplay_godot_projection_publisher,
     )
-    gameplay_mirror_connection_registry = GameplayMirrorConnectionRegistry()
-    gameplay_mirror_outbox_refresh_consumer = GameplayMirrorOutboxRefreshConsumer(
-        delivery=GameplayMirrorAfterCommitDelivery(
-            registry=gameplay_mirror_subscription_registry,
-            deliver=gameplay_mirror_connection_registry.deliver,
-            on_delivery_failure=lambda session_ref: _revoke_mirror_delivery_session(session_ref),
-        )
+    if runtime_execution is None:
+        gameplay_mirror_connection_registry = GameplayMirrorConnectionRegistry()
+    gameplay_mirror_after_commit_delivery = GameplayMirrorAfterCommitDelivery(
+        registry=gameplay_mirror_subscription_registry,
+        deliver=_post_mirror_snapshot,
+        on_delivery_failure=lambda session_ref: _revoke_mirror_delivery_session(session_ref),
     )
+    gameplay_mirror_outbox_refresh_consumer = GameplayMirrorOutboxRefreshConsumer(delivery=gameplay_mirror_after_commit_delivery)
     embodied_execution_ingress = EmbodiedExecutionIngress(auth_service=embodied_controller_auth_service)
     embodied_realization_route_gate = EmbodiedRealizationRouteGate()
     l1_occupancy_service = SpatialOccupancyService()
@@ -786,11 +1299,14 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     conversation_relation_service = ConversationRelationService()
     character_runtime_state_service = CharacterRuntimeStateService()
     authority_event_adapter = Phase0AuthorityEventAdapter()
-    # 全量居民展示仅保留最近两帧，历史窗口由 Gameplay 日志恢复。
-    authority_event_bus = InMemoryAuthorityEventBus(history_limits={"population_cadence_event": 2})
+    # 总线只保留近期恢复窗口；长期历史由 Gameplay 日志恢复。
+    authority_event_bus = InMemoryAuthorityEventBus(
+        history_limits={"population_cadence_event": 2},
+        default_history_limit=32,
+    )
     government_drought_advisory_presentation_service = GovernmentDroughtAdvisoryPresentationService(
         government=GovernmentAuthority(store=gameplay_event_store),
-        deliver=gameplay_mirror_connection_registry.deliver_government_drought_advisory,
+        deliver=_post_mirror_advisory,
     )
     install_phase3_mirror_sources(
         configurations=tuple(
@@ -801,7 +1317,11 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         publisher=gameplay_godot_projection_publisher,
     )
     def refresh_then_fanout(transaction) -> None:
-        gameplay_godot_projection_publisher.after_transaction_dispatched(transaction)
+        refresh = gameplay_godot_projection_publisher.after_transaction_dispatched(transaction)
+        if any(gameplay_godot_projection_publisher.has_actor_source(actor_ref=actor_ref)
+               or gameplay_mirror_subscription_registry.subscribed_session_refs(actor_ref=actor_ref)
+               for actor_ref in refresh.unavailable_actor_refs):
+            raise GameplayMirrorDeliveryError("mirror_projection_unavailable")
         gameplay_mirror_outbox_refresh_consumer.after_transaction_dispatched(transaction)
         government_drought_advisory_presentation_service.after_transaction_dispatched(transaction)
 
@@ -882,11 +1402,7 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
             if not container_id:
                 raise ValueError("default_scene_inventory_destination_missing")
             # 持久恢复后的容器由 Owner 事件保留，启动种子不能重复创建或清空其内容。
-            exists = any(
-                event.event_type == "gameplay.inventory.container_created"
-                and event.payload.get("container_id") == container_id
-                for event in gameplay_event_store.read_stream(f"gameplay:inventory:{actor_ref}")
-            )
+            exists = inventory_authority_service.has_container(actor_ref=actor_ref, container_id=container_id)
             if (actor_ref, container_id) not in created_inventory_containers and not exists:
                 inventory_authority_service.create_container(
                     command_id=f"bootstrap:inventory:{actor_id}:{container_id}",
@@ -930,8 +1446,9 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         audit_writer=siming_audit_writer,
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
+    _build_siming_cognition(siming_event_pipeline)
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, siming_event_pipeline.handle_event)
+        authority_event_bus.subscribe(event_type, _handle_siming_authority_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     authority_graph_projector = HeavenlyAuthorityEventProjector(
@@ -942,7 +1459,10 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
             story_branch_id=event.payload.get("story_branch_id", "branch:main") if isinstance(event.payload.get("story_branch_id", "branch:main"), str) else "branch:main",
         ),
     )
-    authority_event_bus.subscribe("*", authority_graph_projector.project)
+    authority_event_bus.subscribe(
+        "*", authority_graph_projector.project,
+        excluded_event_types=frozenset({"population_cadence_event"}),
+    )
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     character_agent_debug_projection = CharacterAgentDebugProjection()
@@ -960,6 +1480,14 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
 
 
 def _ack_siming_staging_request(event: AuthorityEvent) -> None:
+    token = _cognition_origin.set(_cognition_output_routes.resolve(event.causation_id))
+    try:
+        _ack_siming_staging_request_from_origin(event)
+    finally:
+        _cognition_origin.reset(token)
+
+
+def _ack_siming_staging_request_from_origin(event: AuthorityEvent) -> None:
     payload = event.payload
     target_actor_id = str(payload.get("target_actor_id", "") or "")
     character_accepted = character_agent_runtime.supports_actor(target_actor_id)
@@ -1331,11 +1859,13 @@ def _publish_population_cadence_at_game_start() -> AuthorityEvent | None:
 
 
 def _bakery_population_mode() -> WorldModeProfile:
+    clock_suffix = ("" if settings.population_runtime_profile == "production" else
+                    ":clock:" + _population_digest(population_clock_profile(settings.population_runtime_profile)))
     return WorldModeProfile(
         world_ref="world:bakery-district",
         mode="simulation",
-        revision="mode:bakery-district:v1",
-        cadence_class="daily",
+        revision="mode:bakery-district:v1" + clock_suffix,
+        cadence_class="daily" if not clock_suffix else "benchmark" + clock_suffix,
         batch_limit=4,
         wake_budget=4,
         catch_up_limit=2,
@@ -1352,16 +1882,45 @@ def _population_digest(value: object) -> str:
 
 
 def close_runtime_resources() -> None:
-    """Close process-owned persistent runtime resources without rebuilding state."""
+    """关闭进程持有的持久资源，成功收口后才释放存档锁。"""
+    global _runtime_storage_lease
+    for session_ref, (connection_ref, sink) in tuple(_mirror_transport_routes.items()):
+        sink.close("runtime_shutdown")
+        _drop_mirror_transport_session(WebSocketConnectionContext(remote_host="", observed_at=int(time()),
+            connection_ref=connection_ref), session_ref)
+    _close_character_continuations(reason="shutdown")
+    _close_failed_runtime_resources()
+    previous_character = globals().get("character_agent_runtime")
+    if isinstance(previous_character, CharacterAgentRuntime):
+        previous_character.close()
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
+    previous_gameplay = globals().get('gameplay_event_store')
+    if isinstance(previous_gameplay, DurableGameplayEventStore):
+        previous_gameplay.close()
     previous_trace = globals().get("harness_execution_trace")
     if isinstance(previous_trace, HarnessExecutionTraceService):
         previous_trace.close()
     previous_capabilities = globals().get("harness_capability_store")
     if isinstance(previous_capabilities, HarnessCapabilityStore):
         previous_capabilities.close()
+    if _runtime_storage_lease is not None:
+        _runtime_storage_lease.close()
+        _runtime_storage_lease = None
+
+
+def _publish_staging_ack_once(event: AuthorityEvent, *, source: str) -> bool:
+    key = (event.correlation_id, source)
+    with _staging_ack_lock:
+        if key in _staging_ack_keys:
+            _staging_ack_keys.move_to_end(key)
+            return False
+        authority_event_bus.publish(event)
+        _staging_ack_keys[key] = None
+        if len(_staging_ack_keys) > _STAGING_ACK_DEDUP_LIMIT:
+            _staging_ack_keys.popitem(last=False)
+        return True
 
 
 def _publish_runtime_staging_ack(
@@ -1372,36 +1931,33 @@ def _publish_runtime_staging_ack(
     reason: str,
     producer_ts: int,
 ) -> None:
-    if any(
-        ack.correlation_id == event.correlation_id
-        and ack.payload.get("source") == source
-        for ack in authority_event_bus.list_events(event_type="siming_staging_ack")
-    ):
-        return
     ack = StagingAck(
         source=source,
         correlation_id=event.correlation_id,
         accepted=accepted,
         reason=reason,
     )
-    authority_event_bus.publish(
+    _publish_staging_ack_once(
         authority_event_adapter.staging_ack_event(
             ack,
             room_id=event.room_id,
             scene_id=event.scene_id,
             zone_id=event.zone_id,
             producer_ts=producer_ts,
-        )
+        ),
+        source=source,
     )
 
 
-reset_runtime_state(restore_gameplay=True)
-
-
 @app.get("/health")
-def health() -> dict[str, str]:
+def health() -> dict[str, object]:
+    execution = runtime_execution.snapshot() if runtime_execution is not None else None
     return {
-        "status": "ok",
+        "status": "unhealthy" if _population_runtime_failure is not None or (
+            execution is not None and execution["state"] != "running"
+        ) else "ok",
+        "runtime_execution": execution,
+        "population_failure": type(_population_runtime_failure).__name__ if _population_runtime_failure else None,
         "build": BACKEND_BUILD,
         "worktree_root": WORKTREE_ROOT,
     }
@@ -1421,20 +1977,20 @@ def debug_panel_js() -> Response:
 
 
 @app.get("/debug/siming/read-model/{room_id}")
-def debug_siming_read_model(room_id: str) -> dict[str, object]:
-    read_model = siming_audit_writer.latest_read_model(room_id=room_id)
+async def debug_siming_read_model(room_id: str) -> dict[str, object]:
+    read_model = await _dialogue_owner_call(runtime_execution, lambda: siming_audit_writer.latest_read_model(room_id=room_id))
     if read_model is None:
         return {"room_id": room_id, "status": "missing"}
     return read_model.model_dump(exclude_none=True)
 
 
 @app.post("/interaction/orchestrate")
-def orchestrate_structured_interaction(payload: StructuredInteractionRequest) -> dict[str, object]:
-    return interaction_orchestration_service.execute(payload).model_dump()
+async def orchestrate_structured_interaction(payload: StructuredInteractionRequest) -> dict[str, object]:
+    return await _dialogue_owner_call(runtime_execution, lambda: interaction_orchestration_service.execute(payload).model_dump())
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-enrollment")
-def issue_trusted_local_gameplay_mirror_enrollment(
+async def issue_trusted_local_gameplay_mirror_enrollment(
     payload: TrustedLocalGameplayMirrorEnrollmentRequest,
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
@@ -1455,18 +2011,20 @@ def issue_trusted_local_gameplay_mirror_enrollment(
             status_code=403,
             detail={"error_code": "trusted_local_gameplay_mirror_launcher_unauthorized"},
         )
-    try:
-        enrollment = gameplay_mirror_trusted_local_enrollment_issuer.issue_for_launch_profile(
-            payload.launch_profile_ref,
-            now=int(time()),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail={"error_code": str(exc)}) from exc
-    return enrollment.model_dump(exclude_none=True)
+    def command():
+        try:
+            enrollment = gameplay_mirror_trusted_local_enrollment_issuer.issue_for_launch_profile(
+                payload.launch_profile_ref,
+                now=int(time()),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail={"error_code": str(exc)}) from exc
+        return enrollment.model_dump(exclude_none=True)
+    return await _dialogue_owner_call(runtime_execution, command)
 
 
 @app.post("/internal/trusted-local-embodied-controller-enrollment")
-def issue_trusted_local_embodied_controller_enrollment(
+async def issue_trusted_local_embodied_controller_enrollment(
     payload: TrustedLocalEmbodiedControllerEnrollmentRequest,
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Embodied-Controller-Launcher-Secret"),
@@ -1487,14 +2045,16 @@ def issue_trusted_local_embodied_controller_enrollment(
             status_code=403,
             detail={"error_code": "trusted_local_embodied_controller_launcher_unauthorized"},
         )
-    try:
-        enrollment = embodied_controller_trusted_local_enrollment_issuer.issue_for_launch_profile(
-            payload.launch_profile_ref,
-            now=int(time()),
-        )
-    except ValueError as exc:
-        raise HTTPException(status_code=404, detail={"error_code": str(exc)}) from exc
-    return enrollment.model_dump(exclude_none=True)
+    def command():
+        try:
+            enrollment = embodied_controller_trusted_local_enrollment_issuer.issue_for_launch_profile(
+                payload.launch_profile_ref,
+                now=int(time()),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail={"error_code": str(exc)}) from exc
+        return enrollment.model_dump(exclude_none=True)
+    return await _dialogue_owner_call(runtime_execution, command)
 
 
 def _require_trusted_local_gameplay_mirror_live_probe(
@@ -1514,7 +2074,7 @@ def _require_trusted_local_gameplay_mirror_live_probe(
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-live-probe-commit")
-def commit_trusted_local_gameplay_mirror_live_probe(
+async def commit_trusted_local_gameplay_mirror_live_probe(
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
     payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
@@ -1523,11 +2083,13 @@ def commit_trusted_local_gameplay_mirror_live_probe(
 
     del payload
     _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
-    return _commit_configured_trusted_local_gameplay_mirror_live_probe(configuration_index=0)
+    def command():
+        return _commit_configured_trusted_local_gameplay_mirror_live_probe(configuration_index=0)
+    return await _dialogue_owner_call(runtime_execution, command)
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-live-probe-reconnect-commit")
-def commit_trusted_local_gameplay_mirror_live_probe_reconnect(
+async def commit_trusted_local_gameplay_mirror_live_probe_reconnect(
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
     payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
@@ -1536,11 +2098,13 @@ def commit_trusted_local_gameplay_mirror_live_probe_reconnect(
 
     del payload
     _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
-    return _commit_configured_trusted_local_gameplay_mirror_live_probe(configuration_index=1)
+    def command():
+        return _commit_configured_trusted_local_gameplay_mirror_live_probe(configuration_index=1)
+    return await _dialogue_owner_call(runtime_execution, command)
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-live-probe-prediction-confirm")
-def confirm_trusted_local_gameplay_mirror_live_prediction(
+async def confirm_trusted_local_gameplay_mirror_live_prediction(
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
     payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
@@ -1549,32 +2113,34 @@ def confirm_trusted_local_gameplay_mirror_live_prediction(
 
     del payload
     _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
-    committed = _commit_configured_trusted_local_gameplay_mirror_live_probe(
-        configuration_index=0,
-        resource_delta=-1,
-    )
-    delivered = _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
-        actor_ref=str(committed["actor_ref"]),
-        resolutions=(
-            GameplayMirrorPredictionResolution(
-                prediction_id="prediction:live:stamina-confirm",
-                command_id="command:live:stamina-confirm",
-                resolution="confirmed",
-                transaction_id=str(committed["transaction_id"]),
+    def command():
+        committed = _commit_configured_trusted_local_gameplay_mirror_live_probe(
+            configuration_index=0,
+            resource_delta=-1,
+        )
+        delivered = _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
+            actor_ref=str(committed["actor_ref"]),
+            resolutions=(
+                GameplayMirrorPredictionResolution(
+                    prediction_id="prediction:live:stamina-confirm",
+                    command_id="command:live:stamina-confirm",
+                    resolution="confirmed",
+                    transaction_id=str(committed["transaction_id"]),
+                ),
             ),
-        ),
-    )
-    view = gameplay_godot_projection_repository.view_for(str(committed["actor_ref"]))
-    return {
-        **committed,
-        "prediction_resolution_deliveries": delivered,
-        "facade_revision": view.source_facade_revision,
-        "source_revision_vector": dict(view.source_revision_vector),
-    }
+        )
+        view = gameplay_godot_projection_repository.view_for(str(committed["actor_ref"]))
+        return {
+            **committed,
+            "prediction_resolution_deliveries": delivered,
+            "facade_revision": view.source_facade_revision,
+            "source_revision_vector": dict(view.source_revision_vector),
+        }
+    return await _dialogue_owner_call(runtime_execution, command)
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-live-probe-prediction-reject")
-def reject_trusted_local_gameplay_mirror_live_prediction(
+async def reject_trusted_local_gameplay_mirror_live_prediction(
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
     payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
@@ -1583,84 +2149,86 @@ def reject_trusted_local_gameplay_mirror_live_prediction(
 
     del payload
     _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
-    if not settings.gameplay_mirror_phase3_actor_configs:
-        raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_live_probe_source_unavailable"})
-    configuration = Phase3MirrorActorConfiguration.model_validate(settings.gameplay_mirror_phase3_actor_configs[0])
-    actor_ref = configuration.actor_ref
-    resource_stream = f"gameplay:resources:{actor_ref}"
-    head = gameplay_event_store.get_stream_head(resource_stream)
-    if head < 1:
-        raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_prediction_base_required"})
-    transaction_id = f"tx:trusted-local-mirror-live:prediction-reject:{uuid4()}"
-    command_id = f"cmd:trusted-local-mirror-live:prediction-reject:{uuid4()}"
-    event_count_before = len(gameplay_event_store.read_events())
-    rejected = gameplay_event_store.append_batch(
-        {
-            "transaction_id": transaction_id,
-            "command_id": command_id,
-            "expected_stream_revisions": {resource_stream: head - 1},
-            "pinned_revisions": {},
-            "events": [
-                {
-                    "event_id": f"evt:trusted-local-mirror-live:prediction-reject:{uuid4()}",
-                    "event_type": "gameplay.resource.adjusted",
-                    "schema_version": 1,
-                    "stream_id": resource_stream,
-                    "stream_revision": 0,
-                    "global_sequence": 0,
-                    "transaction_id": transaction_id,
-                    "command_id": command_id,
-                    "causation_id": command_id,
-                    "correlation_id": transaction_id,
-                    "visibility_policy": "authority_only",
-                    "payload": {
-                        "actor_ref": actor_ref,
-                        "resource_id": "core.stamina",
-                        "delta": -1,
-                        "reason_ref": "trusted_local_live_prediction_reject",
-                    },
-                }
-            ],
-            "idempotency_record": {
-                "principal_ref": "trusted_local_gameplay_mirror_live_probe",
-                "idempotency_key": command_id,
-                "payload_digest": f"sha256:{command_id}",
-            },
-            "outbox_entries": [],
-            "result_digest": f"sha256:{transaction_id}",
-            "projection_refresh_hints": [],
-        }
-    )
-    if rejected.committed:
-        raise HTTPException(status_code=500, detail={"error_code": "trusted_local_gameplay_mirror_prediction_rejection_committed"})
-    if len(gameplay_event_store.read_events()) != event_count_before:
-        raise HTTPException(status_code=500, detail={"error_code": "trusted_local_gameplay_mirror_prediction_rejection_mutated"})
-    error_code = rejected.failure.error_code if rejected.failure is not None else "stream_revision_conflict"
-    delivered = _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
-        actor_ref=actor_ref,
-        resolutions=(
-            GameplayMirrorPredictionResolution(
-                prediction_id="prediction:live:stamina-reject",
-                command_id="command:live:stamina-reject",
-                resolution="rejected",
-                error_code=error_code,
+    def command():
+        if not settings.gameplay_mirror_phase3_actor_configs:
+            raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_live_probe_source_unavailable"})
+        configuration = Phase3MirrorActorConfiguration.model_validate(settings.gameplay_mirror_phase3_actor_configs[0])
+        actor_ref = configuration.actor_ref
+        resource_stream = f"gameplay:resources:{actor_ref}"
+        head = gameplay_event_store.get_stream_head(resource_stream)
+        if head < 1:
+            raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_prediction_base_required"})
+        transaction_id = f"tx:trusted-local-mirror-live:prediction-reject:{uuid4()}"
+        command_id = f"cmd:trusted-local-mirror-live:prediction-reject:{uuid4()}"
+        event_count_before = len(gameplay_event_store.read_events())
+        rejected = gameplay_event_store.append_batch(
+            {
+                "transaction_id": transaction_id,
+                "command_id": command_id,
+                "expected_stream_revisions": {resource_stream: head - 1},
+                "pinned_revisions": {},
+                "events": [
+                    {
+                        "event_id": f"evt:trusted-local-mirror-live:prediction-reject:{uuid4()}",
+                        "event_type": "gameplay.resource.adjusted",
+                        "schema_version": 1,
+                        "stream_id": resource_stream,
+                        "stream_revision": 0,
+                        "global_sequence": 0,
+                        "transaction_id": transaction_id,
+                        "command_id": command_id,
+                        "causation_id": command_id,
+                        "correlation_id": transaction_id,
+                        "visibility_policy": "authority_only",
+                        "payload": {
+                            "actor_ref": actor_ref,
+                            "resource_id": "core.stamina",
+                            "delta": -1,
+                            "reason_ref": "trusted_local_live_prediction_reject",
+                        },
+                    }
+                ],
+                "idempotency_record": {
+                    "principal_ref": "trusted_local_gameplay_mirror_live_probe",
+                    "idempotency_key": command_id,
+                    "payload_digest": f"sha256:{command_id}",
+                },
+                "outbox_entries": [],
+                "result_digest": f"sha256:{transaction_id}",
+                "projection_refresh_hints": [],
+            }
+        )
+        if rejected.committed:
+            raise HTTPException(status_code=500, detail={"error_code": "trusted_local_gameplay_mirror_prediction_rejection_committed"})
+        if len(gameplay_event_store.read_events()) != event_count_before:
+            raise HTTPException(status_code=500, detail={"error_code": "trusted_local_gameplay_mirror_prediction_rejection_mutated"})
+        error_code = rejected.failure.error_code if rejected.failure is not None else "stream_revision_conflict"
+        delivered = _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
+            actor_ref=actor_ref,
+            resolutions=(
+                GameplayMirrorPredictionResolution(
+                    prediction_id="prediction:live:stamina-reject",
+                    command_id="command:live:stamina-reject",
+                    resolution="rejected",
+                    error_code=error_code,
+                ),
             ),
-        ),
-    )
-    view = gameplay_godot_projection_repository.view_for(actor_ref)
-    return {
-        "actor_ref": actor_ref,
-        "transaction_id": transaction_id,
-        "error_code": error_code,
-        "mutation_count": 0,
-        "prediction_resolution_deliveries": delivered,
-        "facade_revision": view.source_facade_revision,
-        "source_revision_vector": dict(view.source_revision_vector),
-    }
+        )
+        view = gameplay_godot_projection_repository.view_for(actor_ref)
+        return {
+            "actor_ref": actor_ref,
+            "transaction_id": transaction_id,
+            "error_code": error_code,
+            "mutation_count": 0,
+            "prediction_resolution_deliveries": delivered,
+            "facade_revision": view.source_facade_revision,
+            "source_revision_vector": dict(view.source_revision_vector),
+        }
+    return await _dialogue_owner_call(runtime_execution, command)
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-live-probe-controlled-close")
-def close_trusted_local_gameplay_mirror_live_probe_transport(
+async def close_trusted_local_gameplay_mirror_live_probe_transport(
     payload: TrustedLocalGameplayMirrorLiveProbeControlledCloseRequest,
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
@@ -1671,13 +2239,17 @@ def close_trusted_local_gameplay_mirror_live_probe_transport(
     connection_ref = gameplay_mirror_connection_registry.connection_ref_for(session_ref=payload.session_ref)
     if connection_ref is None:
         raise HTTPException(status_code=404, detail={"error_code": "mirror_live_probe_transport_unknown"})
-    if not revoke_websocket_session_for_transport(
+    if not await _dialogue_owner_call(runtime_execution, lambda: _revoke_websocket_session_for_transport(
         session_ref=payload.session_ref,
         connection_ref=connection_ref,
         reason_code="mirror_delivery_unrecoverable",
         now=int(time()),
-    ):
+    )):
         raise HTTPException(status_code=409, detail={"error_code": "mirror_live_probe_transport_revocation_failed"})
+    if runtime_execution is not None:
+        closer = websocket_transport_closers.get(connection_ref)
+        if closer is not None:
+            closer("mirror_delivery_unrecoverable")
     return {"session_ref": payload.session_ref, "reason_code": "mirror_delivery_unrecoverable"}
 
 
@@ -1689,12 +2261,14 @@ def _deliver_trusted_local_gameplay_mirror_prediction_resolutions(
     view = gameplay_godot_projection_repository.view_for(actor_ref)
     delivered = 0
     for session_ref in gameplay_mirror_subscription_registry.subscribed_session_refs(actor_ref=actor_ref):
-        gameplay_mirror_connection_registry.deliver_prediction_resolutions(
-            session_ref=session_ref,
-            actor_ref=actor_ref,
-            facade_revision=view.source_facade_revision,
-            resolutions=resolutions,
-        )
+        if runtime_execution is None:
+            gameplay_mirror_connection_registry.deliver_prediction_resolutions(
+                session_ref=session_ref, actor_ref=actor_ref,
+                facade_revision=view.source_facade_revision, resolutions=resolutions)
+        else:
+            _mirror_sink_for(session_ref).post_prediction({"actor_ref": actor_ref,
+                "facade_revision": view.source_facade_revision,
+                "resolutions": [item.model_dump(mode="json") for item in resolutions]})
         delivered += 1
     if delivered == 0:
         raise HTTPException(status_code=409, detail={"error_code": "trusted_local_gameplay_mirror_prediction_subscriber_required"})
@@ -1805,7 +2379,7 @@ def _commit_configured_trusted_local_gameplay_mirror_live_probe(
 
 
 @app.post("/internal/trusted-local-adventure-basic-live-probe-commit")
-def commit_trusted_local_adventure_basic_live_probe(
+async def commit_trusted_local_adventure_basic_live_probe(
     request: Request,
     launcher_secret: str | None = Header(default=None, alias="X-Gameplay-Mirror-Launcher-Secret"),
     payload: TrustedLocalGameplayMirrorLiveProbeCommitRequest | None = None,
@@ -1814,22 +2388,143 @@ def commit_trusted_local_adventure_basic_live_probe(
 
     del payload
     _require_trusted_local_gameplay_mirror_live_probe(request=request, launcher_secret=launcher_secret)
-    if adventure_basic_mirror_runtime is None:
-        raise HTTPException(status_code=409, detail={"error_code": "adventure_basic_live_probe_source_unavailable"})
+    def command():
+        if adventure_basic_mirror_runtime is None:
+            raise HTTPException(status_code=409, detail={"error_code": "adventure_basic_live_probe_source_unavailable"})
+        try:
+            result = adventure_basic_mirror_runtime.execute_canonical_success()
+        except AdventureBasicMirrorRuntimeError as exc:
+            raise HTTPException(status_code=409, detail={"error_code": str(exc)}) from exc
+        return {
+            "scenario_id": result.scenario_id,
+            "actor_ref": adventure_basic_mirror_runtime.actor_ref,
+            "transaction_ids": list(result.transaction_ids),
+        }
+    return await _dialogue_owner_call(runtime_execution, command)
+
+
+async def _dialogue_owner_call(execution, command):
+    if execution is None:
+        # 未启动 lifespan 的既有同步测试兼容面。
+        return command()
+    while True:
+        try:
+            future = execution.submit(command)
+        except RuntimeQueueFull:
+            await asyncio.sleep(0.02)
+        else:
+            return await asyncio.shield(asyncio.wrap_future(future))
+
+
+_transport_cognition_inputs = ContextVar('transport_cognition_inputs', default=None)
+_transient_cognition_turns = {}
+_transient_cognition_tasks = set()
+
+
+def _capture_transport_cognition(command, context=None):
+    if runtime_execution is None:
+        return command(), []
+    inputs = []
+    token = _transport_cognition_inputs.set(inputs)
+    origin_token = _cognition_origin.set(CognitionOrigin(context.connection_ref,
+        _get_dialogue_coordinator()._binding_pin(context.binding)) if context is not None else None)
     try:
-        result = adventure_basic_mirror_runtime.execute_canonical_success()
-    except AdventureBasicMirrorRuntimeError as exc:
-        raise HTTPException(status_code=409, detail={"error_code": str(exc)}) from exc
-    return {
-        "scenario_id": result.scenario_id,
-        "actor_ref": adventure_basic_mirror_runtime.actor_ref,
-        "transaction_ids": list(result.transaction_ids),
-    }
+        return command(), inputs
+    finally:
+        _transport_cognition_inputs.reset(token)
+        _cognition_origin.reset(origin_token)
+
+
+def _ingest_transport_cognition(source_kind, event):
+    inputs = _transport_cognition_inputs.get()
+    if inputs is None:
+        return getattr(character_agent_runtime, source_kind)(event)
+    inputs.append((source_kind, event.model_dump_json(), event.actor_id))
+    return []
+
+
+def _schedule_background_cognition(source_actor, producer_ts, *, source_event=None):
+    if os.environ.get('SIMING_HEAVENLY_AUTOTEST_SETUP') == '1' or _transport_cognition_inputs.get() is not None:
+        return
+    if _scheduled_cognition_source is None:
+        character_agent_runtime.run_scheduled_background_cognition_ticks(producer_ts)
+        return
+    _scheduled_cognition_source.admit(source_actor=source_actor, producer_ts=producer_ts,
+        now=time(), source_event=source_event)
+
+
+def _prepare_transport_cognition(connection_ref, source_kind, payload_json, binding_pin):
+    if not _get_dialogue_coordinator()._connection_current(connection_ref, binding_pin):
+        return CognitionAdvance('zero_write', reason='disconnected')
+    payload = json.loads(payload_json)
+    advance = character_agent_runtime.prepare_cognition_job(source_kind=source_kind,
+        payload=payload, deadline_monotonic=monotonic()+30.)
+    if advance.status == 'completed':
+        _schedule_background_cognition(payload['actor_id'], int(payload['producer_ts']))
+    if advance.next_job is not None:
+        _transient_cognition_turns[(connection_ref, advance.next_job.turn_id)] = advance.next_job
+    return advance
+
+
+def _cancel_transport_cognition(connection_ref):
+    for key in tuple(_transient_cognition_turns):
+        if key[0] == connection_ref:
+            character_agent_runtime.cancel_cognition_turn(key[1], reason='disconnected')
+            _transient_cognition_turns.pop(key)
+
+
+def _dialogue_connection_envelope(envelope_json: str, context: WebSocketConnectionContext):
+    # context 是 loop 的复制品；owner 从不修改原 transport context。
+    context.observed_at = int(time())
+    envelope = Envelope.model_validate_json(envelope_json)
+    outbound = _handle_websocket_envelope(envelope, context)
+    if runtime_execution is not None and context.binding is not None:
+        session_ref = context.binding.session_ref
+        route = _mirror_transport_routes.get(session_ref)
+        accepted = bool(outbound and outbound[0].get("payload", {}).get("accepted"))
+        initial_types = {"gameplay_mirror_subscribe", "gameplay_mirror_snapshot_request",
+                         "gameplay_mirror_resync_request", "gameplay_government_drought_advisory_subscribe"}
+        if accepted and envelope.message_type in initial_types:
+            try:
+                sink = _mirror_sink_for(session_ref)
+                if envelope.message_type == "gameplay_mirror_resync_request":
+                    sink.drop_actor(str(envelope.payload["actor_ref"]))
+                projection = outbound[1]
+                if projection.get("message_type") == "government_drought_advisory_projection":
+                    projection = projection["payload"]
+                sink.post_initial_snapshot(outbound[0], projection)
+                outbound = []
+            except GameplayMirrorConnectionError as exc:
+                _revoke_mirror_delivery_session(session_ref)
+                outbound = _gameplay_mirror_error(envelope.message_type, str(exc))
+        elif accepted and envelope.message_type == "gameplay_mirror_unsubscribe" and route is not None:
+            route[1].drop_actor(str(envelope.payload["actor_ref"]))
+    coordinator = _get_dialogue_coordinator()
+    if any(message.get("message_type") in {
+        "websocket_session_bound", "websocket_session_renewal_enrollment"} for message in outbound):
+        _cancel_transport_cognition(context.connection_ref)
+        coordinator.bind(context.connection_ref, context.binding)
+    return outbound, context
+
+
+def _disconnect_dialogue_connection(coordinator, context):
+    coordinator.disconnect(context.connection_ref)
+    _cognition_output_routes.disconnect(context.connection_ref)
+    _cancel_transport_cognition(context.connection_ref)
+    if context.binding is not None:
+        route = _mirror_transport_routes.get(context.binding.session_ref)
+        if route is not None and route[0] != context.connection_ref:
+            return
+        _drop_mirror_transport_session(context, context.binding.session_ref)
+        coordinator.auth.disconnect_session(context.binding.session_ref, now=int(time()))
 
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
+    if runtime_execution is not None and not _mirror_transport_accepting:
+        await websocket.close(code=1013, reason="runtime_shutdown")
+        return
     raw_stream_mode = websocket.query_params.get("stream_mode")
     stream_mode = normalize_stream_mode(raw_stream_mode)
     if not is_known_stream_mode(raw_stream_mode):
@@ -1845,12 +2540,100 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     connection_context = WebSocketConnectionContext(
         remote_host=websocket.client.host if websocket.client is not None else "",
         observed_at=int(time()),
-        connection_ref=f"ws_connection:{uuid4()}",
+        connection_ref=getattr(websocket, "connection_ref", None) or f"ws_connection:{uuid4()}",
     )
+    execution = runtime_execution
+    coordinator = await _dialogue_owner_call(execution, _get_dialogue_coordinator)
+    try:
+        await _dialogue_owner_call(execution, lambda: coordinator.connect(connection_context.connection_ref))
+    except BaseException:
+        with CancelScope(shield=True):
+            await asyncio.shield(_dialogue_owner_call(execution, lambda: coordinator.disconnect(connection_context.connection_ref)))
+        raise
     transport_close_requested = asyncio.Event()
     transport_close_revocation_received = asyncio.Event()
     transport_close_reason = ""
     connection_loop = asyncio.get_running_loop()
+    synchronize_binding = getattr(websocket, "synchronize_binding", None)
+    connection_registry = gameplay_mirror_connection_registry
+    connection_generation = _mirror_transport_generation
+    mirror_sink = None
+    mirror_delivery_task = None
+    mirror_session_ref = None
+    actor_versions: dict[str, int] = {}
+    mirror_delta_encoder = GameplayMirrorDeltaEncoder()
+    initial_ack = None
+    cleanup_tasks: set[asyncio.Task] = set()
+
+    def detach_mirror() -> None:
+        nonlocal mirror_sink, mirror_session_ref
+        if mirror_session_ref is not None:
+            connection_registry.unregister(session_ref=mirror_session_ref, connection_ref=connection_context.connection_ref)
+        old_sink = mirror_sink
+        mirror_sink = None
+        mirror_session_ref = None
+        actor_versions.clear()
+        mirror_delta_encoder.clear()
+        mirror_delivery_queue.clear()
+        if old_sink is not None:
+            old_sink.close("session_replaced")
+
+    def enqueue_mirror(delivery) -> None:
+        actor_ref = str(delivery.get("payload", {}).get("actor_ref", ""))
+        item = {**delivery, "_fence": (mirror_sink, actor_versions.get(actor_ref, 0))}
+        if initial_ack is not None:
+            mirror_delivery_queue.enqueue_initial_batch(initial_ack, item)
+        else:
+            mirror_delivery_queue.enqueue_delivery(item)
+
+    async def cleanup_failed_mirror(session_ref, connection_ref) -> None:
+        with suppress(RuntimeStopped):
+            await _dialogue_owner_call(execution, lambda: _revoke_websocket_session_for_transport(
+                session_ref=session_ref, connection_ref=connection_ref,
+                reason_code="mirror_delivery_unrecoverable", now=int(time())))
+
+    def receive_mirror(kind, data, sink, session_ref) -> None:
+        nonlocal initial_ack
+        if sink is not mirror_sink:
+            return
+        if connection_generation != _mirror_transport_generation and kind != "close":
+            request_transport_close("runtime_shutdown")
+            return
+        if kind == "close":
+            reason = str(data["reason_code"])
+            detach_mirror()
+            if reason != "session_replaced":
+                request_transport_close(reason)
+                task = asyncio.create_task(cleanup_failed_mirror(session_ref, connection_context.connection_ref))
+                cleanup_tasks.add(task)
+                task.add_done_callback(cleanup_tasks.discard)
+            return
+        if kind == "drop_actor":
+            actor_ref = str(data["actor_ref"])
+            actor_versions[actor_ref] = actor_versions.get(actor_ref, 0) + 1
+            mirror_delta_encoder.drop_actor(actor_ref)
+            mirror_delivery_queue.drop_actor(actor_ref)
+        elif kind == "prediction":
+            connection_registry.deliver_prediction_resolutions(session_ref=session_ref,
+                actor_ref=data["actor_ref"], facade_revision=data["facade_revision"],
+                resolutions=tuple(GameplayMirrorPredictionResolution.model_validate(item) for item in data["resolutions"]))
+        else:
+            projection = data["projection"] if kind == "initial_snapshot" else data
+            initial_ack = data["ack"] if kind == "initial_snapshot" else None
+            try:
+                if kind == "advisory" or projection.get("projection_kind") == "government_drought_advisory.project.v1":
+                    connection_registry.deliver_government_drought_advisory(session_ref, projection)
+                else:
+                    connection_registry.deliver(session_ref, projection)
+            finally:
+                initial_ack = None
+
+
+    def create_mirror_sink(session_ref):
+        # 每次 bind 的闭包冻结本次 sink，旧 epoch drain 不得命中新绑定。
+        sink = GameplayMirrorTransportSink(capacity=settings.gameplay_mirror_projection_queue_capacity,
+            deliver=lambda kind, data: receive_mirror(kind, data, sink, session_ref))
+        return sink
 
     def request_transport_close(reason_code: str) -> None:
         def request_on_connection_loop() -> None:
@@ -1858,13 +2641,36 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             if transport_close_requested.is_set():
                 return
             transport_close_reason = reason_code
+            if synchronize_binding is not None:
+                task = synchronize_binding(coordinator._binding_pin(connection_context.binding), revoked=True)
+                cleanup_tasks.add(task)
+                task.add_done_callback(cleanup_tasks.discard)
+                task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+            detach_mirror()
+            if mirror_delivery_task is not None:
+                mirror_delivery_task.cancel()
             transport_close_requested.set()
+            for cancelled, wake, _task, _ticket in active_dialogue_streams.values():
+                cancelled.set()
+                wake.set()
 
-        connection_loop.call_soon_threadsafe(request_on_connection_loop)
+        try:
+            current_loop = asyncio.get_running_loop()
+        except RuntimeError:
+            current_loop = None
+        if current_loop is connection_loop:
+            request_on_connection_loop()
+        else:
+            connection_loop.call_soon_threadsafe(request_on_connection_loop)
 
     websocket_transport_closers[connection_context.connection_ref] = request_transport_close
-    active_dialogue_streams: dict[str, tuple[asyncio.Event, asyncio.Task[None]]] = {}
+    active_dialogue_streams: dict[str, tuple[ThreadEvent, asyncio.Event, asyncio.Task, str]] = {}
     raw_fact_followup_tasks: set[asyncio.Task[None]] = set()
+    cognition_output_tasks: set[asyncio.Task[None]] = set()
+    cognition_output_started: set[asyncio.Task[None]] = set()
+    admitted_commands = asyncio.Queue(maxsize=128)
+    admitted_futures = {}
+    admission_pump = None
     send_lock = asyncio.Lock()
     mirror_delivery_queue = GameplayMirrorOutboundQueue(
         projection_capacity=settings.gameplay_mirror_projection_queue_capacity,
@@ -1881,6 +2687,71 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     async def send_batch(messages: list[dict[str, object]]) -> None:
         for message in project_outbound_messages(messages, stream_mode=stream_mode):
             await send(message)
+
+    async def send_cognition_output(payload, closed):
+        sent, reason = 0, 'connection_unavailable'
+        origin = CognitionOrigin(payload['connection_ref'], tuple(payload['binding_pin']))
+        try:
+            if closed or cognition_sink.closed:
+                reason = 'disconnected'
+                return
+            async with send_lock:
+                for message in project_outbound_messages(payload['messages'], stream_mode=stream_mode):
+                    current = await _dialogue_owner_call(execution,
+                        lambda: _cognition_origin_current(origin, payload['actor_id']))
+                    if (not current or transport_close_requested.is_set()
+                            or coordinator._binding_pin(connection_context.binding) != origin.binding_pin
+                            or int(time()) > origin.binding_pin[2]):
+                        break
+                    await websocket.send_json(message)
+                    sent += 1
+                else:
+                    reason = 'socket_send_returned'
+        except asyncio.CancelledError:
+            reason = 'disconnected'
+            raise
+        except Exception:
+            reason = 'socket_send_failed'
+        finally:
+            receipt = {'status': 'sent' if reason == 'socket_send_returned' else 'not_sent',
+                'reason': reason, 'sent_frames': sent}
+            def record():
+                store = character_agent_runtime._session_store
+                prior = store.read_receipt(payload['actor_id'], kind='cognition_transport', key=payload['child_key'])
+                if prior is None:
+                    store.save_receipt(payload['actor_id'], kind='cognition_transport', key=payload['child_key'], receipt=receipt)
+            await asyncio.shield(_dialogue_owner_call(execution, record))
+
+    def enqueue_cognition_output(payload, release, closed):
+        async def finish():
+            task = asyncio.current_task()
+            cognition_output_started.add(task)
+            try:
+                await send_cognition_output(payload, closed)
+            finally:
+                release()
+                await asyncio.shield(_dialogue_owner_call(execution, lambda:
+                    _cognition_output_routes.release(connection_context.connection_ref, cognition_sink)))
+                cognition_output_started.discard(task)
+        task = asyncio.create_task(finish())
+        cognition_output_tasks.add(task)
+        _transient_cognition_tasks.add(task)
+        task.add_done_callback(cognition_output_tasks.discard)
+        task.add_done_callback(_transient_cognition_tasks.discard)
+        task.add_done_callback(lambda done: None if done.cancelled() else done.exception())
+
+    cognition_sink = CognitionOutputSink(deliver=enqueue_cognition_output)
+    try:
+        await _dialogue_owner_call(execution, lambda: _cognition_output_routes.connections.__setitem__(
+            connection_context.connection_ref, cognition_sink))
+    except BaseException:
+        cognition_sink.close()
+        if websocket_transport_closers.get(connection_context.connection_ref) == request_transport_close:
+            websocket_transport_closers.pop(connection_context.connection_ref, None)
+        with CancelScope(shield=True):
+            await asyncio.shield(_dialogue_owner_call(execution, lambda:
+                _disconnect_dialogue_connection(coordinator, connection_context)))
+        raise
 
     async def send_controlled_transport_close() -> None:
         await transport_close_requested.wait()
@@ -1904,142 +2775,264 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             # way, the transport state was already removed synchronously.
             return
 
+    def mirror_fence_active(fence, actor_ref: str) -> bool:
+        return ((mirror_sink is not None or execution is None)
+                and fence == (mirror_sink, actor_versions.get(actor_ref, 0))
+                and not transport_close_requested.is_set()
+                and connection_generation == _mirror_transport_generation)
+
     async def send_mirror_deliveries() -> None:
         nonlocal drop_first_live_probe_delivery
         while True:
             try:
                 payload = mirror_delivery_queue.pop_next()
             except Exception:
-                await asyncio.sleep(0.01)
-                continue
+                if mirror_sink is not None:
+                    mirror_sink.close("mirror_delivery_unrecoverable")
+                else:
+                    request_transport_close("mirror_delivery_unrecoverable")
+                return
             if payload is None:
-                await asyncio.sleep(0.01)
+                await asyncio.sleep(0.02)
                 continue
-            if drop_first_live_probe_delivery and payload.get("message_type") == "gameplay_mirror_delivery":
-                drop_first_live_probe_delivery = False
-                continue
-            await send(payload)
+            actor_ref = str(payload.get("payload", {}).get("actor_ref", ""))
+            sent_session_ref = mirror_session_ref
+            fence = payload.get("_fence", (mirror_sink, actor_versions.get(actor_ref, 0)))
+            async with send_lock:
+                # pop 与获取 send_lock 之间可能已经退订/renew/revoke。
+                if not mirror_fence_active(fence, actor_ref):
+                    continue
+                send_context = replace(connection_context)
+                lease = None
+                if execution is not None:
+                    lease = await _dialogue_owner_call(execution, lambda: _mirror_send_lease(send_context, fence[0]))
+                    if lease is None or not mirror_fence_active(fence, actor_ref):
+                        continue
+                is_initial = "_initial_batch" in payload
+                if (drop_first_live_probe_delivery and not is_initial
+                        and payload.get("message_type") == "gameplay_mirror_delivery"
+                        and payload.get("payload", {}).get("delivery_kind") == "snapshot"):
+                    drop_first_live_probe_delivery = False
+                    continue
+                messages = payload.get("_initial_batch", [payload])
+                try:
+                    for message in messages:
+                        # ACK 的 send 也可能让出 loop；每个实际 wire frame 都重验。
+                        if not mirror_fence_active(fence, actor_ref):
+                            break
+                        # owner 排队或前一帧发送均可能跨过 deadline；loop 只读冻结整数。
+                        if lease is not None and int(time()) >= lease:
+                            await _dialogue_owner_call(execution, lambda: _mirror_send_lease(send_context, fence[0]))
+                            break
+                        wire_message, target_snapshot = message, None
+                        profile = connection_context.capability_profile
+                        if profile is not None and profile.supports_delta:
+                            wire_message, target_snapshot = mirror_delta_encoder.prepare(message, force_snapshot=is_initial)
+                        # 编码也可能跨 deadline；紧邻实际发送重验，拒绝后不推进 base/receipt。
+                        if lease is not None and int(time()) >= lease:
+                            await _dialogue_owner_call(execution, lambda: _mirror_send_lease(send_context, fence[0]))
+                            break
+                        clean_message = {key: value for key, value in wire_message.items() if not key.startswith("_")}
+                        if hasattr(websocket, "send_fenced_json"):
+                            await websocket.send_fenced_json(clean_message, lease_deadline=lease)
+                        else:
+                            await websocket.send_json(clean_message)
+                        if mirror_fence_active(fence, actor_ref):
+                            mirror_delta_encoder.sent(wire_message, target_snapshot)
+                        if execution is not None and message.get("message_type") in {"gameplay_mirror_delivery", "government_drought_advisory_delivery"}:
+                            wire = message["payload"]
+                            connection_registry.mark_sent(session_ref=sent_session_ref,
+                                connection_ref=connection_context.connection_ref,
+                                connection_epoch=wire["connection_epoch"], delivery_sequence=wire["delivery_sequence"])
+                except Exception:
+                    mirror_sink.close("mirror_delivery_unrecoverable")
+                    raise
             if live_probe_delivery_delay_seconds:
                 await asyncio.sleep(live_probe_delivery_delay_seconds)
 
-    async def run_dialogue_stream(event: DialogueSubmit, request_id: str, cancelled: asyncio.Event) -> None:
-        partial_chars = 0
-        sequence = 0
+    async def run_dialogue_stream(advance, request_id, actor_id, target_actor_id, slot, cancelled, wake, deadline, source_type):
+        partial_chars = sequence = 0
         fallback_used = False
-        try:
-            await send(
-                _as_envelope(
-                    "dialogue_stream_start",
-                    {
-                        "request_id": request_id,
-                        "actor_id": event.target_actor_id if event.player_id != "character_agent" else event.actor_id,
-                        "target_actor_id": event.actor_id if event.player_id != "character_agent" else event.target_actor_id,
-                    },
-                )
-            )
-            loop = asyncio.get_running_loop()
-            stream_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+        ticket_id = advance.job.ticket_id if advance.job else ""
+        stream_queue = asyncio.Queue(maxsize=32)
+        delta_capacity = BoundedSemaphore(32)
+        overflow = ThreadEvent()
+        loop = asyncio.get_running_loop()
 
-            def emit_stream_event(stream_event: dict[str, object]) -> None:
-                loop.call_soon_threadsafe(stream_queue.put_nowait, stream_event)
-
-            worker = asyncio.create_task(
-                asyncio.to_thread(
-                    _stream_dialogue_with_activation,
-                    event,
-                    cancelled.is_set,
-                    emit=emit_stream_event,
-                )
-            )
-            stream = None
-            while True:
-                stream_event = await stream_queue.get()
-                event_kind = str(stream_event.get("event", "") or "")
-                if event_kind == "activation_result":
-                    if not bool(stream_event.get("committed")):
-                        await send(_dialogue_stream_end(request_id, "requeued", partial_chars, fallback_used))
-                        return
-                    if stream is None:
-                        raise ValueError("character dialogue stream ended without a completion event")
-                    continue
-                if event_kind == "activation_error":
-                    await send(_dialogue_stream_end(request_id, "failed", partial_chars, fallback_used))
-                    return
-                if event_kind == "direct":
-                    direct_content = str(stream_event.get("content", "") or "")
-                    response = await asyncio.to_thread(_direct_dialogue_response, event, direct_content)
-                    if cancelled.is_set():
-                        await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
-                        return
-                    _record_completed_dialogue_response(response)
-                    event_trace.record(response.output_type)
-                    await send(_as_envelope("dialogue_response", response.model_dump()))
-                    await send(_dialogue_stream_end(request_id, "completed", len(response.content), fallback_used))
-                    await send_batch(_observatory_messages_from_outbound([]))
-                    return
-                if event_kind == "cancelled":
-                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
-                    return
-                if event_kind not in {"delta", "completed"}:
-                    if worker.done():
-                        raise ValueError("character dialogue stream ended without a completion event")
-                    continue
-                stream = stream or iter((stream_event,))
-                if cancelled.is_set() or stream_event["event"] == "cancelled":
-                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
-                    return
-                if stream_event["event"] == "delta":
-                    delta = str(stream_event["delta"])
-                    partial_chars += len(delta)
-                    sequence += 1
-                    await send(
-                        _as_envelope(
-                            "dialogue_stream_delta",
-                            {
-                                "request_id": request_id,
-                                "sequence": sequence,
-                                "delta": delta,
-                                "accumulated_chars": partial_chars,
-                            },
-                        )
-                    )
-                    continue
-                if stream_event["event"] != "completed":
-                    raise ValueError("character dialogue stream emitted an unsupported event")
-                response = stream_event["response"]
-                if not isinstance(response, DialogueResponse):
-                    raise ValueError("character dialogue stream completed without DialogueResponse")
-                fallback_used = bool(stream_event.get("fallback_used", False))
-                if cancelled.is_set():
-                    await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
-                    return
-                audio = character_service.tts.synthesize(response.actor_id, response.content)
-                response = response.model_copy(update={"audio": audio})
-                _record_completed_dialogue_response(response)
-                event_trace.record(response.output_type)
-                await send(_as_envelope("dialogue_response", response.model_dump()))
-                await send(_dialogue_stream_end(request_id, "completed", partial_chars, fallback_used))
-                await send_batch(_observatory_messages_from_outbound([]))
-                return
-        except Exception as exc:
+        def enqueue(delta):
             if cancelled.is_set():
-                await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
+                delta_capacity.release()
                 return
-            status = "timed_out" if isinstance(exc, TimeoutError) else "failed"
-            await send(_dialogue_stream_end(request_id, status, partial_chars, fallback_used))
-        finally:
-            active_dialogue_streams.pop(request_id, None)
+            stream_queue.put_nowait(delta)
 
-    async def send_raw_fact_followups(envelope: Envelope, authority_ack: dict[str, object]) -> None:
+        def emit(delta):
+            if cancelled.is_set():
+                return
+            if not delta_capacity.acquire(blocking=False):
+                if not overflow.is_set():
+                    overflow.set()
+                    cancelled.set()
+                    loop.call_soon_threadsafe(wake.set)
+                return
+            loop.call_soon_threadsafe(enqueue, delta)
+
+        async def send_delta(delta):
+            nonlocal partial_chars, sequence
+            delta_capacity.release()
+            partial_chars += len(delta)
+            sequence += 1
+            await send(_as_envelope("dialogue_stream_delta", {
+                "request_id": request_id, "sequence": sequence,
+                "delta": delta, "accumulated_chars": partial_chars}))
+
         try:
-            outbound = await asyncio.to_thread(
-                _handle_raw_fact_followup,
-                envelope,
-                connection_context=connection_context,
-            )
+            # deadline 从 owner admission 起覆盖 ack、send_lock、delta 与 provider 等待。
+            async with asyncio.timeout(max(0.0, deadline - monotonic())):
+                await send(_as_envelope("ack", {"accepted": True,
+                    "source_type": source_type, "route": "character_service"}))
+                await send(_as_envelope("dialogue_stream_start", {
+                    "request_id": request_id, "actor_id": actor_id,
+                    "target_actor_id": target_actor_id}))
+                while advance.status == "pending":
+                    if cancelled.is_set():
+                        break
+                    future = asyncio.wrap_future(slot.submit(advance.job, advance.provider, cancelled, emit))
+                    while True:
+                        if cancelled.is_set():
+                            break
+                        while not stream_queue.empty():
+                            await send_delta(stream_queue.get_nowait())
+                        if future.done():
+                            break
+                        delta_task = asyncio.create_task(stream_queue.get())
+                        wake_task = asyncio.create_task(wake.wait())
+                        try:
+                            done, _ = await asyncio.wait({future, delta_task, wake_task},
+                                timeout=max(0.0, deadline - monotonic()), return_when=asyncio.FIRST_COMPLETED)
+                            if not done:
+                                raise TimeoutError("dialogue deadline expired")
+                            if delta_task in done:
+                                await send_delta(delta_task.result())
+                        finally:
+                            for task in (delta_task, wake_task):
+                                if not task.done():
+                                    task.cancel()
+                            await asyncio.gather(delta_task, wake_task, return_exceptions=True)
+                    if cancelled.is_set():
+                        break
+                    completion = future.result()
+                    job = advance.job
+                    advance = await _dialogue_owner_call(execution, lambda: coordinator.advance(job, completion))
+                    fallback_used = advance.fallback_used
+                if cancelled.is_set():
+                    await _dialogue_owner_call(execution, lambda: coordinator.cancel(ticket_id, reason="cancelled"))
+                    status = "failed" if overflow.is_set() else "cancelled"
+                elif advance.status == "completed":
+                    messages = json.loads(advance.messages_json)
+                    await send(messages[0])
+                    if not partial_chars:
+                        partial_chars = len(messages[0]["payload"]["content"])
+                    await send(_dialogue_stream_end(request_id, "completed", partial_chars, fallback_used))
+                    await send_batch(messages[1:])
+                    return
+                else:
+                    status = "requeued" if advance.status == "zero_write" else advance.status
+                await send(_dialogue_stream_end(request_id, status, partial_chars, fallback_used))
+        except Exception as exc:
+            cancelled.set()
+            # owner 停止时由 on_stop 保留并完成清理；transport 仍须给出终结消息。
+            with suppress(RuntimeStopped):
+                await _dialogue_owner_call(execution, lambda: coordinator.cancel(ticket_id, reason="failed"))
+            status = "timed_out" if isinstance(exc, TimeoutError) else "failed"
+            # 终结消息也可能阻塞；业务清理和空闲槽归还不能依赖 transport 可写。
+            slot.close()
+            with suppress(TimeoutError):
+                await asyncio.wait_for(send(_dialogue_stream_end(
+                    request_id, status, partial_chars, fallback_used)), timeout=1.0)
+        finally:
+            cancelled.set()
+            try:
+                with suppress(RuntimeStopped):
+                    await asyncio.shield(_dialogue_owner_call(execution,
+                        lambda: coordinator.cancel(ticket_id, reason="transport_finished")))
+            finally:
+                slot.close()
+                active_dialogue_streams.pop(request_id, None)
+
+    async def send_cognition_inputs(inputs, binding_pin):
+        from app.services.cognition_wait import finish_cognition_wait
+        for source_kind, payload_json, actor_id in inputs:
+            advance = None
+            try:
+                preparation = asyncio.create_task(_dialogue_owner_call(execution, lambda: _prepare_transport_cognition(
+                    connection_context.connection_ref, source_kind, payload_json, binding_pin)))
+                try:
+                    advance = await asyncio.shield(preparation)
+                except asyncio.CancelledError:
+                    while not preparation.done():
+                        try:
+                            await asyncio.shield(preparation)
+                        except asyncio.CancelledError:
+                            continue
+                    advance = preparation.result()
+                    if advance.next_job is not None:
+                        await _dialogue_owner_call(execution, lambda: character_agent_runtime.cancel_cognition_turn(
+                            advance.next_job.turn_id, reason='cancelled'))
+                    raise
+                result = await finish_cognition_wait(runtime=character_agent_runtime, advance=advance,
+                    owner_call=lambda command: _dialogue_owner_call(execution, command), slots=_dialogue_provider_slots,
+                    connection_current=lambda: _get_dialogue_coordinator()._connection_current(connection_context.connection_ref, binding_pin),
+                    on_completed=lambda _: _schedule_background_cognition(actor_id, int(json.loads(payload_json)['producer_ts'])))
+                if result.status == 'completed':
+                    def outbound():
+                        if not _get_dialogue_coordinator()._connection_current(connection_context.connection_ref, binding_pin):
+                            return []
+                        return [*_as_character_agent_execution_envelopes(result.result or []),
+                            *_as_character_agent_suggestion_envelopes(character_agent_runtime.drain_suggestion_packets(actor_id))]
+                    messages = await _dialogue_owner_call(execution, outbound)
+                    async with send_lock:
+                        for message in messages:
+                            current = await _dialogue_owner_call(execution, lambda: _get_dialogue_coordinator()._connection_current(
+                                connection_context.connection_ref, binding_pin))
+                            if (not current or _get_dialogue_coordinator()._binding_pin(connection_context.binding) != binding_pin
+                                    or (binding_pin and int(time()) > binding_pin[2])
+                                    or transport_close_requested.is_set()):
+                                break
+                            await websocket.send_json(message)
+            except Exception as error:
+                await send(_as_error_ack(source_type=source_kind, route='character_cognition_failed', error=error))
+            finally:
+                if advance is not None and advance.next_job is not None:
+                    key = (connection_context.connection_ref, advance.next_job.turn_id)
+                    await asyncio.shield(_dialogue_owner_call(execution, lambda: _transient_cognition_turns.pop(key, None)))
+
+    def start_cognition_inputs(inputs, context):
+        if not inputs:
+            return
+        task = asyncio.create_task(send_cognition_inputs(inputs, _get_dialogue_coordinator()._binding_pin(context.binding)))
+        raw_fact_followup_tasks.add(task)
+        _transient_cognition_tasks.add(task)
+        task.add_done_callback(raw_fact_followup_tasks.discard)
+        task.add_done_callback(_transient_cognition_tasks.discard)
+        def completed(done):
+            if not done.cancelled() and done.exception() is not None:
+                error = done.exception()
+                _publish_debug_event(build_debug_event(producer_ts=0, domain='backend',
+                    stage='character_cognition_transport_failed', summary='character cognition transport failed',
+                    detail={'error_type': type(error).__name__, 'error': str(error)}))
+        task.add_done_callback(completed)
+
+    async def send_raw_fact_followups(envelope: Envelope, authority_ack: dict[str, object], copied_context) -> None:
+        try:
+            outbound, inputs = await _dialogue_owner_call(execution,
+                lambda: _capture_transport_cognition(lambda: _handle_raw_fact_followup(envelope, connection_context=copied_context), copied_context))
+            start_cognition_inputs(inputs, copied_context)
             await send_batch(_drop_matching_authority_ack(outbound, authority_ack))
+        except WebSocketDisconnect:
+            return
         except (ValidationError, ValueError, TypeError) as exc:
-            await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
+            with suppress(WebSocketDisconnect):
+                await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
         except Exception as exc:
             _publish_debug_event(
                 build_debug_event(
@@ -2050,8 +3043,130 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     detail={"error_type": type(exc).__name__, "error": str(exc)},
                 )
             )
-            await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
+            with suppress(WebSocketDisconnect):
+                await send(_as_error_ack(source_type=envelope.message_type, route="raw_fact_followup_failed", error=exc))
 
+    async def finish_admitted(item):
+        request_id, _future, _context, request_sequence = item
+        admitted_futures.pop(request_id, None)
+        admitted_commands.task_done()
+        if hasattr(websocket, 'finish_runtime_request'):
+            await websocket.finish_runtime_request(request_id, request_sequence)
+
+    async def complete_admitted_commands():
+        batch = []
+        carry = None
+        try:
+            while carry is not None or not admitted_commands.empty():
+                batch.append(carry if carry is not None else admitted_commands.get_nowait())
+                carry = None
+                # 等待首项，再只收集已完成 FIFO 前缀；未完成项不能复用本批授权。
+                try:
+                    await asyncio.wrap_future(batch[0][1])
+                except Exception:
+                    pass
+                while not admitted_commands.empty():
+                    item = admitted_commands.get_nowait()
+                    if not item[1].done():
+                        carry = item
+                        break
+                    batch.append(item)
+                pins = [coordinator._binding_pin(item[2].binding) for item in batch]
+                identities = tuple((item[2].connection_ref, pin)
+                                   for item, pin in zip(batch, pins, strict=True))
+                def authorize_completed():
+                    return [coordinator._connection_current(connection_ref, pin)
+                            for connection_ref, pin in identities]
+                current = await _dialogue_owner_call(execution, authorize_completed)
+                for allowed, pin in zip(current, pins, strict=True):
+                    item = batch[0]
+                    request_id, future, copied_context, request_sequence = item
+                    try:
+                        try:
+                            outbound, inputs = await asyncio.wrap_future(future)
+                        except Exception as error:
+                            outbound, inputs = [_as_error_ack(source_type='runtime_enqueue',
+                                route='runtime_execution_failed', error=error)], ()
+                        start_cognition_inputs(inputs, copied_context)
+                        async with send_lock:
+                            if (allowed and not transport_close_requested.is_set()
+                                    and coordinator._binding_pin(connection_context.binding) == pin
+                                    and int(time()) <= pin[2]):
+                                completion = _as_envelope('runtime_completion', {
+                                    'request_id': request_id, 'status': 'owner_finished',
+                                    'messages': project_outbound_messages(outbound, stream_mode=stream_mode)})
+                                if request_sequence is None:
+                                    await websocket.send_json(completion)
+                                else:
+                                    await websocket.send_runtime_completion(completion, request_sequence=request_sequence)
+                    finally:
+                        batch.pop(0)
+                        await finish_admitted(item)
+        finally:
+            if carry is not None:
+                batch.append(carry)
+            while not admitted_commands.empty():
+                batch.append(admitted_commands.get_nowait())
+            for item in batch:
+                item[1].cancel()
+                await finish_admitted(item)
+
+    async def enqueue_runtime(request, *, transferred=False, expected_pin=None, request_sequence=None):
+        nonlocal admission_pump
+        request_id = request.request_id
+        reason = ('duplicate_pending_request' if request_id in admitted_futures else
+                  'connection_queue_full' if len(admitted_futures) >= 128 else
+                  'runtime_unavailable' if execution is None else None)
+        if reason is not None:
+            if transferred:
+                raise ValueError(reason)
+            await send(_as_envelope('runtime_admission', {'request_id': request_id,
+                'accepted': False, 'reason': reason}))
+            return
+        if request.command.message_type == 'raw_fact_event':
+            RawFactEvent.model_validate(request.command.payload)
+        command_json = request.command.model_dump_json()
+        copied_context = replace(connection_context, observed_at=int(time()))
+        binding_pin = tuple(expected_pin) if transferred else coordinator._binding_pin(copied_context.binding)
+        def execute():
+            command = Envelope.model_validate_json(command_json)
+            actor_id = (str(command.payload.get('actor_id', '')) if command.message_type == 'character_actor_status'
+                else RawFactEvent.model_validate(command.payload).source.actor_id)
+            if not _cognition_origin_current(CognitionOrigin(copied_context.connection_ref, binding_pin), actor_id):
+                return [_as_error_ack(source_type=command.message_type,
+                    route='actor_unauthorized', error=ValueError('actor_unauthorized'))], ()
+            if not coordinator._connection_current(copied_context.connection_ref, binding_pin):
+                return [_as_error_ack(source_type=command.message_type,
+                    route='connection_unavailable', error=ValueError('connection_unavailable'))], ()
+            try:
+                (outbound, _), inputs = _capture_transport_cognition(lambda:
+                    _dialogue_connection_envelope(command_json, copied_context), copied_context)
+                return outbound, inputs
+            except (ValidationError, ValueError, TypeError) as error:
+                return [_as_error_ack(source_type=command.message_type, route='invalid_payload', error=error)], ()
+        try:
+            future = execution.submit_admitted(execute) if transferred else execution.submit(execute)
+        except (RuntimeQueueFull, RuntimeStopped) as error:
+            if transferred:
+                raise
+            await send(_as_envelope('runtime_admission', {'request_id': request_id,
+                'accepted': False, 'reason': str(error)}))
+            return
+        admitted_futures[request_id] = future
+        admitted_commands.put_nowait((request_id, future, copied_context, request_sequence))
+        if admission_pump is None or admission_pump.done():
+            admission_pump = asyncio.create_task(complete_admitted_commands())
+            _transient_cognition_tasks.add(admission_pump)
+            admission_pump.add_done_callback(_transient_cognition_tasks.discard)
+            def completed(task):
+                if not task.cancelled() and task.exception() is not None:
+                    request_transport_close('runtime_completion_delivery_failed')
+            admission_pump.add_done_callback(completed)
+        if not transferred:
+            await send(_as_envelope('runtime_admission', {'request_id': request_id, 'accepted': True}))
+
+    if hasattr(websocket, "runtime_enqueue"):
+        websocket.runtime_enqueue = enqueue_runtime
     mirror_delivery_task = asyncio.create_task(send_mirror_deliveries())
     controlled_close_task = asyncio.create_task(send_controlled_transport_close())
     try:
@@ -2059,6 +3174,13 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             try:
                 raw = await websocket.receive_json()
                 envelope = Envelope(**raw)
+                if (transport_close_requested.is_set() or connection_generation != _mirror_transport_generation) and envelope.message_type != "websocket_session_revocation_received":
+                    continue
+                if envelope.message_type == 'runtime_enqueue':
+                    await enqueue_runtime(RuntimeEnqueueRequest.model_validate(envelope.payload))
+                    continue
+                # 绑定、续期及旧入口在此前已接纳命令之后执行，保持原连接顺序。
+                await admitted_commands.join()
                 if envelope.message_type == "dialogue_stream_cancel":
                     request_id = str(envelope.payload.get("request_id", "") or "")
                     active = active_dialogue_streams.get(request_id)
@@ -2071,52 +3193,62 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         )
                     else:
                         active[0].set()
+                        await _dialogue_owner_call(execution,
+                            lambda: coordinator.cancel(active[3], reason="cancelled"))
                         await send(
                             _as_envelope(
                                 "ack",
                                 {"accepted": True, "source_type": envelope.message_type, "route": "dialogue_stream_cancel"},
                             )
                         )
+                        active[1].set()
                     continue
                 stream_event = _streamable_dialogue_submit(envelope)
                 if stream_event is not None:
-                    route = runtime.accept_player_input(stream_event)
-                    if route["route"] == "character_service":
-                        request_id = stream_event.request_id or f"dialogue:{uuid4()}"
-                        stream_event.request_id = request_id
-                        if request_id in active_dialogue_streams:
-                            await send(
-                                _as_envelope(
-                                    "ack",
-                                    {"accepted": False, "source_type": envelope.message_type, "route": "dialogue_stream_duplicate"},
-                                )
-                            )
-                            continue
-                        _publish_debug_event(
-                            build_debug_event(
-                                producer_ts=stream_event.producer_ts,
-                                domain="character",
-                                stage="character_input_received",
-                                actor_id=stream_event.target_actor_id,
-                                summary=summarize_character_input(stream_event.target_actor_id, "收到玩家对话输入"),
-                                detail=stream_event.model_dump(),
-                            )
-                        )
-                        event_trace.record(stream_event.intent_type)
-                        await send(
-                            _as_envelope(
-                                "ack",
-                                {"accepted": route["accepted"], "source_type": envelope.message_type, "route": route["route"]},
-                            )
-                        )
-                        cancelled = asyncio.Event()
-                        task = asyncio.create_task(run_dialogue_stream(stream_event, request_id, cancelled))
-                        active_dialogue_streams[request_id] = (cancelled, task)
+                    request_id = stream_event.request_id or f"dialogue:{uuid4()}"
+                    stream_event.request_id = request_id
+                    slot = None if request_id in active_dialogue_streams else _dialogue_provider_slots.acquire()
+                    if slot is None:
+                        await send(_as_envelope("ack", {"accepted": False, "source_type": envelope.message_type,
+                            "route": "dialogue_stream_duplicate" if request_id in active_dialogue_streams else "dialogue_provider_capacity"}))
                         continue
+                    event_json = stream_event.model_dump_json().encode()
+                    connection_ref = connection_context.connection_ref
+                    advance = None
+                    try:
+                        def begin_dialogue():
+                            event_copy = DialogueSubmit.model_validate_json(event_json)
+                            route = runtime.accept_player_input(event_copy)
+                            if route["route"] != "character_service":
+                                raise ValueError("dialogue_route_invalid")
+                            deadline = monotonic() + 60.0
+                            return (coordinator.begin(event_json, connection_ref=connection_ref,
+                                                      deadline_monotonic=deadline), deadline)
+                        advance, deadline = await _dialogue_owner_call(execution, begin_dialogue)
+                        if advance.status != "pending":
+                            slot.close()
+                            await send(_as_envelope("ack", {"accepted": False,
+                                "source_type": envelope.message_type, "route": "character_service"}))
+                            await send(_dialogue_stream_end(request_id, "requeued", 0, False))
+                            slot.close()
+                            continue
+                        cancelled, wake = ThreadEvent(), asyncio.Event()
+                        actor_id = stream_event.actor_id if stream_event.player_id == "character_agent" else stream_event.target_actor_id
+                        target_actor_id = stream_event.target_actor_id if stream_event.player_id == "character_agent" else stream_event.actor_id
+                        task = asyncio.create_task(run_dialogue_stream(advance, request_id, actor_id, target_actor_id,
+                            slot, cancelled, wake, deadline, envelope.message_type))
+                        active_dialogue_streams[request_id] = (cancelled, wake, task, advance.job.ticket_id)
+                    except BaseException:
+                        if advance is not None and advance.job is not None:
+                            await asyncio.shield(_dialogue_owner_call(execution,
+                                lambda: coordinator.cancel(advance.job.ticket_id, reason="transport_failed")))
+                        slot.close()
+                        raise
+                    continue
                 if envelope.message_type == "raw_fact_event":
-                    authority_ack = _raw_fact_fast_authority_ack(envelope)
+                    authority_ack = await _dialogue_owner_call(execution, lambda: _raw_fact_fast_authority_ack(envelope))
                     await send(authority_ack)
-                    task = asyncio.create_task(send_raw_fact_followups(envelope, authority_ack))
+                    task = asyncio.create_task(send_raw_fact_followups(envelope, authority_ack, replace(connection_context, observed_at=int(time()))))
                     raw_fact_followup_tasks.add(task)
                     task.add_done_callback(raw_fact_followup_tasks.discard)
                     continue
@@ -2129,14 +3261,62 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     ):
                         transport_close_revocation_received.set()
                     continue
-                outbound = _handle_websocket_envelope(envelope, connection_context)
+                if transport_close_requested.is_set() or connection_generation != _mirror_transport_generation:
+                    continue
+                if envelope.message_type == "gameplay_mirror_receipt":
+                    if mirror_sink is None and execution is not None:
+                        outbound = _gameplay_mirror_error(envelope.message_type, "mirror_connection_unavailable")
+                    else:
+                        # 仅 receipt telemetry；不进入逻辑 owner，也不访问 source/auth。
+                        outbound = _handle_mirror_receipt(envelope, replace(connection_context, observed_at=int(time())), connection_registry)
+                else:
+                    copied_context = replace(connection_context, observed_at=int(time()))
+                    (outbound, updated_context), inputs = await _dialogue_owner_call(execution,
+                        lambda: _capture_transport_cognition(lambda: _dialogue_connection_envelope(envelope.model_dump_json(), copied_context), copied_context))
+                    start_cognition_inputs(inputs, copied_context)
+                    connection_context.binding = updated_context.binding
+                    connection_context.capability_profile = updated_context.capability_profile
+                    if synchronize_binding is not None:
+                        await synchronize_binding(coordinator._binding_pin(connection_context.binding))
+                    if any(item.get("message_type") in {"websocket_session_bound", "websocket_session_renewal_enrollment"}
+                           for item in outbound):
+                        for cancelled, wake, _task, _ticket in active_dialogue_streams.values():
+                            cancelled.set()
+                            wake.set()
+                        for task in tuple(raw_fact_followup_tasks):
+                            task.cancel()
+                    if any(item.get("message_type") == "websocket_session_renewal_enrollment" for item in outbound):
+                        detach_mirror()
                 if _session_bound_by(outbound, envelope.message_type, connection_context):
-                    gameplay_mirror_connection_registry.register(
-                        session_ref=connection_context.binding.session_ref,
-                        connection_ref=connection_context.connection_ref,
-                        connection_epoch=connection_context.binding.connection_epoch,
-                        deliver=mirror_delivery_queue.enqueue_delivery,
-                    )
+                    detach_mirror()
+                    mirror_session_ref = connection_context.binding.session_ref
+                    if execution is not None:
+                        session_ref = mirror_session_ref
+                        sink = create_mirror_sink(session_ref)
+                        mirror_sink = sink
+                    try:
+                        connection_registry.register(
+                            session_ref=mirror_session_ref,
+                            connection_ref=connection_context.connection_ref,
+                            connection_epoch=connection_context.binding.connection_epoch,
+                            deliver=enqueue_mirror if execution is not None else mirror_delivery_queue.enqueue_delivery,
+                            defer_receipts=execution is not None,
+                            # 两级缓冲及一个发送中项均可在一次无阻塞发送轮内完成；窗口仍有硬上限。
+                            receipt_window=(2 * settings.gameplay_mirror_projection_queue_capacity
+                                + settings.gameplay_mirror_control_queue_capacity + settings.gameplay_mirror_dirty_actor_limit + 1
+                                if execution is not None else 32),
+                        )
+                        if execution is not None:
+                            await _dialogue_owner_call(execution, lambda: _install_mirror_route(
+                                session_ref, connection_context.connection_ref, sink))
+                    except BaseException:
+                        copied_context = replace(connection_context)
+                        detach_mirror()
+                        await asyncio.shield(_dialogue_owner_call(execution,
+                            lambda: _disconnect_dialogue_connection(coordinator, copied_context)))
+                        connection_context.binding = None
+                        request_transport_close("mirror_delivery_unrecoverable")
+                        raise
             except (ValidationError, ValueError, TypeError) as exc:
                 source_type = "unknown"
                 if isinstance(raw, dict):
@@ -2146,39 +3326,62 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         return
     finally:
-        if websocket_transport_closers.get(connection_context.connection_ref) == request_transport_close:
-            websocket_transport_closers.pop(connection_context.connection_ref, None)
-        if connection_context.binding is not None:
-            _drop_mirror_transport_session(connection_context, connection_context.binding.session_ref)
-            websocket_session_auth_service.disconnect_session(
-                connection_context.binding.session_ref,
-                now=int(time()),
-            )
-        mirror_delivery_task.cancel()
-        controlled_close_task.cancel()
-        mirror_delivery_queue.clear()
-        tasks = [task for cancelled, task in active_dialogue_streams.values()]
-        for cancelled, _task in active_dialogue_streams.values():
-            cancelled.set()
-        for task in tasks:
-            task.cancel()
-        for task in raw_fact_followup_tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        if raw_fact_followup_tasks:
-            await asyncio.gather(*raw_fact_followup_tasks, return_exceptions=True)
-        await asyncio.gather(mirror_delivery_task, return_exceptions=True)
-        await asyncio.gather(controlled_close_task, return_exceptions=True)
+        with CancelScope(shield=True):
+            # 先在 loop 取消尚未执行的命令；解绑不能排到这些命令之后才撤销它们。
+            for future in tuple(admitted_futures.values()):
+                future.cancel()
+            if admission_pump is not None:
+                admission_pump.cancel()
+                await asyncio.gather(admission_pump, return_exceptions=True)
+            while not admitted_commands.empty():
+                request_id, future, _, request_sequence = admitted_commands.get_nowait()
+                admitted_futures.pop(request_id, None)
+                admitted_commands.task_done()
+            cognition_sink.close()
+            detach_mirror()
+            if websocket_transport_closers.get(connection_context.connection_ref) == request_transport_close:
+                websocket_transport_closers.pop(connection_context.connection_ref, None)
+            copied_context = replace(connection_context)
+            try:
+                with suppress(RuntimeStopped):
+                    await asyncio.shield(_dialogue_owner_call(execution,
+                        lambda: _disconnect_dialogue_connection(coordinator, copied_context)))
+            finally:
+                mirror_delivery_task.cancel()
+                controlled_close_task.cancel()
+                mirror_delivery_queue.clear()
+                tasks = [task for _cancelled, _wake, task, _ticket in active_dialogue_streams.values()]
+                for cancelled, wake, _task, _ticket in active_dialogue_streams.values():
+                    cancelled.set()
+                    wake.set()
+                for task in tasks:
+                    task.cancel()
+                for task in raw_fact_followup_tasks:
+                    task.cancel()
+                if tasks:
+                    await asyncio.gather(*tasks, return_exceptions=True)
+                if raw_fact_followup_tasks:
+                    await asyncio.gather(*raw_fact_followup_tasks, return_exceptions=True)
+                # 已开始的网络等待可取消并走 finally；未启动任务自行记录关闭终态。
+                for task in tuple(cognition_output_started):
+                    task.cancel()
+                while cognition_sink.pending or cognition_output_tasks:
+                    await asyncio.sleep(.02)
+                await asyncio.gather(mirror_delivery_task, return_exceptions=True)
+                await asyncio.gather(controlled_close_task, return_exceptions=True)
+                if cleanup_tasks:
+                    await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+
 
 
 @app.websocket("/debug/ws")
 async def debug_websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     history, queue = debug_stream.snapshot_and_subscribe()
-    for event in history:
-        await websocket.send_json(event)
+    event_task = disconnect_task = None
     try:
+        for event in history:
+            await websocket.send_json(event)
         while True:
             event_task = asyncio.create_task(queue.get())
             disconnect_task = asyncio.create_task(websocket.receive_text())
@@ -2188,17 +3391,26 @@ async def debug_websocket_endpoint(websocket: WebSocket) -> None:
             )
             for task in pending:
                 task.cancel()
+            await asyncio.gather(*pending, return_exceptions=True)
 
             if disconnect_task in done:
                 disconnect_task.result()
-                continue
 
-            event = event_task.result()
-            await websocket.send_json(event)
-    except WebSocketDisconnect:
+            if event_task in done:
+                event = event_task.result()
+                if event is None:
+                    await websocket.close(code=1013, reason="debug_stream_resync_required")
+                    return
+                await websocket.send_json(event)
+    except (WebSocketDisconnect, asyncio.CancelledError):
         return
     finally:
         debug_stream.unsubscribe(queue)
+        tasks = [task for task in (event_task, disconnect_task) if task is not None]
+        for task in tasks:
+            task.cancel()
+        with CancelScope(shield=True):
+            await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _handle_raw_fact_followup(
@@ -2223,11 +3435,11 @@ def _handle_websocket_envelope(
     return _handle_envelope(envelope)
 
 
-def _activate_character_for_player_input(
+def _player_activation_decision(
     event: DialogueSubmit | FocusTargetChange | InteractIntent,
     *,
     cognition_callback: Callable[[], object] | None = None,
-) -> ActivationReceipt | None:
+):
     if isinstance(event, DialogueSubmit):
         target_actor_id, interaction_type, focused = (
             event.target_actor_id,
@@ -2244,7 +3456,7 @@ def _activate_character_for_player_input(
         target_actor_id = event.target_object_id.removeprefix("character:")
         interaction_type, focused = event.interaction_type, True
     if not target_actor_id:
-        return None
+        return "", None
     activation_authority = getattr(character_agent_runtime, "_activation_authority", None)
     if activation_authority is None:
         store = globals().get("gameplay_event_store")
@@ -2283,6 +3495,16 @@ def _activate_character_for_player_input(
         ),
         supported_actor=supported_actor,
     )
+    return target_actor_id, decision
+
+
+def _activate_character_for_player_input(
+    event: DialogueSubmit | FocusTargetChange | InteractIntent,
+    *, cognition_callback: Callable[[], object] | None = None,
+) -> ActivationReceipt | None:
+    target_actor_id, decision = _player_activation_decision(event, cognition_callback=cognition_callback)
+    if decision is None:
+        return None
     receipt = (
         character_agent_runtime.activate_actor(
             target_actor_id,
@@ -2337,6 +3559,29 @@ def _activation_requeue_messages(
             )
         ]
     )
+
+
+def _handle_mirror_receipt(envelope, connection_context, connection_registry):
+    if connection_context.binding is None:
+        return _gameplay_mirror_error(envelope.message_type, "websocket_session_required")
+    if connection_context.binding.lease_expires_at and connection_context.binding.lease_expires_at <= connection_context.observed_at:
+        return _gameplay_mirror_error(envelope.message_type, "websocket_session_expired")
+    if connection_context.capability_profile is None or not connection_context.capability_profile.supports_receipt:
+        return _gameplay_mirror_error(envelope.message_type, "mirror_capability_incompatible")
+    try:
+        receipt = GameplayMirrorReceipt.model_validate(envelope.payload)
+        connection_registry.acknowledge(
+            session_ref=connection_context.binding.session_ref,
+            receipt=receipt,
+        )
+    except (GameplayMirrorDeliveryError, GameplayMirrorConnectionError, ValidationError) as exc:
+        return _gameplay_mirror_error(envelope.message_type, _error_code(exc))
+    return [
+        _as_envelope(
+            "ack",
+            {"accepted": True, "source_type": envelope.message_type, "route": "gameplay_mirror_receipt"},
+        )
+    ]
 
 
 def _handle_envelope(
@@ -2394,11 +3639,17 @@ def _handle_envelope(
                 route="siming_staging_ack",
                 error=exc,
             )
-        if any(
-            existing.correlation_id == ack.correlation_id
-            and existing.payload.get("source") == ack.source
-            for existing in authority_event_bus.list_events(event_type="siming_staging_ack")
-        ):
+        published = _publish_staging_ack_once(
+            authority_event_adapter.staging_ack_event(
+                ack,
+                room_id=payload["room_id"],
+                scene_id=payload["scene_id"],
+                zone_id=payload["zone_id"],
+                producer_ts=payload["producer_ts"],
+            ),
+            source=ack.source,
+        )
+        if not published:
             event_trace.record("siming_staging_ack_duplicate_suppressed")
             return _finalize_outbound_messages(
                 [{
@@ -2410,15 +3661,6 @@ def _handle_envelope(
                     },
                 }]
             )
-        authority_event_bus.publish(
-            authority_event_adapter.staging_ack_event(
-                ack,
-                room_id=payload["room_id"],
-                scene_id=payload["scene_id"],
-                zone_id=payload["zone_id"],
-                producer_ts=payload["producer_ts"],
-            )
-        )
         event_trace.record("siming_staging_ack")
         return _finalize_outbound_messages(
             [
@@ -2624,24 +3866,7 @@ def _handle_envelope(
         ]
 
     if envelope.message_type == "gameplay_mirror_receipt":
-        if connection_context.binding is None:
-            return _gameplay_mirror_error(envelope.message_type, "websocket_session_required")
-        if connection_context.capability_profile is None or not connection_context.capability_profile.supports_receipt:
-            return _gameplay_mirror_error(envelope.message_type, "mirror_capability_incompatible")
-        try:
-            receipt = GameplayMirrorReceipt.model_validate(envelope.payload)
-            gameplay_mirror_connection_registry.acknowledge(
-                session_ref=connection_context.binding.session_ref,
-                receipt=receipt,
-            )
-        except (GameplayMirrorDeliveryError, ValidationError) as exc:
-            return _gameplay_mirror_error(envelope.message_type, _error_code(exc))
-        return [
-            _as_envelope(
-                "ack",
-                {"accepted": True, "source_type": envelope.message_type, "route": "gameplay_mirror_receipt"},
-            )
-        ]
+        return _handle_mirror_receipt(envelope, connection_context, gameplay_mirror_connection_registry)
 
     if envelope.message_type == "gameplay_mirror_unsubscribe":
         try:
@@ -3422,10 +4647,10 @@ def _handle_envelope(
             )
             _ = character_perceived_input_service.apply_self_body_perceived_event(self_body_perceived)
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
-            self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
+            self_body_commands = _ingest_transport_cognition('ingest_self_body_perceived_event', self_body_perceived)
             messages.extend(_as_character_agent_execution_envelopes(self_body_commands))
             if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
-                character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
+                _schedule_background_cognition(self_body_perceived.actor_id, self_body_perceived.producer_ts)
             if event.actor_id != "char_c":
                 messages.extend(
                     _as_character_agent_suggestion_envelopes(
@@ -3520,7 +4745,7 @@ def _select_gameplay_mirror_capability_profile(
     return GameplayMirrorCapabilityProfile(
         protocol_version=min(offer.protocol_version, 2),
         supports_snapshot=True,
-        supports_delta=False,
+        supports_delta=offer.protocol_version >= 2 and offer.supports_delta,
         supports_receipt=offer.supports_receipt,
         projection_schema="gameplay_runtime_state.godot.v1",
     )
@@ -3543,30 +4768,45 @@ def _websocket_session_renewal_error(source_type: str, error_code: str) -> list[
 def _drop_mirror_transport_session(connection_context: WebSocketConnectionContext, session_ref: str) -> None:
     """Remove only disposable delivery state; committed gameplay data is intentionally untouched."""
 
-    gameplay_mirror_subscription_registry.drop_session(session_ref=session_ref)
+    route = _mirror_transport_routes.get(session_ref)
+    if route is not None and route[0] != connection_context.connection_ref:
+        return
+    gameplay_mirror_session_access_service.drop_session(session_ref=session_ref)
     government_drought_advisory_presentation_service.drop_session(session_ref=session_ref)
-    gameplay_mirror_connection_registry.unregister(
-        session_ref=session_ref,
-        connection_ref=connection_context.connection_ref,
-    )
+    if runtime_execution is None:
+        gameplay_mirror_connection_registry.unregister(session_ref=session_ref, connection_ref=connection_context.connection_ref)
+    elif route is not None:
+        _mirror_transport_routes.pop(session_ref, None)
+        route[1].close("session_replaced")
 
 
 def _revoke_mirror_delivery_session(session_ref: str) -> None:
-    """Close an unusable mirror transport without touching committed gameplay state."""
-
-    connection_ref = gameplay_mirror_connection_registry.connection_ref_for(session_ref=session_ref)
+    if runtime_execution is None:
+        connection_ref = gameplay_mirror_connection_registry.connection_ref_for(session_ref=session_ref)
+    else:
+        route = _mirror_transport_routes.get(session_ref)
+        connection_ref = route[0] if route else None
     if connection_ref is None:
-        gameplay_mirror_subscription_registry.drop_session(session_ref=session_ref)
+        gameplay_mirror_session_access_service.drop_session(session_ref=session_ref)
+        government_drought_advisory_presentation_service.drop_session(session_ref=session_ref)
         return
-    revoke_websocket_session_for_transport(
-        session_ref=session_ref,
-        connection_ref=connection_ref,
-        reason_code="mirror_delivery_unrecoverable",
-        now=int(time()),
-    )
+    if not _revoke_websocket_session_for_transport(session_ref=session_ref, connection_ref=connection_ref,
+            reason_code="mirror_delivery_unrecoverable", now=int(time())):
+        # 已撤销/过期的 auth 也必须收掉该固定 token 的 disposable scope。
+        _drop_mirror_transport_session(WebSocketConnectionContext(remote_host="", observed_at=int(time()),
+            connection_ref=connection_ref), session_ref)
 
 
-def revoke_websocket_session_for_transport(
+def revoke_websocket_session_for_transport(*, session_ref: str, connection_ref: str, reason_code: str, now: int) -> bool:
+    def revoke():
+        return _revoke_websocket_session_for_transport(session_ref=session_ref,
+            connection_ref=connection_ref, reason_code=reason_code, now=now)
+    if runtime_execution is None:
+        return revoke()
+    return runtime_execution.submit(revoke).result()
+
+
+def _revoke_websocket_session_for_transport(
     *,
     session_ref: str,
     connection_ref: str,
@@ -3575,6 +4815,9 @@ def revoke_websocket_session_for_transport(
 ) -> bool:
     """Server-only lifecycle hook that cannot alter committed gameplay authority data."""
 
+    route = _mirror_transport_routes.get(session_ref)
+    if route is not None and route[0] != connection_ref:
+        return False
     revoked = websocket_session_auth_service.revoke_session(
         session_ref,
         reason_code=reason_code,
@@ -3582,6 +4825,11 @@ def revoke_websocket_session_for_transport(
     )
     if not revoked:
         return False
+    if _dialogue_coordinator is not None:
+        _dialogue_coordinator.cancel_connection(connection_ref, reason="revoked")
+    _cancel_transport_cognition(connection_ref)
+    if route is not None:
+        route[1].close(reason_code)
     _drop_mirror_transport_session(
         WebSocketConnectionContext(remote_host="", observed_at=now, connection_ref=connection_ref),
         session_ref,
@@ -3595,9 +4843,10 @@ def revoke_websocket_session_for_transport(
             detail={"connection_ref": connection_ref, "session_ref": session_ref, "reason_code": reason_code},
         )
     )
-    closer = websocket_transport_closers.get(connection_ref)
-    if closer is not None:
-        closer(reason_code)
+    if runtime_execution is None:
+        closer = websocket_transport_closers.get(connection_ref)
+        if closer is not None:
+            closer(reason_code)
     return True
 
 
@@ -3666,7 +4915,7 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
     if participant_private_terms is not None and not isinstance(participant_private_terms, dict):
         return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "invalid_participant_private_terms")
 
-    bus_start = len(authority_event_bus.list_events())
+    bus_start = authority_event_bus.cursor()
     task_result = embodied_harness_task_coordinator.run_handshake(
         session_id=session_id,
         semantic_action=semantic_action,
@@ -3686,7 +4935,7 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
 
     session_messages = [
         outbound
-        for event in authority_event_bus.list_events()[bus_start:]
+        for event in authority_event_bus.list_events(after_cursor=bus_start)
         if (outbound := _embodied_session_event_envelope_from_authority_event(event)) is not None
     ]
     embodied_harness_task_coordinator.record_godot_projection(
@@ -3760,7 +5009,7 @@ def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]
     asset_ref = str(payload.get("asset_ref", "") or "item:letter_01")
     from_actor_ref = str(payload.get("from_actor_ref", "") or "character:siming")
     to_actor_ref = str(payload.get("to_actor_ref", "") or "character:maya")
-    bus_start = len(authority_event_bus.list_events())
+    bus_start = authority_event_bus.cursor()
     started = embodied_handoff_authority_service.start_handoff(
         session_id=session_id,
         asset_ref=asset_ref,
@@ -3787,7 +5036,7 @@ def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]
         return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
     handoff_messages = [
         outbound
-        for event in authority_event_bus.list_events()[bus_start:]
+        for event in authority_event_bus.list_events(after_cursor=bus_start)
         if (outbound := _embodied_handoff_event_envelope_from_authority_event(event)) is not None
     ]
     return [
@@ -3843,7 +5092,7 @@ def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str
     actor_ref = str(payload.get("actor_ref", "") or "character:siming")
     source_holder_ref = str(payload.get("source_holder_ref", "") or "world:anchor:table_01")
     drop_target_ref = str(payload.get("drop_target_ref", "") or "world:anchor:floor_slot_01")
-    bus_start = len(authority_event_bus.list_events())
+    bus_start = authority_event_bus.cursor()
     started = embodied_carry_place_authority_service.start_carry_place(
         session_id=session_id,
         asset_ref=asset_ref,
@@ -3872,7 +5121,7 @@ def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str
         return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
     carry_place_messages = [
         outbound
-        for event in authority_event_bus.list_events()[bus_start:]
+        for event in authority_event_bus.list_events(after_cursor=bus_start)
         if (outbound := _embodied_carry_place_event_envelope_from_authority_event(event)) is not None
     ]
     return [
@@ -3905,7 +5154,7 @@ def _handle_default_scene_pickup(event: PickupIntent) -> list[dict[str, object]]
 
     policy = resolution.policy
     session_id = f"session:default-scene-pickup:{event.actor_id}:{event.target_object_id}:{event.producer_ts}"
-    bus_start = len(authority_event_bus.list_events())
+    bus_start = authority_event_bus.cursor()
     started = embodied_carry_place_authority_service.start_carry_place(
         session_id=session_id,
         asset_ref=policy.asset_ref,
@@ -3936,7 +5185,7 @@ def _handle_default_scene_pickup(event: PickupIntent) -> list[dict[str, object]]
 
     carry_place_messages = [
         outbound
-        for authority_event in authority_event_bus.list_events()[bus_start:]
+        for authority_event in authority_event_bus.list_events(after_cursor=bus_start)
         if (outbound := _embodied_carry_place_event_envelope_from_authority_event(authority_event)) is not None
     ]
     return [
@@ -4179,6 +5428,52 @@ def _parse_player_input(payload: dict) -> MoveIntent | DialogueSubmit | Interact
     if intent_type == "focus_target_change":
         return FocusTargetChange(**payload)
     raise ValueError(f"unsupported intent_type: {intent_type}")
+
+
+def _begin_dialogue_activation(event: DialogueSubmit, deadline: float):
+    actor_id, decision = _player_activation_decision(event)
+    if decision is None:
+        return None, None
+    return character_agent_runtime.begin_actor_activation(
+        actor_id, decision, producer_ts=event.producer_ts, deadline_monotonic=deadline)
+
+
+def _prepare_dialogue_cognition(event: DialogueSubmit, handle, on_finished):
+    _publish_debug_event(build_debug_event(
+        producer_ts=event.producer_ts, domain="character", stage="character_input_received",
+        actor_id=event.target_actor_id, summary=summarize_character_input(event.target_actor_id, "收到玩家对话输入"),
+        detail=event.model_dump()))
+    event_trace.record(event.intent_type)
+    if not _is_agent_dialogue_target(event.target_actor_id):
+        return CognitionAdvance("completed", result=[])
+    perceived = _dialogue_submit_to_character_perceived_event(event)
+    character_perceived_input_service.apply_character_perceived_event(perceived)
+    if _dialogue_cascade_depth(perceived) >= settings.character_dialogue_cascade_limit:
+        character_agent_runtime.record_character_perceived_event_without_cognition(perceived)
+        return CognitionAdvance("completed", result=[])
+    return character_agent_runtime.prepare_cognition_job(
+        source_kind="ingest_character_perceived_event", payload=perceived,
+        deadline_monotonic=handle.deadline_monotonic,
+        activation_lock_ref=handle.lock_ref, activation_token=handle.token,
+        activation_is_current=character_agent_runtime.activation_is_current,
+        on_finished=on_finished)
+
+
+def _finish_dialogue_response(response: DialogueResponse):
+    _record_completed_dialogue_response(response)
+    event_trace.record(response.output_type)
+    return [_as_envelope("dialogue_response", response.model_dump()), *_observatory_messages_from_outbound([])]
+
+
+def _get_dialogue_coordinator() -> DialogueCoordinator:
+    global _dialogue_coordinator
+    if _dialogue_coordinator is None:
+        _dialogue_coordinator = DialogueCoordinator(
+            runtime=character_agent_runtime, character_service=character_service,
+            auth=websocket_session_auth_service, begin_activation=_begin_dialogue_activation,
+            prepare_cognition=_prepare_dialogue_cognition, speech_content=_first_speech_command_content,
+            finish_response=_finish_dialogue_response)
+    return _dialogue_coordinator
 
 
 def _handle_player_dialogue_submit(event: DialogueSubmit) -> DialogueResponse:
@@ -4846,7 +6141,7 @@ def _queue_siming_character_dispatch_messages(authority_event_id: str, result: S
         actor_id = str(getattr(delivery_input, "actor_id", "") or "")
         producer_ts = int(getattr(delivery_input, "producer_ts", 0) or 0)
         if producer_ts > 0:
-            character_agent_runtime.run_scheduled_background_cognition_ticks(producer_ts)
+            _schedule_background_cognition(actor_id, producer_ts)
         messages.extend(
             _as_character_agent_suggestion_envelopes(character_agent_runtime.drain_suggestion_packets(actor_id))
         )
@@ -5335,10 +6630,10 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
                     detail=perceived.model_dump(),
                 )
             )
-            character_agent_commands = character_agent_runtime.ingest_character_perceived_event(perceived)
+            character_agent_commands = _ingest_transport_cognition('ingest_character_perceived_event', perceived)
             character_agent_messages.extend(_as_character_agent_execution_envelopes(character_agent_commands))
             if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
-                character_agent_runtime.run_scheduled_background_cognition_ticks(perceived.producer_ts)
+                _schedule_background_cognition(perceived.actor_id, perceived.producer_ts)
             character_agent_messages.extend(
                 _as_character_agent_suggestion_envelopes(
                     character_agent_runtime.drain_suggestion_packets(actor_id)
@@ -6069,3 +7364,8 @@ def _observatory_authority_event_from_payload(
         correlation_id=str(payload.get("correlation_id", "") or event_id),
         payload=dict(payload),
     )
+
+# 显式组件接缝只供 child/组件测试；生产入口始终使用单 spawn child。
+component_app = app
+from app.services.runtime_asgi import create_runtime_app, RUNTIME_WEBSOCKET_PROTOCOL
+app = create_runtime_app(component_app)

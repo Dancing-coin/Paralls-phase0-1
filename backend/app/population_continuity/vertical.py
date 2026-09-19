@@ -862,31 +862,8 @@ class SimingLedPopulationFixture:
         )
 
     def _run_player_dialogue(self, dialogue: DialogueSubmit) -> dict[str, object]:
-        from app import main
-        from app.ws_protocol import Envelope
-
-        debug_events: list[dict[str, object]] = []
-        saved = (
-            main.character_agent_runtime,
-            main.activation_policy,
-            main.runtime,
-            main._publish_debug_event,
-        )
-        main.character_agent_runtime = self.character_runtime
-        main.activation_policy = self.activation_policy
-        main.runtime = SessionInputRouter()
-        main._publish_debug_event = debug_events.append
-        try:
-            messages = main._handle_envelope(
-                Envelope(message_type="player_input", payload=dialogue.model_dump())
-            )
-        finally:
-            (
-                main.character_agent_runtime,
-                main.activation_policy,
-                main.runtime,
-                main._publish_debug_event,
-            ) = saved
+        messages, debug_events = _run_fixture_player_dialogue(
+            self.character_runtime, self.activation_policy, dialogue)
         activation_event = next(
             event
             for event in debug_events
@@ -1035,10 +1012,9 @@ class SimingLedPopulationFixture:
             {
                 "revision": self.character_runtime._continuity_revisions.get(actor_id, 0),
                 "pending": self.character_runtime.get_pending_seed_candidates(actor_id),
-                "materialization_receipts": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self.character_runtime._materialization_receipts.items()
-                },
+                "materialization_receipts": self.character_runtime._session_store.list_receipts(
+                    actor_id, "materialization"
+                ),
                 "seed_projection": self.character_runtime.get_seed_projection(actor_id),
             }
         )
@@ -1048,10 +1024,9 @@ class SimingLedPopulationFixture:
             {
                 "revision": self.character_runtime._continuity_revisions.get(actor_id, 0),
                 "pending": self.character_runtime.get_pending_seed_candidates(actor_id),
-                "materialization_receipts": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self.character_runtime._materialization_receipts.items()
-                },
+                "materialization_receipts": self.character_runtime._session_store.list_receipts(
+                    actor_id, "materialization"
+                ),
                 "seed_projection": self.character_runtime.get_seed_projection(actor_id),
             }
         )
@@ -1547,9 +1522,6 @@ class ThreeActorCohortContinuityFixture:
         return result, len(self.bakery.store.read_events()) == before_events
 
     def _run_player_dialogue(self, target_actor_id: str) -> dict[str, object]:
-        from app import main
-        from app.ws_protocol import Envelope
-
         dialogue = DialogueSubmit(
             player_id="player:1",
             room_id="room:bakery",
@@ -1561,18 +1533,8 @@ class ThreeActorCohortContinuityFixture:
             target_actor_id=target_actor_id,
             content="What is happening at the bakery?",
         )
-        debug_events: list[dict[str, object]] = []
-        saved = (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event)
-        main.character_agent_runtime = self.character_runtime
-        main.activation_policy = self.activation_policy
-        main.runtime = SessionInputRouter()
-        main._publish_debug_event = debug_events.append
-        try:
-            messages = main._handle_envelope(
-                Envelope(message_type="player_input", payload=dialogue.model_dump())
-            )
-        finally:
-            (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event) = saved
+        messages, debug_events = _run_fixture_player_dialogue(
+            self.character_runtime, self.activation_policy, dialogue)
         activation_event = next(item for item in debug_events if item.get("stage") == "activation_active")
         ack = next(message for message in messages if message["message_type"] == "ack")
         return {
@@ -1902,3 +1864,28 @@ class GeneralizedPopulationDecisionFixture:
             make("candidate:player", "character:char_c", "relationship_negotiation", proximity=1.0),
             make("candidate:propagation", "character:char_b", "routine_work", propagation=1.0),
         )
+
+
+def _run_fixture_player_dialogue(character_runtime, activation_policy, dialogue):
+    """离线 fixture 显式创建并关闭同步路由依赖，不借用 import 或别的测试初始化。"""
+    from app import main
+    from app.ws_protocol import Envelope
+
+    previous_path = main.settings.heavenly_graph_path
+    try:
+        main.settings.heavenly_graph_path = ":memory:"
+        main.reset_runtime_state()
+    finally:
+        main.settings.heavenly_graph_path = previous_path
+    debug_events = []
+    saved = (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event)
+    main.character_agent_runtime = character_runtime
+    main.activation_policy = activation_policy
+    main.runtime = SessionInputRouter()
+    main._publish_debug_event = debug_events.append
+    try:
+        messages = main._handle_envelope(Envelope(message_type="player_input", payload=dialogue.model_dump()))
+        return messages, debug_events
+    finally:
+        (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event) = saved
+        main.close_runtime_resources()

@@ -21,7 +21,7 @@ class SimingHeavenlyMemoryService:
         self._graph = graph
         self._entry_adapter = TypeAdapter(SimingHeavenlyMemoryEntry)
 
-    def write_entry(
+    def plan_write_entry(
         self,
         *,
         scope: HeavenlyGraphScope,
@@ -33,11 +33,12 @@ class SimingHeavenlyMemoryService:
         provenance: GraphProvenance,
         transaction_id: str,
         idempotency_key: str,
-    ) -> HeavenlyGraphWriteResult:
+        siming_room_head=None,
+    ) -> HeavenlyGraphWriteBatch:
         self._require_heavenly_scope(scope)
         node = HeavenlyGraphNode(
             node_id=entry.entry_id,
-            node_type=f"memory:{entry.domain}",
+            node_type=("siming_admission" if entry.domain == "siming_admission" else f"memory:{entry.domain}"),
             scope=scope,
             validity=validity,
             recorded_at=recorded_at,
@@ -58,9 +59,25 @@ class SimingHeavenlyMemoryService:
             transaction_id=transaction_id,
             idempotency_key=idempotency_key,
             scope=scope,
-            nodes=[node],
+            nodes=[node], siming_room_head=siming_room_head,
         )
-        return self._graph.write_batch(batch)
+        return batch
+
+    def write_entry(self, **kwargs) -> HeavenlyGraphWriteResult:
+        return self._graph.write_batch(self.plan_write_entry(**kwargs))
+
+    def read_admission(self, *, key, revision=None):
+        from app.models.siming_heavenly_memory import SimingAdmissionMemoryEntry
+        self._require_heavenly_scope(key.scope)
+        node = self._graph.get_admission_node(scope=key.scope, entry_id=key.entry_id, revision=revision)
+        return None if node is None else SimingAdmissionMemoryEntry.model_validate(node.attributes)
+
+    def list_pending_admissions(self, *, scope, limit, cursor):
+        from app.models.siming_heavenly_memory import SimingAdmissionMemoryEntry
+        if scope is not None:
+            self._require_heavenly_scope(scope)
+        return [SimingAdmissionMemoryEntry.model_validate(node.attributes) for node in
+                self._graph.list_pending_admission_nodes(scope=scope, limit=limit, cursor=cursor)]
 
     def get_entry(
         self,

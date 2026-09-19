@@ -1292,3 +1292,66 @@ def test_prompt_policy_user_instruction_stays_bounded_for_large_context() -> Non
     assert "recent_world_change_sample=" in user_instruction
     assert "recent_constraint_result_sample=" in user_instruction
     assert "event_summary=" in user_instruction
+
+
+def test_prepared_request_freezes_nested_context_and_isolates_provider_mutation():
+    import json
+
+    class MutatingProvider:
+        def complete(self, request):
+            assert request['context']['extra']['values'] == ['before']
+            request['context']['extra']['values'].append('provider')
+            return {'content': 'ready', 'tone': 'calm'}
+
+    gateway = CharacterModelGateway(provider=MutatingProvider())
+    context = {'actor_id': 'char_a', 'extra': {'values': ['before']}}
+    request = gateway.prepare_run_request(task_kind='dialogue_generation', context=context, route_override='local_only')
+    frozen = gateway.freeze_prepared_request(request)
+    context['extra']['values'].append('owner')
+    assert gateway.complete_prepared_request(frozen)['content'] == 'ready'
+    assert json.loads(frozen)['context']['extra']['values'] == ['before']
+    assert context['extra']['values'] == ['before', 'owner']
+
+
+@pytest.mark.parametrize('payload', [b'[]', b'null', b'{"task_kind":"private-secret"}', b'{broken-private-secret', b'{"task_kind": []}'])
+def test_prepared_request_rejects_invalid_envelope_without_private_payload(payload):
+    gateway = CharacterModelGateway()
+    with pytest.raises(ValueError) as error:
+        gateway.complete_prepared_request(payload)
+    assert 'private-secret' not in str(error.value)
+
+
+def test_prepared_stream_keeps_cancellation_and_completed_validation():
+    class Provider:
+        def stream_dialogue(self, request, *, cancelled):
+            yield {'event': 'delta', 'delta': 'hello'}
+            yield {'event': 'completed', 'output': {'content': '', 'tone': 'calm'}}
+
+    gateway = CharacterModelGateway(provider=Provider())
+    frozen = gateway.freeze_prepared_request(gateway.prepare_run_request(task_kind='dialogue_generation', context={}, route_override='local_only'))
+    stream = gateway.stream_prepared_request(frozen, cancelled=lambda: False)
+    assert next(stream) == {'event': 'delta', 'delta': 'hello'}
+    with pytest.raises(ValueError, match='content'):
+        next(stream)
+    assert list(gateway.stream_prepared_request(frozen, cancelled=lambda: True)) == [{'event': 'cancelled'}]
+
+
+@pytest.mark.parametrize('value', ['NaN', 'Infinity', '-Infinity'])
+def test_prepared_request_rejects_non_json_numeric_constants(value):
+    payload = ('{"task_kind":"dialogue_generation","context":{"private-value":' + value + '}}').encode()
+    gateway = CharacterModelGateway(provider=_RecordingProvider({'content': 'ready', 'tone': 'calm'}))
+    with pytest.raises(ValueError, match='UTF-8 JSON'):
+        gateway.complete_prepared_request(payload)
+
+
+def test_prepared_request_serializes_nested_pydantic_values_as_json_objects():
+    import json
+    provider = _RecordingProvider({'content': 'ready', 'tone': 'calm'})
+    gateway = CharacterModelGateway(provider=provider)
+    state = CharacterWorkingMemoryState(actor_id='char_a')
+    request = gateway.prepare_run_request(task_kind='dialogue_generation', context={
+        'actor_id': 'char_a', 'nested': {'working_state': state}}, route_override='local_only')
+    frozen = gateway.freeze_prepared_request(request)
+    assert json.loads(frozen)['context']['nested']['working_state'] == state.model_dump(mode='json')
+    gateway.complete_prepared_request(frozen)
+    assert isinstance(provider.requests[0]['context']['nested']['working_state'], dict)

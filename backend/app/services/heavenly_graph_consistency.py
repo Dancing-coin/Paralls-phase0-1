@@ -8,6 +8,7 @@ private payloads to a reader that cannot see them.
 
 from __future__ import annotations
 
+from contextlib import nullcontext
 from typing import Any, Iterable
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -87,6 +88,11 @@ class HeavenlyGraphConsistencyAudit:
         ):
             raise ValueError("audit scope must match reader context world/session/branch")
 
+        # Durable adapter 只在显式审计期间读取历史，并在同一读锁内保持一致视图。
+        with getattr(self._graph, "historical_read", nullcontext)():
+            return self._audit_history(scope, reader_context)
+
+    def _audit_history(self, scope: HeavenlyGraphScope, reader_context: GraphReaderContext) -> HeavenlyGraphConsistencyReport:
         nodes = self._historical(self._collection("_nodes"), scope)
         relations = self._historical(self._collection("_relations"), scope)
         node_by_id: dict[str, list[HeavenlyGraphNode]] = {}

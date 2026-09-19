@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from hashlib import sha256
 import json
@@ -269,16 +270,20 @@ class InventoryProjector:
     def __init__(self, registry: InventoryDefinitionRegistry) -> None:
         self._registry = registry
 
-    def rebuild(self, actor_ref: str, events: Sequence[GameplayEvent]) -> InventoryProjection:
-        items: dict[str, InventoryItem] = {}
-        containers: dict[str, InventoryContainer] = {}
-        locations: dict[str, str] = {}
-        reservations: dict[str, InventoryReservation] = {}
-        capacity_reservations: dict[str, CommerceCapacityReservation] = {}
-        reserved_quantities: dict[str, int] = {}
-        revisions: dict[str, int] = {}
+    def rebuild(self, actor_ref: str, events: Sequence[GameplayEvent], *,
+                checkpoint: InventoryProjection | None = None,
+                referenced_events: Mapping[str, GameplayEvent] | None = None) -> InventoryProjection:
+        if checkpoint is not None and checkpoint.actor_ref != actor_ref:
+            raise InventoryRuntimeError("inventory_projection_actor_mismatch")
+        items = dict(checkpoint.items) if checkpoint is not None else {}
+        containers = dict(checkpoint.containers) if checkpoint is not None else {}
+        locations = dict(checkpoint.locations) if checkpoint is not None else {}
+        reservations = dict(checkpoint.reservations) if checkpoint is not None else {}
+        capacity_reservations = dict(checkpoint.capacity_reservations) if checkpoint is not None else {}
+        reserved_quantities = {key:item.reserved_quantity for key, item in items.items()}
+        revisions = dict(checkpoint.source_revision_vector) if checkpoint is not None else {}
         ordered_events = sorted(events, key=lambda item: (item.global_sequence, item.event_id))
-        events_by_id = {event.event_id: event for event in ordered_events}
+        events_by_id = {**(referenced_events or {}), **{event.event_id:event for event in ordered_events}}
         for event in ordered_events:
             if not event.event_type.startswith("gameplay.inventory."):
                 continue
@@ -691,6 +696,42 @@ class InventoryAuthorityService:
         self._registry = registry
         self._projector = InventoryProjector(registry)
         self._package_registry = package_registry
+        self._inventory_cache: OrderedDict[str, tuple[InventoryProjection, int]] = OrderedDict()
+
+    def _current_inventory(self, actor_ref: str, *, through_sequence: int | None = None) -> InventoryProjection:
+        """单 Owner 内追平已提交尾部；读失败不安装半成品，也不预装待提交命令。"""
+        cut = self._store.get_last_global_sequence() if through_sequence is None else through_sequence
+        projection, cursor = self._inventory_cache.get(actor_ref, (None, 0))
+        if type(cut) is not int or cut < cursor:
+            raise InventoryRuntimeError("inventory_projection_cursor_regressed")
+        while cursor < cut:
+            events = self._store.read_events(global_sequence_after=cursor, limit=min(256, cut - cursor))
+            if not events or any(event.global_sequence != cursor + index for index, event in enumerate(events, 1)) or events[-1].global_sequence > cut:
+                raise InventoryRuntimeError("inventory_projection_history_gap")
+            references = {}
+            for event in events:
+                if event.payload.get("actor_ref") != actor_ref:
+                    continue
+                field = ("source_harvest_event_id" if event.event_type in {_HARVEST_TO_CUSTODY_EVENT, _GRAIN_HARVEST_EVENT}
+                         else "source_certification_event_id" if event.event_type == "gameplay.inventory.production_output_received@1" else None)
+                ref = event.payload.get(field) if field is not None else None
+                if isinstance(ref, str) and ref and ref not in references:
+                    try:
+                        source = self._store.get_event(ref)
+                    except KeyError:
+                        continue  # 原投影规则负责拒绝缺失来源，保留错误类型。
+                    if source.event_id == ref and 1 <= source.global_sequence <= cut and source.stream_revision >= 1:
+                        references[ref] = source
+            projection = self._projector.rebuild(actor_ref, events, checkpoint=projection, referenced_events=references)
+            cursor = events[-1].global_sequence
+        if projection is None:
+            projection = self._projector.rebuild(actor_ref, ())
+        self._inventory_cache[actor_ref] = (projection, cut)
+        self._inventory_cache.move_to_end(actor_ref)
+        # ponytail: 仅缓存32个活跃actor；淘汰/重启首次访问分页重建，首次写延迟有实测要求时再持久化当前态。
+        while len(self._inventory_cache) > 32:
+            self._inventory_cache.popitem(last=False)
+        return projection
 
     def build_commerce_custody_fragment(
         self,
@@ -711,7 +752,7 @@ class InventoryAuthorityService:
         if any(not ref.startswith("capacity:") for ref in capacity_reservation_refs):
             raise InventoryRuntimeError("commerce_inventory_capacity_invalid")
         stream_id = f"gameplay:inventory:{seller_actor_ref}"
-        projection = self._projector.rebuild(seller_actor_ref, self._store.read_events())
+        projection = self._current_inventory(seller_actor_ref)
         if projection.source_revision_vector.get(stream_id, 0) != expected_revision:
             raise InventoryRuntimeError("revision_conflict")
         missing_custody = [
@@ -794,8 +835,14 @@ class InventoryAuthorityService:
             },
         )
 
+    def has_container(self, *, actor_ref: str, container_id: str) -> bool:
+        # 容器没有删除事件；启动只需创建事实，不需要回放后续物品历史。
+        return any(event.payload.get("container_id") == container_id for event in self._store.read_stream(
+            f"gameplay:inventory:{actor_ref}", event_type="gameplay.inventory.container_created",
+        ))
+
     def create_container(self, *, command_id: str, actor_ref: str, spec: ContainerSpec, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         if not spec.container_id or spec.container_id in projection.containers:
             raise InventoryRuntimeError("inventory_container_invalid")
         if (
@@ -829,7 +876,7 @@ class InventoryAuthorityService:
 
     def instantiate(self, *, command_id: str, actor_ref: str, item_id: str, definition_id: str, quantity: int, container_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
         self._registry.item(definition_id)
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         if container_id not in projection.containers:
             raise InventoryRuntimeError("inventory_container_unknown")
         if projection.containers[container_id].sealed:
@@ -843,7 +890,7 @@ class InventoryAuthorityService:
         return self._append(command_id, actor_ref, [("gameplay.inventory.item_instantiated", {"item_id": item_id, "definition_id": definition_id, "quantity": quantity}), ("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": "inventory:unplaced", "to_container_id": container_id})], idempotency_key, causation_id, correlation_id)
 
     def move(self, *, command_id: str, actor_ref: str, item_id: str, from_container_id: str, to_container_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         item = projection.items.get(item_id)
         target = projection.containers.get(to_container_id)
         if item is None or projection.locations.get(item_id) != from_container_id:
@@ -885,7 +932,7 @@ class InventoryAuthorityService:
             result = self._store.get_by_idempotency(self._PRINCIPAL, key)
             assert result is not None
             return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         item = projection.items.get(item_id)
         location = projection.locations.get(item_id, "")
         if not item_id or not reservation_ref or quantity <= 0:
@@ -922,7 +969,7 @@ class InventoryAuthorityService:
         correlation_id: str,
     ) -> AppendBatchResult:
         """Record a narrow Inventory/Production-owned capacity reservation."""
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         if (
             not capacity_reservation_ref.startswith("capacity:")
             or available_quantity <= 0
@@ -971,7 +1018,7 @@ class InventoryAuthorityService:
             result = self._store.get_by_idempotency(self._PRINCIPAL, key)
             assert result is not None
             return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         if reservation_ref not in projection.reservations:
             raise InventoryRuntimeError("inventory_reservation_unknown")
         return self._store.append_batch(
@@ -1013,7 +1060,7 @@ class InventoryAuthorityService:
             result = self._store.get_by_idempotency(self._PRINCIPAL, key)
             assert result is not None
             return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         if reservation_ref not in projection.reservations:
             raise InventoryRuntimeError("inventory_reservation_unknown")
         return self._store.append_batch(
@@ -1054,7 +1101,7 @@ class InventoryAuthorityService:
         if not source_ref or not item_ref or not item_id or not definition_id or not container_id or quantity <= 0:
             raise InventoryRuntimeError("inventory_output_invalid")
         self._registry.item(definition_id)
-        projection = self._projector.rebuild(actor_ref, self._store.read_events())
+        projection = self._current_inventory(actor_ref)
         if container_id not in projection.containers:
             raise InventoryRuntimeError("inventory_container_unknown")
         if projection.containers[container_id].sealed:
@@ -1149,7 +1196,7 @@ class InventoryAuthorityService:
                 command_id,
                 "inventory_mill_flour_output_source_invalid",
             )
-        projection = self._projector.rebuild(provider_ref, self._store.read_events())
+        projection = self._current_inventory(provider_ref)
         container = projection.containers.get(_REINFORCED_MILL_FLOUR_PROVIDER_CONTAINER)
         if container is None or container.sealed or container.carrier_item_id:
             return self._rejected_append(
@@ -1300,7 +1347,7 @@ class InventoryAuthorityService:
             f"{harvest.stream_revision}:{expected_inventory_stream_revision}:v1"
         ) or causation_id != harvest.event_id:
             return self._rejected_append(command_id, "inventory_grain_harvest_idempotency_key_invalid")
-        projection = self._projector.rebuild(_GRAIN_HARVEST_PROVIDER, self._store.read_events())
+        projection = self._current_inventory(_GRAIN_HARVEST_PROVIDER)
         container = projection.containers.get(_GRAIN_HARVEST_CONTAINER)
         if container is None or container.sealed or container.carrier_item_id:
             return self._rejected_append(command_id, "inventory_grain_harvest_container_unavailable")
@@ -1511,7 +1558,7 @@ class InventoryAuthorityService:
             return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if self._store.get_stream_head(provider_stream) != typed_intent.expected_inventory_stream_revision:
             return self._rejected_append(typed_intent.command_id, "revision_conflict")
-        projection = self._projector.rebuild(holder_ref, self._store.read_events())
+        projection = self._current_inventory(holder_ref)
         container = projection.containers.get(container_id)
         if container is None or container.sealed or container.carrier_item_id:
             return self._rejected_append(typed_intent.command_id, "harvest_to_custody_container_unavailable")
@@ -1749,7 +1796,7 @@ class InventoryAuthorityService:
                     return self._rejected_append(typed.command_id, "production_output_custody_idempotency_key_reused")
         if self._store.get_stream_head(holder_stream) != typed.expected_inventory_stream_revision:
             return self._rejected_append(typed.command_id, "production_output_custody_revision_conflict")
-        projection = self._projector.rebuild(mapping.holder_ref, self._store.read_events())
+        projection = self._current_inventory(mapping.holder_ref)
         destination = projection.containers.get(mapping.container_id)
         if destination is None or destination.sealed or destination.carrier_item_id:
             return self._rejected_append(typed.command_id, "production_output_custody_container_unavailable")
@@ -2135,9 +2182,9 @@ class InventoryAuthorityService:
             )
         ):
             raise InventoryRuntimeError("inventory_package_exchange_invalid")
-        all_events = self._store.read_events()
-        provider = self._projector.rebuild(provider_actor_ref, all_events)
-        receiver = self._projector.rebuild(receiver_actor_ref, all_events)
+        cut = self._store.get_last_global_sequence()
+        provider = self._current_inventory(provider_actor_ref, through_sequence=cut)
+        receiver = self._current_inventory(receiver_actor_ref, through_sequence=cut)
         provider_stream = f"gameplay:inventory:{provider_actor_ref}"
         receiver_stream = f"gameplay:inventory:{receiver_actor_ref}"
         if provider.source_revision_vector.get(provider_stream, 0) != expected_provider_revision:
@@ -2272,9 +2319,9 @@ class InventoryAuthorityService:
         ):
             raise InventoryRuntimeError("inventory_package_exchange_invalid")
         self._registry.item(traded_definition_id)
-        all_events = self._store.read_events()
-        provider = self._projector.rebuild(provider_actor_ref, all_events)
-        receiver = self._projector.rebuild(receiver_actor_ref, all_events)
+        cut = self._store.get_last_global_sequence()
+        provider = self._current_inventory(provider_actor_ref, through_sequence=cut)
+        receiver = self._current_inventory(receiver_actor_ref, through_sequence=cut)
         provider_stream = f"gameplay:inventory:{provider_actor_ref}"
         receiver_stream = f"gameplay:inventory:{receiver_actor_ref}"
         if provider.source_revision_vector.get(provider_stream, 0) != expected_provider_revision:

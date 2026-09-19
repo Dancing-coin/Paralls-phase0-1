@@ -104,9 +104,11 @@ def subject_ref_from_event_parts(
 
 def append_unique_lineage(existing: list[str] | None, values: list[str]) -> list[str]:
     lineage = list(existing or [])
+    seen = set(lineage)
     for value in values:
-        if value and value not in lineage:
+        if value and value not in seen:
             lineage.append(value)
+            seen.add(value)
     return lineage
 
 

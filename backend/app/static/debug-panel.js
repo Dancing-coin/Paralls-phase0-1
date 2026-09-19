@@ -182,6 +182,12 @@ function connect() {
   const protocol = window.location.protocol === "https:" ? "wss" : "ws";
   const socket = new WebSocket(`${protocol}://${window.location.host}/debug/ws`);
   socket.onopen = () => {
+    events.length = 0;
+    actorIds.clear();
+    activeSequence = null;
+    detailBox.textContent = "";
+    syncActorFilterOptions();
+    refreshView();
     connectionStatus.textContent = "已连接";
   };
   socket.onmessage = (message) => {

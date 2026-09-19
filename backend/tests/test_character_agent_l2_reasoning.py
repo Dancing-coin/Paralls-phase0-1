@@ -1,3 +1,6 @@
+import json
+
+import pytest
 from copy import deepcopy
 
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
@@ -40,6 +43,13 @@ class _RecordingGateway:
         )
         return self.response
 
+    def complete_prepared_request(self, request_json):
+        request = json.loads(request_json)
+        return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
+
+    def prepare_run_request(self, *, task_kind, context, route_override=None, prepared_recall=None):
+        return {"task_kind": task_kind, "context": context, "route_override": route_override}
+
 
 class _LocalGateway:
     def __init__(self) -> None:
@@ -64,12 +74,17 @@ class _LocalGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall=None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override or "local_only",
+            prepared_recall=prepared_recall,
         )
+
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
 
 
 class _StubProfile:
@@ -688,3 +703,50 @@ def test_l2_reasoner_profile_cache_isolated_from_nested_context_mutation() -> No
 
     assert second_profile["identity_core"]["canonical_name"] == "Lin Yue"
     assert profile_loader.loaded_actor_ids == ["char_a"]
+
+
+@pytest.mark.parametrize("kind", ["perceived_event", "self_body_event", "siming_output", "background_state"])
+def test_l2_prepared_request_does_not_call_provider_and_matches_sync(kind):
+    from app.character_agent.gateway.model_provider import CharacterModelProvider
+
+    class CountingProvider(CharacterModelProvider):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def complete(self, request):
+            self.calls += 1
+            return super().complete(request)
+
+    class CountingGateway(CharacterModelGateway):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.preparations = 0
+
+        def prepare_run_request(self, **kwargs):
+            self.preparations += 1
+            return super().prepare_run_request(**kwargs)
+
+    from app.models.self_body_perceived import SelfBodyPerceivedEvent
+
+    provider = CountingProvider()
+    gateway = CountingGateway(provider=provider)
+    service, _ = _service(gateway=gateway)
+    payload = {'event_type': 'background_tick', 'summary': 'watch the lamp'}
+    common = dict(actor_id='char_a', producer_ts=1301, room_id='room_demo',
+                  scene_id='scene_demo', zone_id='zone_focus', perceived_summary='watch the lamp')
+    if kind == 'perceived_event':
+        payload = CharacterPerceivedEvent(**common, percept_channel='auditory',
+            source_candidate_event_id='auditory:1', clarity_score=.8, certainty_score=.7)
+    elif kind == 'self_body_event':
+        payload = SelfBodyPerceivedEvent(**common, body_state_class='fatigue', source_body_result_id='body:1')
+    prepared = getattr(service, 'prepare_' + kind)(_snapshot(), payload)
+    assert isinstance(prepared, bytes)
+    assert provider.calls == 0
+    assert gateway.preparations == 1
+    mapped = service.map_reasoning_output(actor_id='char_a', output=gateway.complete_prepared_request(prepared))
+    assert gateway.preparations == 1
+    synced = getattr(service, "interpret_" + kind)(_snapshot(), payload)
+    assert gateway.preparations == 2
+    assert provider.calls == 2
+    assert mapped == synced

@@ -1,10 +1,25 @@
+import hashlib
 import json
+import sqlite3
 import shutil
 from pathlib import Path
 
 import pytest
 
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
+
+
+def legacy_actor_path(root: Path, actor_id: str) -> Path:
+    path = root / "character_agent_session_store" / "actors" / (hashlib.sha256(actor_id.encode()).hexdigest() + ".jsonl")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def write_legacy_event(root: Path, actor_id: str, event_type: str, ts: int, payload: dict) -> tuple[dict, Path]:
+    event = CharacterAgentSessionStore().append_event(actor_id, event_type, ts, payload)
+    path = legacy_actor_path(root, actor_id)
+    path.write_text(json.dumps(event) + "\n", encoding="utf-8")
+    return event, path
 
 
 def test_session_store_appends_and_lists_events_per_actor() -> None:
@@ -50,7 +65,7 @@ def test_session_store_persists_and_recovers_actor_timelines(tmp_path: Path) -> 
 
     assert events
     assert events[0]["payload"]["summary"] == "persisted"
-    assert (tmp_path / "character_agent_session_store.json").exists()
+    assert (tmp_path / "character_sessions.sqlite3").exists()
 
 
 def test_independent_runtime_session_stores_generate_distinct_event_ids() -> None:
@@ -85,12 +100,12 @@ def test_session_store_appends_actor_scoped_history_without_rewriting_other_acto
     store = CharacterAgentSessionStore(storage_root=tmp_path)
     store.append_event("char_a", "character_perceived_event", 1007, {"summary": "a"})
 
-    actor_a_path = store._actor_storage_path("char_a")
-    before = actor_a_path.read_bytes()
-
+    before = store.list_events("char_a")
+    with sqlite3.connect(tmp_path / "character_sessions.sqlite3") as db:
+        db.execute("CREATE TRIGGER no_rewrite BEFORE UPDATE ON character_session_events BEGIN SELECT RAISE(ABORT, 'history is immutable'); END")
+        db.execute("CREATE TRIGGER no_other_head BEFORE UPDATE ON character_session_heads WHEN OLD.actor_id='char_a' BEGIN SELECT RAISE(ABORT, 'unrelated actor'); END")
     store.append_event("char_b", "character_perceived_event", 1008, {"summary": "b"})
-
-    assert actor_a_path.read_bytes() == before
+    assert store.list_events("char_a") == before
     assert store.list_events("char_a")[0]["payload"]["summary"] == "a"
     assert store.list_events("char_b")[0]["payload"]["summary"] == "b"
 
@@ -136,9 +151,7 @@ def test_session_store_resumes_interrupted_legacy_migration_without_duplicates(
         json.dumps({"char_a": legacy_events}),
         encoding="utf-8",
     )
-    actor_path = (
-        CharacterAgentSessionStore(storage_root=tmp_path)._actor_storage_path("char_a")
-    )
+    actor_path = legacy_actor_path(tmp_path, "char_a")
     actor_path.parent.mkdir(parents=True, exist_ok=True)
     actor_path.write_text(json.dumps(legacy_events[0]) + "\n", encoding="utf-8")
 
@@ -160,9 +173,8 @@ def test_session_store_resumes_interrupted_legacy_migration_without_duplicates(
 def test_session_store_recovers_actor_log_when_schema_marker_is_missing(
     tmp_path: Path,
 ) -> None:
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    store.append_event("char_b", "committed", 4, {"summary": "durable"})
-    (tmp_path / "character_agent_session_store.json").unlink()
+    write_legacy_event(tmp_path, "char_b", "committed", 4, {"summary": "durable"})
+    assert not (tmp_path / "character_agent_session_store.json").exists()
 
     reloaded = CharacterAgentSessionStore(storage_root=tmp_path)
 
@@ -172,9 +184,7 @@ def test_session_store_recovers_actor_log_when_schema_marker_is_missing(
 
 
 def test_session_store_ignores_only_an_incomplete_jsonl_tail(tmp_path: Path) -> None:
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    store.append_event("char_c", "committed", 5, {"summary": "complete"})
-    actor_path = store._actor_storage_path("char_c")
+    _, actor_path = write_legacy_event(tmp_path, "char_c", "committed", 5, {"summary": "complete"})
     with actor_path.open("ab") as stream:
         stream.write(b'{"event_id":"interrupted"')
 
@@ -188,9 +198,7 @@ def test_session_store_ignores_only_an_incomplete_jsonl_tail(tmp_path: Path) -> 
 def test_session_store_truncates_incomplete_tail_before_next_append(
     tmp_path: Path,
 ) -> None:
-    first = CharacterAgentSessionStore(storage_root=tmp_path)
-    first.append_event("char_c", "first", 6, {})
-    actor_path = first._actor_storage_path("char_c")
+    _, actor_path = write_legacy_event(tmp_path, "char_c", "first", 6, {})
     with actor_path.open("ab") as stream:
         stream.write(b'{"event_id":"interrupted"')
 
@@ -207,9 +215,7 @@ def test_session_store_truncates_incomplete_tail_before_next_append(
 def test_session_store_recovers_utf8_codepoint_cut_in_jsonl_tail(
     tmp_path: Path,
 ) -> None:
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    store.append_event("char_c", "committed", 8, {})
-    actor_path = store._actor_storage_path("char_c")
+    _, actor_path = write_legacy_event(tmp_path, "char_c", "committed", 8, {})
     with actor_path.open("ab") as stream:
         stream.write(b'{"summary":"\xe4\xb8')
 
@@ -221,9 +227,7 @@ def test_session_store_recovers_utf8_codepoint_cut_in_jsonl_tail(
 
 
 def test_session_store_rejects_non_event_json_before_the_tail(tmp_path: Path) -> None:
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    store.append_event("char_a", "committed", 9, {})
-    actor_path = store._actor_storage_path("char_a")
+    _, actor_path = write_legacy_event(tmp_path, "char_a", "committed", 9, {})
     with actor_path.open("ab") as stream:
         stream.write(b"[]\n")
 
@@ -244,9 +248,7 @@ def test_session_store_rejects_conflicting_duplicate_event_id(tmp_path: Path) ->
         json.dumps({"char_a": [legacy_event]}),
         encoding="utf-8",
     )
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    actor_path = store._actor_storage_path("char_a")
-    actor_path.parent.mkdir(parents=True, exist_ok=True)
+    actor_path = legacy_actor_path(tmp_path, "char_a")
     actor_path.write_text(
         json.dumps({**legacy_event, "payload": {"value": "conflict"}}) + "\n",
         encoding="utf-8",
@@ -259,9 +261,7 @@ def test_session_store_rejects_conflicting_duplicate_event_id(tmp_path: Path) ->
 def test_session_store_repairs_complete_jsonl_tail_without_newline(
     tmp_path: Path,
 ) -> None:
-    first = CharacterAgentSessionStore(storage_root=tmp_path)
-    first.append_event("char_b", "first", 10, {})
-    actor_path = first._actor_storage_path("char_b")
+    _, actor_path = write_legacy_event(tmp_path, "char_b", "first", 10, {})
     actor_path.write_bytes(actor_path.read_bytes().removesuffix(b"\n"))
 
     recovered = CharacterAgentSessionStore(storage_root=tmp_path)
@@ -312,9 +312,7 @@ def test_session_store_rejects_conflicting_legacy_event_ids(tmp_path: Path) -> N
 
 
 def test_session_store_rejects_actor_log_in_wrong_hashed_path(tmp_path: Path) -> None:
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    event = store.append_event("char_a", "committed", 12, {})
-    correct_path = store._actor_storage_path("char_a")
+    event, correct_path = write_legacy_event(tmp_path, "char_a", "committed", 12, {})
     wrong_path = correct_path.with_name("wrong.jsonl")
     correct_path.replace(wrong_path)
 
@@ -323,9 +321,7 @@ def test_session_store_rejects_actor_log_in_wrong_hashed_path(tmp_path: Path) ->
 
 
 def test_session_store_rejects_non_contiguous_event_index(tmp_path: Path) -> None:
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    first = store.append_event("char_a", "first", 13, {})
-    actor_path = store._actor_storage_path("char_a")
+    first, actor_path = write_legacy_event(tmp_path, "char_a", "first", 13, {})
     second = {
         **first,
         "event_id": "char_a:gap:99",
@@ -339,35 +335,18 @@ def test_session_store_rejects_non_contiguous_event_index(tmp_path: Path) -> Non
         CharacterAgentSessionStore(storage_root=tmp_path)
 
 
-def test_session_store_preserves_history_when_actor_directory_disappears(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_session_store_preserves_history_when_actor_directory_disappears(tmp_path: Path) -> None:
+    write_legacy_event(tmp_path, "char_a", "first", 14, {})
     store = CharacterAgentSessionStore(storage_root=tmp_path)
-    store.append_event("char_a", "first", 14, {})
-    actor_path = store._actor_storage_path("char_a")
-    original_open = Path.open
-    deleted = False
-
-    def delete_directory_before_append(path: Path, mode: str = "r", *args, **kwargs):
-        nonlocal deleted
-        if path == actor_path and mode == "ab" and not deleted:
-            deleted = True
-            shutil.rmtree(actor_path.parent)
-        return original_open(path, mode, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", delete_directory_before_append)
+    shutil.rmtree(tmp_path / "character_agent_session_store" / "actors")
     store.append_event("char_a", "second", 15, {})
-    monkeypatch.setattr(Path, "open", original_open)
-
+    store.close()
     reloaded = CharacterAgentSessionStore(storage_root=tmp_path)
-
-    assert [event["event_type"] for event in reloaded.list_events("char_a")] == [
-        "first",
-        "second",
-    ]
+    assert [event["event_type"] for event in reloaded.list_events("char_a")] == ["first", "second"]
+    reloaded.close()
 
 
-def test_legacy_migration_uses_short_same_directory_temporary_path(
+def test_legacy_migration_does_not_require_long_temporary_path(
     tmp_path: Path, monkeypatch
 ) -> None:
     legacy_event = {
@@ -382,9 +361,7 @@ def test_legacy_migration_uses_short_same_directory_temporary_path(
         json.dumps({"char_a": [legacy_event]}),
         encoding="utf-8",
     )
-    store = CharacterAgentSessionStore(storage_root=tmp_path)
-    actor_path = store._actor_storage_path("char_a")
-    maximum_path_length = len(str(actor_path)) + 10
+    maximum_path_length = len(str(legacy_actor_path(tmp_path, "char_a"))) + 10
     original_open = Path.open
 
     def reject_overlong_path(path: Path, *args, **kwargs):
@@ -393,7 +370,7 @@ def test_legacy_migration_uses_short_same_directory_temporary_path(
         return original_open(path, *args, **kwargs)
 
     monkeypatch.setattr(Path, "open", reject_overlong_path)
-
+    store = CharacterAgentSessionStore(storage_root=tmp_path)
     store.append_event("char_a", "second", 15, {})
     reloaded = CharacterAgentSessionStore(storage_root=tmp_path)
 

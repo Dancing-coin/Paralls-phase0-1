@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-service-isolation",
+  "order": 202,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_service_isolation.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-service-isolation-report.json",
+  "description": "100/1,000 人各120秒真实Uvicorn定速输入与慢provider隔离；固定性能机器显式运行"
+}

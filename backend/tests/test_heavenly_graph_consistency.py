@@ -113,7 +113,9 @@ def _relation(
 def graph(request: pytest.FixtureRequest, tmp_path: Path):
     if request.param == "sqlite":
         adapter = SQLiteHeavenlyGraphAdapter(tmp_path / "audit.sqlite3")
-        yield adapter
+        # 本组直接篡改历史容器做审计注入；生产按需 reader 的历史只在显式读窗口内驻留。
+        with adapter.historical_read():
+            yield adapter
         adapter.close()
         return
     yield InMemoryHeavenlyGraphAdapter()
