@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -40,6 +42,8 @@ def main() -> int:
         PHASE_7_CARRY_PLACE_PROFILE,
     ]
     for profile in profiles_to_run:
+        child_export = log_dir / f"child-{profile}"
+        child_export.mkdir()
         command = [
             python_exe,
             str(project_root / "scripts" / "verification" / "harness.py"),
@@ -51,6 +55,8 @@ def main() -> int:
         if args.godot_exe:
             command.extend(["--godot-exe", args.godot_exe])
         log_path = log_dir / f"embodied-interaction-foundation-all-{profile}.log"
+        child_env = {**os.environ, "HARNESS_ATTEMPT_ROOT": str(child_export),
+                     "HARNESS_ATTEMPT_ID": f"child-{profile}"}
         with log_path.open("w", encoding="utf-8") as log_handle:
             result = subprocess.run(
                 command,
@@ -61,17 +67,26 @@ def main() -> int:
                 encoding="utf-8",
                 errors="replace",
                 check=False,
+                env=child_env,
             )
+        child_summary = {}
+        try:
+            child_summary = json.loads((child_export / "harness-run-report.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            pass
+        rows = child_summary.get("profiles", []) if isinstance(child_summary, dict) else []
+        passed = (result.returncode == 0 and child_summary.get("overall_harness_passed") is True
+                  and len(rows) == 1 and rows[0].get("profile") == profile)
         profile_results.append(
             {
                 "id": profile,
                 "title": f"{profile} dependency profile passes",
-                "status": "proved" if result.returncode == 0 else "missing",
-                "evidence": [str(log_path)] if result.returncode == 0 else [],
-                "notes": "" if result.returncode == 0 else f"exit_code={result.returncode}",
+                "status": "proved" if passed else "missing",
+                "evidence": [str(log_path)] if passed else [],
+                "notes": "" if passed else f"exit_code={result.returncode}; child_export_valid={len(rows) == 1}",
             }
         )
-        if result.returncode != 0:
+        if not passed:
             break
 
     overall = len(profile_results) == len(profiles_to_run) and all(entry["status"] == "proved" for entry in profile_results)

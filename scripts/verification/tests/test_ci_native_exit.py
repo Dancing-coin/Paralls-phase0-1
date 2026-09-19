@@ -3,9 +3,17 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import sys
+import json
 
 import pytest
 import yaml
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from check_release_gate import evaluate_release_gate
+from common import collection_output_path, collection_report_path
+from run_context import attempt_scope, run_scope
+from scripts.verification import verify_population_harness_evidence as broad_gate
 
 
 @pytest.mark.skipif(os.name != "nt", reason="仓库PowerShell本地CI入口")
@@ -35,8 +43,27 @@ def test_hosted_harness_installs_pinned_engine_and_preserves_separate_gates():
     assert {command.split("--profile ", 1)[1].split()[0] for command in runs} == {"all", "mainline-unified-runtime", "change-lifecycle"}
     assert all(command.count("python ") == 1 for command in runs)
     upload = next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))
-    assert upload["if"] == "always()"
+    assert upload["if"] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
     assert upload["with"]["include-hidden-files"] is True
+
+
+@pytest.mark.parametrize('job_name', [
+    'population-performance-fixed-runner', 'population-godot-runtime',
+    'population-correctness', 'harness',
+])
+def test_runtime_jobs_can_install_security_only_python_on_windows(job_name):
+    root = Path(__file__).resolve().parents[3]
+    job = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs'][job_name]
+    # setup-python 的 Windows 发布清单不包含 3.12.14；使用已发布该版本的托管构建。
+    installer = next(step for step in job['steps'] if step.get('uses', '').startswith('astral-sh/setup-uv@'))
+    assert installer['uses'] == 'astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4'
+    assert installer['with']['version'] == '0.12.17'
+    assert installer['with']['python-version'] == '3.12.14'
+    assert installer['with']['activate-environment'] is True
+    assert installer['with']['venv-path'].startswith('${{ runner.temp }}/')
+    install = next(step['run'] for step in job['steps'] if step.get('name') == 'Install pinned backend and test dependencies')
+    # Godot 证据采集使用 python -m pip freeze，uv 的空环境需要显式安装 pip。
+    assert install == 'uv pip install pip -c backend/ci-constraints.txt "./backend[dev]"'
 
 
 def test_performance_job_is_explicit_fixed_machine_and_retains_all_raw_runs():
@@ -51,11 +78,132 @@ def test_performance_job_is_explicit_fixed_machine_and_retains_all_raw_runs():
     assert 'verify_population_multi_game_capacity.py' in commands
     assert 'verify_population_long_session_recovery.py' in commands
     assert 'verify_population_service_isolation.py' in commands and 'verify_population_transport_cost.py' in commands
-    assert all(step['if'] == '${{ !cancelled() }}' for step in runs)
+    assert all(step['if'] == "${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}" for step in runs)
     assert 'godot' not in commands.lower()
     upload = next(step for step in job['steps'] if step.get('uses', '').startswith('actions/upload-artifact@'))
-    assert upload['if'] == 'always()' and upload['with']['include-hidden-files'] is True
+    assert upload['if'] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
+    assert upload['with']['include-hidden-files'] is True
     paths = upload['with']['path'].splitlines()
-    assert paths[0] == '.harness/verification/ci-performance/'
-    assert '!.harness/verification/ci-performance/**/state/**' in paths
-    assert '!.harness/verification/ci-performance/recovery/run-*/**' in paths
+    assert paths[0] == '${{ env.HARNESS_CI_EVIDENCE }}/'
+    assert '!${{ env.HARNESS_CI_EVIDENCE }}/**/state/**' in paths
+    assert '!${{ env.HARNESS_CI_EVIDENCE }}/recovery/run-*/**' in paths
+
+
+def test_release_gate_rejects_duplicate_workflow_job_key(tmp_path):
+    root = Path(__file__).resolve().parents[3]
+    shutil.copytree(root / '.harness/ci', tmp_path / '.harness/ci')
+    (tmp_path / '.github/workflows').mkdir(parents=True)
+    workflow = (root / '.github/workflows/harness.yml').read_text(encoding='utf-8')
+    workflow = workflow.replace('  population-performance-fixed-runner:\n', '  population-performance-fixed-runner:\n  population-performance-fixed-runner:\n', 1)
+    (tmp_path / '.github/workflows/harness.yml').write_text(workflow, encoding='utf-8')
+    report = evaluate_release_gate(tmp_path)
+    assert next(row for row in report['results'] if row['id'] == 'ci_workflow_yaml_valid')['status'] == 'missing'
+    assert next(row for row in evaluate_release_gate(root)['results'] if row['id'] == 'ci_workflow_yaml_valid')['status'] == 'proved'
+
+
+@pytest.mark.parametrize('scope', ['static-contract-only', 'release-verified'])
+def test_release_gate_rejects_stale_or_overclaimed_hosted_scope(tmp_path, scope):
+    root = Path(__file__).resolve().parents[3]
+    shutil.copytree(root / '.harness/ci', tmp_path / '.harness/ci')
+    shutil.copytree(root / '.github/workflows', tmp_path / '.github/workflows')
+    metadata_path = tmp_path / '.harness/ci/release-gate.json'
+    metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+    metadata['hosted_ci_scope'] = scope
+    metadata_path.write_text(json.dumps(metadata), encoding='utf-8')
+
+    report = evaluate_release_gate(tmp_path)
+
+    assert report['overall_release_gate_passed'] is False
+    assert next(row for row in report['results'] if row['id'] == 'release_gate_metadata_exists')['status'] == 'missing'
+    assert report['runtime_release_verified'] is False
+
+
+def test_ci_evidence_is_exported_uploaded_and_owned_output_cleaned():
+    root = Path(__file__).resolve().parents[3]
+    jobs = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs']
+    for name in ('population-godot-runtime', 'population-correctness'):
+        steps = jobs[name]['steps']
+        run = next(step['run'] for step in steps if 'harness.py --profile population-' in step.get('run', ''))
+        upload = next(step for step in steps if step.get('uses', '').startswith('actions/upload-artifact@'))
+        assert '--export-evidence "$env:HARNESS_CI_EVIDENCE"' in run
+        assert upload['with']['path'] == '${{ env.HARNESS_CI_EVIDENCE }}/'
+        assert upload['if'] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
+        cleanup = next(step for step in steps if 'Remove-Item' in step.get('run', ''))
+        assert cleanup['if'] == "${{ always() && steps." + upload['id'] + ".outcome == 'success' }}"
+    for name in ('population-performance-fixed-runner', 'harness'):
+        steps = jobs[name]['steps']
+        upload = next(step for step in steps if step.get('uses', '').startswith('actions/upload-artifact@'))
+        assert '${{ env.HARNESS_CI_EVIDENCE }}' in upload['with']['path']
+        assert upload['if'] == "${{ always() && steps.initialize_evidence.outcome == 'success' }}"
+        cleanup = next(step for step in steps if 'Remove-Item' in step.get('run', ''))
+        assert cleanup['if'] == "${{ always() && steps." + upload['id'] + ".outcome == 'success' }}"
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows runner 的证据路径初始化")
+@pytest.mark.parametrize('job_name,suffix', [
+    ('population-performance-fixed-runner', 'performance'),
+    ('population-godot-runtime', 'godot'),
+    ('population-correctness', 'correctness'),
+    ('harness', 'harness'),
+])
+def test_ci_evidence_path_is_initialized_on_runner(tmp_path, job_name, suffix):
+    root = Path(__file__).resolve().parents[3]
+    job = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs'][job_name]
+    # GitHub 在分配 runner 前解析 job.env，此处不能引用 runner 上下文。
+    assert all('runner.' not in str(value) for value in job.get('env', {}).values())
+    initialization = job['steps'][0]['run']
+    environment_file = tmp_path / 'github-env.txt'
+    runner_temp = tmp_path / 'runner temp'
+    runner_temp.mkdir()
+    env = dict(os.environ, RUNNER_TEMP=str(runner_temp), GITHUB_RUN_ID='123', GITHUB_RUN_ATTEMPT='2',
+               GITHUB_ENV=str(environment_file))
+    result = subprocess.run([shutil.which('powershell'), '-NoProfile', '-NonInteractive', '-Command', initialization],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert result.returncode == 0, result.stderr
+    assert environment_file.read_text(encoding='utf-8-sig').splitlines() == [
+        f'HARNESS_CI_EVIDENCE={runner_temp / ("paralls-123-2-" + suffix)}']
+    environment_file.unlink()
+    env['RUNNER_TEMP'] = ''
+    failed = subprocess.run([shutil.which('powershell'), '-NoProfile', '-NonInteractive', '-Command', initialization],
+                            env=env, capture_output=True, text=True, timeout=20)
+    assert failed.returncode != 0
+    assert not environment_file.exists()
+    assert job['steps'][0]['id'] == 'initialize_evidence'
+
+
+def test_collection_report_follows_explicit_output_or_active_attempt(tmp_path):
+    root = Path(__file__).resolve().parents[3]
+    output = tmp_path / 'performance-case'
+    assert collection_report_path(root, output, 'population-service-isolation-report.json') == output / 'population-service-isolation-report.json'
+    with run_scope(root) as run:
+        assert collection_report_path(root, output, 'population-service-isolation-report.json') == run.evidence_root / 'population-service-isolation-report.json'
+        assert collection_output_path(root, 'population-correctness-case') == run.evidence_root / 'population-correctness-case'
+
+
+def test_broad_capture_commands_export_fresh_owned_evidence(tmp_path):
+    command = broad_gate._expected_command('change-lifecycle', tmp_path, 'python', None, tmp_path / 'artifacts')
+    assert command[-2:] == ['--export-evidence', str(tmp_path / 'artifacts')]
+
+
+def test_harness_source_inventory_reads_utf8_git_paths():
+    assert broad_gate.harness_inputs()
+
+
+def test_nested_harness_report_path_is_relative_to_parent_run(tmp_path):
+    root = Path(__file__).resolve().parents[3]
+    exported = tmp_path / 'export'
+    with run_scope(root, export_to=exported) as run:
+        with attempt_scope(run, 'parent', 1) as parent:
+            child = parent / 'child-authority-graph-projection'
+            child.mkdir()
+            env = {**os.environ, 'HARNESS_ATTEMPT_ROOT': str(child), 'HARNESS_ATTEMPT_ID': 'child'}
+            result = subprocess.run([sys.executable, str(root / 'scripts/verification/harness.py'),
+                '--profile', 'authority-graph-projection'], cwd=root, env=env,
+                capture_output=True, text=True, encoding='utf-8', timeout=60)
+            assert result.returncode == 0, result.stdout[-1000:] + result.stderr[-1000:]
+            summary = json.loads((child / 'harness-run-report.json').read_text(encoding='utf-8'))
+            relative = summary['profiles'][0]['evidence']['path']
+            assert relative.startswith('profiles/parent/1/child-authority-graph-projection/profiles/')
+            assert (run.evidence_root / relative).is_file()
+    assert (exported / relative).is_file()
+    assert not run.evidence_root.exists()

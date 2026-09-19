@@ -1063,7 +1063,7 @@ def main() -> int:
     parser.add_argument("--histories", type=int, nargs="+", default=[1000, 10000])
     parser.add_argument("--tail-windows", type=int, default=8)
     parser.add_argument("--repeats", type=int, default=5)
-    parser.add_argument("--output", type=Path, default=ROOT / ".harness/verification/population-long-session-recovery")
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--verify-artifacts", type=Path)
     parser.add_argument("--require-fresh-commit")
     maintenance = parser.add_mutually_exclusive_group()
@@ -1071,6 +1071,9 @@ def main() -> int:
     maintenance.add_argument("--rebuild-checkpoint", type=Path)
     parser.add_argument("--roster", type=Path, help="离线维护使用的同一局 PopulationRoster 文件")
     args = parser.parse_args()
+    if args.output is None and not (args.verify_artifacts or args.ready_child or args.generate_child):
+        from scripts.verification.common import collection_output_path
+        args.output = collection_output_path(ROOT, "population-long-session-recovery")
     if args.verify_artifacts:
         if not args.require_fresh_commit:
             parser.error("--verify-artifacts requires --require-fresh-commit")

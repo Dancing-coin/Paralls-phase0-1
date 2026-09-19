@@ -13,7 +13,7 @@ import signal
 import sqlite3
 import subprocess
 import sys
-from tempfile import TemporaryDirectory
+from tempfile import TemporaryDirectory, gettempdir
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +21,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "backend"))
 
 from scripts.verification.population_godot_runner import child_environment, object_digest, source_manifest, write_json
+from scripts.verification.common import collection_output_path, collection_report_path
+from scripts.verification.common import verification_dir
+from scripts.verification.run_context import run_scope
 from scripts.verification.verify_population_godot_runtime import digest, read_json
 from scripts.verification.registry import load_profile_registry
 
@@ -164,8 +167,9 @@ def _junit_result(path: Path) -> int:
     return len(cases)
 
 
-def _temporary_parent(root: Path) -> Path:
-    path = str((root / ".harness").resolve())
+def _temporary_parent() -> Path:
+    # 嵌套测试会再创建仓库和原始报告，使用系统短临时路径，避免随工作树层级增长。
+    path = str(Path(gettempdir()).resolve())
     if os.name == "nt" and not path.startswith("\\\\?\\"):
         path = "\\\\?\\UNC\\" + path[2:] if path.startswith("\\\\") else "\\\\?\\" + path
     return Path(path)
@@ -192,7 +196,10 @@ def run_correctness(root: Path, output: Path) -> dict:
                SIMING_LLM_MODE="disabled", PYTEST_ADDOPTS="")
     profiles = load_profile_registry(root).profiles
     steps = []
-    latest = root / ".harness/verification"
+    latest = verification_dir(root) / "correctness-live"
+    latest.mkdir(exist_ok=True)
+    env.update({key: os.environ[key] for key in ("HARNESS_RUN_ID", "HARNESS_PROJECT_ROOT", "HARNESS_EVIDENCE_ROOT") if key in os.environ})
+    env.update(HARNESS_ATTEMPT_ROOT=str(latest), HARNESS_ATTEMPT_ID="correctness-live")
     raw = output / "legacy"
     raw.mkdir()
     for name, report_name in PROFILES:
@@ -238,7 +245,7 @@ def run_correctness(root: Path, output: Path) -> dict:
             "started_at": datetime.now(timezone.utc).isoformat()}
     try:
         # Windows 的临时 SQLite 文件名需要短路径；测试数据库不进入发布证据包。
-        with TemporaryDirectory(prefix="pc-", dir=_temporary_parent(root)) as temporary:
+        with TemporaryDirectory(prefix="pc-", dir=_temporary_parent()) as temporary:
             command.extend(["--basetemp", _business_temporary_path(temporary)])
             step["exit_code"] = run_logged(command, cwd=root, env=env, log=output / "focused.log", timeout=TIMEOUT_SECONDS)
         if step["exit_code"] != 0:
@@ -443,9 +450,10 @@ def main() -> int:
             parser.error("--verify-artifacts requires --require-fresh-commit")
         print(json.dumps(verify_artifacts(args.verify_artifacts, expected_commit=args.require_fresh_commit)))
         return 0
-    output = args.output or ROOT / ".harness/verification" / ("population-correctness-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
-    result = run_correctness(ROOT, output.resolve())
-    write_json(ROOT / ".harness/verification/population-runtime-correctness-report.json", result)
+    with run_scope(ROOT):
+        output = args.output or collection_output_path(ROOT, "population-correctness-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
+        result = run_correctness(ROOT, output.resolve())
+        write_json(collection_report_path(ROOT, output, "population-runtime-correctness-report.json"), result)
     print(f"population_correctness={result['status']} manifest={output / 'manifest.json'}")
     return 0 if result["overall_passed"] else 1
 

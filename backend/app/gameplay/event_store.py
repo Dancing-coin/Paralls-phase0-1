@@ -852,6 +852,9 @@ class DurableGameplayEventStore(GameplayEventStore):
         os.close(handle)
         try:
             with closing(sqlite3.connect(temporary)) as connection, connection:
+                if connection.execute("PRAGMA journal_mode=WAL").fetchone() != ("wal",):
+                    raise GameplayEventStoreSnapshotError("gameplay_snapshot_wal_unavailable")
+                connection.execute("PRAGMA synchronous=FULL")
                 for statement in self._SCHEMA:
                     connection.execute(statement)
                 registry = self._event_schema_registry.export_snapshot() if self._event_schema_registry else None
@@ -924,6 +927,7 @@ class DurableGameplayEventStore(GameplayEventStore):
     def _load_database(self, registry: EventSchemaRegistry | None) -> None:
         try:
             with closing(sqlite3.connect(self._snapshot_path)) as connection:
+                connection.execute("PRAGMA synchronous=FULL")
                 metadata = dict(connection.execute("SELECT key, value FROM metadata"))
                 if metadata.get("schema") == "1":
                     self._migrate_schema_one(connection, registry)
@@ -937,6 +941,9 @@ class DurableGameplayEventStore(GameplayEventStore):
                 if loaded is not None and registry is not None and loaded.export_snapshot() != registry.export_snapshot():
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_event_schema_registry_mismatch")
                 self._event_schema_registry = loaded or registry
+                # 在装配阶段完成模式切换，避免独立写者首次连接时争夺 WAL 迁移锁。
+                if connection.execute("PRAGMA journal_mode=WAL").fetchone() != ("wal",):
+                    raise GameplayEventStoreSnapshotError("gameplay_snapshot_wal_unavailable")
                 # 旧 schema2 首次补索引；已有索引时 SQLite 不重扫历史，DDL 原子提交。
                 with connection:
                     connection.execute("BEGIN IMMEDIATE")

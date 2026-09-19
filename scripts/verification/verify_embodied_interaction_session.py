@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -169,31 +170,36 @@ def main() -> int:
     godot_report_path = log_dir / "embodied-interaction-session-godot-runtime.json"
     if godot_report_path.exists():
         godot_report_path.unlink()
-    backend_process = None
-    try:
-        _health, backend_process = ensure_backend(project_root, python_exe, prefer_fresh_backend=True)
-        godot_result = run_command(
-            [
-                str(godot_exe),
-                "--path",
-                str(project_root),
-                "--scene",
-                GODOT_PROBE_SCENE,
-                "--quit-after",
-                "120",
-                "--headless",
-                "--render-thread",
-                "safe",
-            ],
-            project_root,
-            godot_log,
-            env={
-                "EMBODIED_INTERACTION_SESSION_BACKEND_URL": "ws://127.0.0.1:8000/ws",
-                "PHASE0_AUTOTEST": "1",
-            },
-        )
-    finally:
-        stop_backend(backend_process)
+    # all中该探针会被不同profile调用；新进程也不能复用先前已提交同session的存档。
+    with TemporaryDirectory(prefix="paralls-session-") as storage:
+        backend_process = None
+        try:
+            _health, backend_process = ensure_backend(
+                project_root, python_exe, prefer_fresh_backend=True,
+                env={"PARALLS_HEAVENLY_GRAPH_PATH": str(Path(storage) / "runtime.sqlite3")},
+            )
+            godot_result = run_command(
+                [
+                    str(godot_exe),
+                    "--path",
+                    str(project_root),
+                    "--scene",
+                    GODOT_PROBE_SCENE,
+                    "--headless",
+                    "--render-thread",
+                    "safe",
+                ],
+                project_root,
+                godot_log,
+                # 探针有3秒连接和5秒接收期限；不以循环次数提前截断结构化报告。
+                timeout_seconds=30,
+                env={
+                    "EMBODIED_INTERACTION_SESSION_BACKEND_URL": "ws://127.0.0.1:8000/ws",
+                    "PHASE0_AUTOTEST": "1",
+                },
+            )
+        finally:
+            stop_backend(backend_process)
     godot_report = json.loads(godot_report_path.read_text(encoding="utf-8")) if godot_report_path.exists() else {}
     trace_path = _trace(log_dir)
     trace = json.loads(trace_path.read_text(encoding="utf-8"))

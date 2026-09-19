@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import yaml
 
 from common import read_text, repo_root, verification_dir, write_json, write_markdown
 
@@ -23,6 +24,22 @@ def _metadata(path: Path) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
+class _UniqueKeyLoader(yaml.SafeLoader):
+    def construct_mapping(self, node, deep=False):
+        keys = [self.construct_object(key, deep=deep) for key, _ in node.value]
+        if len(keys) != len(set(keys)):
+            raise ValueError("CI workflow contains duplicate YAML keys")
+        return super().construct_mapping(node, deep=deep)
+
+
+def _valid_workflow(text: str) -> bool:
+    try:
+        workflow = yaml.load(text, Loader=_UniqueKeyLoader)
+        return isinstance(workflow, dict) and isinstance(workflow.get("jobs"), dict)
+    except (ValueError, yaml.YAMLError, TypeError):
+        return False
+
+
 def evaluate_release_gate(project_root: Path) -> dict[str, object]:
     metadata_path = project_root / ".harness" / "ci" / "release-gate.json"
     local_ci_gate_path = project_root / ".harness" / "ci" / "local-ci-gate.ps1"
@@ -37,13 +54,21 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
             "Release gate metadata points at the full harness profile",
             metadata.get("schema_version") == 1
             and metadata.get("required_profile") == "all"
-            and metadata.get("ci_workflow") == ".github/workflows/harness.yml",
+            and metadata.get("ci_workflow") == ".github/workflows/harness.yml"
+            and metadata.get("hosted_ci_scope") == "static-contract-and-harness-runtime-entrypoints",
             [".harness/ci/release-gate.json"],
+            "仅核对 CI 入口配置；Godot 真实渲染、真实 provider、固定 runner 和发布验收仍需同版本运行证据。",
         ),
         _result(
             "ci_harness_workflow_exists",
             "CI harness workflow exists",
             workflow_path.exists(),
+            [".github/workflows/harness.yml"],
+        ),
+        _result(
+            "ci_workflow_yaml_valid",
+            "CI workflow has valid YAML without duplicate keys",
+            _valid_workflow(workflow_text),
             [".github/workflows/harness.yml"],
         ),
         _result(
@@ -55,7 +80,7 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "ci_declares_runtime_coverage_gap",
-            "Hosted CI explicitly declares missing runtime and release coverage",
+            "Static contract job declares its own runtime and release coverage gap",
             "no runtime coverage" in workflow_text
             and "runtime and release acceptance are not covered" in workflow_text,
             [".github/workflows/harness.yml"],

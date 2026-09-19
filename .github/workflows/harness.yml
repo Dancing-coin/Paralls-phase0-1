@@ -42,7 +42,6 @@ jobs:
           "This job covers offline Harness tests and static contract checks only." >> $env:GITHUB_STEP_SUMMARY
           "Godot/backend runtime and release acceptance are not covered by this hosted job." >> $env:GITHUB_STEP_SUMMARY
   population-performance-fixed-runner:
-  population-performance-fixed-runner:
     if: github.event_name == 'workflow_dispatch' && inputs.run_population_performance
     runs-on: [self-hosted, Windows, X64, paralls-population-performance]
     timeout-minutes: 720
@@ -61,106 +60,155 @@ jobs:
       SIMING_LLM_MODEL: ${{ vars.SIMING_LLM_MODEL }}
       SIMING_LLM_API_KEY: ${{ secrets.SIMING_LLM_API_KEY }}
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-performance"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
-      - uses: actions/setup-python@v5
+      # 3.12.14 仅发布安全更新源码，setup-python 没有对应的 Windows 安装包。
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
+          version: "0.12.17"
           python-version: "3.12.14"
+          activate-environment: true
+          venv-path: ${{ runner.temp }}/paralls-python-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          enable-cache: false
       - name: Install pinned backend and test dependencies
-        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+        run: uv pip install pip -c backend/ci-constraints.txt "./backend[dev]"
       - name: Capture service isolation for 100 and 1,000 populations
-        if: ${{ !cancelled() }}
-        run: python scripts/verification/verify_population_service_isolation.py --output .harness/verification/ci-performance/service
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/verify_population_service_isolation.py --output "$env:HARNESS_CI_EVIDENCE/service"
       - name: Capture long-history recovery
-        if: ${{ !cancelled() }}
-        run: python scripts/verification/verify_population_long_session_recovery.py --output .harness/verification/ci-performance/recovery
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/verify_population_long_session_recovery.py --output "$env:HARNESS_CI_EVIDENCE/recovery"
       - name: Capture paired transport cost
-        if: ${{ !cancelled() }}
-        run: python scripts/verification/verify_population_transport_cost.py --output .harness/verification/ci-performance/transport-cost
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/verify_population_transport_cost.py --output "$env:HARNESS_CI_EVIDENCE/transport-cost"
       - name: Verify unprofiled realtime short matrix
-        if: ${{ !cancelled() }}
-        run: python scripts/verification/population_mixed_matrix.py --kind short --output .harness/verification/ci-performance/realtime-short --require-fresh-commit $env:GITHUB_SHA
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/population_mixed_matrix.py --kind short --output "$env:HARNESS_CI_EVIDENCE/realtime-short" --require-fresh-commit $env:GITHUB_SHA
       - name: Verify full soak and acceleration matrix
-        if: ${{ !cancelled() }}
-        run: python scripts/verification/population_mixed_matrix.py --kind soak --output .harness/verification/ci-performance/mixed-soak --require-fresh-commit $env:GITHUB_SHA
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/population_mixed_matrix.py --kind soak --output "$env:HARNESS_CI_EVIDENCE/mixed-soak" --require-fresh-commit $env:GITHUB_SHA
       - name: Verify two and four independent games
-        if: ${{ !cancelled() }}
-        run: python scripts/verification/verify_population_multi_game_capacity.py --output .harness/verification/ci-performance/multi-game --require-fresh-commit $env:GITHUB_SHA
+        if: ${{ !cancelled() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/verify_population_multi_game_capacity.py --output "$env:HARNESS_CI_EVIDENCE/multi-game" --require-fresh-commit $env:GITHUB_SHA
       - name: Preserve performance evidence even when a threshold fails
-        if: always()
+        id: upload_performance
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: population-performance-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
-            .harness/verification/ci-performance/
-            !.harness/verification/ci-performance/**/state/**
-            !.harness/verification/ci-performance/recovery/fixture-*/**
-            !.harness/verification/ci-performance/recovery/run-*/**
-            !.harness/verification/ci-performance/transport-cost/seed-state/graph.sqlite3*
+            ${{ env.HARNESS_CI_EVIDENCE }}/
+            !${{ env.HARNESS_CI_EVIDENCE }}/**/state/**
+            !${{ env.HARNESS_CI_EVIDENCE }}/recovery/fixture-*/**
+            !${{ env.HARNESS_CI_EVIDENCE }}/recovery/run-*/**
+            !${{ env.HARNESS_CI_EVIDENCE }}/transport-cost/seed-state/graph.sqlite3*
           include-hidden-files: true
           if-no-files-found: error
+      - name: Clean owned performance evidence after upload
+        if: ${{ always() && steps.upload_performance.outcome == 'success' }}
+        run: |
+          $expected = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-performance"
+          if ([IO.Path]::GetFullPath($env:HARNESS_CI_EVIDENCE) -ne [IO.Path]::GetFullPath($expected)) { throw 'Evidence directory is not owned by this job' }
+          if (Test-Path -LiteralPath $expected) { Remove-Item -LiteralPath $expected -Recurse -Force }
   population-godot-runtime:
     if: github.event_name == 'workflow_dispatch' && inputs.run_population_godot
     runs-on: [self-hosted, Windows, X64, paralls-godot-4-6-3]
     timeout-minutes: 30
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-godot"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
-      - uses: actions/setup-python@v5
+      # 3.12.14 仅发布安全更新源码，setup-python 没有对应的 Windows 安装包。
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
+          version: "0.12.17"
           python-version: "3.12.14"
+          activate-environment: true
+          venv-path: ${{ runner.temp }}/paralls-python-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          enable-cache: false
       - name: Install pinned backend and test dependencies
-        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+        run: uv pip install pip -c backend/ci-constraints.txt "./backend[dev]"
       - name: Verify real rendered population on the external machine
         env:
           PYTHONUTF8: "1"
           PYTHONHASHSEED: "0"
         # GODOT_EXE 由这台专用机器配置；不可用时 harness 失败，不能按静态通过。
-        run: python scripts/verification/harness.py --profile population-godot-runtime
+        run: python scripts/verification/harness.py --profile population-godot-runtime --export-evidence "$env:HARNESS_CI_EVIDENCE"
       - name: Preserve rendered verification evidence
-        if: always()
+        id: upload_godot
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: population-godot-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .harness/verification/population-godot-*/
-            .harness/verification/population-godot-runtime-report.json
-            .harness/verification/harness-run-*.json
-            .harness/verification/runs/
+          path: ${{ env.HARNESS_CI_EVIDENCE }}/
           include-hidden-files: true
           if-no-files-found: error
+      - name: Clean owned Godot evidence after upload
+        if: ${{ always() && steps.upload_godot.outcome == 'success' }}
+        run: |
+          $expected = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-godot"
+          if ([IO.Path]::GetFullPath($env:HARNESS_CI_EVIDENCE) -ne [IO.Path]::GetFullPath($expected)) { throw 'Evidence directory is not owned by this job' }
+          if (Test-Path -LiteralPath $expected) { Remove-Item -LiteralPath $expected -Recurse -Force }
   population-correctness:
     runs-on: windows-latest
     timeout-minutes: 105
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-correctness"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
-      - uses: actions/setup-python@v5
+      # 3.12.14 仅发布安全更新源码，setup-python 没有对应的 Windows 安装包。
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
+          version: "0.12.17"
           python-version: "3.12.14"
+          activate-environment: true
+          venv-path: ${{ runner.temp }}/paralls-python-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          enable-cache: false
       - name: Install pinned backend and test dependencies
-        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+        run: uv pip install pip -c backend/ci-constraints.txt "./backend[dev]"
       - name: Run population correctness gate
         env:
           PYTHONUTF8: "1"
           PYTHONHASHSEED: "0"
           PARALLS_HEAVENLY_GRAPH_PATH: ":memory:"
-        run: python scripts/verification/harness.py --profile population-runtime-correctness
+        run: python scripts/verification/harness.py --profile population-runtime-correctness --export-evidence "$env:HARNESS_CI_EVIDENCE"
       - name: Preserve raw verification evidence
-        if: always()
+        id: upload_correctness
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: population-correctness-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .harness/verification/population-correctness-*/
-            .harness/verification/population-runtime-correctness-report.json
-            .harness/verification/harness-run-*.json
-            .harness/verification/runs/
+          path: ${{ env.HARNESS_CI_EVIDENCE }}/
           include-hidden-files: true
           if-no-files-found: error
+      - name: Clean owned correctness evidence after upload
+        if: ${{ always() && steps.upload_correctness.outcome == 'success' }}
+        run: |
+          $expected = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-correctness"
+          if ([IO.Path]::GetFullPath($env:HARNESS_CI_EVIDENCE) -ne [IO.Path]::GetFullPath($expected)) { throw 'Evidence directory is not owned by this job' }
+          if (Test-Path -LiteralPath $expected) { Remove-Item -LiteralPath $expected -Recurse -Force }
   harness:
     runs-on: windows-latest
     timeout-minutes: 180
@@ -168,14 +216,26 @@ jobs:
       PYTHONUTF8: "1"
       PYTHONHASHSEED: "0"
     steps:
+      - name: Initialize owned evidence path on runner
+        id: initialize_evidence
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $evidence = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-harness"
+          "HARNESS_CI_EVIDENCE=$evidence" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
       - uses: actions/checkout@v4
         with:
           lfs: true
-      - uses: actions/setup-python@v5
+      # 3.12.14 仅发布安全更新源码，setup-python 没有对应的 Windows 安装包。
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4 # v10.1.0
         with:
+          version: "0.12.17"
           python-version: "3.12.14"
+          activate-environment: true
+          venv-path: ${{ runner.temp }}/paralls-python-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          enable-cache: false
       - name: Install pinned backend and test dependencies
-        run: python -m pip install -c backend/ci-constraints.txt "./backend[dev]"
+        run: uv pip install pip -c backend/ci-constraints.txt "./backend[dev]"
       - name: Install verified Godot 4.6.3 on the hosted runner
         shell: pwsh
         run: |
@@ -190,19 +250,23 @@ jobs:
       - name: Verify harness tooling
         run: python -m pytest -q scripts/verification/tests
       - name: Capture change lifecycle evidence
-        run: python scripts/verification/verify_population_harness_evidence.py --profile change-lifecycle --output .harness/verification/ci-change-lifecycle
+        run: python scripts/verification/verify_population_harness_evidence.py --profile change-lifecycle --output "$env:HARNESS_CI_EVIDENCE/ci-change-lifecycle"
       - name: Capture full harness evidence
-        run: python scripts/verification/verify_population_harness_evidence.py --profile all --godot-exe "$env:GODOT_EXE" --output .harness/verification/ci-all
+        run: python scripts/verification/verify_population_harness_evidence.py --profile all --godot-exe "$env:GODOT_EXE" --output "$env:HARNESS_CI_EVIDENCE/ci-all"
       - name: Capture mainline runtime evidence
-        run: python scripts/verification/verify_population_harness_evidence.py --profile mainline-unified-runtime --godot-exe "$env:GODOT_EXE" --output .harness/verification/ci-mainline
+        run: python scripts/verification/verify_population_harness_evidence.py --profile mainline-unified-runtime --godot-exe "$env:GODOT_EXE" --output "$env:HARNESS_CI_EVIDENCE/ci-mainline"
       - name: Preserve broad harness evidence on success or failure
-        if: always()
+        id: upload_harness
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
         uses: actions/upload-artifact@v4
         with:
           name: harness-${{ github.run_id }}-${{ github.run_attempt }}
-          path: |
-            .harness/verification/ci-change-lifecycle/
-            .harness/verification/ci-all/
-            .harness/verification/ci-mainline/
+          path: ${{ env.HARNESS_CI_EVIDENCE }}/
           include-hidden-files: true
           if-no-files-found: warn
+      - name: Clean owned broad harness evidence after upload
+        if: ${{ always() && steps.upload_harness.outcome == 'success' }}
+        run: |
+          $expected = Join-Path $env:RUNNER_TEMP "paralls-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT-harness"
+          if ([IO.Path]::GetFullPath($env:HARNESS_CI_EVIDENCE) -ne [IO.Path]::GetFullPath($expected)) { throw 'Evidence directory is not owned by this job' }
+          if (Test-Path -LiteralPath $expected) { Remove-Item -LiteralPath $expected -Recurse -Force }

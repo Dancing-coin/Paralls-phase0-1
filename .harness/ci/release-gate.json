@@ -11,5 +11,5 @@
     "harness-run-report.json",
     "run-manifest.json"
   ],
-  "hosted_ci_scope": "static-contract-only"
+  "hosted_ci_scope": "static-contract-and-harness-runtime-entrypoints"
 }

@@ -5,11 +5,34 @@ import sqlite3
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor
+from contextlib import closing
 
 import pytest
 
-from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStoreSnapshotError
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore, GameplayEventStoreSnapshotError
 from test_gameplay_event_store_contract import _batch
+
+
+@pytest.mark.parametrize('source', ['new', 'json', 'delete'])
+def test_wal_is_ready_before_concurrent_writers_open_their_connections(tmp_path, source):
+    path = tmp_path / 'ledger.db'
+    if source == 'json':
+        original = GameplayEventStore()
+        assert original.append_batch(_batch()).committed
+        original.save_snapshot(path)
+    elif source == 'delete':
+        DurableGameplayEventStore(path).close()
+        with closing(sqlite3.connect(path)) as connection:
+            assert connection.execute('PRAGMA journal_mode=DELETE').fetchone() == ('delete',)
+    store = DurableGameplayEventStore(path)
+    try:
+        # 首次业务读写前完成模式切换，两个独立写者不再争夺这次迁移。
+        with closing(sqlite3.connect(path)) as connection:
+            assert connection.execute('PRAGMA journal_mode').fetchone() == ('wal',)
+        assert store.get_last_global_sequence() == (2 if source == 'json' else 0)
+        store.audit()
+    finally:
+        store.close()
 
 
 def test_reused_connection_preserves_full_durability_and_cross_thread_reads(tmp_path, monkeypatch):

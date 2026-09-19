@@ -19,6 +19,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT / "backend")]
 
 from scripts.verification.population_process_qos import recorded_high_qos
+from scripts.verification.common import collection_output_path, collection_report_path
 from scripts.verification.population_benchmark_metrics import percentile
 from scripts.verification.population_godot_runner import child_environment, source_manifest, write_json
 from scripts.verification.verify_population_transport_cost import _configure
@@ -725,13 +726,14 @@ def main() -> int:
         return 0
     if args.seconds < 1:
         parser.error("seconds must be positive")
-    root = args.output or ROOT / ".harness/verification" / ("population-service-isolation-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
+    # run_scope/attempt已提供唯一目录，重复profile名和时间戳会挤占Windows存档路径长度。
+    root = args.output or collection_output_path(ROOT, "service")
     rows = [collect((root / str(population)).resolve(), population, args.seconds) for population in args.population]
     overall = all(row["passed"] for row in rows)
     report = dict(profile="population-service-isolation", overall_passed=overall,
                   formal_matrix=sorted(args.population) == [100, 1000] and args.seconds >= 120,
                   godot_status="godot_unverified", cases=[str((root / str(n) / "manifest.json").resolve()) for n in args.population])
-    write_json(ROOT / ".harness/verification/population-service-isolation-report.json", report)
+    write_json(collection_report_path(ROOT, root, "population-service-isolation-report.json"), report)
     print(json.dumps(report, ensure_ascii=False))
     return 0 if overall else 1
 

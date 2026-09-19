@@ -1,6 +1,33 @@
 # 群体运行时补齐与外机 Godot 验证交接
 
-当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。其他会话从本文和隔离分支 `codex/population-runtime-closure` 的本地执行台账继续；不要将静态测试或合成证据测试记为引擎通过。
+当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-backend-closure`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pop/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
+
+## 2026-09-19 后端续作边界
+
+2026-09-20 外机返回的all证据已核对，版本与本地不同；InteractionSession的共享存档/重复session复现与最小修复、外机重跑步骤见[外机all续作交接](2026-09-20-external-all-evidence-follow-up.md)。外机Siming通过不能代替人口表现或六项同版本总验收，修复后的Godot仍未验证。
+
+- CI 已修复重复 job key、清理后上传旧路径和嵌套子任务覆盖报告。四个证据任务使用本次 job 的 `RUNNER_TEMP` 独立目录；只有对应 artifact 上传成功才清理该目录，上传失败保留原包。广泛验收包装器只接受新导出的 schema 2 报告与各次真实 attempt，旧 `runs/<id>` 归档不能替代。采集必须显式传入仓库外、尚不存在的 `--output`，拒绝时不先创建目录。
+- 冷恢复相关109项、激活/认知恢复相关109项、混合启动相关23项定向回归通过；Harness工具完整回归396项通过。首次后端全套为6,861 passed／3 failed／2 skipped，其中两项为已知Godot绑定清单和外部资产工作副本断言；第三项暴露了下面的本地探针配置缺陷，修复后相关30项回归通过。最终提交后的完整回归、真实封存复验结果另记于本轮执行台账；这些结果没有证明小时级性能或远端 Actions/固定 runner 可用。
+- `population_mixed_backend.configure` 已修复启动配置引用分裂：原先替换 `config.settings` 后，提前导入的模型模块仍持有旧对象，`local_probe` 可能调用本机真实模型。现在在既有fresh-process边界内统一更新原配置对象；本地探针与真实模型模式分别检查，真实模式的在线要求不能被旧引用绕过。
+- 后续完整复验确认本地探针失败消失，但暴露已有SQLite首写竞争：两个独立store首次把DELETE库切换到WAL时，40次诊断有4次出现`database is locked`。现在新库/JSON迁移和旧库装配先准备WAL/FULL，原事务内版本检查及lazy连接保留；三类首次业务访问前WAL回归通过，修复后40次首写均为一次提交与一次版本冲突。恢复相关回归通过；读取计数只多一个WAL控制行，不增加历史扫描。这不证明旧长时I/O峰已解决。
+- 正式正确性采集另外发现Windows嵌套自测路径过长：1,626项通过，14项门禁自测在隔离旧报告时失败。本轮已将pytest临时数据库移至独立系统短临时目录，退出由其拥有者回收；合成仓库自测也独立使用短目录，日志/XML仍保存在原run_scope证据包，未删除用例或放宽校验。失败包保留，须按最终提交重新采集。
+- 短路径修复后的提交`837fed5f`已通过四个原正确性producer、1,640项focused回归及离线复验，Harness临时目录清理通过。其后服务采集还发现默认目录重复profile名和时间戳，使角色存档迁移临时文件超出Windows路径长度；现直接使用唯一attempt下的`service/`，不改变负载或阈值，相关22项测试通过。后续提交的正式证据以台账为准，不跨版本借用通过状态。
+- 已定位激活回执的历史增长：`continue_replay` 虽只读新尾部，仍复制完整投影、事件ID并计算完整hash，`ProfileActivationAuthority` 还缓存全部重放结果。100人320秒诊断中单次回执最高228.63ms；本轮SQLite计时未捕获20ms以上的execute/commit，不能声称旧I/O尖峰已经解决。该诊断有插桩与并行源码变化，仅用于定位。
+- 回执契约调整尚待用户决定，见[具体提案](../superpowers/specs/2026-09-19-activation-receipt-evidence-cost-design.md)。原计划要求保留完整 `replay_hash`；建议运行时改为明确的持久提交证据，完整hash留在显式审计。收到答复前不实施该调整，也不通过放宽阈值关闭长局门禁。
+- 独立剩余工作仍包括最终版本的服务隔离、千人长历史恢复、传输五配对、真实模型短测/长测及2／4局容量。它们须使用同一实现版本的新证据；Godot及依赖引擎的mainline/all仍在外机验证。暂停Godot不等于六项整体通过。
+
+本轮台账：`.superpowers/sdd/2026-09-16-population-production-runtime-closure-implementation-plan/backend-continuation-ledger.md`；本机诊断与审查记录位于 `D:/HarnessEvidence/pop-*-20260919*`。较长的 `population-backend-closure` 工作树已停用，仅为本轮未清理副本；不要在那里继续实现。原工作树及用户已有数据不得清理。
+
+## 2026-09-20 后端收口续作
+
+- 修正两项资源静态回归：绑定表校验候选、批准与拒绝状态及资格报告摘要；交付副本校验仓库内 active/archive 的来源隔离和 SHA256/LFS OID，不再硬编码另一台机器的美术仓库路径。真实二进制、外部 working-copy 和批准的 `char_c` 仍需独立证据；静态通过不改变资源资格。
+- 独立审查补齐资格报告与包清单的摘要一致性，错误的 source/provenance 摘要均被拒绝。CI scope 元数据同步实际已配置的静态与运行入口，拒绝旧声明和 `release-verified` 夸大声明；`runtime_release_verified` 保持 false。
+- Character 对话/L2/L3 真实 DeepSeek 预检与 Siming 真实后端链预检均通过，未使用 fallback；本轮两个 provider 的进程配置采用30秒超时。这只是模型前置可用性，不替代千人 mixed/soak。证据位于 `D:/HarnessEvidence/pop-character-live-preflight-20260920` 和 `D:/HarnessEvidence/pop-siming-live-preflight-20260920`。
+- 已通过浏览器核对远端 main `0644996c` 的 [Actions run 35433821744](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/35433821744)：实际报 `population-performance-fixed-runner is already defined`，没有执行 jobs。对应修复随 `07ace433` 及其前置提交推送到main；该版本的 [run 35459883293](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/35459883293) 进一步暴露四个 job.env 不允许使用 runner.temp。依据 [GitHub context availability](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#context-availability)，改为各 job 的第一个步骤从 RUNNER_TEMP 初始化并写入 GITHUB_ENV，导出/上传/清理仍使用原唯一目录。新增四档实际PowerShell回归先4failed，修复后相关25项通过；actionlint 1.7.7在声明既有两条固定机器label后通过。
+- SSH仓库访问正常；本轮没有可用的 Actions API 身份，匿名API限流，浏览器未登录。可以读取公开CI摘要，但固定 runner 的配置及手动dispatch仍无法由当前身份核实。
+- `20df046f` 的 [run 35460310983](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/35460310983) 已启动 jobs，静态门禁通过；两个 hosted runtime jobs 在安装 Python 时失败：GitHub `setup-python` 的 Windows 清单没有3.12.14。四个运行时入口改用固定SHA的 `setup-uv` v10.1.0与uv0.12.17，保留3.12.14及依赖约束，虚拟环境放在runner临时目录并激活。显式安装pip以支持已有外机依赖快照采集。相关19项测试和actionlint通过；修复后的远端结果须单独核对。
+- 全后端回归 **6,871 passed、2 skipped**（原有两项引擎检查未执行），Harness 工具回归 **398 passed**；日志分别为 `D:/HarnessEvidence/pop-backend-closure-full-20260920.log` 与 `D:/HarnessEvidence/pop-harness-closure-full-20260920.log`。后端 pytest 本身通过，但外层 TemporaryDirectory 清理因 Windows 长路径失败，后续清理被自动审批拒绝；该包装命令退出1，不能记为清理通过。Harness 工具临时目录已回收。受影响本轮临时目录及两处CI测试目录在台账记录保留。
+- 激活回执契约仍待答复。最终 recovery、transport、short、soak、capacity 须在该决定实施并冻结源码后按原阈值串行采集；本节不关闭六项总验收。
 
 ## 后端 WebSocket 启动
 
@@ -57,11 +84,11 @@ GitHub Actions 的 Harness 手动入口提供 `run_population_godot`，默认关
 
 ## 继续执行的入口
 
-隔离工作树当前路径：`D:/Paralls-phase0-1/.worktrees/population-runtime-closure`。
+最新隔离工作树：`D:/MyConfiguration/TCLXUSER/.codex/worktrees/pop/Paralls-phase0-1`。`D:/Paralls-phase0-1/.worktrees/population-runtime-closure`仅保留旧进度和可复用Python环境，不能用其中的旧报告替代本轮证据。
 
-- 计划：`docs/superpowers/plans/2026-09-16-population-production-runtime-closure-implementation-plan.md`（本地过程文档，不提交）。
-- 过程台账：`.superpowers/sdd/2026-09-16-population-production-runtime-closure-implementation-plan/progress.md`。
-- 机器状态：`.harness/verification/population-runtime-closure/progress.json`。
+- 计划：`docs/superpowers/plans/2026-09-16-population-production-runtime-closure-implementation-plan.md`（按用户要求随代码提交）。
+- 最新过程台账：`.superpowers/sdd/2026-09-16-population-production-runtime-closure-implementation-plan/backend-continuation-ledger.md`。
+- 最新验收结果：由run_scope生成，使用`--export-evidence`显式导出至仓库外。本轮目录见文首；旧`.harness/verification/`不是当前证据入口。
 - 每个子包有实现报告、固定commit差异和独立审查报告。局部PASS不能关闭整项；六项和总聚合门禁仍须分别完成。
 
 本机仅跑 backend、静态检查和验证器控制测试，没有执行 Godot 引擎。外机结果到齐前继续保留 godot_unverified；完整 backend/harness 和真实长时负载也必须在最终版本重新验收。

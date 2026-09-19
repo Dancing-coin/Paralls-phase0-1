@@ -61,6 +61,18 @@ def verification_dir(project_root: Path) -> Path:
     return path
 
 
+def collection_report_path(project_root: Path, output: Path, name: str) -> Path:
+    """Harness 子任务写当前 attempt；独立采集把摘要放进显式输出包。"""
+    if os.environ.get('HARNESS_PROJECT_ROOT') == str(project_root.resolve()):
+        return verification_dir(project_root) / name
+    return output.resolve() / name
+
+
+def collection_output_path(project_root: Path, name: str) -> Path:
+    """未显式指定输出时只允许在本轮 Harness attempt 中采集。"""
+    return verification_dir(project_root) / name
+
+
 def artifact_path(project_root: Path, reference: str | Path) -> Path:
     """解析证据逻辑名；绝不从上一轮目录寻找结果。"""
     ref = str(reference).replace('\\', '/')
