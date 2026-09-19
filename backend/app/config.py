@@ -73,6 +73,7 @@ class Settings(BaseModel):
         default_factory=lambda: ["char_b"]
     )
     population_roster_path: str | None = Field(default=None, min_length=1)
+    population_runtime_profile: Literal["production", "benchmark_1x", "benchmark_10x"] = "production"
     vla_provider_mode: Literal["disabled", "http", "local", "blocked"] = "blocked"
     vla_provider_kind: Literal["openai_compatible"] = "openai_compatible"
     vla_provider_endpoint: str | None = None
@@ -103,7 +104,7 @@ class Settings(BaseModel):
     gameplay_mirror_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     embodied_controller_trusted_local_launch_profiles: list[EmbodiedControllerTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
-    gameplay_mirror_projection_queue_capacity: int = Field(default=128, ge=1, le=1024)
+    gameplay_mirror_projection_queue_capacity: int = Field(default=160, ge=1, le=1024)
     gameplay_mirror_control_queue_capacity: int = Field(default=8, ge=1, le=128)
     gameplay_mirror_dirty_actor_limit: int = Field(default=16, ge=1, le=128)
     gameplay_mirror_live_probe_drop_first_delivery: bool = False
@@ -276,6 +277,7 @@ settings = Settings(
         "CHARACTER_GRAPH_MEMORY_HEAVY_ACTORS", ["char_b"]
     ),
     population_roster_path=_env_optional("POPULATION_ROSTER_PATH"),
+    population_runtime_profile=_env_value("POPULATION_RUNTIME_PROFILE", "production") or "production",
     vla_provider_mode=_env_value("VLA_PROVIDER_MODE", "blocked") or "blocked",
     vla_provider_kind=_env_value("VLA_PROVIDER_KIND", "openai_compatible") or "openai_compatible",
     vla_provider_endpoint=_env_value("VLA_PROVIDER_ENDPOINT"),
@@ -313,7 +315,7 @@ settings = Settings(
         for item in _env_object_list("EMBODIED_CONTROLLER_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON")
     ],
     embodied_controller_launcher_bootstrap_secret=_env_optional("EMBODIED_CONTROLLER_LAUNCHER_BOOTSTRAP_SECRET"),
-    gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "128") or "128"),
+    gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "160") or "160"),
     gameplay_mirror_control_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_CONTROL_QUEUE_CAPACITY", "8") or "8"),
     gameplay_mirror_dirty_actor_limit=int(_env_value("GAMEPLAY_MIRROR_DIRTY_ACTOR_LIMIT", "16") or "16"),
     gameplay_mirror_live_probe_drop_first_delivery=_env_bool("GAMEPLAY_MIRROR_LIVE_PROBE_DROP_FIRST_DELIVERY", False),

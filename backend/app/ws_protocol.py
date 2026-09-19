@@ -10,6 +10,19 @@ class Envelope(BaseModel):
     payload: dict
 
 
+class RuntimeQueuedCommand(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    message_type: Literal["character_actor_status", "raw_fact_event"]
+    payload: dict
+
+
+class RuntimeEnqueueRequest(BaseModel):
+    """接纳仅表示原命令进入有界队列，不代表业务执行成功。"""
+    model_config = ConfigDict(extra="forbid")
+    request_id: str = Field(min_length=1, max_length=128, strict=True)
+    command: RuntimeQueuedCommand
+
+
 class WebSocketSessionRenewalRequest(BaseModel):
     """A renewal request contains no client-chosen identity, scope, or credential."""
 

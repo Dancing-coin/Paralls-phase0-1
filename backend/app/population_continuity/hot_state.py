@@ -412,5 +412,10 @@ class PopulationDueIndex:
         for actor_id, obligation_id, due_tick, revision in entries:
             self.schedule(actor_id, obligation_id, due_tick, revision)
 
+    def export_entries(self) -> tuple[tuple[str, str, int, int], ...]:
+        """导出当前有效任务；不序列化已失效堆项和内部 generation。"""
+        return tuple((actor_id, obligation_id, entry[0], entry[1])
+                     for (actor_id, obligation_id), entry in sorted(self._entries.items()))
+
 
 __all__ = ["HOT_FIELDS", "HotStateReceipt", "PopulationHotState", "PopulationDueIndex"]

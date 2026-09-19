@@ -395,7 +395,8 @@ def test_tick_routes_population_once() -> None:
     runtime = SimingRuntime(population_capability=recorder)
     result = runtime.tick([SimingInput(input_type="population_cadence_input", source_event=cadence_event(cadence_id="cadence:cohort:bakery:W0", selector_revision="selector:cohort-bakery:v1", ruleset_revision="rules:cohort-bakery:v1"))])
     assert recorder.calls == 1
-    assert runtime._active_turn_event is None
+    assert runtime.pending_count == 0
+    assert runtime._siming_receipts == {}
     assert result.read_model is None
     assert any("population_cycle" in audit.reason for audit in result.audit_records)
 

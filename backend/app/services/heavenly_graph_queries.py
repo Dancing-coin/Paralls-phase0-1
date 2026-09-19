@@ -42,6 +42,11 @@ class HeavenlyGraphSemanticQueryFacade:
     def __init__(self, graph: _LowLevelGraph) -> None:
         self._graph = graph
 
+    def empty_selection(self, query: NodeLookupQuery) -> HeavenlyGraphQueryResult:
+        if query.node_ids or query.node_types or query.source_refs or query.record_kinds:
+            raise ValueError("empty selection requires no lookup filters")
+        return self._empty(query, incomplete_reason=None)
+
     def query(self, query: HeavenlyGraphSemanticQuery) -> HeavenlyGraphQueryResult:
         try:
             nodes, relations, truncated = self._read_bounded(query)
@@ -729,7 +734,7 @@ class HeavenlyGraphSemanticQueryFacade:
         return "scope:" + hashlib.sha256(encoded).hexdigest()
 
     def _empty(
-        self, query: HeavenlyGraphSemanticQuery, *, incomplete_reason: str
+        self, query: HeavenlyGraphSemanticQuery, *, incomplete_reason: str | None
     ) -> HeavenlyGraphQueryResult:
         return HeavenlyGraphQueryResult(
             policy_revision=query.context.policy_revision,

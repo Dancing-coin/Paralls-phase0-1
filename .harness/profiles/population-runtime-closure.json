@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-runtime-closure",
+  "order": 230,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/aggregate_population_closure.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-runtime-closure/closure-report.json",
+  "description": "离线复验同提交六项证据；缺少专用复验入口或Godot真实证据时保持incomplete，不启动任何运行时"
+}

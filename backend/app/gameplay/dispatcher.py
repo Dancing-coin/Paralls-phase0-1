@@ -16,43 +16,47 @@ class GameplayOutboxDispatcher:
         bus: AuthorityEventBusPort,
         after_transaction_dispatched: Callable[[AtomicEventBatch], None] | None = None,
         event_transform: Callable[[AuthorityEvent], AuthorityEvent] | None = None,
+        delivery_validator: Callable[[AuthorityEvent], None] | None = None,
     ) -> None:
         self._store = store
         self._bus = bus
         self._after_transaction_dispatched = after_transaction_dispatched
         self._event_transform = event_transform
-        self._notified_transaction_ids: set[str] = set()
+        self._delivery_validator = delivery_validator
 
     def dispatch_pending(self, *, limit: int | None = None, topic: str | None = None) -> DispatchResult:
-        entries = self._store.list_outbox(include_delivered=False)
-        if topic is not None:
-            entries = [entry for entry in entries if entry.topic == topic]
-        # 紧凑人口记录必须由持有名单/规则的运行时重建，通用分发器不得发送缺失的投影。
-        if self._event_transform is None:
-            entries = [entry for entry in entries if entry.payload_projection.get("projection_kind") != "population-runtime"]
-        if limit is not None:
-            entries = entries[:limit]
+        if limit is not None and limit < 0:
+            raise ValueError("gameplay_dispatch_limit_invalid")
+        high_water = self._store.get_last_global_sequence()
+        cursor = None
         published: list[str] = []
         failed: list[str] = []
-        for entry in entries:
-            try:
-                event = self._store.get_event(entry.event_id)
-                outgoing = self._authority_event_for(entry, event)
-                if self._event_transform is not None:
-                    outgoing = self._event_transform(outgoing)
-                self._bus.publish(outgoing)
-            except Exception as exc:  # publish failure must not roll back committed truth
-                self._store.mark_outbox_retryable(entry.outbox_id, str(exc))
-                failed.append(entry.outbox_id)
-                continue
-            self._store.mark_outbox_delivered(entry.outbox_id)
-            published.append(entry.outbox_id)
-            self._notify_if_transaction_fully_dispatched(entry.transaction_id)
-        # A transaction with an explicit refresh hint and no outbox has no
-        # transport work to await, but remains post-commit-only.
-        for transaction in self._store.read_transactions() if self._after_transaction_dispatched is not None else ():
-            if not transaction.outbox_entries and transaction.projection_refresh_hints:
-                self._notify_if_transaction_fully_dispatched(transaction.transaction_id)
+        while limit is None or len(published) + len(failed) < limit:
+            page_size = 128 if limit is None else min(128, limit - len(published) - len(failed))
+            entries = self._store.list_outbox(include_delivered=False, topic=topic, after_cursor=cursor,
+                                            through_sequence=high_water, limit=page_size)
+            if not entries:
+                break
+            for entry in entries:
+                cursor = entry.global_sequence, entry.outbox_id
+                # 紧凑人口记录由持有名单/规则的运行时重建；跳过后继续下一页。
+                if self._event_transform is None and entry.payload_projection.get("projection_kind") == "population-runtime":
+                    continue
+                try:
+                    event = self._store.get_event(entry.event_id)
+                    outgoing = self._authority_event_for(entry, event)
+                    if self._event_transform is not None:
+                        outgoing = self._event_transform(outgoing)
+                    self._bus.publish(outgoing)
+                    if self._delivery_validator is not None:
+                        self._delivery_validator(outgoing)
+                except Exception as exc:
+                    self._store.mark_outbox_retryable(entry.outbox_id, str(exc))
+                    failed.append(entry.outbox_id)
+                    continue
+                self._store.mark_outbox_delivered(entry.outbox_id)
+                published.append(entry.outbox_id)
+        self._refresh_pending(through_sequence=high_water, limit=limit)
         return DispatchResult(
             published_count=len(published),
             failed_count=len(failed),
@@ -60,28 +64,25 @@ class GameplayOutboxDispatcher:
             failed_outbox_ids=failed,
         )
 
-    def _notify_if_transaction_fully_dispatched(self, transaction_id: str) -> None:
-        if self._after_transaction_dispatched is None or transaction_id in self._notified_transaction_ids:
+    def _refresh_pending(self, *, through_sequence: int, limit: int | None) -> None:
+        if self._after_transaction_dispatched is None:
             return
-        transaction = next(
-            (batch for batch in self._store.read_transactions() if batch.transaction_id == transaction_id),
-            None,
-        )
-        if transaction is None:
-            return
-        if not transaction.outbox_entries:
-            if not transaction.projection_refresh_hints:
+        after_sequence, attempted = 0, 0
+        while limit is None or attempted < limit:
+            page_size = 128 if limit is None else min(128, limit - attempted)
+            transactions = self._store.list_pending_projection_refresh(
+                after_sequence=after_sequence, through_sequence=through_sequence, limit=page_size)
+            if not transactions:
                 return
-        else:
-            delivery_by_id = {entry.outbox_id: entry.delivery_state for entry in self._store.list_outbox()}
-            if any(delivery_by_id.get(entry.outbox_id) != "delivered" for entry in transaction.outbox_entries):
-                return
-        self._notified_transaction_ids.add(transaction_id)
-        try:
-            self._after_transaction_dispatched(transaction)
-        except Exception:
-            # The outbox publication is already durable and cannot be rolled back by a mirror observer.
-            return
+            for transaction in transactions:
+                after_sequence = transaction.events[-1].global_sequence
+                attempted += 1
+                try:
+                    self._after_transaction_dispatched(transaction)
+                    self._store.mark_projection_refreshed(transaction.transaction_id)
+                except Exception:
+                    # 已发布的事实不重发；刷新或 done 提交失败留待下次重试。
+                    continue
 
     @staticmethod
     def _authority_event_for(entry: GameplayOutboxEntry, event: GameplayEvent) -> AuthorityEvent:

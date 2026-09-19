@@ -2,11 +2,11 @@
 
 日期：2026-09-18。
 
-组织修订：`2026-09-18-r2`。本轮按用户要求生成两份实施计划及人员分工；模块与事实所有权仍由本规格定义。
+组织修订：`2026-09-18-r3`。复审保留两份计划与甲乙分工；M 首期收敛为固定的“日供给分片可行性计算器”，明确现有关系读取、B0 读侧汇总和 shadow/advisory 分阶段边界。
 
 状态：`draft_for_review`。本文件是本次文档整合产生的主 spec 草案，不是实现完成记录，不授权运行时代码变更，也不自动取代原有已确认基线。正文中“必须”表示拟议验收合同；新增裁决在第 18 节单独列出，不能当作用户此前已批准的决定。
 
-核查工作区：D:/Paralls-phase0-1；原整合分析基准为 main / bb3ea2bb，生成两份计划时补查 HEAD 83fa2b33。本次核查为静态文档和代码检查，未运行 pytest、Harness、Godot 或开源参照项目。
+核查工作区：D:/Paralls-phase0-1；原分析基准为 main / bb3ea2bb，计划生成时为 83fa2b33，本次复审源码为 d9b810f3。本次核查为静态文档和代码检查，未运行 pytest、Harness、Godot 或开源参照项目；用户所引“223 passed”不是本次证据。
 
 ## 1. 文档权威与生成方式
 
@@ -28,6 +28,7 @@
 | S6 | [事实上抛与多模态链路](../../../架构/事实上抛链路与多模态链路.md)、[Owner operation 基线](2026-08-26-owner-operation-conflict-matrix-baseline.md) | 复用感知 identity 和能力准入，不发明通用事实写入口 |
 | S7 | [本次项目及开源对照](../../../reference/2026-09-18-social-simulation-open-source-comparison.md) | 区分现有实现、待补合同与算法借鉴 |
 | S8 | [六项生产工程闭环](../2026-09-16-population-production-runtime-closure-design.md) | 既有生产化依赖，避免与本稿重复建执行隔离、恢复、性能或 CI 任务 |
+| S9 | 本次用户提供的三段复审意见 | 单场景计算器、八类最小语义、既有社会事实/图谱复用与首期禁止聚合回填；涉及实现的断言已按下列源码重新核对 |
 
 S2、S3、S4 为本机附件，跨机器交接时必须一起提供可核对的原文。生成实施计划时以本稿的已确认修订为共享合同，不把附件中的执行指令直接当成实施授权。
 
@@ -48,6 +49,8 @@ S2、S3、S4 为本机附件，跨机器交接时必须一起提供可核对的�
 在现有 world-character-Siming-authority 主线上，让同一角色以 B0 群体压缩、B1 简易模型、B2 局部增强和 B3 角色智能体四种方式连续推进。角色或玩家提出意图，社会模型提供受约束候选，领域协议与 Owner 确认结果，Character Core 接纳连续性，Godot 展示结果并提供获权具身证据。
 
 首个贯穿样板固定为：农民 → 村庄 → 洪灾压力 → 玩家接近 → 同一角色交接 → 供应或避难相关协议 → 回执与角色连续性。不同阶段对“协议已完成”的声明必须精确到实际确认的事实。
+
+这是 C 连续性主线的样板。M 的首个独立计算样板是“一个已固定分片在一个游戏日内能否完成基本供给”，洪灾仅作为该场景的道路/容量/需求扰动输入。M 的只读计算无需等待 C 的完整账本、交接、Godot 或通用密码本平台建完。
 
 ### 2.2 里程碑边界
 
@@ -78,9 +81,12 @@ E 的代码计划必须等待 C 的阶段 0–7 全部完成且有独立证据�
 | --- | --- | --- |
 | [GameplayEventStore](../../../../backend/app/gameplay/event_store.py) | 原子 batch、读写 revision、幂等、outbox、回放 | 确保新候选的完整读依赖到达提交点 |
 | [SimingRuntime](../../../../backend/app/services/siming_runtime.py)与[群体能力](../../../../backend/app/services/siming_population_capability.py) | cadence 消费、候选治理、能力目录、回执 | 消费同一参与策略，接入获权模型运行及后继 impact |
-| [连续积分](../../../../backend/app/population_continuity/continuous.py)与[热状态](../../../../backend/app/population_continuity/hot_state.py) | 有界数值推进、版本化读取、到期索引 | 模块聚合规则、成员保护、分片、个人安全物化 |
+| [连续积分](../../../../backend/app/population_continuity/continuous.py)与[热状态](../../../../backend/app/population_continuity/hot_state.py) | advance_b0_row 仍按 actor 推进疲劳、需求与到期窗口；热表支持批量执行 | 不能据此认定安全群体聚合/分摊已完成；首期模型只作读侧分片汇总 |
 | [角色种子合同](../../../../backend/app/character_agent/models/simulation_seed.py) | 连续性命令、模块增量、记忆候选和回执 | 统一模拟帧、交接与新模块接纳 |
 | [冻结来源](../../../../backend/app/population_continuity/source_inputs.py) | provenance、digest、revision 校验 | 统一用途授权、FactCard/Proof 和历史审计读取 |
+| [SocialFactAuthority](../../../../backend/app/gameplay/p5/social_knowledge.py)与[冻结社会输入](../../../../backend/app/population_continuity/social_input.py) | 按接收者的关系/知识/声誉视图，household 视图，来源版本与规划前 stale 校验 | 复用窄读集；区分认知/置信度与有权产生硬约束的成员/授权事实 |
+| [Heavenly Graph 合同](../../../../backend/app/models/siming_heavenly_graph.py)与[语义查询](../../../../backend/app/services/heavenly_graph_queries.py) | 已有关系、因果路径、双时间、scope/privacy、来源和回放查询 | 仅发现与解释实际已索引内容；不新建实体关系图引擎 |
+| [Authority 图谱投影器](../../../../backend/app/services/authority_graph_projector.py) | 当前映射部分 ESM、库存、组织、经济等事件为派生节点 | 当前映射未含 gameplay.social.*，不能宣称全部社会事实自动同步为关系边；首期不依赖补齐全图 |
 | [激活](../../../../backend/app/population_continuity/activation.py) | 已有锁、pending、release 与回执 | 四层推进的交接过程、旧执行者失效和恢复 |
 | [具身授权与结算](../../../../backend/app/services/embodied_authority_settlement_service.py)及[证据账本](../../../../backend/app/services/embodied_evidence_ledger.py) | 执行 grant、上报验证、具身过程证据 | 按操作接到确认事实、影响摘要和完整依赖检查 |
 | [Archive Door 路径](../../../../backend/app/services/default_scene_archive_door_embodied_service.py)与[ESM](../../../../backend/app/services/esm_service.py) | 门接触验证、ESM 状态与表现结果 | 该兼容路径需明确事实流、revision、receipt 和 impact 映射 |
@@ -187,13 +193,17 @@ impact 索引、失效通知与缓存作废用于及时反应。即使通知延�
 
 每条 member entry 至少保存 actor_ref、entry_character_revision、participation policy pins、shard_ref、aggregatable field refs、protected code refs、last_consumed_result_cursor，以及 active/handoff/excluded/exited 状态。
 
-成员账本不保存另一份库存、死亡、受伤、位置、关系和私有记忆。group_cursor 记录已确认群体结果；member consumption cursor 记录哪些获权结果已消费；二者都不能直接覆盖 Character Core 的 simulation_tick_cursor。
+成员账本不保存另一份库存、死亡、受伤、位置、关系和私有记忆。group_cursor 仅可记录既有合法协议的已确认群体结果；member consumption cursor 首期只记录可归因到该 actor 的获权结果；二者都不能直接覆盖 Character Core 的 simulation_tick_cursor。模型运行次数或报告版本不推进任何业务消费游标。
 
 ### 7.2 分摊边界
 
-基线模块可按已登记 distribution policy 提出允许字段的个人连续性增量，最终由 Character Core 接纳。S2 编译器的 B0 输出则限定为 cohort/shard/pool/route/process batch 总量、区间和风险，不能直接输出逐人分配表。
+S1 保留未来“已登记 distribution policy 提出允许字段个人增量”的架构能力，不代表当前代码已实现或本轮首期已准入。本轮 A2/B3/BM1 均不从群体平均值生成个人连续性增量；distribution_policy 使用 `none`。成员账本记录身份锚点、保护引用、分片与交接进度，不消费模型报告为个人状态。
 
-角色退出 B0 时，交接路径使用入组锚点、保护约束、确认 aggregate receipt 和版本化规则构造最小上下文。无法安全归因到个人的结果返回 unknown 或升级请求，不能把群体平均值写成个人损失、获救或记忆事实。
+现有按 actor 的连续积分，以及 B4/B5 根据明确 actor 和真实 Owner receipt 接纳的结果，可沿原路径继续；这两者都不是把分片均值分给个人。后续如需安全分摊，须另列字段归属、个人基准、分配规则、守恒/保护条件、确定性、幂等和 replay 的独立任务；不能由模型成功或账本 replay 通过自动打开。
+
+S2 编译器的 B0 输出限定为 cohort/shard/pool/route/process batch 总量、区间、阻塞与升级类别，不能直接输出逐人分配表。advisory 的升级请求只供查看；锁和实际 B0–B3 交接仍由原推进规则决定。
+
+角色退出 B0 时，交接路径使用入组锚点、保护约束、可归因到该 actor 的确认结果与版本化规则构造最小上下文。获权群体报告最多作为情境摘要，无法安全归因到个人的结果返回 unknown 或升级请求，不能把群体平均值写成个人损失、获救或记忆事实。
 
 ### 7.3 交接过程
 
@@ -201,7 +211,7 @@ impact 索引、失效通知与缓存作废用于及时反应。即使通知延�
 触发交集
   -> 取得现有 activation/handoff 锁与版本凭据
   -> 停止该角色旧推进提交，固化已确认 B0 游标
-  -> 接纳允许回填的连续性结果
+  -> 接纳原按 actor 确认的连续性结果，不从群体报告回填
   -> 构造 IntersectionPacket 与下一帧
   -> 按权限展开上下文
   -> 交由 B1/B2/B3 接管
@@ -263,6 +273,30 @@ Owner receipt → CharacterContinuityCommand → Character Core 校验与接纳 
 
 八类固定为：实体关系图、资源保管与流量网、空间可达性图、流程/状态机、承诺与时间表、约束与分配、风险与传播、聚合与分摊。新类别、新节点或算子语义变化需新的准入与回放版本；场景模板名称不成为新事实 Owner。
 
+八类是同一计算过程消费的语义维度，不对应八个引擎、服务或“实体关系图计算器”。首期仅一个受信模板 `daily-shard-supply@1`：
+
+```text
+固定分片 + 获权冻结社会/领域输入
+  -> 资格与关系约束
+  -> 确认供给、运力和路线可用性
+  -> 固定流程、期限与优先级
+  -> 分片总量可行性与确定性风险区间
+  -> 覆盖率/阻塞/升级类别报告
+```
+
+| 维度 | 首期最小语义 | 明确上限 |
+| --- | --- | --- |
+| 实体—关系 | Owner 确认资格、家庭/照护保护和授权缺口；图谱可辅助定位 | 不重建图，不由知识/声誉自动授予权利 |
+| 资源保管与流量 | 确认可用资源、已扣除占用的供给、来源保管地与运力上限 | 不扣粮、不预留、不推断可花费金额 |
+| 空间可达 | 读取 Owner 路线可用性、时延、容量倍率与风险倍率 | 不做通用寻路，不用图边认定通行 |
+| 流程 | 固定 supply 流程当前阶段决定可提出何种建议 | 不创建工作流引擎或推进运输阶段 |
+| 承诺与时间表 | 已确认窗口、期限、最低需求与玩法规则声明的优先级 | 不签约、改期限或判违约 |
+| 约束与分配 | 在分片总量上比较需求、供给与容量，报告冲突 | 不选业务赢家、不生成个人配给表 |
+| 风险与传播 | 版本化区间折减与确定性上下界 | 不做随机传染或谣言全网模拟，预测不成为事件 |
+| 聚合与分摊 | 获权分片只读汇总、覆盖率/压力区间、升级对象类别 | 首期没有个人反向分摊，保持现有 actor 推进 |
+
+V1 的固定运算顺序由源码定义；它可作为 S2 封闭 IR 的单一已登记实现，不需要实现通用 IR 图解释器、动态节点组合或模板作者平台。未来算法需求需独立证据后扩展。
+
 ### 10.2 最小合同
 
 | 合同 | 必需内容 |
@@ -271,12 +305,12 @@ Owner receipt → CharacterContinuityCommand → Character Core 校验与接纳 
 | ModelRunGrant | Siming tick/correlation、模板 pins、请求主体、用途/权限、有效区间、analysis_window、频率/节点/边/情景/候选/上下文预算、模式、revision/digest；只能收紧模板 |
 | SocialModelDraft | template pins、提议者与用途、获权参与/情境引用、受限类型参数、情景数、输出类别、correlation/idempotency；不携带任意事实值或自由 IR |
 | FactCard/Proof | card_ref、source owner/fact kind、reader/purpose/scope/privacy、revision/digest、valid_at/recorded_at/expiry、source events、rule/package pins；具身卡另含证据来源与确认状态 |
-| InputVersionVector | 所有模板/授权/算子 pins、卡引用与 digest、codebook receipts、graph back-check proofs、时间窗、规范参数顺序与 seed |
+| InputVersionVector | 所有相关来源/授权/模板/算子 pins、卡引用与内容 digest、观察时刻、from_tick/to_tick、expiry、分片/查询集合版本；codebook receipts、graph back-check proofs 与 seed 仅在相应路径实际使用时登记 |
 | CandidateEnvelope | candidate_ref、受限输出类别与 typed payload、目标 capability/protocol、input digest、expected revisions、proof refs、expiry、risk/confidence、scope/redaction、来源/幂等身份 |
 | ModelRunReceipt | run/status、模板/grant/input/seed/output digests、算子版本、读取/回查回执、预算截断、稳定排序、cache reuse、诊断与 correlation |
 | ModelProjection | receipt 来源、获权摘要、输入身份、scope、expiry/invalidation；可重建读投影，永不提升为世界或图谱事实 |
 
-CandidateEnvelope 允许的输出为 prediction、action_candidate、continuity_or_state_delta_candidate、conflict、risk、expansion_request、protocol_call_request。连续性候选使用已登记 ModuleProposal schema，且受 ParticipationResolution 约束。
+CandidateEnvelope 的扩展目录允许 prediction、action_candidate、continuity_or_state_delta_candidate、conflict、risk、expansion_request、protocol_call_request；这不是首期全部实现清单。日供给 V1 仅输出下述 DailySupplyReport 及获权复核/升级类别，不生成个人 continuity delta 或协议调用。后续连续性候选须使用已登记 ModuleProposal schema，且受 ParticipationResolution 约束。
 
 ModelRunGrant 由司命在既有 tick 中按获权范围签发。B0 由已批准群体策略选择是否采纳；B1/B2 由既有脚本规则选择；B3 由角色智能体在合法私有上下文内选择。Owner 收到协议请求后只按领域规则验证和结算，不因接到模型候选而获得一般角色决策权。
 
@@ -284,11 +318,17 @@ ModelRunGrant 由司命在既有 tick 中按获权范围签发。B0 由已批准
 
 Heavenly Graph 只发现候选关系、参与者和路径。成为硬约束前必须回查 source owner，在兼容冻结版本取得 FactCard/Proof。图谱缺失时，若 direct owner read 已满足模板可继续；否则按明确降级返回，不能用图边或缓存猜测。
 
+SocialFactAuthority 与 Heavenly Graph 不是同一系统的两个名字。关系索引是通用知识图谱可承载的一部分，但某社会事实已在 Owner 存在，不表示它已入图；图谱查无节点也不表示该关系不存在。首期社会读取优先使用 `view_for → FrozenSocialPlanningInput.freeze/validate_against`，家庭/组织硬约束分别复用 HouseholdScheduleInput 和 OrganizationScheduleInput 对应 Owner 视图。认知 knowledge_facts、projected_confidence、声誉只在声明用途内作为认知或风险输入，不当成物理可达、家庭完整名单或资源权利。
+
+`FrozenSocialPlanningInput.validate_against` 当前校验已列来源流的 revision，不能单凭这一调用宣称已有完整内容防篡改、深层不可变、授权/expiry 或集合新增成员覆盖。M 的窄读取接入要补输入复制、内容 digest 复核、recipient/purpose、观察时刻与有效期；固定分片名单/版本由已准入来源确认。不能证明集合完整或相关读依赖覆盖时返回 context_insufficient，不把一次关系查询当全体成员证明，也不为此先建新图谱/全域读库。
+
 模板预编译固定 IR，运行只绑定获权输入与受限参数；拒绝动态派发、未登记节点、未 pin 算子和不具合法有限求值顺序的结构。
 
 预算按确定性工作单位扣减，并在固定检查点截断。墙钟超时可以中断执行，但要记录为执行失败，不宣称其机器相关的部分输出是可确定重算结果。稳定排序、数值规范、种子、算子版本与历史失败/缓存决定一起进入回放合同。
 
 认识不足不随机化。仅在模板允许的情景分析中使用固定 seed；预测情景不绑定未来 Owner 必须提交相同随机结果。首个版本只允许精确输入向量缓存，fragment 失效优化须另有等价证据。
+
+缓存不是首个计算闭环的前置条件。先无缓存证明同输入同报告，再按真实重复调用需求加入精确缓存。报告使用前按全部声明的来源、授权、规则、分片版本和有效期重验；任一相关 pin 变化即 stale，旧报告仅保留为历史审计。不要把“应失效”实现成必需的新后台失效队列。
 
 ### 10.4 模式与失败
 
@@ -300,6 +340,10 @@ Heavenly Graph 只发现候选关系、参与者和路径。成为硬约束前�
 | active | 原推进主体可选择采纳，Owner 仍独立校验 |
 
 正式状态保留 ok、unknown、context_insufficient、proposal_only、graph_unavailable、graph_degraded、owner_unavailable、stale_input、budget_exhausted、policy_denied、conflict_detected、error。每次已准入运行，包括空结果和失败，都有最小脱敏 receipt；编译器不自旋重试。
+
+启用顺序为：冻结 fixture 纯计算 → shadow 与现有 Population planner 同输入对照 → advisory 只读可见 → 可选 active。shadow 报告只供审计/对照，不回流 planner 改选择；advisory 可以展示复核/升级建议，不能自动调度、交接或提交。若没有合适的已登记分片总量协议，长期保持 advisory 是有效交付，不为打开 active 发明新业务写入口。
+
+图谱缺失且 Owner 直接读取齐全时允许报告，并记 `graph_degraded` 的发现状态；缺必要输入不能报完整覆盖率。权限不足不得静默忽略受保护对象后给出更乐观覆盖率。
 
 ### 10.5 上下文精度与分析窗口
 
@@ -314,6 +358,16 @@ Heavenly Graph 只发现候选关系、参与者和路径。成为硬约束前�
 编译器只提出 required_fidelity/expansion_request，实际交接由参与解析和既有锁完成。玩家消费获权局部投影、发送交互 intent；玩家邻近本身不解除读取或提交限制。
 
 模板规定有限 analysis_window，grant 只能缩短。超出窗口需在新的世界时间重新读取和编译，不能以延长 expiry 复用旧候选。B0 游戏日/灾害 cadence、B1 小时级、B2 局部事件级是来源设计的分层方向，具体周期由玩法和既有调度合同决定；周级结果仅为宏观 ModelProjection。编译器不逐帧运行，不推进世界时间。
+
+### 10.6 日供给分片的报告合同
+
+一个获权固定 shard、一个资源单位、一个已确认路线和一个游戏日是首期输入范围；多线路优化、多商品兑换和自动拆分家庭均不包含。游戏日长度来自现有仿真时间合同；当前连续积分使用 86,400 个仿真秒，不能据此另起日调度器。
+
+报告内容固定为 shard/window、总需求区间、确认可用供给、可达供给区间、覆盖率区间、阻塞原因、建议复核/升级的对象类别、完整输入版本/digest 与 expiry。运行模式、耗费、降级和来源回执放入 ModelRunReceipt。报告不带逐人配给、原私有知识或新的世界状态。
+
+数量统一单位，风险/容量倍率使用有界定点或有理数；上下界向外取整。capacity 先转为该窗口容量；确认可用供给已扣除既有 reservation 时不可再次扣除。资格和期限判定在数值汇总之前：明确闭合流程/逾期/不可用路线产生已知阻塞，未知/无权则返回不完整状态。
+
+验收样例：确认可用量 100、窗口运力 100、容量倍率 1、风险可达比例 [0.48,0.62]、需求 [120,140]、流程允许且期限足够 → 可达供给 [48,62]、覆盖率 [3428,5167] 个基点、短缺 [58,92]。任何输入缺失不能用 0 顶替；确认需求 [0,0] 时 coverage 为空且标 not_required；需求下界为 0、上界大于 0 时上界最大为 100%，下界按需求上界计算。
 
 ## 11. 具身因果后继
 
@@ -415,19 +469,19 @@ S3 的开门、搬运、命中受伤、登船、持续火灾、塌方/城墙破�
 | C0 层级标记 | 当前入口、数据所有权与真实操作清单 | 当前入口明确属于事实/协议/投影/适配；无新万能 writer |
 | C1 共享帧 | 消费 C0，定义帧、参与解析及首个消费者 | 帧、参与策略、proposal/commit 合同一致；格式拒绝与运行时 stale 拒绝分别验证 |
 | C2 简易模块 | 消费 C1，补齐农民模块、原型/个体规则和接纳行为 | 四层复用模块定义；受保护字段与冲突升级有效 |
-| C3 成员账本 | 消费 C1/C2 的参与和字段策略，接入洪灾分片样板 | 入/出组、分片、确定性分摊、完整/尾部回放一致 |
+| C3 成员账本 | 消费 C1/C2 的参与和字段策略，接入洪灾分片样板 | 本轮只验入/出组、分片、按 actor 确认结果消费及完整/尾部回放；原基线安全分摊另列 deferred，不能据此报 C3 全完成 |
 | C4 交接 | 消费 C3 的成员记录及唯一推进权，接入玩家邻近触发 | 同一身份、唯一推进权、中断恢复、无重复消费 |
 | C5 社会协议 | 消费共享提交合同及相应读取能力，连通 Owner 与 Character Core | 实际 Owner 成功/拒绝与 Character Core 回流，明确事实范围 |
 | C6 密码本 | 消费授权与 Owner 读侧合同，统一展开、回执及历史读取 | 按用途授权展开与审计回执；历史重放可取回原输入 |
 | C7 DOD | 消费稳定的语义 oracle 与相关连续性/协议样板 | 批量优化前后候选、回执、角色状态与 replay digest 等价，并有对应新鲜规模证据 |
 
-全局优先级为 P0 合同/层级/样板，P1 帧/模块/账本，P2 交接/领域闭环，P3 通用读取及扩展协议，P4 优化。优先级不代替硬依赖：凡需要受控展开的任务必须先消费最小 Codebook 合同，不能等到 P3 才临时补权限。
+全局优先级为 P0 合同/层级/样板，P1 帧/模块/账本，P2 交接/领域闭环，P3 通用读取及扩展协议，P4 优化。优先级不代替硬依赖：凡需要受控展开的任务必须先消费最小 Codebook 合同，不能等到 P3 才临时补权限。首期不实施安全群体分摊是范围收窄，不是删除 S1 原验收要求；没有独立任务和证据前，该项 deferred，C0–C7 整体及依赖它的 E 门禁仍未通过。
 
 ### 14.2 并行与后继
 
 共享合同稳定后，模块规则内容与通用读取可以在明确接口上独立推进；成员账本先消费参与和字段策略，交接再消费账本与推进权。已有合法领域操作可先证明最小协议闭环，再纳入群体和交接样板。C0–C7 是与来源基线对齐的能力阶段，不表示所有工作必须按编号串行；具体依赖由上表和实际读写合同决定。成功事实验收必须走真实 Owner，不能由 mock 或自然语言替代。
 
-M-shadow 可在共享合同冻结后用受控 fixture 单独证明纯计算；接真实卡需相应读取与历史合同；M-active 必须具备参与策略、账本/交接、协议接纳、受控读取和真实目标 capability。shadow 成功不得提升为 active 完成。
+M 的最小只读合同冻结后，AM1/BM1 可先用受控 fixture 证明计算，再接现有 Owner 窄读取做真实 shadow 对照，最后提供 advisory 只读入口。必要的 scope、digest、expiry 和审计必须存在，但不要求先完成 A1/A2/A3/A4 全平台。M-active 必须具备相应参与策略、协议接纳和真实目标 capability；涉及角色交接/连续性时再消费已验证的账本/锁。shadow 成功不得提升为 active 完成。
 
 E 的代码计划在 C0–C7 独立证据齐备后才生成。E 先做一个低/中影响交互，再做一个高影响环境变化；F 在 E 因果闭环、情报隔离与冲突合同成立后进入。
 
@@ -451,7 +505,7 @@ S8 六项生产工程使用原计划与原门槛，作为现有外部依赖按�
 | AC-02 | 帧不可变、来源/策略 pins 可验证；格式错误与 stale 运行错误分别拒绝 | C1 共享推进合同 |
 | AC-03 | B0/B1/B2/B3 使用同一身份和参与规则；个体覆盖不暗中放宽 | C1/C2 参与解析与模块 |
 | AC-04 | individual_only 不聚合；统计许可不自动允许回填；成员不丢失 | C3 成员账本 |
-| AC-05 | 相同输入、规则、seed 的分片/分摊及 full/checkpoint-tail 回放等价 | C3/C7 连续性与回放 |
+| AC-05 | 相同输入、规则、seed 的分片/按 actor 确认结果消费及 full/checkpoint-tail 回放等价；模型报告不更新个人游标 | C3/C7 连续性与回放 |
 | AC-06 | 同角色唯一有效推进者；旧锁执行者、重复/中断交接不能重复提交 | C4 交接 |
 | AC-07 | 供应承诺成功/拒绝有真实 receipt；失败无新增业务事实；重复不双写 | C5 领域协议 |
 | AC-08 | 世界提交与连续性中断后可恢复；state/memory cursors 分离，无暴露不记忆 | C4/C5 Character Core 回流 |
@@ -467,6 +521,8 @@ S8 六项生产工程使用原计划与原门槛，作为现有外部依赖按�
 | AC-18 | 优化前后权威结果等价，规模、延迟、积压和网络口径可复验 | C7 与 S8 生产工程 |
 | AC-19 | Godot 有运行后端、真实边界消息及场景中确认/拒绝可见结果 | 对应 C/E/F 的集成样板 |
 | AC-20 | 全后端、相关专用 profiles 与全仓 Harness 有对应修订的新鲜记录 | 各实际变更范围的总验收 |
+| AC-21 | 一个日供给场景贯通八维最小语义；固定输入算得 [48,62] 可达量与 [3428,5167] 覆盖基点；无八引擎/新图 | M 首期纯计算 |
+| AC-22 | shadow 与现有 planner 同输入对照且不改变选择；advisory 仅可见；缺 graph 有限降级，缺权限/必需卡不猜测 | M 模式与输入复用 |
 
 零写入测试覆盖 stale、无权、private/cross-actor、branch-only、未知 schema、错误 Owner、重复键不同载荷、预算不足及锁冲突。各测试明确观察哪类业务事件、角色 revision 与 receipt；审计记录不混入“业务事件必须为零”的计数。
 
@@ -515,10 +571,12 @@ S8 六项生产工程使用原计划与原门槛，作为现有外部依赖按�
 | D-02 | Siming 唯一入口限定为司命决策/派发，world runtime 继续推进时间 | 修正 S4 的“唯一调度入口”过宽表述，保持 S1/S5 的已有职责 |
 | D-03 | schedule_gated_supply 验收精确到组织供应承诺；资源/容量另需真实能力 | 当前 capability 与事件族不支持把承诺等同已交付或已避难 |
 | D-04 | Character Core 独占角色状态接纳；领域层只提供已确认结果到连续性输入的映射 | 按业务所有权收口模块接口；共享文件的修改责任留给实施计划 |
-| D-05 | 基线允许字段的个人物化，与编译器 B0 禁逐人分配分别处理 | 保留 S1 分摊能力，同时遵守 S2 更窄的编译器职责 |
+| D-05 | S1 的安全分摊保留为后续能力；本轮 A2/B3/BM1 不从群体报告回填个人，现有 actor 连续积分保持 | 当前 B0 不是已完成的安全聚合器；S9 收紧首期交付 |
 | D-06 | 完整 read-set 提交重验兜底；失效通知不承担唯一正确性保证 | 明确 S2/S3 的 stale 拒绝如何落到已有 store |
 | D-07 | accepted/获准执行与 committed 分阶段；审计历史输入和确定性预算有正式失败 | 收口附件中回执歧义及精确 replay 的实际依赖 |
 | D-08 | 生产工程沿用 S8；DOD 已有实现不自动等于新基线阶段 7 完成 | 不复制工程计划，也不以旧性能报告解除 S3 前置门禁 |
+| D-09 | 日供给分片单计算器贯通八维，关系/流程/承诺作为已确认输入限制 | S9；避免将模型分类误实现为八引擎或重复事实系统 |
+| D-10 | M 先最小冻结输入与 shadow 对照，再 advisory；无真实 aggregate 协议可保持只读 | S9；C 的完整账本/密码本不是纯计算前置，不能为 active 创造权限 |
 
 ### 18.1 来源覆盖检查
 
@@ -531,5 +589,6 @@ S8 六项生产工程使用原计划与原门槛，作为现有外部依赖按�
 | S7 开源一手资料 | 第 17 节可借鉴机制、适用边界与暂不引入的依赖 |
 | S8 既有生产闭合设计 | 第 14、16 节已有工程依赖；AC-18 与相应生产验收 |
 | S4 拆分参考 | 第 13.2 节两份计划及甲乙主责；修正原参考中的过宽调度、资源结算与记忆物化表述 |
+| S9 本轮复审 | 第 3、7、10、14 节复用、B0 读侧边界与首期顺序；D-09/D-10、AC-21/AC-22 |
 
-主 spec 的评审出口是：事实和状态的唯一写入责任清楚，D-01–D-08 无未处理冲突，新增操作范围可准确命名，AC-01–AC-20 能映射到能力模块或既有生产工程，并明确尚未满足的阶段门禁。本轮 A/B 计划草案已生成；设计、计划文档齐备不等于代码已授权实施或已实现。
+主 spec 的评审出口是：事实和状态的唯一写入责任清楚，D-01–D-10 无未处理冲突，新增操作范围可准确命名，AC-01–AC-22 能映射到能力模块或既有生产工程，并明确尚未满足的阶段门禁。本轮 A/B 计划草案已生成；设计、计划文档齐备不等于代码已授权实施或已实现。

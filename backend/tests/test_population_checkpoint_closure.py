@@ -7,6 +7,15 @@ from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from test_siming_population_authorized_cadence_publication import _cadence, _commit, _store
 
 
+@pytest.fixture(autouse=True)
+def initialized_runtime():
+    from app import main
+
+    main.reset_runtime_state()
+    yield
+    main.close_runtime_resources()
+
+
 def _publish(main, store, *, window=1, extra_pins=None):
     cadence = _cadence().model_copy(update={
         "cadence_id": f"cadence:closure:{window}", "window_start": window, "window_end": window + 1,
@@ -40,10 +49,34 @@ def test_production_publisher_restores_checkpoint_and_reads_only_tail(monkeypatc
 
     monkeypatch.setattr(restored, "read_events", counted)
     assert _publish(main, restored, window=2) is not None
-    assert reads == [({"global_sequence_after": 1}, 1)]
+    assert reads == [({"global_sequence_after": 1, "limit": 1}, 1)]
     checkpoints = restored.list_projection_checkpoints(projector_id="population-continuity")
     assert len(checkpoints) == 1
     assert checkpoints[0].last_global_sequence == 2
+
+
+def test_population_source_tail_pages_before_visibility_filtering(monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main, "authority_event_bus", InMemoryAuthorityEventBus())
+    store = _store()
+    assert _publish(main, store) is not None
+    for index in range(300):
+        _commit(store, event_id=f"private:page:{index}", event_type="test.private", stream_id="private:paged",
+                payload={}, visibility_policy="actor:self")
+    reads = []
+    original = store.read_events
+
+    def read(**kwargs):
+        assert 0 < kwargs.get("limit", 0) <= 256
+        result = original(**kwargs)
+        reads.append((kwargs["global_sequence_after"], len(result)))
+        return result
+
+    monkeypatch.setattr(store, "read_events", read)
+    assert _publish(main, store, window=2) is not None
+    assert reads == [(1, 256), (257, 44)]
+    assert store.list_projection_checkpoints(projector_id="population-continuity")[0].last_global_sequence == 301
 
 
 @pytest.mark.parametrize("corruption", ["hash", "cursor", "scope"])

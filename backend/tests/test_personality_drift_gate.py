@@ -192,8 +192,10 @@ def test_runtime_records_drift_promotion_event_without_mutating_authored_profile
             rationale="hold position and observe",
         )
 
-    runtime._l2.interpret_perceived_event = interpret_stub
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
 
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
@@ -250,8 +252,10 @@ def test_runtime_suppresses_duplicate_drift_promotion_events_for_same_candidate(
             rationale="hold position and observe",
         )
 
-    runtime._l2.interpret_perceived_event = interpret_stub
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
 
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
@@ -317,8 +321,10 @@ def test_self_body_route_does_not_record_drift_promotion_events() -> None:
             rationale="hold position and observe",
         )
 
-    runtime._l2.interpret_self_body_event = interpret_stub
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
 
     runtime.ingest_self_body_perceived_event(
         SelfBodyPerceivedEvent(

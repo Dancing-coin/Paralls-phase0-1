@@ -398,6 +398,23 @@ class HeavenlyGraphRelation(BaseModel):
         return self
 
 
+class SimingOperationalRoomHead(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    scope: HeavenlyGraphScope
+    revision: int = Field(ge=1)
+    last_sequence: int = Field(ge=1)
+    completed_sequence: int = Field(default=0, ge=0)
+    after_state: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def validate_room(self):
+        if self.scope.scene_id is not None or self.scope.graph_namespace != "siming_heavenly":
+            raise ValueError("siming_room_scope_required")
+        if self.completed_sequence > self.last_sequence:
+            raise ValueError("siming_room_sequence_invalid")
+        return self
+
+
 class HeavenlyGraphWriteBatch(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -406,6 +423,7 @@ class HeavenlyGraphWriteBatch(BaseModel):
     scope: HeavenlyGraphScope
     nodes: list[HeavenlyGraphNode] = Field(default_factory=list)
     relations: list[HeavenlyGraphRelation] = Field(default_factory=list)
+    siming_room_head: SimingOperationalRoomHead | None = None
 
     @model_validator(mode="after")
     def validate_batch(self) -> "HeavenlyGraphWriteBatch":
@@ -414,6 +432,11 @@ class HeavenlyGraphWriteBatch(BaseModel):
         for entity in [*self.nodes, *self.relations]:
             if entity.scope != self.scope:
                 raise ValueError("every entity must match the batch scope")
+        if self.siming_room_head is not None:
+            if self.siming_room_head.scope != self.scope.model_copy(update={"scene_id": None}):
+                raise ValueError("siming_room_head_scope_mismatch")
+            if not any(node.node_type == "siming_admission" for node in self.nodes):
+                raise ValueError("siming_room_head_requires_admission")
         node_revisions = [(node.node_id, node.revision) for node in self.nodes]
         if len(node_revisions) != len(set(node_revisions)):
             raise ValueError("duplicate node revision in write batch")

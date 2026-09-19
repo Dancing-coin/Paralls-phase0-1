@@ -110,6 +110,21 @@ class CharacterAgentL1Service:
             zone_id=str(payload.get("zone_id", "") or "zone_focus"),
             producer_ts=int(payload.get("producer_ts", 0) or 0),
         )
+        return self._apply_siming_to_snapshot(snapshot, payload)
+
+    def plan_siming_output(self, payload: dict[str, object]) -> CharacterPrivateWorldSnapshot:
+        """只复制受影响角色的 L1；冻结 after-state 不修改当前感知。"""
+        actor_id = str(payload.get("target_actor_id", "") or "")
+        current = self._snapshots.get(actor_id)
+        snapshot = current.model_copy(deep=True) if current is not None else CharacterPrivateWorldSnapshot(
+            actor_id=actor_id, room_id=str(payload.get("room_id", "") or "room_demo"),
+            scene_id=str(payload.get("scene_id", "") or "scene_demo"),
+            zone_id=str(payload.get("zone_id", "") or "zone_focus"),
+            producer_ts=int(payload.get("producer_ts", 0) or 0), updated_at=int(payload.get("producer_ts", 0) or 0))
+        return self._apply_siming_to_snapshot(snapshot, payload)
+
+    @staticmethod
+    def _apply_siming_to_snapshot(snapshot: CharacterPrivateWorldSnapshot, payload: dict[str, object]) -> CharacterPrivateWorldSnapshot:
         target_object_id = str(payload.get("target_object_id", "") or "")
         target_actor_id = str(payload.get("target_actor_id", "") or "")
         target_environment_id = str(payload.get("target_environment_id", "") or "")

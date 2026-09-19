@@ -1,5 +1,7 @@
 from typing import ClassVar, Literal
 
+from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
+
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -179,3 +181,13 @@ class StoryCandidateRejection(StrictStoryModel):
 class StoryCandidateRanking(StrictStoryModel):
     eligible: list[StoryDecisionCandidate] = Field(default_factory=list)
     rejected: list[StoryCandidateRejection] = Field(default_factory=list)
+
+
+class ObligationTransformPlan(StrictStoryModel):
+    result: ObligationTransformResult
+    batch: HeavenlyGraphWriteBatch | None = None
+
+
+class StoryOutcomePlan(StrictStoryModel):
+    result: StoryOutcomeApplication
+    batch: HeavenlyGraphWriteBatch | None = None

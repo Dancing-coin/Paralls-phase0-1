@@ -3,7 +3,7 @@ import pickle
 from threading import RLock
 
 from app.models.authority_event import AuthorityEvent
-from app.models.siming_event import SimingAuditRecord
+from app.models.siming_event import SimingAuditRecord, SimingTickResult
 from app.services.authority_event_bus import (
     AuthorityEventBusPort,
     AuthorityRecoveryLedger,
@@ -104,6 +104,16 @@ class SimingEventPipeline:
         if not inputs:
             return
         result = self._runtime.tick(inputs)
+        self.finish_result(event, result)
+        # 冻结域请求必须得到真实 accepted cycle；失败不可进入入口去重缓存，否则 outbox 永远重试空操作。
+        if "population_owner_requests" in event.payload and not any(
+            audit.audit_id == f"audit_{event.event_id}_population_cycle" and audit.status == "recorded"
+            for audit in result.audit_records
+        ):
+            raise ValueError("population_domain_cycle_unconfirmed")
+
+    def finish_result(self, event: AuthorityEvent, result: SimingTickResult) -> None:
+        """完成已接受的结果；不重放 consumer 或 tick 的前置领域写。"""
         for audit in result.audit_records:
             self._audit_writer.record(audit)
         for checkpoint in result.checkpoints:

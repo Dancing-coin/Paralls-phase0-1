@@ -107,6 +107,9 @@ class _CheckpointFailingContinuityStore:
         self.fail_checkpoint_at = 16
 
     def write_current_state(self, *, snapshot: dict[str, object], **_: object) -> None:
+        if snapshot.get('event_index') == self.fail_checkpoint_at:
+            self.fail_checkpoint_at = -1
+            raise RuntimeError('current_state_write_failed')
         self.current_states.append(snapshot)
 
     def write_snapshot(self, *, snapshot: dict[str, object], **_: object) -> None:
@@ -166,8 +169,8 @@ class _CurrentAfterCheckpointFailingContinuityStore:
     ) -> None:
         if actor_id != "char_a":
             return
-        if self._fail_current:
-            self._fail_current = False
+        if snapshot.get('event_index') == 16 and not self._fail_current:
+            self._fail_current = True
             raise RuntimeError("current_after_checkpoint_write_failed")
         self.current_state = self._anchored(snapshot, source_event_ref)
 
@@ -418,17 +421,17 @@ def test_materialization_memory_failure_retries_committed_fact_without_duplicate
     runtime.apply_character_continuity_command(
         command_with_memory_candidate(exposure_basis="affected_directly")
     )
-    original_persist = memory_store._persist
+    original_write = memory_store.write_event
     failed = False
 
-    def fail_once() -> None:
+    def fail_once(event) -> None:
         nonlocal failed
         if not failed:
             failed = True
             raise RuntimeError("materialization_memory_projection_failed")
-        original_persist()
+        original_write(event)
 
-    monkeypatch.setattr(memory_store, "_persist", fail_once)
+    monkeypatch.setattr(memory_store, "write_event", fail_once)
 
     with pytest.raises(RuntimeError, match="materialization_memory_projection_failed"):
         runtime.materialize_pending_seed_memories("char_a", producer_ts=101)
@@ -480,7 +483,7 @@ def test_seed_correction_appends_supersession_without_deleting_subjective_memory
     assert runtime.get_seed_projection("char_a")["supersedes"] == "seed:character:char_a:supply"
 
 
-def test_checkpoint_failure_keeps_current_state_tail_from_last_confirmed_checkpoint() -> None:
+def test_compact_current_failure_keeps_committed_session_and_next_publish() -> None:
     continuity_store = _CheckpointFailingContinuityStore()
     runtime = CharacterAgentRuntime(continuity_store=continuity_store)
 
@@ -497,14 +500,16 @@ def test_checkpoint_failure_keeps_current_state_tail_from_last_confirmed_checkpo
             try:
                 runtime.apply_character_continuity_command(command)
             except RuntimeError as exc:
-                assert str(exc) == "checkpoint_write_failed"
+                assert str(exc) == "current_state_write_failed"
         else:
             runtime.apply_character_continuity_command(command)
 
-    assert len(continuity_store.current_states[-1]["session_timeline_tail"]) == 16
+    assert continuity_store.current_states[-1]['event_index'] == 17
+    assert runtime.get_memory_revision('char_a') == 17
+    assert continuity_store.snapshots == []
 
 
-def test_successful_checkpoint_persists_the_new_event_cursor() -> None:
+def test_compact_current_persists_exact_committed_event_cursor() -> None:
     continuity_store = _CheckpointFailingContinuityStore()
     continuity_store.fail_checkpoint_at = -1
     runtime = CharacterAgentRuntime(continuity_store=continuity_store)
@@ -521,7 +526,9 @@ def test_successful_checkpoint_persists_the_new_event_cursor() -> None:
             )
         )
 
-    assert continuity_store.snapshots[-1]["checkpoint_event_index"] == 16
+    assert continuity_store.snapshots == []
+    assert continuity_store.current_states[-1]['event_index'] == 16
+    assert continuity_store.current_states[-1]['event_id'] == runtime.get_session_timeline('char_a')[-1]['event_id']
 
 
 def test_committed_session_event_restores_after_current_state_write_failure(
@@ -592,14 +599,15 @@ def test_current_state_payload_stays_bounded_as_committed_history_grows() -> Non
             )
 
     latest = continuity_store.current_states[-1]
-    assert len(latest["session_timeline_tail"]) == 1
-    assert "goal_state_history" not in latest
+    assert 'session_timeline_tail' not in latest
+    assert 'working_memory' not in latest
+    assert len(latest.get('goal_history', [])) <= 8
     assert "continuity_receipts" not in latest
     assert "materialization_receipts" not in latest
     assert payload_sizes[1] - payload_sizes[0] < 128
 
 
-def test_restored_session_without_graph_checkpoint_checkpoints_before_current_tail(
+def test_restored_legacy_session_publishes_compact_current_without_history_copy(
     tmp_path: Path,
 ) -> None:
     actor_id = "char_a"
@@ -632,11 +640,13 @@ def test_restored_session_without_graph_checkpoint_checkpoints_before_current_ta
     )
 
     assert receipt.status == "committed"
-    assert continuity_store.snapshots[-1]["checkpoint_event_index"] == 101
-    assert continuity_store.current_states[-1]["session_timeline_tail"] == []
+    assert continuity_store.snapshots == []
+    assert continuity_store.current_states[-1]['event_index'] == 101
+    assert 'session_timeline_tail' not in continuity_store.current_states[-1]
+    assert len(runtime.get_session_timeline(actor_id)) == 101
 
 
-def test_stale_current_cannot_override_newer_committed_checkpoint(
+def test_stale_graph_current_cannot_override_newer_committed_session(
     tmp_path: Path,
 ) -> None:
     continuity_store = _CurrentAfterCheckpointFailingContinuityStore()
@@ -680,10 +690,10 @@ def test_stale_current_cannot_override_newer_committed_checkpoint(
                 ),
             )
 
-    assert continuity_store.snapshot is not None
-    assert continuity_store.snapshot["checkpoint_event_index"] == 16
+    assert continuity_store.snapshot is None
     assert continuity_store.current_state is not None
-    assert continuity_store.current_state["checkpoint_event_index"] == 1
+    assert continuity_store.current_state['event_index'] == 15
+    assert runtime._session_store.read_runtime_state('char_a')['event_index'] == 16
 
     full_replay = CharacterAgentRuntime(storage_root=tmp_path)
     restored = CharacterAgentRuntime(
@@ -711,7 +721,7 @@ def test_stale_current_cannot_override_newer_committed_checkpoint(
     )
 
 
-def test_newer_current_does_not_duplicate_goal_already_present_in_its_tail(
+def test_compact_current_does_not_duplicate_committed_goal_on_restore(
     tmp_path: Path,
 ) -> None:
     continuity_store = _CurrentAfterCheckpointFailingContinuityStore()
@@ -750,10 +760,9 @@ def test_newer_current_does_not_duplicate_goal_already_present_in_its_tail(
         storage_root=tmp_path, continuity_store=continuity_store
     )
 
-    assert continuity_store.snapshot is not None
-    assert continuity_store.snapshot["checkpoint_event_index"] == 1
+    assert continuity_store.snapshot is None
     assert continuity_store.current_state is not None
-    assert continuity_store.current_state["checkpoint_event_index"] == 1
+    assert continuity_store.current_state['event_index'] == 3
     assert restored.get_goal_state_history(
         "char_a"
     ) == full_replay.get_goal_state_history("char_a")

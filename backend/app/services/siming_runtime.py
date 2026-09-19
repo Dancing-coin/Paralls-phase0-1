@@ -1,5 +1,12 @@
 import os
-from threading import RLock
+import hashlib
+import time
+from uuid import uuid4
+from dataclasses import asdict
+from collections import OrderedDict
+from app.services.siming_continuation import (SimingAcceptedPlan, SimingStageEffects, SimingCompletionValidation, SimingTurnFrame, SimingAdvance, PreparedSimingJob, SimingProviderRequest, SimingProviderCompletion, run_siming_provider, digest, json_bytes)
+from app.services.siming_heavenly_runtime_support import PreparedHeavenlyDecision
+from threading import RLock, get_ident
 
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_event import (
@@ -28,8 +35,6 @@ from app.services.siming_intervention_guardrails import (
 from app.services.siming_llm_provider import (
     DisabledSimingLlmCandidateProvider,
     SimingLlmCandidateProvider,
-    SimingLlmProviderInvalidOutput,
-    SimingLlmProviderTimeout,
 )
 from app.services.siming_narrative_core import SimingNarrativeCore
 from app.services.siming_observe import SimingObservePipeline
@@ -102,6 +107,8 @@ class SimingRuntime:
         behavior_turn_scope_resolver: object | None = None,
         population_capability: PopulationSimulationCapability | None = None,
         population_read_set_builder: ReadSetBuilder | None = None,
+        actor_pin_reader=None,
+        source_pin_reader=None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -135,8 +142,13 @@ class SimingRuntime:
         self._heavenly_story_projection = SimingStoryProjection()
         self._observatory_projection = SimingDebugProjection()
         self._pending_observatory_messages: list[dict[str, object]] = []
-        self._active_turn_event: AuthorityEvent | None = None
-        self._active_turn_prepared: object | None = None
+        self._actor_pin_reader = actor_pin_reader
+        self._source_pin_reader = source_pin_reader
+        self._siming_owner_thread = None
+        self._siming_generation = uuid4().hex
+        self._siming_pending = {}
+        self._siming_receipts = OrderedDict()
+        self._sync_tick_lock = RLock()
         self._recorded_behavior_turn_correlations: set[str] = set()
         self._behavior_turn_lock = RLock()
         self._population_capability = population_capability
@@ -147,555 +159,387 @@ class SimingRuntime:
         return self._heavenly_support
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
-        result = SimingTickResult()
-        for siming_input in inputs:
-            event = siming_input.source_event
-            if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
+        # 兼容工具入口；与异步入口共用下面的显式阶段，串行 drain。
+        with self._sync_tick_lock:
+            if self._siming_owner_thread is not None:
+                self._assert_siming_owner()
+            result = SimingTickResult()
+            for siming_input in inputs:
+                frame = self._new_frame(siming_input, synchronous=True, result=result)
                 try:
-                    cadence = PopulationCadenceInput.from_authority_event(event)
-                    read_set = self._population_read_set_builder(event, cadence)
-                    if cadence.selector_revision not in {
-                        self._POPULATION_GENERIC_SELECTOR,
-                        self._POPULATION_FIXTURE_SELECTOR,
-                    }:
-                        result.audit_records.append(
-                            self._audit(event, status="no_action", reason="population_requeue:unknown_selector")
-                        )
-                        continue
-                    owner_receipt_payload = event.payload.get("population_owner_receipt")
-                    generic_payload = event.payload.get("population_decision")
-                    for field in ("population_owner_receipt", "population_decision"):
-                        if field in event.payload and not isinstance(event.payload[field], dict):
-                            raise ValueError(f"{field}_invalid")
-                    if isinstance(owner_receipt_payload, dict) and not read_set.projections:
-                        result.audit_records.append(
-                            self._audit(event, status="no_action", reason="population_requeue:owner_rejected")
-                        )
-                        continue
-                    generic_runner = getattr(self._population_capability, "run_decision_cycle", None)
-                    default_runner = getattr(self._population_capability, "run_default_decision_cycle", None)
-                    receipt_runner = getattr(
-                        self._population_capability,
-                        "run_receipt_pinned_decision_cycle",
-                        None,
+                    self._start_tick(frame)
+                    while frame.stage in {"candidate", "adaptive"}:
+                        request = frame.request.model_dump_json().encode("utf-8")
+                        provider = self._llm_provider if frame.stage == "candidate" else self._heavenly_support._llm_provider
+                        completion = SimingProviderCompletion.model_validate_json(run_siming_provider(provider, request))
+                        self._resume_tick(frame, completion)
+                finally:
+                    self._siming_pending.pop(frame.turn_id, None)
+            return result
+
+    def _start_tick(self, frame: SimingTurnFrame, effects=None) -> None:
+        siming_input, result = frame.siming_input, frame.result
+        frame.stage = "completed"
+        event = siming_input.source_event
+        if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
+            try:
+                cadence = PopulationCadenceInput.from_authority_event(event)
+                read_set = self._population_read_set_builder(event, cadence)
+                if cadence.selector_revision not in {
+                    self._POPULATION_GENERIC_SELECTOR,
+                    self._POPULATION_FIXTURE_SELECTOR,
+                }:
+                    result.audit_records.append(
+                        self._audit(event, status="no_action", reason="population_requeue:unknown_selector")
                     )
-                    is_fixture = cadence.selector_revision == self._POPULATION_FIXTURE_SELECTOR
-                    generic_mode = cadence.selector_revision == self._POPULATION_GENERIC_SELECTOR
-                    if generic_mode and isinstance(owner_receipt_payload, dict):
-                        if not callable(receipt_runner):
-                            result.audit_records.append(
-                                self._audit(event, status="no_action", reason="population_requeue:runner_missing")
-                            )
-                            continue
-                        cycle = receipt_runner(
-                            cadence,
-                            read_set,
-                            PopulationOwnerReceipt.model_validate(owner_receipt_payload),
-                        )
-                    elif generic_mode and isinstance(generic_payload, dict):
-                        policy_payload = generic_payload.get("policy", generic_payload.get("decision_policy"))
-                        capability_payload = generic_payload.get("capabilities")
-                        if not capability_payload:
-                            result.audit_records.append(
-                                self._audit(event, status="no_action", reason="population_requeue:capability_descriptor_missing")
-                            )
-                            continue
-                        if not callable(generic_runner):
-                            result.audit_records.append(
-                                self._audit(event, status="no_action", reason="population_requeue:runner_missing")
-                            )
-                            continue
-                        policy = PopulationDecisionPolicy.model_validate(policy_payload)
-                        if not isinstance(capability_payload, (list, tuple)):
-                            raise ValueError("capability_descriptor_invalid")
-                        capabilities = tuple(
-                            PopulationCapabilityDescriptor.model_validate(item)
-                            for item in capability_payload
-                        )
-                        if not self._population_capabilities_admitted(cadence, capabilities):
-                            result.audit_records.append(
-                                self._audit(event, status="no_action", reason="population_requeue:capability_descriptor_invalid")
-                            )
-                            continue
-                        cycle = generic_runner(
-                            cadence, read_set, policy, capabilities
-                        )
-                    elif generic_mode and callable(default_runner):
-                        cycle = default_runner(cadence, read_set)
-                    elif is_fixture:
-                        runner = getattr(self._population_capability, "run_cohort_cycle", None)
-                        if not callable(runner):
-                            result.audit_records.append(
-                                self._audit(event, status="no_action", reason="population_requeue:runner_missing")
-                            )
-                            continue
-                        cycle = runner(cadence, read_set)
-                    else:
+                    return
+                owner_receipt_payload = event.payload.get("population_owner_receipt")
+                generic_payload = event.payload.get("population_decision")
+                for field in ("population_owner_receipt", "population_decision"):
+                    if field in event.payload and not isinstance(event.payload[field], dict):
+                        raise ValueError(f"{field}_invalid")
+                if isinstance(owner_receipt_payload, dict) and not read_set.projections:
+                    result.audit_records.append(
+                        self._audit(event, status="no_action", reason="population_requeue:owner_rejected")
+                    )
+                    return
+                generic_runner = getattr(self._population_capability, "run_decision_cycle", None)
+                default_runner = getattr(self._population_capability, "run_default_decision_cycle", None)
+                receipt_runner = getattr(
+                    self._population_capability,
+                    "run_receipt_pinned_decision_cycle",
+                    None,
+                )
+                is_fixture = cadence.selector_revision == self._POPULATION_FIXTURE_SELECTOR
+                generic_mode = cadence.selector_revision == self._POPULATION_GENERIC_SELECTOR
+                if generic_mode and isinstance(owner_receipt_payload, dict):
+                    if not callable(receipt_runner):
                         result.audit_records.append(
                             self._audit(event, status="no_action", reason="population_requeue:runner_missing")
                         )
-                        continue
-                    result.audit_records.append(self._population_cycle_audit(event, cycle))
-                    result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
-                    self._record_population_behavior_turn(
-                        event, cadence, read_set, cycle, result
+                        return
+                    cycle = receipt_runner(
+                        cadence,
+                        read_set,
+                        PopulationOwnerReceipt.model_validate(owner_receipt_payload),
                     )
-                except (TypeError, ValueError) as exc:
-                    result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
-                continue
-            self._active_turn_event = event
-            if siming_input.input_type == "siming_staging_ack":
-                self._process_staging_ack(event, result)
-                continue
-            fairness_output = self._fairness_snapshot(event)
-            result.outputs.append(fairness_output)
-            self._queue_snapshot(
-                source_event=event,
-                fairness_summary=self._fairness_summary_for(event),
-                intervention_candidate="",
-                intervention_decision="reviewing",
-                selected_path="no_action",
-                intervention_band="none",
-                target_ref=self._target_ref_for(event),
-                reason_summary="",
-                downstream_status="reviewing",
-                no_action_reason="",
-            )
-            self._queue_event(
-                source_event=event,
-                stage="fairness_snapshot",
-                summary=self._fairness_summary_for(event),
-                selected_path="no_action",
-                intervention_band="none",
-                target_ref=self._target_ref_for(event),
-                reason_summary="",
-                downstream_status="reviewing",
-                no_action_reason="",
-            )
-            observed = self._observe_pipeline.observe([event])
-            if not observed:
-                continue
-
-            fact_result = self._fact_core.evaluate(observed)
-            if not fact_result.accepted:
-                result.outputs.append(self._no_action(event))
-                result.audit_records.append(
-                    self._audit(
-                        event,
-                        status="no_action",
-                        reason=f"fact_veto:{fact_result.veto_reason}",
-                    )
-                )
-                continue
-
-            prepared = (
-                self._heavenly_support.prepare(siming_input)
-                if self._heavenly_support is not None
-                else None
-            )
-            self._active_turn_prepared = prepared
-            if prepared is not None and prepared.degraded_reason:
-                reason = prepared.degraded_reason
-                result.outputs.append(self._no_action(event, reason=reason))
-                result.audit_records.append(
-                    self._audit(event, status="no_action", reason=reason)
-                )
-                self._queue_snapshot(
-                    source_event=event,
-                    fairness_summary=self._fairness_summary_for(event),
-                    intervention_candidate="",
-                    intervention_decision="no_action",
-                    selected_path="no_action",
-                    intervention_band="none",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary=reason,
-                    downstream_status="heavenly_degraded",
-                    no_action_reason=reason,
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="no_action",
-                    summary="siming heavenly preparation unavailable",
-                    selected_path="no_action",
-                    intervention_band="none",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary=reason,
-                    downstream_status="heavenly_degraded",
-                    no_action_reason=reason,
-                )
-                continue
-            if (
-                prepared is not None
-                and prepared.mode == "active"
-                and prepared.owns_event_family
-            ):
-                self._project_graph_owned_context(event, prepared, result)
-                outputs, audits = self._process_graph_owned_event(event, prepared)
-                result.outputs.extend(outputs)
-                result.audit_records.extend(audits)
-                self._record_behavior_turn(event, prepared, result)
-                continue
-            if prepared is not None and prepared.mode == "shadow":
-                result.audit_records.append(
-                    self._audit(event, status="recorded", reason="shadow_recorded")
-                )
-
-            state_tree = self._state_tree.update_from_observed(
-                observed,
-                sim_tick_ts=event.producer_ts + 1,
-            )
-            state_tree.group_simulation = self._group_bridge.summarize(
-                room_id=event.room_id
-            )
-            narrative = self._narrative_core.update(observed)
-            quality = self._quality_monitor.evaluate(
-                state_tree=state_tree, narrative=narrative
-            )
-            fairness_snapshot = quality.snapshot
-            storyline = self._storyline_state.update_from_state_tree(state_tree)
-            ledger = self._obligation_ledger.update_from_storyline(storyline)
-            projection = self._storyline_projection.project(
-                state_tree=state_tree,
-                fairness=fairness_snapshot,
-                storyline=storyline,
-                ledger=ledger,
-            )
-            guardrail_results = [
-                self._intervention_guardrails.evaluate_seed(
-                    seed, snapshot=fairness_snapshot
-                )
-                for seed in narrative.seeds
-            ]
-            result.checkpoints.append(
-                self._read_model_builder.build_checkpoint(
-                    state_tree=state_tree,
-                    fairness=fairness_snapshot,
-                    storyline=storyline,
-                    checkpoint_type="pre_decision",
-                )
-            )
-            narrative_summary = self._narrative_summary_for(narrative)
-            quality_summary = self._quality_summary_for(quality)
-            guardrail_summary = self._guardrail_summary_for(guardrail_results)
-            guardrail_rejection_reason = self._guardrail_rejection_reason(
-                guardrail_results
-            )
-
-            if self._is_light_drop(event):
-                if guardrail_rejection_reason is not None:
-                    result.outputs.append(
-                        self._no_action(event, reason=guardrail_rejection_reason)
-                    )
-                    result.audit_records.append(
-                        self._audit(
-                            event, status="no_action", reason=guardrail_rejection_reason
+                elif generic_mode and isinstance(generic_payload, dict):
+                    policy_payload = generic_payload.get("policy", generic_payload.get("decision_policy"))
+                    capability_payload = generic_payload.get("capabilities")
+                    if not capability_payload:
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:capability_descriptor_missing")
                         )
+                        return
+                    if not callable(generic_runner):
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:runner_missing")
+                        )
+                        return
+                    policy = PopulationDecisionPolicy.model_validate(policy_payload)
+                    if not isinstance(capability_payload, (list, tuple)):
+                        raise ValueError("capability_descriptor_invalid")
+                    capabilities = tuple(
+                        PopulationCapabilityDescriptor.model_validate(item)
+                        for item in capability_payload
                     )
-                    self._queue_snapshot(
-                        source_event=event,
-                        fairness_summary=self._fairness_summary_for(event),
-                        intervention_candidate="",
-                        intervention_decision="no_action",
-                        selected_path="no_action",
-                        intervention_band="none",
-                        target_ref=self._target_ref_for(event),
-                        reason_summary=guardrail_rejection_reason,
-                        downstream_status="guardrail_rejected",
-                        no_action_reason=guardrail_rejection_reason,
+                    if not self._population_capabilities_admitted(cadence, capabilities):
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:capability_descriptor_invalid")
+                        )
+                        return
+                    cycle = generic_runner(
+                        cadence, read_set, policy, capabilities
                     )
-                    self._queue_event(
-                        source_event=event,
-                        stage="no_action",
-                        summary="siming guardrails rejected narrative seed",
-                        selected_path="no_action",
-                        intervention_band="none",
-                        target_ref=self._target_ref_for(event),
-                        reason_summary=guardrail_rejection_reason,
-                        downstream_status="guardrail_rejected",
-                        no_action_reason=guardrail_rejection_reason,
+                elif generic_mode and callable(default_runner):
+                    cycle = default_runner(cadence, read_set)
+                elif is_fixture:
+                    runner = getattr(self._population_capability, "run_cohort_cycle", None)
+                    if not callable(runner):
+                        result.audit_records.append(
+                            self._audit(event, status="no_action", reason="population_requeue:runner_missing")
+                        )
+                        return
+                    cycle = runner(cadence, read_set)
+                else:
+                    result.audit_records.append(
+                        self._audit(event, status="no_action", reason="population_requeue:runner_missing")
                     )
-                    self._finalize_tick_state(
-                        result,
-                        state_tree=state_tree,
-                        fairness_snapshot=fairness_snapshot,
-                        storyline=storyline,
-                        projection=projection,
-                        narrative_summary=narrative_summary,
-                        quality_summary=quality_summary,
-                        guardrail_summary=guardrail_summary,
-                    )
-                    continue
-                policy_snapshot = self._policy_snapshot_for_event(
-                    event, fairness_snapshot
+                    return
+                result.audit_records.append(self._population_cycle_audit(event, cycle))
+                result.audit_records.extend(audit for audit in cycle.audits if isinstance(audit, SimingAuditRecord))
+                self._record_population_behavior_turn(
+                    event, cadence, read_set, cycle, result
                 )
-                llm_candidates, llm_audit = self._llm_candidates_for(
-                    event, policy_snapshot
-                )
-                if llm_candidates:
-                    outputs, audits = self._outputs_for_candidates(
-                        event,
-                        llm_candidates,
-                        snapshot=policy_snapshot,
-                    )
-                    result.outputs.extend(outputs)
-                    result.audit_records.extend(audits)
-                    self._finalize_tick_state(
-                        result,
-                        state_tree=state_tree,
-                        fairness_snapshot=fairness_snapshot,
-                        storyline=storyline,
-                        projection=projection,
-                        narrative_summary=narrative_summary,
-                        quality_summary=quality_summary,
-                        guardrail_summary=guardrail_summary,
-                    )
-                    continue
-                if llm_audit:
-                    result.outputs.append(self._no_action(event))
-                    result.audit_records.extend(llm_audit)
-                    self._finalize_tick_state(
-                        result,
-                        state_tree=state_tree,
-                        fairness_snapshot=fairness_snapshot,
-                        storyline=storyline,
-                        projection=projection,
-                        narrative_summary=narrative_summary,
-                        quality_summary=quality_summary,
-                        guardrail_summary=guardrail_summary,
-                    )
-                    continue
-                candidate_summary = self._candidate_summary_for(event)
-                decision_summary = self._decision_summary_for(
-                    event,
-                    selected_path="visual_fact_path",
-                    intervention_band="fact_reveal",
-                )
-                result.outputs.extend(
-                    [
-                        self._intervention_candidate(event),
-                        self._intervention_decision(
-                            event,
-                            selected_path="visual_fact_path",
-                            intervention_band="fact_reveal",
-                        ),
-                        self._visual_fact_dispatch(event),
-                    ]
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="intervention_candidate",
-                    summary=candidate_summary,
-                    selected_path="visual_fact_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="visibility imbalance detected",
-                    downstream_status="candidate_created",
-                    no_action_reason="",
-                )
-                self._queue_snapshot(
-                    source_event=event,
-                    fairness_summary=self._fairness_summary_for(event),
-                    intervention_candidate=candidate_summary,
-                    intervention_decision=decision_summary,
-                    selected_path="visual_fact_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="make the light drop legible to the cast",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="intervention_decision",
-                    summary=decision_summary,
-                    selected_path="visual_fact_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="make the light drop legible to the cast",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="dispatch_finalized",
-                    summary="visual observability dispatch published",
-                    selected_path="visual_fact_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="make the light drop legible to the cast",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                result.audit_records.append(
-                    self._audit(
-                        event,
-                        status="recorded",
-                        reason="visual fact observability requested",
-                    )
-                )
-                self._finalize_tick_state(
-                    result,
-                    state_tree=state_tree,
-                    fairness_snapshot=fairness_snapshot,
-                    storyline=storyline,
-                    projection=projection,
-                    narrative_summary=narrative_summary,
-                    quality_summary=quality_summary,
-                    guardrail_summary=guardrail_summary,
-                )
-                continue
+            except (TypeError, ValueError) as exc:
+                result.audit_records.append(self._audit(event, status="no_action", reason=f"population_requeue:{exc}"))
+            return
+        if siming_input.input_type == "siming_staging_ack":
+            self._process_staging_ack(event, result, effects=effects)
+            return
+        fairness_output = self._fairness_snapshot(event)
+        result.outputs.append(fairness_output)
+        self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            fairness_summary=self._fairness_summary_for(event),
+            intervention_candidate="",
+            intervention_decision="reviewing",
+            selected_path="no_action",
+            intervention_band="none",
+            target_ref=self._target_ref_for(event),
+            reason_summary="",
+            downstream_status="reviewing",
+            no_action_reason="",
+        )
+        self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            stage="fairness_snapshot",
+            summary=self._fairness_summary_for(event),
+            selected_path="no_action",
+            intervention_band="none",
+            target_ref=self._target_ref_for(event),
+            reason_summary="",
+            downstream_status="reviewing",
+            no_action_reason="",
+        )
+        observed = self._observe_pipeline.observe([event])
+        if not observed:
+            return
 
-            if self._is_environment_attention_event(event):
-                result.outputs.append(self._environment_attention_dispatch(event))
-                result.audit_records.append(
-                    self._audit(
-                        event,
-                        status="recorded",
-                        reason="environment state attention requested",
-                    )
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="dispatch_finalized",
-                    summary="environment attention dispatch published",
-                    selected_path="character_input_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="environment state attention requested",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                self._queue_snapshot(
-                    source_event=event,
-                    fairness_summary=self._fairness_summary_for(event),
-                    intervention_candidate=self._candidate_summary_for(event),
-                    intervention_decision=self._decision_summary_for(
-                        event,
-                        selected_path="character_input_path",
-                        intervention_band="fact_reveal",
-                    ),
-                    selected_path="character_input_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="environment state attention requested",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                self._finalize_tick_state(
-                    result,
-                    state_tree=state_tree,
-                    fairness_snapshot=fairness_snapshot,
-                    storyline=storyline,
-                    projection=projection,
-                    narrative_summary=narrative_summary,
-                    quality_summary=quality_summary,
-                    guardrail_summary=guardrail_summary,
-                )
-                continue
-
-            if (
-                event.event_type == "conversation_resolution_event"
-                and self._has_conversation_candidate(event)
-            ):
-                result.outputs.append(self._conversation_fact_reveal(event))
-                result.audit_records.append(
-                    self._audit(
-                        event,
-                        status="recorded",
-                        reason="conversation candidate fact reveal requested",
-                    )
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="dispatch_finalized",
-                    summary="conversation fact reveal published",
-                    selected_path="character_input_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="conversation candidate fact reveal requested",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                self._queue_snapshot(
-                    source_event=event,
-                    fairness_summary=self._fairness_summary_for(event),
-                    intervention_candidate=self._candidate_summary_for(event),
-                    intervention_decision=self._decision_summary_for(
-                        event,
-                        selected_path="character_input_path",
-                        intervention_band="fact_reveal",
-                    ),
-                    selected_path="character_input_path",
-                    intervention_band="fact_reveal",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary="conversation candidate fact reveal requested",
-                    downstream_status="published",
-                    no_action_reason="",
-                )
-                self._finalize_tick_state(
-                    result,
-                    state_tree=state_tree,
-                    fairness_snapshot=fairness_snapshot,
-                    storyline=storyline,
-                    projection=projection,
-                    narrative_summary=narrative_summary,
-                    quality_summary=quality_summary,
-                    guardrail_summary=guardrail_summary,
-                )
-                continue
-
-            if event.event_type == "constraint_state_event":
-                reason = str(
-                    event.payload.get(
-                        "constraint_summary", "constraint rejected downstream"
-                    )
-                )
-                self._queue_snapshot(
-                    source_event=event,
-                    fairness_summary=self._fairness_summary_for(event),
-                    intervention_candidate="",
-                    intervention_decision="no_action",
-                    selected_path="no_action",
-                    intervention_band="none",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary=reason,
-                    downstream_status="esm_rejected",
-                    no_action_reason=reason,
-                )
-                self._queue_event(
-                    source_event=event,
-                    stage="no_action",
-                    summary="siming declined after downstream rejection",
-                    selected_path="no_action",
-                    intervention_band="none",
-                    target_ref=self._target_ref_for(event),
-                    reason_summary=reason,
-                    downstream_status="esm_rejected",
-                    no_action_reason=reason,
-                )
-                result.audit_records.append(
-                    self._audit(event, status="esm_rejected", reason=reason)
-                )
-                self._finalize_tick_state(
-                    result,
-                    state_tree=state_tree,
-                    fairness_snapshot=fairness_snapshot,
-                    storyline=storyline,
-                    projection=projection,
-                    narrative_summary=narrative_summary,
-                    quality_summary=quality_summary,
-                    guardrail_summary=guardrail_summary,
-                )
-                continue
-
+        fact_result = self._fact_core.evaluate(observed)
+        if not fact_result.accepted:
             result.outputs.append(self._no_action(event))
             result.audit_records.append(
                 self._audit(
-                    event, status="no_action", reason="no eligible intervention"
+                    event,
+                    status="no_action",
+                    reason=f"fact_veto:{fact_result.veto_reason}",
                 )
             )
+            return
+
+        frame.observed = observed
+        if self._heavenly_support is not None:
+            prepared, heavenly_frame, request = self._heavenly_support.prepare_request(
+                siming_input, planned_batches=None if effects is None else effects.batches)
+            frame.heavenly_frame = heavenly_frame
+            if request is not None:
+                frame.stage, frame.request = "adaptive", request
+                frame.actor_ids = self._heavenly_support.prepared_actor_ids(heavenly_frame)
+                return
+            frame.prepared = prepared.model_dump(mode="json")
+        self._after_heavenly(frame, effects)
+
+    def _after_heavenly(self, frame: SimingTurnFrame, effects=None) -> None:
+        event, result, observed = frame.siming_input.source_event, frame.result, frame.observed
+        prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
+        frame.stage = "completed"
+        if frame.synchronous and prepared is not None and prepared.degraded_reason:
+            reason = prepared.degraded_reason
+            result.outputs.append(self._no_action(event, reason=reason))
+            result.audit_records.append(
+                self._audit(event, status="no_action", reason=reason)
+            )
+            messages = None if effects is None else effects.observatory_messages
+            self._queue_snapshot(
+                messages=messages,
+                source_event=event,
+                fairness_summary=self._fairness_summary_for(event),
+                intervention_candidate="",
+                intervention_decision="no_action",
+                selected_path="no_action",
+                intervention_band="none",
+                target_ref=self._target_ref_for(event),
+                reason_summary=reason,
+                downstream_status="heavenly_degraded",
+                no_action_reason=reason,
+            )
+            self._queue_event(
+                messages=messages,
+                source_event=event,
+                stage="no_action",
+                summary="siming heavenly preparation unavailable",
+                selected_path="no_action",
+                intervention_band="none",
+                target_ref=self._target_ref_for(event),
+                reason_summary=reason,
+                downstream_status="heavenly_degraded",
+                no_action_reason=reason,
+            )
+            return
+        if (
+            prepared is not None
+            and prepared.mode == "active"
+            and prepared.owns_event_family
+        ):
+            self._project_graph_owned_context(event, prepared, result)
+            outputs, audits = self._process_graph_owned_event(event, prepared, effects)
+            result.outputs.extend(outputs)
+            result.audit_records.extend(audits)
+            if effects is None:
+                self._record_behavior_turn(event, prepared, result)
+            elif self._behavior_turn_recorder is not None:
+                self._plan_behavior_audit(event, prepared, result, effects)
+            return
+        if prepared is not None and prepared.mode == "shadow":
+            result.audit_records.append(
+                self._audit(event, status="recorded", reason="shadow_recorded")
+            )
+
+        state_tree = (self._state_tree.update_from_observed if effects is None else self._state_tree.plan_from_observed)(
+            observed, sim_tick_ts=event.producer_ts + 1)
+        state_tree.group_simulation = self._group_bridge.summarize(
+            room_id=event.room_id
+        )
+        if effects is None:
+            narrative = self._narrative_core.update(observed)
+        else:
+            narrative_plan = self._narrative_core.plan_update(observed)
+            narrative = narrative_plan.result
+            effects.narrative_state = narrative_plan.after
+        quality = self._quality_monitor.evaluate(
+            state_tree=state_tree, narrative=narrative
+        )
+        fairness_snapshot = quality.snapshot
+        storyline = (self._storyline_state.update_from_state_tree if effects is None else self._storyline_state.plan_from_state_tree)(state_tree)
+        ledger = (self._obligation_ledger.update_from_storyline if effects is None else self._obligation_ledger.plan_from_storyline)(storyline)
+        if effects is not None:
+            effects.state_tree, effects.storyline, effects.obligation_ledger = state_tree, storyline, ledger
+        projection = self._storyline_projection.project(
+            state_tree=state_tree,
+            fairness=fairness_snapshot,
+            storyline=storyline,
+            ledger=ledger,
+        )
+        guardrail_results = [
+            self._intervention_guardrails.evaluate_seed(
+                seed, snapshot=fairness_snapshot
+            )
+            for seed in narrative.seeds
+        ]
+        result.checkpoints.append(
+            self._read_model_builder.build_checkpoint(
+                state_tree=state_tree,
+                fairness=fairness_snapshot,
+                storyline=storyline,
+                checkpoint_type="pre_decision",
+            )
+        )
+        narrative_summary = self._narrative_summary_for(narrative)
+        quality_summary = self._quality_summary_for(quality)
+        guardrail_summary = self._guardrail_summary_for(guardrail_results)
+        guardrail_rejection_reason = self._guardrail_rejection_reason(
+            guardrail_results
+        )
+
+        if self._is_light_drop(event):
+            if guardrail_rejection_reason is not None:
+                result.outputs.append(
+                    self._no_action(event, reason=guardrail_rejection_reason)
+                )
+                result.audit_records.append(
+                    self._audit(
+                        event, status="no_action", reason=guardrail_rejection_reason
+                    )
+                )
+                self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
+                    source_event=event,
+                    fairness_summary=self._fairness_summary_for(event),
+                    intervention_candidate="",
+                    intervention_decision="no_action",
+                    selected_path="no_action",
+                    intervention_band="none",
+                    target_ref=self._target_ref_for(event),
+                    reason_summary=guardrail_rejection_reason,
+                    downstream_status="guardrail_rejected",
+                    no_action_reason=guardrail_rejection_reason,
+                )
+                self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+                    source_event=event,
+                    stage="no_action",
+                    summary="siming guardrails rejected narrative seed",
+                    selected_path="no_action",
+                    intervention_band="none",
+                    target_ref=self._target_ref_for(event),
+                    reason_summary=guardrail_rejection_reason,
+                    downstream_status="guardrail_rejected",
+                    no_action_reason=guardrail_rejection_reason,
+                )
+                self._finalize_tick_state(
+                    result, effects=effects,
+                    event=event, prepared=prepared,
+                    state_tree=state_tree,
+                    fairness_snapshot=fairness_snapshot,
+                    storyline=storyline,
+                    projection=projection,
+                    narrative_summary=narrative_summary,
+                    quality_summary=quality_summary,
+                    guardrail_summary=guardrail_summary,
+                )
+                return
+            policy_snapshot = self._policy_snapshot_for_event(
+                event, fairness_snapshot
+            )
+            frame.state_tree = state_tree
+            frame.fairness_snapshot = fairness_snapshot
+            frame.storyline = storyline
+            frame.projection = projection
+            frame.narrative_summary = narrative_summary
+            frame.quality_summary = quality_summary
+            frame.guardrail_summary = guardrail_summary
+            frame.policy_snapshot = policy_snapshot
+            frame.stage = "candidate"
+            frame.request = SimingProviderRequest(stage="candidate", event=event, snapshot=policy_snapshot)
+            frame.actor_ids = sorted(set(policy_snapshot.eligible_actor_ids))
+            if os.getenv("SIMING_LLM_ADVISORY_DISABLED", "").strip() == "1":
+                self._finish_candidate(frame, [], [], effects)
+            return
+
+        if self._is_environment_attention_event(event):
+            result.outputs.append(self._environment_attention_dispatch(event))
+            result.audit_records.append(
+                self._audit(
+                    event,
+                    status="recorded",
+                    reason="environment state attention requested",
+                )
+            )
+            self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+                source_event=event,
+                stage="dispatch_finalized",
+                summary="environment attention dispatch published",
+                selected_path="character_input_path",
+                intervention_band="fact_reveal",
+                target_ref=self._target_ref_for(event),
+                reason_summary="environment state attention requested",
+                downstream_status="published",
+                no_action_reason="",
+            )
+            self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
+                source_event=event,
+                fairness_summary=self._fairness_summary_for(event),
+                intervention_candidate=self._candidate_summary_for(event),
+                intervention_decision=self._decision_summary_for(
+                    event,
+                    selected_path="character_input_path",
+                    intervention_band="fact_reveal",
+                ),
+                selected_path="character_input_path",
+                intervention_band="fact_reveal",
+                target_ref=self._target_ref_for(event),
+                reason_summary="environment state attention requested",
+                downstream_status="published",
+                no_action_reason="",
+            )
             self._finalize_tick_state(
-                result,
+                result, effects=effects,
+                event=event, prepared=prepared,
                 state_tree=state_tree,
                 fairness_snapshot=fairness_snapshot,
                 storyline=storyline,
@@ -704,7 +548,70 @@ class SimingRuntime:
                 quality_summary=quality_summary,
                 guardrail_summary=guardrail_summary,
             )
+            return
+
+        if (
+            event.event_type == "conversation_resolution_event"
+            and self._has_conversation_candidate(event)
+        ):
+            result.outputs.append(self._conversation_fact_reveal(event))
+            result.audit_records.append(
+                self._audit(
+                    event,
+                    status="recorded",
+                    reason="conversation candidate fact reveal requested",
+                )
+            )
+            self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+                source_event=event,
+                stage="dispatch_finalized",
+                summary="conversation fact reveal published",
+                selected_path="character_input_path",
+                intervention_band="fact_reveal",
+                target_ref=self._target_ref_for(event),
+                reason_summary="conversation candidate fact reveal requested",
+                downstream_status="published",
+                no_action_reason="",
+            )
             self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
+                source_event=event,
+                fairness_summary=self._fairness_summary_for(event),
+                intervention_candidate=self._candidate_summary_for(event),
+                intervention_decision=self._decision_summary_for(
+                    event,
+                    selected_path="character_input_path",
+                    intervention_band="fact_reveal",
+                ),
+                selected_path="character_input_path",
+                intervention_band="fact_reveal",
+                target_ref=self._target_ref_for(event),
+                reason_summary="conversation candidate fact reveal requested",
+                downstream_status="published",
+                no_action_reason="",
+            )
+            self._finalize_tick_state(
+                result, effects=effects,
+                event=event, prepared=prepared,
+                state_tree=state_tree,
+                fairness_snapshot=fairness_snapshot,
+                storyline=storyline,
+                projection=projection,
+                narrative_summary=narrative_summary,
+                quality_summary=quality_summary,
+                guardrail_summary=guardrail_summary,
+            )
+            return
+
+        if event.event_type == "constraint_state_event":
+            reason = str(
+                event.payload.get(
+                    "constraint_summary", "constraint rejected downstream"
+                )
+            )
+            self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
                 source_event=event,
                 fairness_summary=self._fairness_summary_for(event),
                 intervention_candidate="",
@@ -712,22 +619,212 @@ class SimingRuntime:
                 selected_path="no_action",
                 intervention_band="none",
                 target_ref=self._target_ref_for(event),
-                reason_summary="",
-                downstream_status="audit_only",
-                no_action_reason="no eligible intervention",
+                reason_summary=reason,
+                downstream_status="esm_rejected",
+                no_action_reason=reason,
             )
             self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
                 source_event=event,
                 stage="no_action",
-                summary="siming declined to intervene",
+                summary="siming declined after downstream rejection",
                 selected_path="no_action",
                 intervention_band="none",
                 target_ref=self._target_ref_for(event),
-                reason_summary="",
-                downstream_status="audit_only",
-                no_action_reason="no eligible intervention",
+                reason_summary=reason,
+                downstream_status="esm_rejected",
+                no_action_reason=reason,
             )
-        return result
+            result.audit_records.append(
+                self._audit(event, status="esm_rejected", reason=reason)
+            )
+            self._finalize_tick_state(
+                result, effects=effects,
+                event=event, prepared=prepared,
+                state_tree=state_tree,
+                fairness_snapshot=fairness_snapshot,
+                storyline=storyline,
+                projection=projection,
+                narrative_summary=narrative_summary,
+                quality_summary=quality_summary,
+                guardrail_summary=guardrail_summary,
+            )
+            return
+
+        result.outputs.append(self._no_action(event))
+        result.audit_records.append(
+            self._audit(
+                event, status="no_action", reason="no eligible intervention"
+            )
+        )
+        self._finalize_tick_state(
+            result, effects=effects,
+            event=event, prepared=prepared,
+            state_tree=state_tree,
+            fairness_snapshot=fairness_snapshot,
+            storyline=storyline,
+            projection=projection,
+            narrative_summary=narrative_summary,
+            quality_summary=quality_summary,
+            guardrail_summary=guardrail_summary,
+        )
+        self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            fairness_summary=self._fairness_summary_for(event),
+            intervention_candidate="",
+            intervention_decision="no_action",
+            selected_path="no_action",
+            intervention_band="none",
+            target_ref=self._target_ref_for(event),
+            reason_summary="",
+            downstream_status="audit_only",
+            no_action_reason="no eligible intervention",
+        )
+        self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            stage="no_action",
+            summary="siming declined to intervene",
+            selected_path="no_action",
+            intervention_band="none",
+            target_ref=self._target_ref_for(event),
+            reason_summary="",
+            downstream_status="audit_only",
+            no_action_reason="no eligible intervention",
+        )
+
+    def _finish_candidate(self, frame, llm_candidates, llm_audit, effects=None) -> None:
+        event, result = frame.siming_input.source_event, frame.result
+        prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
+        state_tree, fairness_snapshot, storyline, projection = frame.state_tree, frame.fairness_snapshot, frame.storyline, frame.projection
+        narrative_summary, quality_summary, guardrail_summary = frame.narrative_summary, frame.quality_summary, frame.guardrail_summary
+        policy_snapshot = frame.policy_snapshot
+        frame.stage = "completed"
+        if llm_candidates:
+            outputs, audits = self._outputs_for_candidates(
+                event,
+                llm_candidates,
+                snapshot=policy_snapshot,
+            )
+            result.outputs.extend(outputs)
+            result.audit_records.extend(audits)
+            self._finalize_tick_state(
+                result,
+                effects=effects,
+                event=event, prepared=prepared,
+                state_tree=state_tree,
+                fairness_snapshot=fairness_snapshot,
+                storyline=storyline,
+                projection=projection,
+                narrative_summary=narrative_summary,
+                quality_summary=quality_summary,
+                guardrail_summary=guardrail_summary,
+            )
+            return
+        if llm_audit:
+            result.outputs.append(self._no_action(event))
+            result.audit_records.extend(llm_audit)
+            self._finalize_tick_state(
+                result,
+                effects=effects,
+                event=event, prepared=prepared,
+                state_tree=state_tree,
+                fairness_snapshot=fairness_snapshot,
+                storyline=storyline,
+                projection=projection,
+                narrative_summary=narrative_summary,
+                quality_summary=quality_summary,
+                guardrail_summary=guardrail_summary,
+            )
+            return
+        candidate_summary = self._candidate_summary_for(event)
+        decision_summary = self._decision_summary_for(
+            event,
+            selected_path="visual_fact_path",
+            intervention_band="fact_reveal",
+        )
+        result.outputs.extend(
+            [
+                self._intervention_candidate(event),
+                self._intervention_decision(
+                    event,
+                    selected_path="visual_fact_path",
+                    intervention_band="fact_reveal",
+                ),
+                self._visual_fact_dispatch(event),
+            ]
+        )
+        self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            stage="intervention_candidate",
+            summary=candidate_summary,
+            selected_path="visual_fact_path",
+            intervention_band="fact_reveal",
+            target_ref=self._target_ref_for(event),
+            reason_summary="visibility imbalance detected",
+            downstream_status="candidate_created",
+            no_action_reason="",
+        )
+        self._queue_snapshot(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            fairness_summary=self._fairness_summary_for(event),
+            intervention_candidate=candidate_summary,
+            intervention_decision=decision_summary,
+            selected_path="visual_fact_path",
+            intervention_band="fact_reveal",
+            target_ref=self._target_ref_for(event),
+            reason_summary="make the light drop legible to the cast",
+            downstream_status="published",
+            no_action_reason="",
+        )
+        self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            stage="intervention_decision",
+            summary=decision_summary,
+            selected_path="visual_fact_path",
+            intervention_band="fact_reveal",
+            target_ref=self._target_ref_for(event),
+            reason_summary="make the light drop legible to the cast",
+            downstream_status="published",
+            no_action_reason="",
+        )
+        self._queue_event(
+            messages=None if effects is None else effects.observatory_messages,
+            source_event=event,
+            stage="dispatch_finalized",
+            summary="visual observability dispatch published",
+            selected_path="visual_fact_path",
+            intervention_band="fact_reveal",
+            target_ref=self._target_ref_for(event),
+            reason_summary="make the light drop legible to the cast",
+            downstream_status="published",
+            no_action_reason="",
+        )
+        result.audit_records.append(
+            self._audit(
+                event,
+                status="recorded",
+                reason="visual fact observability requested",
+            )
+        )
+        self._finalize_tick_state(
+            result,
+            effects=effects,
+            event=event, prepared=prepared,
+            state_tree=state_tree,
+            fairness_snapshot=fairness_snapshot,
+            storyline=storyline,
+            projection=projection,
+            narrative_summary=narrative_summary,
+            quality_summary=quality_summary,
+            guardrail_summary=guardrail_summary,
+        )
+        return
+
 
     @staticmethod
     def _population_capabilities_admitted(
@@ -931,7 +1028,7 @@ class SimingRuntime:
         return result
 
     def _process_graph_owned_event(
-        self, event: AuthorityEvent, prepared
+        self, event: AuthorityEvent, prepared, effects=None
     ) -> tuple[list[SimingOutput], list[SimingAuditRecord]]:
         if prepared.degraded_reason or not prepared.eligible_candidates:
             reason = prepared.degraded_reason or "proposal_rejected"
@@ -980,9 +1077,15 @@ class SimingRuntime:
             return [self._no_action(event, reason=reason)], [
                 self._audit(event, status="feasibility_rejected", reason=reason)
             ]
-        request = self._heavenly_support.select_for_staging(
-            prepared, candidate_contract.node_ref
-        )
+        if effects is None:
+            request = self._heavenly_support.select_for_staging(prepared, candidate_contract.node_ref)
+        else:
+            prior = next((node for batch in reversed(effects.batches) for node in batch.nodes
+                          if node.node_id == candidate_contract.node_ref and node.scope == prepared.scope), None)
+            selection = self._heavenly_support.plan_select_for_staging(
+                prepared, candidate_contract.node_ref, prior_node=prior)
+            effects.batches.extend(selection.batches)
+            request = selection.request
         return [
             self._candidate_output(event, candidate),
             self._decision_output(
@@ -996,7 +1099,7 @@ class SimingRuntime:
         ], [self._audit(event, status="recorded", reason="graph candidate staged")]
 
     def _process_staging_ack(
-        self, event: AuthorityEvent, result: SimingTickResult
+        self, event: AuthorityEvent, result: SimingTickResult, *, effects=None
     ) -> None:
         if self._heavenly_support is None:
             return
@@ -1012,8 +1115,9 @@ class SimingRuntime:
                 )
             )
             return
-        request = self._heavenly_support.record_staging_ack(event)
-        staging_result = self._heavenly_support.complete_staging(event)
+        options = {} if effects is None else {"planned_batches": effects.batches}
+        request = self._heavenly_support.record_staging_ack(event, **options)
+        staging_result = self._heavenly_support.complete_staging(event, **options)
         if request is None or staging_result is None:
             result.audit_records.append(
                 self._audit(event, status="no_action", reason="staging_pending")
@@ -1112,31 +1216,6 @@ class SimingRuntime:
                 "target_actor_id": candidate.target_actor_id,
             },
         )
-
-    def _llm_candidates_for(
-        self,
-        event: AuthorityEvent,
-        snapshot: FairnessStateSnapshot,
-    ) -> tuple[list[InterventionCandidate], list[SimingAuditRecord]]:
-        if os.getenv("SIMING_LLM_ADVISORY_DISABLED", "").strip() == "1":
-            return [], []
-        try:
-            return (
-                self._llm_provider.generate_candidates(
-                    snapshot=snapshot, recent_events=[event], recent_audit=[]
-                ),
-                [],
-            )
-        except SimingLlmProviderTimeout:
-            return [], [
-                self._audit(
-                    event, status="llm_timeout", reason="LLM provider timed out"
-                )
-            ]
-        except (SimingLlmProviderInvalidOutput, ValueError) as exc:
-            return [], [
-                self._audit(event, status="llm_invalid_output", reason=str(exc))
-            ]
 
     def _producer_ts_from_bundle(self, bundle: CanonicalPerceptBundle) -> int:
         try:
@@ -1462,6 +1541,9 @@ class SimingRuntime:
         self,
         result: SimingTickResult,
         *,
+        effects: SimingStageEffects | None = None,
+        event: AuthorityEvent,
+        prepared: object | None,
         state_tree: StateTreeSnapshot,
         fairness_snapshot: FairnessStateSnapshot,
         storyline: StorylineStateSnapshot,
@@ -1498,8 +1580,10 @@ class SimingRuntime:
             guardrail_summary=guardrail_summary,
             checkpoint_summary=checkpoint_summary,
         )
-        if self._active_turn_event is not None:
-            self._record_behavior_turn(self._active_turn_event, self._active_turn_prepared, result)
+        if effects is None:
+            self._record_behavior_turn(event, prepared, result)
+        elif self._behavior_turn_recorder is not None:
+            self._plan_behavior_audit(event, prepared, result, effects)
 
     def _record_behavior_turn(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
         if self._behavior_turn_recorder is None:
@@ -1542,96 +1626,109 @@ class SimingRuntime:
             compact_turn_ref = (
                 f"siming:{event.correlation_id}:population-compact:v1"
             )
-            self._behavior_turn_recorder.record(
-                BehaviorTurnRecordRequest(
-                    turn_id=compact_turn_ref,
-                    scope=scope,
-                    valid_at=event.producer_ts,
-                    recorded_at=event.producer_ts,
-                    policy_revision=cadence.policy_revision,
-                    source_revision_vector=GraphRevisionVector(
-                        source_revision=cadence.cadence_source_revision
+            request = BehaviorTurnRecordRequest(
+                turn_id=compact_turn_ref,
+                scope=scope,
+                valid_at=event.producer_ts,
+                recorded_at=event.producer_ts,
+                policy_revision=cadence.policy_revision,
+                source_revision_vector=GraphRevisionVector(
+                    source_revision=cadence.cadence_source_revision
+                ),
+                scope_digest="scope:siming-population",
+                provenance=GraphProvenance(
+                    source_kind="authority_event",
+                    source_ref=event.event_id,
+                    causation_id=event.causation_id,
+                    correlation_id=event.correlation_id,
+                    producer_system="siming_runtime",
+                ),
+                transaction_id=f"siming-behavior-turn:{compact_turn_ref}",
+                idempotency_key=f"siming-behavior-turn:{compact_turn_ref}",
+                stages=(
+                    BehaviorTurnStageRecord(
+                        stage="context",
+                        source_refs=(event.event_id,),
+                        payload={
+                            "cadence_id": cadence.cadence_id,
+                            "window_start": cadence.window_start,
+                            "window_end": cadence.window_end,
+                            "projection_count": len(read_set.projections),
+                            "read_set_digest": read_set.read_set_digest,
+                        },
                     ),
-                    scope_digest="scope:siming-population",
-                    provenance=GraphProvenance(
-                        source_kind="authority_event",
-                        source_ref=event.event_id,
-                        causation_id=event.causation_id,
-                        correlation_id=event.correlation_id,
-                        producer_system="siming_runtime",
+                    BehaviorTurnStageRecord(
+                        stage="interpretation",
+                        source_refs=(read_set.read_set_digest,),
+                        payload={
+                            "b0_advanced": stats.b0_advanced,
+                            "active_actors": stats.active_actors,
+                            "deep_selected": stats.deep_selected,
+                            "deep_deferred": stats.deep_deferred,
+                        },
                     ),
-                    transaction_id=f"siming-behavior-turn:{compact_turn_ref}",
-                    idempotency_key=f"siming-behavior-turn:{compact_turn_ref}",
-                    stages=(
-                        BehaviorTurnStageRecord(
-                            stage="context",
-                            source_refs=(event.event_id,),
-                            payload={
-                                "cadence_id": cadence.cadence_id,
-                                "window_start": cadence.window_start,
-                                "window_end": cadence.window_end,
-                                "projection_count": len(read_set.projections),
-                                "read_set_digest": read_set.read_set_digest,
-                            },
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="interpretation",
-                            source_refs=(read_set.read_set_digest,),
-                            payload={
-                                "b0_advanced": stats.b0_advanced,
-                                "active_actors": stats.active_actors,
-                                "deep_selected": stats.deep_selected,
-                                "deep_deferred": stats.deep_deferred,
-                            },
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="goal",
-                            source_refs=(event.event_id,),
-                            payload={"event_family": event.event_type},
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="intent",
-                            source_refs=(report.result_digest,),
-                            payload={"owner_intent_count": report.owner_intent_count},
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="execution",
-                            outcome="accepted" if accepted else "rejected",
-                            source_refs=(report.result_digest,),
-                            payload={
-                                "owner_receipt_count": len(cycle.owner_receipts),
-                                "continuity_receipt_count": len(cycle.continuity_receipts),
-                                "append_count": cycle.production_append_count,
-                            },
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="settlement",
-                            outcome="committed" if accepted else "rejected",
-                            source_refs=(report.batch_ref,),
-                            payload={"status": cycle.status, "reason": cycle.reason},
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="evaluation",
-                            source_refs=tuple(audit.audit_id for audit in audits),
-                            payload={"audit_count": len(audits)},
-                        ),
-                        BehaviorTurnStageRecord(
-                            stage="policy",
-                            source_refs=(cadence.policy_revision,),
-                            payload={
-                                "policy_revision": cadence.policy_revision,
-                                "selector_revision": cadence.selector_revision,
-                                "ruleset_revision": cadence.ruleset_revision,
-                            },
-                        ),
+                    BehaviorTurnStageRecord(
+                        stage="goal",
+                        source_refs=(event.event_id,),
+                        payload={"event_family": event.event_type},
                     ),
-                )
+                    BehaviorTurnStageRecord(
+                        stage="intent",
+                        source_refs=(report.result_digest,),
+                        payload={"owner_intent_count": report.owner_intent_count},
+                    ),
+                    BehaviorTurnStageRecord(
+                        stage="execution",
+                        outcome="accepted" if accepted else "rejected",
+                        source_refs=(report.result_digest,),
+                        payload={
+                            "owner_receipt_count": len(cycle.owner_receipts),
+                            "continuity_receipt_count": len(cycle.continuity_receipts),
+                            "append_count": cycle.production_append_count,
+                        },
+                    ),
+                    BehaviorTurnStageRecord(
+                        stage="settlement",
+                        outcome="committed" if accepted else "rejected",
+                        source_refs=(report.batch_ref,),
+                        payload={"status": cycle.status, "reason": cycle.reason},
+                    ),
+                    BehaviorTurnStageRecord(
+                        stage="evaluation",
+                        source_refs=tuple(audit.audit_id for audit in audits),
+                        payload={"audit_count": len(audits)},
+                    ),
+                    BehaviorTurnStageRecord(
+                        stage="policy",
+                        source_refs=(cadence.policy_revision,),
+                        payload={
+                            "policy_revision": cadence.policy_revision,
+                            "selector_revision": cadence.selector_revision,
+                            "ruleset_revision": cadence.ruleset_revision,
+                        },
+                    ),
+                ),
             )
+            if not self._behavior_turn_recorder.has_recorded_turn(request):
+                self._behavior_turn_recorder.record(request)
             self._recorded_behavior_turn_correlations.add(event.correlation_id)
 
     def _record_behavior_turn_locked(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
         if event.correlation_id in self._recorded_behavior_turn_correlations:
             return
+        request = self.plan_behavior_turn(event, prepared, result)
+        if not self._behavior_turn_recorder.has_recorded_turn(request):
+            self._behavior_turn_recorder.record(request)
+        self._recorded_behavior_turn_correlations.add(event.correlation_id)
+
+    def _plan_behavior_audit(self, event, prepared, result, effects):
+        request = self.plan_behavior_turn(event, prepared, result)
+        if not self._behavior_turn_recorder.has_recorded_turn(request):
+            effects.batches.append(self._behavior_turn_recorder.plan_record(request))
+
+    def plan_behavior_turn(
+        self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult
+    ) -> BehaviorTurnRecordRequest:
         resolver = self._behavior_turn_scope_resolver
         if callable(resolver):
             scope = resolver(event)
@@ -1644,37 +1741,34 @@ class SimingRuntime:
         output_payload = [output.model_dump(mode="json") for output in result.outputs if output.correlation_id == event.correlation_id]
         audit_payload = [audit.model_dump(mode="json") for audit in result.audit_records if audit.correlation_id == event.correlation_id]
         prepared_payload = prepared.model_dump(mode="json") if hasattr(prepared, "model_dump") else {}
-        self._behavior_turn_recorder.record(
-            BehaviorTurnRecordRequest(
-                turn_id=f"siming:{event.correlation_id}",
-                scope=scope,
-                valid_at=event.producer_ts,
-                recorded_at=event.producer_ts,
-                policy_revision="policy:siming-runtime:v1",
-                source_revision_vector=GraphRevisionVector(source_revision=event.producer_ts),
-                scope_digest="scope:siming-authority",
-                provenance=GraphProvenance(
-                    source_kind="authority_event",
-                    source_ref=event.event_id,
-                    causation_id=event.causation_id,
-                    correlation_id=event.correlation_id,
-                    producer_system="siming_runtime",
-                ),
-                transaction_id=f"siming-behavior-turn:{event.correlation_id}",
-                idempotency_key=f"siming-behavior-turn:{event.correlation_id}",
-                stages=(
-                    BehaviorTurnStageRecord(stage="context", source_refs=(event.event_id,), payload=event.payload),
-                    BehaviorTurnStageRecord(stage="interpretation", source_refs=(event.event_id,), payload={"prepared_context": prepared_payload}),
-                    BehaviorTurnStageRecord(stage="goal", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"event_family": event.event_type}),
-                    BehaviorTurnStageRecord(stage="intent", source_refs=tuple(output.output_type for output in result.outputs), payload={"candidate_count": len(output_payload)}),
-                    BehaviorTurnStageRecord(stage="execution", source_refs=tuple(output.output_type for output in result.outputs), payload={"outputs": output_payload}),
-                    BehaviorTurnStageRecord(stage="settlement", outcome="committed" if event.event_type.endswith("result_event") else "recorded", source_refs=(event.event_id,), payload={"event_type": event.event_type}),
-                    BehaviorTurnStageRecord(stage="evaluation", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"audits": audit_payload}),
-                    BehaviorTurnStageRecord(stage="policy", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"policy_revision": "policy:siming-runtime:v1"}),
-                ),
-            )
+        return BehaviorTurnRecordRequest(
+            turn_id=f"siming:{event.correlation_id}",
+            scope=scope,
+            valid_at=event.producer_ts,
+            recorded_at=event.producer_ts,
+            policy_revision="policy:siming-runtime:v1",
+            source_revision_vector=GraphRevisionVector(source_revision=event.producer_ts),
+            scope_digest="scope:siming-authority",
+            provenance=GraphProvenance(
+                source_kind="authority_event",
+                source_ref=event.event_id,
+                causation_id=event.causation_id,
+                correlation_id=event.correlation_id,
+                producer_system="siming_runtime",
+            ),
+            transaction_id=f"siming-behavior-turn:{event.correlation_id}",
+            idempotency_key=f"siming-behavior-turn:{event.correlation_id}",
+            stages=(
+                BehaviorTurnStageRecord(stage="context", source_refs=(event.event_id,), payload=event.payload),
+                BehaviorTurnStageRecord(stage="interpretation", source_refs=(event.event_id,), payload={"prepared_context": prepared_payload}),
+                BehaviorTurnStageRecord(stage="goal", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"event_family": event.event_type}),
+                BehaviorTurnStageRecord(stage="intent", source_refs=tuple(output.output_type for output in result.outputs), payload={"candidate_count": len(output_payload)}),
+                BehaviorTurnStageRecord(stage="execution", source_refs=tuple(output.output_type for output in result.outputs), payload={"outputs": output_payload}),
+                BehaviorTurnStageRecord(stage="settlement", outcome="committed" if event.event_type.endswith("result_event") else "recorded", source_refs=(event.event_id,), payload={"event_type": event.event_type}),
+                BehaviorTurnStageRecord(stage="evaluation", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"audits": audit_payload}),
+                BehaviorTurnStageRecord(stage="policy", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"policy_revision": "policy:siming-runtime:v1"}),
+            ),
         )
-        self._recorded_behavior_turn_correlations.add(event.correlation_id)
 
     def _narrative_summary_for(
         self, narrative: NarrativeCoreResult
@@ -1817,6 +1911,7 @@ class SimingRuntime:
     def _queue_snapshot(
         self,
         *,
+        messages: list[dict] | None = None,
         source_event: AuthorityEvent,
         fairness_summary: str,
         intervention_candidate: str,
@@ -1840,7 +1935,7 @@ class SimingRuntime:
             downstream_status=downstream_status,
             no_action_reason=no_action_reason,
         )
-        self._pending_observatory_messages.append(
+        (self._pending_observatory_messages if messages is None else messages).append(
             {
                 "message_type": "siming_debug_snapshot",
                 "payload": snapshot.model_dump(exclude_none=True),
@@ -1850,6 +1945,7 @@ class SimingRuntime:
     def _queue_event(
         self,
         *,
+        messages: list[dict] | None = None,
         source_event: AuthorityEvent,
         stage: str,
         summary: str,
@@ -1871,9 +1967,297 @@ class SimingRuntime:
             downstream_status=downstream_status,
             no_action_reason=no_action_reason,
         )
-        self._pending_observatory_messages.append(
+        (self._pending_observatory_messages if messages is None else messages).append(
             {
                 "message_type": "siming_debug_event",
                 "payload": event.model_dump(exclude_none=True),
             }
         )
+
+    @property
+    def pending_count(self) -> int:
+        return len(self._siming_pending)
+
+    def _new_frame(self, siming_input: SimingInput, *, synchronous: bool = False,
+                   result: SimingTickResult | None = None) -> SimingTurnFrame:
+        inline_cadence = (synchronous and siming_input.input_type == "population_cadence_input"
+                          and self._population_capability is not None)
+        # 同步人口分支在当前 owner 调用内只读输入且不保留帧，避免重复复制全人口投影。
+        # 模型阶段及异步入口仍冻结完整输入，不能借用跨等待边界的可变对象。
+        frame = SimingTurnFrame(turn_id=uuid4().hex,
+            siming_input=siming_input if inline_cadence else siming_input.model_copy(deep=True), synchronous=synchronous)
+        if result is not None:
+            frame.result = result
+        # 无模型 owner 分支不占 provider 活跃帧，也不被四个等待中的模型阻塞。
+        if siming_input.input_type == "siming_staging_ack" or (
+            siming_input.input_type == "population_cadence_input" and self._population_capability is not None
+        ):
+            return frame
+        room_key = self._room_key(frame)
+        if any(self._room_key(item) == room_key for item in self._siming_pending.values()):
+            raise ValueError("siming_room_busy")
+        if len(self._siming_pending) >= 4:
+            raise ValueError("siming_pending_full")
+        self._siming_pending[frame.turn_id] = frame
+        return frame
+
+    def _room_key(self, frame: SimingTurnFrame) -> str:
+        event = frame.siming_input.source_event
+        scope = SimingHeavenlyRuntimeSupport._scope_for(event).model_dump(mode="json")
+        return digest({key: scope[key] for key in ("world_id", "session_id", "story_branch_id", "room_id")})
+
+    def prepare_tick(self, siming_input: SimingInput, *, timeout_seconds: float = 30.0) -> SimingAdvance:
+        self._assert_siming_owner()
+        import math
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("siming_deadline_invalid")
+        # 异步入口必须显式注入纯读权威 pin，不能借用旧同步工具的宽松配置。
+        if siming_input.input_type != "population_cadence_input" and (self._source_pin_reader is None or self._actor_pin_reader is None):
+            raise ValueError("siming_pin_reader_required")
+        frame = self._new_frame(siming_input)
+        frame.expires_at = time.time() + timeout_seconds
+        try:
+            self._start_tick(frame)
+            return self._advance_frame(frame, time.monotonic() + timeout_seconds)
+        except BaseException:
+            self._siming_pending.pop(frame.turn_id, None)
+            raise
+
+    @staticmethod
+    def _provider_identity(provider):
+        return {"type": type(provider).__module__ + "." + type(provider).__qualname__,
+                "route": getattr(provider, "route_id", ""), "model": getattr(provider, "_model", ""),
+                "routes": [SimingRuntime._provider_identity(item) for item in getattr(provider, "providers", [])]}
+
+    def _capture_siming_pin(self, frame):
+        event = frame.siming_input.source_event
+        provider = self._heavenly_support._llm_provider if frame.stage == "adaptive" else self._llm_provider
+        pin = {
+            "source": event.model_dump(mode="json"), "scope": SimingHeavenlyRuntimeSupport._scope_for(event).model_dump(mode="json"),
+            "source_live": self._source_pin_reader(event.model_copy(deep=True)) if self._source_pin_reader else None,
+            "actors": {actor: self._actor_pin_reader(actor) for actor in frame.actor_ids} if self._actor_pin_reader else {},
+            "provider": self._provider_identity(provider), "schema": 1,
+            "policy": {"dimensions": [asdict(item) for item in self._feature_registry.fairness_dimensions()],
+                       "mappings": {key: asdict(value) for key, value in self._feature_registry._policy_mappings.items()}},
+            # 注入的决策 policy 可以使用独立 registry，必须冻结实际 evaluate 读取的配置。
+            "decision_policy": {
+                "type": type(self._policy).__module__ + "." + type(self._policy).__qualname__,
+                "unsafe_reason_tags": sorted(self._policy.UNSAFE_REASON_TAGS),
+                "mappings": {key: asdict(value) for key, value in self._policy._feature_registry._policy_mappings.items()},
+            },
+            "narrative": [self._narrative_core._revision_by_room.get(event.room_id, 0), self._narrative_core._open_counts_by_room.get(event.room_id, 0)],
+            "request": None if frame.request is None else frame.request.model_dump(mode="json"),
+        }
+        if frame.stage == "adaptive" and frame.heavenly_frame is not None:
+            pin["heavenly"] = self._heavenly_support.capture_prepared_pin(frame.heavenly_frame)
+        # 同步复制，注入 reader 返回的可变容器不得改变旧 pin。
+        import json
+        return json.loads(json_bytes(pin))
+
+    def capture_plan_pin(self, plan: SimingAcceptedPlan) -> dict:
+        self._assert_siming_owner()
+        pin = self._capture_siming_pin(plan.after)
+        prepared = plan.after.prepared
+        if prepared is not None and prepared.get("compiled_context") is not None:
+            pin["heavenly"] = self._heavenly_support.capture_prepared_pin({
+                "event": plan.after.siming_input.source_event.model_dump(mode="json"),
+                "context": prepared["compiled_context"],
+            })
+        return pin
+
+    def _advance_frame(self, frame, deadline):
+        if frame.stage == "completed":
+            self._siming_pending.pop(frame.turn_id, None)
+            return SimingAdvance(status="completed", result=frame.result)
+        frame.pin = self._capture_siming_pin(frame)
+        event = frame.siming_input.source_event
+        scope_key = digest(SimingHeavenlyRuntimeSupport._scope_for(event).model_dump(mode="json"))
+        attempt = frame.job.attempt + 1 if frame.job is not None and frame.job.stage == frame.stage else 1
+        job = PreparedSimingJob(turn_id=frame.turn_id, source_event_id=event.event_id, stage=frame.stage, attempt=attempt,
+            token=uuid4().hex, generation=self._siming_generation,
+            request_json=frame.request.model_dump_json().encode("utf-8"), pin_digest=digest(frame.pin),
+            idempotency_key=f"{scope_key}/{event.event_id}/{frame.stage}", deadline=deadline)
+        frame.job = job
+        return SimingAdvance(status="pending", job=job)
+
+    def _resume_tick(self, frame, completion, effects=None):
+        if frame.stage == "adaptive":
+            if effects is None:
+                prepared = self._heavenly_support.finish_prepare(frame.heavenly_frame, completion)
+            else:
+                preparation = self._heavenly_support.plan_finish_prepare(frame.heavenly_frame, completion)
+                prepared = preparation.prepared
+                effects.batches.extend(preparation.batches)
+            frame.prepared = prepared.model_dump(mode="json")
+            self._after_heavenly(frame, effects)
+            return
+        event = frame.siming_input.source_event
+        audits = []
+        if completion.error == "SimingLlmProviderTimeout":
+            audits = [self._audit(event, status="llm_timeout", reason="LLM provider timed out")]
+        elif completion.error in {"SimingLlmProviderInvalidOutput", "ValueError"}:
+            audits = [self._audit(event, status="llm_invalid_output", reason=completion.message)]
+        elif completion.error:
+            from app.services.siming_llm_provider import SimingLlmProviderError
+            raise SimingLlmProviderError(completion.message)
+        self._finish_candidate(frame, completion.candidates, audits, effects)
+
+    def plan_initial(self, siming_input: SimingInput) -> SimingAcceptedPlan:
+        self._assert_siming_owner()
+        if siming_input.input_type == "population_cadence_input":
+            raise ValueError("siming_initial_plan_not_supported")
+        frame = SimingTurnFrame(turn_id=uuid4().hex, siming_input=siming_input.model_copy(deep=True))
+        effects = SimingStageEffects()
+        if self._heavenly_support is not None:
+            effects.batches.extend(self._heavenly_support.plan_authority_outcome(siming_input.source_event).batches)
+        self._start_tick(frame, effects)
+        return SimingAcceptedPlan(after=frame, effects=effects)
+
+    def install_planned_state(self, effects: SimingStageEffects) -> None:
+        self._assert_siming_owner()
+        if effects.narrative_state is not None:
+            self._narrative_core.install_room_state(effects.narrative_state)
+        if effects.state_tree is not None:
+            self._state_tree.install_snapshot(effects.state_tree)
+        if effects.storyline is not None:
+            self._storyline_state.install_snapshot(effects.storyline)
+        if effects.obligation_ledger is not None:
+            self._obligation_ledger.install_snapshot(effects.obligation_ledger)
+
+    def plan_accepted(
+        self, frozen_frame: bytes, completion: SimingProviderCompletion
+    ) -> SimingAcceptedPlan:
+        self._assert_siming_owner()
+        frame = SimingTurnFrame.model_validate_json(frozen_frame)
+        if frame.stage not in {"candidate", "adaptive"}:
+            raise ValueError("siming_accepted_stage_not_supported")
+        if frame.job is None or completion.request_digest != hashlib.sha256(frame.job.request_json).hexdigest():
+            raise ValueError("siming_accepted_request_mismatch")
+        effects = SimingStageEffects()
+        self._resume_tick(frame, completion, effects)
+        return SimingAcceptedPlan(after=frame, effects=effects)
+
+    def validate_completion(
+        self, job: PreparedSimingJob, completion_json: bytes
+    ) -> SimingCompletionValidation:
+        """只读验证；durable 接受方落盘后才可计算和应用后续效果。"""
+        self._assert_siming_owner()
+        frame = self._siming_pending.get(job.turn_id)
+        if frame is None or frame.job != job or job.generation != self._siming_generation:
+            return SimingCompletionValidation(status="zero_write", reason="stale_token")
+        completion = SimingProviderCompletion.model_validate_json(completion_json)
+        reason = ""
+        if completion.request_digest != hashlib.sha256(job.request_json).hexdigest():
+            reason = "request_mismatch"
+        elif time.monotonic() >= job.deadline:
+            reason = "deadline"
+        elif digest(self._capture_siming_pin(frame)) != job.pin_digest:
+            reason = "stale_pin"
+        elif frame.stage == "adaptive" and not completion.error and not self._heavenly_support.completion_within_prepared(frame.heavenly_frame, completion, frame.pin["heavenly"]):
+            reason = "outside_frozen_read_set"
+        if reason:
+            return SimingCompletionValidation(status="zero_write", reason=reason)
+        return SimingCompletionValidation(status="accepted", completion=completion)
+
+    def commit_provider_result(self, job: PreparedSimingJob, completion_json: bytes) -> SimingAdvance:
+        self._assert_siming_owner()
+        payload_digest = hashlib.sha256(completion_json).hexdigest()
+        key = (job.generation, job.token)
+        receipt = self._siming_receipts.get(key)
+        if receipt is not None:
+            previous_digest, advance = receipt
+            if previous_digest != payload_digest:
+                return SimingAdvance(status="zero_write", reason="completion_conflict")
+            # replayed job 已交付，协调器不得再次 submit。
+            return advance.model_copy(update={"replayed": True}, deep=True)
+        frame = self._siming_pending.get(job.turn_id)
+        if frame is None or frame.job != job or job.generation != self._siming_generation:
+            return SimingAdvance(status="zero_write", reason="stale_token")
+        try:
+            validation = self.validate_completion(job, completion_json)
+            if validation.status == "zero_write":
+                advance = SimingAdvance(status="zero_write", reason=validation.reason)
+            else:
+                self._resume_tick(frame, validation.completion)
+                advance = self._advance_frame(frame, job.deadline)
+            if advance.status != "pending":
+                self._siming_pending.pop(job.turn_id, None)
+            self._siming_receipts[key] = (payload_digest, advance.model_copy(deep=True))
+            while len(self._siming_receipts) > 32:
+                self._siming_receipts.popitem(last=False)
+            return advance
+        except BaseException:
+            self._siming_pending.pop(job.turn_id, None)
+            raise
+
+    def cancel_turn(self, turn_id: str) -> bool:
+        self._assert_siming_owner()
+        return self._siming_pending.pop(turn_id, None) is not None
+
+    def reset_turns(self) -> None:
+        self._assert_siming_owner()
+        self._siming_generation = uuid4().hex
+        self._siming_pending.clear()
+        self._siming_receipts.clear()
+
+    def export_turn(self, turn_id: str) -> bytes:
+        self._assert_siming_owner()
+        return self._siming_pending[turn_id].model_dump_json().encode("utf-8")
+
+    def register_planned_turn(self, frozen_json: bytes, *, expires_at: float,
+                              timeout_seconds: float = 30.0) -> SimingAdvance:
+        """注册已应用领域计划的下一请求；不重放初始业务或执行 provider。"""
+        self._assert_siming_owner()
+        import math
+        frame = SimingTurnFrame.model_validate_json(frozen_json)
+        if frame.synchronous or frame.stage not in {"candidate", "adaptive"} or frame.request is None:
+            raise ValueError("siming_frame_not_pending")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0 or not math.isfinite(expires_at):
+            raise ValueError("siming_deadline_invalid")
+        if self._source_pin_reader is None or self._actor_pin_reader is None:
+            raise ValueError("siming_pin_reader_required")
+        wall_now = time.time()
+        remaining = min(timeout_seconds, expires_at - wall_now)
+        if remaining <= 0:
+            return SimingAdvance(status="zero_write", reason="deadline")
+        if len(self._siming_pending) >= 4 or any(self._room_key(item) == self._room_key(frame) for item in self._siming_pending.values()):
+            raise ValueError("siming_room_busy")
+        frame.turn_id = uuid4().hex
+        frame.expires_at = wall_now + remaining
+        self._siming_pending[frame.turn_id] = frame
+        try:
+            return self._advance_frame(frame, time.monotonic() + remaining)
+        except BaseException:
+            self._siming_pending.pop(frame.turn_id, None)
+            raise
+
+    def restore_turn(self, frozen_json: bytes, *, timeout_seconds: float = 30.0) -> SimingAdvance:
+        self._assert_siming_owner()
+        import math
+        frame = SimingTurnFrame.model_validate_json(frozen_json)
+        if frame.synchronous or frame.stage not in {"candidate", "adaptive"} or frame.job is None:
+            raise ValueError("siming_frame_not_pending")
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("siming_deadline_invalid")
+        if self._source_pin_reader is None or self._actor_pin_reader is None:
+            raise ValueError("siming_pin_reader_required")
+        if frame.expires_at <= time.time():
+            return SimingAdvance(status="zero_write", reason="deadline")
+        if digest(self._capture_siming_pin(frame)) != frame.job.pin_digest:
+            return SimingAdvance(status="zero_write", reason="stale_pin")
+        if len(self._siming_pending) >= 4 or any(self._room_key(item) == self._room_key(frame) for item in self._siming_pending.values()):
+            raise ValueError("siming_room_busy")
+        frame.turn_id = uuid4().hex
+        self._siming_pending[frame.turn_id] = frame
+        try:
+            return self._advance_frame(frame, time.monotonic() + min(timeout_seconds, frame.expires_at - time.time()))
+        except BaseException:
+            self._siming_pending.pop(frame.turn_id, None)
+            raise
+
+    def _assert_siming_owner(self) -> None:
+        current = get_ident()
+        if self._siming_owner_thread is None:
+            self._siming_owner_thread = current
+        elif self._siming_owner_thread != current:
+            raise RuntimeError("siming_owner_thread_required")

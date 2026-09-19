@@ -33,7 +33,8 @@ class AuthorityEventBusPort(Protocol):
     def publish(self, event: AuthorityEvent) -> None:
         raise NotImplementedError
 
-    def subscribe(self, event_type: str, consumer: EventConsumer, *, consumer_id: str = "*") -> None:
+    def subscribe(self, event_type: str, consumer: EventConsumer, *, consumer_id: str = "*",
+                  excluded_event_types: frozenset[str] = frozenset()) -> None:
         raise NotImplementedError
 
     def list_events(
@@ -44,7 +45,14 @@ class AuthorityEventBusPort(Protocol):
         consumer_id: str = "*",
         include_realtime: bool = False,
         current_only: bool = True,
+        after_cursor: int | None = None,
     ) -> list[AuthorityEvent]:
+        raise NotImplementedError
+
+    def cursor(self) -> int:
+        raise NotImplementedError
+
+    def event_counts(self) -> dict[str, int]:
         raise NotImplementedError
 
     def authority_recovery_ledger(self) -> AuthorityRecoveryLedger:
@@ -53,10 +61,13 @@ class AuthorityEventBusPort(Protocol):
 
 class InMemoryAuthorityEventBus:
     def __init__(self, *, now_ts_provider: Callable[[], int] | None = None,
-                 history_limits: dict[str, int] | None = None) -> None:
-        if any(isinstance(limit, bool) or limit < 1 for limit in (history_limits or {}).values()):
+                 history_limits: dict[str, int] | None = None,
+                 default_history_limit: int | None = None) -> None:
+        limits = (*((history_limits or {}).values()), default_history_limit)
+        if any(limit is not None and (isinstance(limit, bool) or limit < 1) for limit in limits):
             raise ValueError("authority_history_limit_invalid")
         self._history_limits = dict(history_limits or {})
+        self._default_history_limit = default_history_limit
         self._events: dict[int, AuthorityEvent] = {}
         self._serialized_events: dict[int, bytes | None] = {}
         self._limited_event_ids: dict[str, deque[int]] = {
@@ -64,7 +75,7 @@ class InMemoryAuthorityEventBus:
         }
         self._population_event_positions: dict[str, int] = {}
         self._next_position = 0
-        self._subscribers: dict[str, list[tuple[str, EventConsumer]]] = {}
+        self._subscribers: dict[str, list[tuple[str, EventConsumer, frozenset[str]]]] = {}
         self._now_ts_provider = now_ts_provider or (lambda: 0)
 
     def publish(self, event: AuthorityEvent) -> None:
@@ -101,9 +112,9 @@ class InMemoryAuthorityEventBus:
             self._serialized_events[position] = serialized
             if population_event:
                 self._population_event_positions[event.event_id] = position
-            limit = self._history_limits.get(event.event_type)
+            limit = self._history_limits.get(event.event_type, self._default_history_limit)
             if limit is not None:
-                retained_ids = self._limited_event_ids[event.event_type]
+                retained_ids = self._limited_event_ids.setdefault(event.event_type, deque())
                 retained_ids.append(position)
                 while len(retained_ids) > limit:
                     evicted_position = retained_ids.popleft()
@@ -116,16 +127,26 @@ class InMemoryAuthorityEventBus:
             *self._subscribers.get(event.event_type, []),
             *self._subscribers.get("*", []),
         ]
-        for consumer_id, consumer in subscribers:
-            if self._matches_route(stored, consumer_id):
+        for consumer_id, consumer, excluded_event_types in subscribers:
+            if stored.event_type not in excluded_event_types and self._matches_route(stored, consumer_id):
                 consumer(
                     pickle.loads(serialized)
                     if serialized is not None
                     else stored.model_copy(deep=True)
                 )
 
-    def subscribe(self, event_type: str, consumer: EventConsumer, *, consumer_id: str = "*") -> None:
-        self._subscribers.setdefault(event_type, []).append((consumer_id, consumer))
+    def subscribe(self, event_type: str, consumer: EventConsumer, *, consumer_id: str = "*",
+                  excluded_event_types: frozenset[str] = frozenset()) -> None:
+        self._subscribers.setdefault(event_type, []).append((consumer_id, consumer, frozenset(excluded_event_types)))
+
+    def cursor(self) -> int:
+        return self._next_position
+
+    def event_counts(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for event in self._events.values():
+            counts[event.event_type] = counts.get(event.event_type, 0) + 1
+        return counts
 
     def list_events(
         self,
@@ -135,10 +156,16 @@ class InMemoryAuthorityEventBus:
         consumer_id: str = "*",
         include_realtime: bool = False,
         current_only: bool = True,
+        after_cursor: int | None = None,
     ) -> list[AuthorityEvent]:
+        if after_cursor is not None and (
+            isinstance(after_cursor, bool) or after_cursor < 0
+        ):
+            raise ValueError("authority_event_cursor_invalid")
         events = [
             (event, self._serialized_events[position])
             for position, event in self._events.items()
+            if after_cursor is None or position >= after_cursor
         ]
         if room_id is not None:
             events = [item for item in events if item[0].room_id == room_id]

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-godot-runtime",
+  "order": 201,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_godot_runtime.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-godot-runtime-report.json",
+  "description": "仅外机显式运行：固定 Godot 4.6.3 Vulkan Forward+ 的100/1,000 人真实渲染、LOD、gap和重连证据"
+}

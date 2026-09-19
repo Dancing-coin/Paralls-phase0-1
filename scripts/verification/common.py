@@ -295,7 +295,7 @@ def ensure_backend(
     if env:
         merged_env.update(env)
     owner = OwnedProcess(
-        [python_exe, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1", "--port", "8000"],
+        [python_exe, "-m", "uvicorn", "app.main:app", "--ws", "websockets", "--host", "127.0.0.1", "--port", "8000"],
         cwd=str(project_root / "backend"),
         env=merged_env,
         stdout=subprocess.PIPE,

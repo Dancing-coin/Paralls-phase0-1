@@ -150,7 +150,7 @@ def test_session_commit_failure_leaves_no_phantom_receipt(tmp_path, monkeypatch)
     before = runtime.get_session_timeline("char_a")
     monkeypatch.setattr(
         runtime._session_store,
-        "_persist",
+        "_insert_event",
         lambda *_: (_ for _ in ()).throw(OSError("disk full")),
     )
     with pytest.raises(OSError, match="disk full"):

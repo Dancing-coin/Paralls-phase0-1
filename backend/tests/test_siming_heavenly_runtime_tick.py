@@ -26,6 +26,7 @@ from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_heavenly_runtime_support import (
     PreparedHeavenlyCandidate,
     PreparedHeavenlyDecision,
+    SimingHeavenlyRuntimeSupport,
 )
 from app.services.siming_runtime import SimingRuntime
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
@@ -101,6 +102,12 @@ def test_producer_publishes_staging_request_as_non_catalyst_event() -> None:
 
 
 class _ActiveHeavenlySupport:
+    _scope_for = staticmethod(SimingHeavenlyRuntimeSupport._scope_for)
+
+    def prepare_request(self, siming_input, *, planned_batches=None):
+        assert planned_batches is None
+        return self.prepare(siming_input), None, None
+
     def __init__(self) -> None:
         request = ResourceRealizationRequest(
             node_id="runtime:bridge:proposal:destroy:1",
@@ -178,7 +185,7 @@ class _ActiveHeavenlySupport:
     def select_for_staging(
         self, prepared: PreparedHeavenlyDecision, selected_node_ref: str
     ) -> StagingRequest:
-        assert prepared is self.prepared
+        assert prepared.model_dump(mode="json") == self.prepared.model_dump(mode="json")
         self.selected.append(selected_node_ref)
         return self.request
 

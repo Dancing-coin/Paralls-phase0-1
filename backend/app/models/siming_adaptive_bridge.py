@@ -3,6 +3,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.siming_resource_capability import ResourceRealizationRequest
+from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
 
 
 AdaptiveBridgePattern = Literal[
@@ -65,3 +66,8 @@ class AdaptiveBridgeValidationResult(StrictBridgeModel):
         if not self.accepted and (self.graph_transaction_ref or self.runtime_node_ref):
             raise ValueError("rejected bridge result cannot include commit references")
         return self
+
+
+class AdaptiveBridgeCommitPlan(StrictBridgeModel):
+    result: AdaptiveBridgeValidationResult
+    batches: list[HeavenlyGraphWriteBatch] = Field(default_factory=list)

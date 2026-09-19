@@ -12,6 +12,7 @@ const FREEZE_ROUNDTRIP_OK_MARKER := "character_director_observatory_probe:freeze
 const ACTOR_PANEL_POPULATED_OK_MARKER := "character_director_observatory_probe:actor_panel_populated=true"
 const DIRECTOR_CAST_WORLD_SIMING_OK_MARKER := "character_director_observatory_probe:director_cast_world_siming_populated=true"
 const TIMELINE_MULTI_ROLE_OK_MARKER := "character_director_observatory_probe:timeline_multi_role_populated=true"
+const TIMELINE_PROJECTION_OK_MARKER := "character_director_observatory_probe:timeline_projection_contract_ok=true"
 const LEDGER_PAIRWISE_OK_MARKER := "character_director_observatory_probe:ledger_pairwise_populated=true"
 const SELECTED_ACTOR_SIMING_SUMMARY_OK_MARKER := "character_director_observatory_probe:selected_actor_siming_summary_populated=true"
 const BOTTOM_STRIP_SIMING_OK_MARKER := "character_director_observatory_probe:bottom_strip_siming_populated=true"
@@ -69,6 +70,11 @@ func _run_probe() -> void:
 		get_tree().quit(1)
 		return
 	print("character_director_observatory_probe:wait_begin")
+	var timeline_projection_ok := _check_timeline_projection(state, timeline)
+	_print_bool_marker(TIMELINE_PROJECTION_OK_MARKER, timeline_projection_ok)
+	if not timeline_projection_ok:
+		get_tree().quit(1)
+		return
 	var connected_ok := await _wait_for_backend_connected(10000)
 	print("character_director_observatory_probe:wait_result=%s" % str(connected_ok))
 	if not connected_ok:
@@ -319,6 +325,39 @@ func _run_probe() -> void:
 func _on_backend_connected(_url: String) -> void:
 	_backend_connected = true
 	print("character_director_observatory_probe:signal_connected")
+
+
+func _check_timeline_projection(state: Node, timeline: Node) -> bool:
+	# 从真实投影函数进入时间线过滤和展示，避免仅检查字段是否存在。
+	var beat: Dictionary = state.call("_presentation_script_beat", {
+		"beat_id": "projection_probe",
+		"correlation_id": "projection_chain",
+		"participants": ["char_a", "char_b"],
+		"world_summaries": [{"summary": "projection_world_changed"}],
+		"actor_summaries": [{"actor_id": "char_a", "summary": "actor", "private_state": "hidden"}],
+		"siming_summaries": [{"reason_summary": "projection_pressure", "private_state": "hidden"}],
+		"dialogue_pairs": [{"pair_key": "projection_pair"}],
+	})
+	var beats: Array[Dictionary] = [beat]
+	var previous_actor := str(timeline.get("filter_actor_id"))
+	var previous_participant := str(timeline.get("filter_participant"))
+	timeline.set("filter_actor_id", "char_a")
+	timeline.set("filter_participant", "char_b")
+	var matched: Array[Dictionary] = timeline.call("_build_filtered_beats", beats)
+	timeline.set("filter_participant", "char_missing")
+	var rejected: Array[Dictionary] = timeline.call("_build_filtered_beats", beats)
+	timeline.set("filter_actor_id", previous_actor)
+	timeline.set("filter_participant", previous_participant)
+	var summary := str(timeline.call("_build_beat_summary_line", beat))
+	var lines: Array[String] = timeline.call("_build_expanded_payload_lines", beat)
+	return (
+		matched.size() == 1 and rejected.is_empty()
+		and summary.contains("projection_chain")
+		and "\n".join(lines).contains("projection_world_changed")
+		and not beat["actor_summaries"][0].has("private_state")
+		and not beat["siming_summaries"][0].has("private_state")
+		and beat["dialogue_pairs"][0].get("siming_pressure_context") == "projection_pressure"
+	)
 
 
 func _on_dialogue_received(_payload: Dictionary) -> void:

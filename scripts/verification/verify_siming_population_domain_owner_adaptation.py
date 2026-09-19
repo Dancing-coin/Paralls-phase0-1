@@ -65,6 +65,12 @@ def _focused_tests() -> tuple[bool, str]:
 def _runtime_owner_ids() -> tuple[set[str], bool, bool]:
     import app.main as runtime_main
 
+    previous_path = runtime_main.settings.heavenly_graph_path
+    try:
+        runtime_main.settings.heavenly_graph_path = ":memory:"
+        runtime_main.reset_runtime_state()
+    finally:
+        runtime_main.settings.heavenly_graph_path = previous_path
     saved_store = runtime_main.gameplay_event_store
     store = GameplayEventStore()
     runtime_main.gameplay_event_store = store
@@ -89,6 +95,7 @@ def _runtime_owner_ids() -> tuple[set[str], bool, bool]:
                 state.close()
     finally:
         runtime_main.gameplay_event_store = saved_store
+        runtime_main.close_runtime_resources()
     return owner_ids, shares_store and legacy_preserved, adapter_contracts_valid
 
 

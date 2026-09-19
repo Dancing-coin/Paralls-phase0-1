@@ -10,8 +10,7 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.main import (
     _handle_envelope,
-    app,
-    character_perceived_input_service,
+    component_app as app,
     reset_runtime_state,
 )
 from app.debug_stream import debug_stream
@@ -49,12 +48,17 @@ class _LocalGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall=None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override or "local_only",
+            prepared_recall=prepared_recall,
         )
+
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
 
 
 def _reset_runtime_state_with_local_character_model() -> None:
@@ -369,7 +373,7 @@ def test_raw_visual_fact_updates_character_perceived_input_path() -> None:
         )
     )
 
-    perceived = character_perceived_input_service.get_latest("char_a")
+    perceived = main.character_perceived_input_service.get_latest("char_a")
 
     assert perceived is not None
     assert perceived.actor_id == "char_a"
@@ -446,7 +450,7 @@ def test_raw_thermal_fact_for_char_a_emits_character_agent_execution() -> None:
     )
 
     execution_messages = [message for message in messages if message["message_type"] == "character_agent_execution"]
-    perceived = character_perceived_input_service.get_latest("char_a")
+    perceived = main.character_perceived_input_service.get_latest("char_a")
 
     assert execution_messages
     assert execution_messages[0]["payload"]["actor_id"] == "char_a"
@@ -492,7 +496,7 @@ def test_raw_tactile_fact_for_char_a_updates_character_perceived_input_path() ->
         )
     )
 
-    perceived = character_perceived_input_service.get_latest("char_a")
+    perceived = main.character_perceived_input_service.get_latest("char_a")
 
     assert perceived is not None
     assert perceived.percept_channel == "tactile"
@@ -517,7 +521,7 @@ def test_interact_world_result_updates_self_body_perceived_input_path() -> None:
         )
     )
 
-    perceived = character_perceived_input_service.get_latest_self_body("char_c")
+    perceived = main.character_perceived_input_service.get_latest_self_body("char_c")
 
     assert perceived is not None
     assert perceived.actor_id == "char_c"
@@ -537,7 +541,10 @@ def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_a
     )
 
     _reset_runtime_state_with_local_character_model()
-    client = TestClient(app)
+    from websocket_test_support import CompletingWebSocketApp
+
+    tracked_app = CompletingWebSocketApp(app)
+    client = TestClient(tracked_app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
             {
@@ -551,6 +558,7 @@ def test_websocket_raw_visual_fact_event_emits_same_runtime_alignment_messages_a
         candidate_event = websocket.receive_json()
         candidate_runtime_delta = websocket.receive_json()
         siming_output = websocket.receive_json()
+        tracked_app.close_and_wait(websocket)
 
     assert ack["message_type"] == "ack"
     assert ack["payload"]["accepted"] is True

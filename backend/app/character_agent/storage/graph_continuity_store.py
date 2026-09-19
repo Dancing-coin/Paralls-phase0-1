@@ -53,6 +53,18 @@ class CharacterGraphContinuityStore:
         self._scope_resolver = scope_resolver
         self._require_complete_snapshot = require_complete_snapshot
         self._lock = RLock()
+        self._snapshot_reader = None
+
+    def bind_snapshot_reader(self, reader) -> None:
+        self._snapshot_reader = reader
+
+    @property
+    def session_database_path(self) -> str | None:
+        # SQLite 的真实文件名来自连接；空文件名表示独立内存库，不能假装共享。
+        connection = getattr(self._graph, '_connection', None)
+        if connection is None:
+            return None
+        return connection.execute('PRAGMA database_list').fetchone()[2] or None
 
     def write_snapshot(
         self,
@@ -194,6 +206,8 @@ class CharacterGraphContinuityStore:
         *,
         valid_at: int | None = None,
     ) -> dict[str, object] | None:
+        if self._snapshot_reader is not None and valid_at is None:
+            return self._snapshot_reader(actor_id)
         scope = self._scope_for_actor(actor_id)
         at = self._MAX_TIME if valid_at is None else valid_at
         result = self._graph.query_semantic(

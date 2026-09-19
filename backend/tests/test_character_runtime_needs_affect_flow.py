@@ -1,3 +1,5 @@
+from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from copy import deepcopy
 from pathlib import Path
 
@@ -98,9 +100,10 @@ class _RecordingL2(CharacterAgentL2Service):
             effective_profile=effective_profile,
             need_tension_state=need_tension_state,
         )
-        return {"task_kind": "l2_reasoning", "context": deepcopy(self.prepare_context)}
+        return self._gateway.prepare_run_request(task_kind="l2_reasoning",
+            context=deepcopy(self.prepare_context), route_override="local_only")
 
-    def interpret_perceived_event(
+    def prepare_perceived_event(
         self,
         snapshot: CharacterPrivateWorldSnapshot,
         event: CharacterPerceivedEvent,
@@ -115,7 +118,7 @@ class _RecordingL2(CharacterAgentL2Service):
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
-    ) -> CharacterInterpretation:
+    ) -> bytes:
         self.interpret_context = self._reasoning_context(
             actor_id=snapshot.actor_id,
             snapshot=snapshot.model_dump(),
@@ -131,23 +134,28 @@ class _RecordingL2(CharacterAgentL2Service):
             effective_profile=effective_profile,
             need_tension_state=need_tension_state,
         )
-        return CharacterInterpretation(
-            actor_id=event.actor_id,
-            interpreted_summary="recorded runtime reasoning context",
-            interpretation_type="state_change",
-            salience_score=0.8,
-            ambiguity_level="low",
-            risk_level="medium",
-            opportunity_level="low",
-            attention_target=event.target_environment_id,
-        )
+        return CharacterModelGateway.freeze_prepared_request(self.prepare_reasoning_request(
+            snapshot=snapshot, event=event, memory_bundle=memory_bundle, control_mode=control_mode,
+            working_memory_state=working_memory_state, current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history, supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions, background_agenda_state=background_agenda_state,
+            effective_profile=effective_profile, need_tension_state=need_tension_state))
+
+    def map_reasoning_output(self, *, actor_id, output):
+        return CharacterInterpretation(actor_id=actor_id, interpreted_summary="recorded runtime reasoning context",
+            interpretation_type="state_change", salience_score=0.8, ambiguity_level="low",
+            risk_level="medium", opportunity_level="low",
+            attention_target=self.interpret_context["event"].get("target_environment_id"))
 
 
-class _RecordingL3:
+
+class _RecordingL3(CharacterAgentL3Service):
     def __init__(self) -> None:
+        super().__init__()
+        self._gateway.complete_prepared_request = lambda request: {}
         self.select_context: dict[str, object] | None = None
 
-    def select_intent(
+    def prepare_intent_plan(
         self,
         interpretation: CharacterInterpretation,
         *,
@@ -185,6 +193,15 @@ class _RecordingL3:
             "need_tension_state": dict(need_tension_state or {}),
             "dynamic_state": dict(dynamic_state or {}),
         }
+        return super().prepare_intent_plan(interpretation=interpretation, snapshot=snapshot,
+            profile=profile, effective_profile=effective_profile, memory_bundle=memory_bundle,
+            control_mode=control_mode, working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state, goal_state_history=goal_state_history,
+            supervision_state=supervision_state, unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state, need_tension_state=need_tension_state,
+            dynamic_state=dynamic_state)
+
+    def decision_from_plan(self, plan, *, interpretation):
         return CharacterIntentDecision(
             actor_id=interpretation.actor_id,
             selected_intent="observe_target",
@@ -350,8 +367,10 @@ def test_runtime_ingest_character_perceived_event_updates_need_tension_and_dynam
             rationale="pause and observe after the dismissal",
         )
 
-    runtime._l2.interpret_perceived_event = interpret_stub
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
 
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
@@ -406,8 +425,10 @@ def test_runtime_structured_constraint_snapshot_sets_goal_blocked_need_tension()
             rationale="hold position after the blocked goal",
         )
 
-    runtime._l2.interpret_perceived_event = interpret_stub
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
             actor_id="char_a",
@@ -480,8 +501,10 @@ def test_runtime_need_tension_ignores_perceived_summary_trigger_phrases() -> Non
             rationale="observe without rule-derived semantic pressure",
         )
 
-    runtime._l2.interpret_perceived_event = interpret_stub
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
 
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
@@ -531,7 +554,8 @@ def test_runtime_ingest_character_perceived_event_passes_effective_profile_and_n
             rationale="hold position and observe",
         )
 
-    runtime._l3.select_intent = select_intent_stub
+    runtime._l3._gateway.complete_prepared_request = lambda request: {}
+    runtime._l3.decision_from_plan = select_intent_stub
 
     runtime.ingest_character_perceived_event(
         CharacterPerceivedEvent(
@@ -626,7 +650,8 @@ def test_runtime_persists_and_rehydrates_need_tension_state_from_timeline(tmp_pa
             attention_target="env_unstable_doorway",
         )
 
-    runtime._l2.interpret_perceived_event = interpret_stub
+    runtime._l2._gateway.complete_prepared_request = lambda request: {}
+    runtime._l2.map_reasoning_output = interpret_stub
     runtime._l3 = _RecordingL3()
 
     runtime.ingest_character_perceived_event(

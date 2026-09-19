@@ -1,0 +1,76 @@
+{
+  "manifest_schema_version": 3,
+  "patch_id": "package:social-conflict",
+  "patch_version": "1.0.0",
+  "patch_revision_id": "package:social-conflict:v1",
+  "content_digest": "sha256:a2917691c7ca12f26e00b3e42e7b60e563c3b9c1450e69cc24e7b6a68b86e88d",
+  "author_id": "author:repo",
+  "trust_policy_ref": "trust:repo",
+  "dependencies": [],
+  "state_group_ids": [],
+  "state_group_migrations": [],
+  "event_schemas": [],
+  "rules": [],
+  "requested_capabilities": [],
+  "economic_outcomes": [],
+  "granted_effect_types": [],
+  "verification_profiles": [],
+  "platform_extension": {
+    "platform_schema_version": "2.0",
+    "package_identity": {
+      "package_id": "package:social-conflict",
+      "package_version": "1.0.0",
+      "package_revision": "package:social-conflict:v1"
+    },
+    "package_definitions": [
+      {
+        "definition_ref": "definition:social-conflict@1",
+        "definition_schema_ref": "schema:organization@1",
+        "source_package_revision": "package:social-conflict:v1",
+        "typed_content": {
+          "norm_policy_ref": "policy:norm@1",
+          "conflict_kind_ref": "conflict-kind:dispute@1",
+          "mediation_policy_ref": "policy:mediation@1",
+          "appeal_policy_ref": "policy:appeal@1",
+          "allowed_resolution_refs": []
+        }
+      }
+    ],
+    "outcome_declarations": [
+      {
+        "declaration_ref": "declaration:social-conflict@1",
+        "outcome_family_ref": "outcome:social-norm-conflict@1",
+        "definition_refs": [
+          "definition:social-conflict@1"
+        ],
+        "eligibility_refs": [
+          "eligibility:organization-charter@1"
+        ],
+        "policy_revision_ref": "policy:ogs-millers-charter@1",
+        "source_package_revision": "package:social-conflict:v1",
+        "declaration_digest": "sha256:4399b95b2f2429a6319b73a07d9b92fce251ad39f475c2b90c921284c2bb6931"
+      }
+    ],
+    "capability_binding_requests": [
+      {
+        "binding_ref": "binding:social-conflict@1",
+        "capability_ref": "capability:social-norm-conflict@1",
+        "source_package_revision": "package:social-conflict:v1",
+        "declaration_ref": "declaration:social-conflict@1",
+        "typed_read_requirements": [
+          {
+            "requirement_ref": "requirement:social-norm-conflict@1@1",
+            "predicate_family_ref": "predicate:social-norm-conflict@1",
+            "subject_slot_ref": "slot:organization@1"
+          }
+        ],
+        "proposal_effect_types": [
+          "effect:social-norm-conflict@1"
+        ]
+      }
+    ],
+    "dependency_and_conflict_refs": [],
+    "replay_reader_refs": [],
+    "verification_profile_refs": []
+  }
+}

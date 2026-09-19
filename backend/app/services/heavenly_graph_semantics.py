@@ -44,6 +44,7 @@ class HeavenlyNodeTypeRegistry:
     """Deterministic registry for the first-version Heavenly Graph node types."""
 
     DEFAULT_RULES: dict[str, _NodeRule] = {
+        "siming_admission": _NodeRule((_SIMING,), ("projection",), (_INTERNAL,)),
         "world_fact": _NodeRule((_SIMING, _RESOURCE), ("fact",), (_PUBLIC, _AUTHORITY, _BRANCH)),
         "causal_event": _NodeRule((_SIMING,), ("fact", "projection"), (_PUBLIC, _INTERNAL, _AUTHORITY, _BRANCH)),
         "actor_view": _NodeRule((_ACTOR,), ("projection",), (_PRIVATE,)),

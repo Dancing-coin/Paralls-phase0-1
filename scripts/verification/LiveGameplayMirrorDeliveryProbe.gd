@@ -40,13 +40,13 @@ func _ready() -> void:
 	bus.websocket_session_bound_received.connect(_on_session_bound)
 	bus.websocket_session_revoked_received.connect(_on_websocket_session_revoked)
 	bus.backend_ack_received.connect(_on_backend_ack)
-	bus.gameplay_runtime_state_projection_received.connect(_on_projection)
 	bus.gameplay_mirror_delivery_received.connect(_on_delivery)
 	bus.gameplay_mirror_resync_required_received.connect(_on_resync_required)
 	_mirror_bridge = MIRROR_BRIDGE.new()
 	_consumer = MIRROR_CONSUMER.new()
 	add_child(_mirror_bridge)
 	add_child(_consumer)
+	_mirror_bridge.projection_applied.connect(_on_verified_projection)
 	if _mirror_bridge.load_session_enrollment_from_environment() != OK:
 		_finish(false, "enrollment_handoff_missing")
 		return
@@ -131,7 +131,7 @@ func _on_projection(payload: Dictionary) -> void:
 	if str(payload.get("actor_ref", "")) != _actor_ref:
 		return
 	_initial_snapshot_seen = true
-	if _scenario == "gap" and _consumer.rejected_projection_count > 0:
+	if _scenario == "gap" and _mirror_bridge.connection_gap_count > 0:
 		call_deferred("_finish_gap_resync")
 		return
 	if _scenario == "backpressure" and _backpressure_control_seen:
@@ -143,6 +143,13 @@ func _on_projection(payload: Dictionary) -> void:
 		return
 	_write_ready()
 	_write_stage("initial_projection")
+
+
+func _on_verified_projection(actor_ref: String, payload: Dictionary) -> void:
+	if actor_ref != _actor_ref:
+		return
+	if not _initial_snapshot_seen or _reconnecting or (_scenario == "gap" and _mirror_bridge.connection_gap_count > 0) or (_scenario == "backpressure" and _backpressure_control_seen):
+		_on_projection(payload)
 
 
 func _finish_reconnect_projection() -> void:
@@ -182,6 +189,8 @@ func _finish_backpressure_resync() -> void:
 
 func _on_delivery(payload: Dictionary) -> void:
 	if str(payload.get("actor_ref", "")) != _actor_ref or not _initial_snapshot_seen:
+		return
+	if _reconnecting:
 		return
 	await get_tree().process_frame
 	if _scenario == "prediction":

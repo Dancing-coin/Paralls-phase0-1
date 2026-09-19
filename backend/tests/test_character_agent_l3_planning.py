@@ -1,3 +1,4 @@
+import json
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.models.cognition_delta import (
     CharacterBeliefDelta,
@@ -34,6 +35,13 @@ class _RecordingGateway:
         )
         return self.response
 
+    def complete_prepared_request(self, request_json):
+        request = json.loads(request_json)
+        return self.run_task(task_kind=request["task_kind"], context=request["context"], route_override=request.get("route_override"))
+
+    def prepare_run_request(self, *, task_kind, context, route_override=None, prepared_recall=None):
+        return {"task_kind": task_kind, "context": context, "route_override": route_override}
+
 
 class _LocalGateway:
     def __init__(self) -> None:
@@ -50,6 +58,15 @@ class _LocalGateway:
             task_kind=task_kind,
             context=context,
             route_override=route_override or "local_only",
+        )
+
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
+
+    def prepare_run_request(self, *, task_kind, context, route_override=None, prepared_recall=None):
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind, context=context, route_override=route_override or "local_only",
+ prepared_recall=prepared_recall,
         )
 
 
@@ -2099,3 +2116,120 @@ def test_l3_suggestion_packet_enters_continuity_floor_for_elevated_vigilance_whe
 
     assert packet["recommended_intents"][0] == "stay_silent"
     assert packet["planning_status"] == "continuity_floor"
+
+
+def test_l3_prepared_plan_defers_policy_consumption_and_matches_sync():
+    gateway = CharacterModelGateway()
+    planner = CharacterAgentL3Service(gateway=gateway)
+    memory = {'working_memory': [{'event_type': 'character_policy_candidate_event', 'payload': {'status': 'candidate_only', 'candidate_id': 'policy-stage', 'policy_type': 'recovery_policy', 'failed_intent': 'approach'}}]}
+    snapshot = {'recent_world_changes': ['lamp changed']}
+    prepared = planner.prepare_intent_plan(interpretation=_interpretation(), control_mode='agent_full_auto', snapshot=snapshot, memory_bundle=memory)
+    assert isinstance(prepared.request_json, bytes)
+    assert planner._consumed_behavior_policy_ids == set()
+    snapshot['recent_world_changes'].append('owner mutation')
+    assert prepared.snapshot['recent_world_changes'] == ['lamp changed']
+    output = gateway.complete_prepared_request(prepared.request_json)
+    plan = planner.finish_intent_plan(prepared, output)
+    assert planner._consumed_behavior_policy_ids == {'policy-stage'}
+    sync = CharacterAgentL3Service(gateway=gateway).build_intent_plan(interpretation=_interpretation(), control_mode='agent_full_auto', snapshot={'recent_world_changes': ['lamp changed']}, memory_bundle=memory)
+    assert plan == sync
+    assert planner.decision_from_plan(plan, interpretation=_interpretation()) == CharacterAgentL3Service(gateway=gateway).select_intent(_interpretation(), snapshot={'recent_world_changes': ['lamp changed']}, memory_bundle=memory)
+    assert planner.suggestion_from_plan(plan, interpretation=_interpretation(), snapshot=prepared.snapshot, memory_bundle=memory) == CharacterAgentL3Service(gateway=gateway).build_suggestion_packet(interpretation=_interpretation(), control_mode='agent_full_auto', snapshot={'recent_world_changes': ['lamp changed']}, memory_bundle=memory)
+
+
+def test_l3_prepared_json_restores_exact_request_and_pure_completion():
+    import json
+    from copy import deepcopy
+    from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
+
+    planner = CharacterAgentL3Service()
+    memory = {'working_memory': [{'event_type': 'character_policy_candidate_event', 'payload': {
+        'status': 'candidate_only', 'candidate_id': 'durable-policy',
+        'policy_type': 'recovery_policy', 'failed_intent': 'approach'}}]}
+    prepared = planner.prepare_intent_plan(interpretation=_interpretation(),
+        control_mode='agent_full_auto', snapshot={'recent_world_changes': ['灯光变化']},
+        memory_bundle=memory)
+    before = deepcopy(prepared)
+    value = json.loads(json.dumps(prepared.to_json_value(), ensure_ascii=False))
+    restored = PreparedCharacterIntentPlan.from_json_value(value)
+    assert restored == before
+    assert restored.request_json == prepared.request_json
+    value['prepared']['snapshot']['recent_world_changes'].append('外部变化')
+    assert restored == before
+    output = planner._gateway.complete_prepared_request(restored.request_json)
+    plan = planner.plan_intent_completion(restored, output)
+    assert planner._consumed_behavior_policy_ids == set()
+    assert restored == before
+    assert planner.finish_intent_plan(restored, output) == plan
+    assert planner._consumed_behavior_policy_ids == {'durable-policy'}
+
+
+def test_l3_prepared_json_rejects_unknown_schema_and_fields():
+    import pytest
+    from copy import deepcopy
+    from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
+    prepared = CharacterAgentL3Service().prepare_intent_plan(
+        interpretation=_interpretation(), control_mode='agent_full_auto')
+    for change in ('version', 'bool_version', 'missing_field', 'extra_field'):
+        value = deepcopy(prepared.to_json_value())
+        if change == 'version':
+            value['schema_version'] = 2
+        elif change == 'bool_version':
+            value['schema_version'] = True
+        elif change == 'missing_field':
+            del value['prepared']['memory_bundle']
+        else:
+            value['prepared']['runtime'] = {}
+        with pytest.raises(ValueError):
+            PreparedCharacterIntentPlan.from_json_value(value)
+
+
+def test_l3_prepared_provider_cannot_mutate_owner_context_or_recall_again():
+    from copy import deepcopy
+    from app.character_agent.gateway.model_provider import CharacterModelProvider
+
+    class MutatingProvider(CharacterModelProvider):
+        def complete(self, request):
+            output = super().complete(request)
+            request['context']['snapshot']['recent_world_changes'].append('provider mutation')
+            request['context']['verification'].clear()
+            return output
+
+    class CountingRecall(CharacterMemoryRecallPolicy):
+        def __init__(self):
+            super().__init__()
+            self.calls = 0
+
+        def select(self, *args, **kwargs):
+            self.calls += 1
+            return super().select(*args, **kwargs)
+
+    recall = CountingRecall()
+    gateway = CharacterModelGateway(provider=MutatingProvider())
+    planner = CharacterAgentL3Service(gateway=gateway, memory_recall_policy=recall)
+    prepared = planner.prepare_intent_plan(interpretation=_interpretation(), control_mode='agent_full_auto',
+        snapshot={'recent_world_changes': ['lamp changed']},
+        current_goal_state={'primary_goal': 'preserve_order'})
+    saved = deepcopy(prepared)
+    output = gateway.complete_prepared_request(prepared.request_json)
+    assert recall.calls == 1
+    assert prepared == saved
+    plan = planner.finish_intent_plan(prepared, output)
+    assert recall.calls == 1
+    assert plan['memory_recall'] == saved.memory_recall
+    assert plan['verification'] == saved.verification
+
+
+def test_l3_preparing_another_plan_does_not_reserve_policy_before_finish():
+    planner = CharacterAgentL3Service()
+    memory = {'working_memory': [{'event_type': 'character_policy_candidate_event', 'payload': {
+        'status': 'candidate_only', 'candidate_id': 'policy-pending', 'policy_type': 'recovery_policy',
+        'failed_intent': 'approach'}}]}
+    kwargs = dict(interpretation=_interpretation(), control_mode='agent_full_auto', memory_bundle=memory)
+    first = planner.prepare_intent_plan(**kwargs)
+    second = planner.prepare_intent_plan(**kwargs)
+    assert first.behavior_policy == second.behavior_policy
+    assert first.behavior_policy['candidate_id'] == 'policy-pending'
+    assert planner._consumed_behavior_policy_ids == set()
+    planner.finish_intent_plan(first, planner._gateway.complete_prepared_request(first.request_json))
+    assert planner.prepare_intent_plan(**kwargs).behavior_policy == {}

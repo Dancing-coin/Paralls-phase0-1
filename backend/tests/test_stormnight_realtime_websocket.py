@@ -40,7 +40,7 @@ def test_stormnight_websocket_changed_duplicate_is_rejected_without_append() -> 
 
 def test_stormnight_realtime_intent_round_trips_over_the_actual_websocket() -> None:
     main.reset_runtime_state()
-    with TestClient(main.app) as client:
+    with TestClient(main.component_app) as client:
         with client.websocket_connect("/ws") as websocket:
             websocket.send_json({"message_type": "stormnight_player_intent", "payload": {"kind": "start", "request_id": "live-start"}})
             response = websocket.receive_json()

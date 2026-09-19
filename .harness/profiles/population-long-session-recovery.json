@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-long-session-recovery",
+  "order": 125,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_long_session_recovery.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-long-session-recovery/report.json",
+  "description": "真实 main 1,000人、1,000/10,000 历史窗各五次冷进程恢复、完整状态与读取量门禁"
+}

@@ -46,6 +46,13 @@ class SimingCharacterDispatchAdapter:
         return self._runtime.apply_memory_correction(request, principal_ref=self._memory_edit_principal_ref)
 
     def dispatch(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
+        result = self.prepare_deliveries(event)
+        for delivery in result.delivery_inputs:
+            result.commands_by_actor[delivery.actor_id] = self._runtime.ingest_siming_output(delivery)
+        return result
+
+    def prepare_deliveries(self, event: AuthorityEvent) -> SimingCharacterDispatchResult:
+        """只构造原过滤结果与稳定 delivery 身份；不进入 Character 认知。"""
         if event.event_type not in SUPPORTED_SIMING_EVENT_TYPES:
             return SimingCharacterDispatchResult()
 
@@ -126,7 +133,6 @@ class SimingCharacterDispatchAdapter:
                 target_environment_id=catalyst.target_environment_id,
             )
             result.delivery_inputs.append(delivery_input)
-            result.commands_by_actor[actor_id] = self._runtime.ingest_siming_output(delivery_input)
 
         return result
 

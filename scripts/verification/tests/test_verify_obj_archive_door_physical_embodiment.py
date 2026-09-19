@@ -13,6 +13,67 @@ import verify_obj_archive_door_physical_embodiment as verifier
 ROOT = Path(__file__).resolve().parents[3]
 
 
+def test_live_door_probe_uses_original_spawn_owner_without_godot(monkeypatch):
+    import os
+    import socket
+    from websockets.sync.client import connect
+    from backend.tests.test_obj_archive_door_embodied_authority import _door_outcome
+
+    # 只运行 Python transport；任何 Godot 子进程都必须在外部机器验证。
+    monkeypatch.setattr(verifier.subprocess, 'Popen', lambda *a, **k: (_ for _ in ()).throw(AssertionError('Godot forbidden')))
+    before = {key: vars(verifier.backend_main).get(key) for key in ('runtime', 'runtime_execution')}
+    with socket.socket() as listener:
+        listener.bind(('127.0.0.1', 0))
+        port = listener.getsockname()[1]
+    server = verifier.LiveBackendServer(host='127.0.0.1', port=port)
+    try:
+        server.start()
+        assert all(vars(verifier.backend_main).get(key) is value for key, value in before.items())
+        enrollment = verifier.request_enrollment(backend_http_url=f'http://127.0.0.1:{port}',
+            launch_profile_ref=verifier.LAUNCH_PROFILE_REF, launcher_secret=verifier.LAUNCHER_SECRET)
+        with connect(f'ws://127.0.0.1:{port}/ws', proxy=None) as ws:
+            def receive(kind):
+                for _ in range(30):
+                    result = json.loads(ws.recv(timeout=10))
+                    if result['message_type'] == kind:
+                        return result
+                raise AssertionError(f'missing {kind}')
+            ws.send(json.dumps(dict(message_type='embodied_controller_bind', payload=enrollment.model_dump(mode='json'))))
+            assert receive('embodied_controller_bound')['payload']['state'] == 'bound'
+            common = dict(player_id='p1', room_id='room_demo', scene_id='scene_demo', zone_id='zone_focus', actor_id='char_c')
+            ws.send(json.dumps(dict(message_type='player_input', payload=dict(common, intent_type='move_intent',
+                move_mode='walk', producer_ts=90, target_point=[0.0, 1.2, -3.1]))))
+            ws.send(json.dumps(dict(message_type='player_input', payload=dict(common, intent_type='interact_intent',
+                producer_ts=110, target_object_id='obj_archive_door', interaction_type='open'))))
+            action = receive('embodied_action_request')['payload']
+            grant = action['grant']
+            ws.send(json.dumps(dict(message_type='embodied_phase_event', payload=dict(grant_id=grant['grant_id'],
+                connection_epoch=grant['connection_epoch'], source_sequence=1, payload_digest='sha256:door-phase:1'))))
+            while (phase_ack := receive('ack'))['payload']['source_type'] != 'embodied_phase_event':
+                pass
+            assert phase_ack['payload']['accepted']
+            preflight = verifier._wait_for_authoritative_preflight(server, 10)
+            assert preflight['grant_id'] == action['grant']['grant_id']
+            mutation = server.request('increment_revision', preflight)
+            assert mutation['after'] == mutation['before'] + 1
+            outcome = _door_outcome(grant['grant_id'], connection_epoch=grant['connection_epoch'],
+                outcome_nonce=grant['one_time_outcome_nonce'])
+            outcome['terminal_sequence'] = 2
+            ws.send(json.dumps(dict(message_type='embodied_local_outcome', payload=outcome)))
+            settlement = receive('embodied_settlement_result')['payload']
+            assert settlement['error_code'] == 'binding_revision_mismatch'
+            trace = server.request('trace', dict(scenario='revision_failure', mutation_info=mutation,
+                runtime_payload=dict(attempt_id=preflight['attempt_id'], received_settlement=settlement)))
+            assert trace['owner_pid'] == server._runtime_process.process.pid != os.getpid()
+            assert trace['observation_thread'] == trace['owner_thread']
+            assert trace['esm_state'] == 'closed' and trace['commit_count'] == 0
+            assert trace['live_revisions']['binding_revision'] == mutation['after']
+            assert trace['ledger_events'] and trace['replay_validation']['accepted']
+    finally:
+        server.stop()
+    assert server._runtime_process.process.exitcode == 0
+
+
 def test_verifier_requires_real_main_demo_live_backend_and_four_scenarios() -> None:
     assert verifier.MAIN_DEMO_SCENE == "res://scenes/phase0/MainDemo.tscn"
     assert verifier.PROBE_SCENE == "res://scenes/phase0/ObjArchiveDoorPhysicalEmbodimentProbe.tscn"
@@ -182,7 +243,7 @@ def test_revision_injector_waits_for_the_godot_runtime_window_not_a_short_startu
         "deadline = time.time() + GODOT_TIMEOUT_SECONDS", maxsplit=1
     )[0]
 
-    assert "_wait_for_authoritative_preflight(GODOT_TIMEOUT_SECONDS)" in revision_branch
+    assert "_wait_for_authoritative_preflight(server, GODOT_TIMEOUT_SECONDS)" in revision_branch
 
 
 def test_live_probe_uses_a_renderer_capable_of_capturing_the_required_png_evidence() -> None:
@@ -325,3 +386,24 @@ def test_revision_failure_gate_accepts_binding_revision_mismatch_as_revision_sta
 
     assert passed
     assert notes == []
+
+def test_backend_stop_rejects_failed_child_or_lifespan_and_releases_probe_handles():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+    import pytest
+    for code, flags in [(1, (False, False, False)), (0, (False, True, False)),
+                        (0, (False, False, True))]:
+        server = object.__new__(verifier.LiveBackendServer)
+        server._server = SimpleNamespace(should_exit=False, lifespan=SimpleNamespace(
+            startup_failed=flags[0], shutdown_failed=flags[1], error_occurred=flags[2]))
+        server._thread = Mock(ident=1)
+        server._thread.is_alive.return_value = False
+        process = Mock(pid=123, exitcode=code)
+        process.is_alive.return_value = False
+        server._runtime_process = SimpleNamespace(process=process)
+        server._probe, server._child_probe, server._patches = Mock(), Mock(), Mock()
+        with pytest.raises(RuntimeError, match='door_probe_backend_shutdown'):
+            server.stop()
+        assert server.shutdown_evidence['child_exit_code'] == code
+        for handle in (server._probe, server._child_probe, server._patches):
+            handle.close.assert_called_once()

@@ -41,14 +41,15 @@
 - `docs/demo-script.md`：预期 demo 节拍和可观察证明路径。
 - `docs/population-roster.md`：群体居民名单配置、结构化剧本角色表导入与自然语言草稿审阅。
 - `docs/verification/population-data-oriented-closure.md`：群体优化缺陷修复、持久化恢复、规模验收与 Godot 未验证交接。
+- `docs/verification/population-runtime-closure.md`：六项补齐状态、外机 Godot 显式 profile/手动 CI 与证据交接；真实引擎验收前保持 Godot 未验证。
 - `docs/production-readiness.md`：生产级在线 provider、图谱连续性、Authority 与 Godot 发布门禁。
 - `docs/knowledge-graph-future-optimization.md`：当前运行时可用领域知识图谱的通用化、规模化、运维和治理后期优化项。
 
 ## 活跃设计与计划
 
-- [角色、群体与社会因果运行时整合规格](superpowers/specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)：整合连续性基线、受约束社会模型、具身因果与阵营边界；两份计划共用一套合同。
-- [计划 A：运行时连续性与共享基础](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-population-continuity-runtime-implementation-plan.md)：人员甲负责共享合同、账本、锁、Core 接纳、授权读取、编译运行与公共集成；尚未实施。
-- [计划 B：角色模块、洪灾样板与领域纵切](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-character-simulation-domain-vertical-implementation-plan.md)：人员乙负责角色规则、洪灾、领域协议、回流转换、模型模板与 Godot 样板；尚未实施。
+- [角色、群体与社会因果运行时整合规格](superpowers/specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)：整合连续性、社会模型、具身因果与阵营边界；模型首期为日供给分片可行性计算，八类为计算维度；两份计划共用一套合同。
+- [计划 A：运行时连续性与共享基础](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-population-continuity-runtime-implementation-plan.md)：人员甲负责共享合同、账本、锁、Core 接纳、授权读取及计算器 shadow/advisory 接线；尚未实施。
+- [计划 B：角色模块、洪灾样板与领域纵切](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-character-simulation-domain-vertical-implementation-plan.md)：人员乙负责角色规则、洪灾、领域回流、日供给输入/纯计算与 Godot 样板；尚未实施。
 - [Harness 编程工作流改进方案](superpowers/plans/2026-09-18-harness-programming-workflow-improvement-plan.md)：已实施的验证产物清理、结果可信度、分层门禁及编程经验试点方案。
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`

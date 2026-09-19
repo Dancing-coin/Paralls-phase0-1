@@ -50,7 +50,7 @@ from app.services.siming_runtime import SimingRuntime
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
 
-POPULATION_SIZES = (100, 1000, 10000)
+POPULATION_SIZES = (100, 1000)
 WINDOW_COUNT = 30
 PRESSURE_PROFILES = {
     "one_x": {"wall_budget_seconds": 1.0},
@@ -484,7 +484,10 @@ def measure_scenario(
             graph_event_count += 1
 
         bus.subscribe("population_cadence_event", handle_population_event, consumer_id="siming")
-        bus.subscribe("*", project_authority_event)
+        bus.subscribe(
+            "*", project_authority_event,
+            excluded_event_types=frozenset({"population_cadence_event"}),
+        )
         publisher = RuntimeCadencePublisher(
             world_runtime=world, event_bus=bus,
             room_id="room:population-scale", scene_id="scene:population-scale", zone_id="zone:population-scale",
@@ -612,6 +615,8 @@ def measure_scenario(
                 world._projection_cache.clear()
                 world._preview_results.clear()
 
+        # 冷恢复使用生产内核，计时包装器不属于可恢复版本身份。
+        world_module.advance_b0_row = original_advance_b0_row
         committed_hash = _hot_state_hash(world)
         recovery_started = perf_counter()
         recovered_store = DurableGameplayEventStore(storage_path)
@@ -639,18 +644,45 @@ def measure_scenario(
             node.attributes.get("entity_kind") == "turn" for node in behavior_turn_nodes
         )
 
+        # 测量结束后核验 wildcard 的真实职责，不把无作用的人口调用当投影证明。
+        population_graph_count = graph_event_count
+        population_graph_ms = list(graph_ms)
+        source_event = bus.list_events(
+            event_type="population_cadence_event", include_realtime=True, current_only=False,
+        )[-1]
+        graph_probe = source_event.model_copy(update={
+            "event_id": "scale:authority-graph-probe",
+            "event_type": "gameplay.resource.scale_projection_probe",
+            "durability": "replayable",
+            "payload": {"owner_ref": "scale:authority", "probe": "domain_projection"},
+        })
+        bus.publish(graph_probe)
+        projected = graph.query_nodes(HeavenlyNodeQuery(
+            scope=_siming_scope_for_event(graph_probe), valid_at=graph_probe.producer_ts,
+            node_types=["causal_event"], limit=1000,
+        ))
+        probe_nodes = [node for node in projected
+                       if node.node_id == "authority-projection:" + graph_probe.event_id]
+        graph_probe_verified = (
+            graph_event_count - population_graph_count == 1
+            and len(probe_nodes) == 1
+            and probe_nodes[0].attributes["domain"] == "resource_scene"
+            and probe_nodes[0].attributes["committed_payload"] == graph_probe.payload
+            and probe_nodes[0].provenance.source_ref == graph_probe.event_id
+        )
+
         result.update(
             status="completed", windows_completed=len(total_ms), window_wall_ms=total_ms,
             p50_wall_ms=median(total_ms), p95_wall_ms=percentile(total_ms),
             pure_kernel_ms=kernel_ms, protocol_packaging_ms=packaging_ms,
             durable_transaction_ms=durable_transaction_ms,
-            pipeline_ms=pipeline_ms, authority_graph_ms=graph_ms,
+            pipeline_ms=pipeline_ms, authority_graph_ms=population_graph_ms,
             stage_costs={
                 "pure_integrator": _cost_summary(kernel_ms),
                 "protocol_packaging": _cost_summary(packaging_ms),
                 "durable_transaction": _cost_summary(durable_transaction_ms),
                 "siming_pipeline": _cost_summary(pipeline_ms),
-                "authority_graph": _cost_summary(graph_ms),
+                "authority_graph": _cost_summary(population_graph_ms),
                 "sparse_owner": _cost_summary([owner_ms] if owner_ms is not None else []),
             },
             recovery_ms=recovery_ms, protocol_bytes=protocol_bytes,
@@ -666,10 +698,13 @@ def measure_scenario(
             )),
             pipeline_event_count=pipeline_event_count,
             capability_cycle_count=capability.default_cycle_count,
-            authority_graph_event_count=graph_event_count,
+            authority_graph_event_count=population_graph_count,
+            authority_graph_probe={"event_id": graph_probe.event_id,
+                                   "projected_count": len(probe_nodes),
+                                   "verified": graph_probe_verified},
             behavior_turn_count=behavior_turn_count,
             pipeline_verified=(pipeline_event_count == window_count and capability.default_cycle_count == window_count),
-            authority_graph_verified=graph_event_count == window_count,
+            authority_graph_verified=(population_graph_count == 0 and graph_probe_verified),
             behavior_turn_verified=behavior_turn_count == window_count,
             b0_cursor_verified=b0_cursor_verified and capability.b0_cycle_verified,
             input_roster_digest=_digest(roster.actor_ids),

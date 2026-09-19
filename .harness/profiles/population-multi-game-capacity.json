@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-multi-game-capacity",
+  "order": 205,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_population_multi_game_capacity.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-multi-game-capacity-report.json",
+  "description": "固定机器显式运行2/4独立1,000人局，各共同测量10分钟；报告真实并行容量及逻辑SQLite I/O"
+}

@@ -333,7 +333,7 @@ class HttpSimingLlmCandidateProvider:
             "Siming is the proposal source, not a character actor."
         )
         if self._provider_name in {"deepseek_chat", "seed_doubao", "qwen"}:
-            return {
+            payload = {
                 "model": self._model,
                 "messages": [
                     {"role": "system", "content": instruction},
@@ -341,6 +341,9 @@ class HttpSimingLlmCandidateProvider:
                 ],
                 "response_format": {"type": "json_object"},
             }
+            if self._provider_name == "deepseek_chat":
+                payload["thinking"] = {"type": "disabled"}
+            return payload
         return {
             "model": self._model,
             "instructions": instruction,
@@ -478,7 +481,7 @@ class HttpSimingLlmCandidateProvider:
             "recent_events": [event.model_dump() for event in recent_events],
             "recent_audit": [record.model_dump() for record in recent_audit],
         }
-        return {
+        payload = {
             "model": self._model,
             "messages": [
                 {
@@ -492,12 +495,17 @@ class HttpSimingLlmCandidateProvider:
                         "proposed_band, target_actor_id, target_object_id, target_environment_id, "
                         "established_fact_ids, explanation, confidence, reason_tags, and source=\"llm\". "
                         "Do not omit keys. Use null for target_actor_id, target_object_id, or "
-                        "target_environment_id when that target does not apply. For a known visual_fact_event "
-                        "with an established_fact_id, return exactly one candidate using proposed_band "
+                        "target_environment_id when that target does not apply. "
+                        "At least one of target_actor_id or target_environment_id must be non-null. "
+                        "If no eligible target exists, return an empty candidates array. For a known visual_fact_event "
+                        "with an established_fact_id and an eligible target, return exactly one candidate using proposed_band "
                         "fact_reveal, source=\"llm\", the event room_id/scene_id/zone_id/correlation_id, "
                         "the event event_id as causation_id, and established_fact_ids containing the "
-                        "event established_fact_id from recent_events. If target_actor_id is present, it "
-                        "must be one of snapshot.eligible_actor_ids; otherwise use null. Do not invent "
+                        "event established_fact_id from recent_events. Any non-null target_actor_id must be chosen "
+                        "from snapshot.eligible_actor_ids; do not use the event producer as the target unless "
+                        "it is eligible. For an explicit environment target, fact_reveal may use target_actor_id=null. "
+                        "Any non-null target_environment_id must be an explicit environment "
+                        "target from the supplied event. Do not invent "
                         "established_fact_ids or actor ids outside the supplied recent_events and snapshot."
                     ),
                 },
@@ -508,6 +516,9 @@ class HttpSimingLlmCandidateProvider:
             ],
             "response_format": {"type": "json_object"},
         }
+        if self._provider_name == "deepseek_chat":
+            payload["thinking"] = {"type": "disabled"}
+        return payload
 
     def _candidate_data_from_response(self, data: object) -> dict[str, object]:
         if not isinstance(data, dict):

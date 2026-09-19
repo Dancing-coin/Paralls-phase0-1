@@ -323,7 +323,7 @@ def test_character_runtime_restores_complete_goal_history_from_graph(tmp_path: P
         second.close()
 
 
-def test_runtime_ignores_graph_current_state_without_committed_source_event() -> None:
+def test_runtime_rejects_graph_current_state_without_committed_source_event() -> None:
     from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
     from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
@@ -342,9 +342,8 @@ def test_runtime_ignores_graph_current_state_without_committed_source_event() ->
         },
     )
 
-    runtime = CharacterAgentRuntime(continuity_store=store)
-
-    assert runtime.get_continuity_revision("char_a") == 0
+    with pytest.raises(ValueError, match="character_continuity_anchor_invalid"):
+        CharacterAgentRuntime(continuity_store=store)
 
 
 def test_goal_state_does_not_advance_when_session_append_fails(monkeypatch) -> None:

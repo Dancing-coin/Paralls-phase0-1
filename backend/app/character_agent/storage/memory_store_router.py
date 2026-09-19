@@ -21,6 +21,10 @@ class CharacterMemoryStoreRouter:
     def _store_for(self, actor_id: str) -> CharacterMemoryStorePort:
         return self._graph if actor_id in self._heavy_actor_ids else self._light
 
+    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+        self._light.bind_session_reader(reader, working_reader=working_reader)
+        self._graph.bind_session_reader(reader, working_reader=working_reader)
+
     def write_event(self, event: dict[str, object]) -> None:
         self._store_for(str(event.get("actor_id", "") or "")).write_event(event)
 

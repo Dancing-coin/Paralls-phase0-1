@@ -1,3 +1,6 @@
+import pytest
+
+from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.models.cognition_delta import (
     CharacterBeliefDelta,
@@ -28,61 +31,23 @@ class _LocalGateway:
             route_override=route_override or "local_only",
         )
 
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
 
-class _StubL2:
-    def prepare_reasoning_request(
-        self,
-        *,
-        snapshot,
-        event,
-        memory_bundle,
-        control_mode,
-        working_memory_state=None,
-        current_goal_state=None,
-        goal_state_history=None,
-        supervision_state=None,
-        unresolved_tensions=None,
-        background_agenda_state=None,
-        effective_profile=None,
-        need_tension_state=None,
-    ) -> dict[str, object]:
-        return {
-            "task_kind": "l2_reasoning",
-            "context": {
-                "actor_id": snapshot.actor_id,
-                "control_mode": control_mode,
-                "snapshot": snapshot.model_dump(),
-                "memory": memory_bundle,
-                "event": event.model_dump(),
-                "working_memory_state": dict(working_memory_state or {}),
-                "current_goal_state": dict(current_goal_state or {}),
-                "goal_state_history": list(goal_state_history or []),
-                "supervision_state": dict(supervision_state or {}),
-                "unresolved_tensions": list(unresolved_tensions or []),
-                "background_agenda_state": dict(background_agenda_state or {}),
-                "effective_profile": dict(effective_profile or {}),
-                "need_tension_state": dict(need_tension_state or {}),
-            },
-        }
+    def prepare_run_request(self, *, task_kind, context, route_override=None, prepared_recall=None):
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind, context=context, route_override=route_override or "local_only",
+ prepared_recall=prepared_recall,
+        )
 
-    def interpret_perceived_event(
-        self,
-        snapshot,
-        event,
-        *,
-        memory_bundle=None,
-        control_mode="agent_full_auto",
-        working_memory_state=None,
-        current_goal_state=None,
-        goal_state_history=None,
-        supervision_state=None,
-        unresolved_tensions=None,
-        background_agenda_state=None,
-        effective_profile=None,
-        need_tension_state=None,
-    ) -> CharacterInterpretation:
+
+class _StubL2(CharacterAgentL2Service):
+    def __init__(self):
+        super().__init__(gateway=_LocalGateway())
+
+    def map_reasoning_output(self, *, actor_id, output) -> CharacterInterpretation:
         return CharacterInterpretation(
-            actor_id=event.actor_id,
+            actor_id=actor_id,
             interpreted_summary="char_b is probing for a private disclosure",
             interpretation_type="social_signal",
             salience_score=0.84,
@@ -107,8 +72,8 @@ class _StubL2:
 
 
 class _PositiveAffectStubL2(_StubL2):
-    def interpret_perceived_event(self, snapshot, event, **kwargs) -> CharacterInterpretation:
-        interpretation = super().interpret_perceived_event(snapshot, event, **kwargs)
+    def map_reasoning_output(self, *, actor_id, output) -> CharacterInterpretation:
+        interpretation = super().map_reasoning_output(actor_id=actor_id, output=output)
         return interpretation.model_copy(
             update={
                 "dynamic_state_delta": CharacterDynamicStateDelta(
@@ -158,8 +123,9 @@ def test_runtime_applies_cognition_writeback_from_l2_output() -> None:
     assert dynamic_state["masking_pressure"] == 0.55
 
 
-def test_runtime_applies_positive_affect_writeback_into_grouped_affect_state() -> None:
-    runtime = CharacterAgentRuntime()
+@pytest.mark.parametrize("durable", [False, True])
+def test_runtime_applies_positive_affect_writeback_into_grouped_affect_state(tmp_path, durable) -> None:
+    runtime = CharacterAgentRuntime(storage_root=tmp_path if durable else None)
     runtime._l2 = _PositiveAffectStubL2()
     runtime._l3 = CharacterAgentL3Service(gateway=_LocalGateway())
     event = CharacterPerceivedEvent(
@@ -185,6 +151,18 @@ def test_runtime_applies_positive_affect_writeback_into_grouped_affect_state() -
     assert typed_dynamic_state.affect_state.gratitude == 0.5
     assert typed_dynamic_state.affect_state.pride == 0.4
     assert typed_dynamic_state.affect_state.confidence == 0.3
+    expected = typed_dynamic_state.storage_dump()
+    dynamic_events = [entry for entry in runtime.get_session_timeline("char_a")
+                      if entry["event_type"] == "dynamic_state_event"]
+    assert dynamic_events[-1]["payload"] == expected
+    assert runtime._session_store.read_runtime_state("char_a")["dynamic_state"] == expected
+    runtime.close()
+    if durable:
+        reopened = CharacterAgentRuntime(storage_root=tmp_path)
+        try:
+            assert reopened.get_dynamic_state_record("char_a").storage_dump() == expected
+        finally:
+            reopened.close()
 
 
 def test_runtime_cognition_writeback_merges_dynamic_state_without_dropping_existing_fields() -> None:

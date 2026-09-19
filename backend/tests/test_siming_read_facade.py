@@ -1,6 +1,7 @@
 from fastapi.testclient import TestClient
 
-from app.main import app, reset_runtime_state, siming_audit_writer
+from app import main
+from app.main import component_app as app, reset_runtime_state
 from app.models.siming_runtime_state import NarrativeReadModel
 
 
@@ -19,17 +20,17 @@ def test_audit_writer_returns_latest_read_model_by_room() -> None:
         update={"read_model_id": "read:room_demo:2", "world_ts": 2, "sim_tick_ts": 3}
     )
 
-    siming_audit_writer.record_read_model(first)
-    siming_audit_writer.record_read_model(second)
+    main.siming_audit_writer.record_read_model(first)
+    main.siming_audit_writer.record_read_model(second)
 
-    latest = siming_audit_writer.latest_read_model(room_id="room_demo")
+    latest = main.siming_audit_writer.latest_read_model(room_id="room_demo")
     assert latest is not None
     assert latest.read_model_id == "read:room_demo:2"
 
 
 def test_debug_read_model_endpoint_returns_latest_model() -> None:
     reset_runtime_state()
-    siming_audit_writer.record_read_model(
+    main.siming_audit_writer.record_read_model(
         NarrativeReadModel(
             read_model_id="read:room_demo:1",
             schema_version=1,

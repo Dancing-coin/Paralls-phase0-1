@@ -36,12 +36,12 @@ func _ready() -> void:
 	bus.backend_connected.connect(_on_backend_connected)
 	bus.websocket_session_bound_received.connect(_on_session_bound)
 	bus.backend_ack_received.connect(_on_backend_ack)
-	bus.gameplay_runtime_state_projection_received.connect(_on_projection)
 	bus.gameplay_mirror_delivery_received.connect(_on_delivery)
 	_mirror_bridge = MIRROR_BRIDGE.new()
 	_consumer = MIRROR_CONSUMER.new()
 	add_child(_mirror_bridge)
 	add_child(_consumer)
+	_mirror_bridge.projection_applied.connect(func(_actor: String, payload: Dictionary): _on_projection(payload))
 	if _mirror_bridge.load_session_enrollment_from_environment() != OK:
 		_finish(false, "enrollment_handoff_missing")
 		return

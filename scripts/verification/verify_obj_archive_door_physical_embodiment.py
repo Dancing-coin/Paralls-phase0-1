@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import argparse
+from contextlib import ExitStack
+from functools import partial
 import json
+import multiprocessing
 import os
 import subprocess
 import sys
@@ -9,6 +12,7 @@ import threading
 import time
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 from urllib.error import URLError
 from urllib.request import urlopen
 
@@ -181,12 +185,82 @@ def scenario_result_ok(
     return len(notes) == 0, notes
 
 
+def _door_owner_child(probe, *args):
+    """探针专用管道；读证据和故障注入也只在原 owner 执行。"""
+    import asyncio
+    from app.services.runtime_process import runtime_child_main
+
+    stopped = threading.Event()
+    original_startup = backend_main._start_population_runtime_on_startup
+
+    def configure():
+        backend_main.embodied_controller_launcher_bootstrap_secret = LAUNCHER_SECRET
+        backend_main.embodied_controller_trusted_local_enrollment_issuer = TrustedLocalEmbodiedControllerEnrollmentIssuer(
+            auth_service=backend_main.embodied_controller_auth_service,
+            launch_profiles=(TrustedLocalEmbodiedControllerLaunchProfile(
+                profile_ref=LAUNCH_PROFILE_REF, actor_id="char_c",
+                controller_instance_id="controller:char_c:obj_archive_door:1", credential_ttl_seconds=45),),
+        )
+
+    def observe(request):
+        service = backend_main.default_scene_archive_door_embodied_service
+        operation, payload = request['operation'], request['payload']
+        if operation == 'preflight':
+            return _authoritative_preflight_snapshot(service)
+        if operation == 'increment_revision':
+            if not payload.get('grant_id') or payload != _authoritative_preflight_snapshot(service):
+                raise ValueError('door_probe_preflight_changed')
+            before = service.binding_revision
+            service.binding_revision += 1
+            return dict(kind='binding_revision_increment', before=before, after=service.binding_revision,
+                **payload, source='authoritative_preflight')
+        if operation == 'trace':
+            return dict(_backend_trace_for_scenario(**payload), owner_pid=os.getpid(),
+                owner_thread=backend_main.runtime_execution._owner, observation_thread=threading.get_ident())
+        raise ValueError('door_probe_unknown_operation')
+
+    def receive():
+        while not stopped.is_set():
+            if not probe.poll(.1):
+                continue
+            try:
+                request = json.loads(probe.recv_bytes())
+                value = backend_main.runtime_execution.submit(lambda: observe(request)).result(15)
+                response = dict(value=value)
+            except (EOFError, OSError):
+                return
+            except Exception as error:
+                response = dict(error=type(error).__name__)
+            try:
+                probe.send_bytes(json.dumps(response).encode('utf-8'))
+            except (EOFError, OSError):
+                return
+
+    reader = threading.Thread(target=receive, daemon=True)
+    async def startup():
+        await original_startup()
+        await asyncio.wrap_future(backend_main.runtime_execution.submit(configure))
+        reader.start()
+
+    try:
+        with patch.object(backend_main, '_start_population_runtime_on_startup', startup):
+            runtime_child_main(*args)
+    finally:
+        stopped.set()
+        if reader.ident is not None:
+            reader.join(16)
+        probe.close()
+
+
 class LiveBackendServer:
     def __init__(self, *, host: str, port: int) -> None:
         self._host = host
         self._port = port
+        self._probe, self._child_probe = multiprocessing.get_context('spawn').Pipe()
+        self._patches = ExitStack()
+        self._runtime_process = None
         config = uvicorn.Config(
-            backend_main.app,
+            backend_main.app, ws=backend_main.RUNTIME_WEBSOCKET_PROTOCOL,
             host=host,
             port=port,
             log_level="warning",
@@ -196,35 +270,62 @@ class LiveBackendServer:
         self._thread = threading.Thread(target=self._server.run, daemon=True)
 
     def start(self) -> None:
-        backend_main.reset_runtime_state()
-        backend_main.embodied_controller_launcher_bootstrap_secret = LAUNCHER_SECRET
-        backend_main.embodied_controller_trusted_local_enrollment_issuer = TrustedLocalEmbodiedControllerEnrollmentIssuer(
-            auth_service=backend_main.embodied_controller_auth_service,
-            launch_profiles=(
-                TrustedLocalEmbodiedControllerLaunchProfile(
-                    profile_ref=LAUNCH_PROFILE_REF,
-                    actor_id="char_c",
-                    controller_instance_id="controller:char_c:obj_archive_door:1",
-                    credential_ttl_seconds=45,
-                ),
-            ),
-        )
+        from app.services import runtime_process
+        # 各场景使用全新隔离存档，不读取或覆盖本机玩家存档与模型凭据。
+        from app.config import Settings
+        self._patches.enter_context(patch.object(backend_main, 'settings', Settings(
+            heavenly_graph_path=':memory:', character_model_provider_kind='local',
+            dialogue_mode='stub', siming_llm_mode='disabled')))
+        self._patches.enter_context(patch.object(runtime_process, 'CHILD_TARGET',
+            partial(_door_owner_child, self._child_probe)))
         self._thread.start()
         deadline = time.time() + 15.0
         while time.time() < deadline:
             try:
-                with urlopen(f"{SERVER_HTTP_URL}/health", timeout=1.0) as response:
+                with urlopen(f"http://{self._host}:{self._port}/health", timeout=1.0) as response:
                     payload = json.loads(response.read().decode("utf-8"))
             except (OSError, URLError, json.JSONDecodeError):
                 payload = {}
             if payload.get("status") == "ok":
+                self._runtime_process = backend_main.app.state.runtime_process
+                self._child_probe.close()
                 return
             time.sleep(0.1)
         raise RuntimeError("live_backend_start_timeout")
 
     def stop(self) -> None:
         self._server.should_exit = True
-        self._thread.join(timeout=10.0)
+        try:
+            if self._thread.ident is not None:
+                self._thread.join(timeout=30.0)
+            process = None if self._runtime_process is None else self._runtime_process.process
+            lifespan = getattr(self._server, 'lifespan', None)
+            self.shutdown_evidence = dict(
+                server_stopped=not self._thread.is_alive(),
+                child_pid=None if process is None else process.pid,
+                child_alive=None if process is None else process.is_alive(),
+                child_exit_code=None if process is None else process.exitcode,
+                **{name: getattr(lifespan, name, None) for name in
+                   ('startup_failed', 'shutdown_failed', 'error_occurred')})
+            if (not self.shutdown_evidence['server_stopped']
+                    or self.shutdown_evidence['child_alive'] is not False
+                    or self.shutdown_evidence['child_exit_code'] != 0
+                    or any(self.shutdown_evidence[name] is not False for name in
+                           ('startup_failed', 'shutdown_failed', 'error_occurred'))):
+                raise RuntimeError('door_probe_backend_shutdown_failed')
+        finally:
+            self._probe.close()
+            self._child_probe.close()
+            self._patches.close()
+
+    def request(self, operation: str, payload: dict | None = None) -> dict:
+        self._probe.send_bytes(json.dumps(dict(operation=operation, payload=payload or {})).encode('utf-8'))
+        if not self._probe.poll(20):
+            raise RuntimeError('door_probe_owner_timeout')
+        response = json.loads(self._probe.recv_bytes())
+        if 'error' in response:
+            raise RuntimeError(f"door_probe_owner_failed:{response['error']}")
+        return response['value']
 
 
 def _remove_if_exists(path: Path) -> None:
@@ -263,11 +364,10 @@ def _authoritative_preflight_snapshot(service: Any) -> dict[str, str]:
     return {}
 
 
-def _wait_for_authoritative_preflight(timeout_seconds: float) -> dict[str, str]:
+def _wait_for_authoritative_preflight(server: LiveBackendServer, timeout_seconds: float) -> dict[str, str]:
     deadline = time.time() + timeout_seconds
-    service = backend_main.default_scene_archive_door_embodied_service
     while time.time() < deadline:
-        snapshot = _authoritative_preflight_snapshot(service)
+        snapshot = server.request('preflight')
         if snapshot:
             return snapshot
         time.sleep(0.025)
@@ -276,6 +376,7 @@ def _wait_for_authoritative_preflight(timeout_seconds: float) -> dict[str, str]:
 
 def _run_probe_scenario(
     *,
+    server: LiveBackendServer,
     scenario: str,
     root: Path,
     log_dir: Path,
@@ -335,7 +436,7 @@ def _run_probe_scenario(
             )
         try:
             if scenario == "revision_failure":
-                preflight = _wait_for_authoritative_preflight(GODOT_TIMEOUT_SECONDS)
+                preflight = _wait_for_authoritative_preflight(server, GODOT_TIMEOUT_SECONDS)
                 if not preflight:
                     stage_payload = _wait_for_stage(stage_path, "preflight_accepted", 0.5)
                     preflight = {
@@ -343,16 +444,7 @@ def _run_probe_scenario(
                         "attempt_id": str(stage_payload.get("attempt_id", "")),
                     }
                 if preflight.get("grant_id"):
-                    before = backend_main.default_scene_archive_door_embodied_service.binding_revision
-                    backend_main.default_scene_archive_door_embodied_service.binding_revision += 1
-                    mutation_info = {
-                        "kind": "binding_revision_increment",
-                        "before": before,
-                        "after": backend_main.default_scene_archive_door_embodied_service.binding_revision,
-                        "grant_id": preflight["grant_id"],
-                        "attempt_id": preflight.get("attempt_id", ""),
-                        "source": "authoritative_preflight",
-                    }
+                    mutation_info = server.request('increment_revision', preflight)
             deadline = time.time() + GODOT_TIMEOUT_SECONDS
             while time.time() < deadline:
                 if runtime_path.exists() and process.poll() is not None:
@@ -481,23 +573,28 @@ def main() -> int:
         try:
             server.start()
             payload, log_path, mutation_info = _run_probe_scenario(
+                server=server,
                 scenario=scenario,
                 root=root,
                 log_dir=log_dir,
                 godot_exe=godot_exe,
             )
-            backend_trace = _backend_trace_for_scenario(
+            backend_trace = server.request('trace', dict(
                 scenario=scenario,
                 runtime_payload=payload,
                 mutation_info=mutation_info,
-            )
+            ))
             replay_trace = _replay_trace_for_scenario(
                 scenario=scenario,
                 runtime_payload=payload,
                 backend_trace=backend_trace,
             )
         finally:
-            server.stop()
+            try:
+                server.stop()
+            finally:
+                write_json(log_dir / f"{scenario}-backend-shutdown.json",
+                           getattr(server, 'shutdown_evidence', {'error': 'shutdown_evidence_missing'}))
 
         scenario_payloads[scenario] = payload
         backend_traces[scenario] = backend_trace

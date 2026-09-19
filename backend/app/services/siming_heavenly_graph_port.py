@@ -60,6 +60,24 @@ class HeavenlyGraphCheckpointNotFound(HeavenlyGraphError):
 
 
 class HeavenlyGraphPort(Protocol):
+    def read_siming_room_pending(self, scope: HeavenlyGraphScope) -> HeavenlyGraphNode | None:
+        raise NotImplementedError
+
+    def read_siming_room_head(self, scope: HeavenlyGraphScope):
+        raise NotImplementedError
+
+    def get_node_revision(self, *, scope: HeavenlyGraphScope, node_id: str, revision: int) -> HeavenlyGraphNode | None:
+        """点读已提交版本身份证明；不作为当前业务时间的可见性查询。"""
+        raise NotImplementedError
+
+    def get_admission_node(self, *, scope: HeavenlyGraphScope, entry_id: str,
+                           revision: int | None = None) -> HeavenlyGraphNode | None:
+        raise NotImplementedError
+
+    def list_pending_admission_nodes(self, *, scope: HeavenlyGraphScope | None, limit: int,
+                                     cursor=None) -> list[HeavenlyGraphNode]:
+        raise NotImplementedError
+
     def audit_consistency(
         self,
         *,
@@ -128,6 +146,10 @@ class HeavenlyGraphPort(Protocol):
     ) -> HeavenlyGraphRelation | None:
         raise NotImplementedError
 
+    def scope_current_time_bounds(self, scope: HeavenlyGraphScope) -> tuple[int, int]:
+        """返回固定MAX_TIME当前节点的最大valid_from及节点/关系的最大recorded_at。"""
+        raise NotImplementedError
+
     def query_nodes(
         self,
         query: HeavenlyNodeQuery,
@@ -152,6 +174,7 @@ class HeavenlyGraphPort(Protocol):
         recorded_at: int | None,
         node_limit: int,
         relation_limit: int,
+        planned_nodes: tuple[HeavenlyGraphNode, ...] | list[HeavenlyGraphNode] = (),
     ) -> HeavenlySubgraphResult:
         raise NotImplementedError
 

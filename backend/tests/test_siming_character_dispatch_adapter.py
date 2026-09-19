@@ -29,12 +29,17 @@ class _LocalGateway:
         task_kind: str,
         context: dict[str, object],
         route_override: str | None = None,
+        prepared_recall=None,
     ) -> dict[str, object]:
         return self._gateway.prepare_run_request(
             task_kind=task_kind,
             context=context,
             route_override=route_override or "local_only",
+            prepared_recall=prepared_recall,
         )
+
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
 
 
 def _local_runtime() -> CharacterAgentRuntime:
@@ -197,3 +202,23 @@ def test_player_impulse_hint_is_rejected_by_dispatch_adapter() -> None:
     assert result.delivery_inputs == []
     assert result.commands_by_actor == {}
     assert result.audit_summaries
+
+
+def test_prepare_deliveries_is_pure_and_sync_dispatch_uses_identical_target_order(monkeypatch):
+    runtime = _local_runtime()
+    try:
+        adapter = SimingCharacterDispatchAdapter(runtime=runtime)
+        event = make_siming_event(target_ids=['frontend_projector', 'char_b', 'char_unknown', 'char_b', 'char_a'])
+        calls = []
+        monkeypatch.setattr(runtime, 'ingest_siming_output', lambda delivery: calls.append(delivery) or [])
+        prepared = adapter.prepare_deliveries(event)
+        assert calls == []
+        assert [item.delivery_id for item in prepared.delivery_inputs] == [
+            'delivery:msg:siming:1:char_b:1', 'delivery:msg:siming:1:char_a:3']
+        assert prepared.audit_summaries[0].delivery_id == 'delivery:msg:siming:1:char_unknown:2'
+        dispatched = adapter.dispatch(event)
+        assert calls == prepared.delivery_inputs
+        assert dispatched.delivery_inputs == prepared.delivery_inputs
+        assert dispatched.audit_summaries == prepared.audit_summaries
+    finally:
+        runtime.close()

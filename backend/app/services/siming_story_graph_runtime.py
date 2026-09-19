@@ -23,6 +23,7 @@ from app.models.siming_story_graph import (
     StoryNodeBlueprint,
     StoryNodeTransitionCommand,
     StoryOutcomeApplication,
+    StoryOutcomePlan,
     StoryOutcomeEffect,
     StoryOutcomePort,
 )
@@ -51,14 +52,21 @@ class SimingStoryGraphRuntime:
         self._graph = graph
         self._memory = memory
 
-    def seed_blueprint(
+    def seed_blueprint(self, *, scope, blueprint, provenance, recorded_at):
+        batch = self.plan_seed_blueprint(scope=scope, blueprint=blueprint, provenance=provenance, recorded_at=recorded_at)
+        if batch is not None:
+            return self._graph.write_batch(batch)
+        return HeavenlyGraphWriteResult(transaction_id=f"story_seed:{blueprint.blueprint_id}",
+            idempotency_key=f"story_seed:{blueprint.blueprint_id}", applied=False, replayed=True)
+
+    def plan_seed_blueprint(
         self,
         *,
         scope: HeavenlyGraphScope,
         blueprint: StoryNodeBlueprint,
         provenance: GraphProvenance,
         recorded_at: int,
-    ) -> HeavenlyGraphWriteResult:
+    ) -> HeavenlyGraphWriteBatch | None:
         existing = self.read_blueprint(
             scope=scope,
             blueprint_id=blueprint.blueprint_id,
@@ -69,12 +77,7 @@ class SimingStoryGraphRuntime:
                 raise StoryGraphError(
                     f"authored blueprint {blueprint.blueprint_id!r} is immutable"
                 )
-            return HeavenlyGraphWriteResult(
-                transaction_id=f"story_seed:{blueprint.blueprint_id}",
-                idempotency_key=f"story_seed:{blueprint.blueprint_id}",
-                applied=False,
-                replayed=True,
-            )
+            return None
 
         node = HeavenlyGraphNode(
             node_id=self._blueprint_node_id(blueprint.blueprint_id),
@@ -94,13 +97,11 @@ class SimingStoryGraphRuntime:
                 scope_digest="scope:siming-heavenly",
             ),
         )
-        return self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+        return HeavenlyGraphWriteBatch(
                 transaction_id=f"story_seed:{blueprint.blueprint_id}",
                 idempotency_key=f"story_seed:{blueprint.blueprint_id}",
                 scope=scope,
                 nodes=[node],
-            )
         )
 
     def read_blueprint(
@@ -139,6 +140,13 @@ class SimingStoryGraphRuntime:
         if existing is not None:
             raise StoryGraphError(f"runtime story node {node_id!r} already exists")
 
+        batch = self.plan_runtime_node(scope=scope, blueprint_id=blueprint_id, node_id=node_id,
+                                       causal_basis_refs=causal_basis_refs, recorded_at=recorded_at)
+        self._graph.write_batch(batch)
+        return RuntimeStoryNode.model_validate(batch.nodes[0].attributes)
+
+    def plan_runtime_node(self, *, scope, blueprint_id, node_id, causal_basis_refs, recorded_at):
+        # 调用方负责既有蓝图/节点验证；仅构造冻结的原始实例batch。
         runtime_node = RuntimeStoryNode(
             node_id=node_id,
             blueprint_id=blueprint_id,
@@ -148,8 +156,7 @@ class SimingStoryGraphRuntime:
             ),
             causal_basis_refs=causal_basis_refs,
         )
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+        return HeavenlyGraphWriteBatch(
                 transaction_id=f"story_instantiate:{node_id}",
                 idempotency_key=f"story_instantiate:{node_id}",
                 scope=scope,
@@ -176,9 +183,7 @@ class SimingStoryGraphRuntime:
                         ),
                     )
                 ],
-            )
         )
-        return runtime_node
 
     def read_runtime_node(
         self,
@@ -228,6 +233,28 @@ class SimingStoryGraphRuntime:
         outcome: InterventionOutcomeMemoryEntry,
         provenance: GraphProvenance,
     ) -> RuntimeStoryNode:
+        prior = self._runtime_graph_node_at(scope=scope, node_id=node_id, valid_at=recorded_at)
+        batch = self.plan_transition_with_intervention_outcome(
+            prior=prior, scope=scope, node_id=node_id, expected=expected,
+            target=target, reason=reason, recorded_at=recorded_at,
+            outcome=outcome, provenance=provenance,
+        )
+        self._graph.write_batch(batch)
+        return RuntimeStoryNode.model_validate(batch.nodes[0].attributes)
+
+    def plan_transition_with_intervention_outcome(
+        self,
+        *,
+        prior: HeavenlyGraphNode,
+        scope: HeavenlyGraphScope,
+        node_id: str,
+        expected: str,
+        target: str,
+        reason: str,
+        recorded_at: int,
+        outcome: InterventionOutcomeMemoryEntry,
+        provenance: GraphProvenance,
+    ) -> HeavenlyGraphWriteBatch:
         outcome_node = HeavenlyGraphNode(
             node_id=outcome.entry_id,
             node_type=f"memory:{outcome.domain}",
@@ -246,7 +273,8 @@ class SimingStoryGraphRuntime:
                 scope_digest="scope:siming-heavenly",
             ),
         )
-        return self._transition(
+        return self.plan_transition(
+            prior=prior,
             scope=scope,
             node_id=node_id,
             expected=expected,
@@ -259,9 +287,16 @@ class SimingStoryGraphRuntime:
             extra_nodes=[outcome_node],
         )
 
-    def _transition(
+    def _transition(self, **kwargs) -> RuntimeStoryNode:
+        prior = self._runtime_graph_node_at(scope=kwargs["scope"], node_id=kwargs["node_id"], valid_at=kwargs["recorded_at"])
+        batch = self.plan_transition(prior=prior, **kwargs)
+        self._graph.write_batch(batch)
+        return RuntimeStoryNode.model_validate(batch.nodes[0].attributes)
+
+    def plan_transition(
         self,
         *,
+        prior: HeavenlyGraphNode,
         scope: HeavenlyGraphScope,
         node_id: str,
         expected: str,
@@ -272,12 +307,9 @@ class SimingStoryGraphRuntime:
         idempotency_key: str,
         provenance: GraphProvenance | None = None,
         extra_nodes: list[HeavenlyGraphNode] | None = None,
-    ) -> RuntimeStoryNode:
-        prior = self._runtime_graph_node_at(
-            scope=scope,
-            node_id=node_id,
-            valid_at=recorded_at,
-        )
+    ) -> HeavenlyGraphWriteBatch:
+        if prior.scope != scope or prior.node_id != node_id or prior.node_type != self._RUNTIME_NODE_TYPE:
+            raise StoryNodeTransitionError("planned story node identity mismatch")
         current = RuntimeStoryNode.model_validate(prior.attributes)
         if current.terminal:
             raise StoryNodeTransitionError(
@@ -307,8 +339,7 @@ class SimingStoryGraphRuntime:
             correlation_id=f"story_transition:{node_id}:{prior.revision + 1}",
             producer_system="siming_story_graph_runtime",
         )
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+        return HeavenlyGraphWriteBatch(
                 transaction_id=f"{transaction_id}:{prior.revision + 1}",
                 idempotency_key=idempotency_key,
                 scope=scope,
@@ -322,9 +353,7 @@ class SimingStoryGraphRuntime:
                     )
                 ]
                 + (extra_nodes or []),
-            )
         )
-        return updated
 
     def apply_authority_outcome(
         self,
@@ -332,22 +361,35 @@ class SimingStoryGraphRuntime:
         scope: HeavenlyGraphScope,
         outcome: AuthorityStoryOutcome,
     ) -> StoryOutcomeApplication:
+        plan = self.plan_authority_outcome(scope=scope, outcome=outcome)
+        if plan.batch is not None:
+            self._graph.write_batch(plan.batch)
+        return plan.result
+
+    def plan_authority_outcome(
+        self,
+        *,
+        scope: HeavenlyGraphScope,
+        outcome: AuthorityStoryOutcome,
+        planned_nodes: tuple[HeavenlyGraphNode, ...] | list[HeavenlyGraphNode] = (),
+        planned_blueprints: tuple[StoryNodeBlueprint, ...] | list[StoryNodeBlueprint] = (),
+    ) -> StoryOutcomePlan:
         prior_application = self._read_applied_outcome(scope=scope, outcome=outcome)
         if prior_application is not None:
-            return prior_application
+            return StoryOutcomePlan(result=prior_application)
 
-        matches = self._matching_ports(scope=scope, outcome=outcome)
+        planned_by_id = {node.node_id: node for node in planned_nodes}
+        if len(planned_by_id) != len(planned_nodes) or any(node.scope != scope or node.node_type != self._RUNTIME_NODE_TYPE for node in planned_nodes):
+            raise StoryGraphError("planned story outcome node identity mismatch")
+        current_by_id = {node.node_id: node for node in self._runtime_graph_nodes(scope=scope, valid_at=outcome.recorded_at)}
+        current_by_id.update({node_id: RuntimeStoryNode.model_validate(node.attributes) for node_id, node in planned_by_id.items()})
+        matches = self._matching_ports(scope=scope, outcome=outcome,
+            runtime_nodes=[current_by_id[node_id] for node_id in sorted(current_by_id)], blueprints={item.blueprint_id: item for item in planned_blueprints})
         if not matches:
-            return StoryOutcomeApplication(
-                authority_result_ref=outcome.authority_result_ref,
-                nodes={},
-                graph_transaction_ref=f"story_outcome:{outcome.authority_result_ref}",
-            )
+            return StoryOutcomePlan(result=StoryOutcomeApplication(
+                authority_result_ref=outcome.authority_result_ref, nodes={},
+                graph_transaction_ref=f"story_outcome:{outcome.authority_result_ref}"))
 
-        current_by_id = {
-            node.node_id: node
-            for node in self._runtime_graph_nodes(scope=scope, valid_at=outcome.recorded_at)
-        }
         updated_by_id: dict[str, RuntimeStoryNode] = {}
         affected_ids: list[str] = []
         for source, port in matches:
@@ -379,7 +421,7 @@ class SimingStoryGraphRuntime:
             self._runtime_graph_node(
                 scope=scope,
                 runtime_node=updated,
-                prior=self._runtime_graph_node_at(
+                prior=planned_by_id.get(node_id) or self._runtime_graph_node_at(
                     scope=scope,
                     node_id=node_id,
                     valid_at=outcome.recorded_at,
@@ -439,22 +481,20 @@ class SimingStoryGraphRuntime:
                 ),
             ]
         )
-        self._graph.write_batch(
-            HeavenlyGraphWriteBatch(
+        batch = HeavenlyGraphWriteBatch(
                 transaction_id=transaction_id,
                 idempotency_key=transaction_id,
                 scope=scope,
                 nodes=graph_nodes,
-            )
         )
-        return StoryOutcomeApplication(
+        return StoryOutcomePlan(batch=batch, result=StoryOutcomeApplication(
             authority_result_ref=outcome.authority_result_ref,
             nodes={
                 node.blueprint_id: node
                 for node in sorted(updated_by_id.values(), key=lambda item: item.node_id)
             },
             graph_transaction_ref=transaction_id,
-        )
+        ))
 
     def _read_applied_outcome(
         self,
@@ -511,13 +551,14 @@ class SimingStoryGraphRuntime:
         *,
         scope: HeavenlyGraphScope,
         outcome: AuthorityStoryOutcome,
+        runtime_nodes: list[RuntimeStoryNode] | None = None,
+        blueprints: dict[str, StoryNodeBlueprint] | None = None,
     ) -> list[tuple[RuntimeStoryNode, StoryOutcomePort]]:
         matches: list[tuple[RuntimeStoryNode, StoryOutcomePort]] = []
-        for runtime_node in self._runtime_graph_nodes(
-            scope=scope,
-            valid_at=outcome.recorded_at,
-        ):
-            blueprint = self.read_blueprint(
+        for runtime_node in (runtime_nodes if runtime_nodes is not None else self._runtime_graph_nodes(
+            scope=scope, valid_at=outcome.recorded_at)):
+
+            blueprint = (blueprints or {}).get(runtime_node.blueprint_id) or self.read_blueprint(
                 scope=scope,
                 blueprint_id=runtime_node.blueprint_id,
                 valid_at=outcome.recorded_at,

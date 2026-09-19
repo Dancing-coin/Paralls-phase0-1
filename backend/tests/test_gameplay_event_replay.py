@@ -41,6 +41,27 @@ def test_full_replay_and_checkpoint_plus_tail_replay_have_identical_projection_h
     assert full.source_revision_vector == {"aggregate:counter": 2}
 
 
+def test_trusted_replay_continuation_matches_full_and_rejects_other_projector() -> None:
+    store = GameplayEventStore()
+    assert store.append_batch(_batch(
+        events=[_event("evt:counter:1", stream_id="aggregate:counter")],
+        outbox_entries=[_outbox("evt:counter:1")], expected={"aggregate:counter": 0},
+    )).committed
+    assert store.append_batch(_batch(
+        tx="tx:gameplay:2", command_id="cmd:gameplay:2", key="idempotency:counter:2", digest="digest:v2",
+        events=[_event("evt:counter:2", stream_id="aggregate:counter", tx="tx:gameplay:2", command_id="cmd:gameplay:2")],
+        outbox_entries=[_outbox("evt:counter:2", tx="tx:gameplay:2")], expected={"aggregate:counter": 1},
+    )).committed
+    replay = GameplayProjectionReplay(projector_id="projection:counter", projector_version="v1")
+    events = store.read_events()
+    prefix = replay.full_replay(events[:1])
+    resumed = replay.continue_replay(prefix, events[1:])
+    assert resumed.projection_hash == replay.full_replay(events).projection_hash
+    mismatch = GameplayProjectionReplay(projector_id="projection:other", projector_version="v1")
+    rejected = mismatch.continue_replay(prefix, events[1:])
+    assert not rejected.succeeded and rejected.failure.error_code == "replay_context_mismatch"
+
+
 def test_replay_is_idempotent_for_duplicate_event_delivery() -> None:
     store = GameplayEventStore()
     store.append_batch(

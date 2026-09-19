@@ -13,7 +13,7 @@ from pydantic import (
     model_validator,
 )
 
-from app.models.siming_heavenly_graph import HeavenlyGraphScope
+from app.models.siming_heavenly_graph import HeavenlyGraphScope, SimingOperationalRoomHead
 from app.models.siming_adaptive_bridge import AdaptiveBridgeNodeProposal
 from app.models.siming_resource_capability import StagingAck, StagingRequest
 
@@ -197,3 +197,105 @@ class SimingCompiledContext(StrictMemoryModel):
     selected_relation_refs: list[str] = Field(default_factory=list)
     truncated: bool
     context_hash: str
+
+# operational 账本不属于 SimingHeavenlyMemoryEntry，避免进入业务上下文。
+class SimingAdmissionKey(StrictMemoryModel):
+    scope: HeavenlyGraphScope
+    source_event_id: str = Field(min_length=1)
+    consumer: Literal['siming'] = 'siming'
+
+    @property
+    def entry_id(self) -> str:
+        import hashlib
+        import json
+        canonical = json.dumps(self.model_dump(mode='json'), sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+        return 'siming_admission:' + hashlib.sha256(canonical.encode()).hexdigest()
+
+    def operation_key(self, stage: str, ordinal: int = 0) -> str:
+        if not stage or ':' in stage or ordinal < 0:
+            raise ValueError('invalid admission operation key')
+        return f'{self.entry_id}:{stage}:{ordinal}'
+
+    def effect_key(self, stage: str, ordinal: int, effect_ordinal: int) -> str:
+        if effect_ordinal < 0:
+            raise ValueError('invalid admission effect key')
+        return f'{self.operation_key(stage, ordinal)}:effect:{effect_ordinal}'
+
+
+SimingAdmissionState = Literal['admitted', 'due', 'provider_pending', 'result_ready', 'commit_started',
+                              'completed', 'stale', 'requeued', 'cancelled', 'failed']
+SIMING_ADMISSION_TERMINAL = frozenset({'completed', 'stale', 'cancelled', 'failed'})
+
+
+class SimingAdmissionProvider(StrictMemoryModel):
+    schema_version: Literal[1] = 1
+    provider_identity: str = Field(min_length=1)
+    request_json: str
+    frame_json: str
+    pin_digest: str
+
+
+class SimingAdmissionEffect(StrictMemoryModel):
+    effect_key: str
+    kind: str = Field(min_length=1)
+    payload: dict[str, JsonValue]
+
+
+class SimingAdmissionEffectReceipt(StrictMemoryModel):
+    effect_key: str
+    receipt: dict[str, JsonValue]
+
+
+class SimingAdmissionTransition(StrictMemoryModel):
+    room_head: SimingOperationalRoomHead | None = None
+    state: SimingAdmissionState
+    stage: Literal['initial', 'adaptive', 'candidate', 'selection', 'staging', 'dispatch', 'completed'] = 'initial'
+    ordinal: int = Field(default=0, ge=0)
+    due_at: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    provider: SimingAdmissionProvider | None = None
+    completion_json: str | None = None
+    effects: list[SimingAdmissionEffect] = Field(default_factory=list)
+    receipts: list[SimingAdmissionEffectReceipt] = Field(default_factory=list)
+    reason: str = ''
+
+
+class SimingAdmissionMemoryEntry(StrictMemoryModel):
+    domain: Literal['siming_admission'] = 'siming_admission'
+    schema_version: Literal[1] = 1
+    key: SimingAdmissionKey
+    revision: int = Field(ge=1)
+    source: dict[str, JsonValue]
+    source_digest: str
+    source_outbox_ref: str | None = None
+    source_transaction_ref: str | None = None
+    admitted_at: float = Field(ge=0, allow_inf_nan=False)
+    expires_at: float = Field(gt=0, allow_inf_nan=False)
+    due_at: float = Field(ge=0, allow_inf_nan=False)
+    policy_version: str = Field(min_length=1)
+    state: SimingAdmissionState = 'admitted'
+    transition: SimingAdmissionTransition | None = None
+    transition_digest: str = ''
+    room_sequence: int = Field(default=0, ge=0)
+    provider_revision: int | None = Field(default=None, ge=1)
+    result_revision: int | None = Field(default=None, ge=1)
+    commit_revision: int | None = Field(default=None, ge=1)
+
+    @property
+    def entry_id(self) -> str:
+        return self.key.entry_id
+
+
+class SimingAdmissionReceipt(StrictMemoryModel):
+    entry: SimingAdmissionMemoryEntry
+    replayed: bool = False
+
+
+class SimingAdmissionCursor(StrictMemoryModel):
+    scope: HeavenlyGraphScope
+    due_at: float
+    entry_id: str
+
+
+class SimingAdmissionPage(StrictMemoryModel):
+    entries: list[SimingAdmissionMemoryEntry]
+    next_cursor: SimingAdmissionCursor | None = None

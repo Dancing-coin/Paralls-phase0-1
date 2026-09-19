@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi.testclient import TestClient
 
 import app.main as main
-from app.main import app, reset_runtime_state
+from app.main import component_app as app, reset_runtime_state
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStore
 from app.services.authority_event_bus import InMemoryAuthorityEventBus

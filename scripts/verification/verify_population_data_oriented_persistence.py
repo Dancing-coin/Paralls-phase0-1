@@ -12,6 +12,7 @@ import sys
 import platform
 import tempfile
 import tracemalloc
+from collections import Counter
 from statistics import median
 from time import perf_counter
 from pathlib import Path
@@ -98,6 +99,7 @@ def measure_scale(population: int, repeats: int = 30) -> dict[str, object]:
         touched = []
         encoded = []
         deletes = []
+        write_tables = Counter()
         capture = graph._capture_write_batch_state
         encode = graph._payload_json
 
@@ -117,9 +119,17 @@ def measure_scale(population: int, repeats: int = 30) -> dict[str, object]:
         graph._capture_write_batch_state = capture_count
         graph._payload_json = encode_count
         graph._snapshot_mutable_state = forbid_snapshot
-        graph._connection.set_trace_callback(
-            lambda statement: deletes.append(statement) if statement.lstrip().upper().startswith("DELETE") else None
-        )
+        def trace_write(statement):
+            words = statement.strip().split()
+            if words and words[0].upper() == "DELETE":
+                deletes.append(statement)
+            prefix = [word.upper() for word in words[:4]]
+            if prefix[:2] == ["INSERT", "INTO"]:
+                write_tables[words[2].split("(")[0].lower()] += 1
+            elif prefix == ["INSERT", "OR", "REPLACE", "INTO"]:
+                write_tables[words[4].split("(")[0].lower()] += 1
+
+        graph._connection.set_trace_callback(trace_write)
         timings, rows, bytes_per_write = [], [], []
         tracemalloc.start()
         try:
@@ -147,9 +157,13 @@ def measure_scale(population: int, repeats: int = 30) -> dict[str, object]:
         "process_peak_rss_bytes": peak_rss_bytes(),
         "python_peak_allocated_bytes": peak_allocated, "timings_ms": timings,
         "undo_entries": touched, "sql_changed_rows": rows, "serialized_bytes": bytes_per_write,
+        "sql_write_tables": dict(write_tables),
         "whole_graph_snapshot_calls": 0, "delete_count": len(deletes),
         "reopened_node_versions": restored,
-        "passed": not deletes and set(touched) == {1} and set(rows) == {3}
+        "passed": not deletes and set(touched) == {1} and set(rows) == {5}
+                  # 单节点历史、当前时间索引、stream head、幂等 receipt、scope revision summary 各一行。
+                  and write_tables == {table: repeats for table in (
+                      "graph_nodes", "graph_stream_revisions", "graph_idempotency", "graph_revision_summaries", "graph_current_times") }
                   and restored == population + repeats and last.revision == repeats + 1,
     }
 
@@ -191,6 +205,17 @@ def _continuity_command(index: int) -> CharacterContinuityCommand:
     )
 
 
+def _reset_session_wal(session: CharacterAgentSessionStore, wal_path: Path) -> int:
+    db = session._connection
+    assert db is not None
+    # 关闭自动 checkpoint 后仍可能复用迁移 WAL，必须确认截断才能按增长量计帧。
+    db.execute("PRAGMA wal_autocheckpoint=0")
+    checkpoint = db.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+    if checkpoint != (0, 0, 0) or wal_path.stat().st_size != 0:
+        raise RuntimeError(f"session_wal_checkpoint_failed:{checkpoint}")
+    return db.execute("PRAGMA page_size").fetchone()[0]
+
+
 def measure_session_and_checkpoint_scale(
     population: int, repeats: int = 30
 ) -> dict[str, object]:
@@ -207,29 +232,38 @@ def measure_session_and_checkpoint_scale(
             encoding="utf-8",
         )
         session = CharacterAgentSessionStore(storage_root=storage_root)
-        session.append_event(
-            "char_a",
-            "population_persistence_probe",
-            population,
-            {"probe_kind": "fixed", "probe_value": "x" * 32},
-            expected_revision=population,
-        )
-        actor_path = session._actor_storage_path("char_a")
-        migration_bytes = actor_path.stat().st_size
-        append_bytes: list[int] = []
-        for offset in range(repeats):
-            before = actor_path.stat().st_size
+        try:
             session.append_event(
                 "char_a",
                 "population_persistence_probe",
-                population + offset + 1,
+                population,
                 {"probe_kind": "fixed", "probe_value": "x" * 32},
-                expected_revision=population + offset + 1,
+                expected_revision=population,
             )
-            append_bytes.append(actor_path.stat().st_size - before)
-        session_reopened_count = CharacterAgentSessionStore(
-            storage_root=storage_root
-        ).event_count("char_a")
+            session_path = storage_root / "character_sessions.sqlite3"
+            wal_path = Path(str(session_path) + "-wal")
+            migration_bytes = session_path.stat().st_size + wal_path.stat().st_size
+            page_size = _reset_session_wal(session, wal_path)
+            append_bytes: list[int] = []
+            serialized_event_bytes: list[int] = []
+            for offset in range(repeats):
+                before = wal_path.stat().st_size
+                entry = session.append_event(
+                    "char_a",
+                    "population_persistence_probe",
+                    population + offset + 1,
+                    {"probe_kind": "fixed", "probe_value": "x" * 32},
+                    expected_revision=population + offset + 1,
+                )
+                append_bytes.append(wal_path.stat().st_size - before)
+                serialized_event_bytes.append(len(json.dumps(entry, ensure_ascii=False, separators=(",", ":")).encode("utf-8")))
+        finally:
+            session.close()
+        reopened_session = CharacterAgentSessionStore(storage_root=storage_root)
+        try:
+            session_reopened_count = reopened_session.event_count("char_a")
+        finally:
+            reopened_session.close()
 
         graph_path = storage_root / "continuity.sqlite3"
         graph = SQLiteHeavenlyGraphAdapter(graph_path)
@@ -239,6 +273,8 @@ def measure_session_and_checkpoint_scale(
         checkpoint_bytes: list[int] = []
         checkpoint_event_indexes: list[int] = []
         current_state_bytes: list[int] = []
+        current_state_event_indexes: list[int] = []
+        current_state_contains_history: list[bool] = []
         original_snapshot_write = continuity_store.write_snapshot
         original_current_write = continuity_store.write_current_state
 
@@ -256,6 +292,11 @@ def measure_session_and_checkpoint_scale(
 
         def counted_current_write(**kwargs: object) -> None:
             snapshot = kwargs["snapshot"]
+            current_state_event_indexes.append(int(snapshot["event_index"]))
+            current_state_contains_history.append(bool(set(snapshot).intersection({
+                "session_timeline", "session_timeline_tail", "working_memory", "continuity_receipts",
+                "materialization_receipts", "pending_seed_candidates",
+            })))
             current_state_bytes.append(
                 len(
                     json.dumps(
@@ -275,6 +316,7 @@ def measure_session_and_checkpoint_scale(
             for index in range(repeats)
         ]
         runtime_session_count = runtime._session_timeline_event_count("char_a")
+        runtime._session_store.close()
         graph.close()
 
         reopened_graph = SQLiteHeavenlyGraphAdapter(graph_path)
@@ -289,6 +331,7 @@ def measure_session_and_checkpoint_scale(
             reopened_runtime_session_count = (
                 reopened_runtime._session_timeline_event_count("char_a")
             )
+            reopened_runtime._session_store.close()
         finally:
             reopened_graph.close()
 
@@ -303,27 +346,37 @@ def measure_session_and_checkpoint_scale(
     passed = (
         len(append_bytes) == repeats
         and min(append_bytes) > 0
-        and max(append_bytes) - min(append_bytes) < 128
+        and max(append_bytes) <= 128 * page_size
+        and max(serialized_event_bytes) - min(serialized_event_bytes) < 128
         and session_reopened_count == expected_session_count
         and all(receipt.status == "committed" for receipt in receipts)
         and runtime_session_count == expected_runtime_session_count
         and reopened_runtime_session_count == expected_runtime_session_count
         and reopened_revision == repeats
-        and checkpoint_event_indexes
-        and checkpoint_event_indexes[0] == expected_session_count + 1
-        and all(interval <= 16 for interval in intervals)
+        # 新事实由 Session 原子投影恢复，不再周期复制完整角色历史到图 checkpoint。
+        and not checkpoint_event_indexes
+        and current_state_event_indexes == list(range(expected_session_count + 1, expected_runtime_session_count + 1))
+        and not any(current_state_contains_history)
         and len(current_state_bytes) == repeats
     )
     return {
         "population": population,
         "samples": repeats,
         "legacy_migration_bytes": migration_bytes,
+        "sqlite_page_size": page_size,
+        "continuity_receipt_statuses": [receipt.status for receipt in receipts],
+        "runtime_event_count_before_reopen": runtime_session_count,
         "session_append_bytes": append_bytes,
         "session_append_bytes_p50": median(append_bytes),
         "session_append_bytes_max": max(append_bytes),
+        "session_append_bytes_kind": "sqlite_wal_frames_with_autocheckpoint_disabled",
+        "session_serialized_event_bytes": serialized_event_bytes,
         "session_reopened_event_count": session_reopened_count,
         "current_state_serialized_bytes": current_state_bytes,
         "current_state_serialized_bytes_max": max(current_state_bytes),
+        "current_state_event_indexes": current_state_event_indexes,
+        "current_state_contains_history": current_state_contains_history,
+        "current_state_kind": "compact_session_projection",
         "checkpoint_serialized_bytes": checkpoint_bytes,
         "checkpoint_event_indexes": checkpoint_event_indexes,
         "checkpoint_intervals": intervals,
@@ -371,6 +424,7 @@ def main() -> int:
             "source": "initial RED run against full snapshot persistence",
         },
         "optimized_probe": optimized,
+        "test_returncode": result.returncode,
         "test_command": command,
         "test_output": result.stdout + result.stderr,
     }

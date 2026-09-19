@@ -74,6 +74,54 @@ class InMemoryHeavenlyGraphAdapter:
         self._branch_markers: dict[ScopeKey, list[GraphBranchLifecycleMarker]] = {}
         self._branch_status: dict[ScopeKey, str] = {}
         self._branch_revisions: dict[ScopeKey, int] = {}
+        self._siming_room_heads = {}
+
+    def read_siming_room_head(self, scope):
+        value = self._siming_room_heads.get(self._scope_key(scope.model_copy(update={"scene_id": None})))
+        return None if value is None else value.model_copy(deep=True)
+
+    def read_siming_room_pending(self, scope):
+        from app.models.siming_heavenly_memory import SIMING_ADMISSION_TERMINAL
+        room_scope = scope.model_copy(update={"scene_id": None})
+        nodes = (max(versions, key=lambda value: value.revision) for versions in self._nodes.values())
+        node = min((node for node in nodes if node.node_type == "siming_admission"
+                    and node.scope.model_copy(update={"scene_id": None}) == room_scope
+                    and node.attributes["state"] not in SIMING_ADMISSION_TERMINAL),
+                   key=lambda node: (node.attributes.get("room_sequence", 0), node.node_id), default=None)
+        return None if node is None else node.model_copy(deep=True)
+
+    def get_node_revision(self, *, scope, node_id, revision):
+        versions = self._nodes.get((self._scope_key(scope), node_id), ())
+        node = next((item for item in versions if item.revision == revision), None)
+        return None if node is None else node.model_copy(deep=True)
+
+    def get_admission_node(self, *, scope, entry_id, revision=None):
+        versions = self._nodes.get((self._scope_key(scope), entry_id), [])
+        matches = [node for node in versions if node.node_type == "siming_admission"
+                   and (revision is None or node.revision == revision)]
+        return max(matches, key=lambda node: node.revision).model_copy(deep=True) if matches else None
+
+    def list_pending_admission_nodes(self, *, scope, limit, cursor=None):
+        import json
+        from app.models.siming_heavenly_memory import SIMING_ADMISSION_TERMINAL
+        if not 1 <= limit <= 257:
+            raise ValueError("siming_admission_page_limit")
+        def position(node):
+            return (json.dumps(node.scope.model_dump(mode="json"), sort_keys=True, separators=(",", ":")),
+                    node.attributes["due_at"], node.node_id)
+        after = None if cursor is None else (
+            json.dumps(cursor.scope.model_dump(mode="json"), sort_keys=True, separators=(",", ":")),
+            cursor.due_at, cursor.entry_id)
+        selected = []
+        for (stored_scope, _), versions in self._nodes.items():
+            if scope is not None and stored_scope != self._scope_key(scope):
+                continue
+            node = max(versions, key=lambda item: item.revision)
+            if node.node_type != "siming_admission" or node.attributes["state"] in SIMING_ADMISSION_TERMINAL:
+                continue
+            if after is None or position(node) > after:
+                selected.append(node)
+        return [node.model_copy(deep=True) for node in sorted(selected, key=position)[:limit]]
 
     def write_batch(
         self,
@@ -485,6 +533,11 @@ class InMemoryHeavenlyGraphAdapter:
                 deep=True,
             )
 
+        if batch.siming_room_head is not None:
+            head = batch.siming_room_head
+            prior_head = self.read_siming_room_head(head.scope)
+            if head.revision != (1 if prior_head is None else prior_head.revision + 1):
+                raise ValueError("siming_room_head_revision_conflict")
         self._validate_batch_scopes(batch)
         self._validate_batch_revisions(batch)
         self._validate_relation_endpoints(batch)
@@ -515,6 +568,8 @@ class InMemoryHeavenlyGraphAdapter:
                 relation.model_copy(deep=True)
             )
         self._advance_scope_stream_revisions(batch)
+        if batch.siming_room_head is not None:
+            self._siming_room_heads[self._scope_key(batch.siming_room_head.scope)] = batch.siming_room_head.model_copy(deep=True)
 
         result = HeavenlyGraphWriteResult(
             transaction_id=batch.transaction_id,
@@ -824,6 +879,12 @@ class InMemoryHeavenlyGraphAdapter:
         )
         return relations[0] if relations else None
 
+    def scope_current_time_bounds(self, scope: HeavenlyGraphScope) -> tuple[int, int]:
+        nodes = self.query_nodes(HeavenlyNodeQuery(scope=scope, valid_at=2**63 - 1, limit=None))
+        relations = self.query_relations(HeavenlyRelationQuery(scope=scope, valid_at=2**63 - 1, limit=None))
+        return (max((node.validity.valid_from for node in nodes), default=0),
+                max((entity.recorded_at for entity in [*nodes, *relations]), default=0))
+
     def query_nodes(
         self,
         query: HeavenlyNodeQuery,
@@ -852,7 +913,7 @@ class InMemoryHeavenlyGraphAdapter:
             )
             if node is None:
                 continue
-            if node.node_type == "branch_marker":
+            if node.node_type in {"branch_marker", "siming_admission"}:
                 continue
             if self._is_node_closed(
                 query.scope,
@@ -892,7 +953,7 @@ class InMemoryHeavenlyGraphAdapter:
             if stored_scope != scope_key or (node_id_filter and node_id not in node_id_filter):
                 continue
             for node in versions:
-                if node.node_type == "branch_marker":
+                if node.node_type in {"branch_marker", "siming_admission"}:
                     continue
                 if query.recorded_at is not None and node.recorded_at > query.recorded_at:
                     continue
@@ -969,6 +1030,7 @@ class InMemoryHeavenlyGraphAdapter:
         recorded_at: int | None,
         node_limit: int,
         relation_limit: int,
+        planned_nodes: tuple[HeavenlyGraphNode, ...] | list[HeavenlyGraphNode] = (),
     ) -> HeavenlySubgraphResult:
         if direction not in {"outgoing", "incoming", "both"}:
             raise ValueError(f"unsupported subgraph direction {direction!r}")
@@ -979,6 +1041,11 @@ class InMemoryHeavenlyGraphAdapter:
         if not 1 <= relation_limit <= 2000:
             raise ValueError("relation_limit must be within 1..2000")
 
+        if not seed_node_ids and not planned_nodes:
+            return HeavenlySubgraphResult(
+                scope=scope, seed_node_ids=[], valid_at=valid_at, recorded_at=recorded_at,
+            )
+
         nodes = self.query_nodes(
             HeavenlyNodeQuery(
                 scope=scope,
@@ -988,6 +1055,22 @@ class InMemoryHeavenlyGraphAdapter:
             )
         )
         node_by_id = {node.node_id: node for node in nodes}
+        for node in planned_nodes:
+            if (node.scope != scope or not node.validity.contains(valid_at)
+                    or node.recorded_at > (valid_at if recorded_at is None else recorded_at)
+                    or node.node_type in {"branch_marker", "siming_admission"}
+                    or node.semantic_metadata.derivation_kind in {"retraction", "redaction"}
+                    or not self._branch_available(scope, valid_at=valid_at, recorded_at=recorded_at)
+                    or self._is_branch_discarded(scope, recorded_at, valid_at)
+                    or self._is_node_closed(scope, node.node_id, valid_at=valid_at, recorded_at=recorded_at)):
+                raise ValueError("planned subgraph node scope/time/visibility mismatch")
+            prior = node_by_id.get(node.node_id)
+            if prior == node:
+                continue
+            if (node.revision != (1 if prior is None else prior.revision + 1)
+                    or (prior is not None and (node.recorded_at < prior.recorded_at or node.node_type != prior.node_type))):
+                raise ValueError("planned subgraph node revision mismatch")
+            node_by_id[node.node_id] = node
         relations = self.query_relations(
             HeavenlyRelationQuery(
                 scope=scope,
@@ -1293,7 +1376,7 @@ class InMemoryHeavenlyGraphAdapter:
 
     def _batch_hash(self, batch: HeavenlyGraphWriteBatch) -> str:
         canonical = json.dumps(
-            batch.model_dump(mode="json"),
+            batch.model_dump(mode="json", exclude={"siming_room_head"} if batch.siming_room_head is None else set()),
             ensure_ascii=False,
             sort_keys=True,
             separators=(",", ":"),
@@ -1420,6 +1503,8 @@ class InMemoryHeavenlyGraphAdapter:
                 batch_node = batch_nodes.get((scope_key, endpoint))
                 if batch_node is not None:
                     versions.append(batch_node)
+                if any(node.node_type == "siming_admission" for node in versions):
+                    raise ValueError("operational admission cannot be a business relation endpoint")
                 exists = (
                     self._effective_entity(
                         versions,
@@ -1823,7 +1908,8 @@ class InMemoryHeavenlyGraphAdapter:
                 for (stored_scope, node_id), versions in self._nodes.items()
                 if stored_scope == key and not node_id.startswith("branch:closed:")
                 for node in versions
-                if (recorded_at is None or node.recorded_at <= recorded_at)
+                if node.node_type != "siming_admission"
+                and (recorded_at is None or node.recorded_at <= recorded_at)
                 and node.validity.valid_from <= valid_at
             ),
             key=lambda node: (node.node_id, node.revision),

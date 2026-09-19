@@ -208,6 +208,25 @@ class HeavenlyGraphContract(ABC):
     def test_subgraph_traversal_respects_depth_bound(self) -> None:
         assert_bounded_subgraph_contract(self.make_graph())
 
+    def test_empty_subgraph_skips_unbounded_graph_reads(self, monkeypatch) -> None:
+        graph = self.make_graph()
+        scope = actor_scope("char_b")
+        seed_chain(graph, scope, length=2)
+
+        def unexpected_read(_query):
+            pytest.fail("empty subgraph must not read the entire graph")
+
+        monkeypatch.setattr(graph, "query_nodes", unexpected_read)
+        monkeypatch.setattr(graph, "query_relations", unexpected_read)
+        result = graph.query_subgraph(
+            scope=scope, seed_node_ids=[], relation_types=[], direction="both",
+            max_depth=4, valid_at=20, recorded_at=20, node_limit=10, relation_limit=10,
+        )
+        assert result.scope == scope
+        assert result.seed_node_ids == []
+        assert result.nodes == [] and result.relations == []
+        assert result.truncated is False
+
     def test_semantic_consistency_audit_accepts_admitted_history(self) -> None:
         graph = self.make_graph()
         scope = graph_scope()

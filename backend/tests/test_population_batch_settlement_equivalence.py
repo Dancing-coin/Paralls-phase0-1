@@ -159,6 +159,37 @@ def test_owner_batch_returns_only_each_intents_global_sequence() -> None:
     assert all(value is not None and value[0] == value[1] for value in sequence_ranges)
 
 
+def test_batch_result_reads_each_committed_event_once_on_commit_and_replay(tmp_path, monkeypatch):
+    from collections import Counter
+    from app.gameplay.event_store import DurableGameplayEventStore
+
+    store = DurableGameplayEventStore(tmp_path / "batch.db")
+    authority = OrganizationAuthority(store=store)
+    suffixes = tuple(f"worker_{index:02d}" for index in range(28))
+    for suffix in suffixes:
+        _closed_window(authority, suffix)
+    requests = tuple(_due_request(suffix) for suffix in suffixes)
+    get_event = store.get_event
+    reads = Counter()
+
+    def counted(event_id):
+        reads[event_id] += 1
+        return get_event(event_id)
+
+    monkeypatch.setattr(store, "get_event", counted)
+    first = authority.record_operating_windows_due_batch(requests)
+    event_ids = [event_id for item in first.results.values() for event_id in item.committed_event_ids]
+    assert first.append_count == 1 and len(event_ids) == len(requests)
+    assert reads == Counter(event_ids)
+    before_replay = store.get_last_global_sequence()
+    reads.clear()
+    replay = authority.record_operating_windows_due_batch(requests)
+    assert replay.append_count == 0 and store.get_last_global_sequence() == before_replay
+    assert reads == Counter(event_ids)
+    assert replay.results == {key: value.model_copy(update={"idempotency_status": "duplicate_replayed"})
+                              for key, value in first.results.items()}
+
+
 def test_invalid_window_is_rejected_without_swallowing_disjoint_valid_window() -> None:
     store = GameplayEventStore()
     authority = OrganizationAuthority(store=store)

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "population-mixed-soak",
+  "order": 204,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/population_mixed_matrix.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/population-mixed-soak-report.json",
+  "description": "固定机器显式运行100/1,000 人30分钟1×、30窗10×和1,000人2小时；逐份离线复验原证据"
+}

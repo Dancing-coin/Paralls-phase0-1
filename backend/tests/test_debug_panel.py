@@ -1,8 +1,10 @@
 from fastapi.testclient import TestClient
+import pytest
+from starlette.websockets import WebSocketDisconnect
 
 from app.debug_narration import build_debug_event
 from app.debug_stream import debug_stream
-from app.main import _emit_debug_from_messages, app
+from app.main import _emit_debug_from_messages, component_app as app
 
 
 def test_debug_panel_route_serves_html() -> None:
@@ -34,6 +36,26 @@ def test_debug_ws_replays_stream_history() -> None:
 
     assert first["domain"] == "world"
     assert first["summary"] == "玩家进入了 zone_focus。"
+
+
+def test_debug_ws_owner_delivery_and_reset_require_reconnect() -> None:
+    from threading import Thread
+
+    debug_stream.clear()
+    client = TestClient(app)
+    with client.websocket_connect("/debug/ws") as websocket:
+        worker = Thread(target=lambda: debug_stream.publish({"summary": "owner fact"}))
+        worker.start()
+        worker.join(timeout=1)
+        assert not worker.is_alive()
+        assert websocket.receive_json()["summary"] == "owner fact"
+        debug_stream.clear()
+        with pytest.raises(WebSocketDisconnect) as closed:
+            websocket.receive_json()
+        assert closed.value.code == 1013
+    debug_stream.publish({"summary": "new generation"})
+    with client.websocket_connect("/debug/ws") as websocket:
+        assert websocket.receive_json() == {"summary": "new generation", "sequence": 1}
 
 
 def test_debug_ws_replays_scheduling_round_state_observatory_event() -> None:

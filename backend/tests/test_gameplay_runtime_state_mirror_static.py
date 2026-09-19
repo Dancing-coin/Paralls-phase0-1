@@ -52,7 +52,8 @@ def test_gameplay_mirror_bridge_is_scope_limited_and_presentation_only() -> None
     assert '"gameplay_mirror_subscribe"' in source
     assert "_allowed_actor_refs.has(actor_ref)" in source
     assert "consumer.consume_projection(payload)" in source
-    assert "consumer.consume_delivery(payload)" in source
+    assert "consumer.consume_validated_delivery(payload)" in source
+    assert "func _accept_transport(payload: Dictionary)" in source
     assert "if consumer.resync_required:" in source
     assert "request_snapshot(actor_ref)" in source
     assert "consumer.mark_resync_required()" in source
@@ -112,3 +113,34 @@ def test_live_mirror_verifier_covers_authority_prediction_confirmation_and_rejec
     assert "live-gameplay-mirror-prediction-backend.json" in verifier
     assert 'str(prediction_rejection.get("error_code", "")) == "revision_conflict"' in verifier
     assert '"mutation_count": 0' in (ROOT / "backend" / "app" / "main.py").read_text(encoding="utf-8")
+
+
+def test_rebound_projection_removal_preserves_authorized_consumer():
+    source = (ROOT / 'scripts/interaction/GameplayMirrorBridge.gd').read_text(encoding='utf-8')
+    bound = source.split('func _on_session_bound(', 1)[1].split('\n\nfunc ', 1)[0]
+    retained = bound.split('\t\telse:', 1)[1].split('\n\tfor jurisdiction_ref', 1)[0]
+    assert 'clear_projection()' in retained
+    assert 'projection_removed.emit(actor_ref)' in retained
+    assert 'unregister_consumer' not in retained
+
+
+def test_population_lod_demotes_before_promoting_and_probe_measures_transient_peak():
+    presenter = (ROOT / 'scripts/phase0/PopulationPresenter.gd').read_text(encoding='utf-8')
+    process = presenter.split('func _process(', 1)[1].split('\n\nfunc ', 1)[0]
+    assert process.index('for actor_ref: String in _near_labels.keys():') < process.index('marker.mesh = _near_mesh')
+    probe = (ROOT / 'scripts/verification/GameplayMirrorBridgeProbe.gd').read_text(encoding='utf-8')
+    assert 'node_added.connect' in probe and 'node_removed.connect' in probe
+    assert 'peak_labels' in probe and 'peak_meshes' in probe
+    assert '_verify_population_near_swap()' in probe
+
+
+def test_population_screenshot_finishes_before_rotation_and_uses_verified_anchor():
+    probe = (ROOT / 'scripts/phase0/PopulationProbe.gd').read_text(encoding='utf-8')
+    sample_end = probe.split('if now - _sample_start_us >= SAMPLE_US:', 1)[1].split('elif _stage == "rotating"', 1)[0]
+    assert sample_end.index('_write_stage("capturing_after")') < sample_end.index('await _capture("after.png")')
+    assert sample_end.index('await _capture("after.png")') < sample_end.index('adapter.set_interest_window(32)')
+    capture = probe.split('func _capture(', 1)[1].split('\n\nfunc ', 1)[0]
+    assert '_last_wire' not in capture
+    assert '_last_verified_anchor.duplicate(true)' in capture
+    assert 'frame_pre_draw' in capture and 'frame_post_draw' in capture
+    assert '"warmup_us"' in probe and '"sample_duration_us"' in probe

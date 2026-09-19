@@ -97,6 +97,7 @@ def test_provider_stream_request_is_dialogue_text_sse_not_a_structured_l2_l3_req
     )
 
     assert payload["stream"] is True
+    assert payload["thinking"] == {"type": "disabled"}
     assert "response_format" not in payload
     assert "spoken dialogue text" in payload["messages"][0]["content"]
 
@@ -114,7 +115,7 @@ def test_provider_rejects_streaming_for_l2_and_l3(task_kind: str) -> None:
 def test_websocket_dialogue_stream_keeps_final_response_as_the_only_written_result(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(_dialogue_envelope())
@@ -162,7 +163,7 @@ def test_completed_dialogue_response_produces_observatory_writeback_and_dialogue
 
 def test_websocket_dialogue_stream_sends_queued_observatory_writeback() -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(_dialogue_envelope("dialogue-observatory-1"))
@@ -184,14 +185,14 @@ def test_websocket_cancelled_dialogue_stream_does_not_write_partial_text(monkeyp
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
     main.reset_runtime_state()
 
-    def slow_stream(_event, *, cancelled):
+    def slow_stream(_request_json, *, cancelled):
         yield {"event": "delta", "delta": "Partial"}
         while not cancelled():
             time.sleep(0.01)
         yield {"event": "cancelled"}
 
-    monkeypatch.setattr(main.character_service, "stream_dialogue", slow_stream)
-    client = TestClient(main.app)
+    monkeypatch.setattr(main.character_service.dialogue._gateway, "stream_prepared_request", slow_stream)
+    client = TestClient(main.component_app)
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(_dialogue_envelope("dialogue-cancel-1"))
         assert websocket.receive_json()["message_type"] == "ack"

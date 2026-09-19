@@ -2,17 +2,17 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: 执行时使用 superpowers:executing-plans；明确采用子代理方式时使用 superpowers:subagent-driven-development。按复选框逐项取证，不因计划已写完而勾选实施任务。
 
-**Goal:** 人员甲交付同一角色跨 B0–B3 的共享合同、连续性账本、安全交接、受控读取和编译器运行合同，并负责公共入口集成与共同验收。
+**Goal:** 人员甲交付同一角色跨 B0–B3 的共享合同、连续性账本、安全交接、受控读取，并为一个日供给分片计算器提供最小冻结/模式/审计合同；负责公共入口集成与共同验收。
 
 **Architecture:** 扩展现有 Character Core、population_continuity、world_runtime、Siming 与 GameplayEventStore。纯计算与事实提交分离；复用现有 CharacterContinuityService、activation lock、读写 revision、幂等和 replay。人员乙通过明确接口提交模块与领域结果。
 
 **Tech Stack:** 项目现有 Python、Pydantic、pytest、SQLite、Harness；不增加调度框架、求解器、Ray 或 GPU 依赖。
 
-**Spec:** [整合规格](../../specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)，组织修订 `2026-09-18-r2`。配套为[计划 B](2026-09-18-character-simulation-domain-vertical-implementation-plan.md)。
+**Spec:** [整合规格](../../specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)，组织修订 `2026-09-18-r3`。配套为[计划 B](2026-09-18-character-simulation-domain-vertical-implementation-plan.md)。
 
 **Status:** `planned; implementation_not_started`。用户已要求生成两份 plan 和人员分工；这不表示本稿中的新 API 已存在或代码已获验收。甲、乙是人员角色占位，不是假定已有具体姓名。
 
-**核查基线:** `D:/Paralls-phase0-1`，HEAD `83fa2b33`。实施先核对最终整合提交和工作区，再建立 `codex/` 工作树；本轮计划不复用或覆盖其他任务的未完成变更。
+**核查基线:** `D:/Paralls-phase0-1`，本轮复审 HEAD `d9b810f3`。实施先核对最终整合提交和工作区，再建立 `codex/` 工作树；本轮计划不复用或覆盖其他任务的未完成变更。
 
 ## Global Constraints
 
@@ -22,7 +22,8 @@
 - 仿真 tick、来源 revision、角色 revision、状态游标和记忆游标分别校验；新增窗口使用 `(from_tick, to_tick]`。
 - Owner 在实际提交点重验完整 read-set；通知失效和读取最新 head 不能替代旧 expected revision 校验。
 - `schedule_gated_supply` 只证明组织供应承诺；实际粮食、药品、床位与迁移各需真实能力和 receipt。
-- C0–C7 是本轮连续性实施范围；AM1/BM1 覆盖编译器 shadow/advisory。M-active 的真实 aggregate 操作依 B 的 G-M 准入；E/F 保留原 spec 前置门禁。
+- C0–C7 仍是连续性基线跟踪范围；本轮不实现群体报告到个人的分摊。AM1/BM1 是单个日供给分片计算器，shadow 和 advisory 分阶段验收；M-active 可选且须 G-M 准入，E/F 保留原 spec 前置门禁。
+- 当前 advance_b0_row 是按 actor 连续积分，不能作为安全群体聚合/分摊已完成的证据。A2 首期仅锚点、分片、明确 actor 结果消费与交接；模型报告不更新个人状态或游标。
 - 保留现有历史合同，新增严格校验不能追溯改义旧事件。Pydantic `frozen=True` 不等于嵌套字典已隔离，帧及计算输入必须做嵌套不可变或防御复制验证。
 - 六项生产工程沿用[既有计划](../2026-09-16-population-production-runtime-closure-implementation-plan.md)，新任务不得复制其执行隔离、恢复或表现框架。该旧计划的证据路径和文档提交表述如与当前 AGENTS.md 不一致，以当前仓库规则为准。
 - 执行时按 [Harness 指南](../../../harness.md) 和项目 harness-verification skill 选入口、导出和清理。本轮只写文档，不运行性能或 Godot 验收。
@@ -36,7 +37,7 @@
 | 共享 schema、参与解析、连续性与锁 | 主责，维护唯一合同 | 提供玩法约束，评审真实消费者 |
 | 角色模块、原型、洪灾与领域协议 | 提供接纳端口，评审越权与重复提交 | 主责，维护规则和 Owner 映射 |
 | Character Core | 独占公共接纳与运行循环修改 | seed_planner 中构造输入；不得直接写 Core 状态/记忆 |
-| 编译器 | grant、冻结向量、通用运行校验与审计 | 受信模板、纯算子、领域 FactCard 读取 |
+| 首个计算器 | 最小 grant、冻结/失效、模式隔离、报告与审计合同 | 固定日供给语义、现有 Owner 输入适配和纯计算 |
 | 验收 | 公共 Harness、回放、集成与汇总 | 模块/领域 focused tests、洪灾与 Godot 样板 |
 | 后继 E/F | 依赖版本、impact 调度接入、通用隔离合同 | 操作证据、领域确认、Godot 与阵营场景；门禁满足后细化 |
 
@@ -44,7 +45,7 @@
 
 甲拥有共享 profile、验证脚本和 CI 接线修改责任。`GameplayEventStore` 当前已有 read-set 重验；默认消费其接口，不为本任务重写 store。若查出实际缺口，由甲在对应任务中以复现测试做最小修复。
 
-乙拥有 `seed_planner.py`、`owner_adapters.py`、`inventory_owner_adapter.py`、`social_owner_adapter.py`、`domain_projection_sources.py` 及其新增角色模块、洪灾/模型模板文件。`vertical.py` 是既有大型样板文件，乙只提取必要复用，新增洪灾场景放独立窄文件。详细文件清单见 B。
+乙拥有 `seed_planner.py`、`owner_adapters.py`、`inventory_owner_adapter.py`、`social_owner_adapter.py`、`domain_projection_sources.py` 及其新增角色模块、洪灾/日供给计算文件。`vertical.py` 是既有大型样板文件，乙只提取必要复用，新增洪灾场景放独立窄文件。`social_input.py` 和 `source_inputs.py` 首期作为共同只读依赖；必要读取补验放乙的窄输入适配，不能两人分别改造。详细文件清单见 B。
 
 **并行规则：** 两人不同时修改相同公共文件。乙提交接口需求、领域代码和 focused tests 后，由甲顺序接线。若既有 P 生产工程仍在修改同一入口，先取得其接口/提交交接再接线，不平行替换其实现。一个变更若影响共享合同，先更新 spec、A 的接口记录及 B 的消费者，再实现；不私加字段。工作树以 cherry-pick 集成，提交按可独立审查的交付组织，中文说明，不使用全仓 `git add .`。
 
@@ -54,12 +55,14 @@
 | --- | --- | --- | --- |
 | D0 | 确认本稿共享接口、文件归属、源码基线 | 确认模块字段策略、样板事实范围 | 双方使用同一 spec 修订；每个跨人接口有唯一生产者 |
 | H1 | A1 帧/参与/建议合同与 Core 接纳规则 | B1 模块声明、B2 原型/情境 | H1 接口与 focused tests 通过后才写依赖生产代码 |
-| H2 | A2 账本，A4 受控读取可独立推进 | B1/B2 行为测试、B4 现有 Owner 窄闭环 | 账本 replay 通过才把洪灾群体增量接到真实结算 |
+| H2 | A2 账本，A4 受控读取可独立推进 | B1/B2 行为测试、B4 现有 Owner 窄闭环 | 账本 replay 只证明锚点和已确认 actor 结果消费，不授权群体均值回填 |
 | H3 | A3 交接 | B3 洪灾群体与玩家交集 | 唯一推进权、身份连续、旧执行者拒绝 |
 | H4 | A5 公共接线、DOD 等价与总验收 | B4/B5 receipt 回流与可见样板 | C0–C7 对应证据齐全；Godot 单独标记 |
-| HM | AM1 运行合同、冻结读取和审计 | BM1 受信模板、纯计算和 advisory | shadow/advisory 无采纳；M-active 另经 G-M |
+| HM0 | AM1 最小输入/报告/预算/权限合同 | BM1 固定场景与八维算例 | 纯计算先过；不依赖 A1–A4 全部实现 |
+| HM1 | AM1 shadow 旁路和重验审计 | BM1 真实 Owner 窄读取、与既有 planner 同输入对照 | 不投递候选、不改 planner 选择、不调用 Owner/Core 写入 |
+| HM2 | AM1 advisory 只读可见入口 | BM1 覆盖率、阻塞和复核/升级类别报告 | HM1 通过后打开；无自动执行/交接；active 可长期关闭 |
 
-依赖不是简单的 A 完成后才做 B：B1/B2 的内容可在 D0 后与 A1 合同实现并行；B4 对既有供应操作的回归可提前；AM1/BM1 不阻塞 C 的验收。B3 的真实交接等 A2/A3。H4 明确拆为 A5 公共接线 → B5 完成真实回流/场景 → A5 总验收，不能要求 B5 等 A5 总验收或反向等待。
+依赖不是简单的 A 完成后才做 B：B1/B2 的内容可在 D0 后与 A1 合同实现并行；B4 对既有供应操作的回归可提前；AM1/BM1 的 HM0→HM1→HM2 可以先做，不要求先建完角色帧、成员账本或通用密码本。最小来源授权/版本/内容/时间验证不可省略，A4 后续复用这些合同而不是另造版本。B3 的真实交接等 A2/A3。H4 明确拆为 A5 公共接线 → B5 完成真实回流/场景 → A5 总验收。
 
 每次交接附：提交 ID、改动文件、接口修订、通过与失败命令、对应 AC、仍关闭的 gate。接收方先运行消费者测试再集成，不把对方口头“完成”作为运行证据。
 
@@ -129,25 +132,28 @@ if any(tick >= p.b0_expiry_tick for p in policies):
 
 **Files:** Create `backend/app/population_continuity/member_ledger.py`；Modify `backend/app/population_continuity/world.py`、`hot_state.py`；Test `backend/tests/test_population_member_ledger.py`、`test_population_member_ledger_replay.py`。
 
-**Interfaces — Produces：** `PopulationMemberLedger`/`MemberEntry`（spec 7）、`partition_members(ledger: PopulationMemberLedger, *, seed: str, partition_revision: str) -> PopulationMemberLedger`、`pending_member_results(ledger: PopulationMemberLedger, *, actor_ref: str) -> tuple[str, ...]`。成员 entry 保存 actor_ref、entry_character_revision、policy pins、shard_ref、保护引用、last_consumed_result_cursor 与生命周期；群体结果只存已确认 receipt 的引用。乙提供允许分摊的纯规则，甲负责消费幂等与提交后游标。
+**Interfaces — Produces：** `PopulationMemberLedger`/`MemberEntry`（spec 7）、`partition_members(ledger: PopulationMemberLedger, *, seed: str, partition_revision: str) -> PopulationMemberLedger`、`pending_member_results(ledger: PopulationMemberLedger, *, actor_ref: str) -> tuple[str, ...]`。成员 entry 保存 actor_ref、entry_character_revision、policy pins、shard_ref、保护引用、last_consumed_result_cursor 与生命周期。
+
+pending_member_results 只返回来源已明确关联该 actor 的真实确认结果；分片总量 receipt 或模型报告不满足这一条件。首期 distribution_policy=none。报告可作为临时读取/审计引用，但不能进入待物化个人增量或推动 group/individual 的业务消费游标。甲负责原 actor 确认结果的幂等消费，乙不提供“群体均值分摊器”。
 
 - [ ] 构造 3 人账本：普通成员、照护成员、individual_only 成员；打乱输入顺序、相同 seed 分片结果不变；保护字段不进入聚合输出。
 
 ```python
 def test_replay_preserves_unconsumed_member_results(ledger_case):
-    ledger_case.commit_aggregate_result("result:1")
+    ledger_case.commit_actor_result("character:ordinary", "result:1")
+    ledger_case.commit_actor_result("character:carer", "result:2")
     ledger_case.consume_for("character:ordinary", "result:1")
     full = ledger_case.restore_full()
     tail = ledger_case.restore_checkpoint_tail()
     assert full == tail
-    assert pending_member_results(full, actor_ref="character:carer") == ("result:1",)
+    assert pending_member_results(full, actor_ref="character:carer") == ("result:2",)
     assert pending_member_results(full, actor_ref="character:ordinary") == ()
 ```
 
-`ledger_case` 在测试文件定义，封装真实 store/world 的 append、checkpoint 和恢复；`commit_aggregate_result` 写已准入群体连续性结果，`consume_for` 只有 Core receipt 成功后记录消费，两个 restore 返回重建账本，不得仅复制当前内存对象。
+`ledger_case` 在测试文件定义，封装真实 store/world 的 append、checkpoint 和恢复；commit_actor_result 走原已准入按 actor 连续性/Owner 链，consume_for 只有该 actor 的 Core receipt 成功后记录消费，两个 restore 返回重建账本，不得仅复制当前内存对象。另输入一份 BM1 覆盖率报告，断言全部 actor 状态、记忆和消费游标不变。
 
 - [ ] 运行 `python -m pytest tests/test_population_member_ledger.py tests/test_population_member_ledger_replay.py -v`，验证消费重复/崩溃点、顺序敏感和保护字段断言在未实现时失败。
-- [ ] 最小实现：复用既有持久化/回放链保存锚点与消费凭据；新增事件载荷如不可由当前 schema 表达，先在原 Owner 下登记明确 schema、迁移和 replay，不用任意 payload 绕过注册。分片只读取许可字段。
+- [ ] 最小实现：复用既有持久化/回放链保存锚点与按 actor 结果消费凭据；新增事件载荷如不可由当前 schema 表达，先在原 Owner 下登记明确 schema、迁移和 replay，不用任意 payload 绕过注册。分片只读取许可字段；没有可按 actor 归因的来源返回 unknown/升级，不能按人数除出个人效果。
 
 ```python
 ordered_members = sorted(ledger.member_entries, key=lambda item: item.actor_ref)
@@ -182,7 +188,7 @@ def test_old_b0_writer_cannot_commit_after_handoff(handoff_case):
 `handoff_case` 在测试中使用真实 ProfileActivationAuthority、CharacterAgentRuntime、A2 账本；这些方法仅包装原公共调用，不能直接改 `_locks` 或伪造 receipt。
 
 - [ ] 运行 `python -m pytest tests/test_population_handoff_continuity.py tests/test_character_agent_activation_handoff.py -v`，确认新旧执行者竞争测试先红。
-- [ ] 最小实现顺序固定为：取得凭据 → 固化最后确认游标 → 接纳合法连续性 → 构包 → 接管；旧提交同时检查 character revision 和凭据。拒绝保持原正式结果，不将超时当自动成功。
+- [ ] 最小实现顺序固定为：取得凭据 → 固化最后确认游标 → 接纳原按 actor 合法连续性 → 构包 → 接管；不从 cohort 压力均值还原个人状态。旧提交同时检查 character revision 和凭据。拒绝保持原正式结果，不将超时当自动成功。
 
 ```python
 if command_lock_ref != current_lock.lock_ref or command_lock_revision != current_lock.held_revision:
@@ -226,7 +232,7 @@ visible = {name: source_projection[name] for name in granted_fields if name in s
 - [ ] 所有拒绝 case 断言 content 为空、无角色/业务写入；缺历史与无权限状态可区分。运行新测试，`git diff --check`。
 - [ ] 提交边界为“通用受控展开与历史输入审计”，交付给 B4/BM1/AM1。
 
-## 7. A5：公共接线、语义 oracle 与 C0–C7 总验收
+## 7. A5：公共接线、语义 oracle 与基线验收台账
 
 **对应：** C5/C7；AC-01–AC-09、AC-18–AC-20。**依赖：** 公共接线依赖 A1–A4、B1–B4 与 B5 已冻结的转换接口；公共接线交付后乙完成 B5，最终总验收再等待 B5 的真实结果。
 
@@ -274,54 +280,93 @@ python scripts/verification/harness.py --profile population-runtime-scale
 python scripts/verification/harness.py --profile all
 ```
 
-- [ ] 乙交付 B5 Godot 证据后由甲核对同一后端修订、边界消息与可见结果；缺失时 C backend 可分别记录通过，整体 C 保留 godot_unverified，E gate 不打开。
+- [ ] 乙交付 B5 Godot 证据后由甲核对同一后端修订、边界消息与可见结果；缺失时 C backend 可分别记录通过，整体 C 保留 godot_unverified，E gate 不打开。C3 原基线要求的安全分摊若尚无独立任务/证据，则标为 deferred，不将本轮“只读汇总+按 actor 回放”替代它，C0–C7 整体门禁仍不通过。
 - [ ] 检查本轮 Harness 退出码、证据输入版本及清理结果；`git diff --check`，提交边界为“共享推进与洪灾纵切集成验收”。不在本提交混入既有六项生产工程重构。
 
-## 8. AM1：编译器授权、冻结向量和运行审计
+## 8. AM1：日供给计算的最小冻结、模式和审计合同
 
-**对应：** M shadow/advisory；AC-10、AC-11 输入部分、AC-13。**依赖：** A1/A4；与 BM1 先冻结接口，再独立实现。此任务不是 E 的代码计划。
+**对应：** M shadow/advisory；AC-10、AC-11 输入部分、AC-13、AC-21/22。**依赖：** D0 后与 BM1 冻结最小接口；直接复用现有社会/领域读侧，不等待 A1–A4 全部实现。消费者保持一份合同，A4 完成后复用相同读取结果与权限语义。
 
-**Files:** Create `backend/app/models/social_model.py`、`backend/app/services/social_model_execution.py`；Modify `backend/app/services/siming_runtime.py`、`siming_population_capability.py`；Test `backend/tests/test_social_model_execution_contract.py`、`test_social_model_replay.py`；Create `scripts/verification/verify_social_model_compiler_contract.py`、`.harness/profiles/social-model-compiler-contract.json`。
+**Files:** Create `backend/app/models/social_model.py`、`backend/app/services/social_model_execution.py`；Modify `backend/app/services/siming_population_capability.py`（先只读旁路），`siming_runtime.py` 仅有 grant 接线缺口时修改；Test `backend/tests/test_social_model_execution_contract.py`、`test_social_model_replay.py`、`test_daily_supply_shadow_comparison.py`；Create `scripts/verification/verify_social_model_compiler_contract.py`、`.harness/profiles/social-model-compiler-contract.json`。不修改 graph projector 或建立实体关系图服务。
 
-**Interfaces:** `SocialModelTemplate`、`ModelRunGrant`、`SocialModelDraft`、`FactCard`、`Proof`、`InputVersionVector`、`CandidateEnvelope`、`ModelRunReceipt`、`ModelProjection` 均由甲定义，字段以 spec 10 为准。增加 `FrozenModelInput(cards: tuple[FactCard, ...], vector: InputVersionVector)` 和 `ModelComputation(status: str, candidates: tuple[CandidateEnvelope, ...], work_units: int, diagnostics: tuple[str, ...])`；status 限 spec 10.4 已声明值，诊断脱敏。后者仅是纯算子返回值，不代替审计 receipt。
+**合同范围：** spec 10.2 的名称是逻辑职责，不要求九个全功能框架。甲在单个 social_model.py 中用严格模型/既有类型组合表达这一固定调用，字段如下；BM1 仅 import。SocialModelDraft 的 V1 参数只允许 shard_ref、window、template_ref 和 correlation，禁止请求体携带任意 IR、事实数值或 callable。
 
-本计划示例使用的精确字段名固定为 `SocialModelTemplate.max_analysis_window: int`、`InputVersionVector.input_digest: str`、`ModelRunReceipt.status: str`、`CandidateEnvelope.typed_payload`；甲在合同测试中固定名称后交付乙，不能由消费者分别取别名。
+| 新类型 | 固定字段/限制 |
+| --- | --- |
+| SocialModelTemplate | template_ref=`daily-shard-supply@1`、definition/operator pins、固定八维目录、max_analysis_window、输入/输出声明；不支持自由模板图 |
+| ModelRunGrant | reader_ref、purpose、scope、mode、template pins、issued_tick、expiry_tick、预算与单日窗口；由既有治理入口签发 |
+| InputVersionVector | 相关来源与查询/分片版本、projection/content digests、policy/template/operator pins、observed_at、from_tick/to_tick、expiry_tick、input_digest |
+| FrozenModelInput | 获权 cards、vector、固定分片/单资源/单路线输入；以现有 FrozenSocialPlanningInput、HouseholdScheduleInput、OrganizationScheduleInput 作来源，不复制社会事实库 |
+| DailySupplyReport | shard_ref、from_tick/to_tick、demand_units、confirmed_supply_units、reachable_supply_units、coverage_bps、blocking_reasons、upgrade_categories、input_digest/source revisions、expiry_tick；没有 actor allocations |
+| ModelComputation | status、report（DailySupplyReport 或空）、work_units、diagnostics；正式失败不返回伪完整报告 |
+| ModelRunReceipt | 输入/输出摘要、mode、grant、读取 refs、预算/降级、source validation、correlation；沿现有获权审计路径保存 |
+
+数量区间用有界整数二元组；coverage_bps 范围 0–10000，已确认零需求时为空并在原因中标 not_required。FactCard/Proof 只包装原来源、授权和过滤后内容；CandidateEnvelope/ModelProjection 的只读内容引用同一 report，不建立第二报告 schema。报告不写世界或成员账本。
 
 ```python
 def validate_model_run(
     *, template: SocialModelTemplate, grant: ModelRunGrant,
-    draft: SocialModelDraft, inputs: FrozenModelInput, tick: int,
+    inputs: FrozenModelInput, tick: int,
 ) -> None: ...
 ```
 
-验证失败用封闭 reason 转为 ModelRunReceipt；unknown/budget_exhausted 等是正式状态。BM1 的 `compile_flood_model` 只接受校验后的不可变 inputs。模板/算子目录为受信静态集合；不创建任意函数注册、自由脚本或工具执行器。
+### AM1.1 / HM0：最小纯计算准入
 
-- [ ] 实际计数断言：off 不读输入；shadow/advisory 不向 Owner/原推进者提交；无 grant、超 analysis_window、未知 IR、动态代码和错 digest 被拒绝。
-
-```python
-def test_advisory_has_no_business_or_continuity_effect(model_run_case):
-    before = model_run_case.authority_snapshot()
-    result = model_run_case.run(mode="advisory")
-    assert result.receipt.status == "ok"
-    assert result.candidates
-    assert model_run_case.authority_snapshot() == before
-    assert model_run_case.owner_submit_calls == 0
-```
-
-`model_run_case` 使用 BM1 真实固定模板，真实 store 与 Core 快照；计数包装既有提交接口，不以替换全部 Owner 的 mock 证明 active 结算。
-
-- [ ] `python -m pytest tests/test_social_model_execution_contract.py tests/test_social_model_replay.py -v`，先红后实现。
-- [ ] 最小实现：Siming 签发收紧模板的 grant；原 Owner 读侧获取 cards，统一冻结再核验 pins；按确定性工作单位计预算。cache key 覆盖 template/operator/grant/input/参数/seed；只用完整向量精确缓存。
+- [ ] 新测试拒绝未知模板、额外字段、动态代码、超窗/预算、错误 reader/scope、错 digest；构造后修改原嵌套字典不改变输入/报告。固定来源版本、观察时刻、规则和输入顺序得到同一摘要。
+- [ ] 运行 `python -m pytest tests/test_social_model_execution_contract.py tests/test_social_model_replay.py -v`，先红后实现最小校验；status 使用 spec 10.4 集合，缺必需上下文与无权分别返回 context_insufficient/policy_denied。
 
 ```python
-if requested_window > template.max_analysis_window:
+if inputs.vector.to_tick - inputs.vector.from_tick > template.max_analysis_window:
     raise ValueError("policy_denied")
-if actual_input_digest != inputs.vector.input_digest:
+if tick >= min(grant.expiry_tick, inputs.vector.expiry_tick):
     raise ValueError("stale_input")
 ```
 
-- [ ] 对完全相同输入重放结果 digest；固定预算截断一致；模拟历史输入缺失明确 replay_input_unavailable；缓存记录 reused_from 和原决定。模拟 Owner 已更新时旧 expected pins 不得被刷新成新 head。
-- [ ] 运行新测试和 `social-model-compiler-contract` profile；`git diff --check`，交付 HM。提交边界为“社会模型受控运行与审计合同”。不得以 HM 通过宣称 AC-12 active 完成。
+- [ ] 与乙对齐 BM1 的精确数值算例和固定求值顺序。先无缓存，不实现模板编排、通用 IR 解释器、片段失效或后台重算队列。交付 HM0 后双方可独立写语义/模式测试。
+
+### AM1.2 / HM1：真实冻结输入与 shadow 对照
+
+- [ ] 在同一 Owner 读边界取得乙的窄读集，完成来源/内容/recipient/时间/名单 pins 校验；off 不读取。保持现有 planner 输入与输出不变，shadow 只追加脱敏审计；对照不另跑一遍写入流程。
+
+```python
+def test_shadow_observes_same_input_without_changing_planner(shadow_case):
+    frozen = shadow_case.freeze_once()
+    baseline = shadow_case.plan(frozen, mode="off")
+    observed = shadow_case.plan(frozen, mode="shadow")
+    assert observed.planner_selected_refs == baseline.planner_selected_refs
+    assert observed.planner_input_digest == baseline.planner_input_digest
+    assert observed.model_receipt.input_digest == frozen.vector.input_digest
+    assert observed.owner_submit_calls == baseline.owner_submit_calls == 0
+    assert observed.core_apply_calls == 0
+```
+
+`shadow_case` 用 BM1 真实输入适配与现有 PopulationPlanner 的只读选择方法，关闭模式间用同一不可变输入、同一初始快照；记录差异但不强迫计算器报告等于 planner 的语义。两者可对不同问题给不同建议；禁止用改 planner 规则“对齐”结果。
+
+- [ ] 执行 `python -m pytest tests/test_daily_supply_shadow_comparison.py tests/test_social_model_execution_contract.py tests/test_social_model_replay.py -v`。覆盖正常供给、路线受限、期限不足、保护义务、缺权限/必要卡；拒绝和降级必须可审计。
+- [ ] 对每一项声明依赖分别通过合法 Owner 改 revision，再次取用旧报告必须返回 stale_input；同样测试授权撤销、分片名单版本和时间到期。仅审计历史读取可保持旧报告，其标记不能成为 current。未来 active 仍须在 append 点再验；没有变化通知不影响正确性。
+- [ ] 测试图谱缺失且 Owner 输入齐全可继续、receipt 标 graph_degraded；必需来源不可得时不产完整覆盖率；不会自动补建关系图。验证被冻结内容的 digest 不匹配、浅层可变、观察时刻变化不能沿用原报告。
+- [ ] 历史原输入保留/可重建时重算同一报告；缺失返回 context_insufficient 并记录 replay_input_unavailable 原因。观测到的知识置信度依赖 observed_at，不能只以 stream revision 当缓存键。HM1 取证前不得打开 advisory。
+
+### AM1.3 / HM2：advisory 只读入口
+
+- [ ] 消费者只在当前获权 scope 内看到 report、阻塞和复核/升级类别；不进入自动调度、handoff 或 capability submit 分支。
+
+```python
+def test_advisory_report_cannot_change_any_authority(advisory_case):
+    before = advisory_case.authority_snapshot()
+    result = advisory_case.run(mode="advisory")
+    assert result.receipt.status == "ok"
+    assert result.report.coverage_bps == (3428, 5167)
+    assert advisory_case.authority_snapshot() == before
+    assert advisory_case.owner_submit_calls == 0
+    assert advisory_case.core_apply_calls == 0
+    assert advisory_case.handoff_calls == 0
+```
+
+该 fixture 使用 BM1 实际固定输入和真实 store/Core 状态；只包装写入口计数，不以 mock Owner 证明 active 成功。snapshot 包含角色/成员游标与记忆，审计记录另计。
+
+- [ ] 验证取用前重验和脱敏，再执行上述三个测试文件与 `python scripts/verification/harness.py --profile social-model-compiler-contract`。profile 分列 HM0/HM1/HM2，不将纯计算通过写成真实 Owner 输入或 active 通过。
+- [ ] `git diff --check`。提交按“最小冻结合同”“shadow 对照”“advisory 可见”独立审查结果组织；精确缓存仅在重复计算需求成立后追加，不能阻塞首个结果或绕过重验。
 
 ## 9. 覆盖、后继与共同完成条件
 
@@ -331,13 +376,13 @@ if actual_input_digest != inputs.vector.input_digest:
 | AC-04–06 | A2/A3/A5 | B3 洪灾与交集 |
 | AC-07–08 | A3/A5 Core 接纳与恢复 | B4/B5 真实 Owner 和 receipt 转换 |
 | AC-09 | A4 | B4/BM1 最小领域读侧 |
-| AC-10–13 | AM1；A5 验证接线 | BM1；AC-12 与提交部分 AC-11 等 G-M 准入 |
+| AC-10–13、AC-21/22 | AM1 的 HM0/HM1/HM2 | BM1；AC-12 的真实 aggregate 提交及 AC-11 提交部分等 G-M |
 | AC-14–17 | G-E/G-F 满足后，甲负责共享版本和影响调度 | 乙负责领域证据与场景；当前不生成可执行代码任务 |
 | AC-18–20 | A5 汇总，与既有 P 计划分别列证据 | B5 Godot 和领域样板 |
 
-**G-M：** 乙出具 spec 8.2 的真实 aggregate 操作准入表，甲核验冻结读集能够到提交点；缺合法能力保持 proposal_only/capability_unavailable。通过后在本 A/B 两份计划中补充 active 任务，不另建第三份重叠计划。
+**G-M：** 乙出具 spec 8.2 的已有真实 aggregate 操作准入表，甲核验冻结读集能够到提交点；缺合法能力保持 proposal_only/capability_unavailable，可以长期以 advisory 交付。不为打开 active 顺手新增通用供给/分配协议。出现另行批准的业务操作后，才在本 A/B 两份计划补充 active 任务。
 
-**G-E：** C0–C7、replay、privacy、zero-write、handoff 和 Godot 确认投影证据全部满足后，甲补依赖索引/有界反应接线，乙补低/中影响交互和高影响环境变化任务。现在只记录责任，不提前设计新的 writer。
+**G-E：** 原 C0–C7、replay、privacy、zero-write、handoff 和 Godot 确认投影证据全部满足后，甲补依赖索引/有界反应接线，乙补低/中影响交互和高影响环境变化任务。本轮推迟安全分摊后，不能将收窄的 A2 验收当原 C3 全完成；缺失项继续关闭门禁。现在只记录责任，不提前设计新的 writer。
 
 **G-F：** E 的真实回流成立、领域冲突窗口和可见性合同确定后，甲补共享隔离/恢复，乙补双阵营四主体场景。门禁解除后仍在这两份计划追加任务，保持一份共享合同。
 

@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from heavenly_graph_contract import graph_node, graph_scope
-from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
+from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch, HeavenlyNodeQuery
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
 
@@ -102,9 +102,8 @@ def test_write_batch_failure_restores_only_the_touched_state(
             supersedes_revision=None,
             state="idle",
         )
-        before_history = list(
-            graph._nodes[(graph._scope_key(graph_scope()), "population:actor:1")]
-        )
+        query = HeavenlyNodeQuery(scope=graph_scope(), node_ids=["population:actor:1"], valid_at=100)
+        before_history = graph.query_node_history(query)
 
         def fail_persistence(_: object) -> None:
             raise RuntimeError("injected_commit_failure")
@@ -119,8 +118,9 @@ def test_write_batch_failure_restores_only_the_touched_state(
                 state="working",
             )
 
-        after_history = graph._nodes[(graph._scope_key(graph_scope()), "population:actor:1")]
+        after_history = graph.query_node_history(query)
         assert after_history == before_history
+        assert not graph._nodes
         assert graph._scope_stream_revisions[graph._scope_key(graph_scope())] == (1, 0)
     finally:
         graph.close()
@@ -157,3 +157,14 @@ def test_sql_commit_failure_rolls_back_database_and_memory(tmp_path, monkeypatch
                     supersedes_revision=1, state="working")
     finally:
         reopened.close()
+
+
+def test_scale_probe_accounts_for_revision_summary_and_current_time_writes():
+    from scripts.verification.verify_population_data_oriented_persistence import measure_scale
+    result = measure_scale(100, repeats=2)
+    assert result['passed'] is True
+    assert result['sql_changed_rows'] == [5, 5]
+    assert result['sql_write_tables'] == {
+        'graph_nodes': 2, 'graph_stream_revisions': 2,
+        'graph_idempotency': 2, 'graph_revision_summaries': 2, 'graph_current_times': 2,
+    }

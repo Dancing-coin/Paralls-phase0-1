@@ -32,6 +32,15 @@ class _LocalGateway:
             route_override=route_override or "local_only",
         )
 
+    def complete_prepared_request(self, request_json):
+        return self._gateway.complete_prepared_request(request_json)
+
+    def prepare_run_request(self, *, task_kind, context, route_override=None, prepared_recall=None):
+        return self._gateway.prepare_run_request(
+            task_kind=task_kind, context=context, route_override=route_override or "local_only",
+ prepared_recall=prepared_recall,
+        )
+
 
 def test_character_agent_debug_projection_builds_snapshot_with_runtime_summaries() -> None:
     projection = CharacterAgentDebugProjection()

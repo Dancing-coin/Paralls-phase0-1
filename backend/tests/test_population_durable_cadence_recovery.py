@@ -32,6 +32,54 @@ def _publisher(world, bus):
                                    room_id="room", scene_id="scene", zone_id="zone")
 
 
+@pytest.mark.parametrize("population", [2, 1000])
+def test_publication_head_reads_do_not_scale_with_population(tmp_path, monkeypatch, population):
+    from app.population_continuity.publication import publish_authorized_population_cadence
+
+    world = _runtime(tmp_path / "gameplay.json", tuple(f"actor_{i}" for i in range(population)))
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+    projections = world.build_population_projections(cadence)
+    reads = []
+    original = world.store.get_stream_head
+
+    def read(ref):
+        reads.append(ref)
+        return original(ref)
+
+    monkeypatch.setattr(world.store, "get_stream_head", read)
+    bus = InMemoryAuthorityEventBus()
+    arguments = dict(cadence=cadence, store=world.store, organization_projection={},
+        population_projections=projections, event_bus=bus, room_id="room", scene_id="scene",
+        zone_id="zone", causation_id="cause", correlation_id="corr")
+    event = publish_authorized_population_cadence(**arguments)
+    assert event is not None and len(event.payload["population_projections"]) == population
+    # 同一个已确认 world pin 的数据库读取须为常数；所有角色仍完整校验和发布。
+    assert len(reads) <= 4
+    world.pause(reason="changed-after-publication")
+    assert publish_authorized_population_cadence(**arguments) is None
+    assert len(bus.list_events(include_realtime=True)) == 1
+
+
+def test_publication_rechecks_heads_after_authorizer_callback(tmp_path):
+    from app.population_continuity.publication import publish_authorized_population_cadence
+
+    world = _runtime(tmp_path / "gameplay.json")
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+    projections = world.build_population_projections(cadence)
+    bus = InMemoryAuthorityEventBus()
+
+    def authorize(_projection, **_):
+        world.pause(reason="changed-during-authorization")
+        return True
+
+    assert publish_authorized_population_cadence(cadence=cadence, store=world.store,
+        organization_projection={}, legacy_projections=projections[-1:],
+        population_projections=projections[:-1], legacy_projection_authorizer=authorize,
+        event_bus=bus, room_id="room", scene_id="scene", zone_id="zone",
+        causation_id="cause", correlation_id="corr") is None
+    assert not bus.list_events(include_realtime=True)
+
+
 def test_append_before_delivery_and_restart_replays_pending_window(tmp_path):
     path = tmp_path / "gameplay.json"
     world = _runtime(path)

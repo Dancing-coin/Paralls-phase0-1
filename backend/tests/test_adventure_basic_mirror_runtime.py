@@ -125,7 +125,7 @@ def test_server_selected_adventure_runtime_delivers_only_after_canonical_authori
 
     from fastapi.testclient import TestClient
 
-    client = TestClient(main.app, client=("127.0.0.1", 47061))
+    client = TestClient(main.component_app, client=("127.0.0.1", 47061))
     client_selected = client.post(
         "/internal/trusted-local-adventure-basic-live-probe-commit",
         headers={"X-Gameplay-Mirror-Launcher-Secret": "adventure-basic-test-secret"},

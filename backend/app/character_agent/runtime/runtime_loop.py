@@ -1,9 +1,19 @@
 from copy import deepcopy
+from collections import OrderedDict
+from collections.abc import Generator
+from dataclasses import asdict, dataclass, is_dataclass, replace
+from time import monotonic
+from uuid import uuid4
+from pydantic import BaseModel
+from app.character_agent.runtime.cognition_continuation import (
+    CognitionAdvance, CognitionRequest, PendingCognitionTurn, PreparedCognitionJob,
+)
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
-from threading import RLock
+from threading import RLock, get_ident
 from typing import Callable
 
 from app.character_agent.logic.affect_engine import AffectEngine
@@ -70,6 +80,7 @@ from app.character_agent.gateway.memory_recall import MissingRequiredMemoryEvide
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
+from app.character_agent.memory.working_memory import CharacterWorkingMemory
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
 from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
@@ -95,6 +106,16 @@ from app.world_runtime.scheduling import (
 )
 
 
+@dataclass(frozen=True)
+class ActivationHandle:
+    actor_id: str
+    world_ref: str
+    lock_ref: str
+    token: str
+    generation: str
+    deadline_monotonic: float
+
+
 class CharacterAgentRuntime:
     AWAY_CONSERVATIVE_ALLOWED_COMMANDS = {"look_at", "observe", "speak"}
     _RECENT_HISTORY_LIMIT = 4
@@ -106,6 +127,7 @@ class CharacterAgentRuntime:
         storage_root: str | Path | None = None,
         *,
         continuity_actor_ids: set[str] | frozenset[str] | None = None,
+        session_store: CharacterAgentSessionStore | None = None,
         skill_service: CharacterSkillService | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
         continuity_store: CharacterGraphContinuityStore | None = None,
@@ -119,6 +141,11 @@ class CharacterAgentRuntime:
     ) -> None:
         if os.getenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1" and continuity_store is None:
             raise ValueError("graph continuity store is required in production continuity mode")
+        # ponytail: 仅旧同步调用串行 drain；生产异步入口由 owner 调度，不在等待 I/O 时持此锁。
+        self._sync_cognition_lock = RLock()
+        self._cognition_generation = 0
+        self._pending_cognition: dict[str, PendingCognitionTurn] = {}
+        self._cognition_receipts: OrderedDict[str, tuple[PreparedCognitionJob, str, CognitionAdvance]] = OrderedDict()
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         # ponytail: 单 runtime 的低频修复串行执行；多进程写入时需使用 owner 事务锁。
         self._memory_correction_lock = RLock()
@@ -129,6 +156,12 @@ class CharacterAgentRuntime:
         self._continuity_actor_ids = set(continuity_actor_ids or ())
         self._activation_world_ref = "world:default"
         self._activation_authority = activation_authority
+        self._activation_generation = uuid4().hex
+        self._activation_handles: dict[str, ActivationHandle] = {}
+        self._activation_ending: set[str] = set()
+        self._activation_owner_thread: int | None = None
+        self._activation_receipts: OrderedDict[str, tuple[ActivationHandle, ActivationReceipt]] = OrderedDict()
+        self._sync_activation_handles: dict[str, ActivationHandle] = {}
         self._l1 = CharacterAgentL1Service()
         self._l2 = CharacterAgentL2Service(profile_registry=self._profile_registry)
         self._l3 = CharacterAgentL3Service()
@@ -170,58 +203,322 @@ class CharacterAgentRuntime:
         self._last_scheduling_tick_ts = 0
         self._last_emitted_scheduling_round_id = 0
         self._last_skill_affordance_summaries: dict[str, dict[str, object]] = {}
-        self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
-        self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
-        self._graph_session_local_overlap_counts: dict[str, int] = {}
-        self._graph_session_replay_offsets: dict[str, int] = {}
-        self._memory_store = memory_store or CharacterAgentMemoryStore()
-        self._projected_memory_scene_events: set[tuple[str, str]] = set()
-        self._dynamic_state_store = CharacterDynamicStateStore()
-        self._need_tension_store = CharacterNeedTensionStore()
-        self._goal_state_store = CharacterGoalStateStore()
-        self._unresolved_tension_store = CharacterUnresolvedTensionStore()
-        self._behavior_evaluation = CharacterBehaviorEvaluationService()
-        self._continuity_store = continuity_store
-        self._state_group_registry = state_group_registry
-        self._continuity_flush_locks: dict[str, RLock] = {}
-        self._continuity_revisions: dict[str, int] = {}
-        self._continuity_checkpoint_event_indexes: dict[str, int] = {}
-        self._continuity_receipts: dict[str, CharacterContinuityReceipt] = {}
-        self._continuity_receipts_by_actor: dict[str, dict[str, CharacterContinuityReceipt]] = {}
-        self._continuity_committed_events: dict[str, dict[str, object]] = {}
-        self._continuity_projection_rebuild_required: set[str] = set()
-        self._materialization_receipts: dict[str, CharacterMemoryMaterializationReceipt] = {}
-        self._materialization_receipts_by_actor: dict[
-            str, dict[str, CharacterMemoryMaterializationReceipt]
-        ] = {}
-        self._materialization_committed_events: dict[str, dict[str, object]] = {}
-        self._pending_seed_candidates: dict[str, dict[str, CharacterMemoryCandidate]] = {}
-        self._seed_projections: dict[str, dict[str, object]] = {}
-        self._shared_module_states: dict[str, dict[str, dict[str, object]]] = {}
-        self._continuity_service = CharacterContinuityService(
-            apply_command=self._apply_continuity_command,
-            materialize=self.materialize_pending_seed_memories,
-        )
-        self._behavior_turn_projection = (
-            CharacterBehaviorTurnProjection(
-                recorder=behavior_turn_recorder,
-                scope_resolver=behavior_turn_scope_resolver,
+        self._session_store = session_store or CharacterAgentSessionStore(storage_root=storage_root,
+            database_path=getattr(continuity_store, 'session_database_path', None))
+        try:
+            self._memory_store = memory_store or CharacterAgentMemoryStore()
+            self._dynamic_state_store = CharacterDynamicStateStore()
+            self._need_tension_store = CharacterNeedTensionStore()
+            self._goal_state_store = CharacterGoalStateStore()
+            self._unresolved_tension_store = CharacterUnresolvedTensionStore()
+            self._behavior_evaluation = CharacterBehaviorEvaluationService()
+            self._continuity_store = continuity_store
+            self._state_group_registry = state_group_registry
+            self._shared_module_states: dict[str, dict[str, dict[str, object]]] = {}
+            self._continuity_flush_locks: dict[str, RLock] = {}
+            self._continuity_revisions: dict[str, int] = {}
+            self._continuity_service = CharacterContinuityService(
+                apply_command=self._apply_continuity_command,
+                materialize=self.materialize_pending_seed_memories,
             )
-            if behavior_turn_recorder is not None
-            and behavior_turn_scope_resolver is not None
-            else None
-        )
-        self._need_tension_engine = NeedTensionEngine()
-        self._affect_engine = AffectEngine()
-        self._drift_accumulator = DriftAccumulator()
-        self._drift_promotion_gate = DriftPromotionGate()
-        self._rehydrate_graph_continuity()
-        self._rehydrate_runtime_state_from_timeline()
-        for actor_id in self._supported_actor_ids | self._continuity_actor_ids:
-            for event in self.get_session_timeline(actor_id):
-                self._update_memory_scene_knowledge(event)
+            self._behavior_turn_projection = (
+                CharacterBehaviorTurnProjection(
+                    recorder=behavior_turn_recorder,
+                    scope_resolver=behavior_turn_scope_resolver,
+                )
+                if behavior_turn_recorder is not None
+                and behavior_turn_scope_resolver is not None
+                else None
+            )
+            self._need_tension_engine = NeedTensionEngine()
+            self._affect_engine = AffectEngine()
+            self._drift_accumulator = DriftAccumulator()
+            self._drift_promotion_gate = DriftPromotionGate()
+            self._legacy_runtime_extras = {}
+            self._runtime_field_versions = {}
+            self._rehydrate_graph_continuity()
+            self._rehydrate_runtime_state_from_timeline()
+        except BaseException:
+            self.close()
+            raise
+
+    def close(self) -> None:
+        """释放持久会话连接；pending 与 activation 由原 owner 先收口。"""
+        self._session_store.close()
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
+        return self._drain_cognition(source_kind="ingest_character_perceived_event", payload=event)
+
+    def ingest_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> list[CharacterGoalCommand]:
+        return self._drain_cognition(source_kind="ingest_self_body_perceived_event", payload=event)
+
+    def ingest_siming_output(
+        self, payload: dict[str, object] | SimingCharacterCompatibilityInput,
+    ) -> list[CharacterGoalCommand]:
+        return self._drain_cognition(source_kind="ingest_siming_output", payload=payload)
+
+    def run_background_cognition_tick(
+        self, *, actor_id: str, producer_ts: int,
+    ) -> CharacterBackgroundCognitionResult:
+        return self._drain_cognition(source_kind="run_background_cognition_tick",
+            actor_id=actor_id, producer_ts=producer_ts)
+
+    def prepare_cognition_job(
+        self, *, source_kind: str,
+        payload: CharacterPerceivedEvent | SelfBodyPerceivedEvent | SimingCharacterCompatibilityInput | dict[str, object] | None = None,
+        actor_id: str = "", producer_ts: int = 0,
+        deadline_monotonic: float | None = None,
+        activation_lock_ref: str = "", activation_token: str = "",
+        activation_is_current: Callable[[str, str], bool] | None = None,
+        on_finished: Callable[[str, str], None] | None = None,
+    ) -> CognitionAdvance:
+        """Owner 先预留容量，再接收感知；worker 仅获不可变请求，不获续执行对象。"""
+        self._assert_cognition_owner()
+        if bool(activation_lock_ref) != bool(activation_token):
+            raise ValueError("activation lock and token must be provided together")
+        if activation_lock_ref and activation_is_current is None:
+            raise ValueError("activation lock requires owner validation")
+        if source_kind == "ingest_character_perceived_event":
+            event = CharacterPerceivedEvent.model_validate(payload).model_copy(deep=True)
+            actor_id, producer_ts = event.actor_id, event.producer_ts
+            steps = self._ingest_character_perceived_event_steps(event)
+        elif source_kind == "ingest_self_body_perceived_event":
+            event = SelfBodyPerceivedEvent.model_validate(payload).model_copy(deep=True)
+            actor_id, producer_ts = event.actor_id, event.producer_ts
+            steps = self._ingest_self_body_perceived_event_steps(event)
+        elif source_kind == "ingest_siming_output":
+            event = SimingCharacterCompatibilityInput.model_validate(payload).model_copy(deep=True)
+            actor_id, producer_ts = event.target_actor_id or event.actor_id, event.producer_ts
+            steps = self._ingest_siming_output_steps(event)
+        elif source_kind == "run_background_cognition_tick":
+            steps = self._run_background_cognition_tick_steps(actor_id=actor_id, producer_ts=producer_ts)
+        else:
+            raise ValueError("unsupported cognition source_kind")
+        reason = ""
+        deadline = deadline_monotonic if deadline_monotonic is not None else monotonic() + 60.0
+        if not math.isfinite(deadline):
+            raise ValueError("cognition deadline must be finite")
+        held_activation = self._activation_handles.get(actor_id)
+        if held_activation is not None and (
+            activation_lock_ref != held_activation.lock_ref or activation_token != held_activation.token
+        ):
+            reason = "activation_invalid"
+        elif actor_id in self._pending_cognition:
+            reason = "actor_busy"
+        elif len(self._pending_cognition) >= 4:
+            reason = "pending_capacity"
+        elif monotonic() >= deadline:
+            reason = "deadline_expired"
+        elif activation_lock_ref and not activation_is_current(activation_lock_ref, activation_token):
+            reason = "activation_invalid"
+        if reason:
+            steps.close()
+            result = CharacterBackgroundCognitionResult(actor_id=actor_id, producer_ts=producer_ts,
+                ran=False, reason=reason) if source_kind == "run_background_cognition_tick" else []
+            return CognitionAdvance("requeued", result=result, reason=reason)
+        turn = PendingCognitionTurn(turn_id=uuid4().hex, actor_id=actor_id, producer_ts=producer_ts, source_kind=source_kind,
+            steps=steps, deadline_monotonic=deadline, activation_lock_ref=activation_lock_ref,
+            activation_token=activation_token, activation_is_current=activation_is_current,
+            on_finished=on_finished, owner_thread=get_ident())
+        self._pending_cognition[actor_id] = turn
+        return self._advance_cognition(turn)
+
+    def commit_cognition_result(
+        self, job: PreparedCognitionJob, *, output: dict[str, object] | None = None,
+        error: Exception | None = None,
+    ) -> CognitionAdvance:
+        """验证阶段凭证后才恢复业务；stale 不作为 provider 异常触发 continuity floor。"""
+        self._assert_cognition_owner()
+        if (output is None) == (error is None):
+            raise ValueError("provide exactly one of output or error")
+        completion = {"output": output} if error is None else {
+            "error_type": f"{type(error).__module__}.{type(error).__qualname__}", "error": str(error)}
+        fingerprint = self._cognition_digest(completion)
+        receipt = self._cognition_receipts.get(job.job_id)
+        if receipt is not None:
+            recorded_job, recorded_fingerprint, advance = receipt
+            if recorded_job != job or recorded_fingerprint != fingerprint:
+                return CognitionAdvance("zero_write", reason="conflicting_completion")
+            return replace(deepcopy(advance), replayed=True)
+        turn = self._pending_cognition.get(job.actor_id)
+        if turn is None or turn.job != job:
+            return CognitionAdvance("zero_write", reason="unknown_or_invalid_job")
+        try:
+            reason = ""
+            if job.generation != self._cognition_generation:
+                reason = "generation_invalid"
+            elif monotonic() >= job.deadline_monotonic:
+                reason = "deadline_expired"
+            elif turn.activation_lock_ref and not turn.activation_is_current(turn.activation_lock_ref, turn.activation_token):
+                reason = "activation_invalid"
+            elif self._capture_cognition_pin(job.actor_id, policy_id=turn.policy_id) != job.source_revision_vector:
+                reason = "stale_context"
+            if reason:
+                self._finish_cognition_turn(turn, reason)
+                advance = CognitionAdvance("requeued", reason=reason)
+            else:
+                # 先消费凭证；任何业务异常也不能使同一阶段再次执行。
+                turn.job = None
+                advance = self._advance_cognition(turn, output=deepcopy(output), error=error)
+        except BaseException as failure:
+            self._remember_cognition_receipt(job, fingerprint, CognitionAdvance("zero_write", reason="turn_failed"))
+            try:
+                self._finish_cognition_turn(turn, "failed")
+            except BaseException as cleanup_failure:
+                raise failure from cleanup_failure
+            raise
+        self._remember_cognition_receipt(job, fingerprint, advance)
+        return deepcopy(advance)
+
+    def cancel_cognition_turn(self, turn_id: str, *, reason: str = "cancelled") -> CognitionAdvance:
+        self._assert_cognition_owner()
+        turn = next((turn for turn in self._pending_cognition.values() if turn.turn_id == turn_id), None)
+        if turn is None:
+            return CognitionAdvance("zero_write", reason="unknown_turn")
+        self._finish_cognition_turn(turn, reason)
+        return CognitionAdvance("requeued", reason=reason)
+
+    def reset_cognition_jobs(self) -> None:
+        self._assert_cognition_owner()
+        self._cognition_generation += 1
+        first_error = None
+        for turn in tuple(self._pending_cognition.values()):
+            try:
+                self._finish_cognition_turn(turn, "reset")
+            except Exception as error:
+                first_error = first_error or error
+        self._cognition_receipts.clear()
+        if first_error is not None:
+            raise first_error
+
+    def pending_cognition_jobs(self) -> tuple[PreparedCognitionJob, ...]:
+        self._assert_cognition_owner()
+        return tuple(turn.job for turn in self._pending_cognition.values() if turn.job is not None)
+
+    def _assert_cognition_owner(self) -> None:
+        if self._activation_handles and self._activation_owner_thread != get_ident():
+            raise RuntimeError("activation must run on its owner thread")
+        if any(turn.owner_thread != get_ident() for turn in self._pending_cognition.values()):
+            raise RuntimeError("cognition continuation must run on its owner thread")
+
+    def _advance_cognition(self, turn: PendingCognitionTurn, *, output=None, error=None) -> CognitionAdvance:
+        try:
+            if error is not None:
+                request = turn.steps.throw(error)
+            elif turn.stage:
+                request = turn.steps.send(output)
+            else:
+                request = next(turn.steps)
+            turn.stage += 1
+            turn.policy_id = request.policy_id
+            # 日志使用同一请求；存储失败必须终止，不能注入模型 fallback。
+            if request.task_kind == "l2_reasoning":
+                self._record_reasoning_request(turn.actor_id, turn.producer_ts, json.loads(request.request_json))
+            revisions = self._capture_cognition_pin(turn.actor_id, policy_id=request.policy_id)
+            job_id = f"{turn.turn_id}:{turn.stage}"
+            turn.job = PreparedCognitionJob(job_id=job_id, turn_id=turn.turn_id, stage=turn.stage,
+                task_kind=request.task_kind, actor_id=turn.actor_id, request_json=request.request_json,
+                generation=self._cognition_generation, source_revision_vector=revisions,
+                read_set_digest=self._cognition_digest(revisions), idempotency_key=job_id,
+                activation_lock_ref=turn.activation_lock_ref, activation_token=turn.activation_token,
+                deadline_monotonic=turn.deadline_monotonic, token=uuid4().hex)
+            return CognitionAdvance("pending", next_job=turn.job)
+        except StopIteration as done:
+            self._finish_cognition_turn(turn, "completed")
+            return CognitionAdvance("completed", result=done.value)
+        except BaseException:
+            self._finish_cognition_turn(turn, "failed")
+            raise
+
+    def _finish_cognition_turn(self, turn: PendingCognitionTurn, reason: str) -> None:
+        if self._pending_cognition.get(turn.actor_id) is not turn:
+            return
+        self._pending_cognition.pop(turn.actor_id)
+        try:
+            turn.steps.close()
+        finally:
+            if turn.on_finished is not None:
+                turn.on_finished(turn.turn_id, reason)
+
+    def _remember_cognition_receipt(self, job, fingerprint, advance) -> None:
+        self._cognition_receipts[job.job_id] = (job, fingerprint, deepcopy(advance))
+        while len(self._cognition_receipts) > 32:
+            self._cognition_receipts.popitem(last=False)
+
+    @staticmethod
+    def _cognition_digest(value) -> str:
+        def encode(item):
+            if isinstance(item, BaseModel):
+                return item.model_dump(mode="json")
+            if is_dataclass(item):
+                return asdict(item)
+            raise TypeError(f"unsupported cognition pin value: {type(item).__name__}")
+        return hashlib.sha256(json.dumps(value, default=encode, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+
+    def _cognition_social_ticks(self, actor_id):
+        return [[*key[1:], value] for key, value in sorted(self._last_social_request_tick_ms.items()) if key[0] == actor_id]
+
+    def _capture_cognition_pin(self, actor_id: str, *, policy_id: str = "") -> tuple[tuple[str, str], ...]:
+        # memory 的生产写入口同步推进本人 timeline/continuity；外置 store 独立写入需另加 actor revision。
+        # 只读现有状态，不调 recall、working-memory builder 或会隐式创建状态的 helper。
+        values = {
+            "timeline": self.get_memory_revision(actor_id),
+            "continuity_revision": self._continuity_revisions.get(actor_id, 0),
+            "l1": self._l1.get_snapshot(actor_id),
+            "control_mode": self.get_control_mode(actor_id),
+            "background_mode": self.get_background_mode(actor_id),
+            "background_enabled": self._background_cognition_enabled,
+            "supervision": self._supervision_states.get(actor_id),
+            "profile": self._profile_payload(actor_id),
+            "effective_profile": self._effective_profile_payload(actor_id),
+            "l2_profile": self._l2._profile_cache.get(actor_id,
+                self._profile_payload(actor_id) if self._l2._profile_registry is self._profile_registry else None),
+            "needs": self._need_tension_store.read(actor_id),
+            "dynamic": self._dynamic_state_store.read_record(actor_id),
+            "goal": self._goal_state_store.read(actor_id),
+            "goal_history": self._goal_state_store.history(actor_id),
+            "tensions": self._unresolved_tension_store.recall(actor_id),
+            "agenda": self._background_agenda_states.get(actor_id),
+            "continuity": self._continuity_state.get(actor_id, RuntimeContinuityState(actor_id=actor_id)),
+            "wake_up": self._wake_up_signals.get(actor_id),
+            "last_background": self._last_background_tick_ms.get(actor_id),
+            "last_cognition": self._last_cognition_tick_ms.get(actor_id),
+            "cadence": self._cadence_policy,
+            "social_ticks": self._cognition_social_ticks(actor_id),
+            "policy_consumed": bool(policy_id and policy_id in self._l3._consumed_behavior_policy_ids),
+        }
+        return tuple((key, self._cognition_digest(value)) for key, value in sorted(values.items()))
+
+    def _drain_cognition(self, **kwargs):
+        with self._sync_cognition_lock:
+            payload = kwargs.get("payload")
+            fields = payload if isinstance(payload, dict) else (payload.model_dump() if payload is not None else {})
+            actor_id = kwargs.get("actor_id") or fields.get("actor_id", "")
+            if kwargs["source_kind"] == "ingest_siming_output":
+                actor_id = fields.get("target_actor_id") or actor_id
+            handle = self._sync_activation_handles.get(actor_id)
+            if handle is not None:
+                kwargs.update(activation_lock_ref=handle.lock_ref, activation_token=handle.token,
+                              activation_is_current=self.activation_is_current)
+            advance = self.prepare_cognition_job(**kwargs)
+            while advance.status == "pending":
+                job = advance.next_job
+                gateway = self._l2._gateway if job.task_kind == "l2_reasoning" else self._l3._gateway
+                try:
+                    output = gateway.complete_prepared_request(job.request_json)
+                except Exception as error:
+                    advance = self.commit_cognition_result(job, error=error)
+                else:
+                    advance = self.commit_cognition_result(job, output=output)
+            if advance.result is not None:
+                return advance.result
+            if kwargs["source_kind"] == "run_background_cognition_tick":
+                return CharacterBackgroundCognitionResult(actor_id=kwargs["actor_id"],
+                    producer_ts=kwargs["producer_ts"], ran=False, reason=advance.reason)
+            return []
+
+    def _ingest_character_perceived_event_steps(self, event: CharacterPerceivedEvent) -> Generator[CognitionRequest, dict[str, object], list[CharacterGoalCommand]]:
         if not self.supports_actor(event.actor_id):
             return []
         if self._should_defer_perception(event.actor_id, event.producer_ts):
@@ -323,28 +620,13 @@ class CharacterAgentRuntime:
                 },
             )
             return []
-        reasoning_request = self._l2.prepare_reasoning_request(
-            snapshot=snapshot,
-            event=event,
-            memory_bundle=memory_record_bundle,
-            control_mode=self.get_control_mode(event.actor_id),
-            working_memory_state=working_memory_state,
-            current_goal_state=current_goal_state,
-            goal_state_history=goal_state_history,
-            supervision_state=supervision_state,
-            unresolved_tensions=unresolved_tensions,
-            background_agenda_state=self.get_background_agenda_state(event.actor_id),
-            effective_profile=effective_profile,
-            need_tension_state=need_tension_state,
-        )
-        self._record_reasoning_request(event.actor_id, event.producer_ts, reasoning_request)
-        interpretation = self._interpret_with_continuity_floor(
+        interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
             snapshot=snapshot,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="character_perceived_event",
-            run_model=lambda memory_override=None: self._l2.interpret_perceived_event(
+            run_model=lambda memory_override=None: self._l2.prepare_perceived_event(
                 snapshot,
                 event,
                 memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
@@ -390,15 +672,15 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
-        decision = self._select_intent_with_continuity_floor(
+        decision = yield from self._select_intent_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
             snapshot=snapshot,
             interpretation=interpretation,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="character_perceived_event",
-            run_model=lambda memory_override=None: self._l3.select_intent(
-                interpretation,
+            run_model=lambda memory_override=None: self._l3.prepare_intent_plan(
+                interpretation=interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(event.actor_id),
                 effective_profile=effective_profile,
@@ -441,12 +723,12 @@ class CharacterAgentRuntime:
                     decision=decision,
                 )
                 if decision.planning_status == "continuity_floor"
-                else self._planner_suggestion_packet(
+                else (yield from self._planner_suggestion_packet(
                     actor_id=event.actor_id,
                     producer_ts=event.producer_ts,
                     interpretation=interpretation,
                     working_memory_state=working_memory_state,
-                )
+                ))
             )
             self._pending_suggestions.append(packet)
             return []
@@ -538,13 +820,13 @@ class CharacterAgentRuntime:
             causation_id=f"supervision_request:{actor_id}:{producer_ts}",
             correlation_id=f"supervision_request:{actor_id}:{producer_ts}",
         )
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_supervision_request",
             producer_ts=producer_ts,
             payload=request.model_dump(),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         return request
 
     def apply_supervision_authorization(
@@ -565,13 +847,13 @@ class CharacterAgentRuntime:
         self._supervision_states[record.actor_id] = state
         if self.supports_actor(record.actor_id):
             self._background_modes[record.actor_id] = state.active_constraints.background_mode
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=record.actor_id,
             event_type="character_supervision_authorization",
             producer_ts=record.producer_ts or record.effective_from_ts,
             payload=record.model_dump(),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         return state.model_copy(deep=True)
 
     def clear_supervision_authorization(
@@ -597,13 +879,13 @@ class CharacterAgentRuntime:
         self._supervision_states[actor_id] = refreshed
         if self.supports_actor(actor_id):
             self._background_modes[actor_id] = refreshed.active_constraints.background_mode
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_supervision_cleared",
             producer_ts=producer_ts,
             payload=refreshed.model_dump(),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         return refreshed.model_copy(deep=True)
 
     def get_unresolved_tensions(self, actor_id: str) -> list[dict[str, object]]:
@@ -613,7 +895,7 @@ class CharacterAgentRuntime:
         state = self._background_agenda_states.get(actor_id)
         return state.model_dump() if state is not None else {}
 
-    def ingest_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> list[CharacterGoalCommand]:
+    def _ingest_self_body_perceived_event_steps(self, event: SelfBodyPerceivedEvent) -> Generator[CognitionRequest, dict[str, object], list[CharacterGoalCommand]]:
         if not self.supports_actor(event.actor_id):
             return []
         if self._should_defer_perception(event.actor_id, event.producer_ts):
@@ -687,26 +969,13 @@ class CharacterAgentRuntime:
                 },
             )
             return []
-        reasoning_request = self._l2.prepare_reasoning_request(
-            snapshot=snapshot,
-            event=event,
-            memory_bundle=memory_record_bundle,
-            control_mode=self.get_control_mode(event.actor_id),
-            working_memory_state=working_memory_state,
-            current_goal_state=current_goal_state,
-            goal_state_history=goal_state_history,
-            supervision_state=supervision_state,
-            unresolved_tensions=unresolved_tensions,
-            background_agenda_state=self.get_background_agenda_state(event.actor_id),
-        )
-        self._record_reasoning_request(event.actor_id, event.producer_ts, reasoning_request)
-        interpretation = self._interpret_with_continuity_floor(
+        interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
             snapshot=snapshot,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="self_body_perceived_event",
-            run_model=lambda memory_override=None: self._l2.interpret_self_body_event(
+            run_model=lambda memory_override=None: self._l2.prepare_self_body_event(
                 snapshot,
                 event,
                 memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
@@ -743,15 +1012,15 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
-        decision = self._select_intent_with_continuity_floor(
+        decision = yield from self._select_intent_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
             snapshot=snapshot,
             interpretation=interpretation,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="self_body_perceived_event",
-            run_model=lambda memory_override=None: self._l3.select_intent(
-                interpretation,
+            run_model=lambda memory_override=None: self._l3.prepare_intent_plan(
+                interpretation=interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(event.actor_id),
                 memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
@@ -791,12 +1060,12 @@ class CharacterAgentRuntime:
                     decision=decision,
                 )
                 if decision.planning_status == "continuity_floor"
-                else self._planner_suggestion_packet(
+                else (yield from self._planner_suggestion_packet(
                     actor_id=event.actor_id,
                     producer_ts=event.producer_ts,
                     interpretation=interpretation,
                     working_memory_state=working_memory_state,
-                )
+                ))
             )
             self._pending_suggestions.append(packet)
             return []
@@ -812,10 +1081,154 @@ class CharacterAgentRuntime:
             self._l4.build_commands_from_execution_plan(execution_plan),
         )
 
-    def ingest_siming_output(
+    def _plan_siming_entry(self, payload: dict[str, object] | SimingCharacterCompatibilityInput) -> dict[str, object]:
+        validated = payload if isinstance(payload, SimingCharacterCompatibilityInput) else SimingCharacterCompatibilityInput.model_validate(payload)
+        normalized = self._normalize_siming_payload(validated.model_dump(exclude_none=True))
+        actor_id = str(normalized.get('target_actor_id') or normalized.get('actor_id') or '')
+        if not self.supports_actor(actor_id):
+            return dict(actor_id=actor_id, supported=False, events=[], after={})
+        normalized['target_actor_id'] = actor_id
+        producer_ts = int(normalized.get('producer_ts', 0) or 0)
+        supervision = self._plan_weak_supervision_from_siming(actor_id=actor_id, payload=normalized, producer_ts=producer_ts)
+        events = []
+        pressure = str(normalized.get('pressure_hint', '') or '').strip()
+        tension = self._plan_unresolved_tension(actor_id=actor_id, category='siming_pressure', summary=pressure,
+            target_ref=str(normalized.get('target_environment_id', '') or normalized.get('target_object_id', '') or actor_id),
+            producer_ts=producer_ts, source_event_id=str(normalized.get('message_id', '') or ''),
+            source_stage='siming_output_event', priority=.8)
+        if tension is not None:
+            events.append(dict(event_type='character_unresolved_tension_event', producer_ts=producer_ts,
+                payload=tension.model_dump(mode='json')))
+        events.append(dict(event_type='siming_output_event', producer_ts=producer_ts, payload=self._siming_event_payload(normalized)))
+        wake = deepcopy(self._wake_up_signals.get(actor_id))
+        if self._is_wake_up_input(normalized):
+            wake = dict(wake_up_requested=True, salience=float(normalized.get('salience_boost', 0.) or 0.), producer_ts=producer_ts)
+        return dict(actor_id=actor_id, supported=True, normalized_payload=normalized, events=events,
+            after=dict(supervision_state=supervision.model_dump(mode='json'), wake_up=wake,
+                private_snapshot=self._l1.plan_siming_output(normalized).model_dump(mode='json')))
+
+    def _cognition_entry_self_write_pin(self, actor_id: str, plan: dict[str, object]) -> dict[str, str]:
+        after = plan['after']['entry_after']
+        tensions = CharacterUnresolvedTensionStore()
+        for tension in self._unresolved_tension_store.recall_records(actor_id):
+            tensions.upsert(actor_id, tension)
+        for event in plan['events']:
+            if event['event_type'] == 'character_unresolved_tension_event':
+                tensions.upsert(actor_id, event['payload'])
+        values = dict(timeline=plan['expected_revision'] + len(plan['events']), tensions=tensions.recall(actor_id),
+            l1=after['private_snapshot'], supervision=after['supervision_state'], wake_up=after['wake_up'])
+        if 'cadence' in plan['after']:
+            values['last_cognition'] = plan['after']['cadence']['last_tick']
+        # 首个 session 后正常启动会物化空 continuity；只认可这个确定默认值。
+        if actor_id not in self._continuity_state:
+            values['continuity'] = RuntimeContinuityState(actor_id=actor_id)
+        if plan['after']['source_kind'] == 'ingest_siming_output' and after['supervision_state']['current_level'] not in {'medium', 'strong'}:
+            values['background_mode'] = after['supervision_state']['active_constraints']['background_mode']
+        return {field: self._cognition_digest(value) for field, value in values.items()}
+
+    def _install_cognition_entry_after(self, actor_id: str, plan: dict[str, object]) -> None:
+        after = plan['after']['entry_after']
+        if after is None:
+            return
+        snapshot = CharacterPrivateWorldSnapshot.model_validate(after['private_snapshot'])
+        supervision = CharacterSupervisionState.model_validate(after['supervision_state'])
+        tensions = [CharacterUnresolvedTension.model_validate(event['payload']) for event in plan['events']
+            if event['event_type'] == 'character_unresolved_tension_event']
+        if snapshot.actor_id != actor_id or supervision.actor_id != actor_id:
+            raise ValueError('cognition_entry_after_actor_mismatch')
+        # 安装冻结结果，不调用 L1 感知/监管刷新，也不再次生成 session 事件。
+        self._l1._snapshots[actor_id] = snapshot
+        self._supervision_states[actor_id] = supervision
+        if plan['after']['source_kind'] == 'ingest_siming_output' and supervision.current_level not in {'medium', 'strong'}:
+            self._background_modes[actor_id] = supervision.active_constraints.background_mode
+        if after['wake_up'] is None:
+            self._wake_up_signals.pop(actor_id, None)
+        else:
+            self._wake_up_signals[actor_id] = deepcopy(after['wake_up'])
+        for tension in tensions:
+            self._unresolved_tension_store.upsert(actor_id, tension)
+        if 'cadence' in plan['after']:
+            tick = plan['after']['cadence']['last_tick']
+            if tick is not None:
+                self._last_cognition_tick_ms[actor_id] = tick
+        if 'last_background' in plan['after']:
+            tick = plan['after']['last_background']
+            if tick is None:
+                self._last_background_tick_ms.pop(actor_id, None)
+            else:
+                self._last_background_tick_ms[actor_id] = tick
+        if 'social_ticks' in plan['after']:
+            self._last_social_request_tick_ms = {key: value for key, value in self._last_social_request_tick_ms.items() if key[0] != actor_id}
+            self._last_social_request_tick_ms.update({(actor_id, kind, target): tick for kind, target, tick in plan['after']['social_ticks']})
+        if 'l2_profile' in plan['after']:
+            self._l2._profile_cache[actor_id] = deepcopy(plan['after']['l2_profile'])
+
+    def _prepare_siming_l2_request(self, snapshot, payload, context, *, memory_override=None):
+        return self._l2.prepare_siming_output(snapshot, payload,
+            **dict(context, memory_bundle=context['memory_bundle'] if memory_override is None else memory_override))
+
+    def _freeze_siming_l2_request(self, actor_id: str, frame: dict) -> tuple[bytes, dict]:
+        snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])
+        context = dict(memory_bundle=self.get_memory_record_bundle(actor_id), control_mode=self.get_control_mode(actor_id),
+            working_memory_state=self.get_working_memory_state_record(actor_id, snapshot.model_dump()),
+            current_goal_state=self.get_goal_state(actor_id), goal_state_history=self.get_goal_state_history(actor_id),
+            supervision_state=self.get_supervision_state(actor_id), unresolved_tensions=self.get_unresolved_tensions(actor_id),
+            background_agenda_state=self.get_background_agenda_state(actor_id))
+        if frame['source_kind'] == 'run_background_cognition_tick':
+            background = self._background_reappraisal_payload(actor_id=actor_id, producer_ts=frame['producer_ts'],
+                snapshot=snapshot, current_goal_state=context['current_goal_state'],
+                unresolved_tensions=context['unresolved_tensions'], supervision_state=context['supervision_state'])
+            request = self._run_with_memory_recall(actor_id, snapshot,
+                lambda memory_override=None: self._l2.prepare_background_state(snapshot, background,
+                    **dict(context, memory_bundle=context['memory_bundle'] if memory_override is None else memory_override)))
+            context['background_payload'] = background
+        else:
+            request = self._run_with_memory_recall(actor_id, snapshot,
+                lambda memory_override=None: self._prepare_siming_l2_request(snapshot, frame['normalized_payload'], context,
+                    memory_override=memory_override))
+        frozen = json.loads(json.dumps(context, default=lambda value: value.model_dump(mode='json'), allow_nan=False))
+        return request, frozen
+
+    def _prepare_siming_l3_request(self, actor_id, snapshot, interpretation, context, *, memory_override=None):
+        return self._l3.prepare_intent_plan(
+            interpretation=interpretation, snapshot=snapshot.model_dump(), profile=self._profile_payload(actor_id),
+            memory_bundle=memory_override if memory_override is not None else context['memory_bundle'],
+            control_mode=self.get_control_mode(actor_id), working_memory_state=context['working_memory_state'],
+            current_goal_state=context['current_goal_state'], goal_state_history=context['goal_state_history'],
+            supervision_state=context['supervision_state'], unresolved_tensions=context['unresolved_tensions'],
+            background_agenda_state=self.get_background_agenda_state(actor_id))
+
+    def _freeze_siming_l3_request(self, actor_id: str, frame: dict):
+        snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])
+        interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
+        return self._run_with_memory_recall(actor_id, snapshot,
+            lambda memory_override=None: self._prepare_siming_l3_request(actor_id, snapshot, interpretation,
+                frame['context'], memory_override=memory_override))
+
+    def _plan_l3_effects(self, frame: dict, output: dict, *, fallback=None):
+        from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
+        from app.character_agent.runtime.session_recovery import goal_state_from_event
+        prepared = PreparedCharacterIntentPlan.from_json_value(frame['l3_prepared'])
+        if fallback is None:
+            result = self._l3.plan_intent_completion(prepared, output)
+            decision = self._l3.decision_from_plan(result, interpretation=prepared.interpretation)
+        else:
+            decision = CharacterIntentDecision.model_validate(fallback)
+        actor_id = frame['actor_id']
+        goal = self._plan_goal_state_event(actor_id, decision)
+        goals = CharacterGoalStateStore()
+        for previous in self._goal_state_store.history(actor_id):
+            goals.write(actor_id, previous)
+        goals.write(actor_id, goal_state_from_event(actor_id, goal))
+        own = {field: self._cognition_digest(value) for field, value in dict(
+            goal=goals.read(actor_id), goal_history=goals.history(actor_id),
+            policy_consumed=bool(frame.get('policy_id')) if fallback is None else bool(frame.get('policy_id') in self._l3._consumed_behavior_policy_ids)).items()}
+        return [dict(event_type='goal_state_event', producer_ts=frame['producer_ts'], payload=goal)], decision.model_dump(mode='json'), own
+
+    def _ingest_siming_output_steps(
         self,
         payload: dict[str, object] | SimingCharacterCompatibilityInput,
-    ) -> list[CharacterGoalCommand]:
+    ) -> Generator[CognitionRequest, dict[str, object], list[CharacterGoalCommand]]:
         validated_payload = (
             payload
             if isinstance(payload, SimingCharacterCompatibilityInput)
@@ -878,23 +1291,6 @@ class CharacterAgentRuntime:
         goal_state_history = self.get_goal_state_history(actor_id)
         supervision_state = self.get_supervision_state(actor_id)
         unresolved_tensions = self.get_unresolved_tensions(actor_id)
-        reasoning_request = self._gateway_reasoning_request_for_siming(
-            actor_id,
-            snapshot,
-            normalized_payload,
-            memory_record_bundle,
-            working_memory_state,
-            current_goal_state,
-            goal_state_history,
-            supervision_state,
-            unresolved_tensions,
-            self.get_background_agenda_state(actor_id),
-        )
-        self._record_reasoning_request(
-            actor_id,
-            int(normalized_payload.get("producer_ts", 0) or 0),
-            reasoning_request,
-        )
         self._queue_observatory_snapshot(
             actor_id=actor_id,
             producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
@@ -934,24 +1330,18 @@ class CharacterAgentRuntime:
                     "pressure_hint": str(normalized_payload.get("pressure_hint", "") or ""),
                 },
             )
-        interpretation = self._interpret_with_continuity_floor(
+        interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=snapshot,
             control_mode=self.get_control_mode(actor_id),
             source_stage="siming_output_event",
-            run_model=lambda memory_override=None: self._l2.interpret_siming_output(
-                snapshot,
-                normalized_payload,
-                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
-                control_mode=self.get_control_mode(actor_id),
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=self.get_background_agenda_state(actor_id),
-            ),
+            run_model=lambda memory_override=None: self._prepare_siming_l2_request(snapshot, normalized_payload,
+                dict(memory_bundle=memory_record_bundle, control_mode=self.get_control_mode(actor_id),
+                    working_memory_state=working_memory_state, current_goal_state=current_goal_state,
+                    goal_state_history=goal_state_history, supervision_state=supervision_state,
+                    unresolved_tensions=unresolved_tensions, background_agenda_state=self.get_background_agenda_state(actor_id)),
+                memory_override=memory_override),
         )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
@@ -981,26 +1371,19 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
-        decision = self._select_intent_with_continuity_floor(
+        decision = yield from self._select_intent_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=snapshot,
             interpretation=interpretation,
             control_mode=self.get_control_mode(actor_id),
             source_stage="siming_output_event",
-            run_model=lambda memory_override=None: self._l3.select_intent(
-                interpretation,
-                snapshot=snapshot.model_dump(),
-                profile=self._profile_payload(actor_id),
-                memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
-                control_mode=self.get_control_mode(actor_id),
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=self.get_background_agenda_state(actor_id),
-            ),
+            run_model=lambda memory_override=None: self._prepare_siming_l3_request(
+                actor_id, snapshot, interpretation,
+                dict(memory_bundle=memory_record_bundle, working_memory_state=working_memory_state,
+                    current_goal_state=current_goal_state, goal_state_history=goal_state_history,
+                    supervision_state=supervision_state, unresolved_tensions=unresolved_tensions),
+                memory_override=memory_override),
         )
         self._record_goal_state_event(actor_id, int(normalized_payload.get("producer_ts", 0) or 0), decision)
         self._set_observatory_context(actor_id, "decision_summary", decision.selected_intent)
@@ -1029,12 +1412,12 @@ class CharacterAgentRuntime:
                     decision=decision,
                 )
                 if decision.planning_status == "continuity_floor"
-                else self._planner_suggestion_packet(
+                else (yield from self._planner_suggestion_packet(
                     actor_id=actor_id,
                     producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
                     interpretation=interpretation,
                     working_memory_state=working_memory_state,
-                )
+                ))
             )
             self._pending_suggestions.append(packet)
             return []
@@ -1096,18 +1479,54 @@ class CharacterAgentRuntime:
         producer_ts: int,
         cognition_callback: Callable[[], object] | None = None,
     ) -> ActivationReceipt:
+        # 旧同步入口沿用相同 lease；异步调用者直接 begin/finish，不在网络等待时持锁。
+        with self._sync_cognition_lock:
+            handle, receipt = self.begin_actor_activation(actor_id, decision, producer_ts=producer_ts)
+            if handle is None:
+                return receipt
+            try:
+                self._sync_activation_handles[actor_id] = handle
+                if cognition_callback is not None:
+                    cognition_callback()
+            except BaseException as error:
+                self._abort_actor_activation(handle, error)
+                raise
+            finally:
+                self._sync_activation_handles.pop(actor_id, None)
+            return self.finish_actor_activation(handle, reason="completed").model_copy(
+                update={"lock_scope": "synchronous_callback"})
+
+    def begin_actor_activation(
+        self, actor_id: str, decision: ActivationDecision, *, producer_ts: int,
+        deadline_monotonic: float | None = None,
+    ) -> tuple[ActivationHandle | None, ActivationReceipt]:
+        """Owner 获取跨阶段 lease；所有 admission 拒绝均先于锁和私有记忆写入。"""
+        self._assert_cognition_owner()
         profile_ref = f"character:{actor_id}"
         authority = self._activation_authority
+        deadline = monotonic() + 60.0 if deadline_monotonic is None else deadline_monotonic
+        if not math.isfinite(deadline):
+            raise ValueError("activation deadline must be finite")
+        reason = None
         if authority is None:
-            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_authority_unavailable")
-        if not self.supports_actor(actor_id):
-            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="unsupported_actor")
-        if decision.actor_id != actor_id or decision.state != "active":
-            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_decision_not_active")
-        if authority.is_lock_active(
-            world_ref=self._activation_world_ref, profile_ref=profile_ref
-        ):
-            return ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref, zero_write=True, stop_reason="activation_lock_conflict")
+            reason = "activation_authority_unavailable"
+        elif not self.supports_actor(actor_id):
+            reason = "unsupported_actor"
+        elif decision.actor_id != actor_id or decision.state != "active":
+            reason = "activation_decision_not_active"
+        elif deadline <= monotonic():
+            reason = "activation_deadline_expired"
+        elif self._activation_ending:
+            reason = "activation_cleanup_pending"
+        elif actor_id in self._activation_handles or actor_id in self._pending_cognition:
+            reason = "activation_lock_conflict"
+        elif len(set(self._activation_handles) | set(self._pending_cognition)) >= 4:
+            reason = "activation_capacity"
+        elif authority.is_lock_active(world_ref=self._activation_world_ref, profile_ref=profile_ref):
+            reason = "activation_lock_conflict"
+        if reason:
+            return None, ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref,
+                                           zero_write=True, stop_reason=reason)
         stream = f"population:{self._activation_world_ref}"
         receipt = authority.lock(
             world_ref=self._activation_world_ref,
@@ -1115,35 +1534,81 @@ class CharacterAgentRuntime:
             expected_revision=authority.store.get_stream_head(stream),
         )
         if not receipt.committed:
-            return receipt.model_copy(update={"status": "requeued", "stop_reason": "activation_lock_conflict"})
-        lock_ref = f"lock:{self._activation_world_ref}:{profile_ref}"
+            return None, receipt.model_copy(update={"status": "requeued", "stop_reason": "activation_lock_conflict"})
+        handle = ActivationHandle(actor_id, self._activation_world_ref, f"lock:{self._activation_world_ref}:{profile_ref}",
+                                  uuid4().hex, self._activation_generation, deadline)
+        self._activation_handles[actor_id] = handle
+        self._activation_owner_thread = get_ident()
         try:
             if decision.load_private_memory:
                 self.materialize_pending_seed_memories(actor_id, producer_ts)
-            if cognition_callback is not None:
-                cognition_callback()
-        finally:
-            release = authority.release_lock(
-                lock_ref=lock_ref,
-                expected_revision=authority.store.get_stream_head(stream),
-            )
+        except BaseException as error:
+            self._abort_actor_activation(handle, error)
+            raise
+        return handle, receipt.model_copy(update={"lock_scope": "asynchronous_turn", "lock_released": False})
+
+    def activation_is_current(self, lock_ref: str, token: str) -> bool:
+        self._assert_cognition_owner()
+        return any(handle.lock_ref == lock_ref and handle.token == token
+                   and handle.generation == self._activation_generation
+                   and token not in self._activation_ending and monotonic() < handle.deadline_monotonic
+                   and self.activation_lock_is_active(handle.actor_id)
+                   for handle in self._activation_handles.values())
+
+    def pending_actor_activations(self) -> tuple[ActivationHandle, ...]:
+        self._assert_cognition_owner()
+        return tuple(self._activation_handles.values())
+
+    def finish_actor_activation(self, handle: ActivationHandle, *, reason: str) -> ActivationReceipt:
+        """结束请求先失效 token；释放失败保留清理义务，旧 handle 不能释放新持有者。"""
+        self._assert_cognition_owner()
+        previous = self._activation_receipts.get(handle.token)
+        if previous is not None and previous[0] == handle:
+            return previous[1].model_copy(update={"zero_write": True, "idempotency_status": "duplicate_replayed"}, deep=True)
+        if self._activation_handles.get(handle.actor_id) != handle:
+            return ActivationReceipt(committed=False, status="rejected", profile_ref=f"character:{handle.actor_id}",
+                                     zero_write=True, stop_reason="activation_token_invalid")
+        self._activation_ending.add(handle.token)
+        authority = self._activation_authority
+        release = authority.release_lock(lock_ref=handle.lock_ref,
+            expected_revision=authority.store.get_stream_head(f"population:{handle.world_ref}"))
         if not release.committed:
-            return release.model_copy(
-                update={
-                    "status": "requeued",
-                    "lock_scope": "synchronous_callback",
-                    "lock_released": False,
-                }
-            )
-        return release.model_copy(
-            update={
-                "status": "active",
-                "lock_scope": "synchronous_callback",
-                "lock_released": True,
-            }
-        )
+            return release.model_copy(update={"status": "requeued", "lock_scope": "asynchronous_turn", "lock_released": False})
+        receipt = release.model_copy(update={"status": "active" if reason == "completed" else "requeued",
+                                             "lock_scope": "asynchronous_turn", "lock_released": True})
+        self._activation_handles.pop(handle.actor_id)
+        self._activation_ending.discard(handle.token)
+        if not self._activation_handles:
+            self._activation_owner_thread = None
+        self._activation_receipts[handle.token] = (handle, receipt.model_copy(deep=True))
+        while len(self._activation_receipts) > 32:
+            self._activation_receipts.popitem(last=False)
+        return receipt
+
+    def _abort_actor_activation(self, handle: ActivationHandle, error: BaseException) -> None:
+        try:
+            self.finish_actor_activation(handle, reason="failed")
+        except BaseException as cleanup_error:
+            raise error from cleanup_error
+
+    def reset_actor_activations(self) -> None:
+        self._assert_cognition_owner()
+        first_error = None
+        for handle in tuple(self._activation_handles.values()):
+            try:
+                receipt = self.finish_actor_activation(handle, reason="reset")
+                if not receipt.lock_released:
+                    raise RuntimeError(receipt.stop_reason or "activation_release_failed")
+            except Exception as error:
+                first_error = first_error or error
+        self._activation_generation = uuid4().hex
+        self._activation_receipts.clear()
+        if first_error is not None:
+            raise first_error
 
     def set_activation_authority(self, authority: ProfileActivationAuthority) -> None:
+        if self._activation_handles and authority is not self._activation_authority:
+            raise RuntimeError("cannot replace authority while activation cleanup is pending")
         self._activation_authority = authority
 
     def record_character_perceived_event_without_cognition(self, event: CharacterPerceivedEvent) -> None:
@@ -1159,13 +1624,13 @@ class CharacterAgentRuntime:
         if not self.supports_actor(bundle.subject_id):
             raise ValueError(f"unsupported actor_id: {bundle.subject_id}")
         snapshot = self._l1.apply_canonical_percept_bundle(bundle)
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=bundle.subject_id,
             event_type="canonical_percept_bundle",
             producer_ts=snapshot.producer_ts,
             payload=bundle.model_dump(),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         self._queue_observatory_stage_event(
             actor_id=bundle.subject_id,
             producer_ts=snapshot.producer_ts,
@@ -1180,7 +1645,7 @@ class CharacterAgentRuntime:
             actor_id=bundle.subject_id,
             producer_ts=snapshot.producer_ts,
             snapshot=snapshot,
-            memory_bundle=self.get_memory_bundle(bundle.subject_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(bundle.subject_id),
         )
         return snapshot
 
@@ -1188,24 +1653,10 @@ class CharacterAgentRuntime:
         return self._session_timeline_after(actor_id, 0)
 
     def _session_timeline_event_count(self, actor_id: str) -> int:
-        graph_count = len(self._graph_session_timelines.get(actor_id, ()))
-        overlap = self._graph_session_local_overlap_counts.get(actor_id, 0)
-        return graph_count + self._session_store.event_count(actor_id) - overlap
+        return self._session_store.event_count(actor_id)
 
-    def _session_timeline_after(
-        self, actor_id: str, event_count: int
-    ) -> list[dict[str, object]]:
-        graph_timeline = self._graph_session_timelines.get(actor_id, [])
-        graph_count = len(graph_timeline)
-        overlap = self._graph_session_local_overlap_counts.get(actor_id, 0)
-        graph_tail = (
-            [deepcopy(event) for event in graph_timeline[event_count:]]
-            if event_count < graph_count
-            else []
-        )
-        local_offset = overlap + max(0, event_count - graph_count)
-        graph_tail.extend(self._session_store.list_events_after(actor_id, local_offset))
-        return graph_tail
+    def _session_timeline_after(self, actor_id: str, event_count: int) -> list[dict[str, object]]:
+        return self._session_store.list_events_after(actor_id, event_count)
 
     def apply_character_continuity_command(
         self, command: CharacterContinuityCommand
@@ -1288,7 +1739,7 @@ class CharacterAgentRuntime:
                 "conflict_refs": conflict_refs, "verification_request_refs": tuple(request.request_id for request in requests),
                 "next_check_at": producer_ts + interval})
             # 持久化检查时间以便重启后保持限频；不写有效记忆，也不隐式调用 edit。
-            self._session_store.append_event(actor_id=actor_id, event_type="character_memory_consistency_checked",
+            self._append_session_event(actor_id=actor_id, event_type="character_memory_consistency_checked",
                 producer_ts=producer_ts, payload=result.model_dump(mode="json"))
             self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
             return result
@@ -1344,7 +1795,7 @@ class CharacterAgentRuntime:
                 if payload.get("verification_result") != result.model_dump() or event["producer_ts"] != producer_ts:
                     raise ValueError("memory verification request already consumed with different result")
                 self._persist_graph_continuity(actor_id=result.actor_id, producer_ts=producer_ts)
-                self._memory_store.write_event(event)
+                self._project_session_event(event)
                 self._update_memory_scene_knowledge(event)
                 return
         store = self._l1.get_actor_scene_knowledge_store()
@@ -1380,7 +1831,7 @@ class CharacterAgentRuntime:
             actor_id = request.actor_id
             timeline = self.get_session_timeline(actor_id)
             revision = len(timeline)
-            local_revision = len(self._session_store.list_events(actor_id))
+            local_revision = self._session_store.event_count(actor_id)
             def reject(reason: str) -> MemoryCorrectionReceipt:
                 return MemoryCorrectionReceipt(request_id=request.request_id, actor_id=actor_id,
                     status="rejected", reason=reason, before_revision=revision, after_revision=revision)
@@ -1398,7 +1849,7 @@ class CharacterAgentRuntime:
                     if payload.get("request_digest") != digest:
                         return reject("idempotency_conflict")
                     # 已提交事件是回执和投影的共同来源，投影失败可以再次重建。
-                    self._memory_store.write_event(event)
+                    self._project_session_event(event)
                     self._persist_graph_continuity(actor_id=actor_id, producer_ts=int(event["producer_ts"]))
                     return MemoryCorrectionReceipt.model_validate(payload["receipt"])
             now = self._memory_now_ts_provider() if self._memory_now_ts_provider else max((int(event.get("producer_ts", 0)) for event in timeline), default=0)
@@ -1446,7 +1897,7 @@ class CharacterAgentRuntime:
                 "proposition": f"{selected.subject_ref}:{selected.predicate}={selected.value}",
                 "state": "high_confidence_believed", "confidence": 1.0, "producer_ts": now})
             try:
-                stored = self._session_store.append_event(actor_id=actor_id,
+                stored = self._append_session_event(actor_id=actor_id,
                     event_type="character_memory_correction", producer_ts=now,
                     expected_revision=local_revision, payload={
                         "request_id": request.request_id, "idempotency_key": request.idempotency_key,
@@ -1461,67 +1912,36 @@ class CharacterAgentRuntime:
                 raise
             # 图模式也先提交可回放时间线；有效记忆只是该事件的派生投影。
             self._persist_graph_continuity(actor_id=actor_id, producer_ts=now)
-            self._memory_store.write_event(stored)
+            self._project_session_event(stored)
             return receipt
 
     def ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
         # Public callers must use apply_character_continuity_command; this parser is internal.
         return []
 
-    def _ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
-        if hasattr(seed, "model_dump"):
-            payload = seed.model_dump(mode="json")
-        elif isinstance(seed, dict):
-            payload = deepcopy(seed)
-        else:
-            raise TypeError("seed_projection_invalid")
-        actor_ref = str(payload.get("actor_ref", "") or "")
-        actor_id = actor_ref.removeprefix("character:")
-        if not self.supports_continuity_actor(actor_id):
-            return []
-        self._seed_projections[actor_id] = deepcopy(payload)
-        state_delta = payload.get("state_deltas", {})
-        if isinstance(state_delta, dict):
-            need_delta = state_delta.get("need_tension")
-            if isinstance(need_delta, dict):
-                self._need_tension_store.merge_delta(actor_id, need_delta)
-            dynamic_delta = state_delta.get("dynamic_state")
-            if isinstance(dynamic_delta, dict):
-                self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
-        hints = payload.get("activation_hints", ())
-        if isinstance(hints, (list, tuple)) and hints:
-            self._wake_up_signals[actor_id] = {
-                "wake_up_requested": True,
-                "salience": float(payload.get("activation_salience", 0.0) or 0.0),
-                "producer_ts": int(payload.get("to_tick", 0) or 0),
-                "activation_hints": [str(item) for item in hints],
-            }
-        return []
-
     def get_seed_projection(self, actor_id: str) -> dict[str, object]:
-        return deepcopy(self._seed_projections.get(actor_id, {}))
+        state = self._session_store.read_runtime_state(actor_id)
+        event_id = state.get('seed_event_id') if state else None
+        event = self._session_store.read_event(actor_id,event_id=event_id) if event_id else None
+        return {key:deepcopy(value) for key,value in event['payload'].items() if key != 'continuity_commit'} if event else {}
 
     def get_pending_seed_candidates(self, actor_id: str) -> list[dict[str, object]]:
-        return [
-            candidate.model_dump(mode="json")
-            for candidate in self._pending_seed_candidates.get(actor_id, {}).values()
-        ]
+        return self._session_store.list_candidates(actor_id)
 
     def materialize_pending_seed_memories(
         self, actor_id: str, producer_ts: int
     ) -> list[CharacterMemoryMaterializationReceipt]:
-        candidates = self._pending_seed_candidates.get(actor_id, {})
+        candidates = {value["candidate_id"]: CharacterMemoryCandidate.model_validate(value) for value in self.get_pending_seed_candidates(actor_id)}
         receipts: list[CharacterMemoryMaterializationReceipt] = []
         for candidate_id, candidate in list(candidates.items()):
-            prior = self._materialization_receipts.get(candidate_id)
+            prior_payload = self._session_store.read_receipt(actor_id, kind="materialization", key=candidate_id)
+            prior = CharacterMemoryMaterializationReceipt.model_validate(prior_payload) if prior_payload else None
             if prior is not None:
                 if prior.status == "committed":
-                    committed_event = self._materialization_committed_events.get(
-                        candidate_id
-                    )
+                    committed_event = self._session_store.read_committed_event_for_receipt(actor_id, kind="materialization", key=candidate_id)
                     if committed_event is None:
                         raise ValueError("character_materialization_commit_missing")
-                    self._memory_store.write_event(committed_event)
+                    self._project_session_event(committed_event)
                 receipts.append(
                     prior.model_copy(update={"status": "idempotent_replay"})
                 )
@@ -1559,7 +1979,7 @@ class CharacterAgentRuntime:
                 selected_pool=self._memory_pool_for_candidate(candidate),
                 memory_cursor=producer_ts,
             )
-            event = self._session_store.append_event(
+            event = self._append_session_event(
                 actor_id=actor_id,
                 event_type=event_type,
                 producer_ts=producer_ts,
@@ -1568,8 +1988,7 @@ class CharacterAgentRuntime:
                     "materialization_receipt": receipt.model_dump(mode="json"),
                 },
             )
-            self._remember_materialization_commit(event)
-            self._memory_store.write_event(event)
+            self._project_session_event(event)
             receipts.append(receipt)
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
         return receipts
@@ -1612,23 +2031,39 @@ class CharacterAgentRuntime:
                 character_revision_after=0,
                 refusal_reason="unsupported_actor",
             )
-        prior = self._continuity_receipts.get(command.idempotency_key)
-        if isinstance(prior, CharacterContinuityReceipt):
-            if command.idempotency_key in self._continuity_projection_rebuild_required:
-                event = self._continuity_committed_events.get(command.idempotency_key)
-                if event is not None:
-                    payload = event.get("payload", {})
-                    if not isinstance(payload, dict):
-                        raise ValueError("character_continuity_commit_invalid")
-                    self._apply_continuity_commit_projection(actor_id, payload)
-                    self._memory_store.write_event(event)
-                self._persist_graph_continuity(
-                    actor_id=actor_id, producer_ts=prior.recorded_at
-                )
-                self._continuity_projection_rebuild_required.discard(
-                    command.idempotency_key
-                )
-            return prior.model_copy(update={"status": "idempotent_replay"}, deep=True)
+        prior_payload = self._session_store.read_receipt(actor_id, kind='continuity', key=command.idempotency_key)
+        prior = CharacterContinuityReceipt.model_validate(prior_payload) if prior_payload else None
+        if prior is not None:
+            event = self._session_store.read_committed_event_for_receipt(actor_id, kind='continuity', key=command.idempotency_key)
+            if event is None:
+                raise ValueError('character_continuity_commit_missing')
+            commit = event['payload']['continuity_commit']
+            digest = commit.get('command_digest')
+            if digest is not None:
+                matches = digest == self._cognition_digest(command.model_dump(mode='json', exclude={'expected_character_revision'}))
+            else:
+                # 旧事件没有 digest，只比较当时确实持久化的命令事实。
+                delta = deepcopy(command.state_delta)
+                projection = {k:v for k,v in event['payload'].items() if k != 'continuity_commit'}
+                presentation = delta.pop('presentation_seed', None)
+                hints = delta.pop('activation_hints', ())
+                need = delta.pop('need_tension', None)
+                dynamic = delta.pop('dynamic_state', None)
+                matches = (command.command_id == prior.command_id
+                    and command.to_tick == event['producer_ts'] and dict(command.source_revision_vector) == prior.source_revision_vector
+                    and command.simulation_tick_cursor == prior.simulation_tick_cursor and command.source_owner_receipt_refs == prior.source_owner_receipt_refs
+                    and command.policy_revision == 'policy:character-continuity:v1'
+                    and projection.get('state_deltas') == delta and projection.get('memory_candidate_refs') == list(command.memory_candidate_refs)
+                    and projection.get('supersedes') == (command.exposure_evidence.get('supersedes') or delta.get('supersedes'))
+                    and projection.get('presentation_seed') == (presentation if isinstance(presentation,dict) else {})
+                    and projection.get('activation_hints') == (list(hints) if isinstance(hints,(list,tuple)) else list(command.exposure_evidence.get('activation_hints',[])))
+                    and commit.get('need_tension_delta',{}) == (need or {}) and commit.get('dynamic_state_delta',{}) == (dynamic or {})
+                    and commit.get('memory_candidates',[]) == command.exposure_evidence.get('memory_candidates',[]))
+            if not matches:
+                raise ValueError('character_continuity_command_conflict')
+            self._finish_session_projections(actor_id)
+            self._persist_graph_continuity(actor_id=actor_id, producer_ts=prior.recorded_at)
+            return prior.model_copy(update={'status':'idempotent_replay'}, deep=True)
         current_revision = self._continuity_revisions.get(actor_id, 0)
         if command.expected_character_revision != current_revision:
             return CharacterContinuityReceipt(
@@ -1691,7 +2126,7 @@ class CharacterAgentRuntime:
                 return self._continuity_refusal(command, current_revision, "memory_candidate_temporal_invalid")
             if basis is not None and candidate.exposure_basis != basis:
                 return self._continuity_refusal(command, current_revision, "exposure_basis_mismatch")
-            if any(item.dedup_key == candidate.dedup_key for item in self._pending_seed_candidates.get(actor_id, {}).values() if item.candidate_id != candidate.candidate_id):
+            if self._session_store.has_other_candidate(actor_id, candidate.candidate_id, candidate.dedup_key):
                 return self._continuity_refusal(command, current_revision, "memory_candidate_duplicate")
             staged_candidates.append(candidate)
         try:
@@ -1747,7 +2182,7 @@ class CharacterAgentRuntime:
             source_owner_receipt_refs=command.source_owner_receipt_refs,
             recorded_at=command.to_tick,
         )
-        event = self._session_store.append_event(
+        event = self._append_session_event(
             actor_id=actor_id,
             event_type="character_simulation_seed_event",
             producer_ts=command.to_tick,
@@ -1755,6 +2190,7 @@ class CharacterAgentRuntime:
                 **projection,
                 "continuity_commit": {
                     "idempotency_key": command.idempotency_key,
+                    "command_digest": self._cognition_digest(command.model_dump(mode='json', exclude={'expected_character_revision'})),
                     "receipt": receipt.model_dump(mode="json"),
                     "need_tension_delta": deepcopy(need_delta) if isinstance(need_delta, dict) else {},
                     "dynamic_state_delta": deepcopy(dynamic_delta) if isinstance(dynamic_delta, dict) else {},
@@ -1764,21 +2200,8 @@ class CharacterAgentRuntime:
                 },
             },
         )
-        self._continuity_committed_events[command.idempotency_key] = deepcopy(event)
         self._continuity_revisions[actor_id] = current_revision + 1
-        self._remember_continuity_receipt(command.idempotency_key, receipt)
-        try:
-            payload = event.get("payload", {})
-            if not isinstance(payload, dict):
-                raise ValueError("character_continuity_commit_invalid")
-            self._apply_continuity_commit_projection(actor_id, payload)
-            self._memory_store.write_event(event)
-            self._persist_graph_continuity(
-                actor_id=actor_id, producer_ts=receipt.recorded_at
-            )
-        except Exception:
-            self._continuity_projection_rebuild_required.add(command.idempotency_key)
-            raise
+        self._persist_graph_continuity(actor_id=actor_id, producer_ts=receipt.recorded_at)
         return receipt
 
     def _stage_shared_module_deltas(
@@ -1825,81 +2248,9 @@ class CharacterAgentRuntime:
                 "source_ref": delta.source_ref,
             }
         return staged
-    def _remember_continuity_receipt(
-        self, key: str, receipt: CharacterContinuityReceipt
-    ) -> None:
-        previous = self._continuity_receipts.get(key)
-        if previous is not None and previous != receipt:
-            raise ValueError("character_continuity_receipt_conflict")
-        self._continuity_receipts[key] = receipt
-        actor_id = receipt.actor_ref.removeprefix("character:")
-        self._continuity_receipts_by_actor.setdefault(actor_id, {})[key] = receipt
 
-    def _remember_materialization_receipt(
-        self, key: str, receipt: CharacterMemoryMaterializationReceipt
-    ) -> None:
-        previous = self._materialization_receipts.get(key)
-        if previous is not None and previous != receipt:
-            raise ValueError("character_materialization_receipt_conflict")
-        self._materialization_receipts[key] = receipt
-        actor_id = receipt.actor_ref.removeprefix("character:")
-        self._materialization_receipts_by_actor.setdefault(actor_id, {})[key] = receipt
-
-    def _remember_materialization_commit(self, event: dict[str, object]) -> None:
-        payload = event.get("payload", {})
-        if not isinstance(payload, dict):
-            return
-        materialization = payload.get("materialization_receipt")
-        if not isinstance(materialization, dict):
-            return
-        receipt = CharacterMemoryMaterializationReceipt.model_validate(materialization)
-        actor_id = str(event.get("actor_id", "") or "")
-        if receipt.actor_ref.removeprefix("character:") != actor_id:
-            raise ValueError("character_materialization_commit_actor_mismatch")
-        self._remember_materialization_receipt(receipt.candidate_id, receipt)
-        if receipt.status != "committed":
-            return
-        previous = self._materialization_committed_events.get(receipt.candidate_id)
-        if previous is not None and previous != event:
-            raise ValueError("character_materialization_commit_conflict")
-        self._materialization_committed_events[receipt.candidate_id] = deepcopy(event)
-
-    def _apply_continuity_commit_projection(
-        self, actor_id: str, payload: dict[str, object]
-    ) -> None:
-        commit = payload.get("continuity_commit")
-        if not isinstance(commit, dict):
-            raise ValueError("character_continuity_commit_invalid")
-        candidates = commit.get("memory_candidates", [])
-        if not isinstance(candidates, list):
-            raise ValueError("character_continuity_commit_invalid")
-        pending = self._pending_seed_candidates.setdefault(actor_id, {})
-        for candidate_payload in candidates:
-            candidate = CharacterMemoryCandidate.model_validate(candidate_payload)
-            if candidate.actor_ref.removeprefix("character:") != actor_id:
-                raise ValueError("character_continuity_commit_actor_mismatch")
-            pending[candidate.candidate_id] = candidate
-        projection = {
-            key: deepcopy(value)
-            for key, value in payload.items()
-            if key != "continuity_commit"
-        }
-        self._ingest_seed_projection(projection)
-        raw_module_deltas = projection.get("module_deltas", [])
-        if not isinstance(raw_module_deltas, list):
-            raise ValueError("character_continuity_module_deltas_invalid")
-        module_deltas = tuple(CharacterModuleDelta.model_validate(item) for item in raw_module_deltas)
-        if module_deltas:
-            self._shared_module_states[actor_id] = self._stage_shared_module_deltas(
-                actor_id,
-                module_deltas,
-            )
-        need_delta = commit.get("need_tension_delta")
-        if isinstance(need_delta, dict) and need_delta:
-            self._need_tension_store.merge_delta(actor_id, need_delta)
-        dynamic_delta = commit.get("dynamic_state_delta")
-        if isinstance(dynamic_delta, dict) and dynamic_delta:
-            self._dynamic_state_store.merge_delta(actor_id, dynamic_delta)
+    def _remember_materialization_receipt(self, key: str, receipt: CharacterMemoryMaterializationReceipt) -> None:
+        self._session_store.save_receipt(receipt.actor_ref.removeprefix('character:'), kind='materialization', key=key, receipt=receipt.model_dump(mode='json'))
 
     def _continuity_refusal(self, command: CharacterContinuityCommand, revision: int, reason: str) -> CharacterContinuityReceipt:
         return CharacterContinuityReceipt(
@@ -2058,62 +2409,48 @@ class CharacterAgentRuntime:
             skill_states=skill_states,
         ).model_dump()
 
-    def run_background_cognition_tick(
+    def _background_entry_reason(self, actor_id, producer_ts, supervision, snapshot):
+        if not self.supports_actor(actor_id):
+            return 'unsupported_actor'
+        if not self._background_cognition_enabled:
+            return 'background_disabled'
+        if self.get_background_mode(actor_id) == 'off':
+            return 'actor_background_off'
+        if not supervision.active_constraints.allow_background_loop:
+            return 'supervision_blocked_background_loop'
+        interval = int(supervision.active_constraints.min_tick_interval_ms or 0)
+        previous = self._last_background_tick_ms.get(actor_id)
+        if interval > 0 and previous is not None and producer_ts - previous < interval:
+            return 'tick_not_due'
+        return 'missing_snapshot' if snapshot is None else ''
+
+    def _plan_background_entry(self, actor_id, producer_ts):
+        if not self.supports_actor(actor_id):
+            return dict(supported=False, events=[], normalized_payload={}, after=None,
+                result=CharacterBackgroundCognitionResult(actor_id=actor_id, producer_ts=producer_ts, ran=False, reason='unsupported_actor').model_dump(mode='json'))
+        supervision = self._supervision_states.get(actor_id) or self._default_supervision_state(actor_id)
+        snapshot = self.get_private_snapshot(actor_id)
+        reason = self._background_entry_reason(actor_id, producer_ts, supervision, snapshot)
+        result = CharacterBackgroundCognitionResult(actor_id=actor_id, producer_ts=producer_ts,
+            ran=False, reason=reason, current_level=supervision.current_level).model_dump(mode='json') if reason else None
+        return dict(supported=True, events=[], normalized_payload={}, result=result,
+            after=None if snapshot is None else dict(private_snapshot=snapshot.model_dump(mode='json'),
+                supervision_state=supervision.model_dump(mode='json'), wake_up=deepcopy(self._wake_up_signals.get(actor_id))))
+
+    def _run_background_cognition_tick_steps(
         self,
         *,
         actor_id: str,
         producer_ts: int,
-    ) -> CharacterBackgroundCognitionResult:
-        if not self.supports_actor(actor_id):
-            return CharacterBackgroundCognitionResult(
-                actor_id=actor_id,
-                ran=False,
-                producer_ts=producer_ts,
-                reason="unsupported_actor",
-            )
+    ) -> Generator[CognitionRequest, dict[str, object], CharacterBackgroundCognitionResult]:
+        if self.supports_actor(actor_id):
+            self._supervision_state_for(actor_id)
+        planned = self._plan_background_entry(actor_id, producer_ts)
+        if planned['result'] is not None:
+            return CharacterBackgroundCognitionResult.model_validate(planned['result'])
         supervision_state = self._supervision_state_for(actor_id)
         background_mode = self.get_background_mode(actor_id)
-        if not self._background_cognition_enabled:
-            return CharacterBackgroundCognitionResult(
-                actor_id=actor_id,
-                ran=False,
-                producer_ts=producer_ts,
-                reason="background_disabled",
-                current_level=supervision_state.current_level,
-            )
-        if background_mode == "off":
-            return CharacterBackgroundCognitionResult(
-                actor_id=actor_id,
-                ran=False,
-                producer_ts=producer_ts,
-                reason="actor_background_off",
-                current_level=supervision_state.current_level,
-            )
-        if not supervision_state.active_constraints.allow_background_loop:
-            return CharacterBackgroundCognitionResult(
-                actor_id=actor_id,
-                ran=False,
-                producer_ts=producer_ts,
-                reason="supervision_blocked_background_loop",
-                current_level=supervision_state.current_level,
-            )
-        if not self._background_tick_due(actor_id=actor_id, producer_ts=producer_ts):
-            return CharacterBackgroundCognitionResult(
-                actor_id=actor_id,
-                ran=False,
-                producer_ts=producer_ts,
-                reason="tick_not_due",
-                current_level=supervision_state.current_level,
-            )
         snapshot = self.get_private_snapshot(actor_id)
-        if snapshot is None:
-            return CharacterBackgroundCognitionResult(
-                actor_id=actor_id,
-                ran=False,
-                producer_ts=producer_ts,
-                reason="missing_snapshot",
-                current_level=supervision_state.current_level,
-            )
         memory_record_bundle = self.get_memory_record_bundle(actor_id)
         working_memory_state = self.get_working_memory_state_record(actor_id, snapshot.model_dump())
         current_goal_state = self.get_goal_state(actor_id)
@@ -2128,26 +2465,13 @@ class CharacterAgentRuntime:
             unresolved_tensions=unresolved_tensions,
             supervision_state=supervision_state.model_dump(),
         )
-        reasoning_request = self._l2.prepare_reasoning_request(
-            snapshot=snapshot,
-            event=self._runtime_payload_event(actor_id, background_payload),
-            memory_bundle=memory_record_bundle,
-            control_mode=self.get_control_mode(actor_id),
-            working_memory_state=working_memory_state,
-            current_goal_state=current_goal_state,
-            goal_state_history=goal_state_history,
-            supervision_state=supervision_state.model_dump(),
-            unresolved_tensions=unresolved_tensions,
-            background_agenda_state=background_agenda_state,
-        )
-        self._record_reasoning_request(actor_id, producer_ts, reasoning_request)
-        interpretation = self._interpret_with_continuity_floor(
+        interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=snapshot,
             control_mode=self.get_control_mode(actor_id),
             source_stage="background_cognition_tick",
-            run_model=lambda memory_override=None: self._l2.interpret_background_state(
+            run_model=lambda memory_override=None: self._l2.prepare_background_state(
                 snapshot,
                 background_payload,
                 memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
@@ -2167,15 +2491,15 @@ class CharacterAgentRuntime:
                 interpretation=interpretation,
             )
         self._record_interpretation_event(actor_id, producer_ts, interpretation)
-        decision = self._select_intent_with_continuity_floor(
+        decision = yield from self._select_intent_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=snapshot,
             interpretation=interpretation,
             control_mode=self.get_control_mode(actor_id),
             source_stage="background_cognition_tick",
-            run_model=lambda memory_override=None: self._l3.select_intent(
-                interpretation,
+            run_model=lambda memory_override=None: self._l3.prepare_intent_plan(
+                interpretation=interpretation,
                 snapshot=snapshot.model_dump(),
                 profile=self._profile_payload(actor_id),
                 memory_bundle=memory_override if memory_override is not None else memory_record_bundle,
@@ -2421,7 +2745,7 @@ class CharacterAgentRuntime:
         verification_result: ActivePerceptionResult | None = None, verification_conflict_refs: list[str] | None = None,
     ) -> None:
         event = CharacterPerceivedEvent.model_validate(event.model_dump())
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=event.actor_id,
             event_type="character_perceived_event",
             producer_ts=event.producer_ts,
@@ -2450,53 +2774,55 @@ class CharacterAgentRuntime:
         )
         if verification_result is not None:
             self._persist_graph_continuity(actor_id=event.actor_id, producer_ts=event.producer_ts)
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         self._update_memory_scene_knowledge(stored)
 
     def _update_memory_scene_knowledge(self, event: dict[str, object]) -> None:
-        event_key = (str(event["actor_id"]), str(event["event_id"]))
-        if event_key in self._projected_memory_scene_events:
-            return
+        actor_id, index = str(event['actor_id']), int(event['event_index'])
+        with self._session_store.transaction():
+            if self._session_store.projection_cursor(actor_id, 'ask') >= index:
+                return
+            self._update_memory_scene_knowledge_unchecked(event)
+            self._session_store.set_projection_cursor(actor_id, 'ask', index)
+
+    def _update_memory_scene_knowledge_unchecked(self, event: dict[str, object]) -> None:
         payload = event.get("payload", {})
         if not isinstance(payload, dict):
             return
         if event.get("event_type") == "character_agent_settlement_result":
             target = str(payload.get("target_object_id", "") or payload.get("target_actor_id", "") or "")
             if target and payload.get("result_type") == "constraint_state_result":
-                self._l1.get_actor_scene_knowledge_store().upsert(ActorSceneKnowledgeEntry(
+                self._l1.get_actor_scene_knowledge_store().record(ActorSceneKnowledgeEntry(
                     entry_id=f"ask:{event['actor_id']}:{target}:failure", actor_id=str(event["actor_id"]),
                     session_id=str(payload.get("room_id", "room_demo")), scene_id=str(payload.get("scene_id", "scene_demo")),
                     subject_ref=target, knowledge_type="space", summary=str(payload.get("constraint_summary", "interaction failed")),
                     source_kind="interaction_failure", source_refs=[str(event["event_id"])], confidence=1.0,
                 ), producer_ts=int(event["producer_ts"]))
-            self._projected_memory_scene_events.add(event_key)
             return
         if payload.get("verification_result"):
             result = ActivePerceptionResult.model_validate(payload["verification_result"])
             result.conflict_refs = list(payload.get("verification_conflict_refs", result.conflict_refs))
             ActivePerceptionPlanner().apply_result(self._l1.get_actor_scene_knowledge_store(), result,
                 producer_ts=int(event["producer_ts"]))
-            self._projected_memory_scene_events.add(event_key)
             return
         claim_payload = payload.get("fact_claim") if isinstance(payload, dict) else None
         if not isinstance(claim_payload, dict):
             return
         claim = MemoryFactClaim.model_validate(claim_payload)
-        self._l1.get_actor_scene_knowledge_store().upsert(ActorSceneKnowledgeEntry(
+        self._l1.get_actor_scene_knowledge_store().record(ActorSceneKnowledgeEntry(
             entry_id=f"ask:{event['actor_id']}:{claim.subject_ref}:memory",
             actor_id=str(event["actor_id"]), session_id=str(payload.get("room_id", "room_demo")),
             scene_id=str(payload.get("scene_id", "scene_demo")), subject_ref=claim.subject_ref,
             knowledge_type="space", summary=str(payload.get("summary", "")), source_kind="canonical_percept_bundle",
             source_refs=[str(event["event_id"]), claim.source_ref], confidence=float(payload.get("certainty_score", 1.0)), claim=claim,
         ), producer_ts=int(event["producer_ts"]))
-        self._projected_memory_scene_events.add(event_key)
 
     def _record_relational_belief_from_perceived_event(self, event: CharacterPerceivedEvent) -> None:
         entity_id = str(event.source_actor_id or "")
         if entity_id == "" or entity_id == event.actor_id:
             return
         value = self._infer_relational_belief_value(event)
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=event.actor_id,
             event_type="relational_belief_event",
             producer_ts=event.producer_ts,
@@ -2506,7 +2832,7 @@ class CharacterAgentRuntime:
                 "value": value,
             },
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _infer_relational_belief_value(self, event: CharacterPerceivedEvent) -> str:
         if event.certainty_score < 0.75 or event.clarity_score < 0.85:
@@ -2514,7 +2840,7 @@ class CharacterAgentRuntime:
         return "noticed"
 
     def _record_self_body_event(self, event: SelfBodyPerceivedEvent) -> None:
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=event.actor_id,
             event_type="self_body_perceived_event",
             producer_ts=event.producer_ts,
@@ -2524,26 +2850,58 @@ class CharacterAgentRuntime:
                 "source_body_result_id": event.source_body_result_id,
             },
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _record_siming_event(self, payload: dict[str, object]) -> None:
         actor_id = str(payload.get("target_actor_id", "") or "")
         if actor_id == "":
             return
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="siming_output_event",
             producer_ts=int(payload.get("producer_ts", 0) or 0),
-            payload={
-                "summary": str(payload.get("presentation_hint", "") or ""),
-                "pressure_hint": str(payload.get("pressure_hint", "") or ""),
-                "salience_boost": payload.get("salience_boost"),
-                "reason_scope": str(payload.get("reason_scope", "") or ""),
-                "target_object_id": str(payload.get("target_object_id", "") or ""),
-                "target_environment_id": str(payload.get("target_environment_id", "") or ""),
-            },
+            payload=self._siming_event_payload(payload),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
+
+    @staticmethod
+    def _siming_event_payload(payload: dict[str, object]) -> dict[str, object]:
+        return {
+            "summary": str(payload.get("presentation_hint", "") or ""),
+            "pressure_hint": str(payload.get("pressure_hint", "") or ""),
+            "salience_boost": payload.get("salience_boost"),
+            "reason_scope": str(payload.get("reason_scope", "") or ""),
+            "target_object_id": str(payload.get("target_object_id", "") or ""),
+            "target_environment_id": str(payload.get("target_environment_id", "") or ""),
+        }
+
+    def _plan_execution_request_state(self, actor_id, producer_ts, payload):
+        request = self._primary_requested_action(payload)
+        request_type = str(request.get('request_type', '') or '')
+        target_actor_id = str(request.get('target_actor_id', '') or '')
+        ticks = dict(self._last_social_request_tick_ms)
+        deferred = self._defer_social_request(ticks, actor_id, request_type, target_actor_id, producer_ts)
+        continuity = deepcopy(self._continuity_state.get(actor_id, RuntimeContinuityState(actor_id=actor_id)))
+        if not deferred:
+            previous_transition = continuity.last_transition_kind
+            continuity.interrupted_action = request_type
+            continuity.last_transition_kind = "execution_requested"
+            if (
+                request_type in {"approach", "follow_target"}
+                and target_actor_id != ""
+                and previous_transition in {"accepted", "rejected"}
+            ):
+                continuity.last_transition_kind = "recovering"
+            if target_actor_id != "":
+                continuity.ongoing_contact_target = target_actor_id
+        return dict(deferred=deferred, continuity=continuity.model_dump(mode='json'),
+            social_ticks=[[*key[1:], value] for key, value in sorted(ticks.items()) if key[0] == actor_id])
+
+    def _install_execution_request_state(self, actor_id, state):
+        if not state['deferred']:
+            self._continuity_state[actor_id] = RuntimeContinuityState.model_validate(state['continuity'])
+        self._last_social_request_tick_ms = {key: value for key, value in self._last_social_request_tick_ms.items() if key[0] != actor_id}
+        self._last_social_request_tick_ms.update({(actor_id, kind, target): tick for kind, target, tick in state['social_ticks']})
 
     def record_execution_request(
         self,
@@ -2555,7 +2913,9 @@ class CharacterAgentRuntime:
         request = self._primary_requested_action(payload)
         request_type = str(request.get("request_type", "") or "")
         target_actor_id = str(request.get("target_actor_id", "") or "")
-        if self._should_defer_social_request(actor_id, request_type, target_actor_id, producer_ts):
+        state = self._plan_execution_request_state(actor_id, producer_ts, payload)
+        self._install_execution_request_state(actor_id, state)
+        if state['deferred']:
             snapshot = self._get_snapshot_for_observatory(actor_id, producer_ts)
             self._queue_observatory_stage_event(
                 actor_id=actor_id,
@@ -2572,30 +2932,18 @@ class CharacterAgentRuntime:
                 },
             )
             return
-        continuity = self._continuity_state_for(actor_id)
-        previous_transition = continuity.last_transition_kind
-        continuity.interrupted_action = request_type
-        continuity.last_transition_kind = "execution_requested"
-        if (
-            request_type in {"approach", "follow_target"}
-            and target_actor_id != ""
-            and previous_transition in {"accepted", "rejected"}
-        ):
-            continuity.last_transition_kind = "recovering"
-        if target_actor_id != "":
-            continuity.ongoing_contact_target = target_actor_id
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_agent_execution_request",
             producer_ts=producer_ts,
             payload=payload,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         self._queue_observatory_snapshot(
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self.get_memory_bundle(actor_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
@@ -2659,13 +3007,13 @@ class CharacterAgentRuntime:
                 )
         stored_payload = deepcopy(payload)
         stored_payload["action_settlement_result"] = self._action_settlement_result_metadata(stored_payload)
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_agent_settlement_result",
             producer_ts=producer_ts,
             payload=stored_payload,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         target = str(payload.get("target_object_id", "") or payload.get("target_actor_id", "") or "")
         self._update_memory_scene_knowledge(stored)
         if (payload.get("result_type") == "action_resolution_result" and payload.get("resolution_status") == "accepted"
@@ -2680,10 +3028,22 @@ class CharacterAgentRuntime:
                 fact_claim=MemoryFactClaim(scope_ref=f"record:{payload.get('room_id', 'room_demo')}", subject_ref=target,
                     predicate="record_content", value=str(payload["read_content"]), valid_at=producer_ts, source_ref=source),
             ))
+        behavior_timeline = self._session_store.read_events_page(
+            actor_id,
+            through_index=int(stored["event_index"]),
+            event_types=(
+                "l2_reasoning_request",
+                "character_interpretation_event",
+                "goal_state_event",
+                "character_agent_execution_request",
+            ),
+            limit=max(1, int(stored["event_index"])),
+        )
         evaluation = self._record_behavior_evaluation(
             actor_id=actor_id,
             producer_ts=producer_ts,
             settlement_event=stored,
+            timeline=behavior_timeline,
         )
         if self._behavior_turn_projection is not None:
             self._behavior_turn_projection.record(
@@ -2691,7 +3051,7 @@ class CharacterAgentRuntime:
                 producer_ts=producer_ts,
                 settlement_event=stored,
                 evaluation=evaluation,
-                timeline=self.get_session_timeline(actor_id),
+                timeline=behavior_timeline,
             )
         outcome_summary = str(stored_payload.get("constraint_summary", "") or stored_payload.get("change_summary", "") or stored_payload.get("stable_state_summary", "") or stored_payload.get("result_type", "") or "")
         self._set_observatory_context(actor_id, "latest_outcome_summary", outcome_summary)
@@ -2709,7 +3069,7 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self.get_memory_bundle(actor_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
@@ -2719,28 +3079,29 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         settlement_event: dict[str, object],
+        timeline: list[dict[str, object]],
     ) -> dict[str, object]:
         evaluation = self._behavior_evaluation.evaluate(
             actor_id=actor_id,
             settlement_event=settlement_event,
-            timeline=self.get_session_timeline(actor_id),
+            timeline=timeline,
         )
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_behavior_evaluation_event",
             producer_ts=producer_ts,
             payload=evaluation,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         candidate = evaluation.get("candidate_policy")
         if isinstance(candidate, dict):
-            candidate_event = self._session_store.append_event(
+            candidate_event = self._append_session_event(
                 actor_id=actor_id,
                 event_type="character_policy_candidate_event",
                 producer_ts=producer_ts,
                 payload=candidate,
             )
-            self._memory_store.write_event(candidate_event)
+            self._project_session_event(candidate_event)
             evaluation["policy_candidate_event_id"] = str(
                 candidate_event.get("event_id", "")
             )
@@ -2937,13 +3298,13 @@ class CharacterAgentRuntime:
                     source_stage="dialogue_response",
                     priority=0.45,
                 )
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_agent_dialogue_response",
             producer_ts=producer_ts,
             payload=payload,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         dialogue_summary = str(payload.get("content", "") or payload.get("summary", "") or "")
         self._set_observatory_context(actor_id, "latest_outcome_summary", dialogue_summary)
         self._queue_observatory_stage_event(
@@ -2969,7 +3330,7 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self.get_memory_bundle(actor_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
 
     def _record_reasoning_request(
@@ -2978,13 +3339,13 @@ class CharacterAgentRuntime:
         producer_ts: int,
         request: dict[str, object],
     ) -> None:
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="l2_reasoning_request",
             producer_ts=producer_ts,
             payload=request,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _record_interpretation_event(
         self,
@@ -2992,13 +3353,35 @@ class CharacterAgentRuntime:
         producer_ts: int,
         interpretation: CharacterInterpretation,
     ) -> None:
-        stored = self._session_store.append_event(
-            actor_id=actor_id,
-            event_type="character_interpretation_event",
-            producer_ts=producer_ts,
-            payload=interpretation.model_dump(),
-        )
-        self._memory_store.write_event(stored)
+        stored = self._append_session_event(actor_id=actor_id,
+            **self._plan_interpretation_event(producer_ts, interpretation))
+        self._project_session_event(stored)
+
+    @staticmethod
+    def _plan_interpretation_event(producer_ts: int, interpretation: CharacterInterpretation) -> dict:
+        return dict(event_type='character_interpretation_event', producer_ts=producer_ts,
+            payload=interpretation.model_dump(mode='json'))
+
+    def _plan_provider_failure(self, frame, stage, error):
+        if os.getenv('CHARACTER_MODEL_REQUIRE_ONLINE', '').strip() == '1':
+            raise error
+        args = dict(actor_id=frame['actor_id'],
+            snapshot=CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot']),
+            control_mode=frame['context']['control_mode'], error=error)
+        if stage == 'l2':
+            result = self._continuity_floor_interpretation(**args)
+        else:
+            result = self._continuity_floor_decision(**args,
+                interpretation=CharacterInterpretation.model_validate(frame['interpretation']))
+        return result.model_dump(mode='json')
+
+    def _plan_l2_effects(self, frame: dict, output: dict, *, fallback=None) -> tuple[list[dict], dict]:
+        interpretation = (self._l2.map_reasoning_output(actor_id=frame['actor_id'], output=output)
+            if fallback is None else CharacterInterpretation.model_validate(fallback))
+        events = self._plan_cognition_update(actor_id=frame['actor_id'], producer_ts=frame['producer_ts'],
+            interpretation=interpretation) if interpretation.cognition_status == 'model' else []
+        events.append(self._plan_interpretation_event(frame['producer_ts'], interpretation))
+        return events, interpretation.model_dump(mode='json')
 
     def _record_goal_state_event(
         self,
@@ -3006,6 +3389,21 @@ class CharacterAgentRuntime:
         producer_ts: int,
         decision: CharacterIntentDecision,
     ) -> None:
+        event_payload = self._plan_goal_state_event(actor_id, decision)
+        stored = self._append_session_event(
+            actor_id=actor_id,
+            event_type="goal_state_event",
+            producer_ts=producer_ts,
+            payload=event_payload,
+        )
+        self._project_session_event(stored)
+        self._record_shadow_skill_affordance_summary(
+            actor_id=actor_id,
+            producer_ts=producer_ts,
+        )
+
+    def _plan_goal_state_event(self, actor_id: str, decision: CharacterIntentDecision) -> dict[str, object]:
+        """冻结目标转换；同步写入和持久阶段共用同一领域计算。"""
         previous_goal_state = self._goal_state_store.read(actor_id)
         active_goal_frame = decision.active_goal_frame or self._decision_goal_frame(decision)
         goal_state = active_goal_frame.model_dump()
@@ -3021,7 +3419,7 @@ class CharacterAgentRuntime:
             previous_goal_state=previous_goal_state,
             goal_state=goal_state,
         )
-        event_payload = {
+        return {
             **goal_state,
             "selected_intent": decision.selected_intent,
             "goal_changed": bool(changed_fields),
@@ -3029,24 +3427,6 @@ class CharacterAgentRuntime:
             "transition_kind": transition_kind,
             "transition_reason_tags": transition_reason_tags,
         }
-        goal_record = CharacterGoalStateRecord(
-            actor_id=actor_id,
-            transition_kind=transition_kind,
-            transition_reason_tags=transition_reason_tags,
-            **goal_state,
-        )
-        stored = self._session_store.append_event(
-            actor_id=actor_id,
-            event_type="goal_state_event",
-            producer_ts=producer_ts,
-            payload=event_payload,
-        )
-        self._goal_state_store.write(actor_id, goal_record)
-        self._memory_store.write_event(stored)
-        self._record_shadow_skill_affordance_summary(
-            actor_id=actor_id,
-            producer_ts=producer_ts,
-        )
 
     def _record_shadow_skill_affordance_summary(
         self,
@@ -3078,13 +3458,13 @@ class CharacterAgentRuntime:
         producer_ts: int,
         need_tension_state: dict[str, object],
     ) -> None:
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="need_tension_state_event",
             producer_ts=producer_ts,
             payload=need_tension_state,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _goal_transition_kind(
         self,
@@ -3171,9 +3551,11 @@ class CharacterAgentRuntime:
         control_mode: str,
         source_stage: str,
         run_model,
-    ) -> CharacterInterpretation:
+    ) -> Generator[CognitionRequest, dict[str, object], CharacterInterpretation]:
         try:
-            return self._run_with_memory_recall(actor_id, snapshot, run_model)
+            request_json = self._run_with_memory_recall(actor_id, snapshot, run_model)
+            output = yield CognitionRequest("l2_reasoning", request_json)
+            return self._l2.map_reasoning_output(actor_id=actor_id, output=output)
         except Exception as exc:
             if os.getenv("CHARACTER_MODEL_REQUIRE_ONLINE", "").strip() == "1":
                 raise
@@ -3210,9 +3592,13 @@ class CharacterAgentRuntime:
         control_mode: str,
         source_stage: str,
         run_model,
-    ) -> CharacterIntentDecision:
+    ) -> Generator[CognitionRequest, dict[str, object], CharacterIntentDecision]:
         try:
-            return self._run_with_memory_recall(actor_id, snapshot, run_model)
+            prepared = self._run_with_memory_recall(actor_id, snapshot, run_model)
+            output = yield CognitionRequest("l3_planning", prepared.request_json,
+                str(prepared.behavior_policy.get("candidate_id", "") or ""))
+            plan = self._l3.finish_intent_plan(prepared, output)
+            return self._l3.decision_from_plan(plan, interpretation=interpretation)
         except Exception as exc:
             if isinstance(exc, MissingRequiredMemoryEvidence):
                 self._session_append_event(actor_id=actor_id, event_type="character_memory_recall_deferred",
@@ -3375,6 +3761,19 @@ class CharacterAgentRuntime:
         producer_ts: int,
         interpretation: CharacterInterpretation,
     ) -> None:
+        for event in self._plan_cognition_update(
+                actor_id=actor_id, producer_ts=producer_ts, interpretation=interpretation):
+            stored = self._append_session_event(actor_id=actor_id, **event)
+            self._project_session_event(stored)
+
+    def _plan_cognition_update(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        interpretation: CharacterInterpretation,
+    ) -> list[dict[str, object]]:
+        events = []
         for index, delta in enumerate(interpretation.belief_deltas, start=1):
             if isinstance(delta, CharacterBeliefDelta):
                 proposition_key = delta.proposition_key
@@ -3392,8 +3791,7 @@ class CharacterAgentRuntime:
             if any(record.proposition_key == proposition_key and record.claim is not None
                    for record in self.get_memory_record_bundle(actor_id).knowledge_memories):
                 continue
-            stored = self._session_store.append_event(
-                actor_id=actor_id,
+            events.append(dict(
                 event_type="knowledge_belief_event",
                 producer_ts=producer_ts,
                 payload={
@@ -3403,8 +3801,7 @@ class CharacterAgentRuntime:
                     "confidence": confidence,
                     "event_index": index,
                 },
-            )
-            self._memory_store.write_event(stored)
+            ))
         for index, delta in enumerate(interpretation.social_deltas, start=1):
             if isinstance(delta, CharacterSocialDelta):
                 entity_id = delta.entity_id
@@ -3424,8 +3821,7 @@ class CharacterAgentRuntime:
                 shared_secret_refs = list(delta.get("shared_secret_refs", [])) if isinstance(delta.get("shared_secret_refs", []), list) else []
             if entity_id == "":
                 continue
-            stored = self._session_store.append_event(
-                actor_id=actor_id,
+            events.append(dict(
                 event_type="social_cognition_event",
                 producer_ts=producer_ts,
                 payload={
@@ -3438,8 +3834,7 @@ class CharacterAgentRuntime:
                     "shared_secret_refs": shared_secret_refs,
                     "event_index": index,
                 },
-            )
-            self._memory_store.write_event(stored)
+            ))
         for index, delta in enumerate(interpretation.higher_order_deltas, start=1):
             if isinstance(delta, CharacterHigherOrderDelta):
                 subject_actor_id = delta.subject_actor_id
@@ -3453,8 +3848,7 @@ class CharacterAgentRuntime:
                 confidence = float(delta.get("confidence", 0.0) or 0.0)
             if subject_actor_id == "" or proposition_key == "" or meta_belief == "":
                 continue
-            stored = self._session_store.append_event(
-                actor_id=actor_id,
+            events.append(dict(
                 event_type="higher_order_belief_event",
                 producer_ts=producer_ts,
                 payload={
@@ -3464,18 +3858,20 @@ class CharacterAgentRuntime:
                     "confidence": confidence,
                     "event_index": index,
                 },
-            )
-            self._memory_store.write_event(stored)
+            ))
         delta_payload = interpretation.dynamic_state_delta.as_mapping()
         if delta_payload:
-            updated_state = self._dynamic_state_store.merge_delta(actor_id, delta_payload)
-            stored = self._session_store.append_event(
-                actor_id=actor_id,
+            # 仅复制本 actor 的当前值，在局部 typed store 计算确定 after-state。
+            state = CharacterDynamicStateStore()
+            state.write(actor_id, self._dynamic_state_store.read_record(actor_id).storage_dump())
+            state.merge_delta(actor_id, delta_payload)
+            updated_state = state.read_record(actor_id).storage_dump()
+            events.append(dict(
                 event_type="dynamic_state_event",
                 producer_ts=producer_ts,
                 payload=updated_state,
-            )
-            self._memory_store.write_event(stored)
+            ))
+        return events
 
     def _session_append_event(
         self,
@@ -3485,13 +3881,13 @@ class CharacterAgentRuntime:
         producer_ts: int,
         payload: dict[str, object],
     ) -> None:
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type=event_type,
             producer_ts=producer_ts,
             payload=payload,
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _observe_and_record_drift_promotion(
         self,
@@ -3528,25 +3924,15 @@ class CharacterAgentRuntime:
                 and str(payload.get("direction", "") or "") == candidate.direction
             ):
                 return
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_personality_drift_promotion_event",
             producer_ts=producer_ts,
             payload=candidate.model_dump(),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
-    def _record_execution_plan(
-        self,
-        actor_id: str,
-        producer_ts: int,
-        snapshot: CharacterPrivateWorldSnapshot,
-        interpretation: CharacterInterpretation,
-        decision: CharacterIntentDecision,
-        *,
-        causation_id: str = "",
-        correlation_id: str = "",
-    ) -> dict[str, object]:
+    def _build_execution_plan(self, actor_id, snapshot, interpretation, decision, *, causation_id='', correlation_id=''):
         plan = self._l4_executor.build_execution_plan(
             snapshot=snapshot,
             interpretation=interpretation,
@@ -3563,6 +3949,36 @@ class CharacterAgentRuntime:
                     frame["correlation_id"] = correlation_id
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
+        return plan
+
+    def _plan_execution_effects(self, frame):
+        actor_id, producer_ts = frame['actor_id'], frame['producer_ts']
+        payload = frame['normalized_payload']
+        plan = self._build_execution_plan(actor_id,
+            CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot']),
+            CharacterInterpretation.model_validate(frame['interpretation']),
+            CharacterIntentDecision.model_validate(frame['decision']),
+            causation_id=str(payload.get('causation_id', '') or ''),
+            correlation_id=str(payload.get('correlation_id', '') or ''))
+        state = self._plan_execution_request_state(actor_id, producer_ts, plan)
+        commands = self.filter_commands_for_actor(actor_id, self._l4.build_commands_from_execution_plan(deepcopy(plan)))
+        return dict(state, execution_plan=plan, commands=[command.model_dump(mode='json') for command in commands],
+            events=[] if state['deferred'] else [dict(event_type='character_agent_execution_request',
+                producer_ts=producer_ts, payload=plan)])
+
+    def _record_execution_plan(
+        self,
+        actor_id: str,
+        producer_ts: int,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+        *,
+        causation_id: str = "",
+        correlation_id: str = "",
+    ) -> dict[str, object]:
+        plan = self._build_execution_plan(actor_id, snapshot, interpretation, decision,
+            causation_id=causation_id, correlation_id=correlation_id)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
@@ -3583,7 +3999,7 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=snapshot,
-            memory_bundle=self.get_memory_bundle(actor_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         return plan
 
@@ -3715,76 +4131,6 @@ class CharacterAgentRuntime:
             return {}
         return first
 
-    def _gateway_reasoning_request_for_siming(
-        self,
-        actor_id: str,
-        snapshot: object,
-        payload: dict[str, object],
-        memory_bundle: CharacterMemoryRecordBundle,
-        working_memory_state: dict[str, object],
-        current_goal_state: dict[str, object],
-        goal_state_history: list[dict[str, object]],
-        supervision_state: dict[str, object],
-        unresolved_tensions: list[dict[str, object]],
-        background_agenda_state: dict[str, object],
-    ) -> dict[str, object]:
-        class _SimingEvent:
-            def __init__(self, actor_id: str, payload: dict[str, object]) -> None:
-                self.actor_id = actor_id
-                self.percept_channel = str(payload.get("percept_channel", "") or "siming")
-                self.producer_ts = int(payload.get("producer_ts", 0) or 0)
-                self.room_id = str(payload.get("room_id", "") or "")
-                self.scene_id = str(payload.get("scene_id", "") or "")
-                self.zone_id = str(payload.get("zone_id", "") or "")
-                self.perceived_summary = str(
-                    payload.get("perceived_summary", "")
-                    or payload.get("presentation_hint", "")
-                    or "siming_catalyst"
-                )
-                self.source_candidate_event_id = str(payload.get("causation_id", "") or f"siming:{self.producer_ts}")
-                self.clarity_score = float(payload.get("clarity_score", 1.0) or 1.0)
-                self.certainty_score = float(payload.get("certainty_score", 1.0) or 1.0)
-                self.target_actor_id = str(payload.get("target_actor_id", "") or "")
-                self.target_object_id = str(payload.get("target_object_id", "") or "")
-                self.target_environment_id = str(payload.get("target_environment_id", "") or "")
-                self.presentation_hint = str(payload.get("presentation_hint", "") or "")
-                self.pressure_hint = str(payload.get("pressure_hint", "") or "")
-                self.reason_scope = str(payload.get("reason_scope", "") or "")
-                self.salience_boost = payload.get("salience_boost")
-
-            def model_dump(self) -> dict[str, object]:
-                return {
-                    "actor_id": self.actor_id,
-                    "percept_channel": self.percept_channel,
-                    "producer_ts": self.producer_ts,
-                    "room_id": self.room_id,
-                    "scene_id": self.scene_id,
-                    "zone_id": self.zone_id,
-                    "perceived_summary": self.perceived_summary,
-                    "source_candidate_event_id": self.source_candidate_event_id,
-                    "clarity_score": self.clarity_score,
-                    "certainty_score": self.certainty_score,
-                    "target_actor_id": self.target_actor_id,
-                    "target_object_id": self.target_object_id,
-                    "target_environment_id": self.target_environment_id,
-                    "presentation_hint": self.presentation_hint,
-                    "pressure_hint": self.pressure_hint,
-                    "reason_scope": self.reason_scope,
-                    "salience_boost": self.salience_boost,
-                }
-
-        return self._l2.prepare_reasoning_request(
-            snapshot=snapshot,
-            event=_SimingEvent(actor_id, payload),
-            memory_bundle=memory_bundle,
-            control_mode=self.get_control_mode(actor_id),
-            working_memory_state=working_memory_state,
-            current_goal_state=current_goal_state,
-            goal_state_history=goal_state_history,
-            supervision_state=supervision_state,
-            unresolved_tensions=unresolved_tensions,
-            background_agenda_state=background_agenda_state,
-        )
 
     def _normalize_siming_payload(self, payload: dict[str, object]) -> dict[str, object]:
         normalized = dict(payload)
@@ -3815,27 +4161,47 @@ class CharacterAgentRuntime:
             normalized.setdefault("clarity_score", normalized_boost if normalized_boost >= 0.5 else 0.5)
         return normalized
 
-    def _planner_suggestion_packet(
-        self,
-        *,
-        actor_id: str,
-        producer_ts: int,
-        interpretation: CharacterInterpretation,
-        working_memory_state: dict[str, object] | None = None,
-    ) -> CharacterSuggestionPacket:
-        packet = self._l3.build_suggestion_packet(
-            interpretation=interpretation,
-            control_mode="player_priority_assisted",
-            snapshot=self._l1.get_snapshot(actor_id).model_dump() if self._l1.get_snapshot(actor_id) is not None else {},
-            profile=self._profile_payload(actor_id),
-            memory_bundle=self.get_memory_record_bundle(actor_id),
-            working_memory_state=working_memory_state or {},
-            current_goal_state=self.get_goal_state(actor_id),
-            goal_state_history=self.get_goal_state_history(actor_id),
-            supervision_state=self.get_supervision_state(actor_id),
-            unresolved_tensions=self.get_unresolved_tensions(actor_id),
-            background_agenda_state=self.get_background_agenda_state(actor_id),
+    def _prepare_suggestion_request(self, actor_id, interpretation, working_memory_state):
+        snapshot_record = self._l1.get_snapshot(actor_id)
+        original_snapshot = snapshot_record.model_dump() if snapshot_record is not None else {}
+        original_memory = self.get_memory_record_bundle(actor_id)
+        prepared = self._run_with_memory_recall(actor_id, snapshot_record,
+            lambda memory_override=None: self._l3.prepare_intent_plan(
+                interpretation=interpretation,
+                control_mode="player_priority_assisted",
+                snapshot=original_snapshot,
+                profile=self._profile_payload(actor_id),
+                memory_bundle=memory_override if memory_override is not None else original_memory,
+                working_memory_state=working_memory_state or {},
+                current_goal_state=self.get_goal_state(actor_id),
+                goal_state_history=self.get_goal_state_history(actor_id),
+                supervision_state=self.get_supervision_state(actor_id),
+                unresolved_tensions=self.get_unresolved_tensions(actor_id),
+                background_agenda_state=self.get_background_agenda_state(actor_id),
+            )
         )
+        return prepared, original_snapshot, original_memory
+
+    def _freeze_suggestion_request(self, actor_id, frame):
+        interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
+        prepared, snapshot, memory = self._prepare_suggestion_request(actor_id, interpretation,
+            frame['context']['working_memory_state'])
+        context = json.loads(json.dumps(dict(snapshot=snapshot, memory=memory),
+            default=lambda value: value.model_dump(mode='json'), allow_nan=False))
+        return prepared, context
+
+    def _plan_suggestion_effects(self, frame, output):
+        from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
+        prepared = PreparedCharacterIntentPlan.from_json_value(frame['l3_prepared'])
+        plan = self._l3.plan_intent_completion(prepared, output)
+        context = frame['suggestion_context']
+        packet = self._suggestion_from_plan(frame['actor_id'], frame['producer_ts'], prepared.interpretation,
+            plan, context['snapshot'], context['memory'])
+        return packet.model_dump(mode='json', exclude_none=True)
+
+    def _suggestion_from_plan(self, actor_id, producer_ts, interpretation, plan, original_snapshot, original_memory):
+        packet = self._l3.suggestion_from_plan(plan, interpretation=interpretation,
+            snapshot=original_snapshot, memory_bundle=original_memory)
         latest_goal_state = self._latest_goal_state_payload(actor_id)
         packet["actor_id"] = actor_id
         packet["producer_ts"] = producer_ts
@@ -3844,13 +4210,30 @@ class CharacterAgentRuntime:
         packet["transition_kind"] = str(latest_goal_state.get("transition_kind", "") or "")
         packet["transition_reason_tags"] = list(latest_goal_state.get("transition_reason_tags", [])) if isinstance(latest_goal_state.get("transition_reason_tags", []), list) else []
         suggestion_packet = CharacterSuggestionPacket(**packet)
-        stored = self._session_store.append_event(
+        return suggestion_packet
+
+    def _planner_suggestion_packet(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        interpretation: CharacterInterpretation,
+        working_memory_state: dict[str, object] | None = None,
+    ) -> Generator[CognitionRequest, dict[str, object], CharacterSuggestionPacket]:
+        prepared, original_snapshot, original_memory = self._prepare_suggestion_request(
+            actor_id, interpretation, working_memory_state)
+        output = yield CognitionRequest("l3_planning", prepared.request_json,
+            str(prepared.behavior_policy.get("candidate_id", "") or ""))
+        plan = self._l3.finish_intent_plan(prepared, output)
+        suggestion_packet = self._suggestion_from_plan(actor_id, producer_ts, interpretation, plan,
+            original_snapshot, original_memory)
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_agent_suggestion_packet",
             producer_ts=producer_ts,
             payload=suggestion_packet.model_dump(exclude_none=True),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         self._set_observatory_context(actor_id, "decision_summary", suggestion_packet.why_this_now or (suggestion_packet.recommended_intents[0] if suggestion_packet.recommended_intents else ""))
         self._queue_observatory_stage_event(
             actor_id=actor_id,
@@ -3873,11 +4256,11 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self.get_memory_bundle(actor_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         return suggestion_packet
 
-    def _continuity_floor_suggestion_packet(
+    def _build_continuity_floor_suggestion(
         self,
         *,
         actor_id: str,
@@ -3915,13 +4298,25 @@ class CharacterAgentRuntime:
             planning_status="continuity_floor",
             fallback_mode="continuity_floor",
         )
-        stored = self._session_store.append_event(
+        return suggestion_packet
+
+    def _continuity_floor_suggestion_packet(
+        self,
+        *,
+        actor_id: str,
+        producer_ts: int,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+    ) -> CharacterSuggestionPacket:
+        suggestion_packet = self._build_continuity_floor_suggestion(actor_id=actor_id,
+            producer_ts=producer_ts, interpretation=interpretation, decision=decision)
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_agent_suggestion_packet",
             producer_ts=producer_ts,
             payload=suggestion_packet.model_dump(exclude_none=True),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
         self._set_observatory_context(
             actor_id,
             "decision_summary",
@@ -3948,7 +4343,7 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self.get_memory_bundle(actor_id),
+            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         return suggestion_packet
 
@@ -3969,6 +4364,11 @@ class CharacterAgentRuntime:
         state = self._supervision_states.get(actor_id)
         if state is not None:
             return state
+        default = self._default_supervision_state(actor_id)
+        self._supervision_states[actor_id] = default
+        return default
+
+    def _default_supervision_state(self, actor_id):
         default = CharacterSupervisionState(
             actor_id=actor_id,
             current_level="weak",
@@ -3979,7 +4379,6 @@ class CharacterAgentRuntime:
             last_refresh_ts=0,
             last_reason_summary="default weak supervision",
         )
-        self._supervision_states[actor_id] = default
         return default
 
     def _refresh_weak_supervision_state(
@@ -4013,7 +4412,17 @@ class CharacterAgentRuntime:
             self._background_modes[actor_id] = refreshed.active_constraints.background_mode
         return refreshed
 
-    def _refresh_weak_supervision_from_siming(
+    def _refresh_weak_supervision_from_siming(self, *, actor_id: str, payload: dict[str, object],
+                                               producer_ts: int) -> CharacterSupervisionState:
+        state = self._plan_weak_supervision_from_siming(actor_id=actor_id, payload=payload, producer_ts=producer_ts)
+        if state.current_level in {"medium", "strong"}:
+            return state
+        self._supervision_states[actor_id] = state
+        if self.supports_actor(actor_id):
+            self._background_modes[actor_id] = state.active_constraints.background_mode
+        return state
+
+    def _plan_weak_supervision_from_siming(
         self,
         *,
         actor_id: str,
@@ -4045,9 +4454,6 @@ class CharacterAgentRuntime:
             last_refresh_ts=producer_ts,
             last_reason_summary="weak supervision refreshed from siming catalyst",
         )
-        self._supervision_states[actor_id] = state
-        if self.supports_actor(actor_id):
-            self._background_modes[actor_id] = state.active_constraints.background_mode
         return state
 
     def _weak_supervision_constraints_for(self, actor_id: str, producer_ts: int) -> CharacterSupervisionConstraints:
@@ -4171,16 +4577,27 @@ class CharacterAgentRuntime:
             return ""
         return str(value[-1] or "")
 
-    def _runtime_payload_event(self, actor_id: str, payload: dict[str, object]):
-        class _PayloadEvent:
-            def __init__(self, actor_id: str, payload: dict[str, object]) -> None:
-                self.actor_id = actor_id
-                self._payload = dict(payload)
 
-            def model_dump(self) -> dict[str, object]:
-                return dict(self._payload)
+    def _background_cognition_event_payload(self, background_payload, interpretation, decision,
+                                             supervision_state, unresolved_tensions, agenda_state):
+        return dict(background_payload=background_payload, interpretation_summary=interpretation.interpreted_summary,
+            selected_intent=decision.selected_intent, goal_primary=decision.primary_goal,
+            supervision_state=supervision_state, unresolved_tension_count=len(unresolved_tensions),
+            background_agenda_state=agenda_state.model_dump())
 
-        return _PayloadEvent(actor_id, payload)
+    def _plan_background_completion(self, frame, decision_value):
+        interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
+        decision = CharacterIntentDecision.model_validate(decision_value)
+        context = frame['context']
+        agenda = self._build_background_agenda_state(actor_id=frame['actor_id'], producer_ts=frame['producer_ts'],
+            interpretation=interpretation, decision=decision, supervision_state=context['supervision_state'],
+            unresolved_tensions=context['unresolved_tensions'])
+        payload = self._background_cognition_event_payload(context['background_payload'], interpretation, decision,
+            context['supervision_state'], context['unresolved_tensions'], agenda)
+        result = CharacterBackgroundCognitionResult(actor_id=frame['actor_id'], producer_ts=frame['producer_ts'], ran=True,
+            reason='background_tick_completed', interpretation_summary=interpretation.interpreted_summary,
+            selected_intent=decision.selected_intent, current_level=context['supervision_state']['current_level'])
+        return dict(event_type='character_background_cognition_event', producer_ts=frame['producer_ts'], payload=payload), result.model_dump(mode='json'), agenda
 
     def _record_background_cognition_event(
         self,
@@ -4194,21 +4611,14 @@ class CharacterAgentRuntime:
         unresolved_tensions: list[dict[str, object]],
         agenda_state: CharacterBackgroundAgendaState,
     ) -> None:
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_background_cognition_event",
             producer_ts=producer_ts,
-            payload={
-                "background_payload": background_payload,
-                "interpretation_summary": interpretation.interpreted_summary,
-                "selected_intent": decision.selected_intent,
-                "goal_primary": decision.primary_goal,
-                "supervision_state": supervision_state,
-                "unresolved_tension_count": len(unresolved_tensions),
-                "background_agenda_state": agenda_state.model_dump(),
-            },
+            payload=self._background_cognition_event_payload(background_payload, interpretation, decision,
+                supervision_state, unresolved_tensions, agenda_state),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _build_background_agenda_state(
         self,
@@ -4321,7 +4731,7 @@ class CharacterAgentRuntime:
         entries.sort(key=lambda item: float(item.priority), reverse=True)
         return entries[: self._RECENT_HISTORY_LIMIT]
 
-    def _remember_unresolved_tension(
+    def _plan_unresolved_tension(
         self,
         *,
         actor_id: str,
@@ -4332,7 +4742,7 @@ class CharacterAgentRuntime:
         source_event_id: str,
         source_stage: str,
         priority: float,
-    ) -> None:
+    ) -> CharacterUnresolvedTension | None:
         if summary == "":
             return
         tension_id = f"{actor_id}:{category}:{target_ref or 'general'}"
@@ -4354,14 +4764,33 @@ class CharacterAgentRuntime:
             source_stage=source_stage or (existing.source_stage if existing is not None else ""),
             last_reinforced_ts=producer_ts,
         )
+        return record
+
+    def _remember_unresolved_tension(
+        self,
+        *,
+        actor_id: str,
+        category: str,
+        summary: str,
+        target_ref: str,
+        producer_ts: int,
+        source_event_id: str,
+        source_stage: str,
+        priority: float,
+    ) -> None:
+        record = self._plan_unresolved_tension(actor_id=actor_id, category=category, summary=summary,
+            target_ref=target_ref, producer_ts=producer_ts, source_event_id=source_event_id,
+            source_stage=source_stage, priority=priority)
+        if record is None:
+            return
         self._unresolved_tension_store.upsert(actor_id, record)
-        stored = self._session_store.append_event(
+        stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_unresolved_tension_event",
             producer_ts=producer_ts,
             payload=record.model_dump(),
         )
-        self._memory_store.write_event(stored)
+        self._project_session_event(stored)
 
     def _build_default_control_modes(self) -> dict[str, str]:
         return {
@@ -4435,370 +4864,190 @@ class CharacterAgentRuntime:
         return sorted(need_pressures, key=lambda item: (-item[1], item[0]))
 
     def _rehydrate_runtime_state_from_timeline(self) -> None:
-        actor_ids = set(self._session_store.actor_ids()) | set(self._graph_session_timelines)
-        for actor_id in sorted(actor_ids):
-            events = self._session_timeline_after(
-                actor_id, self._graph_session_replay_offsets.get(actor_id, 0)
-            )
-            for event in events:
-                if isinstance(event, dict):
-                    self._memory_store.write_event(event)
-                    self._remember_materialization_commit(event)
-                event_type = str(event.get("event_type", "") or "") if isinstance(event, dict) else ""
-                payload = event.get("payload", {}) if isinstance(event, dict) else {}
-                if not isinstance(payload, dict):
-                    continue
-                if event_type == "goal_state_event":
-                    self._goal_state_store.write(
-                        actor_id,
-                        CharacterGoalStateRecord(
-                            actor_id=actor_id,
-                            primary_goal=str(payload.get("primary_goal", "") or ""),
-                            long_term_goal=str(payload.get("long_term_goal", "") or ""),
-                            mid_term_strategy=str(payload.get("mid_term_strategy", "") or ""),
-                            immediate_goal=str(payload.get("immediate_goal", "") or str(payload.get("primary_goal", "") or "")),
-                            supporting_goals=list(payload.get("supporting_goals", [])) if isinstance(payload.get("supporting_goals", []), list) else [],
-                            blockers=list(payload.get("blockers", [])) if isinstance(payload.get("blockers", []), list) else [],
-                            goal_sources=list(payload.get("goal_sources", [])) if isinstance(payload.get("goal_sources", []), list) else [],
-                            urgency=str(payload.get("urgency", "low") or "low"),
-                            dominant_goal_id=str(payload.get("dominant_goal_id", "") or ""),
-                            preserved_goal_ids=list(payload.get("preserved_goal_ids", [])) if isinstance(payload.get("preserved_goal_ids", []), list) else [],
-                            suppressed_goal_ids=list(payload.get("suppressed_goal_ids", [])) if isinstance(payload.get("suppressed_goal_ids", []), list) else [],
-                            goal_arbitration_summary=str(payload.get("goal_arbitration_summary", "") or ""),
-                            goal_portfolio=list(payload.get("goal_portfolio", [])) if isinstance(payload.get("goal_portfolio", []), list) else [],
-                            transition_kind=str(payload.get("transition_kind", "initial") or "initial"),
-                            transition_reason_tags=list(payload.get("transition_reason_tags", [])) if isinstance(payload.get("transition_reason_tags", []), list) else [],
-                        ),
-                    )
-                elif event_type == "dynamic_state_event":
-                    self._dynamic_state_store.write(actor_id, payload)
-                elif event_type == "need_tension_state_event":
-                    self._need_tension_store.write(actor_id, payload)
-                elif event_type == "character_unresolved_tension_event":
-                    self._unresolved_tension_store.upsert(actor_id, payload)
-                elif event_type == "character_supervision_authorization":
-                    state = CharacterSupervisionState(
-                        actor_id=actor_id,
-                        current_level=str(payload.get("approved_level", "weak") or "weak"),
-                        source="strategy_authorized" if str(payload.get("approved_by", "strategy_service") or "strategy_service") == "strategy_service" else "gm_override",
-                        active_constraints=self._constraints_model(payload.get("constraints", {})),
-                        entered_at_ts=int(payload.get("effective_from_ts", 0) or 0),
-                        expires_at_ts=int(payload.get("expires_at_ts", 0) or 0),
-                        last_refresh_ts=int(payload.get("producer_ts", 0) or 0),
-                        last_reason_summary=str(payload.get("approval_reason", "") or ""),
-                    )
-                    self._supervision_states[actor_id] = state
-                    if self.supports_actor(actor_id):
-                        self._background_modes[actor_id] = state.active_constraints.background_mode
-                elif event_type == "character_supervision_cleared":
-                    state = CharacterSupervisionState(**payload)
-                    self._supervision_states[actor_id] = state
-                    if self.supports_actor(actor_id):
-                        self._background_modes[actor_id] = state.active_constraints.background_mode
-                elif event_type == "character_background_cognition_event":
-                    agenda_payload = payload.get("background_agenda_state", {})
-                    if isinstance(agenda_payload, dict) and agenda_payload:
-                        self._background_agenda_states[actor_id] = CharacterBackgroundAgendaState(**agenda_payload)
-                if event_type == "character_simulation_seed_event":
-                    self._rehydrate_continuity_commit(actor_id, event, payload)
+        # 名称保留给既有构造故障接缝；正常恢复只安装事务内 current。
+        for actor_id in self._session_store.actor_ids():
+            self._install_recovery_state(actor_id)
+            self._finish_session_projections(actor_id, migration=self._session_migrated)
+        if self._session_migrated:
+            self._session_store.finish_recovery_migration()
 
-    def _rehydrate_continuity_commit(
-        self,
-        actor_id: str,
-        event: dict[str, object],
-        payload: dict[str, object],
-    ) -> None:
-        commit = payload.get("continuity_commit")
-        if not isinstance(commit, dict):
+    def _install_recovery_state(self, actor_id: str) -> None:
+        state = self._session_store.read_runtime_state(actor_id)
+        if state is None:
             return
-        key = commit.get("idempotency_key")
-        receipt_payload = commit.get("receipt")
-        if not isinstance(key, str) or not key or not isinstance(receipt_payload, dict):
-            raise ValueError("character_continuity_commit_invalid")
-        receipt = CharacterContinuityReceipt.model_validate(receipt_payload)
-        if receipt.actor_ref.removeprefix("character:") != actor_id:
-            raise ValueError("character_continuity_commit_actor_mismatch")
-        self._continuity_committed_events[key] = deepcopy(event)
-        current_revision = self._continuity_revisions.get(actor_id, 0)
-        self._apply_continuity_commit_projection(actor_id, payload)
-        self._remember_continuity_receipt(key, receipt)
-        if receipt.character_revision_after <= current_revision:
-            return
-        if receipt.character_revision_before != current_revision:
-            raise ValueError("character_continuity_projection_gap")
-        self._continuity_revisions[actor_id] = receipt.character_revision_after
+        self._runtime_field_versions[actor_id] = dict(state.get('field_versions',{}))
+        if 'dynamic_state' in state:
+            self._dynamic_state_store.write(actor_id, state['dynamic_state'])
+        if 'need_tension_state' in state:
+            self._need_tension_store.write(actor_id, state['need_tension_state'])
+        # 替换单 actor 的已保存窗口，重复安装不会把 goal 再追加一次。
+        self._goal_state_store._history_by_actor.pop(actor_id, None)
+        self._goal_state_store._by_actor.pop(actor_id, None)
+        self._goal_state_store._previous_by_actor.pop(actor_id, None)
+        for goal in state.get('goal_history', []):
+            self._goal_state_store.write(actor_id, goal)
+        self._unresolved_tension_store.clear(actor_id)
+        for tension in state.get('unresolved_tensions', []):
+            self._unresolved_tension_store.upsert(actor_id, tension)
+        supervision = state.get('supervision_state')
+        if supervision:
+            model = CharacterSupervisionState.model_validate(supervision)
+            self._supervision_states[actor_id] = model
+            if self.supports_actor(actor_id):
+                self._background_modes[actor_id] = model.active_constraints.background_mode
+        if state.get('background_agenda_state'):
+            self._background_agenda_states[actor_id] = CharacterBackgroundAgendaState.model_validate(state['background_agenda_state'])
+        if state.get('continuity_state'):
+            self._continuity_state[actor_id] = RuntimeContinuityState.model_validate(state['continuity_state'])
+        self._continuity_revisions[actor_id] = state.get('continuity_revision', 0)
+        self._shared_module_states[actor_id] = deepcopy(state.get('shared_module_state', {}))
+        if state.get('wake_up'):
+            self._wake_up_signals[actor_id] = deepcopy(state['wake_up'])
+        stage = self._session_store.read_current_cognition_stage(actor_id) if state.get('cognition_stage') else None
+        if stage is not None:
+            after = stage['plan']['after']
+            if after.get('stage') in {'entry', 'l2', 'l3', 'suggestion', 'execution'} and after.get('source_kind') in {'ingest_siming_output', 'run_background_cognition_tick'}:
+                if after.get('actor_id') != actor_id or 'entry_after' not in after:
+                    raise ValueError('cognition_entry_after_actor_mismatch')
+                self._install_cognition_entry_after(actor_id, stage['plan'])
+                if after.get('policy_consumed') and after.get('policy_id'):
+                    self._l3._consumed_behavior_policy_ids.add(after['policy_id'])
+                self._l3._consumed_behavior_policy_ids.update(after.get('consumed_policy_ids', []))
+                if after.get('background_result', {}).get('ran'):
+                    self._last_background_tick_ms[actor_id] = after['producer_ts']
+                if after.get('stage') == 'execution':
+                    self._install_execution_request_state(actor_id, after['execution'])
 
     def _rehydrate_graph_continuity(self) -> None:
-        if self._continuity_store is None:
+        self._memory_store.bind_session_reader(
+            self._session_store.list_events, working_reader=self._working_memory_events,
+        )
+        self._l1.get_actor_scene_knowledge_store().bind_persistence(self._session_store)
+        self._session_migrated = self._session_store.initialize_recovery(
+            import_legacy=self._import_legacy_graph_continuity,
+            project_event=self._update_memory_scene_knowledge_unchecked,
+        )
+        if self._continuity_store is not None and hasattr(self._continuity_store, 'bind_snapshot_reader'):
+            self._continuity_store.bind_snapshot_reader(self._export_continuity_snapshot)
+
+    def _working_memory_events(self, actor_id: str):
+        through_index = self._session_store.event_count(actor_id)
+        after_index = 0
+        while after_index < through_index:
+            page = self._session_store.read_events_page(
+                actor_id, after_index=after_index, through_index=through_index,
+                event_types=tuple(sorted(CharacterWorkingMemory.RELEVANT_EVENT_TYPES)), limit=128,
+            )
+            if not page:
+                break
+            yield from page
+            after_index = page[-1]["event_index"]
+
+    def _append_session_event(self, actor_id: str, event_type: str, producer_ts: int,
+                              payload: dict[str, object], expected_revision: int | None = None) -> dict[str, object]:
+        # 失败投影须先完成，保证正常恢复的未应用后缀至多一条。
+        self._finish_session_projections(actor_id)
+        event = self._session_store.append_event(actor_id=actor_id, event_type=event_type,
+            producer_ts=producer_ts, payload=payload, expected_revision=expected_revision)
+        state = self._session_store.read_runtime_state(actor_id)
+        if event_type == 'character_simulation_seed_event':
+            self._install_recovery_state(actor_id)
+        elif event_type == 'dynamic_state_event':
+            self._dynamic_state_store.write(actor_id, state['dynamic_state'])
+            self._runtime_field_versions.setdefault(actor_id, {})['dynamic_state'] = state['field_versions']['dynamic_state']
+        elif event_type in {'character_supervision_authorization', 'character_supervision_cleared'}:
+            model = CharacterSupervisionState.model_validate(state['supervision_state'])
+            self._supervision_states[actor_id] = model
+            if self.supports_actor(actor_id):
+                self._background_modes[actor_id] = model.active_constraints.background_mode
+            self._runtime_field_versions.setdefault(actor_id, {})['supervision_state'] = state['field_versions']['supervision_state']
+        elif event_type == 'goal_state_event':
+            self._goal_state_store.write(actor_id, state['goal_history'][-1])
+        self._project_session_event(event)
+        return event
+
+    def _finish_session_projections(self, actor_id: str, *, migration: bool = False) -> None:
+        head = self._session_store.event_count(actor_id)
+        cursors = [self._session_store.projection_cursor(actor_id, kind) for kind in ('memory','ask')]
+        cursor = min(cursors)
+        if any(value < 0 or value > head for value in cursors):
+            raise ValueError('character_session_projection_rebuild_required')
+        if not migration and head - cursor > 1:
+            # 只有原子阶段回执能证明这个多事件后缀；仍拒绝任意历史重建。
+            for event in self._session_store.read_cognition_stage_suffix(actor_id, after_index=cursor, through_index=head):
+                self._project_session_event(event)
             return
+        while cursor < head:
+            events = self._session_store.read_events_page(actor_id, after_index=cursor, through_index=head, limit=128 if migration else 1)
+            if not events:
+                raise ValueError('character_session_projection_gap')
+            for event in events:
+                self._project_session_event(event)
+                cursor = int(event['event_index'])
 
-        def source_event_index(
-            timeline: list[dict[str, object]], source_event_ref: str
-        ) -> int | None:
-            found: int | None = None
-            for expected_index, event in enumerate(timeline, start=1):
-                event_index = event.get("event_index")
-                if (
-                    not isinstance(event_index, int)
-                    or isinstance(event_index, bool)
-                    or event_index != expected_index
-                ):
-                    raise ValueError("character_continuity_timeline_invalid")
-                if event.get("event_id") == source_event_ref:
-                    found = event_index
-            return found
+    def _project_session_event(self, event: dict[str, object]) -> None:
+        actor_id, index = str(event['actor_id']), int(event['event_index'])
+        if self._session_store.projection_cursor(actor_id, 'memory') < index:
+            self._memory_store.write_event(event)
+            self._session_store.set_projection_cursor(actor_id, 'memory', index)
+        self._update_memory_scene_knowledge(event)
 
+    def _import_legacy_graph_continuity(self) -> dict[str, dict[str, object]]:
+        if self._continuity_store is None:
+            return {}
         for actor_id in sorted(self._supported_actor_ids | self._continuity_actor_ids):
-            source_field = CharacterGraphContinuityStore.SOURCE_EVENT_REF_FIELD
             checkpoint = dict(self._continuity_store.read_snapshot(actor_id) or {})
-            checkpoint_source = str(checkpoint.pop(source_field, "") or "")
-            base_timeline = [
-                deepcopy(event)
-                for event in checkpoint.get("session_timeline", [])
-                if isinstance(event, dict)
-            ]
-            base_ids = {
-                str(event.get("event_id", "") or "") for event in base_timeline
-            }
-            if checkpoint and checkpoint_source not in base_ids:
-                checkpoint = {}
-                base_timeline = []
-                base_ids = set()
-            checkpoint_anchor = (
-                source_event_index(base_timeline, checkpoint_source)
-                if checkpoint
-                else 0
-            )
-            raw_checkpoint_cursor = checkpoint.get(
-                "checkpoint_event_index", checkpoint_anchor
-            )
-            if checkpoint and (
-                not isinstance(raw_checkpoint_cursor, int)
-                or isinstance(raw_checkpoint_cursor, bool)
-                or raw_checkpoint_cursor != checkpoint_anchor
-            ):
-                checkpoint = {}
-                base_timeline = []
-                base_ids = set()
-                checkpoint_anchor = 0
-                raw_checkpoint_cursor = 0
-
-            current_state = dict(
-                self._continuity_store.read_current_state(actor_id) or {}
-            )
-            current_source = str(current_state.pop(source_field, "") or "")
-            tail = current_state.pop("session_timeline_tail", [])
-            candidate_timeline = list(base_timeline)
-            candidate_ids = set(base_ids)
-            if isinstance(tail, list):
-                for event in tail:
-                    if not isinstance(event, dict):
-                        raise ValueError("character_continuity_timeline_invalid")
-                    event_id = str(event.get("event_id", "") or "")
-                    if event_id and event_id in candidate_ids:
-                        continue
-                    candidate_timeline.append(deepcopy(event))
-                    if event_id:
-                        candidate_ids.add(event_id)
-
-            snapshot = dict(checkpoint)
-            timeline = base_timeline
-            current_anchor = (
-                source_event_index(candidate_timeline, current_source)
-                if current_source in candidate_ids
-                else None
-            )
-            current_checkpoint_cursor = current_state.get("checkpoint_event_index")
-            current_is_not_older = (
-                current_anchor is not None
-                and isinstance(current_checkpoint_cursor, int)
-                and not isinstance(current_checkpoint_cursor, bool)
-                and raw_checkpoint_cursor <= current_checkpoint_cursor <= current_anchor
-                and current_anchor >= checkpoint_anchor
-            )
-            if current_state and current_is_not_older:
-                snapshot.update(current_state)
-                timeline = candidate_timeline
-            if not snapshot and not timeline:
-                continue
-            snapshot["session_timeline"] = timeline
-            checkpoint_index = snapshot.get("checkpoint_event_index", 0)
-            if (
-                not isinstance(checkpoint_index, int)
-                or isinstance(checkpoint_index, bool)
-                or checkpoint_index < 0
-                or checkpoint_index > len(timeline)
-            ):
-                raise ValueError("character_continuity_projection_gap")
-            self._continuity_checkpoint_event_indexes[actor_id] = checkpoint_index
-            self._graph_session_replay_offsets[actor_id] = checkpoint_index
-            dynamic = snapshot.get("dynamic_state")
-            if isinstance(dynamic, dict):
-                self._dynamic_state_store.write(actor_id, dynamic)
-            need_tension = snapshot.get("need_tension_state")
-            if isinstance(need_tension, dict):
-                self._need_tension_store.write(actor_id, need_tension)
-            goal_history = snapshot.get("goal_state_history")
-            if isinstance(goal_history, list) and goal_history:
-                for goal in goal_history:
-                    if isinstance(goal, dict) and goal:
-                        self._goal_state_store.write(actor_id, goal)
-            else:
-                goal = snapshot.get("goal_state")
-                goal_is_in_replay_tail = any(
-                    event.get("event_type") == "goal_state_event"
-                    for event in timeline[checkpoint_index:]
-                )
-                if isinstance(goal, dict) and goal and not goal_is_in_replay_tail:
-                    self._goal_state_store.write(actor_id, goal)
-            supervision = snapshot.get("supervision_state")
-            if isinstance(supervision, dict) and supervision:
-                self._supervision_states[actor_id] = CharacterSupervisionState(**supervision)
-            continuity = snapshot.get("continuity_state")
-            if isinstance(continuity, dict) and continuity:
-                self._continuity_state[actor_id] = RuntimeContinuityState(**continuity)
-            revisions = snapshot.get("continuity_revisions")
-            if isinstance(revisions, int) and revisions >= 0:
-                self._continuity_revisions[actor_id] = revisions
-            receipts = snapshot.get("continuity_receipts")
-            if isinstance(receipts, dict):
-                for key, value in receipts.items():
-                    if isinstance(key, str) and isinstance(value, dict):
-                        self._remember_continuity_receipt(
-                            key, CharacterContinuityReceipt.model_validate(value)
-                        )
-            materialized = snapshot.get("materialization_receipts")
-            if isinstance(materialized, dict):
-                for key, value in materialized.items():
-                    if isinstance(key, str) and isinstance(value, dict):
-                        self._remember_materialization_receipt(
-                            key,
-                            CharacterMemoryMaterializationReceipt.model_validate(value),
-                        )
-            pending = snapshot.get("pending_seed_candidates")
-            if isinstance(pending, dict):
-                self._pending_seed_candidates[actor_id] = {}
-                for key, value in pending.items():
-                    if isinstance(key, str) and isinstance(value, dict):
-                        self._pending_seed_candidates[actor_id][key] = (
-                            CharacterMemoryCandidate.model_validate(value)
-                        )
-            projection = snapshot.get("seed_projection")
-            if isinstance(projection, dict):
-                self._seed_projections[actor_id] = deepcopy(projection)
-            shared_modules = snapshot.get("shared_module_state")
-            if isinstance(shared_modules, dict):
-                self._shared_module_states[actor_id] = deepcopy(shared_modules)
-            if timeline:
-                replay_offset = self._graph_session_replay_offsets.get(actor_id, 0)
-                if replay_offset > len(timeline):
-                    raise ValueError("character_continuity_projection_gap")
-                self._graph_session_timelines[actor_id] = timeline
-                graph_ids = {
-                    str(event.get("event_id", "") or "") for event in timeline
-                }
-                local_events = self._session_store.list_events(actor_id)
-                overlap = 0
-                while (
-                    overlap < len(local_events)
-                    and str(local_events[overlap].get("event_id", "") or "")
-                    in graph_ids
-                ):
-                    overlap += 1
-                if any(
-                    str(event.get("event_id", "") or "") in graph_ids
-                    for event in local_events[overlap:]
-                ):
-                    raise ValueError("character_continuity_projection_gap")
-                self._graph_session_local_overlap_counts[actor_id] = overlap
-                for event in timeline:
-                    self._memory_store.write_event(event)
-                    self._remember_materialization_commit(event)
+            current = dict(self._continuity_store.read_current_state(actor_id) or {})
+            timeline, extra = self._session_store.merge_legacy_continuity(actor_id, checkpoint, current)
+            if timeline is not None:
+                self._session_store.import_timeline(actor_id, timeline)
+            if extra:
+                self._legacy_runtime_extras[actor_id] = extra
+        return self._legacy_runtime_extras
 
     def _persist_graph_continuity(self, *, actor_id: str, producer_ts: int) -> None:
-        if self._continuity_store is None:
-            return
-        # 同一角色的快照捕获和 checkpoint/current 提交不可交错，避免旧游标回写。
         with self._continuity_flush_locks.setdefault(actor_id, RLock()):
             self._persist_graph_continuity_locked(actor_id=actor_id, producer_ts=producer_ts)
 
     def _persist_graph_continuity_locked(self, *, actor_id: str, producer_ts: int) -> None:
-        event_count = self._session_timeline_event_count(actor_id)
-        if event_count == 0:
+        count = self._session_timeline_event_count(actor_id)
+        if not count:
             return
-        last_event = self._session_timeline_after(actor_id, event_count - 1)[0]
-        source_ref = str(last_event.get("event_id", "") or "")
-        checkpoint_index = self._continuity_checkpoint_event_indexes.get(actor_id, 0)
-        current_snapshot = {
-            "working_memory": self.get_working_memory_state(actor_id),
-            "dynamic_state": self.get_dynamic_state(actor_id),
-            "need_tension_state": self.get_need_tension_state(actor_id),
-            "supervision_state": self.get_supervision_state(actor_id),
-            "goal_state": self.get_goal_state(actor_id),
-            "continuity_state": self.get_runtime_continuity_state(actor_id),
-            "continuity_revisions": self._continuity_revisions.get(actor_id, 0),
-            "pending_seed_candidates": {
-                key: value.model_dump(mode="json")
-                for key, value in self._pending_seed_candidates.get(actor_id, {}).items()
-            },
-            "seed_projection": self.get_seed_projection(actor_id),
-            "shared_module_state": self.get_shared_module_state(actor_id),
-            "checkpoint_event_index": self._continuity_checkpoint_event_indexes.get(actor_id, 0),
+        self._finish_session_projections(actor_id)
+        snapshot = {'continuity_state': self.get_runtime_continuity_state(actor_id),
+                    'dynamic_state': self._dynamic_state_store.read_record(actor_id).storage_dump()}
+        # 弱监管也可能由 Siming 更新而没有独立 authorization event。
+        if actor_id in self._supervision_states:
+            snapshot['supervision_state'] = self._supervision_states[actor_id].model_dump(mode='json')
+        self._session_store.save_runtime_state(actor_id, expected_head=count, snapshot=snapshot,
+            field_versions=self._runtime_field_versions.get(actor_id, {}))
+        state = self._session_store.read_runtime_state(actor_id)
+        if self._continuity_store is not None:
+            self._continuity_store.write_current_state(actor_id=actor_id, producer_ts=producer_ts,
+                source_event_ref=str(state['event_id']), snapshot=state)
+
+    def _export_continuity_snapshot(self, actor_id: str) -> dict[str, object] | None:
+        state = self._session_store.read_runtime_state(actor_id)
+        if state is None:
+            return None
+        return {
+            'working_memory': self.get_working_memory_state(actor_id),
+            'dynamic_state': state.get('dynamic_state', {}),
+            'need_tension_state': state.get('need_tension_state', {}),
+            'supervision_state': state.get('supervision_state', {}),
+            'goal_state': state.get('goal_history', [{}])[-1],
+            'goal_state_history': state.get('goal_history', []),
+            'session_timeline': self.get_session_timeline(actor_id),
+            'continuity_state': state.get('continuity_state', {}),
+            'continuity_revisions': state.get('continuity_revision', 0),
+            'continuity_receipts': self._session_store.list_receipts(actor_id, 'continuity'),
+            'materialization_receipts': self._session_store.list_receipts(actor_id, 'materialization'),
+            'pending_seed_candidates': {value['candidate_id']: value for value in self._session_store.list_candidates(actor_id)},
+            'seed_projection': self.get_seed_projection(actor_id),
+            'shared_module_state': deepcopy(state.get('shared_module_state', {})),
+            'checkpoint_event_index': state['event_index'],
+            CharacterGraphContinuityStore.SOURCE_EVENT_REF_FIELD: state['event_id'],
         }
-        checkpoint_due = (
-            checkpoint_index == 0 or event_count <= 1 or event_count % 16 == 0
-        )
-        if checkpoint_due:
-            timeline = self._session_timeline_after(actor_id, 0)
-            checkpoint_snapshot = {
-                **current_snapshot,
-                "goal_state_history": self.get_goal_state_history(actor_id),
-                "session_timeline": timeline,
-                "continuity_receipts": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self._continuity_receipts_by_actor.get(actor_id, {}).items()
-                },
-                "materialization_receipts": {
-                    key: value.model_dump(mode="json")
-                    for key, value in self._materialization_receipts_by_actor.get(actor_id, {}).items()
-                },
-                "checkpoint_event_index": event_count,
-            }
-            try:
-                self._continuity_store.write_snapshot(
-                    actor_id=actor_id,
-                    producer_ts=producer_ts,
-                    source_event_ref=source_ref,
-                    snapshot=checkpoint_snapshot,
-                )
-            except Exception:
-                self._continuity_store.write_current_state(
-                    actor_id=actor_id,
-                    producer_ts=producer_ts,
-                    source_event_ref=source_ref,
-                    snapshot={
-                        **current_snapshot,
-                        "checkpoint_event_index": checkpoint_index,
-                        "session_timeline_tail": self._session_timeline_after(
-                            actor_id, checkpoint_index
-                        ),
-                    },
-                )
-                raise
-            checkpoint_index = event_count
-            self._continuity_checkpoint_event_indexes[actor_id] = checkpoint_index
-        self._continuity_store.write_current_state(
-            actor_id=actor_id,
-            producer_ts=producer_ts,
-            source_event_ref=source_ref,
-            snapshot={
-                **current_snapshot,
-                "checkpoint_event_index": checkpoint_index,
-                "session_timeline_tail": self._session_timeline_after(
-                    actor_id, checkpoint_index
-                ),
-            },
-        )
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(
@@ -4850,7 +5099,7 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         snapshot: CharacterPrivateWorldSnapshot,
-        memory_bundle: dict[str, list[dict[str, object]]],
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
     ) -> None:
         self._refresh_scheduling_round(producer_ts)
         context = self._observatory_context(actor_id)
@@ -4993,26 +5242,24 @@ class CharacterAgentRuntime:
         record = self.get_goal_state_record(actor_id)
         if record is not None:
             return record.model_dump()
-        timeline = self.get_session_timeline(actor_id)
-        for entry in reversed(timeline):
-            if str(entry.get("event_type", "") or "") == "goal_state_event":
-                payload = entry.get("payload", {})
-                if isinstance(payload, dict):
-                    return dict(payload)
+        entry = self._session_store.last_event(actor_id, event_type="goal_state_event")
+        if entry is not None:
+            payload = entry.get("payload", {})
+            if isinstance(payload, dict):
+                return dict(payload)
         return {}
 
+    def _plan_cognition_cadence(self, actor_id: str, producer_ts: int, *, wake_up: bool = False) -> dict:
+        previous = self._last_cognition_tick_ms.get(actor_id)
+        deferred = (self._cadence_policy.degraded_mode and previous is not None
+            and producer_ts - previous < self._cadence_policy.cognition_interval_ms and not wake_up)
+        return dict(deferred=deferred, last_tick=previous if deferred else producer_ts)
+
     def _should_defer_cognition(self, actor_id: str, producer_ts: int) -> bool:
-        if not self._cadence_policy.degraded_mode:
-            self._last_cognition_tick_ms[actor_id] = producer_ts
-            return False
-        previous_tick = self._last_cognition_tick_ms.get(actor_id)
-        if previous_tick is None:
-            self._last_cognition_tick_ms[actor_id] = producer_ts
-            return False
-        if producer_ts - previous_tick < self._cadence_policy.cognition_interval_ms:
-            return True
-        self._last_cognition_tick_ms[actor_id] = producer_ts
-        return False
+        planned = self._plan_cognition_cadence(actor_id, producer_ts)
+        if planned['last_tick'] is not None:
+            self._last_cognition_tick_ms[actor_id] = planned['last_tick']
+        return planned['deferred']
 
     def _should_defer_perception(self, actor_id: str, producer_ts: int) -> bool:
         if not self._cadence_policy.degraded_mode:
@@ -5034,22 +5281,25 @@ class CharacterAgentRuntime:
         target_actor_id: str,
         producer_ts: int,
     ) -> bool:
+        return self._defer_social_request(self._last_social_request_tick_ms, actor_id, request_type, target_actor_id, producer_ts)
+
+    def _defer_social_request(self, ticks, actor_id, request_type, target_actor_id, producer_ts):
         if not self._cadence_policy.degraded_mode:
             if request_type in {"approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"} and target_actor_id != "":
-                self._last_social_request_tick_ms[(actor_id, request_type, target_actor_id)] = producer_ts
+                ticks[(actor_id, request_type, target_actor_id)] = producer_ts
             return False
         if request_type not in {"approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"}:
             return False
         if target_actor_id == "":
             return False
         key = (actor_id, request_type, target_actor_id)
-        previous_tick = self._last_social_request_tick_ms.get(key)
+        previous_tick = ticks.get(key)
         if previous_tick is None:
-            self._last_social_request_tick_ms[key] = producer_ts
+            ticks[key] = producer_ts
             return False
         if producer_ts - previous_tick < self._cadence_policy.cognition_interval_ms:
             return True
-        self._last_social_request_tick_ms[key] = producer_ts
+        ticks[key] = producer_ts
         return False
 
     def _is_wake_up_input(self, payload: dict[str, object]) -> bool:

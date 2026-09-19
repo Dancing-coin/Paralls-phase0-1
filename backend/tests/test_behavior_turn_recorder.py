@@ -368,3 +368,21 @@ def _stage_nodes_for_test(result: object) -> list[object]:
         for node in result.nodes
         if node.attributes.get("entity_kind") == "stage"
     ]
+
+
+def test_frozen_behavior_plan_is_pure_and_replays_original_key() -> None:
+    from copy import deepcopy
+    from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
+    from app.services.siming_heavenly_graph_port import HeavenlyGraphIdempotencyConflict
+
+    graph = InMemoryHeavenlyGraphAdapter()
+    recorder = BehaviorTurnRecorder(graph)
+    before = deepcopy((graph._nodes, graph._idempotency))
+    batch = recorder.plan_record(_request())
+    assert (graph._nodes, graph._idempotency) == before
+    restored = HeavenlyGraphWriteBatch.model_validate_json(batch.model_dump_json())
+    assert graph.write_batch(restored).applied
+    assert recorder.record(_request()).replayed
+    changed = _request().model_copy(update={'policy_revision': 'policy:changed'})
+    with pytest.raises(HeavenlyGraphIdempotencyConflict):
+        graph.write_batch(recorder.plan_record(changed))

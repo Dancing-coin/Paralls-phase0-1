@@ -112,4 +112,84 @@ def test_population_assembler_reads_after_projection_checkpoint() -> None:
         organization_projection={},
         checkpoint=checkpoint,
     ) == ()
-    assert observed == [{"global_sequence_after": 0}]
+    # 检查点已追平空日志，无需发起无效尾部读取。
+    assert observed == []
+
+
+def test_population_checkpoint_does_not_retain_unrelated_stream_heads() -> None:
+    store = GameplayEventStore()
+    for index in range(20):
+        store.append_batch(
+            _batch(
+                tx=f"tx:unrelated:{index}",
+                command_id=f"cmd:unrelated:{index}",
+                key=f"key:unrelated:{index}",
+                events=[_event(
+                    f"evt:unrelated:{index}",
+                    stream_id=f"stream:unrelated:{index}",
+                    tx=f"tx:unrelated:{index}",
+                    command_id=f"cmd:unrelated:{index}",
+                )],
+                outbox_entries=[_outbox(
+                    f"evt:unrelated:{index}", tx=f"tx:unrelated:{index}"
+                )],
+                expected={f"stream:unrelated:{index}": 0},
+            )
+        )
+    cadence = PopulationCadenceInput(
+        cadence_id="cadence:incremental:unrelated",
+        world_ref="world:incremental",
+        world_mode_ref="mode:incremental",
+        world_mode_revision="mode:1",
+        cadence_source_ref="world:incremental",
+        cadence_source_revision=0,
+        window_start=0,
+        window_end=1,
+        base_checkpoint_ref="checkpoint:incremental:unrelated",
+        base_checkpoint_digest="sha256:checkpoint",
+        base_revision_vector={"gameplay:population": 0},
+        policy_revision="policy:population:v1",
+        selector_revision="selector:population:v1",
+        ruleset_revision="rules:population:v1",
+        deterministic_seed="seed:incremental:unrelated",
+        catch_up_limit=10,
+        budget=10,
+        report_scope="public",
+    )
+
+    assert assemble_committed_population_projections(
+        store=store, cadence=cadence, organization_projection={}, incremental=True,
+    ) == ()
+    checkpoint = store.list_projection_checkpoints(
+        projector_id="population-continuity"
+    )[0]
+    assert checkpoint.source_revision_vector == {}
+
+    store.append_batch(
+        _batch(
+            tx="tx:unrelated:tail",
+            command_id="cmd:unrelated:tail",
+            key="key:unrelated:tail",
+            events=[_event(
+                "evt:unrelated:tail",
+                stream_id="stream:unrelated:0",
+                tx="tx:unrelated:tail",
+                command_id="cmd:unrelated:tail",
+            )],
+            outbox_entries=[_outbox("evt:unrelated:tail", tx="tx:unrelated:tail")],
+            expected={"stream:unrelated:0": 1},
+        )
+    )
+
+    store.get_stream_heads = lambda: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        AssertionError("incremental projection must not scan unrelated stream heads")
+    )
+    store.read_stream = lambda *_args, **_kwargs: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        AssertionError("incremental projection must not point-read unrelated streams")
+    )
+    assert assemble_committed_population_projections(
+        store=store,
+        cadence=cadence,
+        organization_projection={},
+        checkpoint=checkpoint,
+    ) == ()

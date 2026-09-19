@@ -1,0 +1,151 @@
+{
+  "schema_version": 1,
+  "canonical_checksum_baseline": "ecbd656",
+  "base": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "actor:visible",
+    "facade_revision": "facade:03a9238f269d873a",
+    "source_revision_vector": {},
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "core.resources",
+      "core.status"
+    ],
+    "groups": {
+      "core.resources": {
+        "definition_version": "1.0.0",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:60ada905f518ab8c073c5fe99d3bdaded3d396edb0db51da22ba7debf69bc6de",
+        "source_revision_vector": {},
+        "payload": {
+          "absent": null,
+          "current": 7,
+          "enabled": true,
+          "label": "角色🌏\n\t\\\"",
+          "position": [
+            0,
+            0.0,
+            -0.0,
+            1.25,
+            -2.5,
+            1e-09,
+            1e+20
+          ]
+        }
+      },
+      "core.status": {
+        "definition_version": "1.0.0",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:c2da181c26b65c9d3f34c53c82036cbeebb19101697cdfb24a3d9e9cb5ec27c8",
+        "source_revision_vector": {},
+        "payload": {
+          "current": 1
+        }
+      }
+    },
+    "snapshot_checksum": "sha256:6a3d3a19e75403fd8930750b6612773f969364ef1113f0d090324b16c7572f1c",
+    "canonical_snapshot_json": "{\"actor_ref\":\"actor:visible\",\"enabled_state_groups\":[\"core.resources\",\"core.status\"],\"facade_revision\":\"facade:03a9238f269d873a\",\"groups\":{\"core.resources\":{\"definition_version\":\"1.0.0\",\"payload\":{\"absent\":null,\"current\":7,\"enabled\":true,\"label\":\"\\u89d2\\u8272\\ud83c\\udf0f\\n\\t\\\\\\\"\",\"position\":[0,0.0,-0.0,1.25,-2.5,1e-09,1e+20]},\"projection_revision\":\"projection:60ada905f518ab8c073c5fe99d3bdaded3d396edb0db51da22ba7debf69bc6de\",\"projection_schema_version\":1,\"source_revision_vector\":{}},\"core.status\":{\"definition_version\":\"1.0.0\",\"payload\":{\"current\":1},\"projection_revision\":\"projection:c2da181c26b65c9d3f34c53c82036cbeebb19101697cdfb24a3d9e9cb5ec27c8\",\"projection_schema_version\":1,\"source_revision_vector\":{}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{}}"
+  },
+  "target": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "actor:visible",
+    "facade_revision": "facade:a0e99cd1c1c1fef2",
+    "source_revision_vector": {
+      "stream:mirror": 2
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "core.status"
+    ],
+    "groups": {
+      "core.status": {
+        "definition_version": "1.0.0",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:1bb76ebf9d21c684cad66864c0b3258772236bd94c3489315f81221bf67f0276",
+        "source_revision_vector": {
+          "stream:mirror": 2
+        },
+        "payload": {
+          "current": 2,
+          "label": "变化"
+        }
+      }
+    },
+    "snapshot_checksum": "sha256:24df3ddf92e038ae82061396a29877f32b40fc6becd9187fe13de84fbe0e100a",
+    "canonical_snapshot_json": "{\"actor_ref\":\"actor:visible\",\"enabled_state_groups\":[\"core.status\"],\"facade_revision\":\"facade:a0e99cd1c1c1fef2\",\"groups\":{\"core.status\":{\"definition_version\":\"1.0.0\",\"payload\":{\"current\":2,\"label\":\"\\u53d8\\u5316\"},\"projection_revision\":\"projection:1bb76ebf9d21c684cad66864c0b3258772236bd94c3489315f81221bf67f0276\",\"projection_schema_version\":1,\"source_revision_vector\":{\"stream:mirror\":2}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"stream:mirror\":2}}"
+  },
+  "other": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "actor:second",
+    "facade_revision": "facade:eaaf5fea8d28bdad",
+    "source_revision_vector": {
+      "stream:mirror": 1
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "core.status"
+    ],
+    "groups": {
+      "core.status": {
+        "definition_version": "1.0.0",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:05ec0c9aa9f9e90e0b88c9f72d959a0b8b96d7413ce9a6af9a9fdb878ca26ad0",
+        "source_revision_vector": {
+          "stream:mirror": 1
+        },
+        "payload": {
+          "current": 3
+        }
+      }
+    },
+    "snapshot_checksum": "sha256:7c9ef9d827684767ff8db98ca67ece65ad2a3ecf85d70c2a0fbc54586e303475",
+    "canonical_snapshot_json": "{\"actor_ref\":\"actor:second\",\"enabled_state_groups\":[\"core.status\"],\"facade_revision\":\"facade:eaaf5fea8d28bdad\",\"groups\":{\"core.status\":{\"definition_version\":\"1.0.0\",\"payload\":{\"current\":3},\"projection_revision\":\"projection:05ec0c9aa9f9e90e0b88c9f72d959a0b8b96d7413ce9a6af9a9fdb878ca26ad0\",\"projection_schema_version\":1,\"source_revision_vector\":{\"stream:mirror\":1}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"stream:mirror\":1}}"
+  },
+  "delta": {
+    "message_type": "gameplay_runtime_state_projection",
+    "projection_kind": "gameplay_runtime_state.godot.v1",
+    "actor_ref": "actor:visible",
+    "facade_revision": "facade:a0e99cd1c1c1fef2",
+    "base_facade_revision": "facade:03a9238f269d873a",
+    "base_snapshot_checksum": "sha256:6a3d3a19e75403fd8930750b6612773f969364ef1113f0d090324b16c7572f1c",
+    "target_snapshot_checksum": "sha256:24df3ddf92e038ae82061396a29877f32b40fc6becd9187fe13de84fbe0e100a",
+    "source_revision_vector": {
+      "stream:mirror": 2
+    },
+    "schema_capabilities": [
+      "gameplay_runtime_state.godot.v1"
+    ],
+    "enabled_state_groups": [
+      "core.status"
+    ],
+    "removed_group_ids": [
+      "core.resources"
+    ],
+    "confirmed_prediction_ids": [],
+    "rejected_predictions": [],
+    "groups": {
+      "core.status": {
+        "definition_version": "1.0.0",
+        "projection_schema_version": 1,
+        "projection_revision": "projection:1bb76ebf9d21c684cad66864c0b3258772236bd94c3489315f81221bf67f0276",
+        "source_revision_vector": {
+          "stream:mirror": 2
+        },
+        "payload": {
+          "current": 2,
+          "label": "变化"
+        }
+      }
+    },
+    "canonical_snapshot_json": "{\"actor_ref\":\"actor:visible\",\"enabled_state_groups\":[\"core.status\"],\"facade_revision\":\"facade:a0e99cd1c1c1fef2\",\"groups\":{\"core.status\":{\"definition_version\":\"1.0.0\",\"payload\":{\"current\":2,\"label\":\"\\u53d8\\u5316\"},\"projection_revision\":\"projection:1bb76ebf9d21c684cad66864c0b3258772236bd94c3489315f81221bf67f0276\",\"projection_schema_version\":1,\"source_revision_vector\":{\"stream:mirror\":2}}},\"schema_capabilities\":[\"gameplay_runtime_state.godot.v1\"],\"source_revision_vector\":{\"stream:mirror\":2}}"
+  }
+}

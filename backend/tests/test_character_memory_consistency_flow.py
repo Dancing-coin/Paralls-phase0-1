@@ -120,11 +120,14 @@ def test_strong_actor_defers_when_even_focused_evidence_exceeds_budget():
         interpretation_type="curiosity", salience_score=1, ambiguity_level="low", risk_level="low",
         opportunity_level="low", attention_target="obj_letter")
     def run_model(memory_override=None):
-        return runtime._l3.select_intent(interpretation, snapshot=snapshot.model_dump(),
+        return runtime._l3.prepare_intent_plan(interpretation=interpretation, control_mode="agent_full_auto", snapshot=snapshot.model_dump(),
             effective_profile={"capability_constraint_layer": {"memory_retention": "strong"}},
             memory_bundle=memory_override or runtime.get_memory_record_bundle("char_a"))
-    decision = runtime._select_intent_with_continuity_floor(actor_id="char_a", producer_ts=3, snapshot=snapshot,
+    steps = runtime._select_intent_with_continuity_floor(actor_id="char_a", producer_ts=3, snapshot=snapshot,
         interpretation=interpretation, control_mode="agent_full_auto", source_stage="test", run_model=run_model)
+    with pytest.raises(StopIteration) as completed:
+        next(steps)
+    decision = completed.value.value
     assert decision.selected_intent == "stay_silent"
     assert decision.fallback_mode == "memory_evidence_pending"
     assert any(event["event_type"] == "character_memory_recall_deferred" for event in runtime.get_session_timeline("char_a"))
@@ -157,6 +160,7 @@ def test_public_authority_event_does_not_disclose_private_record_content():
 def test_main_world_result_handoff_deposits_reader_evidence(monkeypatch):
     from app import main
     from app.services.authority_event_bus import InMemoryAuthorityEventBus
+    main.reset_runtime_state()
     runtime = CharacterAgentRuntime()
     monkeypatch.setattr(main, "character_agent_runtime", runtime)
     monkeypatch.setattr(main, "authority_event_bus", InMemoryAuthorityEventBus())
@@ -213,7 +217,7 @@ def test_recheck_persistence_failure_does_not_change_knowledge_and_can_retry(tmp
     def fail(*args, **kwargs):
         raise OSError("disk unavailable")
     with monkeypatch.context() as patch:
-        patch.setattr(runtime._session_store, "_persist", fail)
+        patch.setattr(runtime._session_store, "_insert_event", fail)
         with pytest.raises(OSError):
             runtime.apply_memory_verification_result(result, producer_ts=4)
     assert [entry.model_dump() for entry in runtime._l1.get_actor_scene_knowledge_store().entries_for_actor("char_a")] == before

@@ -132,3 +132,47 @@ def test_compiler_excludes_memory_outside_the_requested_temporal_bound() -> None
 
     assert context.world_facts == []
     assert graph.get_node(node_id=entry.entry_id, scope=scope, valid_at=10, recorded_at=20) is not None
+
+@pytest.mark.parametrize("change", ["scope", "future_valid", "expired", "future_recorded", "revision_gap", "operational", "redaction"])
+def test_compiler_rejects_invalid_planned_source_without_graph_writes(change):
+    graph = InMemoryHeavenlyGraphAdapter()
+    scope = HeavenlyGraphScope(world_id="world:demo", session_id="session:demo", story_branch_id="branch:main")
+    node = _node(scope, WorldFactMemoryEntry(entry_id="fact:new", world_anchor_id="obj_bell",
+        state_key="heard", state_value=True, authority_result_ref="authority:new"))
+    updates = {
+        "scope": {"scope": scope.model_copy(update={"world_id": "other"})},
+        "future_valid": {"validity": GraphValidity(valid_from=3)},
+        "expired": {"validity": GraphValidity(valid_from=0, valid_to=2)},
+        "future_recorded": {"recorded_at": 3},
+        "revision_gap": {"revision": 2, "supersedes_revision": 1},
+        "operational": {"node_type": "siming_admission"},
+        "redaction": {"semantic_metadata": node.semantic_metadata.model_copy(update={"derivation_kind": "redaction"})},
+    }
+    with pytest.raises(ValueError, match="planned subgraph node"):
+        SimingContextCompiler(graph).compile(SimingContextRequest(scope=scope, valid_at=2,
+            recorded_at=2, seed_node_ids=[node.node_id]), planned_nodes=[node.model_copy(update=updates[change])])
+    assert not graph._nodes
+    assert not graph._idempotency
+
+
+@pytest.mark.parametrize("node_limit", [1, 2, 3])
+def test_planned_subgraph_keeps_original_traversal_limits_and_revision_order(node_limit):
+    from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch, HeavenlyGraphRelation
+    graph = InMemoryHeavenlyGraphAdapter()
+    scope = HeavenlyGraphScope(world_id="world:demo", session_id="session:demo", story_branch_id="branch:main")
+    nodes = [_node(scope, WorldFactMemoryEntry(entry_id=f"fact:{name}", world_anchor_id="obj_bell",
+        state_key="heard", state_value=True, authority_result_ref=f"authority:{name}")) for name in ("a", "b", "c")]
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="seed", idempotency_key="seed", scope=scope, nodes=nodes,
+        relations=[HeavenlyGraphRelation(relation_id=f"rel:{index}", relation_type="caused_by",
+            source_node_id=nodes[index].node_id, target_node_id=nodes[index+1].node_id, scope=scope,
+            validity=GraphValidity(valid_from=1), recorded_at=1, revision=1, provenance=nodes[0].provenance)
+            for index in range(2)]))
+    updated = nodes[1].model_copy(update={"revision": 2, "supersedes_revision": 1,
+        "attributes": {**nodes[1].attributes, "state_value": False}})
+    request = SimingContextRequest(scope=scope, valid_at=2, recorded_at=2, seed_node_ids=[nodes[0].node_id], node_limit=node_limit)
+    compiler = SimingContextCompiler(graph)
+    planned = compiler.compile(request, planned_nodes=[updated])
+    with pytest.raises(ValueError, match="revision"):
+        compiler.compile(request, planned_nodes=[nodes[1].model_copy(update={"attributes": updated.attributes})])
+    graph.write_batch(HeavenlyGraphWriteBatch(transaction_id="update", idempotency_key="update", scope=scope, nodes=[updated]))
+    assert compiler.compile(request) == planned

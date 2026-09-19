@@ -346,13 +346,21 @@ class PopulationDecisionPlanner:
         ordered = sorted(candidates, key=lambda item: (-score(item), item.candidate_ref, item.source_projection_refs))
         selected: list[PopulationDecisionCandidate] = []
         deferred: list[PopulationDecisionCandidate] = []
+        # 按角色限制昂贵层级，同角色的不同义务仍保留原成本和候选身份。
+        tier_actor_limits = {"B1": 32, "B2": 4}
+        selected_actors: dict[str, set[str]] = {tier: set() for tier in tier_actor_limits}
         budget_used = 0
         for candidate in ordered:
-            if len(selected) >= policy.max_candidates or budget_used + candidate.estimated_cost > policy.budget:
+            actors = selected_actors.get(candidate.fidelity_tier)
+            tier_full = (actors is not None and candidate.actor_ref not in actors
+                         and len(actors) >= tier_actor_limits[candidate.fidelity_tier])
+            if tier_full or len(selected) >= policy.max_candidates or budget_used + candidate.estimated_cost > policy.budget:
                 deferred.append(candidate)
                 continue
             selected.append(candidate)
             budget_used += candidate.estimated_cost
+            if actors is not None:
+                actors.add(candidate.actor_ref)
         counts: dict[str, int] = {}
         for candidate in selected:
             counts[candidate.fidelity_tier] = counts.get(candidate.fidelity_tier, 0) + 1

@@ -361,7 +361,7 @@ def test_sqlite_query_holds_lock_against_concurrent_write(tmp_path: Path, monkey
     writer_finished = Event()
     query_errors: list[Exception] = []
     query_results = []
-    original_effective_entity = graph._effective_entity
+    original_query_entities = graph._query_entities
     first_query = True
 
     def pause_first_query(*args, **kwargs):
@@ -370,9 +370,9 @@ def test_sqlite_query_holds_lock_against_concurrent_write(tmp_path: Path, monkey
             first_query = False
             query_entered.set()
             assert continue_query.wait(1)
-        return original_effective_entity(*args, **kwargs)
+        return original_query_entities(*args, **kwargs)
 
-    monkeypatch.setattr(graph, "_effective_entity", pause_first_query)
+    monkeypatch.setattr(graph, "_query_entities", pause_first_query)
 
     def read() -> None:
         try:

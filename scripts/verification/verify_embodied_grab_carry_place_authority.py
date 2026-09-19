@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 from fastapi.testclient import TestClient
 
 import app.main as backend_main
-from app.main import app, reset_runtime_state
+from app.main import component_app as app, reset_runtime_state
 from common import ensure_backend, repo_root, resolve_godot_exe, resolve_python_exe, run_command, stop_backend, verification_dir, write_json, write_markdown
 
 

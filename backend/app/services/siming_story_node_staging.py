@@ -29,6 +29,7 @@ class SimingStoryNodeStaging:
         request: StagingRequest,
         *,
         acks: list[StagingAck],
+        planned_batches=None,
     ) -> StagingResult:
         existing = self._read_result(
             scope=request.scope,
@@ -55,8 +56,9 @@ class SimingStoryNodeStaging:
                 realization_signature=request.resource_match.realization_signature,
                 reason=failure,
                 status="aborted_before_activation",
+                planned_batches=planned_batches,
             )
-        return self._stage(request)
+        return self._stage(request, planned_batches=planned_batches)
 
     def cancel(
         self,
@@ -90,7 +92,7 @@ class SimingStoryNodeStaging:
             status="cancelled",
         )
 
-    def _stage(self, request: StagingRequest) -> StagingResult:
+    def _stage(self, request: StagingRequest, *, planned_batches=None) -> StagingResult:
         result = self._record(
             scope=request.scope,
             node_id=request.node_id,
@@ -111,6 +113,7 @@ class SimingStoryNodeStaging:
             target="staged",
             reason="all_staging_acknowledgements",
             result=result,
+            planned_batches=planned_batches,
         )
         return result
 
@@ -125,6 +128,7 @@ class SimingStoryNodeStaging:
         realization_signature: str,
         reason: str,
         status: str,
+        planned_batches=None,
     ) -> StagingResult:
         result = self._record(
             scope=scope,
@@ -153,6 +157,7 @@ class SimingStoryNodeStaging:
             target="aborted",
             reason=reason,
             result=result,
+            planned_batches=planned_batches,
         )
         return result
 
@@ -167,6 +172,7 @@ class SimingStoryNodeStaging:
         target: str,
         reason: str,
         result: StagingResult,
+        planned_batches=None,
     ) -> None:
         outcome = InterventionOutcomeMemoryEntry(
             entry_id=self._entry_id(node_id, result.correlation_id),
@@ -181,7 +187,7 @@ class SimingStoryNodeStaging:
             staging_recorded_at=recorded_at,
             reason=result.reason,
         )
-        self._story.transition_with_intervention_outcome(
+        arguments = dict(
             scope=scope,
             node_id=node_id,
             expected=expected,
@@ -197,6 +203,11 @@ class SimingStoryNodeStaging:
                 producer_system="siming_story_node_staging",
             ),
         )
+        if planned_batches is None:
+            self._story.transition_with_intervention_outcome(**arguments)
+        else:
+            prior = self._story._runtime_graph_node_at(scope=scope, node_id=node_id, valid_at=recorded_at)
+            planned_batches.append(self._story.plan_transition_with_intervention_outcome(prior=prior, **arguments))
 
     def _record(
         self,

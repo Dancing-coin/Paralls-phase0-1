@@ -221,14 +221,13 @@ def test_transport_revocation_requests_a_typed_close_from_the_live_connection() 
 def test_live_websocket_receives_typed_revocation_before_controlled_close() -> None:
     reset_runtime_state()
     now = int(time())
-    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
-        principal_ref="principal:player",
-        allowed_actor_refs=("actor:visible",),
-        issued_at=now,
-        expires_at=now + 60,
-    )
-
-    with TestClient(main.app, client=("127.0.0.1", 47111)) as client:
+    with TestClient(main.component_app, client=("127.0.0.1", 47111)) as client:
+        credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+            principal_ref="principal:player",
+            allowed_actor_refs=("actor:visible",),
+            issued_at=now,
+            expires_at=now + 60,
+        )
         with client.websocket_connect("/ws") as websocket:
             websocket.send_json(
                 {

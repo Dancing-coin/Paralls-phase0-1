@@ -191,14 +191,15 @@ def publish_authorized_population_cadence(
                 cadence.base_revision_vector.get(ref) != revision
                 for ref, revision in projection.revision_vector.items()
             )
-            or any(
-                store.get_stream_head(ref) != revision
-                for ref, revision in projection.revision_vector.items()
-            )
             or projection.ref in accepted
         ):
             return None
         accepted[projection.ref] = projection
+
+    # 各角色已逐一匹配同一 base；发布前按流复核一次，避免万人重复打开 SQLite。
+    # 在 assembler/authorizer 之后读取，不能跨调用缓存或漏掉回调期间的 revision 变化。
+    if any(store.get_stream_head(ref) != revision for ref, revision in cadence.base_revision_vector.items()):
+        return None
 
     event = AuthorityEvent(
         event_id=f"event:population-cadence:{cadence.cadence_id}",

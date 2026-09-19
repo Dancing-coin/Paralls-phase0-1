@@ -118,7 +118,7 @@ def test_retrieve_intent_forbids_client_inventory_or_receiver_reference_injectio
 def test_websocket_default_scene_pickup_resolves_custody_from_backend_policy_only() -> None:
     main.reset_runtime_state()
     main.runtime._actor_positions["char_c"] = (3.8, 0.7, -1.2)
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json({"message_type": "player_input", "payload": _pickup_payload()})
@@ -163,7 +163,7 @@ def test_websocket_default_scene_pickup_resolves_custody_from_backend_policy_onl
 
 def test_default_scene_pickup_rejection_is_structured_and_does_not_mutate_custody() -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -193,7 +193,10 @@ def test_default_scene_pickup_rejection_is_structured_and_does_not_mutate_custod
 
 def test_websocket_default_scene_stow_moves_picked_up_item_into_inventory_and_commits_three_events() -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    from websocket_test_support import CompletingWebSocketApp
+
+    tracked_app = CompletingWebSocketApp(main.component_app)
+    client = TestClient(tracked_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -223,6 +226,7 @@ def test_websocket_default_scene_stow_moves_picked_up_item_into_inventory_and_co
         websocket.send_json({"message_type": "player_input", "payload": _stow_payload()})
         stow_ack = websocket.receive_json()
         stow_result = websocket.receive_json()
+        tracked_app.close_and_wait(websocket)
 
     inventory = InventoryProjector(main.inventory_definition_registry).rebuild(
         "character:char_c",
@@ -276,7 +280,7 @@ def test_websocket_default_scene_stow_moves_picked_up_item_into_inventory_and_co
 
 def test_websocket_default_scene_retrieve_resolves_container_item_and_receiver_from_backend_policy() -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(
@@ -376,7 +380,7 @@ def test_websocket_default_scene_retrieve_rejects_unreviewed_or_wrong_context_wi
 ) -> None:
     main.reset_runtime_state()
     main.runtime._actor_positions["char_c"] = (1.2, 0.7, -1.2)
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json({"message_type": "player_input", "payload": _retrieve_payload(**overrides)})
@@ -393,7 +397,7 @@ def test_websocket_default_scene_retrieve_rejects_unreviewed_or_wrong_context_wi
 
 def test_websocket_default_scene_stow_rejects_when_item_is_not_in_actor_custody() -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json({"message_type": "player_input", "payload": _stow_payload()})
@@ -437,7 +441,7 @@ def test_websocket_default_scene_stow_rejects_invalid_context_actor_or_target(
     constraint_code: str,
 ) -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json({"message_type": "player_input", "payload": _stow_payload(**overrides)})
@@ -464,7 +468,7 @@ def test_websocket_default_scene_stow_rejects_invalid_context_actor_or_target(
 
 def test_websocket_default_scene_stow_rejects_extra_payload_fields_via_pydantic_validation() -> None:
     main.reset_runtime_state()
-    client = TestClient(main.app)
+    client = TestClient(main.component_app)
 
     with client.websocket_connect("/ws") as websocket:
         websocket.send_json(

@@ -2,10 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.replay import GameplayProjectionReplay
+from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.population_continuity.activation import ProfileActivationAuthority
 from app.population_continuity.batch import ContinuityMergeAuthority
 from app.population_continuity.models import (
@@ -150,6 +152,75 @@ def test_activation_lock_records_replayable_schedule_pending_then_releases() -> 
     assert released.committed
     assert store.read_events()[-1].payload["pending_change_refs"] == ["pending:1"]
     assert authority.pending_projection("world:bakery")["pending:1"]["status"] == "released"
+
+
+def test_activation_lease_does_not_replay_all_events_for_lock_or_release(monkeypatch) -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    original_read_events = store.read_events
+    original_read_stream = store.read_stream
+    locked = authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0)
+    assert locked.committed
+    assert locked.replay_hash == GameplayProjectionReplay(
+        projector_id="population-activation", projector_version="1"
+    ).full_replay(original_read_events()).projection_hash
+
+    def forbid_full_events(*args, **kwargs):
+        if not kwargs:
+            raise AssertionError("activation lease read the full gameplay ledger")
+        return original_read_events(*args, **kwargs)
+
+    def forbid_full_stream(*args, **kwargs):
+        raise AssertionError("activation lease read the full population stream")
+
+    monkeypatch.setattr(store, "read_events", forbid_full_events)
+    monkeypatch.setattr(store, "read_stream", forbid_full_stream)
+    pending = authority.record_pending(PendingChange(
+        change_ref="pending:lease", lock_ref="lock:world:bakery:character:char_a",
+        profile_ref="character:char_a", expected_revision=0,
+        payload={"kind": "schedule_gated_supply", "plan_digest": "sha256:lease"}, privacy_scope="actor:self",
+    ))
+    assert pending.committed
+    assert pending.replay_hash == GameplayProjectionReplay(
+        projector_id="population-activation", projector_version="1"
+    ).full_replay(original_read_events()).projection_hash
+    released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=2)
+    assert released.committed
+    assert released.replay_hash == GameplayProjectionReplay(
+        projector_id="population-activation", projector_version="1"
+    ).full_replay(original_read_events()).projection_hash
+    assert original_read_events()[-1].payload["pending_change_refs"] == ["pending:lease"]
+    assert original_read_stream("population:world:bakery")[-1].event_type == "population.activation.released"
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_activation_receipt_tail_includes_other_owner_events(tmp_path, monkeypatch, durable) -> None:
+    store = DurableGameplayEventStore(tmp_path / "activation.db") if durable else GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    original_read_events = store.read_events
+    reads = []
+
+    def observe_read_events(*args, **kwargs):
+        reads.append(kwargs)
+        return original_read_events(*args, **kwargs)
+
+    monkeypatch.setattr(store, "read_events", observe_read_events)
+    locked = authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0)
+    assert locked.committed
+    unrelated = build_atomic_event_batch(
+        command_id="external:one", principal_ref="other-owner", stream_id="gameplay:other",
+        expected_revision=0, event_specs=[("gameplay.other.changed", {"value": 1})],
+        idempotency_key="external:one", causation_id="external:one", correlation_id="external:one",
+    )
+    assert store.append_batch(unrelated).committed
+    released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=1)
+    assert released.committed
+    assert reads == [{}, {"global_sequence_after": 1}]
+    assert released.replay_hash == GameplayProjectionReplay(
+        projector_id="population-activation", projector_version="1"
+    ).full_replay(original_read_events()).projection_hash
+    if durable:
+        store.close()
 
 
 def test_activation_schedule_pending_rejects_free_form_payload_without_writes() -> None:

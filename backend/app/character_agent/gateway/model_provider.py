@@ -198,7 +198,7 @@ class CharacterModelProvider:
             prompt = {}
         if not isinstance(policy, dict):
             policy = {}
-        return {
+        payload = {
             "model": self._model_name,
             "messages": [
                 {
@@ -214,6 +214,9 @@ class CharacterModelProvider:
             "max_tokens": int(policy.get("max_tokens", 400) or 400),
             "stream": True,
         }
+        if self._provider_kind == "deepseek":
+            payload["thinking"] = {"type": "disabled"}
+        return payload
 
     def _stream_delta_from_payload(self, payload: object) -> str:
         if not isinstance(payload, dict):
@@ -302,7 +305,7 @@ class CharacterModelProvider:
         if not isinstance(policy, dict):
             policy = {}
         required_output_keys = prompt.get("required_output_keys", [])
-        return {
+        payload = {
             "model": self._model_name,
             "messages": [
                 {
@@ -321,6 +324,9 @@ class CharacterModelProvider:
             "temperature": float(policy.get("temperature", 0.1) or 0.1),
             "max_tokens": int(policy.get("max_tokens", 800) or 800),
         }
+        if self._provider_kind == "deepseek":
+            payload["thinking"] = {"type": "disabled"}
+        return payload
 
     def _normalize_deepseek_response(self, payload: object) -> dict[str, object]:
         if not isinstance(payload, dict):
