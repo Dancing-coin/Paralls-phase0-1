@@ -171,6 +171,7 @@ def _bridge_setup(
     actor_autonomy: bool = True,
     recorded_at: int = 100,
     lineage_only: bool = False,
+    context_scope: HeavenlyGraphScope | None = None,
 ) -> _BridgeSetup:
     graph = InMemoryHeavenlyGraphAdapter()
     scope = _scope()
@@ -195,7 +196,7 @@ def _bridge_setup(
     )
     context = SimingContextCompiler(graph).compile(
         SimingContextRequest(
-            scope=scope,
+            scope=context_scope or scope,
             valid_at=100,
             recorded_at=recorded_at,
             seed_node_ids=[fact.entry_id],
@@ -301,6 +302,23 @@ def test_private_confrontation_accepts_actor_observation_authority_lineage() -> 
     result = setup.bridge.validate_and_commit(_proposal(), provider_audit=_audit())
 
     assert result.accepted is True
+
+
+def test_bridge_consumes_facts_only_from_the_authoritative_scene_scope() -> None:
+    matching = _bridge_setup()
+    mismatched_scope = matching.scope.model_copy(
+        update={"room_id": "room:other", "scene_id": "scene:other"}
+    )
+    mismatched = _bridge_setup(context_scope=mismatched_scope)
+
+    accepted = matching.bridge.validate_and_commit(_proposal(), provider_audit=_audit())
+    rejected = mismatched.bridge.validate_and_commit(_proposal(), provider_audit=_audit())
+
+    assert accepted.accepted is True
+    assert rejected.accepted is False
+    assert {"supporting_fact_missing", "obligation_not_open"}.issubset(
+        rejected.reason_codes
+    )
 
 
 @pytest.mark.parametrize(

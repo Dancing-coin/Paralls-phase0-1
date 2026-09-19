@@ -953,6 +953,34 @@ def test_active_support_returns_non_activatable_result_when_llm_is_unavailable(
         state.close()
 
 
+def test_runtime_preserves_heavenly_provider_failure_reason(tmp_path) -> None:
+    state = main.build_runtime_state(
+        config_module.Settings(
+            siming_heavenly_mode="active",
+            heavenly_graph_path=str(tmp_path / "runtime.sqlite3"),
+        )
+    )
+    try:
+        state.siming_runtime.heavenly_support._llm_provider = _UnavailableProposalProvider()
+
+        source_event = _destruction_input().source_event.model_copy(
+            update={
+                "routing": AuthorityEventRouting(
+                    audience_mode="room", routing_mode="event_type", target_ids=["siming"]
+                )
+            }
+        )
+        result = state.siming_runtime.tick(
+            [SimingInput(input_type="world_fact_event", source_event=source_event)]
+        )
+
+        no_actions = [output for output in result.outputs if output.output_type == "no_action"]
+        assert no_actions[-1].payload["reason"] == "llm_unavailable:SimingLlmProviderTimeout"
+        assert result.audit_records[-1].reason == "llm_unavailable:SimingLlmProviderTimeout"
+    finally:
+        state.close()
+
+
 def test_selection_and_dispatch_reject_new_values_after_support_recreation(
     tmp_path,
 ) -> None:
@@ -1031,3 +1059,12 @@ def test_heavenly_mode_rejects_unknown_values(monkeypatch, mode) -> None:
 
     with pytest.raises(ValidationError):
         importlib.reload(config_module)
+
+
+def test_siming_scope_preserves_authority_event_room_and_scene() -> None:
+    event = _destruction_input()
+
+    scope = main.siming_scope_for_event(event.source_event)
+
+    assert scope.room_id == "room:main"
+    assert scope.scene_id == "scene:throne"

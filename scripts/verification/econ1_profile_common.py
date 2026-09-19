@@ -6,13 +6,13 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from common import repo_root, verification_dir, write_json, write_markdown
+from common import artifact_path, repo_root, verification_dir, write_json, write_markdown
 
 
 def run_profile(*, name: str, overall_key: str, predecessor: str, checks: dict[str, object]) -> int:
     root = repo_root()
     directory = verification_dir(root)
-    predecessor_path = directory / predecessor
+    predecessor_path = artifact_path(root, f".harness/verification/{predecessor}")
     try:
         predecessor_report = json.loads(predecessor_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

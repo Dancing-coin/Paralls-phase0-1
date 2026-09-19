@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -12,8 +13,14 @@ from scripts.verification.run_context import run_scope
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def _verifier_scope(root: Path, tmp_path):
+    if os.environ.get("HARNESS_PROJECT_ROOT") == str(root.resolve()):
+        return run_scope(root)
+    return run_scope(root, export_to=tmp_path / "evidence")
+
+
 def test_closed_generic_gameplay_families_verifier_reports_family_matrix_and_blocker(tmp_path) -> None:
-    with run_scope(ROOT, export_to=tmp_path / "evidence"):
+    with _verifier_scope(ROOT, tmp_path):
         result = subprocess.run(
             [sys.executable, "scripts/verification/verify_closed_generic_gameplay_families.py"],
             cwd=ROOT,

@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-from common import read_text, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
+from common import ensure_godot_import, read_text, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
 REQUIRED_MID_FIELDS = {
@@ -134,6 +134,7 @@ def main() -> int:
     godot_status = "godot-runtime-binding-unverified"
     godot_ok = False
     if godot_exe is not None:
+        ensure_godot_import(project_root, godot_exe, "embodied-skeletal-debug-replay-godot-import.log")
         godot_result = run_command(
             [
                 str(godot_exe),

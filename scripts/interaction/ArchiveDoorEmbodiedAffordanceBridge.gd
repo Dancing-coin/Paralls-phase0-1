@@ -127,12 +127,24 @@ func is_approach_obstructed(from_position: Vector3, to_position: Vector3, exclud
 	if start.distance_to(finish) <= 0.05:
 		return false
 	var query := PhysicsRayQueryParameters3D.create(start, finish)
-	query.exclude = exclude
+	query.exclude = _collision_rids_for_excluded_nodes(exclude)
 	var hit: Dictionary = door.get_world_3d().direct_space_state.intersect_ray(query)
 	if hit.is_empty():
 		return false
 	var collider: Variant = hit.get("collider")
 	return not _is_door_collider(collider)
+
+
+func _collision_rids_for_excluded_nodes(exclude: Array) -> Array[RID]:
+	var excluded_rids: Array[RID] = []
+	for candidate in exclude:
+		if candidate is CollisionObject3D:
+			excluded_rids.append((candidate as CollisionObject3D).get_rid())
+		if candidate is Node:
+			for descendant in (candidate as Node).find_children("*", "CollisionObject3D", true, false):
+				if descendant is CollisionObject3D:
+					excluded_rids.append((descendant as CollisionObject3D).get_rid())
+	return excluded_rids
 
 
 func _on_world_result_received(payload: Dictionary) -> void:

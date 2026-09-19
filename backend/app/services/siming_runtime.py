@@ -294,6 +294,36 @@ class SimingRuntime:
                 else None
             )
             self._active_turn_prepared = prepared
+            if prepared is not None and prepared.degraded_reason:
+                reason = prepared.degraded_reason
+                result.outputs.append(self._no_action(event, reason=reason))
+                result.audit_records.append(
+                    self._audit(event, status="no_action", reason=reason)
+                )
+                self._queue_snapshot(
+                    source_event=event,
+                    fairness_summary=self._fairness_summary_for(event),
+                    intervention_candidate="",
+                    intervention_decision="no_action",
+                    selected_path="no_action",
+                    intervention_band="none",
+                    target_ref=self._target_ref_for(event),
+                    reason_summary=reason,
+                    downstream_status="heavenly_degraded",
+                    no_action_reason=reason,
+                )
+                self._queue_event(
+                    source_event=event,
+                    stage="no_action",
+                    summary="siming heavenly preparation unavailable",
+                    selected_path="no_action",
+                    intervention_band="none",
+                    target_ref=self._target_ref_for(event),
+                    reason_summary=reason,
+                    downstream_status="heavenly_degraded",
+                    no_action_reason=reason,
+                )
+                continue
             if (
                 prepared is not None
                 and prepared.mode == "active"

@@ -117,6 +117,8 @@ def test_application_authority_bus_projects_esm_event_to_shared_graph(tmp_path: 
                     world_id="world:demo",
                     session_id="session:demo",
                     story_branch_id="branch:main",
+                    room_id="room_demo",
+                    scene_id="scene_demo",
                 ),
                 valid_at=1,
                 node_types=["causal_event"],
@@ -192,7 +194,13 @@ def test_application_bus_projects_all_authority_domains_to_shared_graph(tmp_path
             )
         nodes = main.heavenly_graph.query_nodes(
             HeavenlyNodeQuery(
-                scope=HeavenlyGraphScope(world_id="world:demo", session_id="session:demo", story_branch_id="branch:main"),
+                scope=HeavenlyGraphScope(
+                    world_id="world:demo",
+                    session_id="session:demo",
+                    story_branch_id="branch:main",
+                    room_id="room_demo",
+                    scene_id="scene_demo",
+                ),
                 valid_at=10,
                 node_types=["causal_event"],
                 limit=None,

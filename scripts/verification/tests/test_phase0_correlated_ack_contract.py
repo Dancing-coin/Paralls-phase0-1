@@ -91,7 +91,7 @@ def test_main_demo_wait_helpers_use_explicit_integer_deadlines() -> None:
     helper_block = source.split("func _wait_for_request_ack", 1)[1].split("func _fail_autotest", 1)[0]
     typed_deadline = "var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)"
 
-    assert helper_block.count(typed_deadline) == 4
+    assert helper_block.count(typed_deadline) == 5
     assert "var deadline :=" not in helper_block
 
 
@@ -124,6 +124,34 @@ def test_main_demo_uses_exact_barriers_before_near_and_far_moves() -> None:
     assert "return" in run_section[pre_barrier_index:near_move_index]
     assert "return" in run_section[post_barrier_index:far_move_index]
     assert "await _wait_for_backend_quiet" not in run_section
+
+
+def test_phase0_autotest_submits_dialogue_to_its_explicit_actor_and_waits_for_scene_application() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    run_section = source.split("func _run_autotest_inputs() -> void:", 1)[1].split(
+        "func _set_autotest_actor_local_perception_enabled", 1
+    )[0]
+
+    assert 'var dialogue_request := _emit_dialogue_request("char_a", "phase0 automated dialogue")' in run_section
+    assert "await _wait_for_dialogue_response(autotest_request_timeout_ms)" in run_section
+    assert 'await _fail_autotest("dialogue_response_timeout", dialogue_request)' in run_section
+    assert "func _wait_for_dialogue_response(timeout_ms: int) -> bool:" in source
+    assert 'message.contains("dialogue_applied:char_a")' in source
+
+
+def test_phase0_npc_patrol_probe_assigns_a_nonzero_patrol_segment() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    probe_section = source.split("func _run_npc_patrol_root_motion_probe() -> void:", 1)[1].split(
+        "func _on_npc_patrol_probe_debug_event", 1
+    )[0]
+
+    assert 'var patrol_segment: Array[Vector3] = [Vector3.ZERO, Vector3(0.0, 0.0, -1.2)]' in probe_section
+    assert 'actor.set("patrol_points", patrol_segment)' in probe_section
+    assert 'actor.set("patrol_index", 1)' in probe_section
+    assert 'actor.set("patrol_enabled", true)' in probe_section
+    assert '"npc_patrol_probe:actor=%s distance=%.3f velocity=%.3f points=%d index=%d hold=%.3f mode=%s"' in probe_section
+    assert "actor.global_position.distance_to(start_position)" in probe_section
+    assert "actor.get(\"current_velocity\")" in probe_section
 
 
 def test_main_demo_transport_drain_waits_for_exact_ack_then_quiet_window() -> None:

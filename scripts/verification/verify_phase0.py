@@ -236,6 +236,8 @@ def main() -> int:
             voice_controller_source=read_text(project_root / "scripts" / "audio" / "SpatialVoiceController.gd"),
             player_bridge_source=read_text(project_root / "scripts" / "player" / "Phase0PlayerBridge.gd"),
             character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterReplica.gd"),
+            player_shell_source=read_text(project_root / "scripts" / "player" / "PlayerShell.gd"),
+            character_motor_source=read_text(project_root / "scripts" / "character" / "CharacterMotor.gd"),
         )
         if backend_process is not None:
             stop_backend(backend_process)

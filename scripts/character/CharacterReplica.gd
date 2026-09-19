@@ -884,6 +884,8 @@ func _update_movement(delta: float) -> void:
 	current_velocity = result.get("velocity_world", Vector3.ZERO)
 	last_root_motion_world_delta = command.get("root_delta", Vector3.ZERO)
 	_pending_root_delta = Vector3.ZERO
+	if driver_mode != DriverMode.PLAYER and move_direction.length() > 0.001 and current_velocity.length() > 0.001:
+		_log_root_motion_step("patrol_motion_step", false)
 	_update_player_shell_locomotion()
 
 func run_speed_for_actor() -> float:

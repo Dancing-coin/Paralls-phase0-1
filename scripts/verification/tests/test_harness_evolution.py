@@ -245,6 +245,21 @@ def test_explicit_history_reads_exported_top_level_manifest(tmp_path: Path) -> N
     assert report["effectiveness"] == "not_evaluated"
 
 
+def test_explicit_history_reads_schema_v2_exported_manifest(tmp_path: Path) -> None:
+    _write_json(tmp_path / "run-manifest.json", {
+        "schema_version": 2,
+        "run_id": "exported-v2-run",
+        "profile_exit_codes": [{"profile": "docs", "exit_code": 1}],
+        "failure_digest_artifacts": [],
+    })
+
+    report = analyze_harness_evolution(tmp_path, {}, input_root=tmp_path)
+
+    assert report["run_ids_analyzed"] == ["exported-v2-run"]
+    assert report["failure_patterns"][0]["failure_count"] == 1
+    assert report["effectiveness"] == "not_evaluated"
+
+
 @pytest.mark.parametrize("field,value", [("profile_exit_codes", None), ("profile_exit_codes", [{}]), ("failure_digest_artifacts", [42])])
 def test_explicit_history_rejects_malformed_manifest_fields(tmp_path: Path, field: str, value: object) -> None:
     manifest = {"schema_version": 1, "run_id": "run-1", "profile_exit_codes": [], "failure_digest_artifacts": []}

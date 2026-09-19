@@ -95,6 +95,7 @@ var autotest_transport_quiescent := false
 var pending_backend_reconnect := false
 var backend_connected_once := false
 var pending_dialogue_request: Dictionary = {}
+var dialogue_response_seen := false
 var pending_interaction_request: Dictionary = {}
 var pending_move_request: Dictionary = {}
 var autotest_run_started := false
@@ -399,6 +400,8 @@ func _on_debug_event_logged(message: String) -> void:
 		last_backend_activity_ms = Time.get_ticks_msec()
 	if message.contains("focus_state_applied:char_a") or message.contains("focus_attention:char_a"):
 		focus_response_seen = true
+	if message.contains("dialogue_applied:char_a"):
+		dialogue_response_seen = true
 
 func _process(_delta: float) -> void:
 	if autotest_shutdown_in_progress or autotest_transport_quiescent:
@@ -447,8 +450,12 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(character_a.global_position)
 	_force_focus_target(character_a)
 	await get_tree().create_timer(autotest_dialogue_delay).timeout
-	player_input_bridge.trigger_dialogue()
+	dialogue_response_seen = false
+	var dialogue_request := _emit_dialogue_request("char_a", "phase0 automated dialogue")
 	_bus_log("phase0_autotest_stage:dialogue_submitted")
+	if not (await _wait_for_dialogue_response(autotest_request_timeout_ms)):
+		await _fail_autotest("dialogue_response_timeout", dialogue_request)
+		return
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
@@ -531,6 +538,14 @@ func _wait_for_successful_interaction_result(timeout_ms: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if matched_success_interaction_result and matched_success_object_result and matched_success_environment_result:
+			return true
+		await get_tree().process_frame
+	return false
+
+func _wait_for_dialogue_response(timeout_ms: int) -> bool:
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if dialogue_response_seen:
 			return true
 		await get_tree().process_frame
 	return false
@@ -632,6 +647,8 @@ func _run_npc_patrol_root_motion_probe() -> void:
 	if bus != null and bus.has_signal("debug_event_logged") and not bus.debug_event_logged.is_connected(debug_callable):
 		bus.debug_event_logged.connect(debug_callable)
 		connected_debug_signal = true
+	var patrol_start_positions: Dictionary = {}
+	var patrol_segment: Array[Vector3] = [Vector3.ZERO, Vector3(0.0, 0.0, -1.2)]
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
@@ -639,23 +656,30 @@ func _run_npc_patrol_root_motion_probe() -> void:
 		actor.set("action_override_timer", 0.0)
 		actor.set("patrol_index", 1)
 		actor.set("hold_timer", 0.0)
+		actor.set("patrol_points", patrol_segment)
 		if actor.has_method("_set_role_asset_motion_profile"):
 			actor.call("_set_role_asset_motion_profile", "walk", "walk")
 		actor.set("patrol_enabled", true)
+		patrol_start_positions[str(actor.get("actor_id"))] = actor.global_position
 	var deadline: int = Time.get_ticks_msec() + 2500
 	while Time.get_ticks_msec() < deadline and npc_patrol_root_motion_seen.size() < 2:
 		await get_tree().process_frame
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
+		var actor_id := str(actor.get("actor_id"))
+		var start_position: Vector3 = patrol_start_positions.get(actor_id, actor.global_position)
+		var patrol_velocity: Vector3 = actor.get("current_velocity")
+		var patrol_points: Array = actor.get("patrol_points")
+		_bus_log("npc_patrol_probe:actor=%s distance=%.3f velocity=%.3f points=%d index=%d hold=%.3f mode=%s" % [actor_id, actor.global_position.distance_to(start_position), patrol_velocity.length(), patrol_points.size(), int(actor.get("patrol_index")), float(actor.get("hold_timer")), str(actor.get("driver_mode"))])
 		actor.set("patrol_enabled", false)
 	if connected_debug_signal:
 		bus.debug_event_logged.disconnect(debug_callable)
 
 func _on_npc_patrol_probe_debug_event(message: String) -> void:
-	if message == "patrol_root_motion_step:char_a":
+	if message == "patrol_motion_step:char_a":
 		npc_patrol_root_motion_seen["char_a"] = true
-	elif message == "patrol_root_motion_step:char_b":
+	elif message == "patrol_motion_step:char_b":
 		npc_patrol_root_motion_seen["char_b"] = true
 
 func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: bool, duration: float) -> void:
@@ -663,7 +687,8 @@ func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: boo
 		player_input_bridge.set_crouch_enabled(crouch_enabled)
 	if player_input_bridge.has_method("set_gait_mode_by_name") and gait_name != "run" and gait_name != "crouch_walk":
 		player_input_bridge.set_gait_mode_by_name(gait_name)
-	player_input_bridge.set_forced_player_motion(Vector3(0.0, 0.0, -1.0), wants_run)
+	var expected_forward := _get_character_visual_forward()
+	player_input_bridge.set_forced_player_motion(expected_forward, wants_run)
 	await get_tree().create_timer(0.18).timeout
 	var start_position := player.global_position
 	await get_tree().create_timer(duration).timeout
@@ -671,16 +696,16 @@ func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: boo
 	player_input_bridge.clear_forced_player_motion()
 	var distance := start_position.distance_to(end_position)
 	var delta_vector := end_position - start_position
-	var facing_dot := _get_character_visual_forward().dot(Vector3(0.0, 0.0, -1.0))
+	var forward_alignment := delta_vector.normalized().dot(expected_forward) if distance > 0.001 else -1.0
 	_bus_log(
-		"locomotion_probe:gait=%s crouch=%s run=%s distance=%.3f dx=%.3f dz=%.3f facing_dot=%.3f" % [
+		"locomotion_probe:gait=%s crouch=%s run=%s distance=%.3f dx=%.3f dz=%.3f forward_alignment=%.3f" % [
 			gait_name,
 			str(crouch_enabled),
 			str(wants_run),
 			distance,
 			delta_vector.x,
 			delta_vector.z,
-			facing_dot,
+			forward_alignment,
 		]
 	)
 	await get_tree().create_timer(0.08).timeout
@@ -1091,18 +1116,25 @@ func _emit_focus_target_change() -> void:
 	bridge.send_envelope(intent_mapper.emit_focus_target_change(target_actor_id, target_object_id))
 	_emit_fixed_gaze_visual_fact(target_actor_id, target_object_id)
 
-func _emit_dialogue_request(target_actor_id: String, content: String) -> void:
+func _emit_dialogue_request(target_actor_id: String, content: String) -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
-		return
+		return {}
 	if not intent_mapper.has_method("emit_dialogue_submit"):
-		return
+		return {}
 	_bus_log("phase0_dialogue_target:%s" % target_actor_id)
+	var envelope: Dictionary = intent_mapper.emit_dialogue_submit(target_actor_id, content)
+	var payload: Dictionary = envelope.get("payload", {})
+	var request := {
+		"request_id": str(payload.get("request_id", "")),
+		"producer_ts": int(payload.get("producer_ts", 0)),
+	}
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_dialogue_request = {"target_actor_id": target_actor_id, "content": content}
 		_request_backend_reconnect()
-		return
-	bridge.send_envelope(intent_mapper.emit_dialogue_submit(target_actor_id, content))
+		return request
+	bridge.send_envelope(envelope)
+	return request
 
 func _emit_interaction_request(target_object_id: String, interaction_type: String) -> Dictionary:
 	var bridge := _get_bridge()

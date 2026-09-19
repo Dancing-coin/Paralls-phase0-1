@@ -342,7 +342,7 @@ def _recent_run_manifests(input_root: Path | None, max_runs: int) -> list[tuple[
         payload, errors = _project_relative_read_json(input_root, path)
         if errors:
             raise ValueError("; ".join(errors))
-        if payload.get("schema_version") != 1 or not isinstance(payload.get("run_id"), str) or not payload["run_id"]:
+        if payload.get("schema_version") not in {1, 2} or not isinstance(payload.get("run_id"), str) or not payload["run_id"]:
             raise ValueError(f"invalid run manifest identity: {path}")
         entries = payload.get("profile_exit_codes")
         if not isinstance(entries, list) or any(

@@ -13,6 +13,7 @@ var _char_b_observation_acknowledged := false
 var _staging_ack_backend_acknowledged := false
 var _destruction_result_ref := ""
 var _destruction_correlation_id := ""
+var _authority_scope: Dictionary = {}
 var _backend_connection_count := 0
 var _backend_connection_target := 0
 var _post_restart_reaction_window := false
@@ -34,6 +35,7 @@ func _ready() -> void:
 		if bus:
 			bus.world_result_received.connect(_on_world_result_received)
 			bus.siming_staging_requested.connect(_on_siming_staging_requested)
+			bus.siming_debug_event_received.connect(_on_siming_debug_event_received)
 			bus.character_agent_execution_received.connect(_on_character_agent_execution_received)
 			bus.dialogue_received.connect(_on_dialogue_received)
 			bus.backend_ack_received.connect(_on_backend_ack_received)
@@ -155,10 +157,25 @@ func _on_world_result_received(payload: Dictionary) -> void:
 		_destroyed = true
 		_destruction_result_ref = str(payload.get("result_id", ""))
 		_destruction_correlation_id = str(payload.get("correlation_id", ""))
+		_authority_scope = _scope_from_payload(payload)
+		if _authority_scope.is_empty():
+			_finish("siming_heavenly_authority_scope_missing")
+			return
 		_emit_char_b_observation()
 
 func _on_siming_staging_requested(event: Dictionary) -> void:
 	_staging_request = event
+
+
+func _on_siming_debug_event_received(payload: Dictionary) -> void:
+	if str(payload.get("stage", "")) != "no_action":
+		return
+	var provider_reason := str(payload.get("no_action_reason", ""))
+	if provider_reason.begins_with("llm_unavailable:"):
+		_finish(
+			"siming_heavenly_staging_provider_unavailable_failed",
+			{"provider_reason": provider_reason}
+		)
 
 func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	if str(payload.get("actor_id", "")) != "char_b":
@@ -222,6 +239,9 @@ func _emit_char_b_observation() -> void:
 	var emitter := _character_b.get_node("VisualFactEmitter")
 	if emitter == null or not emitter.has_method("emit_visual_fact"):
 		return
+	if not _apply_authority_scope(emitter):
+		_finish("siming_heavenly_observation_scope_missing")
+		return
 	emitter.set("actor_id", "char_b")
 	var source_ref_lineage: Array[String] = [_destruction_result_ref]
 	emitter.call(
@@ -241,21 +261,48 @@ func _emit_char_b_observation() -> void:
 
 func _send_staging_ack() -> void:
 	var bridge := get_node_or_null("/root/BackendBridge")
-	if bridge == null:
+	if bridge == null or not _has_scope(_staging_request):
+		_finish("siming_heavenly_staging_ack_scope_missing")
 		return
 	bridge.send_envelope(
 		{
 			"message_type": "siming_staging_ack",
 			"payload": {
-				"room_id": "room_demo",
-				"scene_id": "scene_demo",
-				"zone_id": "zone_focus",
+				"room_id": str(_staging_request["room_id"]),
+				"scene_id": str(_staging_request["scene_id"]),
+				"zone_id": str(_staging_request["zone_id"]),
 				"producer_ts": Time.get_ticks_msec(),
 				"correlation_id": str(_staging_request.get("correlation_id", "")),
 				"accepted": true,
 				"reason": "main_demo_ready",
 			},
 		}
+	)
+
+
+func _scope_from_payload(payload: Dictionary) -> Dictionary:
+	var scope := {
+		"room_id": str(payload.get("room_id", "")),
+		"scene_id": str(payload.get("scene_id", "")),
+		"zone_id": str(payload.get("zone_id", "")),
+	}
+	return scope if _has_scope(scope) else {}
+
+
+func _apply_authority_scope(emitter: Node) -> bool:
+	if not _has_scope(_authority_scope):
+		return false
+	emitter.set("room_id", _authority_scope["room_id"])
+	emitter.set("scene_id", _authority_scope["scene_id"])
+	emitter.set("zone_id", _authority_scope["zone_id"])
+	return true
+
+
+func _has_scope(scope: Dictionary) -> bool:
+	return (
+		not str(scope.get("room_id", "")).is_empty()
+		and not str(scope.get("scene_id", "")).is_empty()
+		and not str(scope.get("zone_id", "")).is_empty()
 	)
 
 func _capture(filename: String) -> bool:
@@ -288,5 +335,10 @@ func _wait_until(predicate: Callable, timeout_ms: int = 10000) -> bool:
 		await get_tree().create_timer(0.05).timeout
 	return predicate.call()
 
-func _finish(marker: String) -> void:
+func _finish(marker: String, failure_detail: Dictionary = {}) -> void:
+	if not failure_detail.is_empty():
+		print("siming_heavenly_runtime_failure:%s" % JSON.stringify({
+			"marker": marker,
+			"provider_reason": str(failure_detail.get("provider_reason", "")),
+		}))
 	print(marker)

@@ -7,6 +7,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import verify_gameplay_foundation_all as verifier
+from harness import _profile_command
+from registry import load_profile_registry
 
 
 def test_gameplay_foundation_all_declares_the_required_dependency_order() -> None:
@@ -48,8 +50,16 @@ def test_gameplay_foundation_all_requires_a_green_child_report() -> None:
     assert not verifier._child_report_passed("adventure-basic", {})
 
 
-def test_gameplay_foundation_all_runs_its_child_gates_when_godot_is_unavailable() -> None:
-    profile_path = Path(__file__).resolve().parents[3] / ".harness" / "profiles" / "gameplay-foundation-all.json"
-    profile = json.loads(profile_path.read_text(encoding="utf-8"))
+def test_gameplay_foundation_all_passes_godot_to_its_godot_child_gate() -> None:
+    project_root = Path(__file__).resolve().parents[3]
+    profile = load_profile_registry(project_root).profiles["gameplay-foundation-all"]
 
-    assert profile["requires_godot"] is False
+    command = _profile_command(
+        "gameplay-foundation-all",
+        project_root,
+        "C:/Python/python.exe",
+        "D:/Godot/Godot.exe",
+        {"gameplay-foundation-all": profile},
+    )
+
+    assert command[2:4] == ["--godot-exe", "D:/Godot/Godot.exe"]

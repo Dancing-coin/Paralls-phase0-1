@@ -5,14 +5,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_presentation_asset_manifest_is_a_valid_empty_approved_binding_registry() -> None:
+def test_presentation_asset_manifest_records_staged_packages_without_admitting_rejected_candidates() -> None:
     manifest_path = ROOT / "assets" / "characters" / "asset_manifests" / "character_presentation_bindings.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    assert manifest == {
-        "contract": "character_presentation_bindings.v1",
-        "bindings": [],
-    }
+    assert manifest["contract"] == "character_presentation_bindings.v1"
+    bindings = {binding["package_id"]: binding for binding in manifest["bindings"]}
+    assert set(bindings) == {"crusader_knight", "external_character_b"}
+    assert bindings["crusader_knight"]["delivery_level"] == "full_body_action"
+    assert bindings["external_character_b"]["admission"] == "rejected"
+    assert all("actor_id" not in binding for binding in bindings.values())
 
 
 def test_main_demo_mounts_the_presentation_asset_resolver() -> None:

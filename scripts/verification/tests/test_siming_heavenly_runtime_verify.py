@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ import verify_siming_heavenly_runtime as verifier  # noqa: E402
 
 from verify_siming_heavenly_runtime import (  # noqa: E402
     LiveEvidence,
+    PreflightResult,
     _collect_result_ids,
     evaluate_live_evidence,
     live_preflight,
@@ -142,6 +145,182 @@ def test_godot_probe_waits_for_staging_ack_with_runtime_timeout() -> None:
 
     assert '_wait_until(Callable(self, "_staging_ack_backend_ready"), RUNTIME_EVENT_TIMEOUT_MS)' in source
     assert '_wait_until(Callable(self, "_staging_ack_backend_ready"), _controller.autotest_request_timeout_ms)' not in source
+
+
+def test_wait_marker_stops_when_godot_emits_a_terminal_failure(tmp_path: Path) -> None:
+    process, lines = verifier._start_logged_process(
+        [
+            sys.executable,
+            "-c",
+            "import time; print('siming_heavenly_staging_request_timeout', flush=True); time.sleep(1)",
+        ],
+        tmp_path,
+        tmp_path / "godot.log",
+        {},
+    )
+    started = time.monotonic()
+    try:
+        reached_success = verifier._wait_marker(
+            process, lines, "siming_heavenly_restart_ready", 0.7
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=2)
+
+    assert reached_success is False
+    assert time.monotonic() - started < 0.35
+
+
+def test_wait_marker_classifies_provider_unavailability_without_waiting_for_timeout(tmp_path: Path) -> None:
+    process, lines = verifier._start_logged_process(
+        [
+            sys.executable,
+            "-c",
+            "import time; print('siming_heavenly_staging_provider_unavailable_failed', flush=True); time.sleep(1)",
+        ],
+        tmp_path,
+        tmp_path / "godot.log",
+        {},
+    )
+    failure: dict[str, str] = {}
+    started = time.monotonic()
+    try:
+        reached_success = verifier._wait_marker(
+            process,
+            lines,
+            "siming_heavenly_restart_ready",
+            0.7,
+            failure_state=failure,
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=2)
+
+    assert reached_success is False
+    assert time.monotonic() - started < 0.35
+    assert failure == {
+        "marker": "siming_heavenly_staging_provider_unavailable_failed",
+        "stage": "staging_provider_unavailable",
+        "reason": "failed",
+    }
+
+
+def test_wait_marker_preserves_provider_timeout_reason_from_structured_probe_failure(tmp_path: Path) -> None:
+    process, lines = verifier._start_logged_process(
+        [
+            sys.executable,
+            "-c",
+            "import json, time; print('siming_heavenly_runtime_failure:' + json.dumps({'marker': 'siming_heavenly_staging_provider_unavailable_failed', 'provider_reason': 'llm_unavailable:SimingLlmProviderTimeout'}), flush=True); time.sleep(1)",
+        ],
+        tmp_path,
+        tmp_path / "godot.log",
+        {},
+    )
+    failure: dict[str, str] = {}
+    try:
+        reached_success = verifier._wait_marker(
+            process,
+            lines,
+            "siming_heavenly_restart_ready",
+            0.7,
+            failure_state=failure,
+        )
+    finally:
+        process.terminate()
+        process.wait(timeout=2)
+
+    assert reached_success is False
+    assert failure == {
+        "marker": "siming_heavenly_staging_provider_unavailable_failed",
+        "stage": "staging_provider_unavailable",
+        "reason": "failed",
+        "provider_reason": "llm_unavailable:SimingLlmProviderTimeout",
+    }
+
+
+def test_wait_marker_ignores_normal_probe_progress_markers(tmp_path: Path) -> None:
+    process, lines = verifier._start_logged_process(
+        [
+            sys.executable,
+            "-c",
+            "print('siming_heavenly_probe_started', flush=True); print('siming_heavenly_restart_ready', flush=True)",
+        ],
+        tmp_path,
+        tmp_path / "godot.log",
+        {},
+    )
+    try:
+        assert verifier._wait_marker(
+            process, lines, "siming_heavenly_restart_ready", 0.7
+        ) is True
+    finally:
+        process.wait(timeout=2)
+
+
+def test_runtime_failure_report_preserves_terminal_marker_and_stage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(verifier, "verification_dir", lambda _root: tmp_path)
+
+    assert verifier._write_report(
+        tmp_path,
+        None,
+        PreflightResult(ok=True),
+        "siming_heavenly_staging_request_timeout",
+    ) == 1
+
+    report = json.loads((tmp_path / "siming-heavenly-runtime-report.json").read_text(encoding="utf-8"))
+    assert report["overall_siming_heavenly_runtime_passed"] is False
+    assert report["runtime_failure"] == {
+        "marker": "siming_heavenly_staging_request_timeout",
+        "stage": "staging_request",
+        "reason": "timeout",
+    }
+
+
+def test_runtime_failure_report_preserves_provider_timeout_reason(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(verifier, "verification_dir", lambda _root: tmp_path)
+
+    assert verifier._write_report(
+        tmp_path,
+        None,
+        PreflightResult(ok=True),
+        {
+            "marker": "siming_heavenly_staging_provider_unavailable_failed",
+            "stage": "staging_provider_unavailable",
+            "reason": "failed",
+            "provider_reason": "llm_unavailable:SimingLlmProviderTimeout",
+        },
+    ) == 1
+
+    report = json.loads((tmp_path / "siming-heavenly-runtime-report.json").read_text(encoding="utf-8"))
+    assert report["runtime_failure"] == {
+        "marker": "siming_heavenly_staging_provider_unavailable_failed",
+        "stage": "staging_provider_unavailable",
+        "reason": "failed",
+        "provider_reason": "llm_unavailable:SimingLlmProviderTimeout",
+    }
+
+
+def test_probe_derives_observation_and_ack_scope_from_authority_payload() -> None:
+    source = (project_root() / "scripts" / "verification" / "SimingHeavenlyRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "_authority_scope = _scope_from_payload(payload)" in source
+    assert "_apply_authority_scope(emitter)" in source
+    assert '"room_id": str(_staging_request["room_id"])' in source
+    assert '"scene_id": "room_demo"' not in source
+    assert '"room_id": "room_demo"' not in source
+
+
+def test_probe_stops_on_a_real_heavenly_provider_failure() -> None:
+    source = (project_root() / "scripts" / "verification" / "SimingHeavenlyRuntimeProbe.gd").read_text(
+        encoding="utf-8"
+    )
+
+    assert "bus.siming_debug_event_received.connect(_on_siming_debug_event_received)" in source
+    assert 'payload.get("no_action_reason", "")' in source
+    assert '"siming_heavenly_staging_provider_unavailable_failed"' in source
+    assert '"siming_heavenly_runtime_failure:%s"' in source
 
 
 def test_collect_result_ids_derives_phase_seven_proof_from_graph_semantics() -> None:

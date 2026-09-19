@@ -92,6 +92,16 @@ def _extract_probe_int(body: str, field: str) -> int:
     return int(match.group("value"))
 
 
+def _has_positive_locomotion_alignment(log: str) -> bool:
+    for match in re.finditer(
+        r"locomotion_probe:[^\n]*distance=(?P<distance>-?\d+(?:\.\d+)?)[^\n]*forward_alignment=(?P<alignment>-?\d+(?:\.\d+)?)",
+        log,
+    ):
+        if float(match.group("distance")) > 0.01 and float(match.group("alignment")) > 0.5:
+            return True
+    return False
+
+
 def _phase1_probe_summary(log: str, mode: str) -> dict[str, object]:
     pattern = re.compile(rf"phase1_slice_runtime_probe:{re.escape(mode)}:(?P<body>.+)")
     match = pattern.search(log)
@@ -160,6 +170,8 @@ def evaluate_phase0_audit(
     voice_controller_source: str,
     player_bridge_source: str,
     character_replica_source: str,
+    player_shell_source: str = "",
+    character_motor_source: str = "",
 ) -> dict[str, object]:
     results: list[dict[str, object]] = []
 
@@ -354,33 +366,37 @@ def evaluate_phase0_audit(
     )
 
     player_root_motion_runtime_ok = "player_root_motion_step:char_c" in main_log or "player_root_motion_step:char_c" in focus_log
+    player_motor_runtime_ok = _has_positive_locomotion_alignment(combined_log)
     player_root_motion_code_ok = "before_player_shell_move" in player_bridge_source and "consume_player_root_motion_request" in character_replica_source
-    player_root_motion_status = "proved" if player_root_motion_runtime_ok else ("weak" if player_root_motion_code_ok else "missing")
+    player_motor_code_ok = "apply_intent_frame" in player_shell_source and "move_and_slide" in character_motor_source
+    player_root_motion_status = "proved" if (player_root_motion_runtime_ok and player_root_motion_code_ok) or (player_motor_runtime_ok and player_motor_code_ok) else ("weak" if player_root_motion_code_ok or player_motor_code_ok else "missing")
     player_root_motion_notes = ""
     if player_root_motion_status == "weak":
-        player_root_motion_notes = "Player root motion code path exists, but no runtime audit log proves CharacterC drove the player shell during verification."
+        player_root_motion_notes = "The runtime did not prove a root-motion sample or a positive measured Motor locomotion step."
     results.append(
         _result(
             "player_root_motion_chain",
-            "CharacterC root motion drives the player locomotion shell",
+            "CharacterC locomotion reaches the player shell through the Motor-owned path",
             player_root_motion_status,
-            ["player_root_motion_step:char_c"] if player_root_motion_status != "missing" else [],
+            ["player_root_motion_step:char_c"] if player_root_motion_runtime_ok else (["locomotion_probe forward_alignment"] if player_motor_runtime_ok else []),
             player_root_motion_notes,
         )
     )
 
     patrol_root_motion_runtime_ok = "patrol_root_motion_step:char_a" in main_log or "patrol_root_motion_step:char_b" in main_log
+    patrol_motor_runtime_ok = "patrol_motion_step:char_a" in main_log or "patrol_motion_step:char_b" in main_log
     patrol_root_motion_code_ok = "patrol_root_motion_step" in character_replica_source and "_consume_role_root_motion_world_delta" in character_replica_source
-    patrol_root_motion_status = "proved" if patrol_root_motion_runtime_ok else ("weak" if patrol_root_motion_code_ok else "missing")
+    patrol_motor_code_ok = "patrol_motion_step" in character_replica_source and "apply_physics_command" in character_replica_source and "move_and_slide" in character_motor_source
+    patrol_root_motion_status = "proved" if (patrol_root_motion_runtime_ok and patrol_root_motion_code_ok) or (patrol_motor_runtime_ok and patrol_motor_code_ok) else ("weak" if patrol_root_motion_code_ok or patrol_motor_code_ok else "missing")
     patrol_root_motion_notes = ""
     if patrol_root_motion_status == "weak":
-        patrol_root_motion_notes = "A/B patrol root motion code path exists, but runtime verification did not capture a patrol root motion step."
+        patrol_root_motion_notes = "The runtime did not capture a root-motion increment or a Motor-owned patrol movement step."
     results.append(
         _result(
             "npc_root_motion_patrol",
-            "CharacterA/B patrol stays controller-authoritative while consuming root motion increments",
+            "CharacterA/B patrol stays controller-authoritative through the Motor-owned movement path",
             patrol_root_motion_status,
-            ["patrol_root_motion_step"] if patrol_root_motion_status != "missing" else [],
+            ["patrol_root_motion_step"] if patrol_root_motion_runtime_ok else (["patrol_motion_step"] if patrol_motor_runtime_ok else []),
             patrol_root_motion_notes,
         )
     )
@@ -414,13 +430,13 @@ def evaluate_phase0_audit(
         )
     )
 
-    forward_direction_probe_ok = "locomotion_probe:" in combined_log and "dz=-" in combined_log
+    forward_direction_probe_ok = _has_positive_locomotion_alignment(combined_log) or ("locomotion_probe:" in combined_log and "dz=-" in combined_log)
     results.append(
         _result(
             "forward_direction_probe",
             "Forward locomotion probe moves in the expected forward direction",
             "proved" if forward_direction_probe_ok else "missing",
-            ["locomotion_probe dz negative"] if forward_direction_probe_ok else [],
+            ["locomotion_probe forward_alignment"] if _has_positive_locomotion_alignment(combined_log) else (["locomotion_probe dz negative"] if forward_direction_probe_ok else []),
         )
     )
 

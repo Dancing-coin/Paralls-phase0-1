@@ -15,7 +15,9 @@ var last_command_digest := ""
 func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) -> Dictionary:
 	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(frame)
 	var proposal := CharacterControllerPortRef.submit_intent_proposal(normalized_frame, StringName(normalized_frame.get("controller_source", "program")), StringName(normalized_frame.get("control_mode", "program_controlled")))
-	var lease := ContinuousControlLeaseRef.create(StringName(normalized_frame.get("controller_source", "program")), &"lease:compat", 0, Engine.get_physics_frames() + 1, CharacterControllerPortRef.get_move_local(normalized_frame), CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, body.rotation.y))
+	var move_local := CharacterControllerPortRef.get_move_local(normalized_frame)
+	var world_move := body.global_basis.x * move_local.x - body.global_basis.z * move_local.y
+	var lease := ContinuousControlLeaseRef.create(StringName(normalized_frame.get("controller_source", "program")), &"lease:compat", 0, Engine.get_physics_frames() + 1, Vector2(world_move.x, world_move.z), CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, body.rotation.y))
 	var leases: Array[Dictionary] = []
 	if bool(proposal.get("accepted", false)):
 		lease["priority"] = int(proposal.get("proposal", {}).get("priority", 0))

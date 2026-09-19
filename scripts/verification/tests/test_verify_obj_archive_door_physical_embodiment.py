@@ -70,6 +70,20 @@ def test_probe_uses_a_launch_time_player_shell_fixture_with_a_nonzero_real_appro
     assert "transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -1.9625)" in scene_text
 
 
+def test_approach_obstruction_excludes_player_shell_collision_descendants() -> None:
+    bridge_text = (
+        ROOT / "scripts" / "interaction" / "ArchiveDoorEmbodiedAffordanceBridge.gd"
+    ).read_text(encoding="utf-8")
+
+    obstruction_check = bridge_text.split("func is_approach_obstructed", maxsplit=1)[1].split(
+        "func _on_world_result_received", maxsplit=1
+    )[0]
+
+    assert "_collision_rids_for_excluded_nodes(exclude)" in obstruction_check
+    assert "query.exclude = _collision_rids_for_excluded_nodes(exclude)" in obstruction_check
+    assert 'find_children("*", "CollisionObject3D", true, false)' in bridge_text
+
+
 def test_probe_treats_the_server_controller_bound_state_as_a_completed_bind() -> None:
     script_text = (
         ROOT / "scripts" / "verification" / "ObjArchiveDoorPhysicalEmbodimentProbe.gd"

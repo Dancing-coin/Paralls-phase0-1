@@ -747,6 +747,32 @@ def test_phase0_audit_requires_forward_direction_probe_evidence() -> None:
     assert results["forward_direction_probe"]["status"] == "missing"
 
 
+def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_measurements() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        [LocalPresentationBus] locomotion_probe:gait=walk distance=0.360 dx=0.000 dz=-0.360 forward_alignment=1.000
+        [LocalPresentationBus] patrol_motion_step:char_a
+        """,
+        focus_log="",
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="",
+        esm_service_source="",
+        voice_controller_source="",
+        player_bridge_source="",
+        character_replica_source='func _update_movement(delta: float) -> void:\ncharacter_motor.apply_physics_command(self, command, delta)\n_log_root_motion_step("patrol_motion_step", false)',
+        player_shell_source="func _physics_process(delta: float) -> void:\ncharacter_motor.apply_intent_frame(self, current_intent_frame, delta)",
+        character_motor_source="func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: float) -> Dictionary:\nbody.move_and_slide()",
+    )
+    results = _index_by_id(report["results"])
+
+    assert results["player_root_motion_chain"]["status"] == "proved"
+    assert results["npc_root_motion_patrol"]["status"] == "proved"
+    assert results["forward_direction_probe"]["status"] == "proved"
+
+
 def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> None:
     report = evaluate_phase1_slice_audit(
         main_log="""

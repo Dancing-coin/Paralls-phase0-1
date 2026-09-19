@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import replace
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -33,6 +34,12 @@ from app.gameplay.patch_runtime import (
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from test_inf3_grain_harvest import _admit_envelope, _harvest_envelope, _seed
 from test_inf3ab_grain_harvest_inventory_custody import _source as _narrow_source
+
+
+def _verifier_scope(root: Path, tmp_path):
+    if os.environ.get("HARNESS_PROJECT_ROOT") == str(root.resolve()):
+        return run_scope(root)
+    return run_scope(root, export_to=tmp_path / "evidence")
 
 
 def _digest(value: object) -> str:
@@ -243,7 +250,7 @@ def test_harvest_to_custody_consumes_the_one_admitted_wheat_content(
 
 def test_harvest_to_custody_genericity_gate_verifies_two_committed_manifest_source_pairs(tmp_path) -> None:
     root = Path(__file__).resolve().parents[2]
-    with run_scope(root, export_to=tmp_path / "evidence"):
+    with _verifier_scope(root, tmp_path):
         result = subprocess.run(
             [sys.executable, "scripts/verification/verify_closed_generic_gameplay_families.py"],
             cwd=root,

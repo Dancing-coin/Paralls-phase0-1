@@ -79,13 +79,16 @@ def test_knight_actions_are_explicitly_unavailable_during_replacement_attempt() 
     assert timing["runtime_action_status"] == "unavailable"
 
 
-def test_working_copies_are_declared_without_replacing_original_sources() -> None:
-    art_root = Path(r"D:/Users/User/Documents/paralls-art-assets")
+def test_runtime_staging_is_self_contained_and_external_production_repository_is_only_declared() -> None:
+    repository_link = json.loads((ROOT / "art-assets-repository.json").read_text(encoding="utf-8"))
+    assert repository_link["contract"] == "paralls_art_asset_repository_link.v1"
+    assert repository_link["repository_path"] == "../paralls-art-assets"
+    assert repository_link["explicit_staging_root"] == "res://assets/active"
+
     for package_id in ("crusader_knight", "external_character_b"):
-        manifest_path = art_root / "production-assets" / "characters" / package_id / "source" / "working-copy-manifest.json"
-        assert manifest_path.is_file(), f"missing working-copy manifest: {manifest_path}"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest = _manifest(package_id)
         assert manifest["package_id"] == package_id
-        assert manifest["copy_policy"] == "new_file_only"
-        assert (art_root / manifest["working_copy"]).is_file()
-        assert manifest["original_source"]
+        staged_model = ROOT / manifest["source"]["model_path"]
+        qualification_report = ROOT / manifest["provenance"]["qualification_report_ref"]
+        assert staged_model.is_file()
+        assert qualification_report.is_file()

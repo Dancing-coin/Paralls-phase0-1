@@ -352,6 +352,8 @@ def siming_scope_for_event(event: AuthorityEvent) -> HeavenlyGraphScope:
         world_id=str(payload.get("world_id", "world:demo") or "world:demo"),
         session_id=str(payload.get("session_id", "session:demo") or "session:demo"),
         story_branch_id=str(payload.get("story_branch_id", "branch:main") or "branch:main"),
+        room_id=event.room_id,
+        scene_id=event.scene_id,
     )
 
 
@@ -936,11 +938,7 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     authority_graph_projector = HeavenlyAuthorityEventProjector(
         heavenly_graph,
-        scope_resolver=lambda event: HeavenlyGraphScope(
-            world_id=event.payload.get("world_id", "world:demo") if isinstance(event.payload.get("world_id", "world:demo"), str) else "world:demo",
-            session_id=event.payload.get("session_id", "session:demo") if isinstance(event.payload.get("session_id", "session:demo"), str) else "session:demo",
-            story_branch_id=event.payload.get("story_branch_id", "branch:main") if isinstance(event.payload.get("story_branch_id", "branch:main"), str) else "branch:main",
-        ),
+        scope_resolver=siming_scope_for_event,
     )
     authority_event_bus.subscribe("*", authority_graph_projector.project)
     character_agent_l4_executor = CharacterAgentL4Executor()

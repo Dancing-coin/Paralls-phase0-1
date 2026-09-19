@@ -4,6 +4,7 @@ import argparse
 import json
 import os
 import queue
+import re
 import sqlite3
 import subprocess
 import threading
@@ -583,7 +584,52 @@ def _start_logged_process(args: list[str], cwd: Path, log_path: Path, env: dict[
     return process, line_queue
 
 
-def _wait_marker(process: subprocess.Popen[str], line_queue: queue.Queue[str | None], marker: str, timeout: float) -> bool:
+def _runtime_failure_details(marker: str) -> dict[str, str] | None:
+    if not marker.startswith("siming_heavenly_"):
+        return None
+    stage = marker.removeprefix("siming_heavenly_")
+    if stage.endswith("_timeout"):
+        stage = stage.removesuffix("_timeout")
+        return {"marker": marker, "stage": stage, "reason": "timeout"}
+    elif stage.endswith("_failed"):
+        stage = stage.removesuffix("_failed")
+        return {"marker": marker, "stage": stage, "reason": "failed"}
+    elif stage.endswith("_missing"):
+        stage = stage.removesuffix("_missing")
+        return {"marker": marker, "stage": stage, "reason": "missing"}
+    elif stage == "multiple_char_b_reactions":
+        return {"marker": marker, "stage": stage, "reason": "invariant_failed"}
+    return None
+
+
+def _structured_runtime_failure(line: str) -> dict[str, str] | None:
+    prefix = "siming_heavenly_runtime_failure:"
+    if prefix not in line:
+        return None
+    try:
+        payload = json.loads(line.split(prefix, 1)[1].strip())
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+    marker = str(payload.get("marker", ""))
+    failure = _runtime_failure_details(marker)
+    if failure is None:
+        return None
+    provider_reason = str(payload.get("provider_reason", ""))
+    if provider_reason.startswith("llm_unavailable:"):
+        failure["provider_reason"] = provider_reason
+    return failure
+
+
+def _wait_marker(
+    process: subprocess.Popen[str],
+    line_queue: queue.Queue[str | None],
+    marker: str,
+    timeout: float,
+    *,
+    failure_state: dict[str, str] | None = None,
+) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline and process.poll() is None:
         try:
@@ -594,13 +640,27 @@ def _wait_marker(process: subprocess.Popen[str], line_queue: queue.Queue[str | N
             break
         if marker in line:
             return True
+        structured_failure = _structured_runtime_failure(line)
+        if structured_failure is not None:
+            if failure_state is not None:
+                failure_state.update(structured_failure)
+            return False
+        terminal = re.search(r"\bsiming_heavenly_[a-z0-9_]+\b", line)
+        if terminal is not None:
+            failure = _runtime_failure_details(terminal.group(0))
+            if failure is not None:
+                if failure_state is not None:
+                    failure_state.update(failure)
+                return False
     return False
 
 
-def _write_report(root: Path, evidence: LiveEvidence | None, preflight: PreflightResult, reason: str = "") -> int:
-    evaluation = evaluate_live_evidence(evidence) if evidence else EvidenceEvaluation(False, (reason or "live_runtime_not_attempted",))
+def _write_report(root: Path, evidence: LiveEvidence | None, preflight: PreflightResult, reason: str | dict[str, str] = "") -> int:
+    runtime_failure = dict(reason) if isinstance(reason, dict) else _runtime_failure_details(reason)
+    failure_marker = str(runtime_failure.get("marker", "")) if runtime_failure else str(reason)
+    evaluation = evaluate_live_evidence(evidence) if evidence else EvidenceEvaluation(False, (failure_marker or "live_runtime_not_attempted",))
     results = [{"id": result_id, "status": "proved" if evidence and result_id in evidence.result_ids else "missing", "title": result_id, "notes": ""} for result_id in RESULT_IDS]
-    report = {"overall_siming_heavenly_runtime_passed": bool(preflight.ok and evaluation.overall), "preflight": {"ok": preflight.ok, "reasons": list(preflight.reasons), "summary": preflight.summary}, "provider_audit": evidence.provider_audit if evidence else {}, "graph": evidence.graph_payload if evidence else {}, "captures": [str(path) for path in evidence.captures] if evidence else [], "results": results, "reasons": list(evaluation.reasons)}
+    report = {"overall_siming_heavenly_runtime_passed": bool(preflight.ok and evaluation.overall), "preflight": {"ok": preflight.ok, "reasons": list(preflight.reasons), "summary": preflight.summary}, "provider_audit": evidence.provider_audit if evidence else {}, "graph": evidence.graph_payload if evidence else {}, "captures": [str(path) for path in evidence.captures] if evidence else [], "results": results, "reasons": list(evaluation.reasons), "runtime_failure": runtime_failure}
     path = verification_dir(root) / "siming-heavenly-runtime-report.json"
     write_json(path, report)
     write_markdown(verification_dir(root) / "siming-heavenly-runtime-report.md", "Siming Heavenly Runtime", report, "overall_siming_heavenly_runtime_passed")
@@ -664,16 +724,18 @@ def main() -> int:
         }
         _, backend_process = _ensure_live_backend(root, python_exe, runtime_env)
         godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe", "--rendering-method", "gl_compatibility"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 900):
-            return _write_report(root, None, preflight, "godot_restart_marker_missing")
+        runtime_failure: dict[str, str] = {}
+        if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 900, failure_state=runtime_failure):
+            return _write_report(root, None, preflight, runtime_failure or "godot_restart_marker_missing")
         if not _wait_for_restart_boundary(db_path):
             return _write_report(root, None, preflight, "restart_boundary_graph_incomplete")
         stop_backend(backend_process)
         backend_process = None
         wait_for_backend_release()
         _, backend_process = _ensure_live_backend(root, python_exe, online_character_env)
-        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 900):
-            return _write_report(root, None, preflight, "godot_complete_marker_missing")
+        runtime_failure = {}
+        if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 900, failure_state=runtime_failure):
+            return _write_report(root, None, preflight, runtime_failure or "godot_complete_marker_missing")
         graph_payload = _read_graph_payload(db_path)
         log = read_text(verification_dir(root) / "siming-heavenly-runtime-godot.log")
         captures = tuple(db_path.parent / name for name in CAPTURE_NAMES)

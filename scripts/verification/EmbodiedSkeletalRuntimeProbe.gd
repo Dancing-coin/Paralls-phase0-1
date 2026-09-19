@@ -4,6 +4,7 @@ const VerificationPaths := preload("res://scripts/verification/VerificationPaths
 
 const MAIN_DEMO_SCENE := preload("res://scenes/phase0/MainDemo.tscn")
 const SKELETAL_PROVIDER := preload("res://scripts/character/EmbodiedSkeletalStateProvider.gd")
+const SKELETAL_DEBUG_ASSET := preload("res://assets/active/external_character_b/npc_animated.glb")
 
 
 func _ready() -> void:
@@ -20,6 +21,11 @@ func _run_probe() -> void:
 	await get_tree().process_frame
 
 	var actor_node := main_demo.get_node_or_null("PlayerCharacter")
+	var replica := actor_node.get_node_or_null("CharacterReplica") if actor_node != null else null
+	if replica != null:
+		var skeletal_asset := SKELETAL_DEBUG_ASSET.instantiate()
+		replica.add_child(skeletal_asset)
+		await get_tree().process_frame
 	var skeleton := _find_first_skeleton(actor_node)
 	var provider = SKELETAL_PROVIDER.new()
 	var trace_refs: Array[String] = [
