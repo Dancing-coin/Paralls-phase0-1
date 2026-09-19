@@ -18,6 +18,15 @@
 
 本轮台账：`.superpowers/sdd/2026-09-16-population-production-runtime-closure-implementation-plan/backend-continuation-ledger.md`；本机诊断与审查记录位于 `D:/HarnessEvidence/pop-*-20260919*`。较长的 `population-backend-closure` 工作树已停用，仅为本轮未清理副本；不要在那里继续实现。原工作树及用户已有数据不得清理。
 
+## 2026-09-20 后端收口续作
+
+- 修正两项资源静态回归：绑定表校验候选、批准与拒绝状态及资格报告摘要；交付副本校验仓库内 active/archive 的来源隔离和 SHA256/LFS OID，不再硬编码另一台机器的美术仓库路径。真实二进制、外部 working-copy 和批准的 `char_c` 仍需独立证据；静态通过不改变资源资格。
+- 独立审查补齐资格报告与包清单的摘要一致性，错误的 source/provenance 摘要均被拒绝。CI scope 元数据同步实际已配置的静态与运行入口，拒绝旧声明和 `release-verified` 夸大声明；`runtime_release_verified` 保持 false。
+- Character 对话/L2/L3 真实 DeepSeek 预检与 Siming 真实后端链预检均通过，未使用 fallback；本轮两个 provider 的进程配置采用30秒超时。这只是模型前置可用性，不替代千人 mixed/soak。证据位于 `D:/HarnessEvidence/pop-character-live-preflight-20260920` 和 `D:/HarnessEvidence/pop-siming-live-preflight-20260920`。
+- 已通过浏览器核对远端 main `0644996c` 的 [Actions run 35433821744](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/35433821744)：实际报 `population-performance-fixed-runner is already defined`，没有执行 jobs。对应修复已在本地待发布分支。SSH仓库访问正常；本轮没有可用的 Actions API 身份，匿名API限流，浏览器未登录，固定 runner 和新版本远端执行仍待核验。
+- 全后端回归 **6,871 passed、2 skipped**（原有两项引擎检查未执行），Harness 工具回归 **398 passed**；日志分别为 `D:/HarnessEvidence/pop-backend-closure-full-20260920.log` 与 `D:/HarnessEvidence/pop-harness-closure-full-20260920.log`。后端 pytest 本身通过，但外层 TemporaryDirectory 清理因 Windows 长路径失败，后续清理被自动审批拒绝；该包装命令退出1，不能记为清理通过。Harness 工具临时目录已回收。受影响本轮临时目录及两处CI测试目录在台账记录保留。
+- 激活回执契约仍待答复。最终 recovery、transport、short、soak、capacity 须在该决定实施并冻结源码后按原阈值串行采集；本节不关闭六项总验收。
+
 ## 后端 WebSocket 启动
 
 当前验证依赖为 Uvicorn 0.52.4 / websockets 17.1。正式 CLI 与采集器均显式使用 `websockets` 实现，不使用 `auto`：0.52.4 默认 sansio 在 peer Close 已收到、TCP 清理尚未回调时，服务 shutdown 会重复发送 Close 并抛 `InvalidState`。退出错误仍按失败保留，不能忽略。手工启动也须保持同一实现：

@@ -81,6 +81,23 @@ def test_release_gate_rejects_duplicate_workflow_job_key(tmp_path):
     assert next(row for row in evaluate_release_gate(root)['results'] if row['id'] == 'ci_workflow_yaml_valid')['status'] == 'proved'
 
 
+@pytest.mark.parametrize('scope', ['static-contract-only', 'release-verified'])
+def test_release_gate_rejects_stale_or_overclaimed_hosted_scope(tmp_path, scope):
+    root = Path(__file__).resolve().parents[3]
+    shutil.copytree(root / '.harness/ci', tmp_path / '.harness/ci')
+    shutil.copytree(root / '.github/workflows', tmp_path / '.github/workflows')
+    metadata_path = tmp_path / '.harness/ci/release-gate.json'
+    metadata = json.loads(metadata_path.read_text(encoding='utf-8'))
+    metadata['hosted_ci_scope'] = scope
+    metadata_path.write_text(json.dumps(metadata), encoding='utf-8')
+
+    report = evaluate_release_gate(tmp_path)
+
+    assert report['overall_release_gate_passed'] is False
+    assert next(row for row in report['results'] if row['id'] == 'release_gate_metadata_exists')['status'] == 'missing'
+    assert report['runtime_release_verified'] is False
+
+
 def test_ci_evidence_is_exported_uploaded_and_owned_output_cleaned():
     root = Path(__file__).resolve().parents[3]
     jobs = yaml.safe_load((root / '.github/workflows/harness.yml').read_text(encoding='utf-8'))['jobs']

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import json
+import re
 from pathlib import Path
 
 
@@ -13,6 +15,21 @@ def _manifest(package_id: str) -> dict:
     path = ACTIVE / package_id / "manifest.json"
     assert path.is_file(), f"missing package manifest: {path}"
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _asset_digest(path: Path) -> str:
+    with path.open("rb") as source:
+        header = source.read(256)
+        if header.startswith(b"version https://git-lfs.github.com/spec/v1"):
+            # 静态包合同接受 LFS 身份，不据此声明真实模型已下载或可用于运行时。
+            pointer = re.fullmatch(
+                rb"version https://git-lfs\.github\.com/spec/v1\r?\noid sha256:([0-9a-f]{64})\r?\nsize [1-9][0-9]*\r?\n?",
+                header,
+            )
+            assert pointer is not None, f"invalid LFS pointer: {path}"
+            return pointer.group(1).decode("ascii")
+        source.seek(0)
+        return hashlib.file_digest(source, "sha256").hexdigest()
 
 
 def test_two_external_packages_declare_provenance_and_runtime_contract() -> None:
@@ -79,13 +96,18 @@ def test_knight_actions_are_explicitly_unavailable_during_replacement_attempt() 
     assert timing["runtime_action_status"] == "unavailable"
 
 
-def test_working_copies_are_declared_without_replacing_original_sources() -> None:
-    art_root = Path(r"D:/Users/User/Documents/paralls-art-assets")
+def test_delivery_copy_references_preserve_original_source_identity() -> None:
+    # 仅验证本仓库的交付声明与文件/LFS 存根；外部生产仓库的 working-copy 仍需独立验收。
     for package_id in ("crusader_knight", "external_character_b"):
-        manifest_path = art_root / "production-assets" / "characters" / package_id / "source" / "working-copy-manifest.json"
-        assert manifest_path.is_file(), f"missing working-copy manifest: {manifest_path}"
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        assert manifest["package_id"] == package_id
-        assert manifest["copy_policy"] == "new_file_only"
-        assert (art_root / manifest["working_copy"]).is_file()
-        assert manifest["original_source"]
+        manifest = _manifest(package_id)
+        delivery_copy = (ROOT / manifest["source"]["model_path"]).resolve()
+        original_source = (ROOT / manifest["provenance"]["source_uri"]).resolve()
+        assert delivery_copy.is_relative_to(ACTIVE / package_id)
+        assert original_source.is_relative_to(ROOT / "archive")
+        assert delivery_copy != original_source
+        assert delivery_copy.is_file(), f"missing delivery copy: {delivery_copy}"
+        assert original_source.is_file(), f"missing archived original: {original_source}"
+        assert manifest["source_model_path"] == f'res://{manifest["source"]["model_path"]}'
+        digest = manifest["source"]["digest_sha256"].lower()
+        assert manifest["provenance"]["package_digest"].lower() == digest
+        assert _asset_digest(delivery_copy) == _asset_digest(original_source) == digest

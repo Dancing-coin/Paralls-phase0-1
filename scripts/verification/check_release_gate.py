@@ -54,8 +54,10 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
             "Release gate metadata points at the full harness profile",
             metadata.get("schema_version") == 1
             and metadata.get("required_profile") == "all"
-            and metadata.get("ci_workflow") == ".github/workflows/harness.yml",
+            and metadata.get("ci_workflow") == ".github/workflows/harness.yml"
+            and metadata.get("hosted_ci_scope") == "static-contract-and-harness-runtime-entrypoints",
             [".harness/ci/release-gate.json"],
+            "仅核对 CI 入口配置；Godot 真实渲染、真实 provider、固定 runner 和发布验收仍需同版本运行证据。",
         ),
         _result(
             "ci_harness_workflow_exists",
@@ -78,7 +80,7 @@ def evaluate_release_gate(project_root: Path) -> dict[str, object]:
         ),
         _result(
             "ci_declares_runtime_coverage_gap",
-            "Hosted CI explicitly declares missing runtime and release coverage",
+            "Static contract job declares its own runtime and release coverage gap",
             "no runtime coverage" in workflow_text
             and "runtime and release acceptance are not covered" in workflow_text,
             [".github/workflows/harness.yml"],
