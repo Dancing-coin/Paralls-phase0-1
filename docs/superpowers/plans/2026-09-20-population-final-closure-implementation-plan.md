@@ -62,6 +62,18 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 
 ## 其他审查重点
 
+### 94432434 长测新增的 Character 阶段重复内容
+
+- short 两档通过；100 人 soak 的 721—738 窗出现 9 个 lag>1，最大3.109，未进入SQLite故障段，不能接受为通过。原始 Character 进度最大5.62MB，其中frame约1.725MB、before/after计划约3.45MB，重复冻结context及L3准备数据。停止失败采集，原始结果保留于仓库外；不得删除坏窗口后继续验收。
+- 复用原 session 不可变 receipt，为context、l3_prepared、suggestion_context各冻结一次完整内容。compact frame记录actor/child/origin stage/field绑定及完整内容digest；l2 context可沿用至后续阶段，suggestion替换L3准备时使用独立来源阶段key。冻结数据和首次引用在同一session事务中写入。
+- read_progress核对原progress digest，并验证frame、plan.before、plan.after中的引用；仅校验原JSON字节摘要，不在普通阶段读取时展开整份上下文。实际规划/完成所需正文通过窄reader读取；旧inline frame继续按原义恢复，不截断模型记忆、不改变原request_json和source/activation/CAS合同。
+- 回归须覆盖真实coordinator在大context下进度体积有界、完整内容相等、重开不重新规划、同actor跨child及跨actor引用拒绝、缺失/篡改在效应前零写入、冻结事务失败回滚、L3和suggestion替换及旧inline恢复。Character导出/离线复验同时保留和校验冻结receipt，不能让引用掩盖缺证据。
+- 远端94432434 CI correctness和change-lifecycle失败，公开页面没有具体日志内容；本地通过不能覆盖远端失败。首次停止长测时矩阵已启动下一case，已停止新增自有后端；自动cleanup因文件占用失败，后续递归清理被自动审批策略阻止，临时根0f3255aecc86480cbf54bf577a251811保留并单列未清理。
+- Character 引用存储的定向回归68项通过，覆盖缺失/篡改/错身份零写入、事务回滚、旧inline进入新L3、suggestion替换、重启与原始导出拒假。失败现场真实大进度对照15次中位80.19ms→5.29ms、5.47MB→0.502MB，正文相等；仅为诊断。独立审查核对实际旧上下文产生的L3请求JSON与prompt等价，未发现该实现的未解决缺陷。完整回归和重新冻结后正式门禁另行记录。
+- CI过滤摘要增加有限公开warning annotation，保持原退出码和私有内容过滤。审查复现Windows cp1252 stdout不能输出中文测试名，已改ASCII转义并加受限编码回归，6项通过。
+- 最终回归：完整backend首次6941 passed／2 failed／2 skipped，两项失败均为执行期间追加CI诊断文件导致的源码身份变化；停止修改后原两项补验2 passed（23.76秒），不能把首次命令记为退出0。工具427 passed，独立审查无未解决项，三个测试作用域均清理通过。证据分别在仓库外pop-cognition-frame-full、pop-cognition-frame-identity-recheck、pop-cognition-frame-tools；后续正式correctness仍须按新冻结提交完整采集。
+- 额外诊断：失败混合存档约205,030条普通gameplay outbox待派发；原启动同步drain约8分钟。该混合积压恢复开销尚未解决，应继续验证；不能用无此积压的cadence冷恢复结果掩盖，也不在本轮正文去重修复中暗改派发语义。
+
 - 正确性门禁自身串行执行四个producer和一组focused测试，每步原预算1200秒；原外层profile默认900秒会在合法子步骤结束前杀进程。已复现`900 < 5×1200+60`的预算冲突，外层独立配置6100秒，仍受CI job105分钟限制；不调整1×/10×性能、ready或任何业务验收阈值。新增预算层级回归，真实远端CI结果仍须重新核实。
 
 检查非激活 Owner 历史增长、重复回执晚于其他写入时的截面、未提交结果、损坏/截断事件和持久库重开；不得以局部digest冒充full_replay。审查指标是否实际观察缓存及所有复验入口是否拒绝缺字段；不修改Godot导入、耐久性、事务与权限契约。

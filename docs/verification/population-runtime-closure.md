@@ -2,6 +2,8 @@
 
 当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-final-closure-20260920`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
 
+最新续作：`94432434` 的真实模型 short 两档通过，但 100 人混合长测仍在故障注入前出现 9 个 lag 超限窗口，最大 3.109。此次修复 Character 认知进度对完整上下文的重复存储，不能据此直接关闭长测。冻结内容及离线证据格式见本文末尾；其余同版正式门禁和远端 CI 仍须重新验收。
+
 ## 2026-09-20 持续 Goal 执行
 
 用户已要求持续执行到完成，当前 Goal 为 active；实施补充见[最终执行计划](../superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)。在 `c23d879e` 基础上执行激活证据分离；下文旧的“等待答复”属于历史记录，已由本轮继续执行指令解除。
@@ -244,3 +246,13 @@ ASK 恢复格式从 `recovery_version=1` 升为 `2`。首次打开旧库在同�
 `1fc736ac`已通过千人1000/10000历史各5次冷进程恢复与传输5配对，但首个100人混合长测出现非故障窗口lag超限；不能将部分已通过门禁写成整体通过。新修复将记忆召回的整池最大时间戳移到每池一次计算，并将Siming冻结pin里的完整角色读结果改为其规范化SHA-256，避免在每次入站转移中重复保存全部记忆。权威正文、模型选取规则、图谱权限和输出读集检查不变；读取完整角色记忆本身仍有随历史增长的成本。
 
 部署前应排空Siming在途请求。旧二进制的完整记忆pin与新摘要pin不兼容，跨版恢复会走已有`stale_pin`零写入处理，不自动重新授权旧completion；已提交事实、历史审计和权威记忆不作迁移或删除。全部正式门禁须在新的同一源码版本重采，旧结果保留诊断；Godot仍为外机未验证。
+
+### Character 冻结上下文与进度引用
+
+`context`、`l3_prepared` 和 `suggestion_context` 复用原 session 不可变 receipt 存储；每个任务、来源阶段、字段只保存一次完整正文。阶段 frame 与 plan.before/after 记录 actor、child、来源阶段、字段和原始正文 SHA-256。正文和首次引用在同一事务提交；读取/写入进度和恢复当前阶段均核验引用，真正消费模型上下文时才解码正文。没有截断记忆、改变原 source/activation/CAS 约束或放宽过期检查。
+
+新代码可恢复旧 inline 存档并续接，新创建的正文不会回写、改签旧阶段。反向降级不受支持：旧二进制不能消费新引用格式。升级及跨机搬迁必须保留完整 session SQLite；复制 progress 或 current 而遗漏 cognition_frame receipts 会被拒绝。原 request_json 继续冻结并精确复用，不能重建请求冒充原 provider 调用。
+
+离线 Character 证据增加 character_frame 记录，原 JSON 字节及全库正文计数随账本导出；复验拒绝缺失、篡改、重复、跨任务、跨角色和孤儿正文。原无引用证据仍可按旧格式读取，但不能作为新版本正式验收。针对旧失败大记录的诊断显示，进度体积约 5.47MB→0.502MB，读取与校验中位约80.19ms→5.29ms（各15次、正文完整相等）；该对照不证明 30 分钟或 2 小时长测通过。
+
+`94432434` 远端 CI 的 change-lifecycle 与 correctness 失败，具体日志受访问限制，不能把本地回归当成远端通过。结构化失败摘要同时输出经过相同过滤的有限 warning annotation，以便定位下一轮 CI 失败；任意异常正文、模型请求和配置均不输出。Windows annotation 使用 ASCII 转义，摘要文件保持 UTF-8。

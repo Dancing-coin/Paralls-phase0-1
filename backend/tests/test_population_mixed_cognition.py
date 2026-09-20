@@ -171,3 +171,38 @@ def test_scheduled_group_cannot_disappear_with_its_only_child(tmp_path, monkeypa
         with pytest.raises(ValueError, match='mixed_character_ledger_coverage_invalid'):
             proof.verify_character(target)
     finally: rt.close()
+
+
+@pytest.mark.parametrize('failure', ['missing', 'changed', 'duplicate', 'actor', 'child', 'orphan', 'count'])
+def test_exported_frame_proof_rejects_missing_foreign_changed_or_unbound_bodies(tmp_path, failure):
+    from test_character_cognition_frame import prepare
+    rt, _, _, _, _, _ = prepare(tmp_path)
+    try:
+        target = tmp_path / 'frames.jsonl'
+        proof.export_character(rt._session_store._database_path, target)
+        assert proof.verify_character(target)['states'] == {'provider_pending': 1}
+        rows = [json.loads(line) for line in target.read_text(encoding='utf-8').splitlines()]
+        frame = next(row for row in rows if row['type'] == 'character_frame')
+        if failure == 'missing':
+            rows.remove(frame)
+        elif failure == 'changed':
+            body = json.loads(frame['receipt_json'])
+            body['value']['control_mode'] = 'forged'
+            frame['receipt_json'] = json.dumps(body)
+        elif failure == 'duplicate':
+            rows.insert(rows.index(frame), dict(frame))
+        elif failure in {'actor', 'child'}:
+            body = json.loads(frame['receipt_json'])
+            body['actor_id' if failure == 'actor' else 'child_key'] = 'foreign'
+            frame['receipt_json'] = json.dumps(body)
+        elif failure == 'orphan':
+            body = json.loads(frame['receipt_json'])
+            body.update(origin_stage='suggestion', field='suggestion_context')
+            rows.insert(rows.index(frame), dict(frame, key=proof.frame_key(body), receipt_json=json.dumps(body)))
+        else:
+            rows[-1]['frames'] += 1
+        target.write_text(''.join(json.dumps(row)+'\n' for row in rows), encoding='utf-8')
+        with pytest.raises(ValueError, match='frame|coverage'):
+            proof.verify_character(target)
+    finally:
+        rt.close()

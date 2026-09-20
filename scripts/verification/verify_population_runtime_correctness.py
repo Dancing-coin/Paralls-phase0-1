@@ -53,7 +53,7 @@ FOCUSED_TESTS = (
     "test_character_cognition_admission.py", "test_character_cognition_coordinator.py",
     "test_character_cognition_driver.py", "test_character_cognition_entry_plan.py",
     "test_character_cognition_main.py", "test_character_cognition_plans.py",
-    "test_character_cognition_progress.py", "test_character_cognition_stage_store.py",
+    "test_character_cognition_progress.py", "test_character_cognition_stage_store.py", "test_character_cognition_frame.py",
     "test_character_agent_l3_planning.py",
     "test_siming_continuation.py", "test_siming_admission.py", "test_siming_coordinator.py",
     "test_siming_candidate_requeue.py",

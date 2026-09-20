@@ -330,6 +330,11 @@ class CharacterAgentSessionStore:
                 or receipt['plan']['expected_revision'] != pointer['start']
                 or len(receipt['events']) != through_index - pointer['start']):
             raise ValueError('cognition_stage_projection_proof_invalid')
+        from app.character_agent.services.cognition_frame import validate_frame
+        checked = set()
+        for frame in (receipt['plan']['before'], receipt['plan']['after']):
+            validate_frame(self, frame, actor_id=actor_id,
+                child_key=pointer['key'].split('/', 1)[0], checked=checked)
         return receipt
 
     def read_current_cognition_stage(self, actor_id: str) -> dict | None:
@@ -718,14 +723,19 @@ class CharacterAgentSessionStore:
             else:
                 self._connection.execute("INSERT INTO character_session_receipts VALUES (?,?,?,?,?) ON CONFLICT(actor_id,kind,receipt_key) DO UPDATE SET event_id=COALESCE(excluded.event_id,event_id)", (actor_id,kind,key,self._json(receipt),event_id))
 
-    def read_receipt(self, actor_id: str, *, kind: str, key: str) -> dict | None:
+    def read_receipt_json(self, actor_id: str, *, kind: str, key: str) -> str | None:
+        """读取原始不可变 receipt，允许按字节核验大上下文而不反复展开。"""
         with self._lock:
             self._check_open()
             if self._connection is None:
                 row = self._receipts.get((actor_id,kind,key))
-                return deepcopy(row[0]) if row else None
+                return self._json(row[0]) if row else None
             row = self._connection.execute("SELECT receipt_json FROM character_session_receipts WHERE actor_id=? AND kind=? AND receipt_key=?", (actor_id,kind,key)).fetchone()
-            return json.loads(row[0]) if row else None
+            return row[0] if row else None
+
+    def read_receipt(self, actor_id: str, *, kind: str, key: str) -> dict | None:
+        raw = self.read_receipt_json(actor_id, kind=kind, key=key)
+        return json.loads(raw) if raw is not None else None
 
     def read_committed_event_for_receipt(self, actor_id: str, *, kind: str, key: str) -> dict | None:
         with self._lock:

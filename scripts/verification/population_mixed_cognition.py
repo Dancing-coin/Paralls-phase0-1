@@ -11,6 +11,7 @@ from app.character_agent.services.cognition_admission import (
     CharacterCognitionAdmissionService, CharacterCognitionProgress, _digest,
 )
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
+from app.character_agent.services.cognition_frame import frame_references, receipt_key as frame_key
 from scripts.verification.verify_population_godot_runtime import json_lines
 
 
@@ -65,6 +66,9 @@ def export_character(database, target):
                 header['scheduled_source'] = dict(row=list(row[:4]), event=json.loads(row[4]), batch=json.loads(batch[0]))
                 verify_scheduled_source(entry, header['scheduled_source'])
             write(header)
+            for receipt_key, raw in db.execute("SELECT receipt_key,receipt_json FROM character_session_receipts WHERE actor_id=? AND kind='cognition_frame' AND receipt_key>=? AND receipt_key<? ORDER BY receipt_key", (actor, key+'/', key+'0')):
+                # 保留原始字节形式，离线校验引用摘要时不能重新格式化正文。
+                write(dict(type='character_frame', actor_id=actor, key=receipt_key, receipt_json=raw))
             for index in range(1, revision+1):
                 row = db.execute("SELECT receipt_json FROM character_session_receipts WHERE actor_id=? AND kind='cognition_progress' AND receipt_key=?", (actor, f'{key}/progress:{index}')).fetchone()
                 if row is None:
@@ -85,9 +89,9 @@ def export_character(database, target):
         for actor_id, receipt_key, receipt_json in db.execute("SELECT actor_id,receipt_key,receipt_json FROM character_session_receipts WHERE kind='scheduled_cognition' ORDER BY actor_id,receipt_key"):
             batch = json.loads(receipt_json)
             write(dict(type='scheduled_batch', actor_id=actor_id, receipt_key=receipt_key, batch=batch))
-        counts = dict(db.execute("SELECT kind,COUNT(*) FROM character_session_receipts WHERE kind IN ('cognition_admission','cognition_progress','cognition_stage') GROUP BY kind"))
+        counts = dict(db.execute("SELECT kind,COUNT(*) FROM character_session_receipts WHERE kind IN ('cognition_admission','cognition_progress','cognition_stage','cognition_frame') GROUP BY kind"))
         write(dict(type='character_end', schema_present=True, jobs=jobs, admissions=counts.get('cognition_admission', 0),
-            progress=counts.get('cognition_progress', 0), stages=counts.get('cognition_stage', 0),
+            progress=counts.get('cognition_progress', 0), stages=counts.get('cognition_stage', 0), frames=counts.get('cognition_frame', 0),
             scheduled_batches=db.execute("SELECT COUNT(*) FROM character_session_receipts WHERE kind='scheduled_cognition'").fetchone()[0]))
 
 
@@ -135,16 +139,31 @@ def verify_character(path):
                         or type(head[3]) is not int or head[3] < 0 or type(head[4]) is not int or head[4] not in (0, 1)):
                     raise ValueError('mixed_character_head_invalid')
                 seen.add(entry.child_key)
-                history = {}
+                history, frozen = {}, {}
                 # 原状态机只写本任务的临时进度字典；原始 SQLite 始终只读。
                 store = SimpleNamespace(initialize_cognition_admissions=lambda: None,
                     read_cognition_admission=lambda key: entry.model_dump(mode='json') if key == entry.child_key else None,
                     read_cognition_progress=lambda key, revision=None: history.get(max(history, default=0) if revision is None else revision),
+                    read_receipt_json=lambda actor, *, kind, key: frozen.get(key)
+                        if actor == entry.actor_id and kind == 'cognition_frame' else None,
                     save_cognition_progress=lambda value, expected_revision: history.__setitem__(value['revision'], value))
                 api = CharacterCognitionAdmissionService(store=store, assert_owner=lambda: None,
                     validate_source=lambda _: None, activation_is_current=lambda *_: False)
-                current = dict(entry=entry, head=head, history=history, api=api, required=set(), allowed={}, receipts={}, providers={})
+                current = dict(entry=entry, head=head, history=history, api=api, required=set(), allowed={}, receipts={}, providers={},
+                    frozen=frozen, frame_keys=set())
                 counts['admissions'] += 1
+            elif kind == 'character_frame':
+                if current is None or history or current['receipts']:
+                    raise ValueError('mixed_character_frame_order_invalid')
+                key, raw = row['key'], row['receipt_json']
+                receipt = json.loads(raw)
+                if (row['actor_id'] != entry.actor_id or key in frozen
+                        or set(receipt) != {'actor_id', 'child_key', 'origin_stage', 'field', 'value'}
+                        or receipt['actor_id'] != entry.actor_id or receipt['child_key'] != entry.child_key
+                        or frame_key(receipt) != key):
+                    raise ValueError('mixed_character_frame_binding_invalid')
+                frozen[key] = raw
+                counts['frames'] += 1
             elif kind == 'character_progress':
                 if current is None or current['receipts']:
                     raise ValueError('mixed_character_progress_order_invalid')
@@ -158,6 +177,9 @@ def verify_character(path):
                     now=entry.admitted_at, **progress.model_dump(exclude={'schema_version', 'child_key', 'actor_id', 'input_digest', 'revision', 'progress_digest'}))
                 if replay != progress:
                     raise ValueError('mixed_character_progress_replay_changed')
+                for frame in (progress.frame, *((progress.plan['before'], progress.plan['after']) if progress.plan else ())):
+                    current['frame_keys'].update(frame_key(ref) for ref in frame_references(frame,
+                        actor_id=entry.actor_id, child_key=entry.child_key))
                 if progress.status == 'commit_started':
                     stage_key = entry.child_key + ('/entry' if progress.stage == 'entry' else '/'+progress.stage+'/effects')
                     plan = progress.plan
@@ -216,6 +238,8 @@ def verify_character(path):
                     raise ValueError('mixed_character_job_coverage_invalid')
                 if not current['required'] <= current['receipts'].keys():
                     raise ValueError('mixed_character_original_stage_receipt_missing')
+                if current['frame_keys'] != frozen.keys():
+                    raise ValueError('mixed_character_frame_coverage_invalid')
                 latest = current['api'].read_progress(entry.child_key)
                 state = latest.status if latest is not None else 'admitted'
                 if current['head'][4] != int(state not in {'completed', 'stale'}):
@@ -235,6 +259,9 @@ def verify_character(path):
             raise ValueError('mixed_character_footer_missing')
         expected = dict(type='character_end', schema_present=footer['schema_present'], jobs=len(jobs),
             admissions=counts['admissions'], progress=counts['progress'], stages=counts['stages'], scheduled_batches=len(scheduled_groups))
+        # 旧格式仅在确实没有引用正文时仍可读取；新格式的全库计数可发现孤儿正文。
+        if 'frames' in footer or counts['frames']:
+            expected['frames'] = counts['frames']
         if footer != expected or (not footer['schema_present'] and jobs):
             raise ValueError('mixed_character_ledger_coverage_invalid')
         if any(not group.get('declared') or set(group['batch']['child_keys']) != group['children'] for group in scheduled_groups.values()):

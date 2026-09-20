@@ -25,6 +25,32 @@ def setup(root):
     return rt, admissions, CharacterCognitionCoordinator(runtime=rt, admissions=admissions), child, handle
 
 
+def test_large_frozen_context_is_stored_once_and_reopened_without_expanding_progress(tmp_path, monkeypatch):
+    rt, admissions, coordinator, child, handle = setup(tmp_path)
+    coordinator.begin_entry(child.child_key, activation=handle, now=110.)
+    coordinator.resume_entry(child.child_key, activation=handle, now=111.)
+    original = rt._freeze_siming_l2_request
+    captured = {}
+    def freeze(actor, frame):
+        request, context = original(actor, frame)
+        context['diagnostic_history'] = [{'ordinal': i, 'text': '完整冻结内容' * 80} for i in range(1200)]
+        captured.update(context)
+        return request, context
+    monkeypatch.setattr(rt, '_freeze_siming_l2_request', freeze)
+    pending = coordinator.prepare_l2(child.child_key, activation=handle, now=112.)
+    assert len(pending.model_dump_json().encode()) < 100_000
+    assert rt._cognition_frame_value(pending.frame, 'context') == captured
+    assert 'context' not in pending.frame
+    assert len(rt._session_store.list_receipts('char_a', 'cognition_frame')) == 1
+    rt.close()
+    rt, admissions, coordinator, _, handle = setup(tmp_path)
+    monkeypatch.setattr(rt, '_freeze_siming_l2_request', lambda *_: pytest.fail('must use the frozen context'))
+    restored = coordinator.prepare_l2(child.child_key, activation=handle, now=113.)
+    assert restored == pending
+    assert rt._cognition_frame_value(restored.frame, 'context') == captured
+    rt.close()
+
+
 @pytest.mark.parametrize('reopen', [False, True])
 def test_entry_commit_and_reopen_preserve_original_prefix_and_frozen_after(tmp_path, monkeypatch, reopen):
     rt, admissions, coordinator, child, handle = setup(tmp_path)
@@ -204,6 +230,7 @@ def test_l2_request_and_pending_rollback_allow_retry_without_partial_log(tmp_pat
     assert rt.get_session_timeline('char_a') == before
     assert admissions.read_progress(child.child_key) == ready
     assert rt._session_store.read_receipt('char_a', kind='cognition_stage', key=f'{child.child_key}/l2/request') is None
+    assert rt._session_store.list_receipts('char_a', 'cognition_frame') == {}
     rt._session_store._connection.execute('DROP TRIGGER reject_pending')
     pending = coordinator.prepare_l2(child.child_key, activation=handle, now=113.)
     assert pending.status == 'provider_pending' and len(rt.get_session_timeline('char_a')) == len(before) + 1
@@ -300,9 +327,9 @@ def test_l3_request_preserves_initial_context_and_reopens_without_prepare(tmp_pa
     ready = coordinator.resume_l2(child.child_key, activation=handle, now=115.)
     saved = rt.get_session_timeline('char_a')
     pending = coordinator.prepare_l3(child.child_key, activation=handle, now=116.)
-    prepared = PreparedCharacterIntentPlan.from_json_value(pending.frame['l3_prepared'])
+    prepared = PreparedCharacterIntentPlan.from_json_value(rt._cognition_frame_value(pending.frame, 'l3_prepared'))
     assert prepared.request_json.decode() == pending.request_json
-    assert pending.frame['context'] == ready.frame['context']
+    assert pending.frame['context_ref'] == ready.frame['context_ref']
     assert rt._l3._consumed_behavior_policy_ids == set()
     assert rt.get_session_timeline('char_a') == saved
     rt.close()
@@ -329,7 +356,7 @@ def test_l3_pending_rejects_consumed_original_policy(tmp_path, monkeypatch):
     coordinator.freeze_l2(child.child_key, activation=handle, now=114.)
     coordinator.resume_l2(child.child_key, activation=handle, now=115.)
     pending = coordinator.prepare_l3(child.child_key, activation=handle, now=116.)
-    prepared = PreparedCharacterIntentPlan.from_json_value(pending.frame['l3_prepared'])
+    prepared = PreparedCharacterIntentPlan.from_json_value(rt._cognition_frame_value(pending.frame, 'l3_prepared'))
     assert prepared.behavior_policy['candidate_id'] == 'pending-policy'
     rt._l3.finish_intent_plan(prepared, rt._l3._gateway.complete_prepared_request(prepared.request_json))
     writes = rt._session_store._connection.total_changes
@@ -410,6 +437,10 @@ def test_assisted_persists_third_model_request_and_original_suggestion(tmp_path,
         getattr(coordinator, 'resume_'+stage)(child.child_key, activation=handle, now=115.)
     pending = coordinator.prepare_suggestion(child.child_key, activation=handle, now=116.)
     assert pending.stage == 'suggestion' and pending.status == 'provider_pending'
+    assert pending.frame['context_ref']['origin_stage'] == 'l2'
+    assert pending.frame['l3_prepared_ref']['origin_stage'] == 'suggestion'
+    assert pending.frame['suggestion_context_ref']['origin_stage'] == 'suggestion'
+    assert len(rt._session_store.list_receipts('char_a', 'cognition_frame')) == 4
     saved = rt.get_session_timeline('char_a')
     rt.close()
     rt, admissions, coordinator, _, handle = setup(tmp_path)

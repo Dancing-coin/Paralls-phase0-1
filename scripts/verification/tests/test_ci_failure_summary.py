@@ -62,3 +62,40 @@ def test_invalid_error_container_is_not_published_and_bad_group_does_not_abort(t
     assert rows[0]["errors"] == ["RuntimeError: details_omitted"]
     assert rows[1]["error"] == "report_invalid_shape"
     assert "private" not in json.dumps(rows)
+
+
+def test_ci_exposes_only_filtered_failure_locations_as_escaped_annotations(tmp_path, monkeypatch, capsys):
+    from scripts.verification import ci_failure_summary
+    (tmp_path / 'manifest.json').write_text(json.dumps({'status': 'failed',
+        'error': 'RuntimeError: provider request contains private input',
+        'steps': [{'profile': 'focused%0A', 'status': 'failed', 'exit_code': 124}],
+        'request': 'private payload'}), encoding='utf-8')
+    destination = tmp_path / 'summary.md'
+    monkeypatch.setenv('GITHUB_STEP_SUMMARY', str(destination))
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    monkeypatch.setattr('sys.argv', ['ci_failure_summary.py', str(tmp_path)])
+    ci_failure_summary.main()
+    output = capsys.readouterr().out
+    assert '::warning title=Structured verification failure::' in output
+    assert '"exit_code": 124' in output and 'RuntimeError: details_omitted' in output
+    assert 'focused%250A' in output
+    assert 'private' not in output
+    assert 'Structured verification failures' in destination.read_text(encoding='utf-8')
+
+
+def test_ci_annotation_supports_unicode_test_names_on_windows_stdout(tmp_path, monkeypatch):
+    import io
+    from scripts.verification import ci_failure_summary
+    destination = tmp_path / 'summary.md'
+    monkeypatch.setenv('GITHUB_STEP_SUMMARY', str(destination))
+    monkeypatch.setenv('GITHUB_ACTIONS', 'true')
+    monkeypatch.setattr('sys.argv', ['ci_failure_summary.py', str(tmp_path)])
+    monkeypatch.setattr(ci_failure_summary, 'failure_summary', lambda _: [dict(
+        file='focused.xml', test='runtime.test_中文场景', status='failure')])
+    buffer = io.BytesIO()
+    output = io.TextIOWrapper(buffer, encoding='cp1252')
+    monkeypatch.setattr('sys.stdout', output)
+    ci_failure_summary.main()
+    output.flush()
+    assert '::warning' in buffer.getvalue().decode('ascii')
+    assert '中文场景' in destination.read_text(encoding='utf-8')

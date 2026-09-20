@@ -1203,12 +1203,16 @@ class CharacterAgentRuntime:
         interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
         return self._run_with_memory_recall(actor_id, snapshot,
             lambda memory_override=None: self._prepare_siming_l3_request(actor_id, snapshot, interpretation,
-                frame['context'], memory_override=memory_override))
+                self._cognition_frame_value(frame, 'context'), memory_override=memory_override))
+
+    def _cognition_frame_value(self, frame, field):
+        from app.character_agent.services.cognition_frame import read_field
+        return read_field(self._session_store, frame, field)
 
     def _plan_l3_effects(self, frame: dict, output: dict, *, fallback=None):
         from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
         from app.character_agent.runtime.session_recovery import goal_state_from_event
-        prepared = PreparedCharacterIntentPlan.from_json_value(frame['l3_prepared'])
+        prepared = PreparedCharacterIntentPlan.from_json_value(self._cognition_frame_value(frame, 'l3_prepared'))
         if fallback is None:
             result = self._l3.plan_intent_completion(prepared, output)
             decision = self._l3.decision_from_plan(result, interpretation=prepared.interpretation)
@@ -3363,7 +3367,7 @@ class CharacterAgentRuntime:
             raise error
         args = dict(actor_id=frame['actor_id'],
             snapshot=CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot']),
-            control_mode=frame['context']['control_mode'], error=error)
+            control_mode=self._cognition_frame_value(frame, 'context')['control_mode'], error=error)
         if stage == 'l2':
             result = self._continuity_floor_interpretation(**args)
         else:
@@ -4180,16 +4184,16 @@ class CharacterAgentRuntime:
     def _freeze_suggestion_request(self, actor_id, frame):
         interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
         prepared, snapshot, memory = self._prepare_suggestion_request(actor_id, interpretation,
-            frame['context']['working_memory_state'])
+            self._cognition_frame_value(frame, 'context')['working_memory_state'])
         context = json.loads(json.dumps(dict(snapshot=snapshot, memory=memory),
             default=lambda value: value.model_dump(mode='json'), allow_nan=False))
         return prepared, context
 
     def _plan_suggestion_effects(self, frame, output):
         from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
-        prepared = PreparedCharacterIntentPlan.from_json_value(frame['l3_prepared'])
+        prepared = PreparedCharacterIntentPlan.from_json_value(self._cognition_frame_value(frame, 'l3_prepared'))
         plan = self._l3.plan_intent_completion(prepared, output)
-        context = frame['suggestion_context']
+        context = self._cognition_frame_value(frame, 'suggestion_context')
         packet = self._suggestion_from_plan(frame['actor_id'], frame['producer_ts'], prepared.interpretation,
             plan, context['snapshot'], context['memory'])
         return packet.model_dump(mode='json', exclude_none=True)
@@ -4581,7 +4585,7 @@ class CharacterAgentRuntime:
     def _plan_background_completion(self, frame, decision_value):
         interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
         decision = CharacterIntentDecision.model_validate(decision_value)
-        context = frame['context']
+        context = self._cognition_frame_value(frame, 'context')
         agenda = self._build_background_agenda_state(actor_id=frame['actor_id'], producer_ts=frame['producer_ts'],
             interpretation=interpretation, decision=decision, supervision_state=context['supervision_state'],
             unresolved_tensions=context['unresolved_tensions'])

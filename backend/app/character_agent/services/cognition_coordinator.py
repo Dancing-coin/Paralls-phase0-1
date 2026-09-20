@@ -1,6 +1,7 @@
 """Character owner 的原计划阶段提交；模型调度仍使用后续同槽驱动。"""
 import math
 import json
+from .cognition_frame import freeze_fields
 
 
 class CharacterCognitionCoordinator:
@@ -98,10 +99,12 @@ class CharacterCognitionCoordinator:
         revision = self.admissions.store.event_count(entry.actor_id)
         pins = dict(self.runtime._capture_cognition_pin(entry.actor_id))
         pins['timeline'] = self.runtime._cognition_digest(revision + 1)
-        frame = dict(progress.frame, stage='l2', context=context, actor_pin=[list(pair) for pair in sorted(pins.items())],
+        frame = dict(progress.frame, stage='l2', actor_pin=[list(pair) for pair in sorted(pins.items())],
             l2_profile=self.runtime._l2._profile_cache[entry.actor_id])
         text = request.decode('utf-8')
         with self.admissions.store.transaction():
+            frame = freeze_fields(self.admissions.store, frame, actor_id=entry.actor_id,
+                child_key=key, origin_stage='l2', fields={'context': context})
             self.admissions.store.commit_cognition_stage(actor_id=entry.actor_id, key=f'{key}/l2/request',
                 expected_revision=revision, events=[dict(event_type='l2_reasoning_request', producer_ts=entry.producer_ts,
                     payload=json.loads(text))], before=progress.frame, after=frame)
@@ -231,12 +234,15 @@ class CharacterCognitionCoordinator:
         self._validate_provider_pin(entry.actor_id, progress.frame)
         prepared = self.runtime._freeze_siming_l3_request(entry.actor_id, progress.frame)
         policy_id = str(prepared.behavior_policy.get('candidate_id', '') or '')
-        frame = dict(progress.frame, stage='l3', l3_prepared=prepared.to_json_value(),
+        frame = dict(progress.frame, stage='l3',
             policy_id=policy_id,
             actor_pin=[list(pair) for pair in self.runtime._capture_cognition_pin(entry.actor_id, policy_id=policy_id)])
-        return self.admissions.advance_progress(key=key, expected_revision=progress.revision,
-            stage='l3', status='provider_pending', frame=frame,
-            request_json=prepared.request_json.decode('utf-8'), now=now)
+        with self.admissions.store.transaction():
+            frame = freeze_fields(self.admissions.store, frame, actor_id=entry.actor_id,
+                child_key=key, origin_stage='l3', fields={'l3_prepared': prepared.to_json_value()})
+            return self.admissions.advance_progress(key=key, expected_revision=progress.revision,
+                stage='l3', status='provider_pending', frame=frame,
+                request_json=prepared.request_json.decode('utf-8'), now=now)
 
     def freeze_l3(self, key, *, activation, now):
         entry = self._entry(key, activation, now)
@@ -296,12 +302,15 @@ class CharacterCognitionCoordinator:
                 stage='suggestion', status='commit_started', frame=frame, plan=plan, now=now)
         prepared, context = self.runtime._freeze_suggestion_request(entry.actor_id, progress.frame)
         policy_id = str(prepared.behavior_policy.get('candidate_id', '') or '')
-        frame = dict(progress.frame, stage='suggestion', l3_prepared=prepared.to_json_value(),
-            suggestion_context=context, policy_id=policy_id, policy_consumed=False,
+        frame = dict(progress.frame, stage='suggestion', policy_id=policy_id, policy_consumed=False,
             actor_pin=[list(pair) for pair in self.runtime._capture_cognition_pin(entry.actor_id, policy_id=policy_id)])
-        return self.admissions.advance_progress(key=key, expected_revision=progress.revision,
-            stage='suggestion', status='provider_pending', frame=frame,
-            request_json=prepared.request_json.decode('utf-8'), now=now)
+        with self.admissions.store.transaction():
+            frame = freeze_fields(self.admissions.store, frame, actor_id=entry.actor_id,
+                child_key=key, origin_stage='suggestion', fields={
+                    'l3_prepared': prepared.to_json_value(), 'suggestion_context': context})
+            return self.admissions.advance_progress(key=key, expected_revision=progress.revision,
+                stage='suggestion', status='provider_pending', frame=frame,
+                request_json=prepared.request_json.decode('utf-8'), now=now)
 
     def freeze_suggestion(self, key, *, activation, now):
         entry = self._entry(key, activation, now)

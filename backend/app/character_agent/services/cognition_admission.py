@@ -107,7 +107,17 @@ class CharacterCognitionAdmissionService:
         if (entry is None or progress.actor_id != entry.actor_id or progress.input_digest != entry.input_digest
                 or progress.progress_digest != _digest(progress.model_dump(mode='json', exclude={'progress_digest'}))):
             raise ValueError('cognition_progress_digest_mismatch')
+        self._validate_progress_frames(progress, entry)
         return progress
+
+    def _validate_progress_frames(self, progress, entry):
+        from .cognition_frame import validate_frame
+        checked = set()
+        frames = [progress.frame]
+        if progress.plan:
+            frames.extend(progress.plan[name] for name in ('before', 'after') if name in progress.plan)
+        for frame in frames:
+            validate_frame(self.store, frame, actor_id=entry.actor_id, child_key=entry.child_key, checked=checked)
 
     def advance_progress(self, *, key, expected_revision, stage, status, frame, now,
                          plan=None, completion=None, request_json=None, reason=''):
@@ -175,6 +185,7 @@ class CharacterCognitionAdmissionService:
             raise ValueError('cognition_progress_transition_invalid')
         if not math.isfinite(now) or (now >= entry.expires_at and status != 'stale'):
             raise ValueError('cognition_admission_expired')
+        self._validate_progress_frames(progress, entry)
         self.store.save_cognition_progress(progress.model_dump(mode='json'), expected_revision=expected_revision)
         return self.read_progress(key)
 

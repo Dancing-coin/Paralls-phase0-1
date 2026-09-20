@@ -92,7 +92,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("root", type=Path)
     args = parser.parse_args()
-    summary = json.dumps(failure_summary(args.root), ensure_ascii=False, indent=2)
+    rows = failure_summary(args.root)
+    summary = json.dumps(rows, ensure_ascii=False, indent=2)
+    # 运行摘要可能需登录；把同一份已过滤定位放入公开 annotation，原日志仍留在 artifact。
+    if os.environ.get('GITHUB_ACTIONS') == 'true':
+        for row in rows[:20]:
+            message = json.dumps(row, ensure_ascii=True)[:1500]
+            message = message.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+            print('::warning title=Structured verification failure::' + message)
     # CI 摘要有大小上限；原始完整证据仍由既有 artifact 步骤上传。
     if len(summary) > 48000:
         summary = summary[:48000] + "\n[truncated; see uploaded evidence]"
