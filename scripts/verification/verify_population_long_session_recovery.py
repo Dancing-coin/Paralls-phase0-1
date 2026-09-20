@@ -309,6 +309,8 @@ def _merge_owner_result(parent_ready: dict, owner_ready: dict, owner_result: dic
 def ready_caches(main, driver) -> dict[str, object]:
     runtime, graph = main.character_agent_runtime, main.heavenly_graph
     memory = runtime._memory_store
+    # 若旧的历史缓存再次引入，必须观测其实际大小，不能无条件报告零。
+    activation_history = getattr(runtime._activation_authority, "_replay_result", None)
     return {
         "graph": {name: len(getattr(graph, name)) for name in ("_nodes", "_relations", "_idempotency", "_checkpoints", "_branch_markers")},
         "gameplay": {name: len(getattr(main.gameplay_event_store, name)) for name in ("_events", "_transactions", "_outbox")},
@@ -317,6 +319,9 @@ def ready_caches(main, driver) -> dict[str, object]:
         "heavy_normalizer_events": sum(map(len, memory._graph._normalizer._events_by_actor.values())),
         "population_receipts": len(driver.world_runtime._confirmed_receipts),
         "population_fingerprints": len(driver.world_runtime._confirmed_fingerprints),
+        "activation_receipts": len(runtime._activation_receipts),
+        "activation_history": {name: len(getattr(activation_history, name)) if activation_history is not None else 0
+            for name in ("state", "source_revision_vector", "applied_event_ids")},
     }
 
 
@@ -768,7 +773,10 @@ def _measurement(child: dict, parent: dict, expected: dict) -> dict:
         if type(value) not in (int, float) or not math.isfinite(value) or value < 0:
             raise ValueError("recovery_timing_invalid")
     caches = ready["caches"]
-    if (set(caches["graph"]) != {"_nodes", "_relations", "_idempotency", "_checkpoints", "_branch_markers"}
+    if (set(caches.get("activation_history", {})) != {"state", "source_revision_vector", "applied_event_ids"}
+            or any(type(value) is not int or value != 0 for value in caches["activation_history"].values())
+            or type(caches.get("activation_receipts")) is not int or not 0 <= caches["activation_receipts"] <= 32
+            or set(caches["graph"]) != {"_nodes", "_relations", "_idempotency", "_checkpoints", "_branch_markers"}
             or set(caches["gameplay"]) != {"_events", "_transactions", "_outbox"}
             or any(type(value) is not int or value != 0 for name in ("graph", "gameplay") for value in caches[name].values())
             or any(caches[name] != 0 for name in ("session_events", "light_memory_events", "heavy_normalizer_events"))

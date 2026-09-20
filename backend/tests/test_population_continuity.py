@@ -154,73 +154,108 @@ def test_activation_lock_records_replayable_schedule_pending_then_releases() -> 
     assert authority.pending_projection("world:bakery")["pending:1"]["status"] == "released"
 
 
-def test_activation_lease_does_not_replay_all_events_for_lock_or_release(monkeypatch) -> None:
+def test_activation_lease_never_reads_or_replays_global_history(monkeypatch) -> None:
     store = GameplayEventStore()
     authority = ProfileActivationAuthority(registry=registry(), store=store)
-    original_read_events = store.read_events
-    original_read_stream = store.read_stream
+    def forbidden(*args, **kwargs):
+        raise AssertionError("runtime activation consumed history")
+    monkeypatch.setattr(store, "read_events", forbidden)
+    monkeypatch.setattr(store, "read_stream", forbidden)
+    monkeypatch.setattr(GameplayProjectionReplay, "full_replay", forbidden)
+    monkeypatch.setattr(GameplayProjectionReplay, "continue_replay", forbidden)
     locked = authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0)
-    assert locked.committed
-    assert locked.replay_hash == GameplayProjectionReplay(
-        projector_id="population-activation", projector_version="1"
-    ).full_replay(original_read_events()).projection_hash
-
-    def forbid_full_events(*args, **kwargs):
-        if not kwargs:
-            raise AssertionError("activation lease read the full gameplay ledger")
-        return original_read_events(*args, **kwargs)
-
-    def forbid_full_stream(*args, **kwargs):
-        raise AssertionError("activation lease read the full population stream")
-
-    monkeypatch.setattr(store, "read_events", forbid_full_events)
-    monkeypatch.setattr(store, "read_stream", forbid_full_stream)
     pending = authority.record_pending(PendingChange(
         change_ref="pending:lease", lock_ref="lock:world:bakery:character:char_a",
         profile_ref="character:char_a", expected_revision=0,
         payload={"kind": "schedule_gated_supply", "plan_digest": "sha256:lease"}, privacy_scope="actor:self",
     ))
-    assert pending.committed
-    assert pending.replay_hash == GameplayProjectionReplay(
-        projector_id="population-activation", projector_version="1"
-    ).full_replay(original_read_events()).projection_hash
     released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=2)
-    assert released.committed
-    assert released.replay_hash == GameplayProjectionReplay(
-        projector_id="population-activation", projector_version="1"
-    ).full_replay(original_read_events()).projection_hash
-    assert original_read_events()[-1].payload["pending_change_refs"] == ["pending:lease"]
-    assert original_read_stream("population:world:bakery")[-1].event_type == "population.activation.released"
+    for sequence, receipt in enumerate((locked, pending, released), 1):
+        assert receipt.committed and receipt.evidence_kind == "commit"
+        assert receipt.replay_hash == ""
+        assert receipt.global_sequence_range == (sequence, sequence)
+        event = store.get_event(receipt.committed_event_ids[0])
+        batch = store.get_transaction(event.transaction_id)
+        key = batch.idempotency_record
+        result = store.get_by_idempotency(key.principal_ref, key.idempotency_key)
+        assert result is not None
+        assert receipt.committed_event_ids == tuple(result.committed_event_ids)
+        assert receipt.global_sequence_range == result.global_sequence_range
+        assert receipt.revision_vector == result.resulting_stream_revisions
+    assert getattr(authority, "_replay_result", None) is None
 
 
 @pytest.mark.parametrize("durable", [False, True])
-def test_activation_receipt_tail_includes_other_owner_events(tmp_path, monkeypatch, durable) -> None:
+def test_activation_explicit_audit_preserves_other_owners_and_original_commit_cut(tmp_path, monkeypatch, durable) -> None:
     store = DurableGameplayEventStore(tmp_path / "activation.db") if durable else GameplayEventStore()
+    try:
+        authority = ProfileActivationAuthority(registry=registry(), store=store)
+        reads = []
+        original_read_events = store.read_events
+        def observe(*args, **kwargs):
+            reads.append(kwargs)
+            return original_read_events(*args, **kwargs)
+        monkeypatch.setattr(store, "read_events", observe)
+        committed = authority.commit(proposal())
+        for index in reversed(range(100)):
+            command = f"external:{index:03d}"
+            batch = build_atomic_event_batch(
+                command_id=command, principal_ref="other-owner", stream_id="gameplay:other",
+                expected_revision=99-index, event_specs=[("gameplay.other.changed", {"value": index})],
+                idempotency_key=command, causation_id=command, correlation_id=command,
+            )
+            assert store.append_batch(batch).committed
+        locked = authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=1)
+        released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=2)
+        duplicate = authority.commit(proposal())
+        assert reads == []
+        assert duplicate.idempotency_status == "duplicate_replayed"
+        assert duplicate.global_sequence_range == committed.global_sequence_range
+        events = original_read_events()
+        assert [event.event_id for event in events] != sorted(event.event_id for event in events)
+        if durable:
+            store.close()
+            store = DurableGameplayEventStore(tmp_path / "activation.db")
+            authority = ProfileActivationAuthority(registry=registry(), store=store)
+        for receipt in (locked, released, duplicate):
+            audited = authority.audit_receipt(receipt)
+            cutoff = receipt.global_sequence_range[1]
+            expected = GameplayProjectionReplay(projector_id="population-activation", projector_version="1").full_replay(events[:cutoff])
+            assert expected.succeeded
+            assert audited.evidence_kind == "full_replay"
+            assert audited.replay_hash == expected.projection_hash
+            assert audited.model_dump(exclude={"evidence_kind", "replay_hash"}) == receipt.model_dump(exclude={"evidence_kind", "replay_hash"})
+            assert receipt.replay_hash == ""
+        assert getattr(authority, "_replay_result", None) is None
+    finally:
+        if durable:
+            store.close()
+
+
+def test_activation_audit_rejects_uncommitted_missing_and_corrupt_evidence(monkeypatch) -> None:
+    store = GameplayEventStore()
     authority = ProfileActivationAuthority(registry=registry(), store=store)
-    original_read_events = store.read_events
-    reads = []
-
-    def observe_read_events(*args, **kwargs):
-        reads.append(kwargs)
-        return original_read_events(*args, **kwargs)
-
-    monkeypatch.setattr(store, "read_events", observe_read_events)
-    locked = authority.lock(world_ref="world:bakery", profile_ref="character:char_a", expected_revision=0)
-    assert locked.committed
-    unrelated = build_atomic_event_batch(
-        command_id="external:one", principal_ref="other-owner", stream_id="gameplay:other",
-        expected_revision=0, event_specs=[("gameplay.other.changed", {"value": 1})],
-        idempotency_key="external:one", causation_id="external:one", correlation_id="external:one",
-    )
-    assert store.append_batch(unrelated).committed
-    released = authority.release_lock(lock_ref="lock:world:bakery:character:char_a", expected_revision=1)
-    assert released.committed
-    assert reads == [{}, {"global_sequence_after": 1}]
-    assert released.replay_hash == GameplayProjectionReplay(
-        projector_id="population-activation", projector_version="1"
-    ).full_replay(original_read_events()).projection_hash
-    if durable:
-        store.close()
+    rejected = authority.commit(proposal(profile_ref="character:missing"))
+    assert rejected.evidence_kind == "none" and rejected.global_sequence_range is None
+    with pytest.raises(ValueError, match="activation_audit_requires_commit"):
+        authority.audit_receipt(rejected)
+    receipt = authority.commit(proposal())
+    before = store.get_last_global_sequence()
+    for forged in (
+        receipt.model_copy(update={"committed_event_ids": ("missing",)}),
+        receipt.model_copy(update={"revision_vector": {"population:world:bakery": 88}}),
+        receipt.model_copy(update={"global_sequence_range": (1, 2)}),
+    ):
+        with pytest.raises(ValueError, match="activation_audit_commit_mismatch"):
+            authority.audit_receipt(forged)
+    original = store.read_events()
+    monkeypatch.setattr(store, "read_events", lambda **_: [])
+    with pytest.raises(ValueError, match="activation_audit_commit_mismatch"):
+        authority.audit_receipt(receipt)
+    monkeypatch.setattr(store, "read_events", lambda **_: [original[0].model_copy(update={"stream_revision": 2})])
+    with pytest.raises(ValueError):
+        authority.audit_receipt(receipt)
+    assert store.get_last_global_sequence() == before
 
 
 def test_activation_schedule_pending_rejects_free_form_payload_without_writes() -> None:
@@ -562,3 +597,26 @@ def test_explicit_b0_projection_does_not_call_character_core() -> None:
 
     assert result.status == "accepted"
     assert continuity.commands == []
+
+@pytest.mark.parametrize('corruption', ['duplicate_sequence', 'zero_sequence', 'duplicate_event_id', 'stream_revision_gap'])
+def test_activation_audit_rejects_corrupt_other_owner_prefix(monkeypatch, corruption):
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    assert authority.commit(proposal()).committed
+    batch = build_atomic_event_batch(command_id='other', principal_ref='other-owner', stream_id='gameplay:other',
+        expected_revision=0, event_specs=[('gameplay.other.changed', {'value': 1})],
+        idempotency_key='other', causation_id='other', correlation_id='other')
+    assert store.append_batch(batch).committed
+    receipt = authority.lock(world_ref='world:bakery', profile_ref='character:char_a', expected_revision=1)
+    events = store.read_events()
+    update = {
+        'duplicate_sequence': {'global_sequence': 1},
+        'zero_sequence': {'global_sequence': 0},
+        'duplicate_event_id': {'event_id': events[0].event_id},
+        'stream_revision_gap': {'stream_revision': 2},
+    }[corruption]
+    events[1] = events[1].model_copy(update=update)
+    monkeypatch.setattr(store, 'read_events', lambda **_: events)
+    with pytest.raises(ValueError, match='activation_audit_'):
+        authority.audit_receipt(receipt)
+    assert receipt.evidence_kind == 'commit' and receipt.replay_hash == ''

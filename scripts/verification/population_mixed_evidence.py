@@ -27,9 +27,11 @@ def equal_number(actual, expected):
 
 def cache_bounds(caches):
     limits = dict(session_events=0, light_memory_events=0, heavy_normalizer_events=0,
-        population_receipts=2, population_fingerprints=2, cadence=1, projection=1, preview=1, publisher_records=2)
+        population_receipts=2, population_fingerprints=2, cadence=1, projection=1, preview=1, publisher_records=2,
+        activation_receipts=32)
     nested = dict(graph={"_nodes", "_relations", "_idempotency", "_checkpoints", "_branch_markers"},
-        gameplay={"_events", "_transactions", "_outbox"})
+        gameplay={"_events", "_transactions", "_outbox"},
+        activation_history={"state", "source_revision_vector", "applied_event_ids"})
     if (set(caches) != limits.keys() | nested.keys() | {"authority_bus", "authority_bus_types"}
             or any(set(caches[key]) != fields for key, fields in nested.items())
             or not isinstance(caches["authority_bus_types"], dict)

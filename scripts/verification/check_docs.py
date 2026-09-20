@@ -8,6 +8,9 @@ from registry import load_profile_registry
 
 
 SPEC_PLAN_COVERAGE: dict[str, tuple[str, ...]] = {
+    "2026-09-19-activation-receipt-evidence-cost-design.md": (
+        "2026-09-20-population-final-closure-implementation-plan.md",
+    ),
     "2026-06-08-system-l1-full-phase1-implementation-design.md": (
         "2026-06-08-system-l1-full-phase1-implementation-plan.md",
     ),

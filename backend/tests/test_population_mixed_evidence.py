@@ -7,6 +7,23 @@ from scripts.verification import population_mixed_evidence as evidence
 from scripts.verification.population_mixed_load import MixedLoadSchedule
 
 
+def test_activation_history_and_receipt_cache_cannot_be_omitted_or_grow():
+    rows, _, _ = trace()
+    caches = rows[1]["sample"]["caches"]
+    assert evidence.cache_bounds(caches)
+    for field in ("activation_history", "activation_receipts"):
+        bad = deepcopy(caches)
+        del bad[field]
+        with pytest.raises(ValueError, match="cache_shape"):
+            evidence.cache_bounds(bad)
+    for field in caches["activation_history"]:
+        bad = deepcopy(caches)
+        bad["activation_history"][field] = 1
+        assert not evidence.cache_bounds(bad)
+    caches["activation_receipts"] = 33
+    assert not evidence.cache_bounds(caches)
+
+
 def trace(seconds=30, mode="one_x"):
     config = dict(population=100, seed=31, seconds=seconds, mode=mode, provider_mode="live")
     actors = ["char_a", "char_b", "char_c", *[f"resident_{i:05d}" for i in range(97)]]
@@ -40,6 +57,7 @@ def trace(seconds=30, mode="one_x"):
                     gameplay={key:0 for key in ("_events", "_transactions", "_outbox")}, session_events=0,
                     light_memory_events=0, heavy_normalizer_events=0, population_receipts=min(tick,2),
                     population_fingerprints=min(tick,2), cadence=1, projection=1, preview=1, publisher_records=min(tick,2),
+                    activation_receipts=min(tick,32), activation_history={key:0 for key in ("state", "source_revision_vector", "applied_event_ids")},
                     authority_bus=min(tick,2) + min(tick,32), authority_bus_types={
                         "population_cadence_event": min(tick,2), "siming.fairness_snapshot": min(tick,32)}))))
     return rows, config, actors

@@ -47,6 +47,7 @@
 
 ## 活跃设计与计划
 
+- [千人六项闭环最终执行补充](superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)：激活回执提交证据与显式审计分离、同版正式验收和外机交接；整体仍在进行中，Godot 未验证。
 - [角色、群体与社会因果运行时整合规格](superpowers/specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)：整合连续性、社会模型、具身因果与阵营边界；模型首期为日供给分片可行性计算，八类为计算维度；两份计划共用一套合同。
 - [计划 A：运行时连续性与共享基础](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-population-continuity-runtime-implementation-plan.md)：人员甲负责共享合同、账本、锁、Core 接纳、授权读取及计算器 shadow/advisory 接线；尚未实施。
 - [计划 B：角色模块、洪灾样板与领域纵切](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-character-simulation-domain-vertical-implementation-plan.md)：人员乙负责角色规则、洪灾、领域回流、日供给输入/纯计算与 Godot 样板；尚未实施。

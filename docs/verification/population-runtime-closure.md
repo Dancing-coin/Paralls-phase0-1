@@ -1,6 +1,15 @@
 # 群体运行时补齐与外机 Godot 验证交接
 
-当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-backend-closure`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pop/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
+当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-final-closure-20260920`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
+
+## 2026-09-20 持续 Goal 执行
+
+用户已要求持续执行到完成，当前 Goal 为 active；实施补充见[最终执行计划](../superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)。在 `c23d879e` 基础上执行激活证据分离；下文旧的“等待答复”属于历史记录，已由本轮继续执行指令解除。
+
+- 运行时回执仅保留原提交事件、revision 和 global_sequence_range，明确为 commit，replay_hash 为空；`audit_receipt` 显式按原提交截面计算原全历史 hash，不保留全局历史缓存。phase3a 验证入口显式调用审计。
+- 缓存指标补充实际激活历史对象及最多32条的完成回执；混合和冷恢复复验器拒绝缺失指标。独立审查发现的内部序号损坏/重复event ID误判已增加反例检查，未改重放算法。
+- 当前定向174项通过，短路径完整后端回归为6,909 passed／2 skipped（Godot），清理成功；Harness工具421项和phase3a显式审计profile通过。首次长路径完整回归因260字符文件无法读取失败，仅保留诊断。正式性能及总门禁仍待同版证据，不用后端测试代替。
+- 新台账：`.superpowers/sdd/2026-09-20-population-final-closure-implementation-plan/progress.md`；本轮仓库外证据根为 `D:/HarnessEvidence/pop-final-20260920`。Godot 引擎未在本机执行，外机同版门禁仍欠缺。
 
 ## 2026-09-19 后端续作边界
 
@@ -86,7 +95,7 @@ GitHub Actions 的 Harness 手动入口提供 `run_population_godot`，默认关
 
 ## 继续执行的入口
 
-最新隔离工作树：`D:/MyConfiguration/TCLXUSER/.codex/worktrees/pop/Paralls-phase0-1`。`D:/Paralls-phase0-1/.worktrees/population-runtime-closure`仅保留旧进度和可复用Python环境，不能用其中的旧报告替代本轮证据。
+最新隔离工作树：`D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`。`D:/Paralls-phase0-1/.worktrees/population-runtime-closure`仅保留旧进度和可复用Python环境，不能用其中的旧报告替代本轮证据。
 
 - 计划：`docs/superpowers/plans/2026-09-16-population-production-runtime-closure-implementation-plan.md`（按用户要求随代码提交）。
 - 最新过程台账：`.superpowers/sdd/2026-09-16-population-production-runtime-closure-implementation-plan/backend-continuation-ledger.md`。

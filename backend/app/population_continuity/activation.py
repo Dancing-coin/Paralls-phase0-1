@@ -7,7 +7,7 @@ from typing import Sequence
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment, ReplayResult
+from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.settlement_plan import (
     AppendDerivedSettlementRecipe,
@@ -173,7 +173,6 @@ class ProfileActivationAuthority:
         self.grants = grants
         self._locks: dict[str, ActivationLock] = {}
         self._pending: dict[str, list[PendingChange]] = {}
-        self._replay_result: ReplayResult | None = None
 
     def resolve(self, profile_ref: str):
         """Resolve an existing authored profile without materializing state."""
@@ -691,23 +690,16 @@ class ProfileActivationAuthority:
 
     def _receipt_from_result(
         self,
-        result,
+        result: AppendBatchResult,
         profile_ref: str,
         digest: str,
         status: str,
         *,
         scope: tuple[str, ...] = (),
     ) -> ActivationReceipt:
-        projector = GameplayProjectionReplay(projector_id="population-activation", projector_version="1")
-        previous = self._replay_result
-        if previous is None or previous.last_global_sequence > self.store.get_last_global_sequence():
-            replay = projector.full_replay(self.store.read_events())
-        else:
-            replay = projector.continue_replay(
-                previous, self.store.read_events(global_sequence_after=previous.last_global_sequence)
-            )
-        if replay.succeeded:
-            self._replay_result = replay
+        # 热路径只返回持久提交证据；完整历史审计由 audit_receipt 显式执行。
+        if not result.committed or result.global_sequence_range is None:
+            raise ValueError("activation_receipt_requires_commit")
         return ActivationReceipt(
             committed=True,
             status=status,
@@ -715,12 +707,35 @@ class ProfileActivationAuthority:
             identity_digest=digest,
             committed_event_ids=tuple(result.committed_event_ids),
             revision_vector=dict(result.resulting_stream_revisions),
-            replay_hash=replay.projection_hash,
+            evidence_kind="commit",
+            global_sequence_range=result.global_sequence_range,
             scope=scope,
             redaction="identity-and-status-only",
             zero_write=False,
             idempotency_status=result.idempotency_status,
         )
+
+    def audit_receipt(self, receipt: ActivationReceipt) -> ActivationReceipt:
+        """按原提交截面生成全局审计 hash，不保留历史投影缓存。"""
+        if not receipt.committed or receipt.global_sequence_range is None:
+            raise ValueError("activation_audit_requires_commit")
+        first, last = receipt.global_sequence_range
+        if first < 1 or last < first:
+            raise ValueError("activation_audit_commit_mismatch")
+        events = self.store.read_events(limit=last)
+        committed = [event for event in events if first <= event.global_sequence <= last]
+        if (len(events) != last
+                or any(event.global_sequence != sequence for sequence, event in enumerate(events, 1))
+                or len({event.event_id for event in events}) != last
+                or tuple(event.event_id for event in committed) != receipt.committed_event_ids
+                or {event.stream_id: event.stream_revision for event in committed} != receipt.revision_vector):
+            raise ValueError("activation_audit_commit_mismatch")
+        replay = GameplayProjectionReplay(
+            projector_id="population-activation", projector_version="1"
+        ).full_replay(events)
+        if not replay.succeeded:
+            raise ValueError("activation_audit_replay_failed")
+        return receipt.model_copy(update={"evidence_kind": "full_replay", "replay_hash": replay.projection_hash})
 
     @staticmethod
     def _rejected(proposal: ActivationProposal, reason: str) -> ActivationReceipt:

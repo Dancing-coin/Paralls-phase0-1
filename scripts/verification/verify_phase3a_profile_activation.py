@@ -32,7 +32,7 @@ def main() -> int:
         correlation_id="corr:harness:p3a",
         source_ref="population:harness",
     )
-    receipt = authority.commit(proposal)
+    receipt = authority.audit_receipt(authority.commit(proposal))
     denied = authority.commit(
         proposal.model_copy(
             update={

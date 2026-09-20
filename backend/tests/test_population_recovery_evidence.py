@@ -20,7 +20,8 @@ def _raw_sample(*, identity=1):
         exit_code=0,error=None,marker="POPULATION_READY "+json.dumps(ready),database_names={"db":"graph.sqlite3"})
     ready["caches"]=dict(graph={k:0 for k in ("_nodes","_relations","_idempotency","_checkpoints","_branch_markers")},
         gameplay={k:0 for k in ("_events","_transactions","_outbox")},session_events=0,light_memory_events=0,
-        heavy_normalizer_events=0,population_receipts=2,population_fingerprints=2)
+        heavy_normalizer_events=0,population_receipts=2,population_fingerprints=2,
+        activation_receipts=0,activation_history={key:0 for key in ("state","source_revision_vector","applied_event_ids")})
     expected=dict(value="unchanged",pending=dict(outbox={},projection_refresh={}))
     return dict(ready=ready,oracle=deepcopy(expected),verification_ms=50.,
         runtime_process=dict(parent_pid=identity,owner_pid=identity+1000,exit_code=0)),parent,expected
@@ -293,3 +294,28 @@ def test_failed_generation_preserves_partial_original_ask_audit(tmp_path, monkey
     assert (manifest_path.parent / relative).read_bytes() == raw
     assert manifest['raw_artifacts'][relative] == gate.file_digest(raw)
     assert manifest['status'] == 'failed'
+
+def test_ready_caches_observes_activation_history_and_receipts():
+    runtime = SimpleNamespace(
+        _memory_store=SimpleNamespace(_light=SimpleNamespace(_events_by_actor={}),
+            _graph=SimpleNamespace(_normalizer=SimpleNamespace(_events_by_actor={}))),
+        _session_store=SimpleNamespace(_events_by_actor={}), _activation_receipts={'one':object()},
+        _activation_authority=SimpleNamespace(_replay_result=SimpleNamespace(
+            state={'other-owner':{}}, source_revision_vector={'other-owner':1}, applied_event_ids=['a','b'])))
+    main = SimpleNamespace(character_agent_runtime=runtime,
+        heavenly_graph=SimpleNamespace(**{key:{} for key in ('_nodes','_relations','_idempotency','_checkpoints','_branch_markers')}),
+        gameplay_event_store=SimpleNamespace(_events=[],_transactions={},_outbox={}))
+    driver = SimpleNamespace(world_runtime=SimpleNamespace(_confirmed_receipts={},_confirmed_fingerprints={}))
+    result = gate.ready_caches(main, driver)
+    assert result['activation_receipts'] == 1
+    assert result['activation_history'] == dict(state=1, source_revision_vector=1, applied_event_ids=2)
+    del runtime._activation_authority._replay_result
+    assert gate.ready_caches(main, driver)['activation_history'] == dict(state=0, source_revision_vector=0, applied_event_ids=0)
+
+
+def test_cold_ready_rejects_hidden_activation_history():
+    for field in ('state', 'source_revision_vector', 'applied_event_ids'):
+        child, parent, expected = _raw_sample()
+        child['ready']['caches']['activation_history'][field] = 1
+        with pytest.raises(ValueError, match='history_cache'):
+            gate._measurement(child, parent, expected)

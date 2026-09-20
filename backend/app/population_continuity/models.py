@@ -75,6 +75,8 @@ class ActivationReceipt(ContinuityModel):
     identity_digest: str = ""
     committed_event_ids: tuple[str, ...] = ()
     revision_vector: dict[str, int] = Field(default_factory=dict)
+    evidence_kind: Literal["none", "commit", "full_replay"] = "none"
+    global_sequence_range: tuple[int, int] | None = None
     replay_hash: str = ""
     scope: tuple[str, ...] = ()
     redaction: str = ""
