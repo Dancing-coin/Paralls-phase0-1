@@ -1645,7 +1645,6 @@ class CharacterAgentRuntime:
             actor_id=bundle.subject_id,
             producer_ts=snapshot.producer_ts,
             snapshot=snapshot,
-            memory_bundle=self._memory_store.retrieval_record_bundle(bundle.subject_id),
         )
         return snapshot
 
@@ -2943,7 +2942,6 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
@@ -3069,7 +3067,6 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
@@ -3330,7 +3327,6 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
 
     def _record_reasoning_request(
@@ -3999,7 +3995,6 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=snapshot,
-            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         return plan
 
@@ -4256,7 +4251,6 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         return suggestion_packet
 
@@ -4343,7 +4337,6 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
-            memory_bundle=self._memory_store.retrieval_record_bundle(actor_id),
         )
         return suggestion_packet
 
@@ -4921,6 +4914,7 @@ class CharacterAgentRuntime:
     def _rehydrate_graph_continuity(self) -> None:
         self._memory_store.bind_session_reader(
             self._session_store.list_events, working_reader=self._working_memory_events,
+            summary_reader=self._session_store.read_memory_summary,
         )
         self._l1.get_actor_scene_knowledge_store().bind_persistence(self._session_store)
         self._session_migrated = self._session_store.initialize_recovery(
@@ -5099,7 +5093,7 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         snapshot: CharacterPrivateWorldSnapshot,
-        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None = None,
     ) -> None:
         self._refresh_scheduling_round(producer_ts)
         context = self._observatory_context(actor_id)
@@ -5121,6 +5115,7 @@ class CharacterAgentRuntime:
             producer_ts=producer_ts,
             snapshot=snapshot,
             memory_bundle=memory_bundle,
+            memory_summary=self._memory_store.debug_memory_summary(actor_id) if memory_bundle is None else None,
             interpretation_summary=context.get("interpretation_summary", ""),
             decision_summary=context.get("decision_summary", ""),
             execution_summary=context.get("execution_summary", ""),

@@ -9,6 +9,7 @@ from app.character_agent.models.memory_record_bundle import CharacterMemoryRecor
 from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
+from app.character_agent.storage.memory_summary import bundle_summary
 from app.models.observatory import ActorDramaticEvent, ActorDramaticState
 
 
@@ -19,7 +20,7 @@ class CharacterAgentDebugProjection:
         actor_id: str,
         producer_ts: int,
         snapshot: CharacterPrivateWorldSnapshot,
-        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle,
+        memory_bundle: dict[str, list[dict[str, object]]] | CharacterMemoryRecordBundle | None,
         interpretation_summary: str,
         decision_summary: str,
         execution_summary: str,
@@ -31,19 +32,13 @@ class CharacterAgentDebugProjection:
         dynamic_state_summary: str = "",
         dynamic_state: CharacterDynamicState | dict[str, object] | None = None,
         goal_state: CharacterGoalStateRecord | dict[str, object] | None = None,
+        memory_summary: str | None = None,
     ) -> ActorDramaticState:
         focus_target = snapshot.current_attention_targets[0] if snapshot.current_attention_targets else ""
         current_intent = self._summary_or_empty(decision_summary).split(" and ", 1)[0]
         dynamic_state_record = self._dynamic_state_record(dynamic_state)
-        typed_memory_bundle = self._memory_record_bundle(memory_bundle)
         perception_parts = snapshot.visible_entities + snapshot.audible_entities + snapshot.unresolved_signals
-        memory_parts = [
-            *[self._event_memory_summary(entry) for entry in typed_memory_bundle.event_memories],
-            *[self._observation_memory_summary(entry) for entry in typed_memory_bundle.observation_memories],
-            *[self._knowledge_memory_summary(entry) for entry in typed_memory_bundle.knowledge_memories],
-            *[self._social_memory_summary(entry) for entry in typed_memory_bundle.social_memories],
-            *[self._higher_order_memory_summary(entry) for entry in typed_memory_bundle.higher_order_memories],
-        ]
+        memory_parts = [memory_summary if memory_summary is not None else bundle_summary(self._memory_record_bundle(memory_bundle))]
         if dynamic_state_summary == "" and dynamic_state_record is not None:
             dynamic_state_summary = self._dynamic_state_summary(dynamic_state_record)
         if dynamic_state_summary != "":
@@ -99,21 +94,6 @@ class CharacterAgentDebugProjection:
             intent_label=intent_label,
             detail=detail or {},
         )
-
-    def _event_memory_summary(self, entry: CharacterEventMemoryRecord) -> str:
-        return entry.summary
-
-    def _observation_memory_summary(self, entry: CharacterObservationMemoryRecord) -> str:
-        return entry.observation_summary
-
-    def _knowledge_memory_summary(self, entry: CharacterKnowledgeMemoryRecord) -> str:
-        return entry.proposition
-
-    def _social_memory_summary(self, entry: CharacterSocialMemoryRecord) -> str:
-        return entry.entity_id
-
-    def _higher_order_memory_summary(self, entry: CharacterHigherOrderMemoryRecord) -> str:
-        return entry.meta_belief
 
     def _summary_or_empty(self, value: str) -> str:
         return value.strip()

@@ -132,3 +132,15 @@ def test_correctness_runner_records_failure_and_timeout(tmp_path):
     timed = tmp_path / "timeout.log"
     assert gate.run_logged([sys.executable, "-c", "import time; print('started', flush=True); time.sleep(10)"], cwd=tmp_path, env=env, log=timed, timeout=.2) == 124
     assert "timeout" in timed.read_text(encoding="utf-8")
+
+
+def test_correctness_outer_deadlines_cover_all_serial_child_budgets():
+    import yaml
+    registry = gate.load_profile_registry(gate.ROOT)
+    profile = registry.profiles[gate.NAME]
+    # 四个producer加完整focused回归串行执行；父级不能先于合法子步骤超时。
+    child_budget = gate.TIMEOUT_SECONDS * (len(gate.PROFILES) + 1)
+    outer_budget = profile.get("timeout_seconds", 900)
+    assert outer_budget >= child_budget + 60
+    workflow = yaml.safe_load((gate.ROOT / ".github/workflows/harness.yml").read_text(encoding="utf-8"))
+    assert workflow["jobs"]["population-correctness"]["timeout-minutes"] * 60 > outer_budget

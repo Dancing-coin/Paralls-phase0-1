@@ -24,7 +24,10 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 
 
 class CharacterMemoryStorePort(Protocol):
-    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+    def bind_session_reader(self, reader, *, working_reader=None, summary_reader=None) -> None:
+        raise NotImplementedError
+
+    def debug_memory_summary(self, actor_id: str) -> str:
         raise NotImplementedError
 
     def write_event(self, event: dict[str, object]) -> None:
@@ -63,6 +66,7 @@ class CharacterAgentMemoryStore:
     def __init__(self, storage_root: str | Path | None = None) -> None:
         self._session_reader = None
         self._working_reader = None
+        self._summary_reader = None
         self._working = CharacterWorkingMemory()
         self._event = CharacterEventMemory()
         self._observation = CharacterObservationMemory()
@@ -321,9 +325,16 @@ class CharacterAgentMemoryStore:
                 source_event_refs=[str(ref) for ref in payload.get("source_ref_lineage", []) if str(ref)] if isinstance(payload.get("source_ref_lineage", []), list) else [],
             )
 
-    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+    def bind_session_reader(self, reader, *, working_reader=None, summary_reader=None) -> None:
         self._session_reader = reader
         self._working_reader = working_reader
+        self._summary_reader = summary_reader
+
+    def debug_memory_summary(self, actor_id: str) -> str:
+        if self._summary_reader is not None:
+            return self._summary_reader(actor_id)
+        from .memory_summary import bundle_summary
+        return bundle_summary(self.retrieval_record_bundle(actor_id))
 
     def _history_projection(self, actor_id: str, *, include_working: bool = True):
         projection = CharacterAgentMemoryStore()

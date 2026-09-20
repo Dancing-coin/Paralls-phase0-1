@@ -75,9 +75,14 @@ class CharacterGraphMemoryStore:
     def graph(self) -> HeavenlyGraphPort:
         return self._graph
 
-    def bind_session_reader(self, reader, *, working_reader=None) -> None:
+    def bind_session_reader(self, reader, *, working_reader=None, summary_reader=None) -> None:
         self._session_reader = reader
         self._normalizer.bind_session_reader(reader, working_reader=working_reader)
+
+    def debug_memory_summary(self, actor_id: str) -> str:
+        # 重量角色仍经图谱的私有 scope、分支与有效时间过滤，不能用 session 摘要绕过。
+        from .memory_summary import bundle_summary
+        return bundle_summary(self.retrieval_record_bundle(actor_id))
 
     def write_event(self, event: dict[str, object]) -> None:
         with self._lock:

@@ -30,6 +30,8 @@ def test_debug_settlement_preserves_full_snapshot_without_loading_working_memory
             guard.setattr(store, "retrieval_bundle", lambda *_: pytest.fail("debug loaded compatibility working memory"))
             if heavy:
                 guard.setattr(store._normalizer, "_history_projection", lambda *_: pytest.fail("debug folded heavy history"))
+            else:
+                guard.setattr(store, "_history_projection", lambda *a, **k: pytest.fail("debug folded light history"))
             runtime.record_settlement_result(actor_id="char_a", producer_ts=12, payload={
                 "result_type": "constraint_state_result", "actor_id": "char_a",
                 "constraint_summary": "too far from obj_letter",
@@ -40,6 +42,7 @@ def test_debug_settlement_preserves_full_snapshot_without_loading_working_memory
         assert len(snapshots) == len(captured) == 1
         full_bundle = runtime.get_memory_bundle("char_a")
         captured[0]["memory_bundle"] = full_bundle
+        captured[0].pop("memory_summary", None)
         assert snapshots[0] == project(**captured[0]).model_dump(exclude_none=True)
         assert snapshots[0]["latest_outcome_summary"] == "too far from obj_letter"
         assert "letter destroyed" in snapshots[0]["memory_summary"]

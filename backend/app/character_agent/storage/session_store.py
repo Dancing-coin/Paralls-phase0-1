@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from threading import RLock
 from uuid import uuid4
 
-from . import ask_storage
+from . import ask_storage, memory_summary
 
 
 class CharacterAgentSessionStore:
@@ -58,7 +58,7 @@ class CharacterAgentSessionStore:
                 self._initialize_database()
                 marker = self._connection.execute("SELECT value FROM character_session_metadata WHERE key='recovery_version'").fetchone()
                 if marker is not None:
-                    if marker[0] not in {'1', '2'}:
+                    if marker[0] not in {'1', '2', '3'}:
                         raise ValueError("character_session_recovery_schema_unsupported")
                     required_tables = {
                         'character_session_recovery': {'actor_id','state_json'},
@@ -83,6 +83,15 @@ class CharacterAgentSessionStore:
                                     raise ValueError('ask_history_migration_mismatch')
                             self._connection.execute("UPDATE character_session_metadata SET value='2' WHERE key='recovery_version'")
                     if {row[1] for row in self._connection.execute('PRAGMA table_info(character_session_ask_parts)')} != {'entry_key','kind','ordinal','payload_json'}:
+                        raise ValueError('character_session_recovery_schema_unsupported')
+                    if marker[0] in {'1', '2'}:
+                        # 仅旧 schema 升级折叠一次历史；摘要与版本在同一事务提交。
+                        with self.transaction():
+                            memory_summary.create_table(self._connection)
+                            for row in self._connection.execute('SELECT payload_json FROM character_session_events ORDER BY actor_id,event_index'):
+                                memory_summary.project(self._connection, json.loads(row[0]))
+                            self._connection.execute("UPDATE character_session_metadata SET value='3' WHERE key='recovery_version'")
+                    if {row[1] for row in self._connection.execute('PRAGMA table_info(character_session_memory_summary)')} != memory_summary.COLUMNS:
                         raise ValueError('character_session_recovery_schema_unsupported')
                     self._recovery_enabled = True
                 if self._migration_marker is not None and str(database_path) != ':memory:':
@@ -373,6 +382,7 @@ class CharacterAgentSessionStore:
                 db.execute("CREATE INDEX character_session_ask_actor ON character_session_ask(actor_id)")
                 db.execute("CREATE INDEX character_session_ask_entry ON character_session_ask(entry_id)")
                 ask_storage.create_table(db)
+                memory_summary.create_table(db)
                 db.execute("CREATE TABLE character_session_ask_trace (sequence INTEGER PRIMARY KEY, payload_json TEXT NOT NULL)")
             extras = import_legacy() if import_legacy is not None else {}
             for actor_id in self.actor_ids():
@@ -387,7 +397,7 @@ class CharacterAgentSessionStore:
                     state.update(extras[actor_id])
                     self._write_runtime_state(actor_id, state)
             if db is not None:
-                db.execute("INSERT INTO character_session_metadata VALUES ('recovery_version','2')")
+                db.execute("INSERT INTO character_session_metadata VALUES ('recovery_version','3')")
                 db.execute("INSERT INTO character_session_metadata VALUES ('projection_migration_pending','1')")
         self._recovery_enabled = True
         return True
@@ -535,6 +545,20 @@ class CharacterAgentSessionStore:
             else:
                 self._connection.execute("INSERT INTO character_session_candidates VALUES (?,?,?,?) ON CONFLICT(actor_id,candidate_id) DO UPDATE SET dedup_key=excluded.dedup_key,payload_json=excluded.payload_json", (actor_id,candidate['candidate_id'],candidate['dedup_key'],self._json(candidate)))
         self._write_runtime_state(actor_id, state)
+        if self._connection is not None:
+            memory_summary.project(self._connection, event)
+
+    def read_memory_summary(self, actor_id: str) -> str:
+        with self._lock:
+            self._check_open()
+            if self._connection is not None:
+                return memory_summary.read(self._connection, actor_id)
+            # 无持久库的测试/兼容模式仍以其既有内存时间线为来源。
+            from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
+            projection = CharacterAgentMemoryStore()
+            for event in self._events_by_actor.get(actor_id, []):
+                projection._ingest_event(event, include_working=False)
+            return memory_summary.bundle_summary(projection.retrieval_record_bundle(actor_id))
 
     @staticmethod
     def _json(value) -> str:

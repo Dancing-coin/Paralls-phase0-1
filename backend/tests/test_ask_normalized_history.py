@@ -60,11 +60,12 @@ def test_legacy_ask_migration_preserves_duplicate_order_and_resolution(tmp_path)
     persistence._connection.execute('UPDATE character_session_ask SET payload_json=?', (json.dumps(original),))
     persistence._connection.execute("UPDATE character_session_metadata SET value='1' WHERE key='recovery_version'")
     persistence._connection.execute('DROP TABLE IF EXISTS character_session_ask_parts')
+    persistence._connection.execute('DROP TABLE character_session_memory_summary')
     persistence._connection.commit()
     trace = store.trace
     persistence.close()
     reopened, restored = open_store(path)
-    assert reopened._connection.execute("SELECT value FROM character_session_metadata WHERE key='recovery_version'").fetchone()[0] == '2'
+    assert reopened._connection.execute("SELECT value FROM character_session_metadata WHERE key='recovery_version'").fetchone()[0] == '3'
     assert restored.entries_for_actor('a')[0].model_dump(mode='json') == original
     assert restored.trace == trace
     reopened.close()
@@ -109,6 +110,7 @@ def test_upgrade_failure_rolls_back_head_parts_and_version(tmp_path, monkeypatch
     persistence._connection.execute('UPDATE character_session_ask SET payload_json=?', (json.dumps(original),))
     persistence._connection.execute("UPDATE character_session_metadata SET value='1' WHERE key='recovery_version'")
     persistence._connection.execute('DROP TABLE character_session_ask_parts')
+    persistence._connection.execute('DROP TABLE character_session_memory_summary')
     persistence._connection.commit()
     persistence.close()
     write = ask_storage.write

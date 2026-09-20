@@ -63,6 +63,7 @@ FOCUSED_TESTS = (
     "test_siming_story_graph_runtime.py", "test_siming_heavenly_runtime_tick.py",
     "test_siming_event_pipeline.py", "test_siming_agent_loop_runtime.py",
     "test_character_agent_cognition_writeback.py", "test_character_debug_memory_reads.py",
+    "test_character_memory_summary.py",
     "test_character_memory_hot_path_costs.py",
     "test_default_scene_pickup_authority.py",
     "test_websocket_test_support.py", "test_character_session_recovery.py", "test_character_session_sqlite.py",
