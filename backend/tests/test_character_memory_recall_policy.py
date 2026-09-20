@@ -7,6 +7,41 @@ from app.character_agent.planning.l3_planner import MissingRequiredMemoryEvidenc
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore
 from app.models.character_agent_runtime import CharacterInterpretation
 import pytest
+from copy import deepcopy
+
+
+@pytest.mark.parametrize("history_size", [128, 1024])
+def test_recall_timestamp_work_is_linear_in_retained_history(history_size, monkeypatch):
+    policy = CharacterMemoryRecallPolicy(pool_limit=2, token_budget=1200)
+    memory = {pool: [
+        {"memory_id": f"{pool}:{index:04d}", "world_ts": index,
+         "producer_ts": index + 10, "summary": "unrelated weather"}
+        for index in range(history_size)
+    ] for pool in ("event_memories", "observation_memories")}
+    for entries in memory.values():
+        entries[0]["summary"] = "sealed letter"
+    original_memory = deepcopy(memory)
+    timestamp_reads = 0
+    original_timestamp = policy._timestamp
+
+    def counted_timestamp(entry):
+        nonlocal timestamp_reads
+        timestamp_reads += 1
+        return original_timestamp(entry)
+
+    monkeypatch.setattr(policy, "_timestamp", counted_timestamp)
+    result = policy.select(memory, context={"attention_targets": ["letter"]})
+
+    # 历史增长只增加线性扫描；不能为每个候选再次扫描整个池。
+    assert timestamp_reads <= 4 * history_size * 2 + 32
+    for pool in memory:
+        assert [entry["memory_id"] for entry in result.memory[pool]] == [
+            f"{pool}:0000", f"{pool}:{history_size - 1:04d}"]
+    assert result.metadata["truncated"] is True
+    assert result.metadata["estimated_tokens"] <= 1200
+    assert memory == original_memory
+    result.memory["event_memories"][0]["summary"] = "changed selected copy"
+    assert memory == original_memory
 
 
 def test_recall_prefers_attention_and_goal_relevance_over_newest_irrelevant_memory() -> None:

@@ -203,6 +203,9 @@ jobs:
           path: ${{ env.HARNESS_CI_EVIDENCE }}/
           include-hidden-files: true
           if-no-files-found: error
+      - name: Summarize structured correctness failures
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/ci_failure_summary.py "$env:HARNESS_CI_EVIDENCE"
       - name: Clean owned correctness evidence after upload
         if: ${{ always() && steps.upload_correctness.outcome == 'success' }}
         run: |
@@ -264,6 +267,9 @@ jobs:
           path: ${{ env.HARNESS_CI_EVIDENCE }}/
           include-hidden-files: true
           if-no-files-found: warn
+      - name: Summarize structured harness failures
+        if: ${{ always() && steps.initialize_evidence.outcome == 'success' }}
+        run: python scripts/verification/ci_failure_summary.py "$env:HARNESS_CI_EVIDENCE"
       - name: Clean owned broad harness evidence after upload
         if: ${{ always() && steps.upload_harness.outcome == 'success' }}
         run: |

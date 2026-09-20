@@ -205,6 +205,90 @@ def _adaptive_input():
     return item
 
 
+@pytest.mark.parametrize("history_size", [1, 256])
+def test_adaptive_memory_pin_size_is_independent_of_history(adaptive_state, monkeypatch, history_size):
+    import json
+    from app.services.siming_continuation import run_siming_provider
+    runtime = adaptive_state.siming_runtime
+    support = runtime.heavenly_support
+    read = support._actor_memory.read
+
+    def with_history(request):
+        result = read(request)
+        if request.actor_id == "char_b":
+            event = result.bundle.event_memories[0]
+            result.bundle.event_memories = [event.model_copy(update={
+                "memory_id": f"history:{index}", "summary": "memory detail " * 100,
+            }) for index in range(history_size)]
+        return result
+
+    monkeypatch.setattr(support._actor_memory, "read", with_history)
+    pending = runtime.prepare_tick(_adaptive_input())
+    frozen = runtime._siming_pending[pending.job.turn_id].pin["heavenly"]["actors"]
+    # pin 只用来核对原完整读集；持久化大小不随记忆正文增长。
+    assert len(json.dumps(frozen)) < 512
+    completion = run_siming_provider(support._llm_provider, pending.job.request_json)
+    assert runtime.commit_provider_result(pending.job, completion).status == "completed"
+
+
+@pytest.mark.parametrize("change", ["event", "observation", "completeness", "reason", "branch", "valid_at"])
+def test_adaptive_memory_pin_rejects_changed_content_even_with_same_vector(adaptive_state, monkeypatch, change):
+    from app.services.siming_continuation import run_siming_provider
+    runtime = adaptive_state.siming_runtime
+    support = runtime.heavenly_support
+    read = support._actor_memory.read
+    changed = False
+
+    def mutable_read(request):
+        result = read(request)
+        if changed and request.actor_id == "char_b":
+            if change == "event":
+                result.bundle.event_memories[0].summary = "corrected memory"
+            elif change == "observation":
+                result.bundle.observation_memories[0].observation_summary = "corrected observation"
+            elif change == "completeness":
+                result.completeness = "memory_surface_incomplete"
+            elif change == "reason":
+                result.reason = "read changed"
+            elif change == "branch":
+                result.story_branch_id = "branch:other"
+            else:
+                result.valid_at += 1
+        return result
+
+    monkeypatch.setattr(support._actor_memory, "read", mutable_read)
+    pending = runtime.prepare_tick(_adaptive_input())
+    completion = run_siming_provider(support._llm_provider, pending.job.request_json)
+    changed = True
+    outcome = runtime.commit_provider_result(pending.job, completion)
+    assert outcome.status == "zero_write" and outcome.reason == "stale_pin"
+
+
+def test_legacy_full_memory_pin_restore_is_stale_after_upgrade(adaptive_state, monkeypatch):
+    from app.models.siming_actor_memory_read import ActorMemoryReadRequest
+    from app.models.siming_heavenly_memory import SimingCompiledContext
+    runtime = adaptive_state.siming_runtime
+    support = runtime.heavenly_support
+    capture = support.capture_prepared_pin
+
+    def legacy_capture(frame):
+        pin = capture(frame)
+        request = SimingCompiledContext.model_validate(frame["context"]).request
+        pin["actors"] = {actor: support._actor_memory.read(ActorMemoryReadRequest(
+            actor_id=actor, story_branch_id=request.scope.story_branch_id, valid_at=request.valid_at,
+        )).model_dump(mode="json") for actor in support.prepared_actor_ids(frame)}
+        return pin
+
+    monkeypatch.setattr(support, "capture_prepared_pin", legacy_capture)
+    pending = runtime.prepare_tick(_adaptive_input())
+    frozen = runtime.export_turn(pending.job.turn_id)
+    runtime.cancel_turn(pending.job.turn_id)
+    monkeypatch.setattr(support, "capture_prepared_pin", capture)
+    restored = runtime.restore_turn(frozen)
+    assert restored.status == "zero_write" and restored.reason == "stale_pin"
+    assert runtime.pending_count == 0
+
+
 def test_adaptive_output_cannot_expand_frozen_actor_or_graph_read_set(adaptive_state):
     from app.services.siming_continuation import run_siming_provider, SimingProviderCompletion
     runtime = adaptive_state.siming_runtime

@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.config import SimingHeavenlyMode
 from app.models.authority_event import AuthorityEvent
-from app.services.siming_continuation import SimingProviderRequest, SimingProviderCompletion, run_siming_provider
+from app.services.siming_continuation import SimingProviderRequest, SimingProviderCompletion, run_siming_provider, digest
 from app.services.siming_llm_provider import SimingLlmProviderTimeout, SimingLlmProviderInvalidOutput
 from app.models.siming_adaptive_bridge import AdaptiveBridgeNodeProposal
 from app.models.siming_event import SimingInput
@@ -1257,9 +1257,10 @@ class SimingHeavenlyRuntimeSupport:
                          "incomplete": semantic.incomplete_reason, "truncated": semantic.truncated},
             "resources": [package.model_dump(mode="json") for _, package in sorted(self._resources._packages.items())],
             "fatigue": list(self._resources._recent_signatures),
-            "actors": {actor: self._actor_memory.read(ActorMemoryReadRequest(
+            # 核对完整读结果的内容摘要，避免每次入站转移重复持久化全部角色记忆。
+            "actors": {actor: digest(self._actor_memory.read(ActorMemoryReadRequest(
                 actor_id=actor, story_branch_id=request.scope.story_branch_id, valid_at=request.valid_at,
-            )).model_dump(mode="json") for actor in self.prepared_actor_ids(frame)},
+            )).model_dump(mode="json")) for actor in self.prepared_actor_ids(frame)},
             "mode": self.mode,
             "staging": [entry.model_dump(mode="json") for entry in self._memory.list_domain(
                 request.scope, "intervention_outcome", valid_at=request.valid_at)

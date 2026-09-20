@@ -105,10 +105,11 @@ class CharacterMemoryRecallPolicy:
         selected_by_pool: dict[str, list[dict[str, object]]] = {}
         missing_required_refs: list[str] = []
         for pool in _POOL_NAMES:
+            max_timestamp = self._max_timestamp(normalized[pool])
             ranked = sorted(
                 (
                     (
-                        self._score(entry, terms=terms, max_timestamp=self._max_timestamp(normalized[pool]))
+                        self._score(entry, terms=terms, max_timestamp=max_timestamp)
                         + (2.0 if (pool, self._memory_id(entry)) in required else 0.0),
                         self._timestamp(entry),
                         str(entry.get("memory_id", "") or entry.get("event_id", "") or ""),
