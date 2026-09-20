@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import subprocess
 import time
 
 from common import (artifact_path, evidence_revision, repo_root, resolve_python_exe,
@@ -34,6 +35,16 @@ def _profile_command(profile: str, project_root: Path, python_exe: str,
 
 def _profiles_for_selection(selection: str, registry) -> list[str]:
     return select_profiles(registry, profile=selection)
+
+
+def _source_dirty_paths(project_root: Path) -> list[str]:
+    """列出相对 HEAD 的当前脏路径供定位；不是 dirty 起点的逐文件运行差异。"""
+    paths = set()
+    for arguments in (['diff', '--name-only', '-z', 'HEAD', '--'],
+                      ['ls-files', '--others', '--exclude-standard', '-z']):
+        output = subprocess.check_output(['git', *arguments], cwd=project_root, stderr=subprocess.DEVNULL)
+        paths.update(path for path in output.decode('utf-8', errors='replace').split('\0') if path)
+    return sorted(paths)
 
 
 def _write_harness_report(project_root: Path, profiles: list[dict[str, object]], *,
@@ -135,6 +146,10 @@ def _execute_profile(project_root, run, profile, config, python_exe, godot_exe, 
                 if evidence_revision(project_root) != revision:
                     failure = "evidence"
                     result["message"] = "Source inputs changed during verification"
+                    try:
+                        result["source_dirty_paths"] = _source_dirty_paths(project_root)
+                    except (OSError, subprocess.CalledProcessError):
+                        result["source_change_diagnostic_error"] = "git_paths_unavailable"
                 result["failure_kind"] = failure
                 result["status"] = "failed" if failure else "passed"
                 if failure and not result["exit_code"]:

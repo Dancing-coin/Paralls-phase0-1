@@ -6,6 +6,8 @@
 
 `deeba751` 的两档真实模型 short 通过并完成导出复验。新 CI 暴露封存版本身份错误，本地实际 wheel 构建证实 `backend/build/` 未被忽略、使 Harness 报告带 dirty 后缀；现仅忽略该生成目录，保留真实源码变更拒绝，428项工具测试通过。其远端效果待新CI核实。此前276窗无超限的长测已主动停止并正常回收，不计为正式长测通过，也不把旧short套用到新提交。
 
+`4224a961` 的本地 change-lifecycle、完整 correctness 和两档 short 已通过并复验；远端已越过 change-lifecycle，但首次 Godot profile 因源码身份变化失败。静态发现四个新 GDScript 缺失 UID，已补齐并增加冷检出检查及失败路径诊断；仍需新 CI 确认，不把元数据补齐写成 Godot 运行通过。该旧版本长测未启动；后续正式证据须使用新冻结版本。
+
 ## 2026-09-20 持续 Goal 执行
 
 用户已要求持续执行到完成，当前 Goal 为 active；实施补充见[最终执行计划](../superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)。在 `c23d879e` 基础上执行激活证据分离；下文旧的“等待答复”属于历史记录，已由本轮继续执行指令解除。

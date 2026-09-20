@@ -117,10 +117,11 @@ def test_explicit_process_retry_uses_a_fresh_attempt(tmp_path, monkeypatch):
 
 
 def test_source_change_invalidates_success(tmp_path, monkeypatch):
-    project = fixture_project(tmp_path, "from pathlib import Path\nPath('scripts/probe.py').write_text('print(2)')", result=False)
+    project = fixture_project(tmp_path, "from pathlib import Path\nPath('scripts/probe.py').write_text('print(2)')\nPath('scripts/generated.gd.uid').write_text('uid://b123')", result=False)
     assert invoke(monkeypatch, project, tmp_path / 'export') != 0
     report = json.loads((tmp_path / 'export/harness-run-report.json').read_text())
     assert report['profiles'][0]['failure_kind'] == 'evidence'
+    assert report['profiles'][0]['source_dirty_paths'] == ['scripts/generated.gd.uid', 'scripts/probe.py']
 
 
 def test_assertion_failure_with_retry_exit_code_is_not_retried(tmp_path, monkeypatch):

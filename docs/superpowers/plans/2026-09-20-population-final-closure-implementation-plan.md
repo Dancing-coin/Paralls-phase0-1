@@ -83,4 +83,11 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 
 - 正确性门禁自身串行执行四个producer和一组focused测试，每步原预算1200秒；原外层profile默认900秒会在合法子步骤结束前杀进程。已复现`900 < 5×1200+60`的预算冲突，外层独立配置6100秒，仍受CI job105分钟限制；不调整1×/10×性能、ready或任何业务验收阈值。新增预算层级回归，真实远端CI结果仍须重新核实。
 
+### 冷检出脚本 UID 与 CI 变更定位
+
+- `4224a961` 本地 change-lifecycle、完整 correctness、两档真实模型 short 均通过，导出复验及作用域清理通过。远端 CI 已越过 change-lifecycle，`all` 在首次运行 Godot 的 character-agent-execution 报源码身份变化；这不等于运行时 consumer 失败，也不能声称完整 CI 通过。
+- 静态核对发现 PopulationPresentationAdapter、PopulationPresenter、PopulationProbe、CharacterMotorCoordinatesProbe 缺少四个 `.gd.uid`。按 Godot ResourceUID 编码补齐未使用的稳定 ID，原有资源仍按路径引用。新增冷检出回归要求已跟踪 GDScript/shader 同时跟踪 UID；不忽略 UID、不放松源码身份检查、不改导入提前退出 P2。
+- Harness 身份失败报告增加相对 HEAD 的当前脏 Git 路径列表（用于定位，不冒充 dirty 起点的逐文件运行差异），CI 只公开有限路径，不复制文件内容或请求。原失败退出码不变。RED 为3 failed／426 passed，分别命中 UID 缺项、报告未含路径、摘要未含路径；修复后完整工具429 passed（55.34秒），作用域清理通过；新 CI 仍须验证。UID 导入效果仍标 Godot 未验证。
+- 旧版本 short 完成后在下一阶段入口停止，未启动长测，避免明知需修复仍采集数小时旧源码证据。新提交冻结后从同版门禁重新采集，不重贴旧证据身份。
+
 检查非激活 Owner 历史增长、重复回执晚于其他写入时的截面、未提交结果、损坏/截断事件和持久库重开；不得以局部digest冒充full_replay。审查指标是否实际观察缓存及所有复验入口是否拒绝缺字段；不修改Godot导入、耐久性、事务与权限契约。

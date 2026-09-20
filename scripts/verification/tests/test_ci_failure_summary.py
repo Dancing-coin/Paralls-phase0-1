@@ -32,6 +32,7 @@ def test_summary_includes_actual_harness_rule_failure_and_cleanup_failure(tmp_pa
     (tmp_path / "profile-result.json").write_text(json.dumps({
         "profile": "sample", "status": "failed", "failure_kind": "evidence",
         "message": "Source inputs changed during verification",
+        "source_dirty_paths": ["scripts/probe.gd.uid"],
         "failed_checks": [{"id": "source", "status": "missing", "notes": "private note"}],
     }), encoding="utf-8")
     (tmp_path / "harness-run-report.json").write_text(json.dumps({
@@ -44,6 +45,7 @@ def test_summary_includes_actual_harness_rule_failure_and_cleanup_failure(tmp_pa
     }), encoding="utf-8")
     rows = {row["file"]: row for row in failure_summary(tmp_path)}
     assert rows["profile-result.json"]["message"] == "Source inputs changed during verification"
+    assert rows["profile-result.json"]["source_dirty_paths"] == ["scripts/probe.gd.uid"]
     assert rows["profile-result.json"]["failed_checks"] == [{"id": "source", "status": "missing"}]
     assert rows["harness-run-report.json"]["cleanup_status"] == "failed"
     assert rows["harness-run-report.json"]["cleanup_errors"] == ["details_omitted"]

@@ -30,11 +30,12 @@ def _fields(item: dict) -> dict:
             result[key] = (_diagnostic_text(value) if key in {"error", "message"} else value[:512]) if isinstance(value, str) else value
         else:
             result["diagnostic_error"] = "report_invalid_shape"
-    for key in ("errors", "cleanup_errors"):
+    for key in ("errors", "cleanup_errors", "source_dirty_paths"):
         if key in item:
             values = item[key]
             if isinstance(values, list) and all(isinstance(value, str) for value in values):
-                result[key] = [_diagnostic_text(value) for value in values[:20]]
+                result[key] = [value[:512] if key == 'source_dirty_paths' else _diagnostic_text(value)
+                               for value in values[:20]]
             else:
                 result["diagnostic_error"] = "report_invalid_shape"
     if item.get("failed_checks"):
