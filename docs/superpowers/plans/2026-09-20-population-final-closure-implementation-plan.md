@@ -74,6 +74,13 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - 最终回归：完整backend首次6941 passed／2 failed／2 skipped，两项失败均为执行期间追加CI诊断文件导致的源码身份变化；停止修改后原两项补验2 passed（23.76秒），不能把首次命令记为退出0。工具427 passed，独立审查无未解决项，三个测试作用域均清理通过。证据分别在仓库外pop-cognition-frame-full、pop-cognition-frame-identity-recheck、pop-cognition-frame-tools；后续正式correctness仍须按新冻结提交完整采集。
 - 额外诊断：失败混合存档约205,030条普通gameplay outbox待派发；原启动同步drain约8分钟。该混合积压恢复开销尚未解决，应继续验证；不能用无此积压的cadence冷恢复结果掩盖，也不在本轮正文去重修复中暗改派发语义。
 
+### CI 非 editable 构建产物与源码身份
+
+- `deeba751` 新 CI annotation 首次提供具体失败：change-lifecycle 子进程退出0，封存器报 `harness_archive_coverage_or_result_invalid`。本地用原 backend pyproject 在最小 Git 仓库实际构建，退出0后产生未忽略的 `backend/build/lib/app/__init__.py`，Harness 身份从 HEAD 变成 HEAD+dirty；封存器要求原报告revision与HEAD一致，因此这类构建产物会误伤验收。该复现证明本地同类路径，远端修复效果仍必须以新CI为准。
+- 仅在 `.gitignore` 增加 `/backend/build/`，不放宽源码摘要、HEAD或脏源校验。回归先证实旧规则会标dirty，再确认构建复制不改变提交身份、真实 `backend/app` 修改仍标dirty。工具套件428项通过；混合选择工具测试时包装器遗留HARNESS环境造成的两项失败已通过工具完整套件重验，不修改测试的顶层作用域契约。
+- 为避免已知CI缺陷版本消耗整轮数小时，`deeba751` soak在276个measurement窗口后主动停止：最大lag约0.406、backlog始终0，仅为不完整诊断；该轮拥有进程和临时根7bd0d49b2c3f42bca771ee85fd1c9c6a正常回收。两档short原始通过保留，但不重贴新SHA。
+- 最小构建诊断临时Git只读object导致自动清理失败；随后对本轮根9ade0810227245828e9a056f6b927094的递归清理被自动审批以blocked by policy拒绝，未绕过，保留目录并列入未清理清单。诊断证据位于仓库外pop-ci-build-identity-diagnostic。
+
 - 正确性门禁自身串行执行四个producer和一组focused测试，每步原预算1200秒；原外层profile默认900秒会在合法子步骤结束前杀进程。已复现`900 < 5×1200+60`的预算冲突，外层独立配置6100秒，仍受CI job105分钟限制；不调整1×/10×性能、ready或任何业务验收阈值。新增预算层级回归，真实远端CI结果仍须重新核实。
 
 检查非激活 Owner 历史增长、重复回执晚于其他写入时的截面、未提交结果、损坏/截断事件和持久库重开；不得以局部digest冒充full_replay。审查指标是否实际观察缓存及所有复验入口是否拒绝缺字段；不修改Godot导入、耐久性、事务与权限契约。

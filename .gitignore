@@ -21,6 +21,7 @@ __pycache__/
 .pytest_cache/
 .tmp-pytest-*/
 *.egg-info/
+/backend/build/
 .idea
 .env
 .env.vla
