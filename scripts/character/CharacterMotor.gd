@@ -41,13 +41,16 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 	if not body.is_on_floor(): body.velocity.y -= _get_body_float(body, "fall_gravity", 9.8) * delta
 	elif body.velocity.y < 0.0: body.velocity.y = 0.0
 	body.move_and_slide()
+	# 表现状态使用碰撞后的平面速度，按当前角色朝向投影回本地轴。
+	var actual_planar := Vector3(body.velocity.x, 0.0, body.velocity.z)
+	var move_local_actual := Vector2(actual_planar.dot(body.global_basis.x.normalized()), actual_planar.dot(-body.global_basis.z.normalized()))
 	body_revision += 1
 	command["body_revision"] = body_revision
 	var collision_normals: Array[Vector3] = []
 	for collision_index in body.get_slide_collision_count():
 		collision_normals.append(body.get_slide_collision(collision_index).get_normal())
 	var support_required: bool = not command.get("support_requirements", []).is_empty()
-	return CharacterActorSchemaRef.normalize_motion_state({"position": body.global_position, "velocity_world": body.velocity, "facing_yaw": body.rotation.y, "move_local_actual": Vector2(desired.x, desired.z), "gait_actual": "run" if desired.length() > _get_body_float(body, "walk_speed", 4.0) else "walk", "grounded": body.is_on_floor(), "support_ref": "floor" if body.is_on_floor() else "", "support_loss": support_required and not body.is_on_floor(), "collision_count": body.get_slide_collision_count(), "collision_normals": collision_normals, "body_revision": body_revision, "physics_tick": last_physics_tick, "physics_command": command})
+	return CharacterActorSchemaRef.normalize_motion_state({"position": body.global_position, "velocity_world": body.velocity, "facing_yaw": body.rotation.y, "move_local_actual": move_local_actual, "gait_actual": "run" if desired.length() > _get_body_float(body, "walk_speed", 4.0) else "walk", "grounded": body.is_on_floor(), "support_ref": "floor" if body.is_on_floor() else "", "support_loss": support_required and not body.is_on_floor(), "collision_count": body.get_slide_collision_count(), "collision_normals": collision_normals, "body_revision": body_revision, "physics_tick": last_physics_tick, "physics_command": command})
 
 func _get_body_float(body: CharacterBody3D, property_name: String, fallback: float) -> float:
 	if body and body.has_method("get_numeric_setting"): return float(body.get_numeric_setting(StringName(property_name), fallback))

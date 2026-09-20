@@ -368,13 +368,14 @@ def test_pending_and_receipt_bounds_and_same_room_sync_busy():
     assert len(runtime._siming_receipts) == 32 and runtime.pending_count == 0
 
 
-def test_adaptive_error_preserves_category_and_next_candidate_receipt(adaptive_state):
+@pytest.mark.parametrize('error_name', ['SimingLlmProviderTimeout', 'SimingLlmProviderInvalidOutput', 'SimingLlmProviderError'])
+def test_adaptive_error_completes_no_action_without_legacy_fallback(adaptive_state, error_name):
     from app.services.siming_continuation import run_siming_provider
-    from app.services.siming_llm_provider import SimingLlmProviderTimeout
+    from app.services import siming_llm_provider
     runtime = adaptive_state.siming_runtime
     class TimeoutProvider:
         def generate_adaptive_bridge_proposals(self, **kwargs):
-            raise SimingLlmProviderTimeout("unavailable")
+            raise getattr(siming_llm_provider, error_name)("unavailable")
     runtime.heavenly_support._llm_provider = TimeoutProvider()
     item = _adaptive_input()
     item.input_type = "visual_fact_event"
@@ -382,15 +383,45 @@ def test_adaptive_error_preserves_category_and_next_candidate_receipt(adaptive_s
     item.source_event.payload.update(fact_type="light_level_drop", established_fact_id=item.source_event.event_id)
     pending = runtime.prepare_tick(item)
     completion = run_siming_provider(runtime.heavenly_support._llm_provider, pending.job.request_json)
+    accepted = runtime.validate_completion(pending.job, completion)
+    plan = runtime.plan_accepted(runtime.export_turn(pending.job.turn_id), accepted.completion)
+    reason = f'llm_unavailable:{error_name}'
+    assert plan.after.stage == 'completed'
+    assert plan.effects.state_tree is None and plan.effects.narrative_state is None
+    assert plan.after.result.outputs[-1].output_type == 'no_action'
+    assert plan.after.result.outputs[-1].payload['reason'] == reason
+    assert not any(output.output_type in {'dispatch_intent', 'staging_request'} for output in plan.after.result.outputs)
+    assert plan.after.result.audit_records[-1].reason == reason
     next_stage = runtime.commit_provider_result(pending.job, completion)
-    assert next_stage.status == "pending" and next_stage.job.stage == "candidate"
-    frame = runtime._siming_pending[next_stage.job.turn_id]
-    assert frame.prepared["degraded_reason"] == "llm_unavailable:SimingLlmProviderTimeout"
+    assert next_stage.status == 'completed' and next_stage.job is None
+    assert next_stage.result == plan.after.result
     replay = runtime.commit_provider_result(pending.job, completion)
-    assert replay.replayed and replay.job == next_stage.job
-    assert runtime._narrative_core._revision_by_room == {"room:throne": 1}
-    done = runtime.commit_provider_result(next_stage.job, run_siming_provider(runtime._llm_provider, next_stage.job.request_json))
-    assert done.status == "completed"
+    assert replay.replayed and replay.result == next_stage.result
+    assert runtime._narrative_core._revision_by_room == {}
+    assert runtime.pending_count == 0
+
+
+@pytest.mark.parametrize('mode,owned', [('active', True), ('shadow', True), ('off', True), ('active', False)])
+@pytest.mark.parametrize('synchronous', [False, True])
+def test_graph_failure_only_stops_active_owned_family(adaptive_state, monkeypatch, mode, owned, synchronous):
+    runtime = adaptive_state.siming_runtime
+    runtime.heavenly_support.mode = mode
+    def unavailable(*args, **kwargs):
+        raise RuntimeError('graph unavailable')
+    monkeypatch.setattr(runtime.heavenly_support._compiler, 'compile', unavailable)
+    item = _adaptive_input() if owned else SimingInput(input_type='visual_fact_event', source_event=make_visual_fact_event())
+    if synchronous:
+        result = runtime.tick([item])
+    else:
+        plan = runtime.plan_initial(item)
+        result = plan.after.result
+        assert (plan.effects.state_tree is None) == (mode == 'active' and owned)
+    degraded = [output for output in result.outputs if output.payload.get('reason') == 'graph_degraded:RuntimeError']
+    assert bool(degraded) == (mode == 'active' and owned)
+    if mode == 'active' and owned:
+        assert result.outputs[-1].output_type == 'no_action'
+        assert not any(output.output_type in {'dispatch_intent', 'staging_request'} for output in result.outputs)
+        assert runtime._narrative_core._revision_by_room == {}
 
 
 def test_population_no_model_path_progresses_when_four_decisions_pending():

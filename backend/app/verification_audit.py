@@ -102,6 +102,22 @@ def _has_positive_locomotion_alignment(log: str) -> bool:
     return False
 
 
+def _has_measured_npc_patrol(log: str) -> bool:
+    actors = set()
+    for line in log.splitlines():
+        if "npc_patrol_probe:" not in line:
+            continue
+        fields = dict(re.findall(r"\b(actor|distance|target_alignment)=([^\s]+)", line.split("npc_patrol_probe:", 1)[1]))
+        try:
+            distance = float(fields.get("distance", "nan"))
+            alignment = float(fields.get("target_alignment", "nan"))
+        except ValueError:
+            continue
+        if 0.01 < distance < float("inf") and 0.5 < alignment <= 1.0:
+            actors.add(fields.get("actor"))
+    return {"char_a", "char_b"}.issubset(actors)
+
+
 def _phase1_probe_summary(log: str, mode: str) -> dict[str, object]:
     pattern = re.compile(rf"phase1_slice_runtime_probe:{re.escape(mode)}:(?P<body>.+)")
     match = pattern.search(log)
@@ -384,7 +400,7 @@ def evaluate_phase0_audit(
     )
 
     patrol_root_motion_runtime_ok = "patrol_root_motion_step:char_a" in main_log or "patrol_root_motion_step:char_b" in main_log
-    patrol_motor_runtime_ok = "patrol_motion_step:char_a" in main_log or "patrol_motion_step:char_b" in main_log
+    patrol_motor_runtime_ok = _has_measured_npc_patrol(main_log)
     patrol_root_motion_code_ok = "patrol_root_motion_step" in character_replica_source and "_consume_role_root_motion_world_delta" in character_replica_source
     patrol_motor_code_ok = "patrol_motion_step" in character_replica_source and "apply_physics_command" in character_replica_source and "move_and_slide" in character_motor_source
     patrol_root_motion_status = "proved" if (patrol_root_motion_runtime_ok and patrol_root_motion_code_ok) or (patrol_motor_runtime_ok and patrol_motor_code_ok) else ("weak" if patrol_root_motion_code_ok or patrol_motor_code_ok else "missing")
@@ -396,7 +412,7 @@ def evaluate_phase0_audit(
             "npc_root_motion_patrol",
             "CharacterA/B patrol stays controller-authoritative through the Motor-owned movement path",
             patrol_root_motion_status,
-            ["patrol_root_motion_step"] if patrol_root_motion_runtime_ok else (["patrol_motion_step"] if patrol_motor_runtime_ok else []),
+            ["patrol_root_motion_step"] if patrol_root_motion_runtime_ok else (["npc_patrol_probe:char_a/char_b distance target_alignment"] if patrol_motor_runtime_ok else []),
             patrol_root_motion_notes,
         )
     )

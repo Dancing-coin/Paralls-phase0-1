@@ -142,16 +142,22 @@ def test_phase0_autotest_submits_dialogue_to_its_explicit_actor_and_waits_for_sc
 def test_phase0_npc_patrol_probe_assigns_a_nonzero_patrol_segment() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     probe_section = source.split("func _run_npc_patrol_root_motion_probe() -> void:", 1)[1].split(
-        "func _on_npc_patrol_probe_debug_event", 1
+        "func _probe_gait_segment", 1
     )[0]
 
     assert 'var patrol_segment: Array[Vector3] = [Vector3.ZERO, Vector3(0.0, 0.0, -1.2)]' in probe_section
     assert 'actor.set("patrol_points", patrol_segment)' in probe_section
     assert 'actor.set("patrol_index", 1)' in probe_section
     assert 'actor.set("patrol_enabled", true)' in probe_section
-    assert '"npc_patrol_probe:actor=%s distance=%.3f velocity=%.3f points=%d index=%d hold=%.3f mode=%s"' in probe_section
-    assert "actor.global_position.distance_to(start_position)" in probe_section
-    assert "actor.get(\"current_velocity\")" in probe_section
+    assert '"npc_patrol_probe:actor=%s distance=%s target_alignment=%s"' in probe_section
+    assert 'displacement.y = 0.0' in probe_section
+    assert 'displacement.normalized().dot(target_direction)' in probe_section
+    assert 'await get_tree().physics_frame' in probe_section
+    assert 'var distance_text := "%.3f" % distance' in probe_section
+    assert 'var alignment_text := "%.3f" % alignment' in probe_section
+    assert 'distance_text.to_float() > 0.01 and alignment_text.to_float() > 0.5' in probe_section
+    assert 'npc_patrol_root_motion_seen' not in source
+    assert 'debug_event_logged.connect' not in probe_section
 
 
 def test_main_demo_transport_drain_waits_for_exact_ack_then_quiet_window() -> None:

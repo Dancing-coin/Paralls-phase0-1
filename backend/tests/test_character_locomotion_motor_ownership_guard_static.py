@@ -56,3 +56,20 @@ def test_phase0_fallback_locomotion_uses_the_motor_and_reports_real_directional_
     assert "forward_alignment=" in controller_source
     assert "patrol_motion_step" in replica_source
     assert '[node name="CharacterReplica" type="CharacterBody3D"]' in validation_scene
+
+
+def test_motor_reports_collision_resolved_velocity_in_local_axes() -> None:
+    source = (ROOT / 'scripts/character/CharacterMotor.gd').read_text(encoding='utf-8')
+    after_slide = source.split('body.move_and_slide()', 1)[1]
+    assert 'Vector2(desired.x, desired.z)' not in after_slide
+    assert 'Vector3(body.velocity.x, 0.0, body.velocity.z)' in after_slide
+    assert 'actual_planar.dot(body.global_basis.x.normalized())' in after_slide
+    assert 'actual_planar.dot(-body.global_basis.z.normalized())' in after_slide
+
+
+def test_npc_lease_uses_world_axes_while_proposal_keeps_local_intent() -> None:
+    source = (ROOT / 'scripts/character/CharacterReplica.gd').read_text(encoding='utf-8')
+    movement = source.split('func _update_movement(', 1)[1].split('func run_speed_for_actor', 1)[0]
+    assert '"move_local": normalized_move' in movement
+    assert '\n\t\tnormalized_move,' not in movement.split('var lease :=', 1)[1]
+    assert 'Vector2(move_direction.x, move_direction.z).normalized()' in movement

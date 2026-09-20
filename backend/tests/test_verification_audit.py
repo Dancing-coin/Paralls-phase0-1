@@ -1,5 +1,6 @@
 from pathlib import Path
 import sys
+import pytest
 
 from app.verification_audit import evaluate_phase0_audit, evaluate_phase1_slice_audit
 
@@ -754,6 +755,8 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
         main_log="""
         [LocalPresentationBus] locomotion_probe:gait=walk distance=0.360 dx=0.000 dz=-0.360 forward_alignment=1.000
         [LocalPresentationBus] patrol_motion_step:char_a
+        [LocalPresentationBus] npc_patrol_probe:actor=char_a distance=0.100 target_alignment=1.000
+        [LocalPresentationBus] npc_patrol_probe:actor=char_b distance=0.100 target_alignment=1.000
         """,
         focus_log="",
         main_screenshot_exists=True,
@@ -771,6 +774,27 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
     assert results["player_root_motion_chain"]["status"] == "proved"
     assert results["npc_root_motion_patrol"]["status"] == "proved"
     assert results["forward_direction_probe"]["status"] == "proved"
+
+
+@pytest.mark.parametrize('measurements,proved', [
+    ('', False),
+    ('actor=char_a distance=0.000 target_alignment=1.000\nactor=char_b distance=0.100 target_alignment=1.000', False),
+    ('actor=char_a distance=0.100 target_alignment=-1.000\nactor=char_b distance=0.100 target_alignment=1.000', False),
+    ('actor=char_a distance=0.100 target_alignment=0.000\nactor=char_b distance=0.100 target_alignment=1.000', False),
+    ('actor=char_a distance=0.100 target_alignment=1.000', False),
+    ('actor=char_b distance=0.100 target_alignment=1.000', False),
+    ('actor=char_a distance=0.100\nactor=char_b target_alignment=1.000', False),
+    ('actor=char_a distance=nan target_alignment=1.000\nactor=char_b distance=0.100 target_alignment=1.000', False),
+    ('actor=char_a distance=0.100 target_alignment=1.000\nactor=char_b distance=0.100 target_alignment=1.000', True),
+])
+def test_motor_patrol_requires_both_actors_measured_toward_target(measurements, proved):
+    log = 'patrol_motion_step:char_a\npatrol_motion_step:char_b\n'
+    log += '\n'.join('npc_patrol_probe:' + line for line in measurements.splitlines())
+    report = evaluate_phase0_audit(pytest_passed=True, scene_load_ok=True,
+        main_log=log, focus_log='', main_screenshot_exists=False, focus_screenshot_exists=False,
+        interaction_source='', esm_service_source='', voice_controller_source='', player_bridge_source='',
+        character_replica_source='patrol_motion_step apply_physics_command', character_motor_source='move_and_slide')
+    assert (_index_by_id(report['results'])['npc_root_motion_patrol']['status'] == 'proved') == proved
 
 
 def test_phase1_slice_audit_requires_emitter_and_authority_lane_evidence() -> None:

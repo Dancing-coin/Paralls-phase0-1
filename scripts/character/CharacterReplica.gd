@@ -867,7 +867,7 @@ func _update_movement(delta: float) -> void:
 		StringName("lease:%s" % actor_id),
 		0,
 		_physics_tick + 1,
-		normalized_move,
+		Vector2(move_direction.x, move_direction.z).normalized(),
 		_pending_facing_yaw,
 	)
 	var leases: Array[Dictionary] = []
@@ -880,11 +880,14 @@ func _update_movement(delta: float) -> void:
 	if _pending_root_delta.length() > 0.0001:
 		frame["admitted"].append(root_entry)
 	var command := MotionContributionComposerRef.compose(frame, {"actor_ref": actor_id, "speed": speed, "facing_yaw": _pending_facing_yaw}, delta)
+	var previous_position := global_position
 	var result: Dictionary = character_motor.apply_physics_command(self, command, delta) if character_motor != null and character_motor.has_method("apply_physics_command") else {}
 	current_velocity = result.get("velocity_world", Vector3.ZERO)
 	last_root_motion_world_delta = command.get("root_delta", Vector3.ZERO)
 	_pending_root_delta = Vector3.ZERO
-	if driver_mode != DriverMode.PLAYER and move_direction.length() > 0.001 and current_velocity.length() > 0.001:
+	var planar_step := global_position - previous_position
+	planar_step.y = 0.0
+	if driver_mode != DriverMode.PLAYER and planar_step.length() > 0.0001 and planar_step.dot(move_direction) > 0.0:
 		_log_root_motion_step("patrol_motion_step", false)
 	_update_player_shell_locomotion()
 

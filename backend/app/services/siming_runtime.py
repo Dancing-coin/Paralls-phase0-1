@@ -336,7 +336,9 @@ class SimingRuntime:
         event, result, observed = frame.siming_input.source_event, frame.result, frame.observed
         prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
         frame.stage = "completed"
-        if frame.synchronous and prepared is not None and prepared.degraded_reason:
+        if (prepared is not None and prepared.mode == "active"
+                and prepared.event_family in SimingHeavenlyRuntimeSupport.GRAPH_OWNED_EVENT_FAMILIES
+                and prepared.degraded_reason):
             reason = prepared.degraded_reason
             result.outputs.append(self._no_action(event, reason=reason))
             result.audit_records.append(

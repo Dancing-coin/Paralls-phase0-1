@@ -4,6 +4,8 @@
 
 ## 2026-09-19 后端续作边界
 
+2026-09-20 合并 main 后的四项审查修复及外机接续步骤见[main 审查修复交接](2026-09-20-main-review-fixes.md)。Godot 导入提前退出暂不处理；四项修复不构成六项总闭环或 Godot 运行通过。
+
 2026-09-20 外机返回的all证据已核对，版本与本地不同；InteractionSession的共享存档/重复session复现与最小修复、外机重跑步骤见[外机all续作交接](2026-09-20-external-all-evidence-follow-up.md)。外机Siming通过不能代替人口表现或六项同版本总验收，修复后的Godot仍未验证。
 
 - CI 已修复重复 job key、清理后上传旧路径和嵌套子任务覆盖报告。四个证据任务使用本次 job 的 `RUNNER_TEMP` 独立目录；只有对应 artifact 上传成功才清理该目录，上传失败保留原包。广泛验收包装器只接受新导出的 schema 2 报告与各次真实 attempt，旧 `runs/<id>` 归档不能替代。采集必须显式传入仓库外、尚不存在的 `--output`，拒绝时不先创建目录。

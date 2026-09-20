@@ -102,7 +102,6 @@ var autotest_run_started := false
 var autotest_shutdown_in_progress := false
 var scene_load_probe_only := false
 var perception_debug_enabled := false
-var npc_patrol_root_motion_seen: Dictionary = {}
 var _perception_sampler = ACTOR_PERCEPTION_SAMPLER.new()
 var _perception_target_resolver = ACTOR_PERCEPTION_TARGET_RESOLVER.new()
 
@@ -640,14 +639,9 @@ func _run_locomotion_probe() -> void:
 
 func _run_npc_patrol_root_motion_probe() -> void:
 	_bus_log("phase0_autotest_stage:npc_patrol_probe_begin")
-	npc_patrol_root_motion_seen.clear()
-	var bus := _get_bus()
-	var debug_callable := Callable(self, "_on_npc_patrol_probe_debug_event")
-	var connected_debug_signal := false
-	if bus != null and bus.has_signal("debug_event_logged") and not bus.debug_event_logged.is_connected(debug_callable):
-		bus.debug_event_logged.connect(debug_callable)
-		connected_debug_signal = true
 	var patrol_start_positions: Dictionary = {}
+	var patrol_target_directions: Dictionary = {}
+	var measured_actors: Dictionary = {}
 	var patrol_segment: Array[Vector3] = [Vector3.ZERO, Vector3(0.0, 0.0, -1.2)]
 	for actor in [character_a, character_b]:
 		if actor == null:
@@ -660,27 +654,40 @@ func _run_npc_patrol_root_motion_probe() -> void:
 		if actor.has_method("_set_role_asset_motion_profile"):
 			actor.call("_set_role_asset_motion_profile", "walk", "walk")
 		actor.set("patrol_enabled", true)
-		patrol_start_positions[str(actor.get("actor_id"))] = actor.global_position
+		var actor_id := str(actor.get("actor_id"))
+		patrol_start_positions[actor_id] = actor.global_position
+		var target_direction: Vector3 = actor.get("home_position") + patrol_segment[1] - actor.global_position
+		target_direction.y = 0.0
+		patrol_target_directions[actor_id] = target_direction.normalized()
 	var deadline: int = Time.get_ticks_msec() + 2500
-	while Time.get_ticks_msec() < deadline and npc_patrol_root_motion_seen.size() < 2:
-		await get_tree().process_frame
+	while measured_actors.size() < 2:
+		await get_tree().physics_frame
+		var timed_out := Time.get_ticks_msec() >= deadline
+		for actor in [character_a, character_b]:
+			if actor == null:
+				continue
+			var actor_id := str(actor.get("actor_id"))
+			if measured_actors.has(actor_id):
+				continue
+			var start_position: Vector3 = patrol_start_positions[actor_id]
+			var target_direction: Vector3 = patrol_target_directions[actor_id]
+			var displacement: Vector3 = actor.global_position - start_position
+			displacement.y = 0.0
+			var distance := displacement.length()
+			var alignment := displacement.normalized().dot(target_direction) if distance > 0.001 else -1.0
+			# 按导出的精度判断，避免停止采样后日志舍入到验收阈值。
+			var distance_text := "%.3f" % distance
+			var alignment_text := "%.3f" % alignment
+			if (distance_text.to_float() > 0.01 and alignment_text.to_float() > 0.5) or timed_out:
+				_bus_log("npc_patrol_probe:actor=%s distance=%s target_alignment=%s" % [actor_id, distance_text, alignment_text])
+				measured_actors[actor_id] = true
+				actor.set("patrol_enabled", false)
+		if timed_out:
+			break
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
-		var actor_id := str(actor.get("actor_id"))
-		var start_position: Vector3 = patrol_start_positions.get(actor_id, actor.global_position)
-		var patrol_velocity: Vector3 = actor.get("current_velocity")
-		var patrol_points: Array = actor.get("patrol_points")
-		_bus_log("npc_patrol_probe:actor=%s distance=%.3f velocity=%.3f points=%d index=%d hold=%.3f mode=%s" % [actor_id, actor.global_position.distance_to(start_position), patrol_velocity.length(), patrol_points.size(), int(actor.get("patrol_index")), float(actor.get("hold_timer")), str(actor.get("driver_mode"))])
 		actor.set("patrol_enabled", false)
-	if connected_debug_signal:
-		bus.debug_event_logged.disconnect(debug_callable)
-
-func _on_npc_patrol_probe_debug_event(message: String) -> void:
-	if message == "patrol_motion_step:char_a":
-		npc_patrol_root_motion_seen["char_a"] = true
-	elif message == "patrol_motion_step:char_b":
-		npc_patrol_root_motion_seen["char_b"] = true
 
 func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: bool, duration: float) -> void:
 	if player_input_bridge.has_method("set_crouch_enabled"):
