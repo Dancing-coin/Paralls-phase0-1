@@ -35,6 +35,13 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - 整理同版外机命令及 evidence.json；population Godot、InteractionSession runtime JSON、mainline/all、Archive Door批准绑定、VLA真实凭据缺项分别列出。Godot导入提前退出按用户决定暂缓。
 - 运行六项聚合器，只接受原始证据复验。更新主计划/交接文档为真实结果和精确阻塞。只有所有必要门禁通过才将 Goal 标为 complete；外部阻塞不能伪造闭环。
 
+## 正式短验收暴露的 L3 提示词缺陷
+
+- `9b74197f` 的100/1000人服务隔离及导出复验通过。真实模型short中千人档通过；100人档性能通过，但L3返回`goal_portfolio.status=pending`，原validator拒绝后Character作业stale，矩阵失败，不能用千人档通过代替整矩阵。
+- 根因：提示词只说明goal_portfolio是目标列表，没有提供其状态枚举等嵌套合同。由原`CharacterGoalPortfolioEntry.model_json_schema()`直接生成提示词约束，保持validator严格拒绝pending；不映射状态、不放宽stale门禁、不添加自动成功回退。
+- 回归先观察提示词缺合同失败，再核对提示词中各合法状态均能被原validator接受，以及实测非法pending仍被拒绝。模型gateway/provider/L3共131项通过；使用原失败请求及新提示词的真实DeepSeek诊断通过且无fallback。这不是正式矩阵证据。
+- 重新冻结此修复后重采service、short及其余性能证据；旧`9b74197f`证据保留诊断，不混入新版本总聚合。远端run35487905677的harness/change-lifecycle及correctness失败尚缺具体日志，本地同版两项通过不替代远端结论。
+
 ## Review Focus
 
 检查非激活 Owner 历史增长、重复回执晚于其他写入时的截面、未提交结果、损坏/截断事件和持久库重开；不得以局部digest冒充full_replay。审查指标是否实际观察缓存及所有复验入口是否拒绝缺字段；不修改Godot导入、耐久性、事务与权限契约。

@@ -85,6 +85,40 @@ def _run_local_task(
     )
 
 
+def test_l3_request_declares_goal_portfolio_schema_accepted_by_validator():
+    import json
+
+    request = CharacterModelGateway().prepare_run_request(
+        task_kind="l3_planning", context={"actor_id": "char_b"}, route_override="online_default",
+    )
+    instruction = request["prompt"]["system_instruction"]
+    marker = "Each goal_portfolio item must conform to this JSON Schema: "
+    assert marker in instruction
+    schema = json.loads(instruction.split(marker, 1)[1])
+    fields = schema["properties"]
+    assert fields["status"]["enum"] == ["active", "suspended", "blocked", "satisfied", "abandoned"]
+    assert fields["horizon"]["enum"] == ["long", "mid", "short"]
+    assert fields["priority"]["minimum"] == 0 and fields["priority"]["maximum"] == 1
+    assert {"goal_id", "goal", "horizon", "source"}.issubset(schema["required"])
+    for status in fields["status"]["enum"]:
+        output = _complete_l3_output()
+        output["active_goal_frame"]["goal_portfolio"] = [dict(
+            goal_id="watch", goal="watch the gate", horizon="short", source="model", status=status,
+        )]
+        validated = CharacterStructuredOutputValidator().validate(task_kind="l3_planning", output=output)
+        assert validated["active_goal_frame"]["goal_portfolio"][0]["status"] == status
+
+
+def test_l3_gateway_rejects_observed_invalid_pending_goal_status():
+    output = _complete_l3_output()
+    output["active_goal_frame"]["goal_portfolio"] = [dict(
+        goal_id="watch", goal="watch the gate", horizon="short", source="model", status="pending",
+    )]
+    gateway = CharacterModelGateway(provider=_RecordingProvider(output))
+    with pytest.raises(ValueError, match="status"):
+        _run_local_task(gateway, task_kind="l3_planning", context={"actor_id": "char_b"})
+
+
 def test_model_gateway_prepares_structured_run_request(monkeypatch) -> None:
     monkeypatch.setattr(settings, "character_model_provider_kind", "qwen")
     gateway = CharacterModelGateway()

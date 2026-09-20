@@ -10,6 +10,7 @@
 - 缓存指标补充实际激活历史对象及最多32条的完成回执；混合和冷恢复复验器拒绝缺失指标。独立审查发现的内部序号损坏/重复event ID误判已增加反例检查，未改重放算法。
 - 当前定向174项通过，短路径完整后端回归为6,909 passed／2 skipped（Godot），清理成功；Harness工具421项和phase3a显式审计profile通过。首次长路径完整回归因260字符文件无法读取失败，仅保留诊断。正式性能及总门禁仍待同版证据，不用后端测试代替。
 - 新台账：`.superpowers/sdd/2026-09-20-population-final-closure-implementation-plan/progress.md`；本轮仓库外证据根为 `D:/HarnessEvidence/pop-final-20260920`。Godot 引擎未在本机执行，外机同版门禁仍欠缺。
+- `9b74197f` 的两档120秒服务隔离及离线复验通过，千人窗口p95=84.8ms；真实模型short千人通过，100人因L3返回未声明的非法目标状态pending而失败。已将原目标模型JSON Schema加入L3提示词，131项回归和原失败请求的真实模型诊断通过；必须冻结修复后重采正式证据，旧版不混用。远端CI静态通过，harness/change-lifecycle及correctness失败的具体日志仍待取得；六项总体保持进行中。
 
 ## 2026-09-19 后端续作边界
 

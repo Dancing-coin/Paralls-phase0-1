@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from app.character_agent.models.cognition_delta import CharacterDynamicStateDelta
+from app.character_agent.models.goal_runtime import CharacterGoalPortfolioEntry
 
 
 class CharacterPromptPolicy:
@@ -71,7 +74,9 @@ class CharacterPromptPolicy:
                 'goal_portfolio must be a list of goal objects and should preserve multiple concurrent motives, not only the dominant goal. '
                 'planning_status must be "model" on live success. fallback_mode must be JSON null on live success. '
                 'active_goal_frame.primary_goal cannot be empty. '
-                'active_goal_frame.urgency and each goal_portfolio urgency must be exactly one of "low", "medium", or "high"; do not use numbers.'
+                'active_goal_frame.urgency and each goal_portfolio urgency must be exactly one of "low", "medium", or "high"; do not use numbers. '
+                'Each goal_portfolio item must conform to this JSON Schema: '
+                + json.dumps(CharacterGoalPortfolioEntry.model_json_schema(), separators=(",", ":"))
             )
         allowed_dynamic_state_fields = ", ".join(
             f'"{field_name}"' for field_name in self._DYNAMIC_STATE_DELTA_FIELDS
