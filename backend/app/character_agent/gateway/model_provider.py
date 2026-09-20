@@ -337,6 +337,12 @@ class CharacterModelProvider:
         first_choice = choices[0]
         if not isinstance(first_choice, dict):
             raise ValueError("deepseek choice must be a JSON object")
+        if "finish_reason" in first_choice and first_choice["finish_reason"] != "stop":
+            # 正文即使恰好是合法JSON，也不能覆盖provider声明的未完成状态。
+            reason = first_choice["finish_reason"]
+            if reason not in ("length", "content_filter", "tool_calls", "insufficient_system_resource"):
+                reason = "not_finished" if reason is None else "unknown"
+            raise ValueError(f"character_model_completion_incomplete:{reason}")
         message = first_choice.get("message", {})
         if not isinstance(message, dict):
             raise ValueError("deepseek choice message must be a JSON object")

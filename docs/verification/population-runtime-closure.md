@@ -2,7 +2,9 @@
 
 当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-final-closure-20260920`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
 
-最新检查点：`b795b7a4` 的 correctness（focused1707项）、change-lifecycle和两档真实模型short通过；首100人30分钟完整证据的integrity通过、performance失败，非故障最大lag1.422、cadence p95约127.97ms、最终backlog0。整组soak未完成，旧证据不能套用后续修复。CI #209 raw cognition固定等待已补强为实际完成与先后关系断言，Phase0新增安全JUnit定位；完整后端另复现Windows Job提前返回导致SQLite清理失败，最小退出信号等待及原失败探针回归通过。完整复验、长测停顿诊断和新SHA同版门禁继续进行，详见[最终执行计划](../superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)。以下旧检查点保留历史来源，不代表最新状态。
+最新检查点（2026-09-21）：`4289bd2d` 的 correctness（focused1710项）、change-lifecycle、两档真实模型short、两档service和五配对transport通过，证据位于仓库外 `D:/HarnessEvidence/pop-final-4289bd2d`。capacity已完整采集但失败：2局性能通过，Character分别出现非法calm=-0.03与无法解析的L3 JSON，另有受控Siming超时后的stale_pin终态未满足原completed门槛；4局完整性通过，第300/600高峰窗口max lag 1.094—1.156，严格性能未过。该版本recovery/soak尚未启动，不能套用旧证据。CI #210静态smoke和population-correctness通过，all在Phase0缺17项运行证据，cleanup通过，根因待外机日志；不认定为已暂缓的Godot导入P2。
+
+当前修复为L2提示词包含原DynamicStateDelta schema及局部替换语义、L3紧凑JSON并保留多目标（输出token预算4096、原30秒超时不变）、显式非stop结束在JSON解析前拒绝。非法值不钳制、不用fallback冒充模型成功。新增回归RED11失败后，相关125项通过；原失败请求使用新提示词各3次真实重放通过，但属于诊断。完整双核Phase0环境后端6961 passed／2 skipped（651.91秒），作用域清理通过；独立审查无已确认阻断缺陷。原L3 JSON错误是否由截断造成尚未确认，原请求9次重放都成功。受控timeout安全终态口径与单窗lag门槛仍等待用户答复，未答复前保持原门槛。接续工具验证、提交后冻结新SHA及全部同版正式门禁，详见[最终执行计划](../superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)。以下旧检查点保留历史来源，不代表最新状态。
 
 最新续作：`94432434` 的真实模型 short 两档通过，但 100 人混合长测仍在故障注入前出现 9 个 lag 超限窗口，最大 3.109。此次修复 Character 认知进度对完整上下文的重复存储，不能据此直接关闭长测。冻结内容及离线证据格式见本文末尾；其余同版正式门禁和远端 CI 仍须重新验收。
 

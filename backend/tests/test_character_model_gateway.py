@@ -119,6 +119,31 @@ def test_l3_gateway_rejects_observed_invalid_pending_goal_status():
         _run_local_task(gateway, task_kind="l3_planning", context={"actor_id": "char_b"})
 
 
+def test_l2_prompt_schema_matches_each_dynamic_state_range_without_signed_increments():
+    import json
+    from app.character_agent.models.cognition_delta import CharacterDynamicStateDelta
+
+    request = CharacterModelGateway().prepare_run_request(
+        task_kind="l2_reasoning", context={"actor_id": "char_c"}, route_override="online_default",
+    )
+    instruction = request["prompt"]["system_instruction"]
+    marker = "dynamic_state_delta must conform to this JSON Schema: "
+    assert "partial replacement values, not signed increments" in instruction
+    assert marker in instruction
+    schema = json.loads(instruction.split(marker, 1)[1])
+    assert schema == CharacterDynamicStateDelta.model_json_schema()
+    validator = CharacterStructuredOutputValidator()
+    for name, field in schema["properties"].items():
+        numeric = next(option for option in field["anyOf"] if option["type"] == "number")
+        for value in (numeric["minimum"], numeric["maximum"]):
+            result = validator.validate(task_kind="l2_reasoning",
+                output=_complete_l2_output(dynamic_state_delta={name: value}))
+            assert result["dynamic_state_delta"][name] == value
+    with pytest.raises(ValueError, match="calm"):
+        validator.validate(task_kind="l2_reasoning",
+            output=_complete_l2_output(dynamic_state_delta={"calm": -0.03}))
+
+
 def test_model_gateway_prepares_structured_run_request(monkeypatch) -> None:
     monkeypatch.setattr(settings, "character_model_provider_kind", "qwen")
     gateway = CharacterModelGateway()

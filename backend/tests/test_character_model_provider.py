@@ -4,6 +4,28 @@ from app.character_agent.gateway.model_provider import CharacterModelProvider
 from app.config import settings
 
 
+@pytest.mark.parametrize("finish_reason", ["length", "content_filter", "tool_calls", "insufficient_system_resource", None])
+@pytest.mark.parametrize("content", ['{"content":"partial","tone":"neutral"}', '{"content":'])
+def test_incomplete_completion_is_rejected_before_json_parsing(finish_reason, content):
+    provider = CharacterModelProvider(provider_kind="deepseek")
+    with pytest.raises(ValueError, match="character_model_completion_incomplete"):
+        provider._normalize_deepseek_response({"choices": [
+            {"finish_reason": finish_reason, "message": {"content": content}},
+        ]})
+
+
+def test_complete_completion_keeps_json_validation():
+    provider = CharacterModelProvider(provider_kind="deepseek")
+    output = provider._normalize_deepseek_response({"choices": [
+        {"finish_reason": "stop", "message": {"content": '{"content":"done","tone":"neutral"}'}},
+    ]})
+    assert output == {"content": "done", "tone": "neutral"}
+    with pytest.raises(ValueError):
+        provider._normalize_deepseek_response({"choices": [
+            {"finish_reason": "stop", "message": {"content": '{"content":'}},
+        ]})
+
+
 def test_model_provider_defaults_to_character_model_settings(monkeypatch) -> None:
     monkeypatch.setattr(settings, "character_model_provider_kind", "qwen")
     monkeypatch.setattr(settings, "character_model_endpoint", "https://example.invalid/qwen")

@@ -47,7 +47,7 @@ class CharacterPromptPolicy:
             "max_tokens": {
                 "dialogue_generation": 400,
                 "l2_reasoning": 1200,
-                "l3_planning": 1800,
+                "l3_planning": 4096,
             }[task_kind],
         }
 
@@ -72,6 +72,7 @@ class CharacterPromptPolicy:
                 '"supporting_goals", "blockers", "goal_sources", "urgency", "dominant_goal_id", '
                 '"preserved_goal_ids", "suppressed_goal_ids", "goal_arbitration_summary", "goal_portfolio"]. '
                 'goal_portfolio must be a list of goal objects and should preserve multiple concurrent motives, not only the dominant goal. '
+                'Use compact JSON without indentation and concise descriptions while preserving all concurrent goals. '
                 'planning_status must be "model" on live success. fallback_mode must be JSON null on live success. '
                 'active_goal_frame.primary_goal cannot be empty. '
                 'active_goal_frame.urgency and each goal_portfolio urgency must be exactly one of "low", "medium", or "high"; do not use numbers. '
@@ -89,10 +90,15 @@ class CharacterPromptPolicy:
             '"higher_order_deltas", "dynamic_state_delta", "goal_hints", "reasoning_trace_summary"] and no extra text. '
             'salience_score must be a JSON number from 0.0 to 1.0. '
             'ambiguity_level, risk_level, and opportunity_level must each be exactly one of "low", "medium", or "high"; do not use "moderate" or numbers. '
-            'All confidence, strength, trust, suspicion, intimacy, dependency, unresolved_tension, and dynamic_state_delta values must be JSON numbers from 0.0 to 1.0, not words. '
+            'All confidence, strength, trust, suspicion, intimacy, dependency, and unresolved_tension values must be JSON numbers from 0.0 to 1.0, not words. '
             f'dynamic_state_delta may contain only [{allowed_dynamic_state_fields}]. '
             'Do not emit any other dynamic_state_delta key; use {} when no allowed delta applies. '
-            'goal_hints must be a list of objects with keys ["goal", "source", "strength", "evidence_tags"].'
+            'dynamic_state_delta contains partial replacement values, not signed increments. '
+            'For example, set calm to 0.2 to reduce it to 0.2; never emit a negative calm change. '
+            'affect_valence may range from -1.0 to 1.0; other dynamic_state_delta values range from 0.0 to 1.0. '
+            'goal_hints must be a list of objects with keys ["goal", "source", "strength", "evidence_tags"]. '
+            'dynamic_state_delta must conform to this JSON Schema: '
+            + json.dumps(CharacterDynamicStateDelta.model_json_schema(), separators=(",", ":"))
         )
 
     def _user_instruction(

@@ -2,6 +2,17 @@
 
 Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 
+### 4289bd2d 容量失败的接续修复（2026-09-21）
+
+- 同版 change-lifecycle、correctness（1710项）、真实模型 short、service 两档和 transport 五配对通过；capacity 完整采集并清理，但两个2局样本完整性失败。4局四个样本完整性通过，最大单窗 lag 1.094—1.156，严格性能门槛未过，不能将此前抽查 backlog=0 当最终通过。recovery/soak 未启动。
+- 实际失败：2局game-1的L2输出calm=-0.03，被原validator拒绝，B2完成21/22；game-2的L3输出无法解析JSON，另一角色任务stale。game-2受控Siming超时后同一任务因stale_pin安全终止，而当前故障验收只认同一任务completed。不得把后续其他成功任务冒充该任务完成；是否接受“原故障任务安全终止并证明恢复”的验收修正正在等待用户答复，未答复前保持原门槛。
+- 修复一：L2提示词直接包含CharacterDynamicStateDelta的schema，明确这些字段是局部替换值而非有符号增量；affect_valence合法范围为[-1,1]，其他字段为[0,1]。原validator仍拒绝calm=-0.03，禁止钳制、伪造默认值或自动成功回退。用各字段实际边界和原失败值验证。
+- 修复二：L3请求要求紧凑JSON、保留并存目标，将原1800输出token预算增至4096，保留provider 30秒超时。原请求9次真实重放均成功（988—1598输出token），原错误是否由截断造成尚未确认，不能宣称已复现。依据[DeepSeek Chat Completions合同](https://api-docs.deepseek.com/api/create-chat-completion/)，显式非stop结束必须拒绝，先于JSON解析报告有界结束原因；即使正文恰好是合法JSON也不能当成完整成功。正常stop和既有未提供finish_reason的兼容响应仍按原validator处理。
+- 检查顺序：新增失败回归→最小修复→gateway/provider及原delta合同回归→原失败请求使用新提示词的真实诊断→独立审查与完整后端/工具验证→提交推送并重新冻结版本→从新SHA串行完成全部正式门禁。旧4289证据保留为原版本结果，不重贴新身份。
+- CI #210的static smoke和population-correctness通过，all在Phase0缺17项对话/交互/观测面板运行证据，cleanup通过。详细日志需登录，不能直接归因于用户暂缓的Godot导入P2。Godot继续外机未验证。总体Goal仍active。
+- 本轮证据：新增回归先11 failed／74 passed，修复后gateway/provider/delta/mind模型125 passed；两个原失败请求用新提示词分别真实重放3次均通过，仅作诊断。完整双核Phase0环境后端6961 passed／2 skipped／0 failed（651.91秒），拥有作用域清理通过。独立只读审查确认实际DynamicStateStore逐字段替换、异常仍严格上抛，无已确认阻断缺陷。4局八个超限窗口均在第300/600窗高峰，fixture约783—816ms加cadence约265—321ms，不能删除或归为无证据的随机环境抖动。
+- 完整验证工具452 passed（72.86秒），清理通过；git diff --check通过，工作树.harness只有静态资产，无本轮提交产物。根main仍保留用户tmp/。仅提交上述六个实现、回归和文档文件，随后重新冻结同版证据；不把短诊断与单测合并冒充正式六项通过。
+
 承接 `2026-09-16-population-production-runtime-closure-implementation-plan.md` 的六项范围、阈值和 G0—G9；不得以本补充的一项完成代替总目标。设计依据：`../specs/2026-09-19-activation-receipt-evidence-cost-design.md`。起点 `c23d879e0d27d4ad7ef023d3edcc24aae2a9ef8d`。执行工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`。
 
 ## Task 1: 激活证据分离
