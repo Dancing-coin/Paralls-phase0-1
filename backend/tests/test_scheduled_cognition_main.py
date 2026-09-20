@@ -5,8 +5,8 @@ import pytest
 from scripts.verification.population_godot_runner import child_environment
 
 
-@pytest.mark.parametrize('head_delta', [None, 0, 1])
-def test_real_raw_completion_admits_original_session_background_without_sync_provider(tmp_path, head_delta):
+@pytest.mark.parametrize(('head_delta', 'provider_delay'), [(None, 0), (0, 0), (1, 0), (None, 10)])
+def test_real_raw_completion_admits_original_session_background_without_sync_provider(tmp_path, head_delta, provider_delay):
     (tmp_path / 'roster.json').write_text(json.dumps({'actor_ids': ['char_a', 'char_b', 'char_c', *[f'resident_{i:05d}' for i in range(97)]]}))
     code = r'''
 
@@ -50,6 +50,9 @@ async def run():
                         threads.append(get_ident())
                         started.set()
                         assert release.wait(5)
+                        if len(threads) == 1:
+                            # 合法模型耗时可以超过原测试轮询总时长，owner 仍须保持可用。
+                            time.sleep(float(sys.argv[4]))
                         return original(request)
                     stack.enter_context(patch.object(gateway, 'complete_prepared_request', complete))
                     return get_ident()
@@ -76,9 +79,10 @@ async def run():
                         if sys.argv[2] == 'True':
                             raise WebSocketDisconnect()
                         release.set()
-                        for _ in range(250):
-                            if not main._transient_cognition_tasks: break
-                            await asyncio.sleep(.02)
+                        # 等待真实完成；固定轮询次数在慢机器上会先于合法模型期限失败。
+                        async with asyncio.timeout(30):
+                            while main._transient_cognition_tasks:
+                                await asyncio.sleep(.02)
                         assert not main._transient_cognition_tasks
                         raise WebSocketDisconnect()
                 await main.websocket_endpoint(Socket())
@@ -89,10 +93,11 @@ async def run():
                     return main.character_agent_runtime._session_store.list_events('char_a')
                 before = await asyncio.wrap_future(main.runtime_execution.submit(check))
                 assert before
-                for _ in range(250):
-                    pending = await asyncio.wrap_future(main.runtime_execution.submit(lambda: main._character_cognition_driver.coordinator.admissions.list_pending(limit=1)))
-                    if not pending: break
-                    await asyncio.sleep(.02)
+                async with asyncio.timeout(30):
+                    while True:
+                        pending = await asyncio.wrap_future(main.runtime_execution.submit(lambda: main._character_cognition_driver.coordinator.admissions.list_pending(limit=1)))
+                        if not pending: break
+                        await asyncio.sleep(.02)
                 assert not pending
                 def proof():
                     admissions = main._character_cognition_driver.coordinator.admissions
@@ -120,5 +125,5 @@ async def run():
                 release.set()
 asyncio.run(run())
 '''
-    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), 'False', str(head_delta)], env=child_environment(), capture_output=True, text=True, timeout=30)
+    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), 'False', str(head_delta), str(provider_delay)], env=child_environment(), capture_output=True, text=True, timeout=75)
     assert result.returncode == 0, result.stdout + result.stderr

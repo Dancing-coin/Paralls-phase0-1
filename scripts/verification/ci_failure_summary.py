@@ -11,6 +11,39 @@ import re
 import xml.etree.ElementTree as ET
 
 
+def _exception_name(value: str) -> str:
+    name = value.partition(':')[0].rstrip()
+    kind = getattr(builtins, name, None)
+    return name if isinstance(kind, type) and issubclass(kind, BaseException) else ''
+
+
+def _source_location(source: str, line: str) -> str | None:
+    repository = Path(__file__).resolve().parents[2]
+    source = source.replace('\\', '/').removeprefix(repository.as_posix() + '/')
+    if (re.fullmatch(r'(?:backend/(?:app|tests)|scripts/verification)/[\w/.-]+\.py', source)
+            and '..' not in Path(source).parts and (repository / source).is_file()):
+        return source + ':' + line
+    return None
+
+
+def _process_diagnostic(path: Path) -> dict:
+    if not path.is_file():
+        return {}
+    result, traceback = {}, False
+    with path.open(encoding='utf-8', errors='replace') as stream:
+        for line in stream:
+            if line.rstrip() == 'Traceback (most recent call last):':
+                result, traceback = {}, True
+            if not traceback:
+                continue
+            frame = re.fullmatch(r'  File "([^"\r\n]+)", line (\d+), in [^\r\n]+\s*', line)
+            if frame and (location := _source_location(frame[1], frame[2])):
+                result['source_location'] = location
+            if name := _exception_name(line):
+                result['error'] = name + ': details_omitted'
+    return result
+
+
 def _diagnostic_text(value: str) -> str:
     if value in {"Source inputs changed during verification", "Godot executable not found. Set GODOT_EXE or pass --godot-exe."}:
         return value
@@ -74,8 +107,13 @@ def failure_summary(root: Path) -> list[dict]:
                 and report.get("cleanup_status") != "failed" and not failures
                 and not report.get("error") and not report.get("errors")):
             continue
-        rows.append(dict(file=path.relative_to(root).as_posix(), **_fields(report),
-            failures=[_fields(item) for item in failures]))
+        row = dict(file=path.relative_to(root).as_posix(), **_fields(report),
+            failures=[_fields(item) for item in failures])
+        if path.name == 'profile-result.json' and report.get('status') == 'failed':
+            # 报告生成前异常退出时，也只公开异常类型和实际仓库源码位置。
+            if diagnostic := _process_diagnostic(path.with_name('command.log')):
+                row['process_diagnostic'] = diagnostic
+        rows.append(row)
     for path in sorted(root.rglob("focused.xml")):
         try:
             cases = ET.parse(path).findall(".//testcase")
@@ -90,17 +128,17 @@ def failure_summary(root: Path) -> list[dict]:
                         test=case.get("classname", "") + "." + case.get("name", ""), status=tag)
                     if entry.get('message'):
                         # JUnit 正文不属于结构化错误码，只允许已知内置异常类型。
-                        name = entry.get('message').partition(':')[0]
-                        kind = getattr(builtins, name, None)
-                        row['error'] = (name + ': ' if isinstance(kind, type)
-                            and issubclass(kind, BaseException) else '') + 'details_omitted'
+                        name = _exception_name(entry.get('message'))
+                        row['error'] = (name + ': ' if name else '') + 'details_omitted'
                     # 仅抽取仓库 Python 位置，不公开断言局部值或请求正文。
-                    repository = Path(__file__).resolve().parents[2]
                     for line in (entry.text or '').splitlines():
-                        location = line.replace('\\', '/').removeprefix(repository.as_posix() + '/')
-                        match = re.fullmatch(r'((?:backend/(?:app|tests)|scripts/verification)/[\w/.-]+\.py):(\d+):(?:\s+[A-Za-z_]\w*)?\s*', location)
-                        if match and '..' not in Path(match[1]).parts and (repository / match[1]).is_file():
-                            row['source_location'] = match[1] + ':' + match[2]
+                        match = re.fullmatch(r'(.+\.py):(\d+):(?:\s+[A-Za-z_]\w*)?\s*', line)
+                        if match and (location := _source_location(match[1], match[2])):
+                            row['source_location'] = location
+                    # 内嵌 python -c 失败仅保留行号，绝不输出函数名或子进程正文。
+                    child_lines = re.findall(r'File "<string>", line (\d{1,6}), in ', entry.text or '')
+                    if child_lines:
+                        row['embedded_child_line'] = int(child_lines[-1])
                     rows.append(row)
     for path in sorted(root.rglob('focused.log')):
         progress = timeout = None

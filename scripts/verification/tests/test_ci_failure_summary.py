@@ -154,3 +154,43 @@ def test_junit_accepts_current_checkout_absolute_traceback_location(tmp_path):
         '<testsuites><testsuite><testcase classname="runtime" name="capture">'
         f'<failure>{source}:145: AssertionError</failure></testcase></testsuite></testsuites>', encoding='utf-8')
     assert failure_summary(tmp_path)[0]['source_location'] == 'backend/tests/test_population_multi_game_capacity.py:145'
+
+
+def test_junit_reports_only_numeric_embedded_child_location(tmp_path):
+    (tmp_path / 'focused.xml').write_text(
+        '<testsuites><testsuite><testcase classname="runtime" name="capture">'
+        '<failure message="AssertionError: PRIVATE_REQUEST_SENTINEL">'
+        'E File "&lt;string&gt;", line 112, in PRIVATE_FUNCTION\n'
+        'E File "&lt;string&gt;", line 75, in PRIVATE_FUNCTION\n'
+        'backend/tests/test_scheduled_cognition_main.py:124: AssertionError\n'
+        '</failure></testcase></testsuite></testsuites>', encoding='utf-8')
+    rows = failure_summary(tmp_path)
+    assert rows[0]['embedded_child_line'] == 75
+    assert 'PRIVATE' not in json.dumps(rows)
+
+
+def test_failed_profile_log_exposes_safe_traceback_without_payload(tmp_path):
+    from pathlib import Path
+    source = Path(__file__).resolve().parents[3] / 'scripts/verification/common.py'
+    (tmp_path / 'profile-result.json').write_text(json.dumps(dict(profile='phase0', status='failed', exit_code=1)), encoding='utf-8')
+    (tmp_path / 'command.log').write_text(
+        'PRIVATE_REQUEST_SENTINEL\nTraceback (most recent call last):\n'
+        f'  File "{source}", line 330, in ensure_backend\n'
+        '    raise RuntimeError("PRIVATE_REQUEST_SENTINEL")\n'
+        'RuntimeError: PRIVATE_REQUEST_SENTINEL\n', encoding='utf-8')
+    rows = failure_summary(tmp_path)
+    assert rows[0]['process_diagnostic'] == dict(error='RuntimeError: details_omitted',
+        source_location='scripts/verification/common.py:330')
+    assert 'PRIVATE' not in json.dumps(rows)
+
+
+def test_process_diagnostic_rejects_fake_paths_and_unrecognized_exception_names(tmp_path):
+    (tmp_path / 'profile-result.json').write_text(json.dumps(dict(profile='phase0', status='failed', exit_code=1)), encoding='utf-8')
+    (tmp_path / 'command.log').write_text(
+        'Traceback (most recent call last):\n'
+        'E File "backend/tests/PRIVATE_REQUEST_SENTINEL.py", line 145, in PRIVATE_FUNCTION\n'
+        '  File "backend/tests/PRIVATE_REQUEST_SENTINEL.py", line 145, in PRIVATE_FUNCTION\n'
+        'PRIVATE_REQUEST_SENTINEL: private request\n', encoding='utf-8')
+    rows = failure_summary(tmp_path)
+    assert 'process_diagnostic' not in rows[0]
+    assert 'PRIVATE' not in json.dumps(rows)
