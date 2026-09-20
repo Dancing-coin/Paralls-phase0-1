@@ -47,16 +47,23 @@ async def read_control(path, *, loader=None):
                 await asyncio.sleep(.02)
 
 
+def process_resource_sample(host, kind, **fields):
+    from scripts.verification.population_benchmark_metrics import current_rss_bytes
+    return dict(type=kind, process_id=os.getpid(), at=perf_counter(), rss_bytes=current_rss_bytes(),
+        cpu_seconds=process_time(), runtime_process=host.snapshot(), **fields)
+
+
 async def wait_process_drain(host):
-    """owner 排空后再等原 IPC/发送收口；超时保留失败，不提前采末资源。"""
+    """返回证明 IPC/发送已收口的完整观察，避免随后轮询占用额度使重采失真。"""
     async with asyncio.timeout(30):
         while True:
-            state = host.snapshot()
+            sample = process_resource_sample(host, 'resources', phase='after_drain')
+            state = sample['runtime_process']
             if state['status'] != 'ok':
                 raise RuntimeError('mixed_process_failed_during_drain')
             if (all(state[key] == 0 for key in ('ipc_pending', 'pending_send', 'runtime_pending', 'transport_pending'))
                     and state['execution_credit']['current'] == 0):
-                return
+                return sample
             await asyncio.sleep(.02)
 
 
@@ -369,7 +376,6 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
 async def backend(directory):
     from scripts.verification.population_mixed_backend import configure, merge_process_observations
     from scripts.verification.population_godot_runner import write_json
-    from scripts.verification.population_benchmark_metrics import current_rss_bytes
     from scripts.verification.verify_population_service_isolation import until, install_writer_probes
     from app.services import runtime_process
     import uvicorn
@@ -410,8 +416,7 @@ async def backend(directory):
         serving = asyncio.create_task(server.serve(sockets=[listener]))
         host = heartbeat = None
         def sample(kind, **fields):
-            record(dict(type=kind, process_id=os.getpid(), at=perf_counter(), rss_bytes=current_rss_bytes(),
-                cpu_seconds=process_time(), runtime_process=host.snapshot(), **fields))
+            record(process_resource_sample(host, kind, **fields))
         try:
             while not server.started:
                 if serving.done():
@@ -443,8 +448,7 @@ async def backend(directory):
             await until(origin)
             sample("resources", phase="start")
             await owner_file("owner-drained.json")
-            await wait_process_drain(host)
-            sample("resources", phase="after_drain")
+            record(await wait_process_drain(host))
             early = perf_counter() < end
             if early:
                 heartbeat.cancel()

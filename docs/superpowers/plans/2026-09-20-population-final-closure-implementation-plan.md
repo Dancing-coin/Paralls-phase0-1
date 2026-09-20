@@ -110,3 +110,14 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - CI摘要对失败profile的command.log只提取内置异常类型及当前仓库实际Python文件行号；JUnit内嵌python -c只输出数值行号，避免下一轮仍只能看见父进程断言。私有正文、任意函数名、伪造/仓库外路径不输出。诊断RED为2 failed／12 passed；完整工具438 passed（60.80秒），清理通过。独立复核和新CI结果另记，随后仍须新冻结版本同版门禁，旧结果不可改签。
 
 - 最终独立复核无阻断项，确认原正确性/owner响应断言及生产门槛保留，安全诊断未输出正文或仓库外路径；后续以新提交CI和完整矩阵为准。
+
+### CI #208 排空观察、测试握手与端口释放
+
+- `2e5baad2` 的 change-lifecycle、correctness（focused 1705项）、两档真实 short 通过；100人30分钟独立复验通过。为修复新CI失败，在下一千人case入口显式停止，整组soak仍未完成；本轮作用域清理通过。旧版完整单档结果不能代替新冻结版本矩阵。
+- CI定位：双后端在 `population_mixed_verification.py` 拒绝 `mixed_process_tail_pending`；scheduled cognition 两参数在子进程第68行的owner 0.5秒等待失败；Phase0在停止自有后端后等待8000端口释放失败。最后一项与暂缓的Godot导入P2不同。以下本地复现只证明对应缺陷，远端是否全部解决以新CI为准。
+- 步骤1：排空等待每次采集完整资源记录，用该记录判断所有IPC/发送/运行时/传输pending和执行额度均为零，成功时原样落盘；消除第二次snapshot的竞争，不改离线严格拒绝门槛。回归覆盖首次合格后下一次观察重新忙碌、非零等待及不健康拒绝，再跑真实双后端隔离用例。
+- 步骤2：以有界握手证明provider仍阻塞时owner已实际执行。回调核对provider已进入、未放行且未退出，owner确认后才release；保留线程身份、30秒完成等待、精确stale和来源断言。加1秒owner工作负载复现固定0.5秒测试的误判，正式服务隔离性能门槛不变，不把共享CI功能测试当性能基准。
+- 步骤3：复现端口探测本身耗尽等待预算的问题，核对自有进程已关闭；以单调时钟和有界本机TCP连接观察替代每次启动PowerShell查进程。只有明确拒绝连接才计作端点释放，连接成功、超时或其他错误均不能通过；连续清空次数仍要求2。用真实非HTTP监听、停止自有监听进程以及超时/重新占用测试检查，绝不按端口杀进程；Godot保持外机验证。
+- 步骤4：定向RED/GREEN、完整工具回归、独立审查后合并推送。冻结新SHA后串行采集所有本机门禁，跟踪新CI，外机Godot/mainline/all、批准char_c绑定及VLA凭据仍须实证；Goal不在局部修复后结束。
+- 验证：后端新增RED为2 failed，修复后双核定向27 passed（47.76秒），包含真实双后端隔离；端口RED为5 failed／1 passed。首次完整工具444 passed／2 failed揭示Windows关闭端口约2秒后才返回拒绝连接：实测1秒上限为TimeoutError，3秒上限下约2.031秒为ConnectionRefusedError。探测改为使用剩余总预算，默认15秒不变；重验完整工具446 passed（67.05秒）。各作用域清理通过。
+- 独立审查发现的测试就绪文件创建/写入竞争已改为同目录临时文件关闭后replace发布；最终复核无阻断项。旧版100人30分钟单档p95约119.34ms、非故障max lag约0.594、最终backlog0，SQLite锁释放后约0.90秒恢复；只保留旧版诊断，不改签、不代替千人2小时或整矩阵。Godot仍未在本机运行。

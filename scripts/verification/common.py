@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import subprocess
 import sys
 import time
@@ -268,17 +269,29 @@ def wait_for_backend_release(
     timeout_seconds: float = 15.0,
     clear_observations_required: int = 2,
 ) -> bool:
-    """Wait until the HTTP endpoint and its TCP listener are both stably gone."""
-    deadline = time.time() + timeout_seconds
+    """连续确认本机 backend 端点拒绝连接；探测本身也受单调时钟预算约束。"""
+    deadline = time.monotonic() + timeout_seconds
     clear_observations = 0
-    while time.time() < deadline:
-        if get_health() is None and _find_listener_pid(port) is None:
+    while (remaining := deadline - time.monotonic()) > 0:
+        released = False
+        try:
+            # Windows 对关闭端口的拒绝可能延迟约2秒，不另设更短的探测超时。
+            with socket.create_connection(('127.0.0.1', port), timeout=remaining):
+                pass
+        except ConnectionRefusedError:
+            released = True
+        except OSError:
+            # 超时或探测失败不是已释放；不通过进程清单推断端点状态，更不能按端口杀进程。
+            pass
+        if time.monotonic() >= deadline:
+            return False
+        if released:
             clear_observations += 1
             if clear_observations >= clear_observations_required:
                 return True
         else:
             clear_observations = 0
-        time.sleep(0.1)
+        time.sleep(min(.1, max(0., deadline - time.monotonic())))
     return False
 
 

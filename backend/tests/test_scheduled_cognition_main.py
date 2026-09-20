@@ -5,8 +5,9 @@ import pytest
 from scripts.verification.population_godot_runner import child_environment
 
 
-@pytest.mark.parametrize(('head_delta', 'provider_delay'), [(None, 0), (0, 0), (1, 0), (None, 10)])
-def test_real_raw_completion_admits_original_session_background_without_sync_provider(tmp_path, head_delta, provider_delay):
+@pytest.mark.parametrize(('head_delta', 'provider_delay', 'owner_work_delay'),
+    [(None, 0, 0), (0, 0, 0), (1, 0, 0), (None, 10, 0), (None, 0, 1)])
+def test_real_raw_completion_admits_original_session_background_without_sync_provider(tmp_path, head_delta, provider_delay, owner_work_delay):
     (tmp_path / 'roster.json').write_text(json.dumps({'actor_ids': ['char_a', 'char_b', 'char_c', *[f'resident_{i:05d}' for i in range(97)]]}))
     code = r'''
 
@@ -21,7 +22,7 @@ async def run():
     with ExitStack() as stack:
         main, _, _ = configure(Path(sys.argv[1]), stack, mode='one_x', provider_mode='local_probe')
         stack.enter_context(patch.object(main, 'start_population_runtime', lambda: None))
-        started, release = Event(), Event()
+        started, release, provider_exited = Event(), Event(), Event()
         threads, messages = [], []
         observed = {}
         if sys.argv[3] != 'None':
@@ -49,11 +50,14 @@ async def run():
                     def complete(request):
                         threads.append(get_ident())
                         started.set()
-                        assert release.wait(5)
-                        if len(threads) == 1:
-                            # 合法模型耗时可以超过原测试轮询总时长，owner 仍须保持可用。
-                            time.sleep(float(sys.argv[4]))
-                        return original(request)
+                        try:
+                            assert release.wait(10)
+                            if len(threads) == 1:
+                                # 合法模型耗时可以超过原测试轮询总时长，owner 仍须保持可用。
+                                time.sleep(float(sys.argv[4]))
+                            return original(request)
+                        finally:
+                            provider_exited.set()
                     stack.enter_context(patch.object(gateway, 'complete_prepared_request', complete))
                     return get_ident()
                 owner = await asyncio.wrap_future(main.runtime_execution.submit(prepare))
@@ -75,7 +79,12 @@ async def run():
                         while not started.is_set() and time.monotonic() < deadline:
                             await asyncio.sleep(.02)
                         assert started.is_set(), messages
-                        assert await asyncio.wait_for(asyncio.wrap_future(main.runtime_execution.submit(lambda: 'healthy')), .5) == 'healthy'
+                        def healthy():
+                            # 共享runner上的owner工作可超过0.5秒，功能验证须证明真实先后关系。
+                            time.sleep(float(sys.argv[5]))
+                            assert started.is_set() and not release.is_set() and not provider_exited.is_set()
+                            return 'healthy'
+                        assert await asyncio.wait_for(asyncio.wrap_future(main.runtime_execution.submit(healthy)), 5) == 'healthy'
                         if sys.argv[2] == 'True':
                             raise WebSocketDisconnect()
                         release.set()
@@ -125,5 +134,5 @@ async def run():
                 release.set()
 asyncio.run(run())
 '''
-    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), 'False', str(head_delta), str(provider_delay)], env=child_environment(), capture_output=True, text=True, timeout=75)
+    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), 'False', str(head_delta), str(provider_delay), str(owner_work_delay)], env=child_environment(), capture_output=True, text=True, timeout=75)
     assert result.returncode == 0, result.stdout + result.stderr

@@ -221,3 +221,32 @@ def test_parent_waits_for_actual_process_tail_and_rejects_unhealthy():
         with pytest.raises(RuntimeError, match='process'):
             await soak.wait_process_drain(host)
     asyncio.run(run())
+
+
+def test_parent_records_the_complete_observation_that_proved_drain(monkeypatch):
+    import asyncio
+    import io
+    import json
+    from types import SimpleNamespace
+    from scripts.verification import population_benchmark_metrics as metrics
+
+    calls = []
+    def snapshot():
+        calls.append(True)
+        # 后台轮询可以在合格观察之后重新占用额度，不能据第二次观察改写排空证据。
+        return dict(status='ok', ipc_pending=0, pending_send=0, runtime_pending=0, transport_pending=0,
+            execution_credit=dict(current=0 if len(calls) == 1 else 1))
+    monkeypatch.setattr(metrics, 'current_rss_bytes', lambda: 12345)
+    monkeypatch.setattr(soak, 'process_time', lambda: 3.)
+    monkeypatch.setattr(soak, 'perf_counter', lambda: 42.)
+    host = SimpleNamespace(snapshot=snapshot)
+    row = asyncio.run(soak.wait_process_drain(host))
+    assert len(calls) == 1
+    assert row is not None
+    assert row['type'] == 'resources' and row['phase'] == 'after_drain'
+    assert row['rss_bytes'] == 12345 and row['cpu_seconds'] == 3. and row['at'] == 42.
+    assert row['process_id'] == soak.os.getpid()
+    assert host.snapshot()['execution_credit']['current'] == 1
+    output = io.StringIO()
+    soak.jsonl_writer(output)(row)
+    assert json.loads(output.getvalue())['runtime_process']['execution_credit']['current'] == 0
