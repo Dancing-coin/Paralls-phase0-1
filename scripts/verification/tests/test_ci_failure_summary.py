@@ -1,4 +1,5 @@
 import json
+import pytest
 
 from scripts.verification.ci_failure_summary import failure_summary
 
@@ -103,8 +104,9 @@ def test_ci_annotation_supports_unicode_test_names_on_windows_stdout(tmp_path, m
     assert '中文场景' in destination.read_text(encoding='utf-8')
 
 
-def test_failed_junit_reports_safe_source_location_without_assertion_payload(tmp_path):
-    (tmp_path / 'focused.xml').write_text(
+@pytest.mark.parametrize('filename', ['focused.xml', 'phase0-backend-tests.xml'])
+def test_failed_junit_reports_safe_source_location_without_assertion_payload(tmp_path, filename):
+    (tmp_path / filename).write_text(
         '<testsuites><testsuite><testcase classname="runtime" name="capture">'
         '<failure message="AssertionError: private request payload">'
         'private local values\nbackend/tests/test_population_multi_game_capacity.py:145: AssertionError\n'

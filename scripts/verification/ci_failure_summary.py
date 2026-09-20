@@ -114,7 +114,8 @@ def failure_summary(root: Path) -> list[dict]:
             if diagnostic := _process_diagnostic(path.with_name('command.log')):
                 row['process_diagnostic'] = diagnostic
         rows.append(row)
-    for path in sorted(root.rglob("focused.xml")):
+    for path in sorted(path for path in root.rglob('*.xml')
+            if path.name in {'focused.xml', 'phase0-backend-tests.xml'}):
         try:
             cases = ET.parse(path).findall(".//testcase")
         except (OSError, ET.ParseError):

@@ -14,6 +14,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import common
+import process_control
 from run_context import run_scope
 
 
@@ -127,6 +128,71 @@ def test_existing_backend_is_reused_or_blocked_without_termination(monkeypatch, 
 
 def test_stop_backend_preserves_reused_backend() -> None:
     common.stop_backend(None)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job退出语义")
+@pytest.mark.parametrize(("parent_exits", "child_exits"), [(False, False), (True, False), (True, True)])
+def test_owned_job_waits_for_sqlite_child_exit_before_returning(tmp_path: Path, parent_exits, child_exits) -> None:
+    ready = tmp_path / "child-ready.json"
+    finish = tmp_path / "child-finish"
+    database = tmp_path / "child.sqlite3"
+    child_code = (
+        "import os,sqlite3,time,pathlib,json\n"
+        f"connection=sqlite3.connect({str(database)!r})\n"
+        "connection.execute('PRAGMA journal_mode=WAL')\n"
+        "connection.execute('CREATE TABLE sample(value BLOB)')\n"
+        "connection.execute('INSERT INTO sample VALUES (zeroblob(1048576))')\n"
+        "connection.commit()\n"
+        f"ready=pathlib.Path({str(ready)!r})\n"
+        "pending=ready.with_suffix('.pending')\n"
+        "pending.write_text(json.dumps({'pid':os.getpid()}))\n"
+        "pending.replace(ready)\n"
+        + (f"while not pathlib.Path({str(finish)!r}).exists(): time.sleep(.01)\n" if child_exits else "time.sleep(30)\n")
+    )
+    parent_code = f"import subprocess,sys,time; subprocess.Popen([sys.executable,'-c',{child_code!r}])"
+    if not parent_exits:
+        parent_code += "; time.sleep(30)"
+    kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+    kernel.OpenProcess.restype = ctypes.c_void_p
+    kernel.WaitForSingleObject.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+    kernel.WaitForSingleObject.restype = ctypes.c_ulong
+    kernel.CloseHandle.argtypes = [ctypes.c_void_p]
+    handle = None
+    with process_control.OwnedProcess([sys.executable, "-c", parent_code],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as owned:
+        try:
+            deadline = time.monotonic() + 10
+            while not ready.exists() and time.monotonic() < deadline:
+                time.sleep(.01)
+            assert ready.exists()
+            handle = kernel.OpenProcess(0x100000, False, json.loads(ready.read_text())["pid"])
+            assert handle
+            if parent_exits:
+                owned.process.wait(timeout=5)
+            if child_exits:
+                finish.touch()
+                assert kernel.WaitForSingleObject(handle, 5000) == 0
+            owned.close()
+            # exit code/Job活动计数提前变化，不等同于进程资源已释放。
+            assert kernel.WaitForSingleObject(handle, 0) == 0
+            database.unlink()
+        finally:
+            if handle:
+                kernel.CloseHandle(handle)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job退出语义")
+@pytest.mark.parametrize("wait_result", [258, 0xFFFFFFFF])
+def test_owned_job_rejects_unconfirmed_exit(wait_result):
+    class Kernel:
+        def TerminateJobObject(self, *_args): return True
+        def QueryInformationJobObject(self, *_args): return True
+        def WaitForSingleObject(self, *_args): return wait_result
+    job = process_control._WindowsJob.__new__(process_control._WindowsJob)
+    job.kernel, job.handle = Kernel(), 1
+    with pytest.raises((RuntimeError, OSError)):
+        job.terminate_and_wait()
 
 
 def test_owned_backend_stop_reclaims_descendants_and_closes_logs(monkeypatch, tmp_path: Path) -> None:

@@ -2,6 +2,8 @@
 
 当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-final-closure-20260920`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
 
+最新检查点：`b795b7a4` 的 correctness（focused1707项）、change-lifecycle和两档真实模型short通过；首100人30分钟完整证据的integrity通过、performance失败，非故障最大lag1.422、cadence p95约127.97ms、最终backlog0。整组soak未完成，旧证据不能套用后续修复。CI #209 raw cognition固定等待已补强为实际完成与先后关系断言，Phase0新增安全JUnit定位；完整后端另复现Windows Job提前返回导致SQLite清理失败，最小退出信号等待及原失败探针回归通过。完整复验、长测停顿诊断和新SHA同版门禁继续进行，详见[最终执行计划](../superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)。以下旧检查点保留历史来源，不代表最新状态。
+
 最新续作：`94432434` 的真实模型 short 两档通过，但 100 人混合长测仍在故障注入前出现 9 个 lag 超限窗口，最大 3.109。此次修复 Character 认知进度对完整上下文的重复存储，不能据此直接关闭长测。冻结内容及离线证据格式见本文末尾；其余同版正式门禁和远端 CI 仍须重新验收。
 
 `deeba751` 的两档真实模型 short 通过并完成导出复验。新 CI 暴露封存版本身份错误，本地实际 wheel 构建证实 `backend/build/` 未被忽略、使 Harness 报告带 dirty 后缀；现仅忽略该生成目录，保留真实源码变更拒绝，428项工具测试通过。其远端效果待新CI核实。此前276窗无超限的长测已主动停止并正常回收，不计为正式长测通过，也不把旧short套用到新提交。

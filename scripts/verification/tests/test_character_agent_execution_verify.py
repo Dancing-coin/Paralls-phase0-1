@@ -185,7 +185,8 @@ def test_phase0_backend_pytest_uses_the_repository_root_for_repo_relative_checks
         "health, backend_process = ensure_backend(", 1
     )[0]
 
-    assert '[python_exe, "-m", "pytest", "-v", "backend/tests"]' in pytest_call
+    assert '[python_exe, "-m", "pytest", "-v", "backend/tests",' in pytest_call
+    assert '"--junitxml", str(log_dir / "phase0-backend-tests.xml")' in pytest_call
     assert "project_root," in pytest_call
 
 

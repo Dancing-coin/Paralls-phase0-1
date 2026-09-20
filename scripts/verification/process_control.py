@@ -17,9 +17,9 @@ class _WindowsJob:
         signatures = {
             "CreateJobObjectW": ([ctypes.c_void_p, wintypes.LPCWSTR], wintypes.HANDLE),
             "SetInformationJobObject": ([wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD], wintypes.BOOL),
-            "QueryInformationJobObject": ([wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p, wintypes.DWORD, ctypes.c_void_p], wintypes.BOOL),
             "AssignProcessToJobObject": ([wintypes.HANDLE, wintypes.HANDLE], wintypes.BOOL),
             "TerminateJobObject": ([wintypes.HANDLE, wintypes.UINT], wintypes.BOOL),
+            "WaitForSingleObject": ([wintypes.HANDLE, wintypes.DWORD], wintypes.DWORD),
             "CloseHandle": ([wintypes.HANDLE], wintypes.BOOL),
             "CreateToolhelp32Snapshot": ([wintypes.DWORD, wintypes.DWORD], wintypes.HANDLE),
             "Thread32First": ([wintypes.HANDLE, ctypes.c_void_p], wintypes.BOOL),
@@ -70,16 +70,13 @@ class _WindowsJob:
     def terminate_and_wait(self) -> None:
         if not self.kernel.TerminateJobObject(self.handle, 1):
             raise ctypes.WinError(ctypes.get_last_error())
-        deadline = time.monotonic() + 5
-        while True:
-            accounting = _BasicAccounting()
-            if not self.kernel.QueryInformationJobObject(self.handle, 1, ctypes.byref(accounting), ctypes.sizeof(accounting), None):
-                raise ctypes.WinError(ctypes.get_last_error())
-            if accounting.ActiveProcesses == 0:
-                return
-            if time.monotonic() >= deadline:
-                raise RuntimeError("Owned Windows job still has active processes after cleanup")
-            time.sleep(0.01)
+        # 活动计数可先于子进程I/O资源释放归零；等待Job退出信号后才允许清理存档。
+        result = self.kernel.WaitForSingleObject(self.handle, 5000)
+        if result == 0:  # WAIT_OBJECT_0
+            return
+        if result == 0xFFFFFFFF:  # WAIT_FAILED
+            raise ctypes.WinError(ctypes.get_last_error())
+        raise RuntimeError(f"Owned Windows job exit was not confirmed: wait status {result}")
 
     def close(self) -> None:
         if self.handle:
@@ -102,15 +99,6 @@ class _ExtendedLimits(ctypes.Structure):
         ("BasicLimitInformation", _BasicLimits), ("IoInfo", ctypes.c_ulonglong * 6),
         ("ProcessMemoryLimit", ctypes.c_size_t), ("JobMemoryLimit", ctypes.c_size_t),
         ("PeakProcessMemoryUsed", ctypes.c_size_t), ("PeakJobMemoryUsed", ctypes.c_size_t),
-    ]
-
-
-class _BasicAccounting(ctypes.Structure):
-    _fields_ = [
-        ("TotalUserTime", ctypes.c_longlong), ("TotalKernelTime", ctypes.c_longlong),
-        ("ThisPeriodTotalUserTime", ctypes.c_longlong), ("ThisPeriodTotalKernelTime", ctypes.c_longlong),
-        ("TotalPageFaultCount", wintypes.DWORD), ("TotalProcesses", wintypes.DWORD),
-        ("ActiveProcesses", wintypes.DWORD), ("TotalTerminatedProcesses", wintypes.DWORD),
     ]
 
 

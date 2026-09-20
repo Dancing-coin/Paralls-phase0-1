@@ -121,7 +121,8 @@ def main() -> int:
             if path
         )
         pytest_result = run_command(
-            [python_exe, "-m", "pytest", "-v", "backend/tests"],
+            [python_exe, "-m", "pytest", "-v", "backend/tests",
+                "--junitxml", str(log_dir / "phase0-backend-tests.xml")],
             project_root,
             pytest_log,
             env={"PYTHONPATH": pytest_pythonpath, **phase0_env},

@@ -121,3 +121,21 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - 步骤4：定向RED/GREEN、完整工具回归、独立审查后合并推送。冻结新SHA后串行采集所有本机门禁，跟踪新CI，外机Godot/mainline/all、批准char_c绑定及VLA凭据仍须实证；Goal不在局部修复后结束。
 - 验证：后端新增RED为2 failed，修复后双核定向27 passed（47.76秒），包含真实双后端隔离；端口RED为5 failed／1 passed。首次完整工具444 passed／2 failed揭示Windows关闭端口约2秒后才返回拒绝连接：实测1秒上限为TimeoutError，3秒上限下约2.031秒为ConnectionRefusedError。探测改为使用剩余总预算，默认15秒不变；重验完整工具446 passed（67.05秒）。各作用域清理通过。
 - 独立审查发现的测试就绪文件创建/写入竞争已改为同目录临时文件关闭后replace发布；最终复核无阻断项。旧版100人30分钟单档p95约119.34ms、非故障max lag约0.594、最终backlog0，SQLite锁释放后约0.90秒恢复；只保留旧版诊断，不改签、不代替千人2小时或整矩阵。Godot仍未在本机运行。
+
+### CI #209 raw cognition 与新增长测停顿
+
+- `b795b7a4` 的 change-lifecycle、correctness（focused1707 passed）与两档真实short通过、导出复验和清理通过。100人30分钟完整单档离线复验为 integrity通过、performance失败；故障前tick221的fixture约1296.79ms、cadence约109.96ms、lag1.422，tick1003另有lag1.219，均随后追平。下一个千人case显式未启动，整组soak未完成，拥有作用域清理通过。不得删除超限窗口或将其按无证据的“环境抖动”排除。
+- 只读追踪：每窗28组schedule/open/close共84个原独立事务，未发现该fixture路径的全历史扫描；SQLite仍为WAL/FULL。墙钟明显高于进程CPU增量，提交同步、checkpoint、锁等待和调度停顿尚需分段诊断。忽略目录内诊断入口将分别计量事务进入、正文、退出的墙钟与线程CPU，保持交易粒度与耐久性，不把local_probe/带仪表结果当正式性能证据。单窗门槛是否调整已向用户提出可选澄清；未明确答复前保持既有门槛。
+- 新CI的scheduled与双后端未出现在失败摘要；Phase0已生成报告，越过原端口释放异常，但backend_tests和多项Godot场景仍缺失。correctness精确定位到raw cognition测试断开/不断开两分支的子进程第46行，即另一个固定0.5秒owner等待。不能用本地focused通过覆盖远端失败。
+- 修复步骤：为raw两分支加入1秒owner工作回归，非断开增加合法10秒模型延迟；采用provider未释放/未退出时owner实际执行的有界握手，并以30秒条件等待替换固定250次循环。保留线程、无挂起任务、断开后已提交prefix不变等断言；不改变生产性能门槛。Phase0输出本轮命名JUnit，复用原安全过滤器只公开失败测试、内置异常类型及实际仓库行号，避免只能看到backend_tests=missing。
+- 完成标准：先观察新增失败回归，再完整双核后端与工具测试、独立审查；事务停顿另外按原门槛定位。Godot表现继续外机验证，导入提前退出P2仍不修改。最后按明确的最终合同冻结新SHA，串行补齐所有同版门禁，Goal保持进行中。
+
+### CI #209 完整后端暴露的 Windows 子进程回收竞争
+
+- raw补强后的双核7项通过，包含真实completed、provider正常返回、断开后的prefix和任务清空；工具447项通过。首次完整双核Phase0环境回归为6947 passed／2 failed／2 skipped（628.82秒），两个失败均为InteractionSession探针清理临时SQLite时的WinError32，不能归因于Godot表现。
+- 原拥有Job的活动进程计数已经归零，父进程已经退出，但原子进程句柄仍返回WAIT_TIMEOUT。两次真实backend诊断预先持有三个进程句柄，原stop约2.5ms返回时两个子进程未发退出信号；等待同一Job信号后约9.2ms所有句柄均已确认退出。诊断不运行Godot，不作为引擎证据。
+- 最小修复：TerminateJobObject后有界等待Job信号，仍为5秒预算，仅WAIT_OBJECT_0通过，WAIT_TIMEOUT/WAIT_FAILED拒绝；父process.wait和所有权边界保留，不按端口终止进程，不吞文件清理异常。真实持SQLite子进程与两项等待异常回归先3 failed；修复后原InteractionSession双核2 passed／24.29秒，完整工具452 passed／69.53秒。覆盖父子存活、父先退出但子仍持库、父子自然退出三种场景。
+- 平台边界：实测Windows NT 10.0.26100.0。[微软TerminateProcess说明](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess)明确异步终止需要等待；[官方Job说明](https://devblogs.microsoft.com/oldnewthing/20130405-00/?p=4743)不承诺一般自然退出必然发Job信号。本实现每次显式TerminateJobObject后等待，当前平台回归通过，仍须新CI实证，不扩大为跨Windows版本保证。独立只读审查无已确认阻断项。
+- 本轮初次全量失败遗留的paralls-session-i4ab27nf、paralls-session-smcnwpd7仅有本轮临时存档；拥有进程已退出。自动审批以blocked by policy拒绝清理，未执行、未绕过或重试；与此前两个已记录清理阻塞分别保留。修复后新作用域正常清理。
+- 接续：源码保持不变完成完整双核后端复验，串行执行180秒local_probe事务分段诊断；完成审查及提交推送后重新冻结同版正式门禁。严格单窗lag门槛继续保留，六项总闭环尚未完成。
+- 最终双核后端复验6949 passed／2 skipped／0 failed（639.90秒），清理通过。180秒local_probe诊断完整采集180窗、15120个事务：fixture p95约144.75ms、max148.73ms；事务进入max0.31ms、正文max1.58ms、退出max14.23ms。WAL/FULL、autocheckpoint1000、busy_timeout5000不变。未复现旧tick221/1003停顿，不能宣称其已修复或归因checkpoint；下一步以覆盖221窗的真实provider诊断区分负载差异，旧性能失败继续保留。原始材料位于仓库外`D:/HarnessEvidence/pop-b795-fixture-transaction-diagnostic`，带仪表及local_probe结果不用于正式聚合。

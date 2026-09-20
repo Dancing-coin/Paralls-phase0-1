@@ -6,8 +6,9 @@ import pytest
 from scripts.verification.population_godot_runner import child_environment
 
 
-@pytest.mark.parametrize('disconnect', [False, True])
-def test_ws_perception_wait_does_not_hold_owner_and_disconnect_preserves_prefix(tmp_path, disconnect):
+@pytest.mark.parametrize(('disconnect', 'owner_work_delay', 'provider_delay'),
+    [(False, 0, 0), (True, 0, 0), (False, 1, 0), (True, 1, 0), (False, 0, 10)])
+def test_ws_perception_wait_does_not_hold_owner_and_disconnect_preserves_prefix(tmp_path, disconnect, owner_work_delay, provider_delay):
     (tmp_path / 'roster.json').write_text(json.dumps({'actor_ids': ['char_a', 'char_b', 'char_c', *[f'resident_{i:05d}' for i in range(97)]]}))
     code = r'''
 import asyncio, sys, time
@@ -21,8 +22,15 @@ async def run():
     with ExitStack() as stack:
         main, _, _ = configure(Path(sys.argv[1]), stack, mode='one_x', provider_mode='local_probe')
         stack.enter_context(patch.object(main, 'start_population_runtime', lambda: None))
-        started, release = Event(), Event()
-        threads, messages = [], []
+        started, release, provider_exited = Event(), Event(), Event()
+        threads, messages, provider_returns, outcomes = [], [], [], []
+        from app.services import cognition_wait
+        original_wait = cognition_wait.finish_cognition_wait
+        async def observe_completion(**kwargs):
+            result = await original_wait(**kwargs)
+            outcomes.append((result.status, result.reason))
+            return result
+        stack.enter_context(patch.object(cognition_wait, 'finish_cognition_wait', observe_completion))
         async with main.component_app.router.lifespan_context(main.component_app):
             try:
                 def prepare():
@@ -30,9 +38,17 @@ async def run():
                     original = gateway.complete_prepared_request
                     def complete(request):
                         threads.append(get_ident())
+                        first = len(threads) == 1
                         started.set()
-                        assert release.wait(5)
-                        return original(request)
+                        try:
+                            assert release.wait(10)
+                            if first:
+                                time.sleep(float(sys.argv[4]))
+                            result = original(request)
+                            provider_returns.append(True)
+                            return result
+                        finally:
+                            provider_exited.set()
                     stack.enter_context(patch.object(gateway, 'complete_prepared_request', complete))
                     return get_ident()
                 owner = await asyncio.wrap_future(main.runtime_execution.submit(prepare))
@@ -54,13 +70,18 @@ async def run():
                         while not started.is_set() and time.monotonic() < deadline:
                             await asyncio.sleep(.02)
                         assert started.is_set(), messages
-                        assert await asyncio.wait_for(asyncio.wrap_future(main.runtime_execution.submit(lambda: 'healthy')), .5) == 'healthy'
+                        def healthy():
+                            time.sleep(float(sys.argv[3]))
+                            # 验证provider仍阻塞时owner已执行，不能等provider超时退出后假通过。
+                            assert started.is_set() and not release.is_set() and not provider_exited.is_set()
+                            return 'healthy'
+                        assert await asyncio.wait_for(asyncio.wrap_future(main.runtime_execution.submit(healthy)), 5) == 'healthy'
                         if sys.argv[2] == 'True':
                             raise WebSocketDisconnect()
                         release.set()
-                        for _ in range(250):
-                            if not main._transient_cognition_tasks: break
-                            await asyncio.sleep(.02)
+                        async with asyncio.timeout(30):
+                            while main._transient_cognition_tasks:
+                                await asyncio.sleep(.02)
                         assert not main._transient_cognition_tasks
                         raise WebSocketDisconnect()
                 await main.websocket_endpoint(Socket())
@@ -72,15 +93,22 @@ async def run():
                 before = await asyncio.wrap_future(main.runtime_execution.submit(check))
                 assert before
                 release.set()
+                async with asyncio.timeout(10):
+                    while not provider_exited.is_set():
+                        await asyncio.sleep(.02)
                 await asyncio.sleep(.1)
+                assert len(provider_returns) == len(threads)
+                assert not main._transient_cognition_tasks
                 if sys.argv[2] == 'True':
                     assert await asyncio.wrap_future(main.runtime_execution.submit(check)) == before
+                else:
+                    assert outcomes and all(status == 'completed' for status, _reason in outcomes), outcomes
             finally:
                 release.set()
 asyncio.run(run())
 '''
-    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), str(disconnect)],
-        env=child_environment(), capture_output=True, text=True, timeout=30)
+    result = subprocess.run([sys.executable, '-c', code, str(tmp_path), str(disconnect), str(owner_work_delay), str(provider_delay)],
+        env=child_environment(), capture_output=True, text=True, timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
