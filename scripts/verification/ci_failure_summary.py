@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import builtins
 import html
 import json
 import os
@@ -83,9 +84,37 @@ def failure_summary(root: Path) -> list[dict]:
             continue
         for case in cases:
             for tag in ("failure", "error", "skipped"):
-                if case.find(tag) is not None:
-                    rows.append(dict(file=path.relative_to(root).as_posix(),
-                        test=case.get("classname", "") + "." + case.get("name", ""), status=tag))
+                entry = case.find(tag)
+                if entry is not None:
+                    row = dict(file=path.relative_to(root).as_posix(),
+                        test=case.get("classname", "") + "." + case.get("name", ""), status=tag)
+                    if entry.get('message'):
+                        # JUnit 正文不属于结构化错误码，只允许已知内置异常类型。
+                        name = entry.get('message').partition(':')[0]
+                        kind = getattr(builtins, name, None)
+                        row['error'] = (name + ': ' if isinstance(kind, type)
+                            and issubclass(kind, BaseException) else '') + 'details_omitted'
+                    # 仅抽取仓库 Python 位置，不公开断言局部值或请求正文。
+                    repository = Path(__file__).resolve().parents[2]
+                    for line in (entry.text or '').splitlines():
+                        location = line.replace('\\', '/').removeprefix(repository.as_posix() + '/')
+                        match = re.fullmatch(r'((?:backend/(?:app|tests)|scripts/verification)/[\w/.-]+\.py):(\d+):(?:\s+[A-Za-z_]\w*)?\s*', location)
+                        if match and '..' not in Path(match[1]).parts and (repository / match[1]).is_file():
+                            row['source_location'] = match[1] + ':' + match[2]
+                    rows.append(row)
+    for path in sorted(root.rglob('focused.log')):
+        progress = timeout = None
+        with path.open(encoding='utf-8', errors='replace') as stream:
+            for line in stream:
+                match = re.fullmatch(r'[.FEfsxXrR]+\s+\[\s*(\d{1,3})%\]\s*', line)
+                if match and int(match[1]) <= 100:
+                    progress = int(match[1])
+                match = re.fullmatch(r'\[harness\] timeout after (\d+(?:\.\d+)?) seconds\s*', line)
+                if match:
+                    timeout = float(match[1])
+        if timeout is not None:
+            rows.append(dict(file=path.relative_to(root).as_posix(), status='timeout',
+                timeout_seconds=timeout, last_progress_percent=progress))
     return rows
 
 

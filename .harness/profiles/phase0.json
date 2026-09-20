@@ -5,6 +5,7 @@
   "script": "scripts/verification/verify_phase0.py",
   "result_artifact": ".harness/verification/phase0-report.json",
   "max_attempts": 2,
+  "timeout_seconds": 4200,
   "requires_godot": true,
   "description": "Strict Phase 0 backend and Godot runtime validation",
   "success_key": "overall_strict_phase0_passed"

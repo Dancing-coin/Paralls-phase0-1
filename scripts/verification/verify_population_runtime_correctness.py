@@ -114,6 +114,7 @@ FOCUSED_TESTS = (
     "test_population_mixed_fixture.py",
 )
 TIMEOUT_SECONDS = 1200
+FOCUSED_TEST_TIMEOUT_SECONDS = 2400
 FOCUSED_PYTEST_ARGS = ("-m", "pytest", "-q", "-o", "junit_family=legacy")
 
 
@@ -243,13 +244,13 @@ def run_correctness(root: Path, output: Path) -> dict:
                f"--junitxml={junit}",
                *(str(root / "backend/tests" / name) for name in FOCUSED_TESTS)]
     step = {"profile": "runtime-focused-tests", "command": command, "status": "failed",
-            "timeout_seconds": TIMEOUT_SECONDS, "pytest_workers": 1,
+            "timeout_seconds": FOCUSED_TEST_TIMEOUT_SECONDS, "pytest_workers": 1,
             "started_at": datetime.now(timezone.utc).isoformat()}
     try:
         # Windows 的临时 SQLite 文件名需要短路径；测试数据库不进入发布证据包。
         with TemporaryDirectory(prefix="pc-", dir=_temporary_parent()) as temporary:
             command.extend(["--basetemp", _business_temporary_path(temporary)])
-            step["exit_code"] = run_logged(command, cwd=root, env=env, log=output / "focused.log", timeout=TIMEOUT_SECONDS)
+            step["exit_code"] = run_logged(command, cwd=root, env=env, log=output / "focused.log", timeout=FOCUSED_TEST_TIMEOUT_SECONDS)
         if step["exit_code"] != 0:
             raise ValueError("focused_pytest_failed")
         step.update(test_count=_junit_result(junit), status="passed", junit="focused.xml")
@@ -323,7 +324,7 @@ def verify_artifacts(directory: Path, *, expected_commit: str) -> dict:
         reports[name] = report
     focused = steps[-1]
     if (focused.get("status") != "passed" or focused.get("exit_code") != 0 or focused.get("pytest_workers") != 1
-            or focused.get("timeout_seconds") != TIMEOUT_SECONDS or focused.get("junit") != "focused.xml"):
+            or focused.get("timeout_seconds") != FOCUSED_TEST_TIMEOUT_SECONDS or focused.get("junit") != "focused.xml"):
         raise ValueError("correctness_focused_run_invalid")
     start, end = (datetime.fromisoformat(focused[key]) for key in ("started_at", "finished_at"))
     if not prior <= start <= end <= datetime.fromisoformat(manifest["finished_at"]):

@@ -37,6 +37,7 @@ def test_correctness_gate_requires_fresh_complete_results(short_tmp_path, monkey
         os.utime(path, (time.time() + 3600,) * 2 if fault == "future_stale" else (1, 1))
 
     def run(command, *, cwd, env, log, timeout):
+        assert timeout == (gate.FOCUSED_TEST_TIMEOUT_SECONDS if command[1:3] == ['-m', 'pytest'] else gate.TIMEOUT_SECONDS)
         calls.append(command)
         log.write_text("本轮执行\n", encoding="utf-8")
         if command[1:3] == ["-m", "pytest"]:
@@ -139,7 +140,8 @@ def test_correctness_outer_deadlines_cover_all_serial_child_budgets():
     registry = gate.load_profile_registry(gate.ROOT)
     profile = registry.profiles[gate.NAME]
     # 四个producer加完整focused回归串行执行；父级不能先于合法子步骤超时。
-    child_budget = gate.TIMEOUT_SECONDS * (len(gate.PROFILES) + 1)
+    assert gate.FOCUSED_TEST_TIMEOUT_SECONDS == 2400
+    child_budget = gate.TIMEOUT_SECONDS * len(gate.PROFILES) + gate.FOCUSED_TEST_TIMEOUT_SECONDS
     outer_budget = profile.get("timeout_seconds", 900)
     assert outer_budget >= child_budget + 60
     workflow = yaml.safe_load((gate.ROOT / ".github/workflows/harness.yml").read_text(encoding="utf-8"))

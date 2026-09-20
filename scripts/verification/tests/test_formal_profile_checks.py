@@ -66,6 +66,17 @@ def test_godot_project_profile_proves_static_project_integrity() -> None:
     assert statuses["blend_import_is_noninteractive"] == "proved"
 
 
+def test_phase0_outer_deadline_covers_default_serial_child_budgets():
+    import verify_phase0
+    profile = load_profile_registry(repo_root()).profiles['phase0']
+    # 完整后端测试、两段场景标记等待、四个120秒命令，以及启动/回收余量。
+    assert verify_phase0.PHASE0_PYTEST_TIMEOUT_SECONDS == 2400
+    child_budget = (verify_phase0.PHASE0_PYTEST_TIMEOUT_SECONDS
+                    + verify_phase0.MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS
+                    + verify_phase0.FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS + 4 * 120)
+    assert profile.get('timeout_seconds', 900) >= child_budget + 60
+
+
 def test_release_gate_profile_proves_ci_entrypoint() -> None:
     report = evaluate_release_gate(repo_root())
     statuses = {entry["id"]: entry["status"] for entry in report["results"]}

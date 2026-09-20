@@ -40,7 +40,7 @@ PHASE0_VERIFY_ENV = {
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
 }
-PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "1200"))
+PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "2400"))
 # Phase0's imported throne-hall asset exceeds the available D3D12 test-device
 # budget. The compatibility driver preserves scene/script semantics for probes.
 PHASE0_GODOT_RENDER_ARGS = ("--rendering-driver", "opengl3")

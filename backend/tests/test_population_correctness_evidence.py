@@ -67,7 +67,7 @@ def _evidence(directory, monkeypatch):
     (directory/"focused.log").write_text("controlled focused output",encoding="utf-8")
     tmp_output = directory / "focused.xml"
     steps.append(dict(profile="runtime-focused-tests",status="passed",exit_code=0,pytest_workers=1,
-        timeout_seconds=gate.TIMEOUT_SECONDS,junit="focused.xml",test_count=len(gate.FOCUSED_TESTS),
+        timeout_seconds=gate.FOCUSED_TEST_TIMEOUT_SECONDS,junit="focused.xml",test_count=len(gate.FOCUSED_TESTS),
         command=["python","-m","pytest","-q","-o","junit_family=legacy",f"--junitxml={tmp_output}",
                  *(str(gate.ROOT / "backend/tests" / name) for name in gate.FOCUSED_TESTS),
                  "--basetemp", str(gate.ROOT / ".harness/pc-evidence")],started_at=stamp,finished_at=stamp))

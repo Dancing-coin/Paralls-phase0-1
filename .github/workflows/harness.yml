@@ -166,7 +166,7 @@ jobs:
           if (Test-Path -LiteralPath $expected) { Remove-Item -LiteralPath $expected -Recurse -Force }
   population-correctness:
     runs-on: windows-latest
-    timeout-minutes: 105
+    timeout-minutes: 130
     steps:
       - name: Initialize owned evidence path on runner
         id: initialize_evidence

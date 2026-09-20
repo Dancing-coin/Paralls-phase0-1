@@ -101,3 +101,56 @@ def test_ci_annotation_supports_unicode_test_names_on_windows_stdout(tmp_path, m
     output.flush()
     assert '::warning' in buffer.getvalue().decode('ascii')
     assert '中文场景' in destination.read_text(encoding='utf-8')
+
+
+def test_failed_junit_reports_safe_source_location_without_assertion_payload(tmp_path):
+    (tmp_path / 'focused.xml').write_text(
+        '<testsuites><testsuite><testcase classname="runtime" name="capture">'
+        '<failure message="AssertionError: private request payload">'
+        'private local values\nbackend/tests/test_population_multi_game_capacity.py:145: AssertionError\n'
+        '</failure></testcase></testsuite></testsuites>', encoding='utf-8')
+    rows = failure_summary(tmp_path)
+    assert rows[0]['source_location'] == 'backend/tests/test_population_multi_game_capacity.py:145'
+    assert rows[0]['error'] == 'AssertionError: details_omitted'
+    assert 'private' not in json.dumps(rows)
+
+
+def test_focused_timeout_reports_only_numeric_pytest_progress(tmp_path):
+    (tmp_path / 'focused.log').write_text(
+        'private request [100%]\n.................... [ 65%]\n'
+        'private failure\n[harness] timeout after 1200 seconds\n', encoding='utf-8')
+    assert failure_summary(tmp_path) == [dict(file='focused.log', status='timeout',
+        timeout_seconds=1200, last_progress_percent=65)]
+
+
+def test_junit_single_token_assertion_body_is_not_a_public_error_code(tmp_path):
+    for message in ('AssertionError: PRIVATE_REQUEST_SENTINEL', 'PRIVATE_PAYLOAD_SENTINEL'):
+        (tmp_path / 'focused.xml').write_text(
+            '<testsuites><testsuite><testcase classname="runtime" name="capture">'
+            f'<failure message="{message}"/></testcase></testsuite></testsuites>', encoding='utf-8')
+        rows = failure_summary(tmp_path)
+        assert 'PRIVATE' not in json.dumps(rows)
+        assert rows[0]['error'] == ('AssertionError: details_omitted' if message.startswith('AssertionError:') else 'details_omitted')
+
+
+def test_junit_assertion_body_cannot_supply_fake_source_location(tmp_path):
+    for location in (
+        'E   AssertionError: PRIVATE_INPUT/backend/tests/PRIVATE_REQUEST_SENTINEL.py:145: secret',
+        'E   AssertionError: backend/tests/test_population_multi_game_capacity.py:145: AssertionError',
+        'backend/tests/PRIVATE_REQUEST_SENTINEL.py:145: AssertionError',
+    ):
+        (tmp_path / 'focused.xml').write_text(
+            '<testsuites><testsuite><testcase classname="runtime" name="capture">'
+            f'<failure>{location}</failure></testcase></testsuite></testsuites>', encoding='utf-8')
+        rows = failure_summary(tmp_path)
+        assert 'source_location' not in rows[0]
+        assert 'PRIVATE' not in json.dumps(rows)
+
+
+def test_junit_accepts_current_checkout_absolute_traceback_location(tmp_path):
+    from pathlib import Path
+    source = Path(__file__).resolve().parents[3] / 'backend/tests/test_population_multi_game_capacity.py'
+    (tmp_path / 'focused.xml').write_text(
+        '<testsuites><testsuite><testcase classname="runtime" name="capture">'
+        f'<failure>{source}:145: AssertionError</failure></testcase></testsuite></testsuites>', encoding='utf-8')
+    assert failure_summary(tmp_path)[0]['source_location'] == 'backend/tests/test_population_multi_game_capacity.py:145'
