@@ -31,19 +31,32 @@ def test_partial_fixture_failure_resumes_original_owner_prefix_and_peak_is_not_c
     original, calls = OrganizationAuthority.close_operating_window, []
     def close(owner, **kwargs):
         calls.append(kwargs["window_ref"])
-        if len(calls) == 2:
+        if len(calls) == 18:
             raise RuntimeError("fixture interrupted")
         return original(owner, **kwargs)
     monkeypatch.setattr(OrganizationAuthority, "close_operating_window", close)
     with pytest.raises(RuntimeError, match="fixture interrupted"):
         prepare_due_fixture(store=store, actors=actors, event=event)
     prefix = store.read_events()
+    assert len(prefix) == 16 * 6
     result = prepare_due_fixture(store=store, actors=actors, event=event)
     assert len(result) == 100
     assert store.read_events()[:len(prefix)] == prefix
     assert len(store.read_events()) == 100 * 6
     assert len({row["window_ref"] for row in result}) == 100
     assert {row["due_tick"] for row in result} == {300}
+
+
+def test_regular_fixture_groups_owner_writes_into_two_durable_commits(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "fixture-commits.db")
+    actors = tuple(f"worker_{i}" for i in range(100))
+    event = next(row for row in MixedLoadSchedule(100, 7, "one_x").events(1) if row.kind == "regular_due")
+    statements = []
+    store._database_connection().set_trace_callback(statements.append)
+
+    assert len(prepare_due_fixture(store=store, actors=actors, event=event)) == 28
+
+    assert sum(statement == "COMMIT" for statement in statements) == 2
 
 
 def test_fixture_same_key_cannot_be_rebound_to_other_actor(tmp_path):

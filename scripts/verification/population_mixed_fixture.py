@@ -60,37 +60,40 @@ def prepare_due_fixture(*, store, actors: tuple[str, ...], event) -> list[dict]:
             or not indices or len(indices) > 100):
         raise ValueError("mixed_fixture_actor_selection_invalid")
     owner, rows = OrganizationAuthority(store=store), []
-    for index in indices:
-        key = f"{event.transaction_id}:actor-slot:{index}"
-        window_ref, organization = "window:" + key, f"org:mixed:{index % 2}"
-        command = "schedule:" + key
-        payload = dict(organization_ref=organization, recipient_ref="character:" + actors[index],
-            membership_ref="membership:" + key, assignment_ref="assignment:" + key, role="worker",
-            shift_ref="shift:" + key, operating_window_ref=window_ref, work_order_ref="work:" + key,
-            effective_from="1970-01-01T00:00:00Z", effective_to=None, visibility_scope="organization:summary")
-        prior = store.get_by_idempotency(owner._PRINCIPAL, "idempotency:" + command)
-        if prior is None:
-            prior = owner.record_schedule(command_id=command, **payload)
-        if not prior.committed or len(prior.committed_event_ids) != 4:
-            raise ValueError("mixed_fixture_schedule_failed")
-        # record_schedule 使用当前 stream head；恢复时必须核对原已提交输入，不能重签同 key。
-        scheduled = [store.get_event(event_id) for event_id in prior.committed_event_ids]
-        if (any(row.payload != payload or row.visibility_policy != "organization:summary"
-                or row.stream_id != "gameplay:organization:" + organization for row in scheduled)
-                or scheduled[-1].event_type != "gameplay.organization.work_order_recorded"):
-            raise ValueError("mixed_fixture_schedule_conflict")
-        common = dict(causation_id=key, correlation_id=key, visibility_scope="project")
-        opened = owner.open_operating_window(command_id="open:" + key, idempotency_key="open:" + key,
-            window=OperatingWindow(window_ref=window_ref, organization_ref=organization,
-                opens_at_tick=0, closes_at_tick=event.window_index,
-                policy_revision=RECIPE, source_revision=scheduled[-1].event_id), **common)
-        if not opened.committed:
-            raise ValueError("mixed_fixture_open_failed")
-        closed = owner.close_operating_window(command_id="close:" + key, idempotency_key="close:" + key,
-            organization_ref=organization, window_ref=window_ref, expected_stream_revision=1, **common)
-        if not closed.committed:
-            raise ValueError("mixed_fixture_close_failed")
-        rows.append(dict(key=key, actor_id=actors[index], window_ref=window_ref,
-            due_tick=event.window_index, schedule_event_id=scheduled[-1].event_id,
-            closed_event_id=closed.committed_event_ids[0]))
+    # 保留完整分块的中断恢复前缀，同时避免每个领域 transaction 单独执行 FULL fsync。
+    for start in range(0, len(indices), 16):
+        with store.group_commit():
+            for index in indices[start:start + 16]:
+                key = f"{event.transaction_id}:actor-slot:{index}"
+                window_ref, organization = "window:" + key, f"org:mixed:{index % 2}"
+                command = "schedule:" + key
+                payload = dict(organization_ref=organization, recipient_ref="character:" + actors[index],
+                    membership_ref="membership:" + key, assignment_ref="assignment:" + key, role="worker",
+                    shift_ref="shift:" + key, operating_window_ref=window_ref, work_order_ref="work:" + key,
+                    effective_from="1970-01-01T00:00:00Z", effective_to=None, visibility_scope="organization:summary")
+                prior = store.get_by_idempotency(owner._PRINCIPAL, "idempotency:" + command)
+                if prior is None:
+                    prior = owner.record_schedule(command_id=command, **payload)
+                if not prior.committed or len(prior.committed_event_ids) != 4:
+                    raise ValueError("mixed_fixture_schedule_failed")
+                # record_schedule 使用当前 stream head；恢复时必须核对原已提交输入，不能重签同 key。
+                scheduled = [store.get_event(event_id) for event_id in prior.committed_event_ids]
+                if (any(row.payload != payload or row.visibility_policy != "organization:summary"
+                        or row.stream_id != "gameplay:organization:" + organization for row in scheduled)
+                        or scheduled[-1].event_type != "gameplay.organization.work_order_recorded"):
+                    raise ValueError("mixed_fixture_schedule_conflict")
+                common = dict(causation_id=key, correlation_id=key, visibility_scope="project")
+                opened = owner.open_operating_window(command_id="open:" + key, idempotency_key="open:" + key,
+                    window=OperatingWindow(window_ref=window_ref, organization_ref=organization,
+                        opens_at_tick=0, closes_at_tick=event.window_index,
+                        policy_revision=RECIPE, source_revision=scheduled[-1].event_id), **common)
+                if not opened.committed:
+                    raise ValueError("mixed_fixture_open_failed")
+                closed = owner.close_operating_window(command_id="close:" + key, idempotency_key="close:" + key,
+                    organization_ref=organization, window_ref=window_ref, expected_stream_revision=1, **common)
+                if not closed.committed:
+                    raise ValueError("mixed_fixture_close_failed")
+                rows.append(dict(key=key, actor_id=actors[index], window_ref=window_ref,
+                    due_tick=event.window_index, schedule_event_id=scheduled[-1].event_id,
+                    closed_event_id=closed.committed_event_ids[0]))
     return rows
