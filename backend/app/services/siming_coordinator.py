@@ -397,6 +397,14 @@ class SimingCoordinator:
         if reason is not None:
             if validation is not None and reason == "stale_pin" and self._can_requeue(frame, now):
                 return self._requeue_candidate(entry, frame, now=now, completion_json=canonical)
+            if (validation is not None and reason == "stale_pin"
+                    and completion.error == "SimingLlmProviderTimeout"):
+                receipt = self.admissions.advance(key, expected_revision=entry.revision, now=now,
+                    transition=SimingAdmissionTransition(state="result_ready",
+                        stage=provider_entry.transition.stage,
+                        ordinal=provider_entry.transition.ordinal, completion_json=canonical))
+                self.runtime.cancel_turn(job.turn_id)
+                return receipt
             self.runtime.cancel_turn(job.turn_id)
             return self._reconcile_only(entry, head, now=now, reason=reason)
         receipt = self.admissions.advance(key, expected_revision=entry.revision, now=now,

@@ -183,7 +183,7 @@ def temporal_evidence(rows, config, client, server_requests, siming):
         matches = [job for job in siming['jobs'] if any(binding['request_sha256'] == call['request_sha256']
             and binding['source_event_id'] in call['source_event_ids'] and binding['error'] == 'SimingLlmProviderTimeout'
             for binding in job['providers'])]
-        recovered.append(len(matches) == 1 and matches[0]['state'] == 'completed')
+        recovered.append(len(matches) == 1 and siming_job_finished_safely(matches[0], [call]))
     busy = [row for row in rows if row['type'] == 'sqlite_busy']
     expected_busy = [event.transaction_id for event in events if event.kind == 'sqlite_busy']
     if [row['key'] for row in busy] != expected_busy:
@@ -225,6 +225,15 @@ def siming_job_finished_safely(job, calls):
     if job['state'] != 'stale' or not job.get('reason', '').startswith('stale_pin'):
         return False
     event_id = job['source']['event_id']
+    for binding in job.get('providers', []):
+        if binding.get('error') != 'SimingLlmProviderTimeout':
+            continue
+        if any(call['family'] == 'siming'
+                and call.get('request_sha256') == binding.get('request_sha256')
+                and call.get('error') == binding['error']
+                and event_id == binding.get('source_event_id')
+                and event_id in call['source_event_ids'] for call in calls):
+            return True
     return any(call['family'] == 'siming' and call['qualified_success']
         and event_id in call['source_event_ids'] for call in calls)
 

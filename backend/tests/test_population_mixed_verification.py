@@ -26,6 +26,28 @@ def test_siming_stale_pin_after_live_provider_is_a_safe_terminal_result():
     assert not verification.siming_job_finished_safely({**job, 'reason': 'wall_ttl_expired'}, [call])
     assert not verification.siming_job_finished_safely(job, [{**call, 'qualified_success': False}])
 
+    timeout_job = {
+        **job,
+        'providers': [{
+            'request_sha256': 'request:1',
+            'source_event_id': 'event:1',
+            'error': 'SimingLlmProviderTimeout',
+        }],
+    }
+    timeout_call = {
+        **call,
+        'request_sha256': 'request:1',
+        'error': 'SimingLlmProviderTimeout',
+        'qualified_success': False,
+    }
+    assert verification.siming_job_finished_safely(timeout_job, [timeout_call])
+    assert not verification.siming_job_finished_safely(timeout_job, [
+        {**timeout_call, 'request_sha256': 'request:other'},
+    ])
+    assert not verification.siming_job_finished_safely(timeout_job, [
+        {**timeout_call, 'source_event_ids': ['event:other']},
+    ])
+
 
 def test_actual_capture_offline_links_original_windows_sources_and_commits(tmp_path):
     directory = tmp_path / 'capture'
