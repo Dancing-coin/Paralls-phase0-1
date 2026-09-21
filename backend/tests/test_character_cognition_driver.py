@@ -62,6 +62,52 @@ def test_character_driver_uses_shared_slots_and_owner_keeps_progressing(tmp_path
         execution.submit(rt.close).result(3)
         execution.stop()
 
+
+def test_character_driver_retries_exact_frozen_request_after_required_online_failure(tmp_path, monkeypatch):
+    from app.character_agent.services.cognition_driver import CharacterCognitionDriver
+    execution, pool = RuntimeExecution(), DialogueProviderSlots()
+    attempts = []
+    def init():
+        rt, admissions, coordinator, child, handle = setup(tmp_path)
+        rt.finish_actor_activation(handle, reason='setup')
+        return rt, admissions, coordinator, child
+    rt, admissions, coordinator, child = execution.submit(init).result(3)
+    def provider(request):
+        attempts.append(request)
+        if len(attempts) == 1:
+            raise RuntimeError('temporary transport failure')
+        restored = rt._l2._gateway._restore_prepared_request(request)
+        return rt._l2._gateway._provider._offline_complete(restored)
+    monkeypatch.setattr(rt._l2._gateway, 'complete_prepared_request', provider)
+    monkeypatch.setattr(rt._l3._gateway, 'complete_prepared_request', provider)
+    monkeypatch.setenv('CHARACTER_MODEL_REQUIRE_ONLINE', '1')
+    async def owner_call(fn):
+        return await asyncio.wrap_future(execution.submit(fn))
+    async def check():
+        completed = []
+        driver = CharacterCognitionDriver(coordinator=coordinator, owner_call=owner_call, slots=pool,
+            begin_activation=lambda entry: rt.begin_actor_activation(entry.actor_id, active_dialogue_decision(), producer_ts=entry.producer_ts)[0],
+            on_completed=lambda entry, progress: completed.append(progress), clock=lambda: 120.)
+        try:
+            for _ in range(200):
+                await driver.poll()
+                if completed:
+                    break
+                await asyncio.sleep(.01)
+            assert completed and completed[0].status == 'completed'
+            assert len(attempts) == 3 and attempts[0] == attempts[1]
+            assert execution.snapshot()['state'] == 'running'
+            assert await owner_call(lambda: admissions.list_pending()) == ()
+            assert await owner_call(rt.pending_actor_activations) == ()
+        finally:
+            await driver.close()
+    try:
+        asyncio.run(check())
+    finally:
+        pool._executor.shutdown(wait=True)
+        execution.submit(rt.close).result(3)
+        execution.stop()
+
 @pytest.mark.parametrize('ending', ['cancel_prepare', 'submit', 'shutdown', 'close_prepare', 'source', 'source_begin'])
 def test_character_driver_keeps_undelivered_lease_and_cancellation_holds_real_slot(tmp_path, monkeypatch, ending):
     from app.character_agent.services.cognition_driver import CharacterCognitionDriver
