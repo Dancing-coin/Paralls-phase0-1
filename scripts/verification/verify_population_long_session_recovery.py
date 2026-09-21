@@ -350,6 +350,7 @@ def backup_archive(database: Path, destination: Path) -> dict[str, str]:
     """持有同一 runtime lease 后调用；逐库 backup 包含 WAL 中的已提交内容。"""
     destination.mkdir(parents=True, exist_ok=False)
     files = [database, database.with_name(database.name + ".gameplay.json"),
+             database.with_name(database.name + ".siming-audit.sqlite3"),
              database.with_name(database.stem + ".harness-task-ledger.sqlite3"),
              database.with_name(database.stem + ".harness-capabilities.sqlite3")]
     session = database.with_name(database.name + ".character-agent")

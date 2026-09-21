@@ -4,6 +4,8 @@ import sqlite3
 import pytest
 
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.siming_audit_writer import SqliteSimingAuditWriter
+from app.models.siming_event import SimingAuditRecord
 from app.world_runtime.storage_lease import RuntimeStorageLease
 from scripts.verification import verify_population_long_session_recovery as recovery
 from test_population_durable_cadence_recovery import _publisher, _runtime
@@ -25,6 +27,25 @@ def archive(tmp_path):
 def checkpoints(path):
     with sqlite3.connect(path) as connection:
         return connection.execute("SELECT * FROM checkpoints ORDER BY id").fetchall()
+
+
+def test_backup_archive_includes_committed_siming_audit(tmp_path):
+    graph, _, _ = archive(tmp_path)
+    audit = graph.with_name(graph.name + ".siming-audit.sqlite3")
+    writer = SqliteSimingAuditWriter(audit)
+    writer.record(SimingAuditRecord(
+        audit_id="audit:old", room_id="room:1", correlation_id="correlation:old",
+        causation_id="cause:old", source_event_id="event:old",
+        status="recorded", reason="accepted",
+    ))
+
+    backup = tmp_path / "backup"
+    copied = recovery.backup_archive(graph, backup)
+    restored = SqliteSimingAuditWriter(backup / audit.name)
+    assert audit.name in copied
+    assert restored.get_record("audit:old") == writer.get_record("audit:old")
+    restored.close()
+    writer.close()
 
 
 def test_offline_rebuild_backs_up_and_preserves_authority_after_both_checkpoints_corrupt(tmp_path):
