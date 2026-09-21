@@ -116,6 +116,11 @@ class GameplayEventStore:
         self._write_ready = True
         self._lock = RLock()
 
+    @contextmanager
+    def group_commit(self):
+        """为无需物理提交的内存账本提供统一批处理边界。"""
+        yield
+
     def append_batch(self, payload: AtomicEventBatch | dict[str, Any]) -> AppendBatchResult:
         with self._lock:
             batch = self._validate_append_payload(payload)
@@ -837,6 +842,8 @@ class DurableGameplayEventStore(GameplayEventStore):
         self._snapshot_path.parent.mkdir(parents=True, exist_ok=True)
         super().__init__(event_schema_registry=event_schema_registry)
         self._connection: sqlite3.Connection | None = None
+        self._group_connection: sqlite3.Connection | None = None
+        self._group_failed = False
         self._closed = False
         restored = None
         if self._snapshot_path.exists():
@@ -915,6 +922,9 @@ class DurableGameplayEventStore(GameplayEventStore):
         with self._lock:
             if self._closed:
                 raise GameplayEventStoreSnapshotError("gameplay_snapshot_closed")
+            if self._group_connection is not None:
+                yield self._group_connection
+                return
             try:
                 with self._database_connection() as owned:
                     owned.execute("BEGIN IMMEDIATE")
@@ -923,6 +933,33 @@ class DurableGameplayEventStore(GameplayEventStore):
                 # 原事务退出已回滚；失败连接不带入下一次重试。
                 self._discard_connection()
                 raise
+
+    @contextmanager
+    def group_commit(self):
+        """将调用方的一组独立账本 transaction 合并为一次 SQLite 提交。"""
+        with self._lock:
+            if self._closed:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_closed")
+            if self._group_connection is not None:
+                raise GameplayEventStoreSnapshotError("gameplay_group_commit_nested")
+            connection = self._database_connection()
+            try:
+                connection.execute("BEGIN IMMEDIATE")
+                self._group_connection = connection
+                self._group_failed = False
+                yield
+                if self._group_failed:
+                    raise GameplayEventStoreSnapshotError("gameplay_group_commit_failed")
+                connection.commit()
+            except BaseException:
+                try:
+                    connection.rollback()
+                except (OSError, sqlite3.Error):
+                    self._discard_connection()
+                raise
+            finally:
+                self._group_connection = None
+                self._group_failed = False
 
     def _load_database(self, registry: EventSchemaRegistry | None) -> None:
         try:
@@ -1027,6 +1064,8 @@ class DurableGameplayEventStore(GameplayEventStore):
                     self._write_delta(connection=connection, batch=committed_batch, result=result)
                 return result.model_copy(deep=True)
             except (OSError, sqlite3.Error, GameplayEventStoreSnapshotError):
+                if self._group_connection is not None:
+                    self._group_failed = True
                 return _empty_result(transaction_id=batch.transaction_id, command_id=batch.command_id,
                     error_code="durable_persistence_failed", message="authority batch was not durably persisted",
                     failed_stage="durable_persistence", retriable=True)
