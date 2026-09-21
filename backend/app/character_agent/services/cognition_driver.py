@@ -114,17 +114,28 @@ class CharacterCognitionDriver:
             return
         handle = self._handles[key]
         try:
+            output = future.result()
+        except Exception as provider_error:
+            if stage == 'suggestion':
+                self._stale(key, provider_error)
+                return
             try:
-                output = future.result()
-            except Exception as error:
-                if stage == 'suggestion':
-                    self._stale(key, error)
-                else:
-                    c.accept_provider_error(key, activation=handle, now=self.clock(), stage=stage, error=error)
-            else:
+                c.accept_provider_error(key, activation=handle, now=self.clock(), stage=stage, error=provider_error)
+            except Exception as acceptance_error:
+                progress = c.admissions.read_progress(key)
+                if (acceptance_error is provider_error and progress is not None
+                        and progress.stage == stage and progress.status == 'provider_pending'):
+                    # 强制在线模式保留原冻结请求；网络恢复后由下一轮使用同一请求重试。
+                    return
+                if isinstance(acceptance_error, ValueError):
+                    self._stale(key, acceptance_error)
+                    return
+                raise
+        else:
+            try:
                 getattr(c, 'accept_'+stage)(key, activation=handle, now=self.clock(), output=output)
-        except ValueError as error:
-            self._stale(key, error)
+            except ValueError as error:
+                self._stale(key, error)
 
     async def poll(self):
         if self._closed:
