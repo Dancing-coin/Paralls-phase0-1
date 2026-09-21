@@ -334,6 +334,47 @@ def test_provider_rejection_has_no_candidate_fallback_or_new_effects(tmp_path, c
         state.close()
 
 
+def test_timeout_completion_is_durable_before_stale_pin_terminal(tmp_path):
+    import time
+    from app.services.siming_continuation import SimingProviderCompletion, run_siming_provider
+    from app.services.siming_llm_provider import SimingLlmProviderTimeout
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_continuation import make_visual_fact_event
+
+    class TimeoutProvider:
+        def generate_candidates(self, **_kwargs):
+            raise SimingLlmProviderTimeout("controlled timeout")
+
+    state = main.build_runtime_state(Settings(heavenly_graph_path=str(tmp_path / "g.db")))
+    try:
+        versions = [1]
+        state.siming_runtime = SimingRuntime(llm_provider=TimeoutProvider())
+        owner = coordinator(state)
+        owner.runtime._actor_pin_reader = lambda actor: {"actor": actor, "revision": versions[0]}
+        now = time.time()
+        key = owner.admit_event(make_visual_fact_event(), now=now,
+            expires_at=now + 60, policy_version="v1").entry.key
+        job, provider, provider_revision = owner.prepare_ready(key, now=now)
+        completion = run_siming_provider(provider, job.request_json)
+        assert SimingProviderCompletion.model_validate_json(completion).error == "SimingLlmProviderTimeout"
+        versions[0] = 2
+
+        terminal = owner.finish_ready(key, job, completion,
+            provider_revision=provider_revision, now=now)
+
+        assert terminal.entry.state == "stale"
+        assert terminal.entry.transition.reason.startswith("stale_pin;")
+        assert terminal.entry.result_revision is not None
+        durable = owner.admissions.read(key, revision=terminal.entry.result_revision).entry
+        assert durable.state == "result_ready"
+        assert SimingProviderCompletion.model_validate_json(
+            durable.transition.completion_json).error == "SimingLlmProviderTimeout"
+        assert terminal.entry.transition.effects == []
+        assert state.siming_runtime.pending_count == 0
+    finally:
+        state.close()
+
+
 def test_adaptive_provider_plan_uses_same_durable_stage_boundary(adaptive_state):
     import time
     from app.services.siming_continuation import run_siming_provider
