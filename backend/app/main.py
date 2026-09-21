@@ -162,7 +162,7 @@ from app.services.trusted_local_embodied_controller_launcher import (
     TrustedLocalEmbodiedControllerEnrollmentIssuer,
     TrustedLocalEmbodiedControllerLaunchProfile,
 )
-from app.services.siming_audit_writer import SimingAuditWriter
+from app.services.siming_audit_writer import SimingAuditWriter, SqliteSimingAuditWriter
 from app.world_runtime.projection import project_world_result_delta
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
 from app.world_runtime.l1_occupancy import SpatialOccupancyService
@@ -1165,6 +1165,9 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
+    previous_audit = globals().get("siming_audit_writer")
+    if isinstance(previous_audit, SqliteSimingAuditWriter):
+        previous_audit.close()
     previous_gameplay = globals().get('gameplay_event_store')
     if isinstance(previous_gameplay, DurableGameplayEventStore):
         previous_gameplay.close()
@@ -1435,10 +1438,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         occupied_by_ref="item:barrel_01",
         scene_revision=11,
     )
-    if "siming_audit_writer" not in globals():
-        siming_audit_writer = SimingAuditWriter()
-    else:
-        siming_audit_writer.reset()
+    siming_audit_writer = (
+        SqliteSimingAuditWriter(graph_path.with_name(f"{graph_path.name}.siming-audit.sqlite3"))
+        if graph_path.name != ":memory:" else SimingAuditWriter()
+    )
     _pending_siming_character_dispatch_messages = {}
     siming_event_pipeline = SimingEventPipeline(
         bus=authority_event_bus,
@@ -1894,6 +1897,9 @@ def close_runtime_resources() -> None:
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
         previous_graph.close()
+    previous_audit = globals().get("siming_audit_writer")
+    if isinstance(previous_audit, SqliteSimingAuditWriter):
+        previous_audit.close()
     previous_gameplay = globals().get('gameplay_event_store')
     if isinstance(previous_gameplay, DurableGameplayEventStore):
         previous_gameplay.close()

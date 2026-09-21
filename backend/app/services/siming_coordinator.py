@@ -536,7 +536,7 @@ class SimingCoordinator:
         writer = self.output_pipeline._audit_writer
         for item in payload["audits"]:
             audit = SimingAuditRecord.model_validate(item)
-            previous = writer._records_by_id.get(audit.audit_id)
+            previous = writer.get_record(audit.audit_id)
             if previous is not None and previous != audit:
                 raise ValueError("siming_audit_conflict")
             if previous is None:

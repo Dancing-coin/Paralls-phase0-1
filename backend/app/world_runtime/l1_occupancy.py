@@ -269,6 +269,10 @@ class SpatialOccupancyService:
         if zone_id not in self._snapshot.dirty_zone_ids:
             self._snapshot.dirty_zone_ids.append(zone_id)
             self._snapshot.dirty_zone_ids.sort()
+        self._snapshot.dirty_events = [
+            event for event in self._snapshot.dirty_events
+            if event.zone_id != zone_id or event.update_kind != update_kind
+        ]
         self._snapshot.dirty_events.append(
             SpatialOccupancyDirtyEvent(
                 update_kind=update_kind,

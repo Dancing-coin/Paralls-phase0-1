@@ -75,3 +75,41 @@ def test_authenticated_session_stays_fail_closed_without_adapter() -> None:
 
     assert result.accepted is False
     assert result.error_code == "authenticated_session_adapter_unavailable"
+
+
+def test_expired_launch_credentials_are_pruned_without_revoking_active_bindings() -> None:
+    service = WebSocketSessionAuthService()
+    old = service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1", allowed_actor_refs=("actor:a",),
+        issued_at=10, expires_at=20,
+    )
+    bound = service.bind_session(_enrollment(old), remote_host="127.0.0.1", now=11).binding
+    assert bound is not None
+
+    current = service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1", allowed_actor_refs=("actor:b",),
+        issued_at=21, expires_at=30,
+    )
+
+    assert old not in service._trusted_credentials
+    assert service.resolve_binding(bound.session_ref) == bound
+    assert service.bind_session(_enrollment(current), remote_host="127.0.0.1", now=21).accepted
+
+
+def test_closed_binding_diagnostics_are_bounded_to_recent_sessions() -> None:
+    service = WebSocketSessionAuthService()
+    session_refs = []
+    for timestamp in range(260):
+        credential = service.create_trusted_local_launch_credential(
+            principal_ref="principal:player:1", allowed_actor_refs=("actor:a",),
+            issued_at=timestamp, expires_at=timestamp + 10,
+        )
+        binding = service.bind_session(_enrollment(credential), remote_host="127.0.0.1", now=timestamp).binding
+        assert binding is not None
+        session_refs.append(binding.session_ref)
+        assert service.disconnect_session(binding.session_ref, now=timestamp)
+
+    assert len(service._closed_bindings) == 256
+    assert service.lifecycle_record(session_refs[0]) is None
+    assert service.lifecycle_record(session_refs[-1]).binding_state == "disconnected"
+    assert not service._bindings

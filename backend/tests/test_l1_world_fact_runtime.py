@@ -198,5 +198,32 @@ def test_esm_environment_result_can_update_l1_occupancy_field() -> None:
     assert snapshot.dirty_events[-1].source_refs == [result.result_id]
 
 
+def test_spatial_occupancy_keeps_latest_dirty_event_per_zone_and_kind() -> None:
+    service = SpatialOccupancyService()
+    for tick in range(500):
+        service.apply_temporary_blocker_update(
+            zone_id="zone_focus",
+            blocker_id="spill_1",
+            active=True,
+            producer_ts=tick,
+            source_ref=f"blocker:{tick}",
+        )
+    service.apply_temporary_blocker_update(
+        zone_id="zone_focus",
+        blocker_id="spill_1",
+        active=False,
+        producer_ts=500,
+        source_ref="blocker:removed",
+    )
+
+    snapshot = service.snapshot()
+    assert [(event.update_kind, event.producer_ts, event.source_refs) for event in snapshot.dirty_events] == [
+        ("temporary_blocker_added", 499, ["blocker:499"]),
+        ("temporary_blocker_removed", 500, ["blocker:removed"]),
+    ]
+    assert snapshot.dirty_zone_ids == ["zone_focus"]
+    assert snapshot.zone_states["zone_focus"].temporary_blockers == []
+
+
 def test_legacy_runtime_spatial_occupancy_import_remains_compatible() -> None:
     assert RuntimeSpatialOccupancyService is SpatialOccupancyService

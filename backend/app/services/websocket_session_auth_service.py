@@ -91,6 +91,8 @@ class WebSocketConnectionContext:
 class WebSocketSessionAuthService:
     """Issues opaque connection bindings without importing controller execution policy."""
 
+    _CLOSED_BINDING_LIMIT = 256
+
     def __init__(
         self,
         *,
@@ -119,6 +121,9 @@ class WebSocketSessionAuthService:
             raise ValueError("trusted_local_government_drought_advisory_scope_invalid")
         if expires_at < issued_at:
             raise ValueError("trusted_local_session_expiry_invalid")
+        for stale in [key for key, record in self._trusted_credentials.items()
+                      if record.expires_at < issued_at]:
+            del self._trusted_credentials[stale]
         credential = f"trusted_local_launch:{token_urlsafe(24)}"
         self._trusted_credentials[credential] = _TrustedLocalSessionCredential(
             principal_ref=principal_ref,
@@ -237,3 +242,5 @@ class WebSocketSessionAuthService:
             reason_code=reason_code,
             occurred_at=now,
         )
+        while len(self._closed_bindings) > self._CLOSED_BINDING_LIMIT:
+            self._closed_bindings.pop(next(iter(self._closed_bindings)))
