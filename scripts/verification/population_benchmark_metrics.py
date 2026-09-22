@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import asyncio
+from functools import lru_cache
 import math
 import os
 from pathlib import Path
@@ -365,7 +366,8 @@ def implementation_digest(root: Path) -> str:
     return "sha256:" + digest.hexdigest()
 
 
-def _windows_memory():
+@lru_cache(maxsize=1)
+def _windows_memory_api():
     import ctypes
     from ctypes import wintypes
 
@@ -381,6 +383,11 @@ def _windows_memory():
     kernel.GetCurrentProcess.restype = wintypes.HANDLE
     psapi = ctypes.WinDLL("psapi", use_last_error=True)
     psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(ProcessMemoryCounters), wintypes.DWORD]
+    return ctypes, ProcessMemoryCounters, kernel, psapi
+
+
+def _windows_memory():
+    ctypes, ProcessMemoryCounters, kernel, psapi = _windows_memory_api()
     counters = ProcessMemoryCounters()
     counters.cb = ctypes.sizeof(counters)
     if not psapi.GetProcessMemoryInfo(kernel.GetCurrentProcess(), ctypes.byref(counters), counters.cb):
