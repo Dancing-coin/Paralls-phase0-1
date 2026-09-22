@@ -52,9 +52,11 @@ class CharacterMemoryStoreRouter:
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
+        max_entries: int | None = None,
     ) -> CharacterWorkingMemoryState:
         return self._store_for(actor_id).working_memory_state(
             actor_id,
             private_snapshot=private_snapshot,
             dynamic_state=dynamic_state,
+            max_entries=max_entries,
         )

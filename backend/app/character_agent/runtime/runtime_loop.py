@@ -117,6 +117,7 @@ class ActivationHandle:
 
 
 class CharacterAgentRuntime:
+    COGNITION_WORKING_MEMORY_LIMIT = CharacterWorkingMemory.DEFAULT_RECENT_ENTRY_LIMIT
     AWAY_CONSERVATIVE_ALLOWED_COMMANDS = {"look_at", "observe", "speak"}
     _RECENT_HISTORY_LIMIT = 4
     _PROFILE_DIRECTORY = Path(__file__).resolve().parents[4] / "assets" / "characters" / "profiles"
@@ -594,7 +595,9 @@ class CharacterAgentRuntime:
         if dynamic_delta:
             self._dynamic_state_store.merge_delta(event.actor_id, dynamic_delta)
         memory_record_bundle = self.get_memory_record_bundle(event.actor_id)
-        working_memory_state = self.get_working_memory_state_record(event.actor_id, snapshot.model_dump())
+        working_memory_state = self.get_working_memory_state_record(
+            event.actor_id, snapshot.model_dump(), max_entries=self.COGNITION_WORKING_MEMORY_LIMIT
+        )
         self._queue_observatory_snapshot(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -653,7 +656,9 @@ class CharacterAgentRuntime:
                 effective_profile=effective_profile,
                 interpretation=interpretation,
             )
-            working_memory_state = self.get_working_memory_state_record(event.actor_id, snapshot.model_dump())
+            working_memory_state = self.get_working_memory_state_record(
+                event.actor_id, snapshot.model_dump(), max_entries=self.COGNITION_WORKING_MEMORY_LIMIT
+            )
         self._record_interpretation_event(event.actor_id, event.producer_ts, interpretation)
         self._set_observatory_context(event.actor_id, "interpretation_summary", interpretation.interpreted_summary)
         self._queue_observatory_stage_event(
@@ -943,7 +948,9 @@ class CharacterAgentRuntime:
         )
         memory_bundle = self.get_memory_bundle(event.actor_id)
         memory_record_bundle = self.get_memory_record_bundle(event.actor_id)
-        working_memory_state = self.get_working_memory_state_record(event.actor_id, snapshot.model_dump())
+        working_memory_state = self.get_working_memory_state_record(
+            event.actor_id, snapshot.model_dump(), max_entries=self.COGNITION_WORKING_MEMORY_LIMIT
+        )
         self._queue_observatory_snapshot(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -1170,7 +1177,9 @@ class CharacterAgentRuntime:
     def _freeze_siming_l2_request(self, actor_id: str, frame: dict) -> tuple[bytes, dict]:
         snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])
         context = dict(memory_bundle=self.get_memory_record_bundle(actor_id), control_mode=self.get_control_mode(actor_id),
-            working_memory_state=self.get_working_memory_state_record(actor_id, snapshot.model_dump()),
+            working_memory_state=self.get_working_memory_state_record(
+                actor_id, snapshot.model_dump(), max_entries=self.COGNITION_WORKING_MEMORY_LIMIT
+            ),
             current_goal_state=self.get_goal_state(actor_id), goal_state_history=self.get_goal_state_history(actor_id),
             supervision_state=self.get_supervision_state(actor_id), unresolved_tensions=self.get_unresolved_tensions(actor_id),
             background_agenda_state=self.get_background_agenda_state(actor_id))
@@ -1290,7 +1299,9 @@ class CharacterAgentRuntime:
             detail=dict(normalized_payload),
         )
         memory_record_bundle = self.get_memory_record_bundle(actor_id)
-        working_memory_state = self.get_working_memory_state_record(actor_id, snapshot.model_dump())
+        working_memory_state = self.get_working_memory_state_record(
+            actor_id, snapshot.model_dump(), max_entries=self.COGNITION_WORKING_MEMORY_LIMIT
+        )
         current_goal_state = self.get_goal_state(actor_id)
         goal_state_history = self.get_goal_state_history(actor_id)
         supervision_state = self.get_supervision_state(actor_id)
@@ -2318,11 +2329,13 @@ class CharacterAgentRuntime:
         self,
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
+        max_entries: int | None = None,
     ):
         return self._memory_store.working_memory_state(
             actor_id,
             private_snapshot=private_snapshot,
             dynamic_state=self.get_dynamic_state_record(actor_id),
+            max_entries=max_entries,
         )
 
     def get_dynamic_state(self, actor_id: str) -> dict[str, object]:
@@ -2455,7 +2468,9 @@ class CharacterAgentRuntime:
         background_mode = self.get_background_mode(actor_id)
         snapshot = self.get_private_snapshot(actor_id)
         memory_record_bundle = self.get_memory_record_bundle(actor_id)
-        working_memory_state = self.get_working_memory_state_record(actor_id, snapshot.model_dump())
+        working_memory_state = self.get_working_memory_state_record(
+            actor_id, snapshot.model_dump(), max_entries=self.COGNITION_WORKING_MEMORY_LIMIT
+        )
         current_goal_state = self.get_goal_state(actor_id)
         goal_state_history = self.get_goal_state_history(actor_id)
         unresolved_tensions = self.get_unresolved_tensions(actor_id)
