@@ -5,6 +5,7 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 
 
 class CharacterWorkingMemory:
+    DEFAULT_RECENT_ENTRY_LIMIT = 32
     RELEVANT_EVENT_TYPES = frozenset({
         "character_perceived_event", "self_body_perceived_event",
         "character_agent_settlement_result", "character_agent_dialogue_response",
@@ -28,7 +29,10 @@ class CharacterWorkingMemory:
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
+        max_entries: int | None = None,
     ) -> CharacterWorkingMemoryState:
+        if max_entries is not None and (type(max_entries) is not int or max_entries <= 0):
+            raise ValueError("working_memory_entry_limit_invalid")
         entries = self.recall(actor_id)
         recent_perceived_events = [
             entry
@@ -45,6 +49,10 @@ class CharacterWorkingMemory:
             for entry in entries
             if str(entry.get("event_type", "") or "") == "siming_output_event"
         ]
+        if max_entries is not None:
+            recent_perceived_events = recent_perceived_events[-max_entries:]
+            recent_esm_results = recent_esm_results[-max_entries:]
+            recent_siming_catalysts = recent_siming_catalysts[-max_entries:]
         return CharacterWorkingMemoryState(
             recent_perceived_events=deepcopy(recent_perceived_events),
             recent_esm_results=deepcopy(recent_esm_results),

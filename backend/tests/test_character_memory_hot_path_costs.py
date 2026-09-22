@@ -32,6 +32,31 @@ def test_typed_history_read_preserves_records_without_folding_unused_working_mem
     assert store.retrieval_bundle("char_b")["working_memory"] == oracle.retrieval_bundle("char_b")["working_memory"]
 
 
+def test_working_memory_recent_window_keeps_latest_entries_bounded():
+    working = CharacterWorkingMemory()
+    for index in range(40):
+        working.remember_event(
+            "char_a",
+            {"event_type": "character_perceived_event", "event_index": index},
+        )
+        working.remember_event(
+            "char_a",
+            {"event_type": "character_agent_settlement_result", "event_index": index},
+        )
+        working.remember_event(
+            "char_a",
+            {"event_type": "siming_output_event", "event_index": index},
+        )
+
+    state = working.build_state("char_a", max_entries=32)
+
+    assert len(state.recent_perceived_events) == 32
+    assert len(state.recent_esm_results) == 32
+    assert len(state.recent_siming_catalysts) == 32
+    assert state.recent_perceived_events[0]["event_index"] == 8
+    assert state.recent_esm_results[-1]["event_index"] == 39
+
+
 def test_filtered_working_memory_reader_matches_full_history_without_scanning_it():
     events = [percept(), _event("unrelated", "evt:other", 101, {}),
               _event("siming_output_event", "evt:siming", 102, {"summary": "next scene"})]

@@ -50,6 +50,7 @@ class CharacterMemoryStorePort(Protocol):
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
+        max_entries: int | None = None,
     ) -> CharacterWorkingMemoryState:
         raise NotImplementedError
 
@@ -383,16 +384,23 @@ class CharacterAgentMemoryStore:
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
+        max_entries: int | None = None,
     ) -> CharacterWorkingMemoryState:
         if self._session_reader is not None:
             working = CharacterWorkingMemory()
             for event in (self._working_reader or self._session_reader)(actor_id):
                 working.remember_event(actor_id, self._sanitize_working_memory_event(event))
-            return working.build_state(actor_id, private_snapshot=private_snapshot, dynamic_state=dynamic_state)
+            return working.build_state(
+                actor_id,
+                private_snapshot=private_snapshot,
+                dynamic_state=dynamic_state,
+                max_entries=max_entries,
+            )
         return self._working.build_state(
             actor_id,
             private_snapshot=private_snapshot,
             dynamic_state=dynamic_state,
+            max_entries=max_entries,
         )
 
     def _sanitize_working_memory_event(self, event: dict[str, object]) -> dict[str, object]:

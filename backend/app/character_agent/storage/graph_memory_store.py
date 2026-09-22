@@ -302,11 +302,13 @@ class CharacterGraphMemoryStore:
         actor_id: str,
         private_snapshot: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | CharacterDynamicState | None = None,
+        max_entries: int | None = None,
     ) -> CharacterWorkingMemoryState:
         return self._normalizer.working_memory_state(
             actor_id,
             private_snapshot=private_snapshot,
             dynamic_state=dynamic_state,
+            max_entries=max_entries,
         )
 
     def _scope_for_actor(self, actor_id: str) -> HeavenlyGraphScope:
