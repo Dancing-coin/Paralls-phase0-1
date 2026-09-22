@@ -1,6 +1,7 @@
 import asyncio
 import pytest
 from threading import Event, get_ident
+from urllib.error import HTTPError
 
 from app.services.dialogue_continuation import DialogueProviderSlots
 from app.services.runtime_execution import RuntimeExecution
@@ -75,7 +76,7 @@ def test_character_driver_retries_exact_frozen_request_after_required_online_fai
     def provider(request):
         attempts.append(request)
         if len(attempts) == 1:
-            raise RuntimeError('temporary transport failure')
+            raise HTTPError('https://provider.invalid', 503, 'temporary transport failure', {}, None)
         restored = rt._l2._gateway._restore_prepared_request(request)
         return rt._l2._gateway._provider._offline_complete(restored)
     monkeypatch.setattr(rt._l2._gateway, 'complete_prepared_request', provider)

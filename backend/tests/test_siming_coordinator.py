@@ -375,6 +375,42 @@ def test_timeout_completion_is_durable_before_stale_pin_terminal(tmp_path):
         state.close()
 
 
+def test_provider_error_keeps_frozen_request_pending_for_retry(tmp_path):
+    import time
+    from app.services.siming_continuation import SimingProviderCompletion, run_siming_provider
+    from app.services.siming_llm_provider import SimingLlmProviderError
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_continuation import make_visual_fact_event
+
+    class UnavailableProvider:
+        def generate_candidates(self, **_kwargs):
+            raise SimingLlmProviderError("provider unavailable")
+
+    state = main.build_runtime_state(Settings(heavenly_graph_path=str(tmp_path / "g.db")))
+    try:
+        state.siming_runtime = SimingRuntime(llm_provider=UnavailableProvider())
+        owner = coordinator(state)
+        now = time.time()
+        key = owner.admit_event(make_visual_fact_event(), now=now,
+            expires_at=now + 60, policy_version="v1").entry.key
+        job, provider, provider_revision = owner.prepare_ready(key, now=now)
+        completion = run_siming_provider(provider, job.request_json)
+        assert SimingProviderCompletion.model_validate_json(completion).error == "SimingLlmProviderError"
+
+        pending = owner.finish_ready(key, job, completion,
+            provider_revision=provider_revision, now=now)
+
+        assert pending.entry.state == "provider_pending"
+        assert pending.entry.revision == provider_revision
+        assert state.siming_runtime.pending_count == 0
+        retried, _, retry_revision = owner.prepare_ready(key, now=now + 1)
+        assert retried.request_json == job.request_json
+        assert retried.token != job.token and retried.attempt == job.attempt + 1
+        assert retry_revision > provider_revision
+    finally:
+        state.close()
+
+
 def test_adaptive_provider_plan_uses_same_durable_stage_boundary(adaptive_state):
     import time
     from app.services.siming_continuation import run_siming_provider

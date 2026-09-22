@@ -104,6 +104,26 @@ def test_dialogue_lease_covers_cognition_fallback_and_tts_until_final_writeback(
     assert not main.activation_lock_is_active('char_a')
 
 
+def test_required_online_cognition_failure_retries_exact_frozen_request(monkeypatch):
+    owner = coordinator()
+    advance = begin(owner)
+    original = advance.job
+    assert original.stage == 'cognition'
+    monkeypatch.setenv('CHARACTER_MODEL_REQUIRE_ONLINE', '1')
+
+    retry = owner.advance(original,
+        json.dumps({'error': 'HTTPError: provider unavailable'}).encode())
+
+    assert retry.status == 'pending' and retry.job.stage == 'cognition'
+    assert retry.job.request_json == original.request_json and retry.job.token != original.token
+    assert len(owner.runtime.pending_cognition_jobs()) == 1
+    assert main.activation_lock_is_active('char_a') and releases() == 0
+    monkeypatch.delenv('CHARACTER_MODEL_REQUIRE_ONLINE')
+    while retry.status == 'pending':
+        retry, _ = complete(owner, retry)
+    assert retry.status == 'completed' and releases() == 1
+
+
 @pytest.mark.parametrize('stage', ['dialogue_generation', 'tts'])
 def test_cancelled_completion_is_zero_write_and_cannot_release_next_token(stage):
     owner = coordinator()

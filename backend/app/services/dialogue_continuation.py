@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, replace
 import json
 import math
+import os
 from threading import BoundedSemaphore, Lock
 from time import monotonic, time
 from uuid import uuid4
@@ -174,10 +175,16 @@ class DialogueCoordinator:
             return DialogueAdvance('zero_write', reason=reason)
         try:
             if job.stage == 'cognition':
-                kwargs = ({'error': RuntimeError(str(completion['error']))} if 'error' in completion
-                          else {'output': completion['output']})
-                advance = self.runtime.commit_cognition_result(turn.cognition_job, **kwargs)
-                result = self._after_cognition(job.ticket_id, turn, advance)
+                if 'error' in completion and os.getenv('CHARACTER_MODEL_REQUIRE_ONLINE', '').strip() == '1':
+                    cognition = turn.cognition_job
+                    gateway = (self.runtime._l2._gateway if cognition.task_kind == 'l2_reasoning'
+                               else self.runtime._l3._gateway)
+                    result = self._stage(job.ticket_id, turn, 'cognition', job.request_json, gateway)
+                else:
+                    kwargs = ({'error': RuntimeError(str(completion['error']))} if 'error' in completion
+                              else {'output': completion['output']})
+                    advance = self.runtime.commit_cognition_result(turn.cognition_job, **kwargs)
+                    result = self._after_cognition(job.ticket_id, turn, advance)
             elif 'error' in completion or completion.get('cancelled'):
                 self.cancel(job.ticket_id, reason='failed' if 'error' in completion else 'cancelled')
                 result = DialogueAdvance('failed' if 'error' in completion else 'cancelled', reason=str(completion.get('error', '')))
