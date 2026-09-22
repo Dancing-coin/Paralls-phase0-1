@@ -114,10 +114,31 @@ class MixedMirrorFaultClient:
                 result = await self._catch_up(healthy["confirmed_tick"], require_fresh=True)
             except MirrorControlledClose:
                 await self.close()
-                await self._open(event)
-                if self.receiver.wire.epoch <= previous_epoch:
-                    raise ValueError("mixed_fault_epoch_not_renewed")
-                result = await self._catch_up(healthy["confirmed_tick"])
+                last_epoch = previous_epoch
+                async with asyncio.timeout(self.transport.timeout):
+                    while True:
+                        try:
+                            await self._open(event)
+                        except MirrorControlledClose:
+                            observed_epoch = self.receiver.wire.epoch
+                            if observed_epoch <= last_epoch:
+                                raise ValueError("mixed_fault_epoch_not_renewed")
+                            last_epoch = observed_epoch
+                            await self.close()
+                            continue
+                        current_epoch = self.receiver.wire.epoch
+                        if current_epoch <= last_epoch:
+                            raise ValueError("mixed_fault_epoch_not_renewed")
+                        last_epoch = current_epoch
+                        try:
+                            result = await self._catch_up(healthy["confirmed_tick"])
+                            break
+                        except MirrorControlledClose:
+                            observed_epoch = self.receiver.wire.epoch
+                            if observed_epoch < last_epoch:
+                                raise ValueError("mixed_fault_epoch_regressed")
+                            last_epoch = observed_epoch
+                            await self.close()
             return dict(**result, resumed_at=resumed, pause_started_at=self.pause_started,
                 recovered_at=perf_counter(), healthy_cutoff=healthy["confirmed_tick"], previous_epoch=previous_epoch)
         finally:

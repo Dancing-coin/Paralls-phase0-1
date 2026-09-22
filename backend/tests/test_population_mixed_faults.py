@@ -6,7 +6,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.verification.population_mixed_faults import MixedMirrorFaultClient
+from scripts.verification.population_mixed_faults import MirrorControlledClose, MixedMirrorFaultClient
 
 
 @pytest.mark.parametrize("already_closed", [False, True])
@@ -58,6 +58,90 @@ def test_controlled_close_recovery_uses_fresh_epoch_and_never_swallows_other_rev
     client.socket = SimpleNamespace(recv=revoked)
     with pytest.raises(ValueError, match="mixed_fault_revocation_invalid"):
         asyncio.run(client._read())
+
+
+def test_controlled_close_recovery_rebinds_again_when_baseline_is_revoked():
+    from scripts.verification.population_mixed_load import MixedLoadEvent
+    from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
+
+    closed, opened = [], []
+
+    class Context:
+        async def __aexit__(self, *args):
+            closed.append(True)
+
+    async def snapshot(event):
+        return dict(confirmed_tick=8)
+
+    client = MixedMirrorFaultClient(
+        SimpleNamespace(timeout=1., snapshot=snapshot, record=lambda row: None),
+        {"actor:a"},
+    )
+    client.context, client.socket = Context(), object()
+    client.receiver = MixedMirrorReceiver({"actor:a"}, epoch=1)
+    client.pause_started = perf_counter() - 6
+    client.pause_ready.set()
+
+    async def reopen(event):
+        epoch = len(opened) + 2
+        opened.append(epoch)
+        client.context = Context()
+        client.receiver = MixedMirrorReceiver({"actor:a"}, epoch=epoch)
+        if epoch == 2:
+            await client.close()
+            raise MirrorControlledClose()
+
+    async def catch_up(cutoff, *, require_fresh=False):
+        if client.receiver.wire.epoch == 1:
+            raise MirrorControlledClose()
+        return dict(epoch=client.receiver.wire.epoch, sequence=1, confirmed_ticks={"actor:a": cutoff})
+
+    client._open, client._catch_up = reopen, catch_up
+    result = asyncio.run(client.resume_consumer(MixedLoadEvent(0, "resume_consumer", 1, "fault:resume")))
+
+    assert opened == [2, 3]
+    assert result["previous_epoch"] == 1 and result["epoch"] == 3
+    assert closed == [True, True, True]
+
+
+def test_controlled_close_recovery_rejects_reused_epoch_during_rebind():
+    from scripts.verification.population_mixed_load import MixedLoadEvent
+    from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
+
+    closed, opened = [], []
+
+    class Context:
+        async def __aexit__(self, *args):
+            closed.append(True)
+
+    async def snapshot(event):
+        return dict(confirmed_tick=8)
+
+    client = MixedMirrorFaultClient(
+        SimpleNamespace(timeout=1., snapshot=snapshot, record=lambda row: None),
+        {"actor:a"},
+    )
+    client.context, client.socket = Context(), object()
+    client.receiver = MixedMirrorReceiver({"actor:a"}, epoch=1)
+    client.pause_started = perf_counter() - 6
+    client.pause_ready.set()
+
+    async def reopen(event):
+        opened.append(True)
+        client.context = Context()
+        client.receiver = MixedMirrorReceiver({"actor:a"}, epoch=1)
+        await client.close()
+        raise MirrorControlledClose()
+
+    async def catch_up(cutoff, *, require_fresh=False):
+        raise MirrorControlledClose()
+
+    client._open, client._catch_up = reopen, catch_up
+    with pytest.raises(ValueError, match="mixed_fault_epoch_not_renewed"):
+        asyncio.run(client.resume_consumer(MixedLoadEvent(0, "resume_consumer", 1, "fault:resume")))
+
+    assert opened == [True]
+    assert closed == [True, True]
 
 
 def test_failed_connection_entry_preserves_original_error_without_exiting_unentered_context():

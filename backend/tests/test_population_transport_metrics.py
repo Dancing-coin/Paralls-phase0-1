@@ -8,6 +8,16 @@ import pytest
 from scripts.verification.population_benchmark_metrics import LoopbackWebSocketByteProxy, WebSocketStreamCounter
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows RSS 采样器专用回归")
+def test_windows_rss_sampler_reuses_ctypes_counter_type():
+    from scripts.verification.population_benchmark_metrics import _windows_memory
+
+    first = _windows_memory()
+    second = _windows_memory()
+
+    assert type(first) is type(second)
+
+
 @pytest.mark.skipif(sys.platform not in {"win32", "linux"}, reason="当前 RSS 的固定 runner 采样支持 Windows/Linux")
 def test_current_rss_tracks_released_mapping_instead_of_process_peak():
     code = """
