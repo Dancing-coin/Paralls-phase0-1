@@ -40,6 +40,68 @@ def test_siming_runner_uses_existing_four_slots_and_cancellation_waits_for_io():
     replacement.close()
 
 
+def test_driver_backs_off_and_bounds_generic_provider_retries(tmp_path):
+    import asyncio
+    import time
+    from app.services.runtime_execution import RuntimeExecution
+    from app.services.siming_driver import SimingDriver
+    from app.services.siming_coordinator import SimingCoordinator
+    from app.services.siming_runtime import SimingRuntime
+    from app.services.siming_admission import SimingAdmissionService
+    from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
+    from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+    from app.services.siming_llm_provider import SimingLlmProviderError
+    from test_siming_continuation import make_visual_fact_event
+
+    attempts, retry_now = [], [0.]
+    class Provider:
+        def generate_candidates(self, **_kwargs):
+            attempts.append(get_ident())
+            raise SimingLlmProviderError('provider unavailable')
+
+    execution, pool = RuntimeExecution(), DialogueProviderSlots()
+    def setup_owner():
+        graph = InMemoryHeavenlyGraphAdapter()
+        runtime = SimingRuntime(llm_provider=Provider(), actor_pin_reader=lambda _: 1,
+                                source_pin_reader=lambda _: True)
+        owner = SimingCoordinator(runtime=runtime, graph=graph,
+            admissions=SimingAdmissionService(SimingHeavenlyMemoryService(graph)),
+            invalidation_reader=lambda _: None)
+        event = make_visual_fact_event()
+        key = owner.admit_event(event, now=time.time(), expires_at=time.time() + 60,
+                                policy_version='v1').entry.key
+        return owner, key
+    owner, key = execution.submit(setup_owner).result(2)
+    async def owner_call(command):
+        return await asyncio.wrap_future(execution.submit(command))
+    async def check():
+        driver = SimingDriver(coordinator=owner, owner_call=owner_call, slots=pool,
+                              clock=time.time, retry_clock=lambda: retry_now[0])
+        try:
+            for expected_attempts, delay in ((1, 1), (2, 2), (3, 4), (4, 0)):
+                for _ in range(100):
+                    await driver.poll()
+                    if len(attempts) == expected_attempts and not driver._active:
+                        break
+                    await asyncio.sleep(.005)
+                assert len(attempts) == expected_attempts
+                if delay:
+                    await driver.poll()
+                    assert len(attempts) == expected_attempts
+                    retry_now[0] += delay
+            entry = await owner_call(lambda: owner.admissions.read(key).entry)
+            assert entry.state == 'failed'
+            assert entry.transition.reason == 'provider_failed:SimingLlmProviderError'
+            assert await owner_call(lambda: owner.runtime.pending_count) == 0
+        finally:
+            await driver.close()
+    try:
+        asyncio.run(check())
+    finally:
+        pool._executor.shutdown(wait=True)
+        execution.stop()
+
+
 @pytest.mark.parametrize('ending', ['shutdown', 'complete', 'failure', 'submit', 'owner', 'cancel_prepare', 'read_prepare', 'cancel_cleanup', 'submit_cleanup'])
 def test_driver_prepares_on_owner_after_slot_and_worker_never_owns_runtime(ending, monkeypatch):
     import asyncio

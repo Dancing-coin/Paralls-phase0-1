@@ -1,9 +1,12 @@
 """原 ASGI loop 上的四槽调度；所有领域调用回到唯一 owner。"""
 import asyncio
 from threading import Event
-from time import time
+from time import monotonic, time
 
-from app.services.siming_continuation import run_siming_provider
+from app.services.siming_continuation import SimingProviderCompletion, run_siming_provider
+
+
+_PROVIDER_RETRY_DELAYS = (1.0, 2.0, 4.0)
 
 
 def _run_provider(job, provider, cancelled, emit):
@@ -12,13 +15,16 @@ def _run_provider(job, provider, cancelled, emit):
 
 
 class SimingDriver:
-    def __init__(self, *, coordinator, owner_call, slots, clock=time):
+    def __init__(self, *, coordinator, owner_call, slots, clock=time, retry_clock=monotonic):
         self.coordinator = coordinator
         self.owner_call = owner_call
         self.slots = slots
         self.clock = clock
+        self.retry_clock = retry_clock
         self._active = {}
         self._unsubmitted = {}
+        self._provider_attempts = {}
+        self._retry_after = {}
         self._closed = False
         self._polling = False
 
@@ -41,9 +47,28 @@ class SimingDriver:
                         error_kind = type(error).__name__
                         await self.owner_call(lambda: self.coordinator.fail_ready(key, job,
                             provider_revision=revision, error_kind=error_kind, now=self.clock()))
+                        self._provider_attempts.pop(identity, None)
+                        self._retry_after.pop(identity, None)
                     else:
-                        await self.owner_call(lambda: self.coordinator.finish_ready(key, job, completion,
-                            provider_revision=revision, now=self.clock()))
+                        generic_error = SimingProviderCompletion.model_validate_json(
+                            completion).error == 'SimingLlmProviderError'
+                        attempt = self._provider_attempts.get(identity, 1)
+                        if generic_error and attempt > len(_PROVIDER_RETRY_DELAYS):
+                            await self.owner_call(lambda: self.coordinator.fail_ready(key, job,
+                                provider_revision=revision, error_kind='SimingLlmProviderError',
+                                now=self.clock()))
+                            self._provider_attempts.pop(identity, None)
+                            self._retry_after.pop(identity, None)
+                        else:
+                            await self.owner_call(lambda: self.coordinator.finish_ready(key, job, completion,
+                                provider_revision=revision, now=self.clock()))
+                            if generic_error:
+                                self._provider_attempts[identity] = attempt + 1
+                                self._retry_after[identity] = (
+                                    self.retry_clock() + _PROVIDER_RETRY_DELAYS[attempt - 1])
+                            else:
+                                self._provider_attempts.pop(identity, None)
+                                self._retry_after.pop(identity, None)
                 finally:
                     slot.close()
                 # owner 未确认时保留已结束 future；重试同 completion，绝不重调模型。
@@ -52,7 +77,9 @@ class SimingDriver:
                 return
             keys = await self.owner_call(lambda: self.coordinator.take_ready(now=self.clock()))
             for key in keys:
-                if key.entry_id in self._active or self._closed:
+                identity = key.entry_id
+                if (identity in self._active or self._closed
+                        or self.retry_clock() < self._retry_after.get(identity, 0)):
                     continue
                 slot = self.slots.acquire()
                 if slot is None:
@@ -61,6 +88,8 @@ class SimingDriver:
                 try:
                     prepared = await self._prepare(key)
                     if prepared is None or self._closed:
+                        self._provider_attempts.pop(identity, None)
+                        self._retry_after.pop(identity, None)
                         slot.close()
                         if prepared is not None:
                             await self._cancel_unsubmitted(prepared[0])
@@ -68,7 +97,8 @@ class SimingDriver:
                     job, provider, revision = prepared
                     cancelled = Event()
                     future = slot.submit(job, provider, cancelled, None, runner=_run_provider)
-                    self._active[key.entry_id] = key, job, revision, future, slot, cancelled
+                    self._retry_after.pop(identity, None)
+                    self._active[identity] = key, job, revision, future, slot, cancelled
                 except BaseException:
                     slot.close()
                     if prepared is not None:
@@ -111,6 +141,8 @@ class SimingDriver:
         try:
             await self.owner_call(self.coordinator.runtime.reset_turns)
             self._unsubmitted.clear()
+            self._provider_attempts.clear()
+            self._retry_after.clear()
         finally:
             for _, _, _, _, slot, cancelled in self._active.values():
                 cancelled.set()

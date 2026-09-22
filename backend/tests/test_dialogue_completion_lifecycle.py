@@ -124,6 +124,29 @@ def test_required_online_cognition_failure_retries_exact_frozen_request(monkeypa
     assert retry.status == 'completed' and releases() == 1
 
 
+def test_required_online_cognition_persistent_failure_is_bounded(monkeypatch):
+    owner = coordinator()
+    advance = begin(owner)
+    original_request = advance.job.request_json
+    tokens = []
+    monkeypatch.setenv('CHARACTER_MODEL_REQUIRE_ONLINE', '1')
+
+    for attempt in range(4):
+        tokens.append(advance.job.token)
+        advance = owner.advance(advance.job,
+            json.dumps({'error': 'HTTPError: provider unavailable'}).encode())
+        if attempt < 3:
+            assert advance.status == 'pending'
+            assert advance.job.request_json == original_request
+
+    assert len(set(tokens)) == 4
+    assert advance.status == 'failed'
+    assert advance.reason == 'cognition_provider_retry_exhausted'
+    assert owner.runtime.pending_cognition_jobs() == ()
+    assert not main.activation_lock_is_active('char_a')
+    assert response_count() == 0 and releases() == 1
+
+
 @pytest.mark.parametrize('stage', ['dialogue_generation', 'tts'])
 def test_cancelled_completion_is_zero_write_and_cannot_release_next_token(stage):
     owner = coordinator()
