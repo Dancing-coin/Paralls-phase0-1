@@ -57,25 +57,35 @@ class MixedMirrorFaultClient:
     async def _open(self, event):
         if self.context is not None:
             raise ValueError("mixed_fault_connection_already_open")
-        context = self.transport.bound_session(max_queue=1)
-        try:
-            self.socket, binding = await context.__aenter__()
-            self.context = context
-            if not self.actors.issubset(binding["allowed_actor_refs"]):
-                raise ValueError("mixed_fault_scope_not_granted")
-            self.receiver = MixedMirrorReceiver(self.actors, epoch=binding["connection_epoch"])
-            self.key = event.transaction_id
-            self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
-                epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))
-            # 逐 actor 建立第一份实际基线，避免把初次批量订阅溢出误算成暂停读取故障。
-            async with asyncio.timeout(self.transport.timeout):
-                for actor in sorted(self.actors):
-                    await self.socket.send(json.dumps(dict(message_type="gameplay_mirror_subscribe", payload=dict(actor_ref=actor))))
-                    while actor not in self.receiver.wire.snapshots:
-                        await self._read()
-        except BaseException:
-            await self.close()
-            raise
+        deadline = perf_counter() + self.transport.timeout
+        while True:
+            context = self.transport.bound_session(max_queue=1)
+            try:
+                self.socket, binding = await context.__aenter__()
+                self.context = context
+                if not self.actors.issubset(binding["allowed_actor_refs"]):
+                    raise ValueError("mixed_fault_scope_not_granted")
+                self.receiver = MixedMirrorReceiver(self.actors, epoch=binding["connection_epoch"])
+                self.key = event.transaction_id
+                self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
+                    epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))
+                # 逐 actor 建立第一份实际基线，避免把初次批量订阅溢出误算成暂停读取故障。
+                async with asyncio.timeout(self.transport.timeout):
+                    for actor in sorted(self.actors):
+                        await self.socket.send(json.dumps(dict(message_type="gameplay_mirror_subscribe", payload=dict(actor_ref=actor))))
+                        while actor not in self.receiver.wire.snapshots:
+                            await self._read()
+                return
+            except MirrorControlledClose:
+                # max_queue=1 的新绑定可能在初始基线到达前被上一轮投影关闭；
+                # 在本次故障请求预算内换 epoch 重建，保留每次关闭证据。
+                await self.close()
+                if perf_counter() >= deadline:
+                    raise
+                await asyncio.sleep(0)
+            except BaseException:
+                await self.close()
+                raise
 
     async def _catch_up(self, cutoff, *, require_fresh=False):
         def complete():

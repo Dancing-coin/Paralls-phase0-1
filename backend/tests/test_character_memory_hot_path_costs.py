@@ -104,6 +104,38 @@ def test_runtime_working_memory_reads_indexed_pages_in_original_order(tmp_path, 
         runtime.close()
 
 
+def test_runtime_bounded_working_memory_reads_only_recent_indexed_events(tmp_path, monkeypatch):
+    from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    try:
+        session = runtime._session_store
+        with session.transaction():
+            for index in range(10_000):
+                session.append_event("char_a", "unrelated", index, {})
+            for index in range(130):
+                session.append_event("char_a", "character_perceived_event", 10_000 + index, {"summary": str(index)})
+        oracle = CharacterAgentMemoryStore()
+        oracle.bind_session_reader(session.list_events)
+        expected = oracle.working_memory_state("char_a", max_entries=32)
+        read_recent = session.read_recent_events_page
+        calls = []
+
+        def tracked_recent(actor_id, **kwargs):
+            calls.append(kwargs)
+            return read_recent(actor_id, **kwargs)
+
+        monkeypatch.setattr(session, "read_recent_events_page", tracked_recent)
+        assert runtime.get_working_memory_state_record("char_a", max_entries=32) == expected
+        assert calls == [{
+            "through_index": 10_130,
+            "event_types": tuple(sorted(CharacterWorkingMemory.RELEVANT_EVENT_TYPES)),
+            "limit": 32 * len(CharacterWorkingMemory.RELEVANT_EVENT_TYPES),
+        }]
+    finally:
+        runtime.close()
+
+
 @pytest.mark.parametrize("sqlite", [False, True])
 def test_session_bound_memory_write_uses_atomic_receipts_without_scanning_pools(tmp_path, monkeypatch, sqlite):
     graph = SQLiteHeavenlyGraphAdapter(tmp_path / "graph.sqlite3") if sqlite else InMemoryHeavenlyGraphAdapter()

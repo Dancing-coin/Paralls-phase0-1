@@ -4943,13 +4943,22 @@ class CharacterAgentRuntime:
         if self._continuity_store is not None and hasattr(self._continuity_store, 'bind_snapshot_reader'):
             self._continuity_store.bind_snapshot_reader(self._export_continuity_snapshot)
 
-    def _working_memory_events(self, actor_id: str):
+    def _working_memory_events(self, actor_id: str, max_entries: int | None = None):
         through_index = self._session_store.event_count(actor_id)
+        event_types = tuple(sorted(CharacterWorkingMemory.RELEVANT_EVENT_TYPES))
+        if max_entries is not None:
+            yield from self._session_store.read_recent_events_page(
+                actor_id,
+                through_index=through_index,
+                event_types=event_types,
+                limit=max_entries * len(event_types),
+            )
+            return
         after_index = 0
         while after_index < through_index:
             page = self._session_store.read_events_page(
                 actor_id, after_index=after_index, through_index=through_index,
-                event_types=tuple(sorted(CharacterWorkingMemory.RELEVANT_EVENT_TYPES)), limit=128,
+                event_types=event_types, limit=128,
             )
             if not page:
                 break

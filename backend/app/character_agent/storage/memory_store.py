@@ -388,7 +388,13 @@ class CharacterAgentMemoryStore:
     ) -> CharacterWorkingMemoryState:
         if self._session_reader is not None:
             working = CharacterWorkingMemory()
-            for event in (self._working_reader or self._session_reader)(actor_id):
+            reader = self._working_reader or self._session_reader
+            try:
+                events = reader(actor_id, max_entries=max_entries) if max_entries is not None else reader(actor_id)
+            except TypeError:
+                # 兼容外部注入的旧式单参数 reader；正式 runtime reader 支持窗口参数。
+                events = reader(actor_id)
+            for event in events:
                 working.remember_event(actor_id, self._sanitize_working_memory_event(event))
             return working.build_state(
                 actor_id,

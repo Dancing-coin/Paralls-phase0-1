@@ -981,6 +981,50 @@ class CharacterAgentSessionStore:
             return [json.loads(row[0]) for row in self._connection.execute(
                 "SELECT payload_json FROM character_session_events" + index + " WHERE " + " AND ".join(clauses) + " ORDER BY event_index LIMIT ?", parameters)]
 
+    def read_recent_events_page(
+        self, actor_id: str, *, through_index: int | None = None,
+        event_types: tuple[str, ...] | None = None, limit: int = 128,
+    ) -> list[dict[str, object]]:
+        """按事件类型读取尾部窗口，避免认知热路径扫描 actor 的全部历史。"""
+        if type(limit) is not int or limit < 1:
+            raise ValueError("session_page_bounds_invalid")
+        if through_index is not None and (type(through_index) is not int or through_index < 0):
+            raise ValueError("session_page_bounds_invalid")
+        if event_types == ():
+            return []
+        with self._lock:
+            self._check_open()
+            selected: list[dict[str, object]] = []
+            if self._connection is None:
+                events = self._events_by_actor.get(actor_id, [])
+                selected = [dict(event) for event in events
+                            if (through_index is None or event["event_index"] <= through_index)
+                            and (event_types is None or event["event_type"] in event_types)][-limit:]
+            elif event_types is None:
+                clauses = ["actor_id=?"]
+                parameters: list[object] = [actor_id]
+                if through_index is not None:
+                    clauses.append("event_index<=?")
+                    parameters.append(through_index)
+                parameters.append(limit)
+                selected = [json.loads(row[0]) for row in self._connection.execute(
+                    "SELECT payload_json FROM character_session_events WHERE "
+                    + " AND ".join(clauses) + " ORDER BY event_index DESC LIMIT ?", parameters)]
+            else:
+                # 每种类型走现有类型索引，再在内存合并有限的尾部窗口。
+                for event_type in event_types:
+                    clauses = ["actor_id=?", "event_type=?"]
+                    parameters = [actor_id, event_type]
+                    if through_index is not None:
+                        clauses.append("event_index<=?")
+                        parameters.append(through_index)
+                    parameters.append(limit)
+                    selected.extend(json.loads(row[0]) for row in self._connection.execute(
+                        "SELECT payload_json FROM character_session_events INDEXED BY character_session_event_types WHERE "
+                        + " AND ".join(clauses) + " ORDER BY event_index DESC LIMIT ?", parameters))
+            selected.sort(key=lambda event: int(event["event_index"]))
+            return selected[-limit:]
+
     def _load(self) -> None:
         if self._storage_path is None:
             return
