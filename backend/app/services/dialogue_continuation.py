@@ -14,6 +14,9 @@ from app.models.dialogue_audio import DialogueAudio
 from app.models.player_input import DialogueSubmit
 
 
+_MAX_COGNITION_PROVIDER_ATTEMPTS = 4
+
+
 def _json(value) -> bytes:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, allow_nan=False).encode()
 
@@ -50,6 +53,7 @@ class _PendingDialogue:
     response: DialogueResponse | None = None
     context_actor_ids: tuple[str, ...] = ()
     fallback_used: bool = False
+    cognition_provider_attempts: int = 0
 
 
 class DialogueCoordinator:
@@ -127,6 +131,7 @@ class DialogueCoordinator:
     def _after_cognition(self, ticket_id, turn, advance):
         if advance.status == 'pending':
             turn.cognition_job = advance.next_job
+            turn.cognition_provider_attempts = 0
             gateway = (self.runtime._l2._gateway if advance.next_job.task_kind == 'l2_reasoning'
                        else self.runtime._l3._gateway)
             return self._stage(ticket_id, turn, 'cognition', advance.next_job.request_json, gateway)
@@ -176,11 +181,17 @@ class DialogueCoordinator:
         try:
             if job.stage == 'cognition':
                 if 'error' in completion and os.getenv('CHARACTER_MODEL_REQUIRE_ONLINE', '').strip() == '1':
-                    cognition = turn.cognition_job
-                    gateway = (self.runtime._l2._gateway if cognition.task_kind == 'l2_reasoning'
-                               else self.runtime._l3._gateway)
-                    result = self._stage(job.ticket_id, turn, 'cognition', job.request_json, gateway)
+                    turn.cognition_provider_attempts += 1
+                    if turn.cognition_provider_attempts >= _MAX_COGNITION_PROVIDER_ATTEMPTS:
+                        self.cancel(job.ticket_id, reason='cognition_provider_retry_exhausted')
+                        result = DialogueAdvance('failed', reason='cognition_provider_retry_exhausted')
+                    else:
+                        cognition = turn.cognition_job
+                        gateway = (self.runtime._l2._gateway if cognition.task_kind == 'l2_reasoning'
+                                   else self.runtime._l3._gateway)
+                        result = self._stage(job.ticket_id, turn, 'cognition', job.request_json, gateway)
                 else:
+                    turn.cognition_provider_attempts = 0
                     kwargs = ({'error': RuntimeError(str(completion['error']))} if 'error' in completion
                               else {'output': completion['output']})
                     advance = self.runtime.commit_cognition_result(turn.cognition_job, **kwargs)

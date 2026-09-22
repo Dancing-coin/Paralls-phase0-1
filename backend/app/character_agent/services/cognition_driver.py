@@ -1,7 +1,10 @@
 """Character 持久阶段的 loop 调度；只有冻结请求进入共用四槽 worker。"""
 import asyncio
 from threading import Event
-from time import time
+from time import monotonic, time
+
+
+_PROVIDER_RETRY_DELAYS = (1.0, 2.0, 4.0)
 
 
 def _run_provider(request, gateway, cancelled, emit):
@@ -9,11 +12,14 @@ def _run_provider(request, gateway, cancelled, emit):
 
 
 class CharacterCognitionDriver:
-    def __init__(self, *, coordinator, owner_call, slots, begin_activation, on_completed, clock=time):
+    def __init__(self, *, coordinator, owner_call, slots, begin_activation, on_completed,
+                 clock=time, retry_clock=monotonic):
         self.coordinator = coordinator
         self.owner_call, self.slots = owner_call, slots
         self.begin_activation, self.on_completed, self.clock = begin_activation, on_completed, clock
+        self.retry_clock = retry_clock
         self._active, self._handles = {}, {}
+        self._provider_attempts, self._retry_after = {}, {}
         self._cursor = None
         self._closed = self._polling = False
 
@@ -37,6 +43,8 @@ class CharacterCognitionDriver:
         return tuple(dict.fromkeys((*self._handles, *(entry.child_key for entry in entries))))
 
     def _release(self, key, reason):
+        self._provider_attempts.pop(key, None)
+        self._retry_after.pop(key, None)
         handle = self._handles.get(key)
         if handle is not None:
             receipt = self.coordinator.runtime.finish_actor_activation(handle, reason=reason)
@@ -90,6 +98,8 @@ class CharacterCognitionDriver:
                     else:
                         c.freeze_execution(key, activation=handle, now=self.clock())
                 elif progress.status == 'provider_pending':
+                    if self.retry_clock() < self._retry_after.get(key, 0):
+                        return None
                     c._entry(key, handle, self.clock())
                     c._validate_provider_pin(entry.actor_id, progress.frame)
                     gateway = c.runtime._l2._gateway if progress.stage == 'l2' else c.runtime._l3._gateway
@@ -125,7 +135,14 @@ class CharacterCognitionDriver:
                 progress = c.admissions.read_progress(key)
                 if (acceptance_error is provider_error and progress is not None
                         and progress.stage == stage and progress.status == 'provider_pending'):
-                    # 强制在线模式保留原冻结请求；网络恢复后由下一轮使用同一请求重试。
+                    attempt = self._provider_attempts.get(key, 1)
+                    if attempt > len(_PROVIDER_RETRY_DELAYS):
+                        self._stale(key, ValueError(
+                            'cognition_provider_retry_exhausted:' + type(provider_error).__name__))
+                        return
+                    # 强制在线模式保留原冻结请求；短退避避免持续外部故障压垮 owner。
+                    self._provider_attempts[key] = attempt + 1
+                    self._retry_after[key] = self.retry_clock() + _PROVIDER_RETRY_DELAYS[attempt - 1]
                     return
                 if isinstance(acceptance_error, ValueError):
                     self._stale(key, acceptance_error)
@@ -134,6 +151,8 @@ class CharacterCognitionDriver:
         else:
             try:
                 getattr(c, 'accept_'+stage)(key, activation=handle, now=self.clock(), output=output)
+                self._provider_attempts.pop(key, None)
+                self._retry_after.pop(key, None)
             except ValueError as error:
                 self._stale(key, error)
 

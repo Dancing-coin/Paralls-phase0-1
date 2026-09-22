@@ -82,16 +82,19 @@ def test_character_driver_retries_exact_frozen_request_after_required_online_fai
     monkeypatch.setattr(rt._l2._gateway, 'complete_prepared_request', provider)
     monkeypatch.setattr(rt._l3._gateway, 'complete_prepared_request', provider)
     monkeypatch.setenv('CHARACTER_MODEL_REQUIRE_ONLINE', '1')
+    retry_now = [0.]
     async def owner_call(fn):
         return await asyncio.wrap_future(execution.submit(fn))
     async def check():
         completed = []
         driver = CharacterCognitionDriver(coordinator=coordinator, owner_call=owner_call, slots=pool,
             begin_activation=lambda entry: rt.begin_actor_activation(entry.actor_id, active_dialogue_decision(), producer_ts=entry.producer_ts)[0],
-            on_completed=lambda entry, progress: completed.append(progress), clock=lambda: 120.)
+            on_completed=lambda entry, progress: completed.append(progress), clock=lambda: 120.,
+            retry_clock=lambda: retry_now[0])
         try:
             for _ in range(200):
                 await driver.poll()
+                retry_now[0] += 1
                 if completed:
                     break
                 await asyncio.sleep(.01)
@@ -99,6 +102,53 @@ def test_character_driver_retries_exact_frozen_request_after_required_online_fai
             assert len(attempts) == 3 and attempts[0] == attempts[1]
             assert execution.snapshot()['state'] == 'running'
             assert await owner_call(lambda: admissions.list_pending()) == ()
+            assert await owner_call(rt.pending_actor_activations) == ()
+        finally:
+            await driver.close()
+    try:
+        asyncio.run(check())
+    finally:
+        pool._executor.shutdown(wait=True)
+        execution.submit(rt.close).result(3)
+        execution.stop()
+
+
+def test_character_driver_bounds_persistent_required_online_retries(tmp_path, monkeypatch):
+    from app.character_agent.services.cognition_driver import CharacterCognitionDriver
+    execution, pool = RuntimeExecution(), DialogueProviderSlots()
+    attempts, retry_now = [], [0.]
+    def init():
+        rt, admissions, coordinator, child, handle = setup(tmp_path)
+        rt.finish_actor_activation(handle, reason='setup')
+        return rt, admissions, coordinator, child
+    rt, admissions, coordinator, child = execution.submit(init).result(3)
+    def provider(request):
+        attempts.append(request)
+        raise HTTPError('https://provider.invalid', 402, 'account unavailable', {}, None)
+    monkeypatch.setattr(rt._l2._gateway, 'complete_prepared_request', provider)
+    monkeypatch.setenv('CHARACTER_MODEL_REQUIRE_ONLINE', '1')
+    async def owner_call(fn):
+        return await asyncio.wrap_future(execution.submit(fn))
+    async def check():
+        driver = CharacterCognitionDriver(coordinator=coordinator, owner_call=owner_call, slots=pool,
+            begin_activation=lambda entry: rt.begin_actor_activation(entry.actor_id, active_dialogue_decision(), producer_ts=entry.producer_ts)[0],
+            on_completed=lambda *_: None, clock=lambda: 120., retry_clock=lambda: retry_now[0])
+        try:
+            for expected_attempts, delay in ((1, 1), (2, 2), (3, 4), (4, 0)):
+                for _ in range(100):
+                    await driver.poll()
+                    if len(attempts) == expected_attempts and not driver._active:
+                        break
+                    await asyncio.sleep(.005)
+                assert len(attempts) == expected_attempts
+                if delay:
+                    await driver.poll()
+                    assert len(attempts) == expected_attempts
+                    retry_now[0] += delay
+            progress = await owner_call(lambda: admissions.read_progress(child.child_key))
+            assert progress.status == 'stale'
+            assert progress.reason == 'cognition_provider_retry_exhausted:HTTPError'
+            assert attempts == [attempts[0]] * 4
             assert await owner_call(rt.pending_actor_activations) == ()
         finally:
             await driver.close()
