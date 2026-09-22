@@ -78,6 +78,8 @@ class SimingCoordinator:
 
     def finish_ready(self, key, job, completion, *, provider_revision, now):
         self._owner()
+        if SimingProviderCompletion.model_validate_json(completion).error == "SimingLlmProviderError":
+            return self.retry_ready(key, job, provider_revision=provider_revision)
         accepted = self.accept_provider(key, job, completion, now=now, provider_revision=provider_revision)
         if accepted.replayed:
             # 原 completion 已确认；继续当前持久阶段，不把旧 result_ready 当成当前状态重做。
@@ -87,6 +89,20 @@ class SimingCoordinator:
         if accepted.entry.state == "commit_started":
             return self.resume_committed(key, now=now)
         return accepted
+
+    def retry_ready(self, key, job, *, provider_revision):
+        self._owner()
+        current = self.admissions.read(key)
+        if current is None:
+            raise ValueError("siming_admission_missing")
+        entry = current.entry
+        if entry.state != "provider_pending" or entry.provider_revision != provider_revision:
+            return current
+        frame = SimingTurnFrame.model_validate_json(entry.transition.provider.frame_json)
+        if frame.job != job:
+            return current
+        self.runtime.cancel_turn(job.turn_id)
+        return current
 
     def fail_ready(self, key, job, *, provider_revision, error_kind, now):
         self._owner()
