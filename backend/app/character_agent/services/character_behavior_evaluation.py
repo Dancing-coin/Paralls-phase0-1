@@ -65,14 +65,21 @@ class CharacterBehaviorEvaluationService:
             or settlement_payload.get("resolution_status", "")
             or ""
         )
-        settlement_event_id = str(settlement_event.get("event_id", "") or "")
+        settlement_event_id = str(
+            settlement_payload.get("result_id", "")
+            or settlement_event.get("event_id", "")
+            or ""
+        )
         unknown_reasons: dict[str, str] = {}
         turn_id = turn.turn_id if turn is not None else str(settlement_payload.get("turn_id", "") or "")
         correlation_id = turn.correlation_id if turn is not None else str(settlement_payload.get("correlation_id", "") or "")
         scoped_timeline = self._scoped_timeline(timeline, turn_id, correlation_id)
         source_refs = self._source_refs(turn, chain, settlement_event)
         source_refs.extend(
-            str(event.get("event_id", ""))
+            str(
+                (event.get("payload", {}).get("result_id") if isinstance(event.get("payload"), dict) else "")
+                or event.get("event_id", "")
+            )
             for event in scoped_timeline
             if str(event.get("event_id", ""))
         )
@@ -193,7 +200,14 @@ class CharacterBehaviorEvaluationService:
     @staticmethod
     def _source_refs(turn: CharacterTurnContext | None, chain: dict[str, dict[str, object]], settlement_event: dict[str, object]) -> list[str]:
         refs = [str(ref) for ref in turn.stage_refs.values() if str(ref)] if turn is not None else [str(event.get("event_id", "")) for event in chain.values() if str(event.get("event_id", ""))]
-        settlement_ref = str(settlement_event.get("event_id", "") or "")
+        settlement_payload = settlement_event.get("payload", {})
+        if not isinstance(settlement_payload, dict):
+            settlement_payload = {}
+        settlement_ref = str(
+            settlement_payload.get("result_id", "")
+            or settlement_event.get("event_id", "")
+            or ""
+        )
         if settlement_ref:
             refs.append(settlement_ref)
         return list(dict.fromkeys(refs))

@@ -2877,6 +2877,15 @@ class CharacterAgentRuntime:
         producer_ts: int,
         payload: dict[str, object],
     ) -> None:
+        replay_result_id = str(payload.get("result_id", "") or "")
+        if replay_result_id and any(
+            isinstance(event, dict)
+            and event.get("event_type") == "character_agent_settlement_result"
+            and isinstance(event.get("payload"), dict)
+            and str(event["payload"].get("result_id", "") or "") == replay_result_id
+            for event in self.get_session_timeline(actor_id)
+        ):
+            return
         self._refresh_weak_supervision_state(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -3193,16 +3202,20 @@ class CharacterAgentRuntime:
             return False
         if evidence.get("evidence_refs") != evidence_refs:
             return False
+        settlement_payload = settlement_event.get("payload")
+        if not isinstance(settlement_payload, dict):
+            return False
         event_by_id = {
             str(event.get("event_id", "")): event
             for event in timeline
             if isinstance(event, dict) and str(event.get("event_id", ""))
         }
-        settlement_event_id = str(settlement_event.get("event_id", "") or "")
+        settlement_event_id = str(
+            settlement_payload.get("result_id", "")
+            or settlement_event.get("event_id", "")
+            or ""
+        )
         if str(evidence.get("settlement_event_id", "") or "") != settlement_event_id:
-            return False
-        settlement_payload = settlement_event.get("payload")
-        if not isinstance(settlement_payload, dict):
             return False
         settlement_status = str(
             settlement_payload.get("settlement_status", "")
@@ -3223,7 +3236,10 @@ class CharacterAgentRuntime:
             event = event_by_id.get(ref)
             if not isinstance(event, dict) or not isinstance(event.get("payload"), dict) or not event["payload"]:
                 return False
-        if settlement_event_id not in evidence_refs or settlement_event_id not in event_by_id:
+        actual_event_id = str(settlement_event.get("event_id", "") or "")
+        if settlement_event_id not in evidence_refs:
+            return False
+        if settlement_event_id not in event_by_id and actual_event_id not in evidence_refs:
             return False
         if not any(ref != settlement_event_id for ref in evidence_refs):
             return False

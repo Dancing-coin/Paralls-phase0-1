@@ -242,6 +242,11 @@ class CharacterBehaviorTurnProjection:
                     payload=policy_payload,
                 ),
             )
+            settlement_identity = str(
+                settlement_payload.get("result_id", "")
+                or settlement_event.get("event_id", "")
+                or stage_events[-1].idempotency_key
+            )
             request = BehaviorTurnRecordRequest.from_legacy_projection(
                 legacy_reader_ref="legacy:canonical-character-behavior-turn-projection:v2",
                 stages=projected_stages,
@@ -262,7 +267,7 @@ class CharacterBehaviorTurnProjection:
                     evidence_refs=list(self._evaluation_source_refs(evaluation_payload)),
                 ),
                 transaction_id=f"canonical-behavior-turn:{turn.turn_id}",
-                idempotency_key=f"canonical-behavior-turn:{turn.turn_id}:{str(settlement_event.get('event_id', '') or stage_events[-1].idempotency_key)}",
+                idempotency_key=f"canonical-behavior-turn:{turn.turn_id}:{settlement_identity}",
             )
             self._recorder.record(request)
             return

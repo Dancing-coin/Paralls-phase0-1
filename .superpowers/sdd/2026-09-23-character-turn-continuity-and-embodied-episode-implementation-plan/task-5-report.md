@@ -44,3 +44,18 @@ Fix-round verification:
 `python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
 
 Result: **27 passed**, with four existing FastAPI lifespan deprecation warnings. `git diff --check` passed.
+
+### Fix-round replay closure
+
+The follow-up replay coverage exposed a second idempotency detail: duplicate
+settlement callbacks can receive a new session event ID for the same authority
+`result_id`. Runtime settlement ingestion now treats that result ID as the
+replay identity, and canonical graph projection uses it for the completed turn
+idempotency key. This prevents a duplicate callback from creating a second
+evaluation anchor or a graph idempotency conflict.
+
+Verification after replay closure:
+
+`python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
+
+Result: **28 passed**, with four existing FastAPI lifespan deprecation warnings.
