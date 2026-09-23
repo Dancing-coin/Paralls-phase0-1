@@ -243,6 +243,10 @@ def test_character_runtime_records_rejected_action_as_complete_behavior_turn() -
         "constraint:1202:char_b"
     )
     assert by_stage["evaluation"].attributes["outcome"] == "failed"
+    evaluation_payload = by_stage["evaluation"].attributes["payload"]
+    assert "unknown_dimensions" in evaluation_payload
+    assert "social_consequence" in evaluation_payload["unknown_dimensions"]
+    assert evaluation_payload["social_consequence_score"] is None
     assert by_stage["policy"].attributes["payload"]["status"] == "candidate_only"
     assert by_stage["policy"].semantic_metadata.source_event_refs
     assert "character_policy_candidate_event" in by_stage[

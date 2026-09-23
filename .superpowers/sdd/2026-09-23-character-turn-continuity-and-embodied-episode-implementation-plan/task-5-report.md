@@ -28,3 +28,19 @@ Result: **25 passed**, with four existing FastAPI lifespan deprecation warnings.
 
 - Existing runtime canonical projection is written before settlement for the live stage chain; the new typed evaluation remains persisted in the session timeline and is available to completed projection paths. A separate revision-update protocol for already-written graph anchors is outside Task 5.
 - No Godot/runtime visual verification was required for this backend-only task.
+
+## Fix Round 1
+
+Addressed the independent review findings:
+
+- Candidate creation no longer uses `behavior_score` as a gate; scalar output is compatibility-only and Task 4 remains the evidence/lifecycle gate.
+- Empty settlement metadata, empty goal keys, and absent role values remain unknown rather than becoming synthetic known/neutral scores. The all-unknown compatibility fallback is `0.0`, not midpoint `0.5`.
+- Role/social/recovery evidence is scoped to the canonical turn/correlation, and scoped event IDs are included in evidence refs to prevent cross-turn leakage.
+- Runtime no longer writes a partial graph anchor before settlement. The completed projection writes settlement, typed evaluation/unknowns, and policy in one idempotent graph record, avoiding the pre-settlement revision conflict.
+- Added coverage for scalar-independent candidate creation, cross-turn evidence isolation, and graph evaluation unknown preservation.
+
+Fix-round verification:
+
+`python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
+
+Result: **27 passed**, with four existing FastAPI lifespan deprecation warnings. `git diff --check` passed.

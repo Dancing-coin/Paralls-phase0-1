@@ -4097,11 +4097,10 @@ class CharacterAgentRuntime:
             plan["causation_id"] = turn_context.causation_id
             plan["correlation_id"] = turn_context.correlation_id
             plan["authority_request_ref"] = authority_request_ref
-            if self._behavior_turn_projection is not None:
-                self._behavior_turn_projection.record_context(
-                    turn_context,
-                    self.get_session_timeline(actor_id),
-                )
+            # Completed behavior-turn projection is written after authoritative
+            # settlement so evaluation/unknown dimensions share the same graph
+            # anchor and replay identity. Canonical stage events remain durable
+            # in the session timeline while awaiting settlement.
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))

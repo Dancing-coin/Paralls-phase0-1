@@ -58,6 +58,64 @@ def test_evaluation_marks_unprovable_social_effect_unknown_not_neutral() -> None
     assert result.evidence_refs
 
 
+def test_candidate_policy_is_not_suppressed_by_high_compatibility_score() -> None:
+    result = CharacterBehaviorEvaluationService().evaluate(
+        turn=_settled_turn_for_evaluation(),
+        settlement_event={
+            "event_id": "settlement:cost",
+            "producer_ts": 11,
+            "payload": {
+                "settlement_status": "accepted",
+                "result_type": "object_state_result",
+                "change_summary": "door opened with constraint cost",
+                "action_settlement_result": {
+                    "outcome_band": "clean_success",
+                    "failure_domains": ["world_constraint"],
+                },
+            },
+        },
+        timeline=[],
+    )
+
+    assert result.behavior_score >= 0.75
+    assert result.candidate_policy is not None
+    assert result.candidate_policy["policy_type"] == "recovery"
+
+
+def test_cross_turn_role_evidence_does_not_leak_into_current_evaluation() -> None:
+    turn = _settled_turn_for_evaluation()
+    result = CharacterBehaviorEvaluationService().evaluate(
+        turn=turn,
+        settlement_event={
+            "event_id": "settlement:current",
+            "producer_ts": 11,
+            "payload": {
+                "turn_id": turn.turn_id,
+                "correlation_id": turn.correlation_id,
+                "settlement_status": "accepted",
+                "result_type": "object_state_result",
+                "change_summary": "door opened",
+            },
+        },
+        timeline=[
+            {
+                "event_id": "prior:role",
+                "event_type": "role_evidence",
+                "producer_ts": 9,
+                "payload": {
+                    "turn_id": "turn:other",
+                    "correlation_id": "corr:other",
+                    "role_consistency": 0.1,
+                },
+            }
+        ],
+    )
+
+    assert result.role_consistency_score is None
+    assert "role_consistency" in result.unknown_dimensions
+    assert "prior:role" not in result.evidence_refs
+
+
 def test_behavior_evaluator_links_context_to_settlement_and_emits_recovery_candidate() -> None:
     service = CharacterBehaviorEvaluationService()
     timeline = [

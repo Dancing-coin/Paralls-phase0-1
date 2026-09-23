@@ -65,16 +65,25 @@ class CharacterBehaviorEvaluationService:
             or settlement_payload.get("resolution_status", "")
             or ""
         )
-        source_refs = self._source_refs(turn, chain, settlement_event)
         settlement_event_id = str(settlement_event.get("event_id", "") or "")
         unknown_reasons: dict[str, str] = {}
+        turn_id = turn.turn_id if turn is not None else str(settlement_payload.get("turn_id", "") or "")
+        correlation_id = turn.correlation_id if turn is not None else str(settlement_payload.get("correlation_id", "") or "")
+        scoped_timeline = self._scoped_timeline(timeline, turn_id, correlation_id)
+        source_refs = self._source_refs(turn, chain, settlement_event)
+        source_refs.extend(
+            str(event.get("event_id", ""))
+            for event in scoped_timeline
+            if str(event.get("event_id", ""))
+        )
+        source_refs = list(dict.fromkeys(source_refs))
         scores = {
             "comprehension": self._comprehension_score(interpretation_payload, settlement_payload, unknown_reasons),
             "goal_progress": self._goal_progress_score(goal_payload, settlement_status, unknown_reasons),
-            "role_consistency": self._role_consistency_score(timeline, unknown_reasons),
+            "role_consistency": self._role_consistency_score(scoped_timeline, unknown_reasons),
             "execution_quality": self._execution_quality_score(settlement_status, outcome_band, failure_domains, unknown_reasons),
-            "social_consequence": self._social_consequence_score(settlement_payload, timeline, unknown_reasons),
-            "recovery_quality": self._recovery_quality_score(turn, timeline, unknown_reasons),
+            "social_consequence": self._social_consequence_score(settlement_payload, scoped_timeline, unknown_reasons),
+            "recovery_quality": self._recovery_quality_score(turn, scoped_timeline, unknown_reasons),
         }
         unknown_dimensions = [name for name, score in scores.items() if score is None]
         known_scores = [score for score in scores.values() if score is not None]
@@ -190,11 +199,40 @@ class CharacterBehaviorEvaluationService:
         return list(dict.fromkeys(refs))
 
     @staticmethod
+    def _scoped_timeline(
+        timeline: list[dict[str, object]], turn_id: str, correlation_id: str
+    ) -> list[dict[str, object]]:
+        if not turn_id and not correlation_id:
+            return []
+        scoped: list[dict[str, object]] = []
+        for event in timeline:
+            if not isinstance(event, dict):
+                continue
+            payload = event.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            event_turn = str(payload.get("turn_id", "") or "")
+            event_correlation = str(
+                payload.get("correlation_id", "")
+                or payload.get("causation_id", "")
+                or ""
+            )
+            if (turn_id and event_turn == turn_id) or (
+                correlation_id and event_correlation == correlation_id
+            ):
+                scoped.append(event)
+        return scoped
+
+    @staticmethod
     def _comprehension_score(interpretation: dict[str, object], settlement: dict[str, object], unknown: dict[str, str]) -> float | None:
         if not interpretation:
             unknown["comprehension"] = "interpretation_evidence_absent"
             return None
-        substantive = any(str(settlement.get(key, "") or "") for key in ("result_type", "constraint_summary", "change_summary", "stable_state_summary")) or isinstance(settlement.get("action_settlement_result"), dict)
+        action_metadata = settlement.get("action_settlement_result")
+        substantive = any(
+            str(settlement.get(key, "") or "")
+            for key in ("result_type", "constraint_summary", "change_summary", "stable_state_summary")
+        ) or (isinstance(action_metadata, dict) and bool(action_metadata))
         if not substantive:
             unknown["comprehension"] = "authority_outcome_evidence_absent"
             return None
@@ -206,7 +244,10 @@ class CharacterBehaviorEvaluationService:
         if not goal:
             unknown["goal_progress"] = "active_goal_transition_absent"
             return None
-        if any(key in goal for key in ("transition", "progress", "goal_status", "status")):
+        if any(
+            key in goal and goal.get(key) not in (None, "", [], {}, ())
+            for key in ("transition", "progress", "goal_status", "status")
+        ):
             return 1.0 if status in {"accepted", "applied", "observed"} else 0.2
         unknown["goal_progress"] = "active_goal_transition_unproven"
         return None
@@ -217,9 +258,10 @@ class CharacterBehaviorEvaluationService:
             payload = event.get("payload") if isinstance(event, dict) else None
             if not isinstance(payload, dict):
                 continue
-            if any(key in payload for key in ("profile_constraints", "supervision_constraints", "role_consistency")):
+            role_value = payload.get("role_consistency")
+            if role_value not in (None, "") and any(key in payload for key in ("profile_constraints", "supervision_constraints", "role_consistency")):
                 try:
-                    return max(0.0, min(1.0, float(payload.get("role_consistency", 1.0))))
+                    return max(0.0, min(1.0, float(role_value)))
                 except (TypeError, ValueError):
                     break
         unknown["role_consistency"] = "profile_or_supervision_evidence_absent"
@@ -278,7 +320,7 @@ class CharacterBehaviorEvaluationService:
         return 0.6
 
     def _candidate_policy(self, *, actor_id: str, turn_id: str, score: float, confidence: float, unknown_dimensions: list[str], failure_domains: list[str], recall: dict[str, object], settlement_payload: dict[str, object], failed_intent: str, source_refs: list[str], settlement_event_id: str, settlement_status: str) -> dict[str, object] | None:
-        if score >= 0.75 and settlement_status not in {"rejected", "blocked", "denied"} and not bool(recall.get("truncated", False)):
+        if not unknown_dimensions and not failure_domains and not bool(recall.get("truncated", False)):
             return None
         policy_type = "recovery" if settlement_status in {"rejected", "blocked", "denied"} or failure_domains else "recall" if not recall.get("selected_memory_refs") else "cadence"
         complete = bool(failure_domains) and bool(settlement_event_id) and len(source_refs) >= 2
@@ -317,7 +359,7 @@ class CharacterBehaviorEvaluationService:
             return 0.5
         if outcome_band in {"blocked", "failed", "misfire"} or settlement_status in {"rejected", "blocked", "denied"}:
             return 0.2
-        return 0.5
+        return 0.0
 
     @staticmethod
     def _hypothesis(policy_type: str) -> str:
