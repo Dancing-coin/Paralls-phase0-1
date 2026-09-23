@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from threading import RLock
 from typing import Callable
+from collections.abc import Mapping
 
 from app.character_agent.logic.affect_engine import AffectEngine
 from app.character_agent.logic.drift_accumulator import DriftAccumulator
@@ -71,6 +72,10 @@ from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
+from app.character_agent.services.character_turn_recovery import (
+    CharacterTurnRecoveryResult,
+    CharacterTurnRecoveryService,
+)
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
@@ -177,6 +182,17 @@ class CharacterAgentRuntime:
             storage_root=storage_root
         )
         self._turn_coordinator = CharacterTurnCoordinator(self._session_store)
+        self._turn_recovery_service = (
+            CharacterTurnRecoveryService(
+                session_store=self._session_store,
+                continuity_store=continuity_store,
+            )
+            if continuity_store is not None
+            else None
+        )
+        self._recovery_blocked_actor_ids: set[str] = set()
+        self._restored_active_turns: dict[str, dict[str, dict[str, object]]] = {}
+        self._last_committed_turn_ids: dict[str, str] = {}
         self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
         self._graph_session_local_overlap_counts: dict[str, int] = {}
         self._graph_session_replay_offsets: dict[str, int] = {}
@@ -226,6 +242,10 @@ class CharacterAgentRuntime:
         for actor_id in self._supported_actor_ids | self._continuity_actor_ids:
             for event in self.get_session_timeline(actor_id):
                 self._update_memory_scene_knowledge(event)
+        if self._turn_recovery_service is not None:
+            for actor_id in self._continuity_actor_ids:
+                if self._session_store.event_count(actor_id) or self._continuity_store.read_snapshot(actor_id):
+                    self.reconcile_character_turn(actor_id)
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if not self.supports_actor(event.actor_id):
@@ -2687,6 +2707,73 @@ class CharacterAgentRuntime:
             branch_id="branch:main",
         )
 
+    # These helpers deliberately construct only durable canonical records.  They
+    # are test seams; normal execution remains owned by the cognition runtime.
+    def begin_test_turn_awaiting_settlement(
+        self, actor_id: str, request_ref: str
+    ) -> CharacterTurnContext:
+        turn = self._begin_canonical_turn(
+            actor_id=actor_id,
+            source_event_ref=f"test-pending:{request_ref}",
+            producer_ts=1,
+            causation_id=f"test-cause:{request_ref}",
+            correlation_id=f"test-correlation:{request_ref}",
+        )
+        for stage in ("context", "interpretation", "goal", "intent"):
+            turn = self._turn_coordinator.append_stage(
+                context=turn,
+                stage=stage,
+                payload={"test_stage": stage},
+                producer_ts=1,
+            )
+        expected_revision = self._session_timeline_event_count(actor_id)
+        return self._turn_coordinator.append_stage(
+            context=turn,
+            stage="execution",
+            payload={
+                "execution_ref": f"execution:{turn.turn_id}",
+                "authority_request_ref": request_ref,
+                "expected_revision": expected_revision,
+            },
+            producer_ts=1,
+        )
+
+    def flush_continuity_snapshot(self, actor_id: str) -> None:
+        """Force a complete recovery checkpoint; unlike the hot current state."""
+        self._persist_graph_continuity(
+            actor_id=actor_id,
+            producer_ts=max(
+                (
+                    int(event.get("producer_ts", 0) or 0)
+                    for event in self.get_session_timeline(actor_id)
+                ),
+                default=0,
+            ),
+            force_checkpoint=True,
+        )
+
+    def reconcile_character_turn(self, actor_id: str) -> CharacterTurnRecoveryResult:
+        if self._turn_recovery_service is None:
+            return CharacterTurnRecoveryResult("no_pending_turn", actor_id)
+        result = self._turn_recovery_service.reconcile(actor_id)
+        if result.status == "recovery_required":
+            self._recovery_blocked_actor_ids.add(actor_id)
+        elif result.status in {"resumed", "already_committed"} and result.reason is None:
+            self._recovery_blocked_actor_ids.discard(actor_id)
+        elif result.status == "no_pending_turn" and result.reason is not None:
+            self._recovery_blocked_actor_ids.add(actor_id)
+        return result
+
+    def outgoing_authority_request_count(self, turn_id: str) -> int:
+        return sum(
+            1
+            for actor_id in self._session_store.actor_ids()
+            for event in self.get_session_timeline(actor_id)
+            if event.get("event_type") == "character_agent_execution_request"
+            and isinstance(event.get("payload"), dict)
+            and event["payload"].get("turn_id") == turn_id
+        )
+
     def record_execution_request(
         self,
         *,
@@ -2694,6 +2781,8 @@ class CharacterAgentRuntime:
         producer_ts: int,
         payload: dict[str, object],
     ) -> None:
+        if actor_id in self._recovery_blocked_actor_ids:
+            return
         request = self._primary_requested_action(payload)
         request_type = str(request.get("request_type", "") or "")
         target_actor_id = str(request.get("target_actor_id", "") or "")
@@ -3659,7 +3748,7 @@ class CharacterAgentRuntime:
         producer_ts: int,
         candidate: DriftCandidateRecord,
     ) -> None:
-        for entry in self.get_session_timeline(actor_id):
+        for entry in self._session_timeline_after(actor_id, 0):
             if entry.get("event_type") != "character_personality_drift_promotion_event":
                 continue
             payload = entry.get("payload", {})
@@ -3690,6 +3779,12 @@ class CharacterAgentRuntime:
         correlation_id: str = "",
         turn_context: CharacterTurnContext | None = None,
     ) -> dict[str, object]:
+        if actor_id in self._recovery_blocked_actor_ids:
+            return {
+                "actor_id": actor_id,
+                "execution_status": "recovery_required",
+                "recovery_required": True,
+            }
         plan = self._l4_executor.build_execution_plan(
             snapshot=snapshot,
             interpretation=interpretation,
@@ -3719,7 +3814,9 @@ class CharacterAgentRuntime:
                 execution_ref=execution_ref,
                 authority_request_ref=authority_request_ref,
                 producer_ts=producer_ts,
+                expected_revision=self._session_timeline_event_count(actor_id),
             )
+            self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts, force_checkpoint=True)
             plan["turn_id"] = turn_context.turn_id
             plan["causation_id"] = turn_context.causation_id
             plan["correlation_id"] = turn_context.correlation_id
@@ -4857,6 +4954,21 @@ class CharacterAgentRuntime:
             shared_modules = snapshot.get("shared_module_state")
             if isinstance(shared_modules, dict):
                 self._shared_module_states[actor_id] = deepcopy(shared_modules)
+            active_turns = snapshot.get("active_turns")
+            if isinstance(active_turns, dict):
+                self._restored_active_turns[actor_id] = {
+                    turn_id: deepcopy(context)
+                    for turn_id, context in active_turns.items()
+                    if isinstance(turn_id, str) and isinstance(context, dict)
+                }
+            committed_turn_id = snapshot.get("last_committed_turn_id")
+            if isinstance(committed_turn_id, str) and committed_turn_id:
+                self._last_committed_turn_ids[actor_id] = committed_turn_id
+            policy_state = snapshot.get("policy_state")
+            if isinstance(policy_state, dict) and policy_state.get(
+                "execution_blocked"
+            ):
+                self._recovery_blocked_actor_ids.add(actor_id)
             if timeline:
                 replay_offset = self._graph_session_replay_offsets.get(actor_id, 0)
                 if replay_offset > len(timeline):
@@ -4883,14 +4995,22 @@ class CharacterAgentRuntime:
                     self._memory_store.write_event(event)
                     self._remember_materialization_commit(event)
 
-    def _persist_graph_continuity(self, *, actor_id: str, producer_ts: int) -> None:
+    def _persist_graph_continuity(
+        self, *, actor_id: str, producer_ts: int, force_checkpoint: bool = False
+    ) -> None:
         if self._continuity_store is None:
             return
         # 同一角色的快照捕获和 checkpoint/current 提交不可交错，避免旧游标回写。
         with self._continuity_flush_locks.setdefault(actor_id, RLock()):
-            self._persist_graph_continuity_locked(actor_id=actor_id, producer_ts=producer_ts)
+            self._persist_graph_continuity_locked(
+                actor_id=actor_id,
+                producer_ts=producer_ts,
+                force_checkpoint=force_checkpoint,
+            )
 
-    def _persist_graph_continuity_locked(self, *, actor_id: str, producer_ts: int) -> None:
+    def _persist_graph_continuity_locked(
+        self, *, actor_id: str, producer_ts: int, force_checkpoint: bool = False
+    ) -> None:
         event_count = self._session_timeline_event_count(actor_id)
         if event_count == 0:
             return
@@ -4912,9 +5032,22 @@ class CharacterAgentRuntime:
             "seed_projection": self.get_seed_projection(actor_id),
             "shared_module_state": self.get_shared_module_state(actor_id),
             "checkpoint_event_index": self._continuity_checkpoint_event_indexes.get(actor_id, 0),
+            "schema_version": 2,
+            "session_timeline_checkpoint_index": self._continuity_checkpoint_event_indexes.get(actor_id, 0),
+            "graph_source_event_ref": source_ref,
+            "active_turns": self._active_turns_snapshot(actor_id),
+            "pending_execution": self._pending_execution_snapshot(actor_id),
+            "policy_state": {
+                "policy_revision": "policy:character-runtime:v1",
+                "execution_blocked": actor_id in self._recovery_blocked_actor_ids,
+            },
+            "last_committed_turn_id": self._last_committed_turn_id(actor_id),
         }
         checkpoint_due = (
-            checkpoint_index == 0 or event_count <= 1 or event_count % 16 == 0
+            force_checkpoint
+            or checkpoint_index == 0
+            or event_count <= 1
+            or event_count % 16 == 0
         )
         if checkpoint_due:
             timeline = self._session_timeline_after(actor_id, 0)
@@ -4931,7 +5064,11 @@ class CharacterAgentRuntime:
                     for key, value in self._materialization_receipts_by_actor.get(actor_id, {}).items()
                 },
                 "checkpoint_event_index": event_count,
+                "session_timeline_checkpoint_index": event_count,
             }
+            checkpoint_snapshot["snapshot_digest"] = self._continuity_snapshot_digest(
+                checkpoint_snapshot
+            )
             try:
                 self._continuity_store.write_snapshot(
                     actor_id=actor_id,
@@ -4967,6 +5104,131 @@ class CharacterAgentRuntime:
                 ),
             },
         )
+
+    def _active_turns_snapshot(self, actor_id: str) -> dict[str, dict[str, object]]:
+        contexts: dict[str, CharacterTurnContext] = {}
+        for entry in self._session_timeline_after(actor_id, 0):
+            payload = entry.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            if entry.get("event_type") == "character_turn_context_created":
+                raw_context = payload.get("context")
+                if not isinstance(raw_context, dict):
+                    continue
+                try:
+                    context = CharacterTurnContext.model_validate(raw_context)
+                except ValueError:
+                    continue
+                if context.actor_id == actor_id:
+                    contexts[context.turn_id] = context
+                continue
+            if entry.get("event_type") != "character_turn_stage_recorded":
+                continue
+            turn_id = payload.get("turn_id")
+            raw_stage = payload.get("stage_event")
+            context = contexts.get(turn_id) if isinstance(turn_id, str) else None
+            if context is None or not isinstance(raw_stage, dict):
+                continue
+            try:
+                stage_event = context.stage_events.get(str(raw_stage.get("stage", "")))
+                if stage_event is not None:
+                    continue
+                from app.models.behavior_turn import CharacterTurnStageEvent
+
+                parsed = CharacterTurnStageEvent.model_validate(raw_stage)
+                context, rebuilt = context.stage_event(
+                    parsed.stage,
+                    stage_ref=parsed.stage_ref,
+                    idempotency_key=parsed.idempotency_key,
+                    producer_ts=parsed.producer_ts,
+                    outcome=parsed.outcome,
+                    payload=self._snapshot_json_data(parsed.model_dump(warnings=False))["payload"],
+                )
+                rebuilt_payload = self._snapshot_json_data(
+                    rebuilt.model_dump(warnings=False)
+                )
+                if rebuilt_payload != raw_stage:
+                    continue
+                contexts[context.turn_id] = context
+            except (ValueError, TypeError):
+                continue
+        restored = self._restored_active_turns.get(actor_id, {})
+        for turn_id, raw_context in restored.items():
+            if turn_id not in contexts:
+                try:
+                    contexts[turn_id] = CharacterTurnContext.model_validate(raw_context)
+                except ValueError:
+                    continue
+        return {
+            turn_id: self._snapshot_json_data(
+                context.model_dump(warnings=False)
+            )
+            for turn_id, context in contexts.items()
+            if context.lifecycle not in {"committed", "rejected", "abandoned", "failed"}
+        }
+
+    def _pending_execution_snapshot(self, actor_id: str) -> dict[str, dict[str, object]]:
+        pending: dict[str, dict[str, object]] = {}
+        for turn_id, raw_context in self._active_turns_snapshot(actor_id).items():
+            context = CharacterTurnContext.model_validate(raw_context)
+            execution = context.stage_events.get("execution")
+            if context.lifecycle != "awaiting_settlement" or execution is None:
+                continue
+            raw_execution = self._snapshot_json_data(
+                execution.model_dump(warnings=False)
+            )
+            payload = raw_execution["payload"]
+            expected_revision = payload.get("expected_revision", context.snapshot_revision)
+            if not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
+                expected_revision = context.snapshot_revision
+            pending[turn_id] = {
+                "turn_id": turn_id,
+                "authority_request_ref": payload.get("authority_request_ref", ""),
+                "expected_revision": expected_revision,
+                "idempotency_key": execution.idempotency_key,
+                "receipt_ref": None,
+            }
+        return pending
+
+    def _last_committed_turn_id(self, actor_id: str) -> str | None:
+        if actor_id in self._last_committed_turn_ids:
+            return self._last_committed_turn_ids[actor_id]
+        committed = [
+            turn_id
+            for turn_id, context in self._active_turns_snapshot(actor_id).items()
+            if context.get("lifecycle") == "committed"
+        ]
+        return max(committed) if committed else None
+
+    @staticmethod
+    def _snapshot_json_data(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): CharacterAgentRuntime._snapshot_json_data(nested)
+                for key, nested in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [CharacterAgentRuntime._snapshot_json_data(nested) for nested in value]
+        if hasattr(value, "model_dump"):
+            return CharacterAgentRuntime._snapshot_json_data(
+                value.model_dump(warnings=False)
+            )
+        return value
+
+    @staticmethod
+    def _continuity_snapshot_digest(snapshot: dict[str, object]) -> str:
+        canonical = {
+            key: value for key, value in snapshot.items() if key != "snapshot_digest"
+        }
+        return "sha256:" + hashlib.sha256(
+            json.dumps(
+                canonical,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(

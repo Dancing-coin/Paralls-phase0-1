@@ -103,6 +103,7 @@ class CharacterTurnCoordinator:
         context: CharacterTurnContext,
         execution_ref: str,
         authority_request_ref: str,
+        expected_revision: int | None = None,
         producer_ts: int,
     ) -> CharacterTurnContext:
         return self.append_stage(
@@ -111,6 +112,7 @@ class CharacterTurnCoordinator:
             payload={
                 "execution_ref": execution_ref,
                 "authority_request_ref": authority_request_ref,
+                "expected_revision": expected_revision if expected_revision is not None else context.snapshot_revision,
             },
             producer_ts=producer_ts,
         )

@@ -39,6 +39,14 @@ class CharacterGraphContinuityStore:
             "pending_seed_candidates",
             "seed_projection",
             "shared_module_state",
+            "schema_version",
+            "session_timeline_checkpoint_index",
+            "graph_source_event_ref",
+            "snapshot_digest",
+            "active_turns",
+            "pending_execution",
+            "policy_state",
+            "last_committed_turn_id",
         }
     )
 
