@@ -126,7 +126,8 @@ class CharacterBehaviorTurnProjection:
             authority_event_ref and settlement_payload.get("authority_owner_ref")
         )
         self._recorder.record(
-            BehaviorTurnRecordRequest(
+            BehaviorTurnRecordRequest.from_legacy_projection(
+                legacy_reader_ref="legacy:character-behavior-turn-projection:v1",
                 turn_id=str(settlement_payload.get("turn_id", "") or correlation_id),
                 scope=self._scope_resolver(actor_id),
                 valid_at=producer_ts,

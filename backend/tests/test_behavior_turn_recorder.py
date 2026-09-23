@@ -38,7 +38,8 @@ def _scope() -> HeavenlyGraphScope:
 def _request(
     *, stages: tuple[BehaviorTurnStageRecord, ...] | None = None
 ) -> BehaviorTurnRecordRequest:
-    return BehaviorTurnRecordRequest(
+    return BehaviorTurnRecordRequest.from_legacy_projection(
+        legacy_reader_ref="legacy:test-behavior-turn-recorder",
         turn_id="turn:char-b:1",
         scope=_scope(),
         valid_at=10,

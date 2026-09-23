@@ -1513,7 +1513,8 @@ class SimingRuntime:
                 f"siming:{event.correlation_id}:population-compact:v1"
             )
             self._behavior_turn_recorder.record(
-                BehaviorTurnRecordRequest(
+                BehaviorTurnRecordRequest.from_legacy_projection(
+                    legacy_reader_ref="legacy:siming-population-behavior-turn:v1",
                     turn_id=compact_turn_ref,
                     scope=scope,
                     valid_at=event.producer_ts,
@@ -1615,7 +1616,8 @@ class SimingRuntime:
         audit_payload = [audit.model_dump(mode="json") for audit in result.audit_records if audit.correlation_id == event.correlation_id]
         prepared_payload = prepared.model_dump(mode="json") if hasattr(prepared, "model_dump") else {}
         self._behavior_turn_recorder.record(
-            BehaviorTurnRecordRequest(
+            BehaviorTurnRecordRequest.from_legacy_projection(
+                legacy_reader_ref="legacy:siming-behavior-turn:v1",
                 turn_id=f"siming:{event.correlation_id}",
                 scope=scope,
                 valid_at=event.producer_ts,
