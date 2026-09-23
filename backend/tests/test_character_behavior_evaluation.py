@@ -1,3 +1,5 @@
+import pytest
+
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
@@ -287,3 +289,67 @@ def test_evaluator_marks_unknown_or_incomplete_failure_evidence_unqualified() ->
 
     assert result["candidate_policy"]["evidence"]["qualified"] is False
     assert result["candidate_policy"]["evidence"]["complete"] is False
+
+
+def test_result_id_evidence_ref_resolves_to_exact_settlement_for_policy_gate() -> None:
+    runtime = CharacterAgentRuntime()
+    settlement = {
+        "event_id": "settlement:event:1",
+        "payload": {
+            "result_id": "result:1",
+            "settlement_status": "accepted",
+            "result_type": "object_state_result",
+            "change_summary": "door opened",
+        },
+    }
+    evidence = {
+        "qualified": True,
+        "complete": True,
+        "confidence": 0.9,
+        "evidence_refs": ["result:1", "context:1"],
+        "settlement_event_id": "result:1",
+        "context_hash": "hash:1",
+    }
+
+    assert runtime._behavior_evidence_is_qualified(
+        evidence=evidence,
+        evidence_refs=["result:1", "context:1"],
+        settlement_event=settlement,
+        timeline=[
+            {
+                "event_id": "context:1",
+                "payload": {"turn_id": "turn:1", "summary": "context"},
+            }
+        ],
+    ) is True
+
+
+def test_duplicate_settlement_result_id_conflict_fails_closed() -> None:
+    runtime = CharacterAgentRuntime()
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_conflict",
+            percept_channel="visual",
+            producer_ts=100,
+            room_id="room",
+            scene_id="scene",
+            zone_id="zone",
+            perceived_summary="letter",
+            source_candidate_event_id="visual:conflict",
+        )
+    )
+    first = {
+        "result_id": "result:conflict",
+        "settlement_status": "rejected",
+        "result_type": "constraint_state_result",
+        "constraint_summary": "requires a key",
+    }
+    runtime.record_settlement_result(actor_id="char_conflict", producer_ts=101, payload=first)
+    before = runtime.get_session_timeline("char_conflict")
+    with pytest.raises(ValueError, match="character_settlement_replay_conflict"):
+        runtime.record_settlement_result(
+            actor_id="char_conflict",
+            producer_ts=101,
+            payload={**first, "settlement_status": "accepted", "change_summary": "opened"},
+        )
+    assert runtime.get_session_timeline("char_conflict") == before

@@ -59,3 +59,23 @@ Verification after replay closure:
 `python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
 
 Result: **28 passed**, with four existing FastAPI lifespan deprecation warnings.
+
+## Fix Round 2
+
+- Result-ID evidence refs now resolve only to the exact settlement event whose
+  payload carries that result ID; unrelated event IDs cannot satisfy the
+  evidence gate.
+- Duplicate settlement callbacks compare the incoming payload against the
+  persisted payload (excluding the derived settlement metadata). Exact replay
+  remains a no-op; reuse with changed status, authority, turn, or other payload
+  data raises `character_settlement_replay_conflict` and leaves the timeline
+  unchanged.
+- Added regressions for qualified result-ID evidence and conflicting duplicate
+  settlement reuse. Missing `result_id` continues to use the persisted event ID
+  as the stable fallback identity.
+
+Verification:
+
+`python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
+
+Result: **30 passed**, with four existing FastAPI lifespan deprecation warnings.

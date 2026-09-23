@@ -2878,14 +2878,20 @@ class CharacterAgentRuntime:
         payload: dict[str, object],
     ) -> None:
         replay_result_id = str(payload.get("result_id", "") or "")
-        if replay_result_id and any(
-            isinstance(event, dict)
-            and event.get("event_type") == "character_agent_settlement_result"
-            and isinstance(event.get("payload"), dict)
-            and str(event["payload"].get("result_id", "") or "") == replay_result_id
-            for event in self.get_session_timeline(actor_id)
-        ):
-            return
+        if replay_result_id:
+            for event in self.get_session_timeline(actor_id):
+                if (
+                    not isinstance(event, dict)
+                    or event.get("event_type") != "character_agent_settlement_result"
+                    or not isinstance(event.get("payload"), dict)
+                    or str(event["payload"].get("result_id", "") or "") != replay_result_id
+                ):
+                    continue
+                prior_payload = dict(event["payload"])
+                prior_payload.pop("action_settlement_result", None)
+                if prior_payload != payload:
+                    raise ValueError("character_settlement_replay_conflict")
+                return
         self._refresh_weak_supervision_state(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -3227,19 +3233,28 @@ class CharacterAgentRuntime:
         if not any(
             str(settlement_payload.get(key, "") or "")
             for key in ("result_type", "constraint_summary", "change_summary", "stable_state_summary")
-        ) and not isinstance(settlement_payload.get("action_settlement_result"), dict):
+        ) and not (
+            isinstance(settlement_payload.get("action_settlement_result"), dict)
+            and bool(settlement_payload.get("action_settlement_result"))
+        ):
             return False
         context_hash = str(evidence.get("context_hash", "") or "")
         if not context_hash:
             return False
         for ref in evidence_refs:
             event = event_by_id.get(ref)
+            if event is None and ref == str(settlement_payload.get("result_id", "") or ""):
+                event = settlement_event
             if not isinstance(event, dict) or not isinstance(event.get("payload"), dict) or not event["payload"]:
                 return False
         actual_event_id = str(settlement_event.get("event_id", "") or "")
         if settlement_event_id not in evidence_refs:
             return False
-        if settlement_event_id not in event_by_id and actual_event_id not in evidence_refs:
+        if (
+            settlement_event_id not in event_by_id
+            and settlement_event_id != str(settlement_payload.get("result_id", "") or "")
+            and actual_event_id not in evidence_refs
+        ):
             return False
         if not any(ref != settlement_event_id for ref in evidence_refs):
             return False
