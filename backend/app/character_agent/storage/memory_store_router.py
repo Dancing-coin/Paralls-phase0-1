@@ -25,6 +25,10 @@ class CharacterMemoryStoreRouter:
     def graph(self):
         return getattr(self._graph, "graph", None)
 
+    @property
+    def graph_policy_revision(self):
+        return getattr(self._graph, "graph_policy_revision", None)
+
     def scope_for_actor(self, actor_id: str):
         resolver = getattr(self._store_for(actor_id), "_scope_for_actor", None)
         return resolver(actor_id) if resolver is not None else None

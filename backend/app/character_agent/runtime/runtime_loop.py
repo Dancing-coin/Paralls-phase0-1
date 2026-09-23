@@ -208,6 +208,7 @@ class CharacterAgentRuntime:
                 graph=graph,
                 scope_resolver=(getattr(self._memory_store, "scope_for_actor", None) or getattr(self._memory_store, "_scope_for_actor", None)),
                 memory_reader=self._memory_store.retrieval_bundle,
+                graph_policy_revision=getattr(self._memory_store, "graph_policy_revision", "policy:v1"),
             )
             self._l2._semantic_recall_service = semantic_recall
             self._l3._semantic_recall_service = semantic_recall

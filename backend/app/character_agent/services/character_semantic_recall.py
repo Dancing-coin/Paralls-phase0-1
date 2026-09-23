@@ -47,10 +47,12 @@ class CharacterSemanticRecallService:
     def __init__(self, memory_recall_policy: CharacterMemoryRecallPolicy | None = None, *, graph: Any | None = None,
                  scope_resolver: Callable[[str], Any] | None = None,
                  memory_reader: Callable[[str], Mapping[str, object]] | None = None,
+                 graph_policy_revision: str | None = None,
                  max_graph_results: int = 100, card_budget: int = 128, token_budget: int = 2400) -> None:
         self._policy = memory_recall_policy or CharacterMemoryRecallPolicy()
         self._graph, self._scope_resolver, self._memory_reader = graph, scope_resolver, memory_reader
         self._max_graph_results = max(1, min(1000, max_graph_results))
+        self._graph_policy_revision = graph_policy_revision
         self._card_budget, self._token_budget = max(1, card_budget), max(1, token_budget)
 
     def select(self, actor_id: str, context: Mapping[str, object], *, turn_context: CharacterTurnContext) -> SemanticRecallResult:
@@ -96,7 +98,8 @@ class CharacterSemanticRecallService:
                 result_count += len(getattr(result, "nodes", []) or []) + len(getattr(result, "relations", []) or [])
                 refs, rels = self._result_refs(result, actor_id)
                 relations.update(rels)
-                revisions.update(self._revision_map(getattr(result, "revision_vector", None)))
+                for key, value in self._revision_map(getattr(result, "revision_vector", None)).items():
+                    revisions[key] = max(revisions.get(key, 0), value)
                 if kind == "causal": causal.update(refs)
                 elif kind == "conflict": conflicts.update(refs)
                 elif kind == "perspective": perspectives.update(refs)
@@ -147,7 +150,7 @@ class CharacterSemanticRecallService:
             raise ValueError("semantic recall scope does not match canonical turn")
         return GraphReaderContext(reader_principal=turn.actor_id, allowed_visibility_scopes=("actor_private", "public", "branch_only"),
             world_id=scope.world_id, session_id=scope.session_id, story_branch_id=turn.branch_id,
-            valid_at=turn.valid_at, recorded_at=turn.producer_ts, policy_revision=turn.policy_revision)
+            valid_at=turn.valid_at, recorded_at=turn.producer_ts, policy_revision=self._graph_policy_revision or turn.policy_revision)
 
     def _queries(self, actor: str, turn: CharacterTurnContext, cards: Mapping[str, SemanticRecallCard], reader: GraphReaderContext):
         scope = self._scope_resolver(actor) if self._scope_resolver else None; kw = {"context": reader, "scope": scope, "limit": self._max_graph_results}
