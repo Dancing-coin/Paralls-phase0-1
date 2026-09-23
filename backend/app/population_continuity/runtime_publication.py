@@ -20,7 +20,7 @@ from app.population_continuity.siming_contracts import PopulationCadenceInput, P
 from app.population_continuity.world import WorldContinuityRuntime
 from app.population_continuity.recovery import (
     PopulationRecoveryCheckpoint, durable_population_receipt, parse_population_checkpoint,
-    population_kernel_digest, recovery_digest,
+    recovery_digest,
 )
 from app.services.authority_event_bus import AuthorityEventBusPort
 from app.services.siming_population_capability import PopulationSimulationCapability
@@ -45,7 +45,7 @@ class RuntimeCadencePublisher:
         self.roster_digest = _digest(self.world.roster.actor_ids)
         self.confirmed_tick = 0
         self.replayed_windows = 0
-        self.kernel_digest = population_kernel_digest()
+        self.kernel_digest = self.world._population_kernel_digest
         self._records: dict[str, dict] = {}
         self._last_event: AuthorityEvent | None = None
         self._prepared_event: tuple[str, AuthorityEvent] | None = None
@@ -143,9 +143,10 @@ class RuntimeCadencePublisher:
             if result is None or not result.committed:
                 raise ValueError("population_domain_owner_receipt_missing")
             proof = self.store.get_event(result.committed_event_ids[0])
-            transaction = self.store.get_transaction(proof.transaction_id)
-            if (transaction is None or transaction.idempotency_record.principal_ref != authority._PRINCIPAL
-                    or proof not in transaction.events):
+            if not self.store.transaction_owns_event(
+                    transaction_id=proof.transaction_id,
+                    event_id=proof.event_id,
+                    principal_ref=authority._PRINCIPAL):
                 raise ValueError("population_domain_owner_receipt_invalid")
             completed.append((projections[ref]["payload"]["actor_ref"].removeprefix("character:"), ref))
         for actor, ref in completed:

@@ -158,10 +158,11 @@ class PopulationRecoveryCheckpoint(_RecoveryModel):
 def parse_population_checkpoint(world: WorldContinuityRuntime, checkpoint) -> PopulationRecoveryCheckpoint:
     """在安装热状态前验证原事实、delivered 锚点和当前规则实现。"""
     data = PopulationRecoveryCheckpoint.model_validate_json(json.dumps(checkpoint.state))
+    kernel_digest = getattr(world, "_population_kernel_digest", None) or population_kernel_digest()
     if (checkpoint.projector_version != "1" or checkpoint.projection_schema_version != 1
             or checkpoint.projection_hash != recovery_digest(checkpoint.model_dump(mode="json", exclude={"projection_hash"}))
             or data.context_digest != world._recovery_context_digest()
-            or data.kernel_digest != population_kernel_digest()
+            or data.kernel_digest != kernel_digest
             or data.cadence.world_ref != world.mode.world_ref or data.cadence.world_mode_revision != world.mode.revision
             or data.receipt.advanced_count != len(world.roster.actor_ids)):
         raise ValueError("population_recovery_checkpoint_context")

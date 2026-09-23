@@ -100,11 +100,15 @@ class OrganizationWindowDueSource:
         self._actors = frozenset("character:" + actor for actor in roster.actor_ids)
         self._context = dict(world_ref=world_ref, roster_digest=_digest(roster.actor_ids), policy=POLICY)
         self.checkpoint_id = "checkpoint:population-organization-due:" + _digest(self._context).split(":", 1)[1]
+        self._cached_state = None
 
     def _owner_event(self, event: GameplayEvent) -> bool:
-        batch = self._store.get_transaction(event.transaction_id)
-        return (batch is not None and batch.idempotency_record.principal_ref == OrganizationAuthority._PRINCIPAL
-                and event in batch.events and event.global_sequence > 0 and event.stream_revision > 0)
+        return (event.global_sequence > 0 and event.stream_revision > 0
+                and self._store.transaction_owns_event(
+                    transaction_id=event.transaction_id,
+                    event_id=event.event_id,
+                    principal_ref=OrganizationAuthority._PRINCIPAL,
+                ))
 
     def _head(self, window_ref: str) -> GameplayEvent | None:
         stream = "gameplay:organization:window:" + window_ref
@@ -137,6 +141,9 @@ class OrganizationWindowDueSource:
                     del schedules[key]
 
     def _restore(self):
+        if self._cached_state is not None:
+            schedules, windows, cursor, anchor, checkpoint = self._cached_state
+            return dict(schedules), dict(windows), cursor, dict(anchor) if anchor is not None else None, checkpoint
         checkpoint = self._store.get_projection_checkpoint(self.checkpoint_id)
         if checkpoint is None:
             return {}, {}, 0, None, None
@@ -217,4 +224,6 @@ class OrganizationWindowDueSource:
             raise ValueError("organization_due_source_changed")
         if checkpoint != prior_checkpoint:
             self._store.save_projection_checkpoint(checkpoint)
+        self._cached_state = (dict(schedules), dict(windows), cursor,
+                              dict(anchor) if anchor is not None else None, checkpoint)
         return OrganizationWindowDueRead(tuple(projections), tuple(diagnostics), cursor)

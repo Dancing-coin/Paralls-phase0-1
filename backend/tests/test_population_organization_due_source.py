@@ -88,6 +88,35 @@ def test_real_schedule_join_is_due_scoped_detached_and_pinned(tmp_path, monkeypa
     assert read(projector, end=20).projections[0].ref == row.ref
 
 
+def test_source_owner_check_does_not_decode_full_transactions(tmp_path, monkeypatch):
+    store = DurableGameplayEventStore(tmp_path / "gameplay.sqlite3")
+    owner = OrganizationAuthority(store=store)
+    schedule(owner, "one")
+    window(owner, "one")
+    monkeypatch.setattr(store, "get_transaction", lambda *_: pytest.fail("不应解码完整事务"))
+
+    assert len(read(source(store)).projections) == 1
+
+
+def test_live_source_reuses_verified_checkpoint_state(tmp_path, monkeypatch):
+    store = DurableGameplayEventStore(tmp_path / "gameplay.sqlite3")
+    owner = OrganizationAuthority(store=store)
+    schedule(owner, "one")
+    window(owner, "one")
+    projector = source(store)
+    assert len(read(projector).projections) == 1
+    checks = []
+    original = store.transaction_owns_event
+
+    def counted(**identity):
+        checks.append(identity)
+        return original(**identity)
+
+    monkeypatch.setattr(store, "transaction_owns_event", counted)
+    assert len(read(projector).projections) == 1
+    assert len(checks) <= 1
+
+
 @pytest.mark.parametrize("defect", ["no_schedule", "private_window", "private_schedule", "public_schedule", "wrong_org", "unknown_actor", "expired", "ambiguous"])
 def test_unproven_or_unauthorized_binding_never_becomes_b1(tmp_path, defect):
     store = DurableGameplayEventStore(tmp_path / "gameplay.sqlite3")

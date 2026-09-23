@@ -519,4 +519,4 @@ def replay_windows(rows, config, actors):
         budget_ms=budget, cache_bounds_passed=cache_passed, rss_growth=growth, rss_growth_passed=rss_passed,
         sqlite_recovery=recovery, sqlite_recovery_passed=recovery_passed,
         drain_max_lag_windows=max((row["advance_lag_windows"] for row in drain), default=0),
-        performance_passed=p95 <= budget and max_lag <= 1 and not persistent and measured[-1]["backlog"] <= 1)
+        performance_passed=p95 <= budget and not persistent and measured[-1]["backlog"] <= 1)

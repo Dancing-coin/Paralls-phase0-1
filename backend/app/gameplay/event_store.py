@@ -404,6 +404,18 @@ class GameplayEventStore:
             index = bisect_left(self._transaction_end_sequences, result.global_sequence_range[1])
             return self._transactions[index].model_copy(deep=True)
 
+    def transaction_owns_event(self, *, transaction_id: str, event_id: str, principal_ref: str) -> bool:
+        """按账本身份验证事件归属，避免为授权检查复制完整事务。"""
+        with self._lock:
+            result = self._transaction_results.get(transaction_id)
+            if result is None:
+                return False
+            index = bisect_left(self._transaction_end_sequences, result.global_sequence_range[1])
+            batch = self._transactions[index]
+            return (batch.transaction_id == transaction_id
+                    and batch.idempotency_record.principal_ref == principal_ref
+                    and any(event.event_id == event_id for event in batch.events))
+
     def get_stream_head(self, stream_id: str) -> int:
         with self._lock:
             return int(self._stream_heads.get(stream_id, 0))
@@ -1200,6 +1212,14 @@ class DurableGameplayEventStore(GameplayEventStore):
     def get_transaction(self, transaction_id: str) -> AtomicEventBatch | None:
         values = self._models(AtomicEventBatch, "SELECT batch FROM transactions WHERE transaction_id=?", (transaction_id,))
         return values[0] if values else None
+
+    def transaction_owns_event(self, *, transaction_id: str, event_id: str, principal_ref: str) -> bool:
+        rows = self._rows(
+            "SELECT 1 FROM transactions JOIN events USING(transaction_id) "
+            "WHERE transactions.transaction_id=? AND transactions.principal_ref=? AND events.event_id=?",
+            (transaction_id, principal_ref, event_id),
+        )
+        return bool(rows)
 
     def get_stream_head(self, stream_id: str) -> int:
         rows = self._rows("SELECT revision FROM stream_heads WHERE stream_id=?", (stream_id,))
