@@ -32,7 +32,7 @@ from app.services.siming_heavenly_graph_port import HeavenlyGraphError
 
 class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
     SCHEMA_VERSION = 7
-    _WAL_AUTOCHECKPOINT_PAGES = 128
+    _WAL_AUTOCHECKPOINT_PAGES = 1000
     _CANDIDATE_INDEX_SQL = "CREATE INDEX graph_nodes_candidates ON graph_nodes(scope_json,json_extract(payload_json,'$.node_type'),node_id,revision)"
 
     def __init__(self, database_path: str | Path) -> None:

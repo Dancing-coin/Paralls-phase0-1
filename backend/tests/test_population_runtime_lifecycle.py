@@ -1,11 +1,43 @@
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 
 import pytest
 
 from app import main
 from app.population_continuity.world import WorldContinuityRuntime
+
+
+def test_persistent_runtime_moves_wal_checkpoints_to_one_owned_worker(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if sqlite3.sqlite_version_info < (3, 51, 3):
+        pytest.skip("concurrent WAL checkpoint requires SQLite 3.51.3+")
+    monkeypatch.setattr(main.settings, "heavenly_graph_path", str(tmp_path / "graph.sqlite3"))
+
+    main.reset_runtime_state(restore_gameplay=True)
+    worker = main._sqlite_wal_checkpoint_worker
+    try:
+        assert worker is not None
+        assert worker.snapshot()["database_count"] == 3
+        assert main.heavenly_graph._connection.execute(
+            "PRAGMA wal_autocheckpoint"
+        ).fetchone() == (0,)
+        assert main.character_agent_runtime._session_store._connection.execute(
+            "PRAGMA wal_autocheckpoint"
+        ).fetchone() == (0,)
+        assert main.gameplay_event_store._database_connection().execute(
+            "PRAGMA wal_autocheckpoint"
+        ).fetchone() == (0,)
+        assert main.siming_audit_writer._connection.execute(
+            "PRAGMA wal_autocheckpoint"
+        ).fetchone() == (0,)
+    finally:
+        main.reset_runtime_state()
+
+    assert not worker.is_alive()
+    assert main._sqlite_wal_checkpoint_worker is None
 
 
 @pytest.mark.asyncio

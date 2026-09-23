@@ -77,6 +77,19 @@ def jsonl_writer(stream):
     return record
 
 
+def mixed_server_config(main):
+    import uvicorn
+    return uvicorn.Config(
+        main.app,
+        ws=main.RUNTIME_WEBSOCKET_PROTOCOL,
+        access_log=False,
+        log_level="warning",
+        ws_per_message_deflate=False,
+        # 慢消费者恢复由应用协议证明；legacy websockets 的并发 ping 不参与该故障配方。
+        ws_ping_interval=None,
+    )
+
+
 def backend_environment(provider_mode, parent=None):
     from scripts.verification.population_godot_runner import child_environment
     parent = os.environ if parent is None else parent
@@ -412,7 +425,7 @@ async def backend(directory):
         listener.bind(("127.0.0.1", 0))
         listener.listen(128)
         listener.setblocking(False)
-        server = uvicorn.Server(uvicorn.Config(main.app, ws=main.RUNTIME_WEBSOCKET_PROTOCOL, access_log=False, log_level="warning", ws_per_message_deflate=False))
+        server = uvicorn.Server(mixed_server_config(main))
         serving = asyncio.create_task(server.serve(sockets=[listener]))
         host = heartbeat = None
         def sample(kind, **fields):

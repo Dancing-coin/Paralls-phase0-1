@@ -3,10 +3,20 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 
 from scripts.verification import verify_population_mixed_soak as soak
+
+
+def test_mixed_backend_disables_transport_keepalive_during_controlled_slow_consumer():
+    config = soak.mixed_server_config(SimpleNamespace(
+        app=object(), RUNTIME_WEBSOCKET_PROTOCOL="websockets",
+    ))
+
+    assert config.ws_ping_interval is None
+    assert config.ws_per_message_deflate is False
 
 
 def test_live_child_environment_preserves_only_explicit_model_configuration():
