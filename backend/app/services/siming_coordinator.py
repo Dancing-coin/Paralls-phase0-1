@@ -4,7 +4,7 @@ from app.models.siming_heavenly_memory import (
     SimingAdmissionProvider, SimingAdmissionCursor, SimingAdmissionEffect, SimingAdmissionEffectReceipt, SimingAdmissionTransition,
 )
 from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
-from app.services.siming_continuation import SimingProviderCompletion, SimingAcceptedPlan, SimingAdvance, SimingTurnFrame, SimingStageEffects, digest, CANDIDATE_TIMELINE_REQUEUE, candidate_timeline_changed
+from app.services.siming_continuation import RETRYABLE_SIMING_PROVIDER_ERRORS, SimingProviderCompletion, SimingAcceptedPlan, SimingAdvance, SimingTurnFrame, SimingStageEffects, digest, CANDIDATE_TIMELINE_REQUEUE, candidate_timeline_changed
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
 
@@ -78,7 +78,7 @@ class SimingCoordinator:
 
     def finish_ready(self, key, job, completion, *, provider_revision, now):
         self._owner()
-        if SimingProviderCompletion.model_validate_json(completion).error == "SimingLlmProviderError":
+        if SimingProviderCompletion.model_validate_json(completion).error in RETRYABLE_SIMING_PROVIDER_ERRORS:
             return self.retry_ready(key, job, provider_revision=provider_revision)
         accepted = self.accept_provider(key, job, completion, now=now, provider_revision=provider_revision)
         if accepted.replayed:

@@ -40,7 +40,8 @@ def test_siming_runner_uses_existing_four_slots_and_cancellation_waits_for_io():
     replacement.close()
 
 
-def test_driver_backs_off_and_bounds_generic_provider_retries(tmp_path):
+@pytest.mark.parametrize("error_name", ["SimingLlmProviderError", "SimingLlmProviderInvalidOutput"])
+def test_driver_backs_off_and_bounds_retryable_provider_failures(tmp_path, error_name):
     import asyncio
     import time
     from app.services.runtime_execution import RuntimeExecution
@@ -50,14 +51,18 @@ def test_driver_backs_off_and_bounds_generic_provider_retries(tmp_path):
     from app.services.siming_admission import SimingAdmissionService
     from app.services.siming_heavenly_memory import SimingHeavenlyMemoryService
     from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
-    from app.services.siming_llm_provider import SimingLlmProviderError
+    from app.services.siming_llm_provider import SimingLlmProviderError, SimingLlmProviderInvalidOutput
     from test_siming_continuation import make_visual_fact_event
 
     attempts, retry_now = [], [0.]
+    error_type = {
+        "SimingLlmProviderError": SimingLlmProviderError,
+        "SimingLlmProviderInvalidOutput": SimingLlmProviderInvalidOutput,
+    }[error_name]
     class Provider:
         def generate_candidates(self, **_kwargs):
             attempts.append(get_ident())
-            raise SimingLlmProviderError('provider unavailable')
+            raise error_type('provider unavailable')
 
     execution, pool = RuntimeExecution(), DialogueProviderSlots()
     def setup_owner():
@@ -91,7 +96,7 @@ def test_driver_backs_off_and_bounds_generic_provider_retries(tmp_path):
                     retry_now[0] += delay
             entry = await owner_call(lambda: owner.admissions.read(key).entry)
             assert entry.state == 'failed'
-            assert entry.transition.reason == 'provider_failed:SimingLlmProviderError'
+            assert entry.transition.reason == 'provider_failed:' + error_name
             assert await owner_call(lambda: owner.runtime.pending_count) == 0
         finally:
             await driver.close()

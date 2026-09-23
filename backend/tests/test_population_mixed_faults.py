@@ -60,6 +60,46 @@ def test_controlled_close_recovery_uses_fresh_epoch_and_never_swallows_other_rev
         asyncio.run(client._read())
 
 
+@pytest.mark.parametrize("code,reason,controlled", [
+    (4403, "mirror_delivery_unrecoverable", True),
+    (4403, "authorization_revoked", False),
+    (1011, "mirror_delivery_unrecoverable", False),
+])
+def test_direct_socket_close_only_recovers_the_declared_mirror_revocation(code, reason, controlled):
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+    from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
+
+    class Socket:
+        async def recv(self):
+            frame = Close(code, reason)
+            raise ConnectionClosedError(frame, frame, True)
+
+    records = []
+    client = MixedMirrorFaultClient(
+        SimpleNamespace(record=records.append), {"actor:a"}
+    )
+    client.socket = Socket()
+    client.receiver = MixedMirrorReceiver({"actor:a"}, epoch=7)
+    client.key = "fault:direct-close"
+
+    if controlled:
+        with pytest.raises(MirrorControlledClose):
+            asyncio.run(client._read())
+        assert records == [dict(
+            key="fault:direct-close",
+            type="fault_controlled_close",
+            at=records[0]["at"],
+            epoch=7,
+            reason_code="mirror_delivery_unrecoverable",
+            route="gameplay_mirror_transport",
+        )]
+    else:
+        with pytest.raises(ConnectionClosedError):
+            asyncio.run(client._read())
+        assert records == []
+
+
 def test_controlled_close_recovery_rebinds_again_when_baseline_is_revoked():
     from scripts.verification.population_mixed_load import MixedLoadEvent
     from scripts.verification.population_mixed_mirror import MixedMirrorReceiver

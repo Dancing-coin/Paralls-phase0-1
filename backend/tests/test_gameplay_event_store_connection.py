@@ -73,6 +73,9 @@ def test_reused_connection_preserves_full_durability_and_cross_thread_reads(tmp_
         assert len(connections) == 1
         assert connections[0].execute("PRAGMA journal_mode").fetchone() == ("wal",)
         assert connections[0].execute("PRAGMA synchronous").fetchone() == (2,)
+        assert connections[0].execute("PRAGMA wal_autocheckpoint").fetchone() == (
+            DurableGameplayEventStore._WAL_AUTOCHECKPOINT_PAGES,
+        )
         assert not connections[0].in_transaction
     finally:
         if hasattr(store, "close"):
