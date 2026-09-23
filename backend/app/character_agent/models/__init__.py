@@ -31,11 +31,13 @@ from app.character_agent.models.turn_context import (
     CharacterTurnStageEvent,
     TurnLifecycleError,
 )
+from app.character_agent.models.character_execution import CharacterExecutionContract
 
 __all__ = [
     "CharacterActiveGoalFrame",
     "CharacterCognitionUpdate",
     "CharacterDynamicState",
+    "CharacterExecutionContract",
     "CharacterEventMemoryRecord",
     "CharacterGoalHint",
     "CharacterGoalStateRecord",

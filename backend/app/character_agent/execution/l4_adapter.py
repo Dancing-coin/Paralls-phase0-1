@@ -9,6 +9,8 @@ from app.models.character_agent_runtime import (
     CharacterInterpretation,
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
+from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.character_agent.skills.models import (
@@ -49,6 +51,14 @@ class WorkIntentAdapterResult:
     rejection: StructuredFailure | None = None
 
 
+@dataclass(frozen=True, slots=True)
+class LegacyExecutionTranslation:
+    """One-way compatibility result for a historical CharacterGoalCommand."""
+
+    contract: CharacterExecutionContract
+    legacy_translation: bool = True
+
+
 class CharacterAgentL4Adapter:
     def __init__(
         self,
@@ -61,6 +71,104 @@ class CharacterAgentL4Adapter:
         self._work_intent_digests: dict[str, str] = {}
         self._compat_work_envelopes: dict[str, GameplayCommandEnvelope] = {}
         self._compat_work_digests: dict[str, str] = {}
+        self._legacy_execution_digests: dict[str, str] = {}
+        self._legacy_execution_contracts: dict[str, CharacterExecutionContract] = {}
+
+    def from_legacy_command(
+        self,
+        command: CharacterGoalCommand,
+        *,
+        turn_context: CharacterTurnContext,
+    ) -> LegacyExecutionTranslation:
+        """Translate one legacy command into the canonical contract.
+
+        This is intentionally input-only compatibility.  It does not dispatch,
+        emit, or convert the contract back into a second legacy request.
+        """
+        if not isinstance(turn_context, CharacterTurnContext):
+            raise TypeError("current canonical turn context is required")
+        if command.actor_id != turn_context.actor_id:
+            raise ValueError("legacy command actor does not match canonical turn")
+        payload = self.command_to_execution_payload(command)
+        target_refs = tuple(
+            ref
+            for ref in (
+                command.target_actor_id,
+                command.target_object_id,
+                command.target_environment_id,
+            )
+            if ref
+        )
+        action_id = str(
+            payload.get("composite_action_proposal", {}).get("action_id", command.command_type)
+            if isinstance(payload.get("composite_action_proposal"), dict)
+            else command.command_type
+        )
+        digest_source = {
+            "turn_id": turn_context.turn_id,
+            "actor_id": command.actor_id,
+            "command_type": command.command_type,
+            "target_refs": target_refs,
+            "dialogue_text": command.dialogue_text,
+            "role_state_hint": command.role_state_hint,
+            "physiology_hint": command.physiology_hint,
+            "payload": payload,
+        }
+        digest = self._intent_digest_compat(digest_source)
+        prior = self._legacy_execution_digests.get(turn_context.turn_id)
+        if prior is not None and prior != digest:
+            raise ValueError("legacy execution translation conflict")
+        existing = self._legacy_execution_contracts.get(turn_context.turn_id)
+        if existing is not None:
+            return LegacyExecutionTranslation(contract=existing)
+
+        presentation = payload.get("presentation_plan", {})
+        presentation = presentation if isinstance(presentation, dict) else {}
+        contract = CharacterExecutionContract(
+            turn_id=turn_context.turn_id,
+            actor_ref=f"character:{command.actor_id}",
+            source_ref=turn_context.source_event_ref,
+            target_refs=target_refs,
+            target_ref=target_refs[0] if len(target_refs) == 1 else None,
+            semantic_intent_id=str(
+                payload.get("execution_semantics", {}).get("movement_intent", command.command_type)
+                if isinstance(payload.get("execution_semantics"), dict)
+                else command.command_type
+            ),
+            semantic_action_id=action_id,
+            allowed_realization_hints={
+                "legacy_role_state_hint": command.role_state_hint or "",
+                "legacy_physiology_hint": command.physiology_hint or "",
+                "presentation": {
+                    "motion_state": presentation.get("motion_state", {}),
+                    "focus_state": presentation.get("focus_state", {}),
+                    "action_state": presentation.get("action_state", {}),
+                    "speech_state": presentation.get("speech_state", {}),
+                },
+            },
+            expected_revision_vector=dict(turn_context.input_revision_vector),
+            expected_memory_revision_vector=dict(turn_context.memory_revision_vector),
+            expected_snapshot_revision=turn_context.snapshot_revision,
+            idempotency_key=f"execution:{turn_context.turn_id}",
+            causation_id=turn_context.causation_id,
+            correlation_id=turn_context.correlation_id,
+            privacy_scope=f"actor_private:{turn_context.actor_id}",
+            authority_scope="world:default",
+            expected_observation={
+                "semantic_action_id": action_id,
+                "target_refs": list(target_refs),
+                "dialogue_requested": bool(command.dialogue_text),
+            },
+        )
+        self._legacy_execution_digests[turn_context.turn_id] = digest
+        self._legacy_execution_contracts[turn_context.turn_id] = contract
+        return LegacyExecutionTranslation(contract=contract)
+
+    @staticmethod
+    def _intent_digest_compat(value: object) -> str:
+        return "sha256:" + hashlib.sha256(
+            json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        ).hexdigest()
 
     def build_work_intent_envelope(
         self,
@@ -429,6 +537,9 @@ class CharacterAgentL4Adapter:
                     dialogue_text_value = str(speech_state.get("utterance_request", "") or "")
                     dialogue_text = dialogue_text_value or None
 
+        execution_contract = plan.get("execution_contract", {})
+        execution_contract = execution_contract if isinstance(execution_contract, dict) else {}
+
         return [
             CharacterGoalCommand(
                 actor_id=actor_id,
@@ -443,6 +554,8 @@ class CharacterAgentL4Adapter:
                 dialogue_text=dialogue_text,
                 role_state_hint=role_state_hint,
                 physiology_hint=physiology_hint,
+                turn_id=str(execution_contract.get("turn_id", "") or "") or None,
+                idempotency_key=str(execution_contract.get("idempotency_key", "") or "") or None,
                 execution_payload=plan,
             )
         ]

@@ -154,6 +154,11 @@ class CharacterGoalCommand(BaseModel):
     dialogue_text: str | None = None
     role_state_hint: str | None = None
     physiology_hint: str | None = None
+    # Compatibility metadata only.  New production execution is represented by
+    # CharacterExecutionContract; these pins let legacy readers retain the
+    # canonical identity while they are migrated behind the adapter.
+    turn_id: str | None = None
+    idempotency_key: str | None = None
     execution_payload: dict[str, object] | None = None
 
 

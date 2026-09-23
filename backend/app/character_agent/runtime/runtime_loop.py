@@ -4179,6 +4179,22 @@ class CharacterAgentRuntime:
             # in the session timeline while awaiting settlement.
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
+        if turn_context is not None:
+            execution_contract = self._l4_executor.build_execution_contract(
+                snapshot=snapshot,
+                interpretation=interpretation,
+                decision=decision,
+                turn_context=turn_context,
+            )
+            # Skill/settlement metadata remains advisory realization input; it
+            # is never promoted to an authority result in the contract.
+            realization_metadata = self._l4.realization_metadata_from_execution_plan(plan)
+            allowed_hints = dict(execution_contract.allowed_realization_hints)
+            allowed_hints["skill"] = realization_metadata
+            execution_contract = execution_contract.model_copy(
+                update={"allowed_realization_hints": allowed_hints}
+            )
+            plan["execution_contract"] = execution_contract.model_dump(mode="json")
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
