@@ -92,6 +92,7 @@ from app.population_continuity.models import ActivationDecision, ActivationRecei
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
 from app.character_agent.services.behavior_turn_projection import CharacterBehaviorTurnProjection
 from app.character_agent.services.character_continuity import CharacterContinuityService
+from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
@@ -201,6 +202,15 @@ class CharacterAgentRuntime:
         self._graph_session_local_overlap_counts: dict[str, int] = {}
         self._graph_session_replay_offsets: dict[str, int] = {}
         self._memory_store = memory_store or CharacterAgentMemoryStore()
+        graph = getattr(self._memory_store, "graph", None)
+        if graph is not None:
+            semantic_recall = CharacterSemanticRecallService(
+                graph=graph,
+                scope_resolver=getattr(self._memory_store, "_scope_for_actor", None),
+                memory_reader=self._memory_store.retrieval_bundle,
+            )
+            self._l2._semantic_recall_service = semantic_recall
+            self._l3._semantic_recall_service = semantic_recall
         self._projected_memory_scene_events: set[tuple[str, str]] = set()
         self._dynamic_state_store = CharacterDynamicStateStore()
         self._need_tension_store = CharacterNeedTensionStore()
@@ -381,6 +391,7 @@ class CharacterAgentRuntime:
             background_agenda_state=self.get_background_agenda_state(event.actor_id),
             effective_profile=effective_profile,
             need_tension_state=need_tension_state,
+            turn_context=turn,
         )
         self._record_reasoning_request(event.actor_id, event.producer_ts, reasoning_request)
         interpretation = self._interpret_with_continuity_floor(
@@ -402,6 +413,7 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 effective_profile=effective_profile,
                 need_tension_state=need_tension_state,
+                turn_context=turn,
             ),
         )
         turn = self._turn_coordinator.append_stage(
@@ -467,6 +479,7 @@ class CharacterAgentRuntime:
                 need_tension_state=need_tension_state,
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
                 behavior_policy_snapshot=behavior_policy_snapshot,
+                turn_context=turn,
             ),
         )
         self._consume_behavior_policy_for_turn(

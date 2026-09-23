@@ -1,26 +1,21 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping
 
-from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MissingRequiredMemoryEvidence
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.models.siming_heavenly_graph import (
-    BehaviorTurnQuery,
-    CausalPathQuery,
-    ConflictSetQuery,
-    GraphReaderContext,
-    HeavenlyGraphQueryResult,
-    PerspectiveQuery,
-    SourceImpactQuery,
+    BehaviorTurnQuery, CausalPathQuery, ConflictSetQuery, GraphReaderContext,
+    PerspectiveQuery, SourceImpactQuery,
 )
 
 
 @dataclass(frozen=True)
 class SemanticRecallCard:
-    """A bounded, read-only evidence card exposed to cognition."""
-
     ref: str
     payload: Mapping[str, object]
     evidence_status: str = "selected"
@@ -42,233 +37,181 @@ class SemanticRecallResult:
     truncated: bool = False
     incomplete_reason: str | None = None
     cards_by_ref: Mapping[str, SemanticRecallCard] = field(default_factory=dict)
-    # Compatibility surface for callers that still need the selected pool view.
     memory: Mapping[str, list[dict[str, object]]] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
 
 
 class CharacterSemanticRecallService:
-    """Facade joining bounded private memory recall to bounded graph reads.
+    """Bounded, actor-private semantic recall. This facade never writes graph state."""
 
-    This object deliberately has no graph write capability. Graph access is
-    restricted to ``query_semantic`` and every query is pinned to the canonical
-    turn identity, branch, valid-time and revision vector.
-    """
-
-    def __init__(
-        self,
-        memory_recall_policy: CharacterMemoryRecallPolicy | None = None,
-        *,
-        graph: Any | None = None,
-        scope_resolver: Callable[[str], Any] | None = None,
-        memory_reader: Callable[[str], Mapping[str, object]] | None = None,
-        max_graph_results: int = 100,
-    ) -> None:
+    def __init__(self, memory_recall_policy: CharacterMemoryRecallPolicy | None = None, *, graph: Any | None = None,
+                 scope_resolver: Callable[[str], Any] | None = None,
+                 memory_reader: Callable[[str], Mapping[str, object]] | None = None,
+                 max_graph_results: int = 100, card_budget: int = 128, token_budget: int = 2400) -> None:
         self._policy = memory_recall_policy or CharacterMemoryRecallPolicy()
-        self._graph = graph
-        self._scope_resolver = scope_resolver
-        self._memory_reader = memory_reader
+        self._graph, self._scope_resolver, self._memory_reader = graph, scope_resolver, memory_reader
         self._max_graph_results = max(1, min(1000, max_graph_results))
+        self._card_budget, self._token_budget = max(1, card_budget), max(1, token_budget)
 
-    def select(
-        self,
-        actor_id: str,
-        context: Mapping[str, object],
-        *,
-        turn_context: CharacterTurnContext,
-    ) -> SemanticRecallResult:
-        if not actor_id or actor_id != turn_context.actor_id:
+    def select(self, actor_id: str, context: Mapping[str, object], *, turn_context: CharacterTurnContext) -> SemanticRecallResult:
+        if not isinstance(turn_context, CharacterTurnContext) or actor_id != turn_context.actor_id:
             raise ValueError("semantic recall actor does not match canonical turn context")
-        if not isinstance(turn_context, CharacterTurnContext):
-            raise TypeError("turn_context must be CharacterTurnContext")
-        source_context = dict(context)
-        memory = source_context.get("memory", source_context.get("memory_bundle"))
-        if not isinstance(memory, Mapping) and self._memory_reader is not None:
-            memory = self._memory_reader(actor_id)
-        normalized_memory = {
-            str(key): deepcopy(value) if isinstance(value, list) else []
-            for key, value in (memory.items() if isinstance(memory, Mapping) else [])
+        context = dict(context)
+        raw_memory = context.get("memory", context.get("memory_bundle"))
+        if not isinstance(raw_memory, Mapping) and self._memory_reader is not None:
+            raw_memory = self._memory_reader(actor_id)
+        memory = self._validate_memory(raw_memory, actor_id)
+        policy = self._policy.select(memory, context=context)
+        missing = list(policy.metadata.get("missing_required_refs", []))
+        if missing:
+            raise MissingRequiredMemoryEvidence(missing)
+        selected = tuple(str(x) for x in policy.metadata.get("selected_memory_refs", []))
+        omitted = tuple(self._all_refs(memory) - set(selected))
+        cards: dict[str, SemanticRecallCard] = {
+            ref: SemanticRecallCard(ref=ref, payload=deepcopy(payload), source_refs=self._source_refs(payload))
+            for ref, payload in self._selected_entries(policy.memory)
         }
-        policy_result = self._policy.select(normalized_memory, context=source_context)
-        selected_refs = tuple(str(ref) for ref in policy_result.metadata.get("selected_memory_refs", []))
-        omitted_refs = self._omitted_refs(normalized_memory, selected_refs)
-        cards = {
-            ref: SemanticRecallCard(ref=ref, payload=deepcopy(entry))
-            for ref, entry in self._selected_entries(policy_result.memory)
-        }
-        relation_refs: set[str] = set()
-        causal_refs: set[str] = set()
-        conflict_refs: set[str] = set()
-        perspective_refs: set[str] = set()
-        revision_vector: dict[str, int] = self._revision_mapping(turn_context.memory_revision_vector)
-        incomplete_reason = "token_budget_exhausted" if policy_result.metadata.get("truncated") else None
-        graph_truncated = False
-
         reader = self._reader_context(turn_context)
+        relations: set[str] = set(); causal: set[str] = set(); conflicts: set[str] = set(); perspectives: set[str] = set()
+        revisions = self._revision_map(turn_context.memory_revision_vector)
+        incomplete = "token_budget_exhausted" if policy.metadata.get("truncated") else None
+        graph_truncated = False
         if self._graph is not None and reader is not None:
-            queries = self._queries(actor_id, turn_context, source_context, selected_refs, cards, reader)
-            for kind, query in queries:
-                result = self._safe_query(query)
-                if result is None:
+            for kind, query in self._queries(actor_id, turn_context, cards, reader):
+                try:
+                    result = self._graph.query_semantic(query)
+                except Exception:
+                    incomplete = incomplete or "graph_unavailable"
                     continue
-                graph_truncated = graph_truncated or bool(getattr(result, "truncated", False))
-                if getattr(result, "incomplete_reason", None):
-                    incomplete_reason = str(result.incomplete_reason)
-                revision_vector.update(self._revision_mapping(getattr(result, "revision_vector", None)))
-                relation_refs.update(str(ref) for ref in getattr(result, "selected_relation_refs", []) if ref)
-                refs = self._result_refs(result, actor_id)
-                if kind == "causal":
-                    causal_refs.update(refs)
-                elif kind == "conflict":
-                    conflict_refs.update(refs)
-                elif kind == "perspective":
-                    perspective_refs.update(refs)
-                self._apply_result_cards(kind, result, cards, conflict_refs)
+                valid, reason = self._validated_result(result, actor_id, turn_context, reader)
+                if not valid:
+                    incomplete = incomplete or reason or "stale_read_set"
+                    continue
+                graph_truncated |= bool(getattr(result, "truncated", False))
+                refs, rels = self._result_refs(result, actor_id)
+                relations.update(rels)
+                revisions.update(self._revision_map(getattr(result, "revision_vector", None)))
+                if kind == "causal": causal.update(refs)
+                elif kind == "conflict": conflicts.update(refs)
+                elif kind == "perspective": perspectives.update(refs)
+                self._merge_cards(kind, result, cards, actor_id)
+        cards, card_truncated = self._bound_cards(cards)
+        truncated = bool(policy.metadata.get("truncated") or graph_truncated or card_truncated)
+        if card_truncated and not incomplete: incomplete = "token_budget_exhausted"
+        digest_payload = {"context": context, "scope": reader.model_dump() if reader else None, "revision": revisions}
+        context_hash = hashlib.sha256(json.dumps(digest_payload, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest()
+        metadata = dict(policy.metadata)
+        metadata.update({"semantic_selected_refs": list(selected), "semantic_omitted_refs": list(omitted), "relation_refs": sorted(relations),
+                         "causal_refs": sorted(causal), "conflict_refs": sorted(conflicts), "perspective_refs": sorted(perspectives),
+                         "revision_vector": revisions, "incomplete_reason": incomplete, "cards": [c.ref for c in cards.values()]})
+        ordered = tuple(cards[ref] for ref in sorted(cards))
+        return SemanticRecallResult(cards=ordered, selected_refs=selected, omitted_refs=omitted,
+            relation_refs=tuple(sorted(relations)), causal_refs=tuple(sorted(causal)), conflict_refs=tuple(sorted(conflicts)),
+            perspective_refs=tuple(sorted(perspectives)), revision_vector=revisions, context_hash=context_hash,
+            truncated=truncated, incomplete_reason=incomplete, cards_by_ref={c.ref: c for c in ordered},
+            memory=deepcopy(policy.memory), metadata=metadata)
 
-        ordered_cards = tuple(cards[ref] for ref in sorted(cards))
-        cards_by_ref = {card.ref: card for card in ordered_cards}
-        metadata = dict(policy_result.metadata)
-        metadata.update(
-            {
-                "semantic_selected_refs": list(selected_refs),
-                "semantic_omitted_refs": list(omitted_refs),
-                "relation_refs": sorted(relation_refs),
-                "causal_refs": sorted(causal_refs),
-                "conflict_refs": sorted(conflict_refs),
-                "perspective_refs": sorted(perspective_refs),
-                "revision_vector": dict(revision_vector),
-                "incomplete_reason": incomplete_reason,
-            }
-        )
-        return SemanticRecallResult(
-            cards=ordered_cards,
-            selected_refs=selected_refs,
-            omitted_refs=tuple(omitted_refs),
-            relation_refs=tuple(sorted(relation_refs)),
-            causal_refs=tuple(sorted(causal_refs)),
-            conflict_refs=tuple(sorted(conflict_refs)),
-            perspective_refs=tuple(sorted(perspective_refs)),
-            revision_vector=revision_vector,
-            context_hash=str(policy_result.metadata.get("context_hash", "") or ""),
-            truncated=bool(policy_result.metadata.get("truncated", False) or graph_truncated),
-            incomplete_reason=incomplete_reason,
-            cards_by_ref=cards_by_ref,
-            memory=deepcopy(policy_result.memory),
-            metadata=metadata,
-        )
+    def _validate_memory(self, raw: object, actor_id: str) -> dict[str, list[dict[str, object]]]:
+        if not isinstance(raw, Mapping): return {}
+        out: dict[str, list[dict[str, object]]] = {}
+        for key, value in raw.items():
+            if not isinstance(value, list): continue
+            entries = []
+            for item in value:
+                if not isinstance(item, Mapping): continue
+                owner = item.get("actor_id")
+                if owner and str(owner) != actor_id: raise ValueError("semantic recall memory actor scope mismatch")
+                entries.append(dict(item))
+            out[str(key)] = entries
+        return out
 
     def _reader_context(self, turn: CharacterTurnContext) -> GraphReaderContext | None:
-        if self._scope_resolver is None or not turn.branch_id:
-            return None
+        if not self._scope_resolver or not turn.branch_id: return None
         scope = self._scope_resolver(turn.actor_id)
-        if scope.owner_actor_id not in (None, turn.actor_id):
-            raise ValueError("semantic recall scope owner does not match actor")
-        if scope.story_branch_id != turn.branch_id:
-            raise ValueError("semantic recall branch does not match turn context")
-        return GraphReaderContext(
-            reader_principal=turn.actor_id,
-            allowed_visibility_scopes=("actor_private", "project", "world"),
-            world_id=scope.world_id,
-            session_id=scope.session_id,
-            story_branch_id=turn.branch_id,
-            valid_at=turn.valid_at,
-            recorded_at=turn.producer_ts,
-            policy_revision=turn.policy_revision,
-        )
+        if scope.owner_actor_id not in (None, turn.actor_id) or scope.story_branch_id != turn.branch_id:
+            raise ValueError("semantic recall scope does not match canonical turn")
+        return GraphReaderContext(reader_principal=turn.actor_id, allowed_visibility_scopes=("actor_private", "project", "world"),
+            world_id=scope.world_id, session_id=scope.session_id, story_branch_id=turn.branch_id,
+            valid_at=turn.valid_at, recorded_at=turn.producer_ts, policy_revision=turn.policy_revision)
 
-    def _queries(self, actor_id: str, turn: CharacterTurnContext, context: Mapping[str, object], selected_refs: tuple[str, ...], cards: Mapping[str, SemanticRecallCard], reader: GraphReaderContext) -> list[tuple[str, object]]:
-        scope = self._scope_resolver(actor_id) if self._scope_resolver else None
-        kwargs = {"context": reader, "scope": scope, "limit": self._max_graph_results}
-        seed_nodes = [self._node_id(ref) for ref in selected_refs]
-        queries: list[tuple[str, object]] = [
-            ("behavior", BehaviorTurnQuery(**kwargs, turn_id=turn.turn_id, correlation_id=turn.correlation_id, actor_id=actor_id)),
-            ("causal", CausalPathQuery(**kwargs, seed_node_ids=seed_nodes, max_depth=2, node_limit=self._max_graph_results, relation_limit=self._max_graph_results * 2, max_paths=20)),
-        ]
-        for ref, card in cards.items():
-            payload = card.payload
-            claim = payload.get("claim") if isinstance(payload, Mapping) else None
+    def _queries(self, actor: str, turn: CharacterTurnContext, cards: Mapping[str, SemanticRecallCard], reader: GraphReaderContext):
+        scope = self._scope_resolver(actor) if self._scope_resolver else None; kw = {"context": reader, "scope": scope, "limit": self._max_graph_results}
+        seeds = [self._node_id(ref) for ref in cards]
+        yield "behavior", BehaviorTurnQuery(**kw, turn_id=turn.turn_id, correlation_id=turn.correlation_id, actor_id=actor)
+        yield "causal", CausalPathQuery(**kw, seed_node_ids=seeds, max_depth=2, node_limit=self._max_graph_results, relation_limit=self._max_graph_results * 2, max_paths=20)
+        yield "perspective", PerspectiveQuery(**kw, actor_ref=actor, visibility_scopes=["actor_private", "project", "world"])
+        for card in cards.values():
+            claim = card.payload.get("claim") if isinstance(card.payload, Mapping) else None
             if isinstance(claim, Mapping) and claim.get("subject_ref"):
-                queries.append(("conflict", ConflictSetQuery(**kwargs, subject_ref=str(claim["subject_ref"]), property_key=str(claim.get("predicate") or "state"))))
-            source_ref = payload.get("source_event_id") if isinstance(payload, Mapping) else None
-            if source_ref:
-                queries.append(("source", SourceImpactQuery(**kwargs, source_ref=str(source_ref))))
-        targets = context.get("attention_targets") or []
-        if isinstance(targets, str):
-            targets = [targets]
-        queries.append(("perspective", PerspectiveQuery(**kwargs, actor_ref=actor_id, visibility_scopes=["actor_private", "project", "world"])))
-        return queries
+                yield "conflict", ConflictSetQuery(**kw, subject_ref=str(claim["subject_ref"]), property_key=str(claim.get("predicate") or "state"))
+            source = card.payload.get("source_event_id") if isinstance(card.payload, Mapping) else None
+            if source: yield "source", SourceImpactQuery(**kw, source_ref=str(source))
 
-    def _safe_query(self, query: object) -> HeavenlyGraphQueryResult | None:
-        try:
-            result = self._graph.query_semantic(query)
-        except (AttributeError, TypeError, ValueError):
-            return None
-        return result if isinstance(result, HeavenlyGraphQueryResult) else result
-
-    def _apply_result_cards(self, kind: str, result: object, cards: dict[str, SemanticRecallCard], conflict_refs: set[str]) -> None:
+    def _validated_result(self, result: object, actor: str, turn: CharacterTurnContext, reader: GraphReaderContext):
+        if getattr(result, "policy_revision", reader.policy_revision) != reader.policy_revision: return False, "stale_read_set"
+        rv = self._revision_map(getattr(result, "revision_vector", None)); pins = self._revision_map(turn.memory_revision_vector)
+        if any(pins.get(k, v) < v for k, v in rv.items()): return False, "stale_read_set"
         for node in getattr(result, "nodes", []) or []:
-            ref = self._node_ref(node)
-            if not ref:
-                continue
-            metadata = getattr(node, "semantic_metadata", None)
-            visibility = getattr(metadata, "visibility_scope", None)
-            owner = getattr(getattr(node, "scope", None), "owner_actor_id", None)
-            if visibility == "actor_private" and owner not in (None, next(iter(cards.values())).payload.get("actor_id") if cards else owner):
-                continue
-            if ref in cards:
-                status = "disputed" if kind == "conflict" else cards[ref].evidence_status
-                cards[ref] = SemanticRecallCard(ref=ref, payload=cards[ref].payload, evidence_status=status, source_refs=cards[ref].source_refs, relation_refs=cards[ref].relation_refs)
-            elif kind in {"causal", "perspective"}:
-                cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or {}), evidence_status="graph_context")
-            if kind == "conflict":
-                conflict_refs.add(ref)
+            scope = getattr(node, "scope", None); validity = getattr(node, "validity", None); metadata = getattr(node, "semantic_metadata", None)
+            if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
+            if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
+            if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
+            if getattr(node, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
+        return True, None
+
+    def _merge_cards(self, kind: str, result: object, cards: dict[str, SemanticRecallCard], actor: str):
+        for node in getattr(result, "nodes", []) or []:
+            scope = getattr(node, "scope", None); metadata = getattr(node, "semantic_metadata", None)
+            if getattr(metadata, "visibility_scope", None) == "actor_private" and getattr(scope, "owner_actor_id", None) != actor: continue
+            ref = self._canonical_ref(self._node_ref(node))
+            if not ref: continue
+            old = cards.get(ref); status = "disputed" if kind == "conflict" else (old.evidence_status if old else "graph_context")
+            src = tuple(dict.fromkeys((old.source_refs if old else ()) + tuple(getattr(getattr(node, "provenance", None), "source_ref", "") for _ in [0] if getattr(getattr(node, "provenance", None), "source_ref", ""))))
+            cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or (old.payload if old else {})), evidence_status=status, source_refs=src, relation_refs=old.relation_refs if old else ())
+
+    def _result_refs(self, result: object, actor: str):
+        refs, rels = set(), {str(x) for x in getattr(result, "selected_relation_refs", []) or [] if x}
+        refs.update(self._canonical_ref(str(x)) for x in getattr(result, "selected_node_refs", []) or [] if x)
+        for node in getattr(result, "nodes", []) or []:
+            scope = getattr(node, "scope", None); metadata = getattr(node, "semantic_metadata", None)
+            if getattr(metadata, "visibility_scope", None) == "actor_private" and getattr(scope, "owner_actor_id", None) != actor: continue
+            ref = self._canonical_ref(self._node_ref(node))
+            if ref: refs.add(ref)
+        return {x for x in refs if x}, rels
+
+    def _bound_cards(self, cards: dict[str, SemanticRecallCard]):
+        kept = {}; used = 0; truncated = False
+        for ref in sorted(cards):
+            cost = max(1, len(json.dumps(cards[ref].payload, default=str)) // 4)
+            if len(kept) >= self._card_budget or used + cost > self._token_budget: truncated = True; continue
+            kept[ref] = cards[ref]; used += cost
+        return kept, truncated
 
     def _selected_entries(self, memory: Mapping[str, object]):
-        prefixes = {"working_memory": "working", "event_memories": "event", "observation_memories": "observation", "knowledge_memories": "knowledge", "social_memories": "social", "higher_order_memories": "higher_order"}
+        prefixes = {"working_memory":"working", "event_memories":"event", "observation_memories":"observation", "knowledge_memories":"knowledge", "social_memories":"social", "higher_order_memories":"higher_order"}
         for pool, prefix in prefixes.items():
-            entries = memory.get(pool, [])
-            if not isinstance(entries, list):
-                continue
-            for entry in entries:
-                if isinstance(entry, Mapping):
-                    ident = str(entry.get("memory_id") or entry.get("event_id") or entry.get("source_event_id") or "")
-                    if ident:
-                        yield f"{prefix}:{ident}", entry
+            for item in memory.get(pool, []) if isinstance(memory.get(pool, []), list) else []:
+                if isinstance(item, Mapping):
+                    ident = str(item.get("memory_id") or item.get("event_id") or item.get("source_event_id") or "")
+                    if ident: yield f"{prefix}:{ident}", item
 
-    def _omitted_refs(self, memory: Mapping[str, object], selected: tuple[str, ...]) -> list[str]:
-        all_refs = [ref for ref, _ in self._selected_entries(memory)]
-        return [ref for ref in all_refs if ref not in selected]
-
-    def _node_id(self, ref: str) -> str:
-        return ref.replace(":", ":", 1) if ref else ref
-
-    def _node_ref(self, node: object) -> str:
-        node_id = str(getattr(node, "node_id", "") or "")
-        attrs = getattr(node, "attributes", {}) or {}
+    def _all_refs(self, memory): return {ref for ref, _ in self._selected_entries(memory)}
+    def _source_refs(self, payload): return tuple(str(x) for x in [payload.get("source_event_id"), payload.get("source_ref")] if x) if isinstance(payload, Mapping) else ()
+    def _node_id(self, ref):
+        parts = str(ref).split(":", 1); return f"actor-memory:{parts[0]}:{parts[1]}" if len(parts) == 2 else str(ref)
+    def _node_ref(self, node):
+        attrs = getattr(node, "attributes", {}) or {}; node_id = str(getattr(node, "node_id", "") or "")
         if isinstance(attrs, Mapping):
             for key in ("ref", "memory_ref", "event_ref", "node_ref"):
-                if attrs.get(key):
-                    return str(attrs[key])
-        return node_id.removeprefix("actor-memory:") or node_id
-
-    def _result_refs(self, result: object, actor_id: str) -> set[str]:
-        refs = {str(ref) for ref in getattr(result, "selected_node_refs", []) or [] if ref}
-        for node in getattr(result, "nodes", []) or []:
-            metadata = getattr(node, "semantic_metadata", None)
-            scope = getattr(node, "scope", None)
-            if getattr(metadata, "visibility_scope", None) == "actor_private" and getattr(scope, "owner_actor_id", None) not in (None, actor_id):
-                continue
-            ref = self._node_ref(node)
-            if ref:
-                refs.add(ref)
-        return refs
-
-    def _revision_mapping(self, value: object) -> dict[str, int]:
-        if value is None:
-            return {}
-        if hasattr(value, "model_dump"):
-            value = value.model_dump()
-        return {str(key): int(item) for key, item in dict(value).items() if isinstance(item, int) and not isinstance(item, bool)} if isinstance(value, Mapping) else {}
+                if attrs.get(key): return str(attrs[key])
+        return node_id.removeprefix("actor-memory:")
+    def _canonical_ref(self, ref):
+        ref = str(ref or "");
+        if ref.startswith("actor-memory:"): ref = ref[len("actor-memory:"):]
+        return ref
+    def _revision_map(self, value):
+        if hasattr(value, "model_dump"): value = value.model_dump()
+        return {str(k): int(v) for k, v in value.items() if isinstance(v, int) and not isinstance(v, bool)} if isinstance(value, Mapping) else {}
 
 
 __all__ = ["CharacterSemanticRecallService", "SemanticRecallCard", "SemanticRecallResult"]
