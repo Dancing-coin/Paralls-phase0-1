@@ -95,10 +95,15 @@ class CharacterSemanticRecallService:
                 elif kind == "conflict": conflicts.update(refs)
                 elif kind == "perspective": perspectives.update(refs)
                 self._merge_cards(kind, result, cards, actor_id)
-        cards, card_truncated = self._bound_cards(cards)
+        required_cards = {ref for ref in selected if ref.startswith("knowledge:") and str((context.get("profile") or {}).get("capability_constraint_layer", {}).get("memory_retention", "")) == "strong"}
+        cards, card_truncated, missing_cards = self._bound_cards(cards, required_cards)
+        if missing_cards:
+            raise MissingRequiredMemoryEvidence(missing_cards)
         truncated = bool(policy.metadata.get("truncated") or graph_truncated or card_truncated)
         if card_truncated and not incomplete: incomplete = "token_budget_exhausted"
-        digest_payload = {"context": context, "scope": reader.model_dump() if reader else None, "revision": revisions}
+        digest_payload = {"context": context, "turn": turn_context.model_dump(), "scope": reader.model_dump() if reader else None, "revision": revisions,
+                          "cards": [(ref, card.evidence_status, card.source_refs, card.relation_refs) for ref, card in sorted(cards.items())],
+                          "relations": sorted(relations), "causal": sorted(causal), "conflicts": sorted(conflicts), "perspectives": sorted(perspectives)}
         context_hash = hashlib.sha256(json.dumps(digest_payload, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest()
         metadata = dict(policy.metadata)
         metadata.update({"semantic_selected_refs": list(selected), "semantic_omitted_refs": list(omitted), "relation_refs": sorted(relations),
@@ -159,6 +164,14 @@ class CharacterSemanticRecallService:
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(node, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
+        for relation in getattr(result, "relations", []) or []:
+            scope = getattr(relation, "scope", None); validity = getattr(relation, "validity", None); metadata = getattr(relation, "semantic_metadata", None)
+            if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
+            if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
+            if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
+            if getattr(relation, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
+        node_refs = {self._canonical_ref(self._node_ref(node)) for node in getattr(result, "nodes", []) or []}
+        if any(self._canonical_ref(str(ref)) not in node_refs for ref in getattr(result, "selected_node_refs", []) or []): return False, "visibility_denied"
         return True, None
 
     def _merge_cards(self, kind: str, result: object, cards: dict[str, SemanticRecallCard], actor: str):
@@ -169,11 +182,11 @@ class CharacterSemanticRecallService:
             if not ref: continue
             old = cards.get(ref); status = "disputed" if kind == "conflict" else (old.evidence_status if old else "graph_context")
             src = tuple(dict.fromkeys((old.source_refs if old else ()) + tuple(getattr(getattr(node, "provenance", None), "source_ref", "") for _ in [0] if getattr(getattr(node, "provenance", None), "source_ref", ""))))
-            cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or (old.payload if old else {})), evidence_status=status, source_refs=src, relation_refs=old.relation_refs if old else ())
+            rels = tuple(str(x) for x in getattr(result, "selected_relation_refs", []) or [])
+            cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or (old.payload if old else {})), evidence_status=status, source_refs=src, relation_refs=tuple(dict.fromkeys((old.relation_refs if old else ()) + rels)))
 
     def _result_refs(self, result: object, actor: str):
         refs, rels = set(), {str(x) for x in getattr(result, "selected_relation_refs", []) or [] if x}
-        refs.update(self._canonical_ref(str(x)) for x in getattr(result, "selected_node_refs", []) or [] if x)
         for node in getattr(result, "nodes", []) or []:
             scope = getattr(node, "scope", None); metadata = getattr(node, "semantic_metadata", None)
             if getattr(metadata, "visibility_scope", None) == "actor_private" and getattr(scope, "owner_actor_id", None) != actor: continue
@@ -181,13 +194,16 @@ class CharacterSemanticRecallService:
             if ref: refs.add(ref)
         return {x for x in refs if x}, rels
 
-    def _bound_cards(self, cards: dict[str, SemanticRecallCard]):
+    def _bound_cards(self, cards: dict[str, SemanticRecallCard], required: set[str] | None = None):
+        required = required or set()
         kept = {}; used = 0; truncated = False
         for ref in sorted(cards):
             cost = max(1, len(json.dumps(cards[ref].payload, default=str)) // 4)
-            if len(kept) >= self._card_budget or used + cost > self._token_budget: truncated = True; continue
+            if len(kept) >= self._card_budget or used + cost > self._token_budget:
+                if ref in required: return kept, True, sorted(required - set(kept) | {ref})
+                truncated = True; continue
             kept[ref] = cards[ref]; used += cost
-        return kept, truncated
+        return kept, truncated, []
 
     def _selected_entries(self, memory: Mapping[str, object]):
         prefixes = {"working_memory":"working", "event_memories":"event", "observation_memories":"observation", "knowledge_memories":"knowledge", "social_memories":"social", "higher_order_memories":"higher_order"}

@@ -38,3 +38,9 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 
 - Added bounded semantic card payload/evidence to the perceived-event L2 gateway context, matching self-body and Siming ingress behavior.
 - Verification: compileall passed; semantic/policy tests: 17 passed; `git diff --check` passed.
+
+## Fix round 5
+
+- Revalidated graph relations and node references against canonical scope, actor visibility, branch, valid time, recorded time, policy, and revision pins; unbacked selected refs are rejected.
+- Preserved required cards through global card/token bounds, attached relation/source evidence, and expanded context hashing to canonical turn pins plus final evidence metadata.
+- Verification: compileall passed; semantic/policy tests: 17 passed; `git diff --check` passed.
