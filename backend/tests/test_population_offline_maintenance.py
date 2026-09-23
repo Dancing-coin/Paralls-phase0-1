@@ -48,6 +48,22 @@ def test_backup_archive_includes_committed_siming_audit(tmp_path):
     writer.close()
 
 
+def test_authority_digest_is_independent_of_durable_json_encoding(tmp_path):
+    from app.gameplay.event_store import decode_durable_json
+
+    _, gameplay, _ = archive(tmp_path)
+    compressed = recovery.authority_digest(gameplay)
+    with sqlite3.connect(gameplay) as connection:
+        for table, columns in (("transactions", ("batch", "result")), ("outbox", ("value",))):
+            for column in columns:
+                rows = connection.execute(f"SELECT rowid, {column} FROM {table}").fetchall()
+                connection.executemany(
+                    f"UPDATE {table} SET {column}=? WHERE rowid=?",
+                    ((decode_durable_json(value), rowid) for rowid, value in rows),
+                )
+    assert recovery.authority_digest(gameplay) == compressed
+
+
 def test_offline_rebuild_backs_up_and_preserves_authority_after_both_checkpoints_corrupt(tmp_path):
     graph, gameplay, before = archive(tmp_path)
     expected = before.export_recovery_state()

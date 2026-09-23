@@ -11,6 +11,7 @@ from pathlib import Path
 import tempfile
 from threading import RLock
 from typing import Any
+import zlib
 
 from pydantic import ValidationError
 
@@ -28,6 +29,33 @@ from app.gameplay.event_schema_registry import EventSchemaRegistry, EventSchemaR
 
 class GameplayEventStoreSnapshotError(ValueError):
     pass
+
+
+_DURABLE_JSON_PREFIX = b"paralls-json-zlib-v1\0"
+
+
+def encode_durable_json(value: str) -> bytes:
+    """压缩不参与 SQL JSON 查询的正文；版本前缀允许后续 codec 演进。"""
+    if not isinstance(value, str):
+        raise TypeError("durable_json_text_required")
+    return _DURABLE_JSON_PREFIX + zlib.compress(value.encode("utf-8"), level=1)
+
+
+def decode_durable_json(value: str | bytes | memoryview) -> str:
+    """兼容既有 TEXT 行与新压缩 BLOB，损坏数据必须失败关闭。"""
+    if isinstance(value, str):
+        return value
+    raw = bytes(value)
+    if not raw.startswith(_DURABLE_JSON_PREFIX):
+        raise GameplayEventStoreSnapshotError("gameplay_snapshot_json_codec_unsupported")
+    try:
+        return zlib.decompress(raw[len(_DURABLE_JSON_PREFIX):]).decode("utf-8")
+    except (UnicodeDecodeError, zlib.error) as exc:
+        raise GameplayEventStoreSnapshotError("gameplay_snapshot_json_codec_invalid") from exc
+
+
+def load_durable_json(value: str | bytes | memoryview) -> Any:
+    return json.loads(decode_durable_json(value))
 
 
 def _limit(value: int) -> int:
@@ -1054,7 +1082,9 @@ class DurableGameplayEventStore(GameplayEventStore):
                     streams = list(batch.expected_stream_revisions.keys() | batch.read_stream_revisions.keys())
                     prepared = self._prepare_append(batch,
                         existing_record=IdempotencyRecord(principal_ref=key.principal_ref, idempotency_key=key.idempotency_key, payload_digest=previous[0]) if previous else None,
-                        existing_result=AppendBatchResult.model_validate_json(previous[1]) if previous else None,
+                        existing_result=AppendBatchResult.model_validate_json(
+                            decode_durable_json(previous[1])
+                        ) if previous else None,
                         stream_heads=dict(self._matching_rows(connection, "stream_heads", "stream_id", streams, "stream_id, revision")),
                         transaction_exists=connection.execute("SELECT 1 FROM transactions WHERE transaction_id=?", (batch.transaction_id,)).fetchone() is not None,
                         existing_event_ids={row[0] for row in self._matching_rows(connection, "events", "event_id", [event.event_id for event in batch.events], "event_id")},
@@ -1084,18 +1114,24 @@ class DurableGameplayEventStore(GameplayEventStore):
                         target.execute("UPDATE metadata SET value=? WHERE key='registry' AND value<>?", (registry_json, registry_json))
                     key = batch.idempotency_record
                     target.execute("INSERT INTO transactions (sequence,batch,result,transaction_id,principal_ref,idempotency_key,payload_digest,refresh_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (batch.events[-1].global_sequence, batch.model_dump_json(), result.model_dump_json(), batch.transaction_id,
+                        (batch.events[-1].global_sequence, encode_durable_json(batch.model_dump_json()),
+                         encode_durable_json(result.model_dump_json()), batch.transaction_id,
                          key.principal_ref, key.idempotency_key, key.payload_digest, "pending" if batch.outbox_entries or batch.projection_refresh_hints else None))
                     self._index_events(target, batch)
                     target.executemany("INSERT INTO outbox (id,value,delivery_state,topic,global_sequence,transaction_id,event_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        ((entry.outbox_id, entry.model_dump_json(), entry.delivery_state, entry.topic, entry.global_sequence, entry.transaction_id, entry.event_id) for entry in batch.outbox_entries))
+                        ((entry.outbox_id, encode_durable_json(entry.model_dump_json()), entry.delivery_state,
+                          entry.topic, entry.global_sequence, entry.transaction_id, entry.event_id)
+                         for entry in batch.outbox_entries))
                     target.execute("UPDATE metadata SET value=? WHERE key='last_global_sequence'", (str(batch.events[-1].global_sequence),))
                 if outbox is not None:
                     target.execute("UPDATE outbox SET value=?, delivery_state=?, topic=?, global_sequence=?, transaction_id=?, event_id=? WHERE id=?",
-                        (outbox.model_dump_json(), outbox.delivery_state, outbox.topic, outbox.global_sequence, outbox.transaction_id, outbox.event_id, outbox.outbox_id))
+                        (encode_durable_json(outbox.model_dump_json()), outbox.delivery_state,
+                         outbox.topic, outbox.global_sequence, outbox.transaction_id,
+                         outbox.event_id, outbox.outbox_id))
                 for item in ([checkpoint] if checkpoint is not None else checkpoints):
                     target.execute("INSERT INTO checkpoints (id,value,projector_id,global_sequence) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET value=excluded.value, projector_id=excluded.projector_id, global_sequence=excluded.global_sequence",
-                        (item.checkpoint_id, item.model_dump_json(), item.projector_id, item.last_global_sequence))
+                        (item.checkpoint_id, encode_durable_json(item.model_dump_json()),
+                         item.projector_id, item.last_global_sequence))
         except (OSError, sqlite3.Error) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_write_failed") from exc
 
@@ -1112,7 +1148,8 @@ class DurableGameplayEventStore(GameplayEventStore):
             sql += " LIMIT ?"
             parameters += (_limit(limit),)
         try:
-            return [model.model_validate_json(row[0]) for row in self._rows(sql, parameters)]
+            return [model.model_validate_json(decode_durable_json(row[0]))
+                    for row in self._rows(sql, parameters)]
         except (ValueError, TypeError) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
 
@@ -1249,7 +1286,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                     row = connection.execute("SELECT value FROM outbox WHERE id=?", (outbox_id,)).fetchone()
                     if row is None:
                         raise KeyError(outbox_id)
-                    entry = GameplayOutboxEntry.model_validate_json(row[0])
+                    entry = GameplayOutboxEntry.model_validate_json(decode_durable_json(row[0]))
                     changes = {"delivery_state": "delivered", "last_error": None} if delivered else {
                         "delivery_state": "retryable", "attempt_count": entry.attempt_count + 1, "last_error": error}
                     self._write_delta(connection=connection, outbox=entry.model_copy(update=changes, deep=True))
@@ -1259,8 +1296,8 @@ class DurableGameplayEventStore(GameplayEventStore):
     @staticmethod
     def _snapshot_from_connection(connection: sqlite3.Connection, *, legacy: bool = False) -> dict[str, Any]:
         rows = list(connection.execute("SELECT batch, result FROM transactions ORDER BY sequence"))
-        batches = [json.loads(row[0]) for row in rows]
-        results = [json.loads(row[1]) for row in rows]
+        batches = [load_durable_json(row[0]) for row in rows]
+        results = [load_durable_json(row[1]) for row in rows]
         registry = connection.execute("SELECT value FROM metadata WHERE key='registry'").fetchone()
         snapshot = {
             "snapshot_schema_version": 2,
@@ -1269,8 +1306,8 @@ class DurableGameplayEventStore(GameplayEventStore):
             "transactions": batches, "transaction_results": results,
             "idempotency": sorted(({"principal_ref": batch["idempotency_record"]["principal_ref"], "idempotency_key": batch["idempotency_record"]["idempotency_key"], "record": batch["idempotency_record"], "result": result}
                             for batch, result in zip(batches, results)), key=lambda value: (value["principal_ref"], value["idempotency_key"])),
-            "outbox": [json.loads(row[0]) for row in connection.execute("SELECT value FROM outbox ORDER BY rowid")],
-            "projection_checkpoints": sorted((json.loads(row[0]) for row in connection.execute("SELECT value FROM checkpoints")),
+            "outbox": [load_durable_json(row[0]) for row in connection.execute("SELECT value FROM outbox ORDER BY rowid")],
+            "projection_checkpoints": sorted((load_durable_json(row[0]) for row in connection.execute("SELECT value FROM checkpoints")),
                                             key=lambda value: (value["last_global_sequence"], value["checkpoint_id"]), reverse=True),
             "event_schema_registry": json.loads(registry[0]),
         }
@@ -1304,15 +1341,15 @@ class DurableGameplayEventStore(GameplayEventStore):
                     if (sequence, event_id, stream_id, revision, tx) != (event.global_sequence, event.event_id, event.stream_id, event.stream_revision, event.transaction_id):
                         raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
                 for identity, state, topic, sequence, tx, event, value in connection.execute("SELECT id,delivery_state,topic,global_sequence,transaction_id,event_id,value FROM outbox"):
-                    entry = GameplayOutboxEntry.model_validate_json(value)
+                    entry = GameplayOutboxEntry.model_validate_json(decode_durable_json(value))
                     if (identity, state, topic, sequence, tx, event) != (entry.outbox_id, entry.delivery_state, entry.topic, entry.global_sequence, entry.transaction_id, entry.event_id):
                         raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
                 for identity, projector, sequence, value in connection.execute("SELECT id,projector_id,global_sequence,value FROM checkpoints"):
-                    checkpoint = ProjectionCheckpoint.model_validate_json(value)
+                    checkpoint = ProjectionCheckpoint.model_validate_json(decode_durable_json(value))
                     if (identity, projector, sequence) != (checkpoint.checkpoint_id, checkpoint.projector_id, checkpoint.last_global_sequence):
                         raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
                 for sequence, tx, principal, key, digest, refresh, value in connection.execute("SELECT sequence,transaction_id,principal_ref,idempotency_key,payload_digest,refresh_state,batch FROM transactions"):
-                    batch = AtomicEventBatch.model_validate_json(value)
+                    batch = AtomicEventBatch.model_validate_json(decode_durable_json(value))
                     record = batch.idempotency_record
                     expected_refresh = ("pending" if tx in restored._pending_projection_refresh else "done") if batch.outbox_entries or batch.projection_refresh_hints else None
                     if (sequence, tx, principal, key, digest) != (batch.events[-1].global_sequence, batch.transaction_id, record.principal_ref, record.idempotency_key, record.payload_digest) or refresh != expected_refresh:

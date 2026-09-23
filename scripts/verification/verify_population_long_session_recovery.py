@@ -30,6 +30,7 @@ from scripts.verification.population_benchmark_metrics import (
 )
 from scripts.verification.population_godot_runner import source_manifest, write_json
 from scripts.verification.verify_population_godot_runtime import read_json, digest as file_digest
+from app.gameplay.event_store import decode_durable_json
 
 
 def digest(value: object) -> str:
@@ -336,11 +337,15 @@ def child_environment(database: Path, roster: Path) -> dict[str, str]:
 def authority_digest(database: Path) -> str:
     """维护允许完整扫描，包含 outbox、transaction 的所有字段，不只比较 event ID。"""
     result = hashlib.sha256()
+    json_columns = {"transactions": (1, 2), "outbox": (1,)}
     with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as connection:
         for table, order in (("events", "global_sequence"), ("transactions", "sequence"),
                              ("outbox", "id"), ("stream_heads", "stream_id"), ("metadata", "key")):
             result.update(table.encode())
             for row in connection.execute(f"SELECT * FROM {table} ORDER BY {order}"):
+                row = list(row)
+                for index in json_columns.get(table, ()):
+                    row[index] = decode_durable_json(row[index])
                 result.update(json.dumps(row, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
                 result.update(b"\n")
     return "sha256:" + result.hexdigest()
@@ -416,7 +421,7 @@ def rebuild_population_copy(database: Path, *, mode, roster) -> list:
     OfflineRebuild(world_runtime=world, event_bus=InMemoryAuthorityEventBus(), room_id="", scene_id="", zone_id="")
     from app.gameplay.models import ProjectionCheckpoint
     with sqlite3.connect(database) as connection:
-        return [ProjectionCheckpoint.model_validate_json(row[0]) for row in connection.execute(
+        return [ProjectionCheckpoint.model_validate_json(decode_durable_json(row[0])) for row in connection.execute(
             "SELECT value FROM checkpoints WHERE projector_id IN (?,?) ORDER BY global_sequence,id", projectors,
         )]
 

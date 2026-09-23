@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayOutboxEntry, ProjectionCheckpoint, OwnerAuthorizedFragment
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import GameplayEventStore, load_durable_json
 from app.gameplay.organization_government_runtime import OrganizationAuthority, OperatingWindowDueRequest
 from app.population_continuity.models import WorldModeProfile
 from app.population_continuity.recovery import parse_population_checkpoint, recovery_digest
@@ -28,7 +28,7 @@ def export_gameplay(database: Path, target: Path):
             stream.write(json.dumps(row, ensure_ascii=False, separators=(",", ":"), allow_nan=False)+"\n")
         for sequence, transaction, principal, key, digest, refresh, raw, result in connection.execute(
                 "SELECT sequence,transaction_id,principal_ref,idempotency_key,payload_digest,refresh_state,batch,result FROM transactions ORDER BY sequence"):
-            batch = json.loads(raw)
+            batch = load_durable_json(raw)
             # SQL索引与原事件体必须同一事实；不能只复制transactions而漏掉原events损坏。
             for event in batch["events"]:
                 row = connection.execute("SELECT global_sequence,event_id,stream_id,stream_revision,transaction_id,value FROM events WHERE event_id=?", (event["event_id"],)).fetchone()
@@ -36,19 +36,19 @@ def export_gameplay(database: Path, target: Path):
                     raise ValueError("mixed_authority_event_index_mismatch")
             outbox = []
             for row in connection.execute("SELECT id,delivery_state,topic,global_sequence,transaction_id,event_id,value FROM outbox WHERE transaction_id=? ORDER BY id", (transaction,)):
-                entry = json.loads(row[6])
+                entry = load_durable_json(row[6])
                 if row[:6] != tuple(entry[name] for name in ("outbox_id", "delivery_state", "topic", "global_sequence", "transaction_id", "event_id")):
                     raise ValueError("mixed_authority_outbox_index_mismatch")
                 outbox.append(entry)
             write(dict(type="transaction", index=[sequence, transaction, principal, key, digest], batch=batch,
-                result=json.loads(result), outbox=outbox, refresh_state=refresh))
+                result=load_durable_json(result), outbox=outbox, refresh_state=refresh))
             count += 1
             for event in batch["events"]:
                 if event["event_type"] == "population.cadence.admitted":
                     cadence = event["payload"]["cadence"]
                     row = connection.execute("SELECT id,projector_id,global_sequence,value FROM checkpoints WHERE id=?", (
                         f"population-receipt:{cadence['world_ref']}:{cadence['cadence_id']}",)).fetchone()
-                    checkpoint = None if row is None else json.loads(row[3])
+                    checkpoint = None if row is None else load_durable_json(row[3])
                     if row is not None and row[:3] != tuple(checkpoint[name] for name in ("checkpoint_id", "projector_id", "last_global_sequence")):
                         raise ValueError("mixed_authority_checkpoint_index_mismatch")
                     write(dict(type="population_checkpoint", event_id=event["event_id"], checkpoint=checkpoint))
