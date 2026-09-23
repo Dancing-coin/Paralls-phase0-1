@@ -61,6 +61,13 @@ def test_authority_digest_is_independent_of_durable_json_encoding(tmp_path):
                     f"UPDATE {table} SET {column}=? WHERE rowid=?",
                     ((decode_durable_json(value), rowid) for rowid, value in rows),
                 )
+        event_rows = connection.execute("SELECT rowid, full_value FROM events").fetchall()
+        connection.executemany(
+            "UPDATE events SET value=? WHERE rowid=?",
+            ((decode_durable_json(value), rowid) for rowid, value in event_rows),
+        )
+        connection.execute("ALTER TABLE events DROP COLUMN full_value")
+        connection.execute("UPDATE metadata SET value='2' WHERE key='schema'")
     assert recovery.authority_digest(gameplay) == compressed
 
 

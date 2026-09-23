@@ -849,7 +849,7 @@ class DurableGameplayEventStore(GameplayEventStore):
     _SCHEMA = (
         "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS transactions (sequence INTEGER PRIMARY KEY, batch TEXT NOT NULL, result TEXT NOT NULL, transaction_id TEXT NOT NULL UNIQUE, principal_ref TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_digest TEXT NOT NULL, refresh_state TEXT)",
-        "CREATE TABLE IF NOT EXISTS events (global_sequence INTEGER PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, stream_id TEXT NOT NULL, stream_revision INTEGER NOT NULL, transaction_id TEXT NOT NULL, value TEXT NOT NULL)",
+        "CREATE TABLE IF NOT EXISTS events (global_sequence INTEGER PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, stream_id TEXT NOT NULL, stream_revision INTEGER NOT NULL, transaction_id TEXT NOT NULL, value TEXT NOT NULL, full_value BLOB)",
         "CREATE TABLE IF NOT EXISTS stream_heads (stream_id TEXT PRIMARY KEY, revision INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, value TEXT NOT NULL, delivery_state TEXT NOT NULL, topic TEXT NOT NULL, global_sequence INTEGER NOT NULL, transaction_id TEXT NOT NULL, event_id TEXT NOT NULL)",
         "CREATE TABLE IF NOT EXISTS checkpoints (id TEXT PRIMARY KEY, value TEXT NOT NULL, projector_id TEXT NOT NULL, global_sequence INTEGER NOT NULL)",
@@ -896,7 +896,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                     connection.execute(statement)
                 registry = self._event_schema_registry.export_snapshot() if self._event_schema_registry else None
                 connection.executemany("INSERT INTO metadata VALUES (?, ?)",
-                    [("schema", "2"), ("registry", json.dumps(registry, sort_keys=True)), ("last_global_sequence", "0")])
+                    [("schema", "3"), ("registry", json.dumps(registry, sort_keys=True)), ("last_global_sequence", "0")])
                 if restored is not None:
                     for batch in restored._transactions:
                         self._write_delta(connection=connection, batch=batch, result=restored._transaction_results[batch.transaction_id])
@@ -1000,7 +1000,10 @@ class DurableGameplayEventStore(GameplayEventStore):
                 if metadata.get("schema") == "1":
                     self._migrate_schema_one(connection, registry)
                     metadata = dict(connection.execute("SELECT key, value FROM metadata"))
-                if metadata.get("schema") != "2":
+                if metadata.get("schema") == "2":
+                    self._migrate_schema_two(connection)
+                    metadata = dict(connection.execute("SELECT key, value FROM metadata"))
+                if metadata.get("schema") != "3":
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
                 if int(metadata["last_global_sequence"]) < 0:
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_sequence_invalid")
@@ -1012,7 +1015,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                 # 在装配阶段完成模式切换，避免独立写者首次连接时争夺 WAL 迁移锁。
                 if connection.execute("PRAGMA journal_mode=WAL").fetchone() != ("wal",):
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_wal_unavailable")
-                # 旧 schema2 首次补索引；已有索引时 SQLite 不重扫历史，DDL 原子提交。
+                # 旧库首次补索引；已有索引时 SQLite 不重扫历史，DDL 原子提交。
                 with connection:
                     connection.execute("BEGIN IMMEDIATE")
                     for statement in self._QUERY_INDEXES:
@@ -1054,9 +1057,28 @@ class DurableGameplayEventStore(GameplayEventStore):
             connection.execute("UPDATE metadata SET value='2' WHERE key='schema'")
 
     @staticmethod
+    def _migrate_schema_two(connection: sqlite3.Connection) -> None:
+        """新增完整事件正文列；旧 TEXT 事件保持原位，避免启动时重写历史。"""
+        with connection:
+            connection.execute("BEGIN IMMEDIATE")
+            metadata = dict(connection.execute("SELECT key, value FROM metadata"))
+            if metadata.get("schema") == "3":
+                return
+            if metadata.get("schema") != "2":
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+            columns = {row[1] for row in connection.execute("PRAGMA table_info(events)")}
+            if "full_value" not in columns:
+                connection.execute("ALTER TABLE events ADD COLUMN full_value BLOB")
+            connection.execute("UPDATE metadata SET value='3' WHERE key='schema'")
+
+    @staticmethod
     def _index_events(connection: sqlite3.Connection, batch: AtomicEventBatch) -> None:
-        connection.executemany("INSERT INTO events VALUES (?, ?, ?, ?, ?, ?)",
-            ((event.global_sequence, event.event_id, event.stream_id, event.stream_revision, event.transaction_id, event.model_dump_json()) for event in batch.events))
+        connection.executemany(
+            "INSERT INTO events (global_sequence,event_id,stream_id,stream_revision,transaction_id,value,full_value) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ((event.global_sequence, event.event_id, event.stream_id, event.stream_revision,
+              event.transaction_id, json.dumps({"event_type": event.event_type}, separators=(",", ":")),
+              encode_durable_json(event.model_dump_json())) for event in batch.events),
+        )
         heads = {event.stream_id: event.stream_revision for event in batch.events}
         connection.executemany("INSERT INTO stream_heads VALUES (?, ?) ON CONFLICT(stream_id) DO UPDATE SET revision=excluded.revision", heads.items())
 
@@ -1154,7 +1176,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
 
     def read_stream(self, stream_id: str, *, from_revision: int = 1, to_revision: int | None = None, limit: int | None = None, event_type: str | None = None) -> list[GameplayEvent]:
-        sql = "SELECT value FROM events WHERE stream_id=? AND stream_revision>=?"
+        sql = "SELECT COALESCE(full_value,value) FROM events WHERE stream_id=? AND stream_revision>=?"
         parameters = (stream_id, max(1, from_revision))
         if to_revision is not None:
             sql += " AND stream_revision<=?"
@@ -1166,7 +1188,7 @@ class DurableGameplayEventStore(GameplayEventStore):
 
     def read_events(self, *, global_sequence_from: int | None = None, global_sequence_after: int | None = None, limit: int | None = None, event_type: str | None = None) -> list[GameplayEvent]:
         start = max(1, global_sequence_from or 1, (global_sequence_after or 0) + 1)
-        sql, parameters = "SELECT value FROM events WHERE global_sequence>=?", (start,)
+        sql, parameters = "SELECT COALESCE(full_value,value) FROM events WHERE global_sequence>=?", (start,)
         if event_type is not None:
             sql += " AND json_extract(value,'$.event_type')=?"
             parameters += (event_type,)
@@ -1190,7 +1212,7 @@ class DurableGameplayEventStore(GameplayEventStore):
         return int(self._rows("SELECT value FROM metadata WHERE key='last_global_sequence'")[0][0])
 
     def get_event(self, event_id: str) -> GameplayEvent:
-        values = self._models(GameplayEvent, "SELECT value FROM events WHERE event_id=?", (event_id,))
+        values = self._models(GameplayEvent, "SELECT COALESCE(full_value,value) FROM events WHERE event_id=?", (event_id,))
         if not values:
             raise KeyError(event_id)
         return values[0]
@@ -1302,7 +1324,8 @@ class DurableGameplayEventStore(GameplayEventStore):
         snapshot = {
             "snapshot_schema_version": 2,
             "events": ([event for batch in batches for event in batch["events"]] if legacy else
-                       [json.loads(row[0]) for row in connection.execute("SELECT value FROM events ORDER BY global_sequence")]),
+                       [load_durable_json(row[0]) for row in connection.execute(
+                           "SELECT COALESCE(full_value,value) FROM events ORDER BY global_sequence")]),
             "transactions": batches, "transaction_results": results,
             "idempotency": sorted(({"principal_ref": batch["idempotency_record"]["principal_ref"], "idempotency_key": batch["idempotency_record"]["idempotency_key"], "record": batch["idempotency_record"], "result": result}
                             for batch, result in zip(batches, results)), key=lambda value: (value["principal_ref"], value["idempotency_key"])),
@@ -1336,9 +1359,12 @@ class DurableGameplayEventStore(GameplayEventStore):
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
                 if int(connection.execute("SELECT value FROM metadata WHERE key='last_global_sequence'").fetchone()[0]) != restored.get_last_global_sequence():
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
-                for sequence, event_id, stream_id, revision, tx, value in connection.execute("SELECT global_sequence,event_id,stream_id,stream_revision,transaction_id,value FROM events"):
-                    event = GameplayEvent.model_validate_json(value)
+                for sequence, event_id, stream_id, revision, tx, value, full_value in connection.execute(
+                        "SELECT global_sequence,event_id,stream_id,stream_revision,transaction_id,value,full_value FROM events"):
+                    event = GameplayEvent.model_validate_json(decode_durable_json(full_value or value))
                     if (sequence, event_id, stream_id, revision, tx) != (event.global_sequence, event.event_id, event.stream_id, event.stream_revision, event.transaction_id):
+                        raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
+                    if full_value is not None and json.loads(value) != {"event_type": event.event_type}:
                         raise GameplayEventStoreSnapshotError("gameplay_snapshot_index_invalid")
                 for identity, state, topic, sequence, tx, event, value in connection.execute("SELECT id,delivery_state,topic,global_sequence,transaction_id,event_id,value FROM outbox"):
                     entry = GameplayOutboxEntry.model_validate_json(decode_durable_json(value))
