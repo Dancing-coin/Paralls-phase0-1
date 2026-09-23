@@ -2887,9 +2887,9 @@ class CharacterAgentRuntime:
                     or str(event["payload"].get("result_id", "") or "") != replay_result_id
                 ):
                     continue
-                prior_payload = dict(event["payload"])
-                prior_payload.pop("action_settlement_result", None)
-                if prior_payload != payload:
+                prior_payload = self._normalize_settlement_replay_payload(event["payload"])
+                incoming_payload = self._normalize_settlement_replay_payload(payload)
+                if prior_payload != incoming_payload:
                     raise ValueError("character_settlement_replay_conflict")
                 return
         self._refresh_weak_supervision_state(
@@ -3241,10 +3241,30 @@ class CharacterAgentRuntime:
         context_hash = str(evidence.get("context_hash", "") or "")
         if not context_hash:
             return False
+        result_id = str(settlement_payload.get("result_id", "") or "")
+        if result_id:
+            collision = event_by_id.get(result_id)
+            if collision is not None:
+                if not isinstance(collision, dict) or not isinstance(collision.get("payload"), dict):
+                    return False
+                collision_payload = collision["payload"]
+                if str(collision_payload.get("result_id", "") or "") != result_id:
+                    return False
+                if self._normalize_settlement_replay_payload(collision_payload) != self._normalize_settlement_replay_payload(settlement_payload):
+                    return False
+            for event in timeline:
+                if not isinstance(event, dict) or not isinstance(event.get("payload"), dict):
+                    continue
+                event_payload = event["payload"]
+                if str(event_payload.get("result_id", "") or "") != result_id:
+                    continue
+                if self._normalize_settlement_replay_payload(event_payload) != self._normalize_settlement_replay_payload(settlement_payload):
+                    return False
         for ref in evidence_refs:
-            event = event_by_id.get(ref)
-            if event is None and ref == str(settlement_payload.get("result_id", "") or ""):
+            if result_id and ref == result_id:
                 event = settlement_event
+            else:
+                event = event_by_id.get(ref)
             if not isinstance(event, dict) or not isinstance(event.get("payload"), dict) or not event["payload"]:
                 return False
         actual_event_id = str(settlement_event.get("event_id", "") or "")
@@ -3259,6 +3279,14 @@ class CharacterAgentRuntime:
         if not any(ref != settlement_event_id for ref in evidence_refs):
             return False
         return True
+
+    @staticmethod
+    def _normalize_settlement_replay_payload(payload: dict[str, object]) -> dict[str, object]:
+        normalized = dict(payload)
+        # This field is derived by the runtime from the substantive settlement
+        # payload; callers may include the equivalent derived value on replay.
+        normalized.pop("action_settlement_result", None)
+        return normalized
 
     def _consume_behavior_policy_for_turn(
         self,

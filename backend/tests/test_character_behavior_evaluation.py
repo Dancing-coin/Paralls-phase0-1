@@ -353,3 +353,105 @@ def test_duplicate_settlement_result_id_conflict_fails_closed() -> None:
             payload={**first, "settlement_status": "accepted", "change_summary": "opened"},
         )
     assert runtime.get_session_timeline("char_conflict") == before
+
+
+def test_result_id_evidence_rejects_unrelated_event_id_collision() -> None:
+    runtime = CharacterAgentRuntime()
+    settlement = {
+        "event_id": "settlement:event:collision",
+        "payload": {
+            "result_id": "result:collision",
+            "settlement_status": "accepted",
+            "result_type": "object_state_result",
+            "change_summary": "door opened",
+        },
+    }
+    evidence = {
+        "qualified": True,
+        "complete": True,
+        "confidence": 0.9,
+        "evidence_refs": ["result:collision", "context:collision"],
+        "settlement_event_id": "result:collision",
+        "context_hash": "hash:collision",
+    }
+
+    assert runtime._behavior_evidence_is_qualified(
+        evidence=evidence,
+        evidence_refs=evidence["evidence_refs"],
+        settlement_event=settlement,
+        timeline=[
+            {
+                "event_id": "result:collision",
+                "payload": {"result_id": "other-result", "summary": "unrelated"},
+            },
+            {
+                "event_id": "context:collision",
+                "payload": {"turn_id": "turn:collision", "summary": "context"},
+            },
+        ],
+    ) is False
+
+
+def test_result_id_evidence_rejects_malformed_event_id_collision() -> None:
+    runtime = CharacterAgentRuntime()
+    settlement = {
+        "event_id": "settlement:event:malformed-collision",
+        "payload": {
+            "result_id": "result:malformed-collision",
+            "settlement_status": "accepted",
+            "result_type": "object_state_result",
+            "change_summary": "door opened",
+        },
+    }
+    evidence = {
+        "qualified": True,
+        "complete": True,
+        "confidence": 0.9,
+        "evidence_refs": ["result:malformed-collision", "context:malformed-collision"],
+        "settlement_event_id": "result:malformed-collision",
+        "context_hash": "hash:malformed-collision",
+    }
+
+    assert runtime._behavior_evidence_is_qualified(
+        evidence=evidence,
+        evidence_refs=evidence["evidence_refs"],
+        settlement_event=settlement,
+        timeline=[
+            {"event_id": "result:malformed-collision"},
+            {
+                "event_id": "context:malformed-collision",
+                "payload": {"turn_id": "turn:malformed-collision", "summary": "context"},
+            },
+        ],
+    ) is False
+
+
+def test_duplicate_settlement_replay_accepts_equivalent_derived_metadata() -> None:
+    runtime = CharacterAgentRuntime()
+    runtime.ingest_character_perceived_event(
+        CharacterPerceivedEvent(
+            actor_id="char_replay_metadata",
+            percept_channel="visual",
+            producer_ts=100,
+            room_id="room",
+            scene_id="scene",
+            zone_id="zone",
+            perceived_summary="letter",
+            source_candidate_event_id="visual:metadata",
+        )
+    )
+    first = {
+        "result_id": "result:metadata",
+        "settlement_status": "rejected",
+        "result_type": "constraint_state_result",
+        "constraint_summary": "requires a key",
+    }
+    runtime.record_settlement_result(actor_id="char_replay_metadata", producer_ts=101, payload=first)
+    replay = {
+        **first,
+        "action_settlement_result": {
+            "outcome_band": "blocked",
+            "failure_domains": [],
+        },
+    }
+    runtime.record_settlement_result(actor_id="char_replay_metadata", producer_ts=101, payload=replay)

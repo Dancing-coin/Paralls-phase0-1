@@ -79,3 +79,23 @@ Verification:
 `python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
 
 Result: **30 passed**, with four existing FastAPI lifespan deprecation warnings.
+
+## Fix Round 3
+
+- Result-ID evidence resolution now rejects an event-ID collision when the
+  colliding timeline event carries a different `payload.result_id`; the supplied
+  settlement payload remains the only accepted result-ID source and must match
+  any same-result timeline payload after derived metadata normalization. Malformed
+  event-ID collisions without a payload are rejected as well.
+- Duplicate result-ID replay comparison normalizes `action_settlement_result`
+  away on both persisted and incoming payloads, so an exact callback carrying
+  equivalent derived metadata is idempotent while substantive conflicts still
+  fail closed.
+- Added regressions for unrelated event-ID collision rejection and equivalent
+  derived-metadata replay.
+
+Verification:
+
+`python -m pytest backend/tests/test_character_behavior_evaluation.py backend/tests/test_behavior_turn_recorder.py backend/tests/test_behavior_policy_lifecycle.py -q`
+
+Result: **33 passed**, with four existing FastAPI lifespan deprecation warnings.
