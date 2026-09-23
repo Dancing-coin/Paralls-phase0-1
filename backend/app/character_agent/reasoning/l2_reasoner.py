@@ -202,6 +202,7 @@ class CharacterAgentL2Service:
             reasoning_context["memory"] = semantic.memory
             reasoning_context["memory_recall"] = semantic.metadata
             reasoning_context["semantic_recall"] = semantic.metadata
+            reasoning_context["semantic_cards"] = [card.__dict__ for card in semantic.cards]
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
             context=reasoning_context,

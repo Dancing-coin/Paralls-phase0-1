@@ -33,3 +33,8 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 
 - Wired self-body and Siming runtime ingress lambdas through the canonical turn context for L2 and L3, and fixed the self-body L2 signature so semantic recall is invoked instead of continuity fallback.
 - Verification: `python -m compileall -q backend/app/character_agent` passed; `git diff --check` passed.
+
+## Fix round 4
+
+- Added bounded semantic card payload/evidence to the perceived-event L2 gateway context, matching self-body and Siming ingress behavior.
+- Verification: compileall passed; semantic/policy tests: 17 passed; `git diff --check` passed.
