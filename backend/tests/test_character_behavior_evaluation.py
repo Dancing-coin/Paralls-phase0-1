@@ -1,6 +1,61 @@
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
+from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from app.models.character_perceived import CharacterPerceivedEvent
+
+
+def _settled_turn_for_evaluation() -> CharacterTurnContext:
+    turn = CharacterTurnContext.begin(
+        actor_id="char_b",
+        source_event_ref="visual:door",
+        producer_ts=10,
+        causation_id="cause:door",
+        correlation_id="corr:door",
+        input_revision_vector={"l1_input": 10},
+        memory_revision_vector={"memory": 1},
+        policy_revision="policy:character-runtime:v1",
+        snapshot_revision=10,
+        branch_id="branch:main",
+    )
+    for stage, payload in (
+        ("context", {"l1_snapshot": {"target": "door"}}),
+        ("interpretation", {"interpreted_summary": "the archive door is closed"}),
+        ("goal", {"goal_id": "open_archive_door", "transition": "active"}),
+        ("intent", {"selected_intent": "open_door"}),
+        ("execution", {"execution_ref": "execution:door"}),
+    ):
+        turn, _ = turn.stage_event(
+            stage,
+            stage_ref=f"stage:{stage}",
+            idempotency_key=f"key:{stage}",
+            producer_ts=10,
+            payload=payload,
+        )
+    return turn
+
+
+def test_evaluation_marks_unprovable_social_effect_unknown_not_neutral() -> None:
+    result = CharacterBehaviorEvaluationService().evaluate(
+        turn=_settled_turn_for_evaluation(),
+        settlement_event={
+            "event_id": "settlement:door",
+            "event_type": "character_agent_settlement_result",
+            "producer_ts": 11,
+            "payload": {
+                "settlement_status": "accepted",
+                "result_type": "object_state_result",
+                "change_summary": "archive door opened",
+                "authority_event_ref": "authority:door:accepted",
+                "authority_owner_ref": "esm:world",
+            },
+        },
+        timeline=[],
+    )
+
+    assert result.execution_quality_score == 1.0
+    assert result.social_consequence_score is None
+    assert "social_consequence" in result.unknown_dimensions
+    assert result.evidence_refs
 
 
 def test_behavior_evaluator_links_context_to_settlement_and_emits_recovery_candidate() -> None:

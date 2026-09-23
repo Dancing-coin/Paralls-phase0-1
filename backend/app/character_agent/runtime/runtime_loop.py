@@ -71,6 +71,7 @@ from app.character_agent.gateway.memory_recall import MissingRequiredMemoryEvide
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.models.turn_context import CharacterTurnContext
+from app.models.behavior_turn import CharacterTurnStageEvent
 from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
 from app.character_agent.services.character_turn_recovery import (
     CharacterTurnRecoveryResult,
@@ -3007,11 +3008,18 @@ class CharacterAgentRuntime:
         producer_ts: int,
         settlement_event: dict[str, object],
     ) -> dict[str, object]:
-        evaluation = self._behavior_evaluation.evaluate(
+        timeline_before_evaluation = self.get_session_timeline(actor_id)
+        turn = self._canonical_turn_context_for_settlement(
+            settlement_event=settlement_event,
+            timeline=timeline_before_evaluation,
+        )
+        evaluation_model = self._behavior_evaluation.evaluate(
+            turn=turn,
             actor_id=actor_id,
             settlement_event=settlement_event,
-            timeline=self.get_session_timeline(actor_id),
+            timeline=timeline_before_evaluation,
         )
+        evaluation = evaluation_model.model_dump(mode="json")
         stored = self._session_store.append_event(
             actor_id=actor_id,
             event_type="character_behavior_evaluation_event",
@@ -3105,6 +3113,66 @@ class CharacterAgentRuntime:
             evaluation["policy_id"] = accepted.policy_id
             evaluation["policy_status"] = accepted.status
         return evaluation
+
+    @staticmethod
+    def _canonical_turn_context_for_settlement(
+        *,
+        settlement_event: dict[str, object],
+        timeline: list[dict[str, object]],
+    ) -> CharacterTurnContext | None:
+        settlement_payload = settlement_event.get("payload", {})
+        if not isinstance(settlement_payload, dict):
+            return None
+        turn_id = str(settlement_payload.get("turn_id", "") or "")
+        if not turn_id:
+            return None
+        context: CharacterTurnContext | None = None
+        for entry in timeline:
+            if entry.get("event_type") != "character_turn_context_created":
+                continue
+            payload = entry.get("payload")
+            if not isinstance(payload, dict) or payload.get("turn_id") != turn_id:
+                continue
+            raw_context = payload.get("context")
+            if isinstance(raw_context, dict):
+                context = CharacterTurnContext.model_validate(raw_context)
+                break
+        if context is None:
+            return None
+        stage_entries = [
+            entry for entry in timeline
+            if entry.get("event_type") == "character_turn_stage_recorded"
+            and isinstance(entry.get("payload"), dict)
+            and entry["payload"].get("turn_id") == turn_id
+        ]
+        for entry in stage_entries:
+            payload = entry["payload"]
+            assert isinstance(payload, dict)
+            raw_event = payload.get("stage_event")
+            if not isinstance(raw_event, dict):
+                continue
+            stage_event = CharacterTurnStageEvent.model_validate(raw_event)
+            canonical_payload = CharacterAgentRuntime._thaw_json_value(stage_event.payload)
+            context, _ = context.stage_event(
+                stage_event.stage,
+                stage_ref=stage_event.stage_ref,
+                idempotency_key=stage_event.idempotency_key,
+                producer_ts=stage_event.producer_ts,
+                outcome=stage_event.outcome,
+                payload=canonical_payload,
+            )
+        return context
+
+    @staticmethod
+    def _thaw_json_value(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): CharacterAgentRuntime._thaw_json_value(nested)
+                for key, nested in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [CharacterAgentRuntime._thaw_json_value(nested) for nested in value]
+        return value
 
     def _behavior_evidence_is_qualified(
         self,
