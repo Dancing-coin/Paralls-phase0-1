@@ -25,6 +25,11 @@ class BehaviorPolicyRecord(BaseModel):
     policy_id: str
     actor_id: str
     source_turn_id: str
+    branch_id: str = Field(min_length=1)
+    valid_at: int = Field(ge=0)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    source_revision: int = Field(ge=0)
     policy_type: BehaviorPolicyType
     failed_intent: str = ""
     hypothesis: str
@@ -34,9 +39,11 @@ class BehaviorPolicyRecord(BaseModel):
     max_consumptions: int = Field(ge=1)
     consumed_count: int = Field(default=0, ge=0)
     consumed_turn_ids: list[str] = Field(default_factory=list)
+    consumption_links: dict[str, dict[str, str]] = Field(default_factory=dict)
     failure_window: int = Field(default=0, ge=0)
     failure_count: int = Field(default=1, ge=0)
     policy_revision: int = Field(default=1, ge=1)
+    transition_revision: int = Field(default=0, ge=0)
     supersedes_policy_id: str | None = None
     evidence_refs: list[str] = Field(default_factory=list)
     idempotency_key: str
@@ -49,6 +56,10 @@ class BehaviorPolicyRecord(BaseModel):
             raise ValueError("behavior_policy_consumption_count_mismatch")
         if len(set(self.consumed_turn_ids)) != len(self.consumed_turn_ids):
             raise ValueError("behavior_policy_duplicate_turn_consumption")
+        if set(self.consumption_links) - set(self.consumed_turn_ids):
+            raise ValueError("behavior_policy_consumption_link_mismatch")
+        if self.valid_at < self.created_at:
+            raise ValueError("behavior_policy_valid_time_precedes_creation")
         return self
 
 

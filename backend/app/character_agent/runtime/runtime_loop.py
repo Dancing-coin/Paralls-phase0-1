@@ -469,7 +469,8 @@ class CharacterAgentRuntime:
             ),
         )
         self._consume_behavior_policy_for_turn(
-            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision,
+            causation_id=turn.causation_id, correlation_id=turn.correlation_id,
         )
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -864,7 +865,8 @@ class CharacterAgentRuntime:
             ),
         )
         self._consume_behavior_policy_for_turn(
-            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision,
+            causation_id=turn.causation_id, correlation_id=turn.correlation_id,
         )
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -1147,7 +1149,8 @@ class CharacterAgentRuntime:
             ),
         )
         self._consume_behavior_policy_for_turn(
-            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=producer_ts, decision=decision
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=producer_ts, decision=decision,
+            causation_id=turn.causation_id, correlation_id=turn.correlation_id,
         )
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -2361,6 +2364,8 @@ class CharacterAgentRuntime:
             turn_id=f"background:{actor_id}:{producer_ts}",
             producer_ts=producer_ts,
             decision=decision,
+            causation_id=f"background:{actor_id}:{producer_ts}",
+            correlation_id=f"background:{actor_id}:{producer_ts}",
         )
         self._record_goal_state_event(actor_id, producer_ts, decision)
         self._last_background_tick_ms[actor_id] = producer_ts
@@ -2931,6 +2936,21 @@ class CharacterAgentRuntime:
             payload=stored_payload,
         )
         self._memory_store.write_event(stored)
+        settlement_turn_id = str(stored_payload.get("turn_id", "") or "")
+        settlement_causation_id = str(stored_payload.get("causation_id", "") or "")
+        settlement_correlation_id = str(stored_payload.get("correlation_id", "") or "")
+        if settlement_turn_id and settlement_causation_id and settlement_correlation_id:
+            settlement_status = str(
+                stored_payload.get("settlement_status", "")
+                or stored_payload.get("resolution_status", "")
+                or ""
+            )
+            if settlement_status in {"accepted", "applied", "observed"}:
+                self._behavior_policy_store.reconcile_consumed_turn(
+                    actor_id, settlement_turn_id, "success", producer_ts,
+                    causation_id=settlement_causation_id,
+                    correlation_id=settlement_correlation_id,
+                )
         target = str(payload.get("target_object_id", "") or payload.get("target_actor_id", "") or "")
         self._update_memory_scene_knowledge(stored)
         if (payload.get("result_type") == "action_resolution_result" and payload.get("resolution_status") == "accepted"
@@ -2999,6 +3019,15 @@ class CharacterAgentRuntime:
         self._memory_store.write_event(stored)
         candidate = evaluation.get("candidate_policy")
         if isinstance(candidate, dict):
+            settlement_payload = settlement_event.get("payload", {})
+            if not isinstance(settlement_payload, dict):
+                return evaluation
+            canonical_turn_id = str(settlement_payload.get("turn_id", "") or "")
+            canonical_branch_id = str(settlement_payload.get("branch_id", "") or "")
+            canonical_causation_id = str(settlement_payload.get("causation_id", "") or "")
+            canonical_correlation_id = str(settlement_payload.get("correlation_id", "") or "")
+            if not all((canonical_turn_id, canonical_branch_id, canonical_causation_id, canonical_correlation_id)):
+                return evaluation
             policy_id = str(candidate.get("candidate_id", "") or "")
             policy_type = str(candidate.get("policy_type", "") or "")
             evidence = candidate.get("evidence", {})
@@ -3013,7 +3042,12 @@ class CharacterAgentRuntime:
                 BehaviorPolicyRecord(
                     policy_id=policy_id,
                     actor_id=actor_id,
-                    source_turn_id=str(settlement_event.get("event_id", "") or policy_id),
+                    source_turn_id=canonical_turn_id,
+                    branch_id=canonical_branch_id,
+                    valid_at=int(settlement_event.get("producer_ts", producer_ts) or producer_ts),
+                    causation_id=canonical_causation_id,
+                    correlation_id=canonical_correlation_id,
+                    source_revision=len(self.get_session_timeline(actor_id)),
                     policy_type=policy_type,
                     failed_intent=str(candidate.get("failed_intent", "") or ""),
                     hypothesis=str(candidate.get("hypothesis", "") or ""),
@@ -3027,11 +3061,19 @@ class CharacterAgentRuntime:
                     idempotency_key=f"behavior-policy:{policy_id}",
                 )
             )
+            evidence_qualified = (
+                isinstance(evidence, dict)
+                and bool(evidence.get("qualified", False))
+                and bool(evidence.get("complete", False))
+                and isinstance(evidence.get("confidence"), int | float)
+                and float(evidence["confidence"]) >= 0.8
+                and len(evidence_refs) >= 2
+            )
             accepted = self._behavior_policy_store.reconcile_outcome(
                 actor_id,
                 policy.policy_id,
                 policy.source_turn_id,
-                "evidence_qualified" if evidence_refs and isinstance(evidence, dict) else "rejected",
+                "evidence_qualified" if evidence_qualified else "rejected",
                 now=producer_ts,
             )
             evaluation["policy_id"] = accepted.policy_id
@@ -3045,9 +3087,9 @@ class CharacterAgentRuntime:
         turn_id: str,
         producer_ts: int,
         decision: CharacterIntentDecision,
+        causation_id: str,
+        correlation_id: str,
     ) -> None:
-        if decision.planning_status != "model":
-            return
         raw_record = policy_snapshot.get("record") if isinstance(policy_snapshot, dict) else None
         if not isinstance(raw_record, dict):
             return
@@ -3055,7 +3097,11 @@ class CharacterAgentRuntime:
         policy_id = str(raw_record.get("policy_id", "") or "")
         if actor_id == "" or policy_id == "":
             return
-        self._behavior_policy_store.consume(actor_id, policy_id, turn_id, producer_ts)
+        self._behavior_policy_store.consume(
+            actor_id, policy_id, turn_id, producer_ts,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
 
     def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
         advisory_metadata = self._settlement_advisory_metadata(payload)

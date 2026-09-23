@@ -16,6 +16,11 @@ def recovery_policy(
         policy_id=f"policy:{actor_id}:recovery",
         actor_id=actor_id,
         source_turn_id="turn:source:1",
+        branch_id="branch:main",
+        valid_at=100,
+        causation_id="cause:source:1",
+        correlation_id="correlation:source:1",
+        source_revision=1,
         policy_type="recovery",
         failed_intent="share_info",
         hypothesis="try a different locally viable action",
@@ -23,6 +28,7 @@ def recovery_policy(
         created_at=100,
         expires_at=expires_at,
         max_consumptions=max_consumptions,
+        failure_window=60,
         evidence_refs=["settlement:1"],
         idempotency_key=f"idempotency:{actor_id}:recovery",
     )
@@ -122,3 +128,48 @@ def test_policy_proposal_and_reconciliation_replay_the_same_lifecycle_result(tmp
     assert store.reconcile_outcome(
         "char_b", proposed.policy_id, proposed.source_turn_id, "evidence_qualified", now=200
     ) == accepted
+
+
+def test_policy_requires_turn_scope_lineage_and_cannot_reopen_terminal_state(tmp_path: Path) -> None:
+    invalid = recovery_policy(actor_id="char_b", max_consumptions=2, expires_at=300).model_copy(update={"branch_id": ""})
+    with pytest.raises(ValueError, match="branch_id"):
+        BehaviorPolicyRecord.model_validate(invalid.model_dump())
+
+    store = BehaviorPolicyStore(tmp_path)
+    policy = store.propose(recovery_policy(actor_id="char_b", max_consumptions=2, expires_at=300))
+    rolled_back = store.reconcile_outcome(
+        "char_b", policy.policy_id, policy.source_turn_id, "success", now=200
+    )
+
+    assert rolled_back.transition_revision == 1
+    assert store.reconcile_outcome(
+        "char_b", policy.policy_id, policy.source_turn_id, "accepted", now=201
+    ).status == "rolled_back"
+
+
+def test_policy_store_merges_compatible_failures_within_window_and_rejects_stale_snapshot(tmp_path: Path) -> None:
+    store = BehaviorPolicyStore(tmp_path)
+    first = store.propose(recovery_policy(actor_id="char_b", max_consumptions=2, expires_at=300))
+    second = store.propose(
+        recovery_policy(actor_id="char_b", max_consumptions=2, expires_at=300).model_copy(
+            update={"policy_id": "policy:char_b:recovery:next", "idempotency_key": "key:next", "created_at": 110}
+        )
+    )
+
+    assert second.policy_id == first.policy_id
+    assert second.failure_count == 2
+    newer = store.reconcile_outcome("char_b", first.policy_id, first.source_turn_id, "accepted", now=120)
+    store.restore_continuity_snapshot("char_b", {"records": [first.model_dump()]})
+
+    assert store.get("char_b", first.policy_id) == newer
+
+
+def test_successful_settlement_rolls_back_only_exactly_linked_consumption(tmp_path: Path) -> None:
+    store = BehaviorPolicyStore(tmp_path)
+    policy = store.propose(recovery_policy(actor_id="char_b", max_consumptions=2, expires_at=300))
+    store.consume("char_b", policy.policy_id, "turn:char_b:2", 200, causation_id="cause:turn:2", correlation_id="corr:turn:2")
+
+    assert store.reconcile_consumed_turn("char_b", "turn:char_b:2", "success", 210, causation_id="cause:other", correlation_id="corr:turn:2") is None
+    rolled_back = store.reconcile_consumed_turn("char_b", "turn:char_b:2", "success", 210, causation_id="cause:turn:2", correlation_id="corr:turn:2")
+
+    assert rolled_back is not None and rolled_back.status == "rolled_back"

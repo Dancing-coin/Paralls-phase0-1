@@ -263,6 +263,8 @@ def test_l3_planner_uses_evidence_qualified_accepted_recovery_policy_snapshot() 
                 "policy_id": "policy:recovery:1",
                 "actor_id": "char_b",
                 "source_turn_id": "turn:char_b:1",
+                "branch_id": "branch:main", "valid_at": 99,
+                "causation_id": "cause:policy:1", "correlation_id": "corr:policy:1", "source_revision": 1,
                 "policy_type": "recovery",
                 "failed_intent": "share_info",
                 "hypothesis": "try a different locally viable action",
@@ -300,6 +302,7 @@ def test_l3_planner_recall_policy_raises_bounded_recall_requirement() -> None:
             "actor_id": "char_b",
             "record": {
                 "policy_id": "policy:recall:1", "actor_id": "char_b", "source_turn_id": "turn:char_b:1",
+                "branch_id": "branch:main", "valid_at": 99, "causation_id": "cause:recall:1", "correlation_id": "corr:recall:1", "source_revision": 1,
                 "policy_type": "recall", "failed_intent": "", "hypothesis": "recall more evidence",
                 "status": "accepted", "created_at": 99, "expires_at": 300, "max_consumptions": 1,
                 "consumed_count": 0, "consumed_turn_ids": [], "failure_window": 60, "failure_count": 1,

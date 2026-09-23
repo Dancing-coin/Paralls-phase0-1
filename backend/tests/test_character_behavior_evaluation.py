@@ -79,6 +79,10 @@ def test_runtime_persists_behavior_evaluation_and_candidate_after_settlement() -
         actor_id="char_a",
         producer_ts=101,
         payload={
+            "turn_id": "turn:char_a:letter",
+            "branch_id": "branch:main",
+            "causation_id": "cause:letter",
+            "correlation_id": "corr:letter",
             "settlement_status": "rejected",
             "result_type": "constraint_state_result",
             "constraint_summary": "requires a key",
@@ -95,3 +99,17 @@ def test_runtime_persists_behavior_evaluation_and_candidate_after_settlement() -
     assert candidates
     assert candidates[-1]["payload"]["record"]["status"] == "candidate"
     assert accepted[-1]["payload"]["record"]["status"] == "accepted"
+
+
+def test_evaluator_marks_unknown_or_incomplete_failure_evidence_unqualified() -> None:
+    result = CharacterBehaviorEvaluationService().evaluate(
+        actor_id="char_b",
+        timeline=[],
+        settlement_event={
+            "event_id": "settlement:unknown", "producer_ts": 10,
+            "payload": {"settlement_status": "rejected"},
+        },
+    )
+
+    assert result["candidate_policy"]["evidence"]["qualified"] is False
+    assert result["candidate_policy"]["evidence"]["complete"] is False

@@ -160,6 +160,9 @@ class CharacterBehaviorEvaluationService:
                 "settlement_status": str(settlement_payload.get("settlement_status", "") or ""),
                 "selected_memory_refs": list(recall.get("selected_memory_refs", [])) if isinstance(recall.get("selected_memory_refs", []), list) else [],
                 "context_hash": str(recall.get("context_hash", "") or ""),
+                "confidence": 0.9 if score <= 0.5 and failure_domains else 0.0,
+                "complete": bool(failure_domains),
+                "qualified": score <= 0.5 and bool(failure_domains),
             },
         }
         candidate_id = sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]

@@ -21,6 +21,12 @@ class BehaviorPolicyStore:
             "character_behavior_policy_consumed",
         }
     )
+    _TERMINAL_STATUSES = frozenset({"expired", "superseded", "rolled_back", "rejected"})
+    _TRANSITIONS = {
+        "candidate": frozenset({"accepted", "rejected", "expired", "superseded"}),
+        "accepted": frozenset({"applied", "rejected", "expired", "superseded", "rolled_back"}),
+        "applied": frozenset({"applied", "expired", "superseded", "rolled_back"}),
+    }
 
     def __init__(
         self,
@@ -35,6 +41,7 @@ class BehaviorPolicyStore:
 
     def propose(self, record: BehaviorPolicyRecord) -> BehaviorPolicyRecord:
         with self._lock:
+            self._validate_record_context(record)
             records = self._records_by_actor.setdefault(record.actor_id, {})
             existing_by_key = self._record_for_idempotency(record.actor_id, record.idempotency_key)
             if existing_by_key is not None:
@@ -50,12 +57,15 @@ class BehaviorPolicyStore:
                 predecessor = records.get(record.supersedes_policy_id)
                 if predecessor is None:
                     raise ValueError("behavior_policy_superseded_policy_not_found")
-                self._write_record(
-                    predecessor.model_copy(update={"status": "superseded"}),
-                    event_type="character_behavior_policy_reconciled",
-                    producer_ts=record.created_at,
-                    action="superseded",
-                )
+                self._transition(predecessor, status="superseded", now=record.created_at, action="superseded")
+            compatible = self._compatible_failure(record)
+            if compatible is not None:
+                merged = compatible.model_copy(update={
+                    "failure_count": compatible.failure_count + record.failure_count,
+                    "transition_revision": compatible.transition_revision + 1,
+                })
+                self._write_record(merged, event_type="character_behavior_policy_reconciled", producer_ts=record.created_at, action="failure_merged")
+                return merged.model_copy(deep=True)
             self._write_record(
                 record,
                 event_type="character_behavior_policy_proposed",
@@ -102,23 +112,20 @@ class BehaviorPolicyStore:
         with self._lock:
             raw_records = snapshot.get("records")
             if not isinstance(raw_records, list):
-                return
+                raise ValueError("behavior_policy_snapshot_invalid")
             records = self._records_by_actor.setdefault(actor_id, {})
             for raw_record in raw_records:
                 if not isinstance(raw_record, dict):
-                    continue
+                    raise ValueError("behavior_policy_snapshot_invalid")
                 record = BehaviorPolicyRecord.model_validate(raw_record)
+                self._validate_record_context(record)
                 if record.actor_id != actor_id:
                     raise ValueError("behavior_policy_snapshot_actor_mismatch")
                 existing = records.get(record.policy_id)
-                if existing is None or (
-                    record.consumed_count,
-                    record.policy_revision,
-                ) >= (
-                    existing.consumed_count,
-                    existing.policy_revision,
-                ):
+                if existing is None or record.transition_revision > existing.transition_revision:
                     records[record.policy_id] = record
+                elif record.transition_revision == existing.transition_revision and record != existing:
+                    raise ValueError("behavior_policy_snapshot_revision_conflict")
 
     def consume(
         self,
@@ -126,6 +133,9 @@ class BehaviorPolicyStore:
         policy_id: str,
         turn_id: str,
         now: int,
+        *,
+        causation_id: str | None = None,
+        correlation_id: str | None = None,
     ) -> BehaviorPolicyConsumption:
         with self._lock:
             record = self._get_owned(actor_id, policy_id)
@@ -146,6 +156,14 @@ class BehaviorPolicyStore:
                     else "accepted",
                     "consumed_count": record.consumed_count + 1,
                     "consumed_turn_ids": [*record.consumed_turn_ids, turn_id],
+                    "consumption_links": {
+                        **record.consumption_links,
+                        turn_id: {
+                            "causation_id": causation_id or record.causation_id,
+                            "correlation_id": correlation_id or record.correlation_id,
+                        },
+                    },
+                    "transition_revision": record.transition_revision + 1,
                 }
             )
             self._write_record(
@@ -156,6 +174,23 @@ class BehaviorPolicyStore:
                 turn_id=turn_id,
             )
             return BehaviorPolicyConsumption(record=updated, applied=True)
+
+    def reconcile_consumed_turn(
+        self,
+        actor_id: str,
+        turn_id: str,
+        outcome: str,
+        now: int,
+        *,
+        causation_id: str,
+        correlation_id: str,
+    ) -> BehaviorPolicyRecord | None:
+        with self._lock:
+            for record in self._records_by_actor.get(actor_id, {}).values():
+                link = record.consumption_links.get(turn_id)
+                if link and link.get("causation_id") == causation_id and link.get("correlation_id") == correlation_id:
+                    return self.reconcile_outcome(actor_id, record.policy_id, record.source_turn_id, outcome, now)
+        return None
 
     def reconcile_outcome(
         self,
@@ -169,7 +204,9 @@ class BehaviorPolicyStore:
             record = self._get_owned(actor_id, policy_id)
             if record.source_turn_id != source_turn_id:
                 raise ValueError("behavior_policy_source_turn_mismatch")
-            if now >= record.expires_at and record.status not in {"expired", "superseded", "rolled_back", "rejected"}:
+            if record.status in self._TERMINAL_STATUSES:
+                return record.model_copy(deep=True)
+            if now >= record.expires_at:
                 return self._transition(record, status="expired", now=now, action="expired")
             normalized = outcome.strip().lower()
             if normalized in {"evidence_qualified", "accepted"}:
@@ -200,17 +237,22 @@ class BehaviorPolicyStore:
                     continue
                 payload = event.get("payload")
                 if not isinstance(payload, dict):
-                    continue
+                    raise ValueError("behavior_policy_event_invalid")
                 raw_record = payload.get("record")
                 if not isinstance(raw_record, dict):
-                    continue
-                try:
-                    record = BehaviorPolicyRecord.model_validate(raw_record)
-                except ValueError:
-                    continue
+                    raise ValueError("behavior_policy_event_invalid")
+                record = BehaviorPolicyRecord.model_validate(raw_record)
+                self._validate_record_context(record)
                 if record.actor_id != actor_id:
                     raise ValueError("behavior_policy_event_actor_mismatch")
-                records[record.policy_id] = record
+                metadata = payload.get("metadata")
+                if not isinstance(metadata, dict) or metadata != self._metadata(record):
+                    raise ValueError("behavior_policy_event_metadata_mismatch")
+                existing = records.get(record.policy_id)
+                if existing is None or record.transition_revision > existing.transition_revision:
+                    records[record.policy_id] = record
+                elif record.transition_revision == existing.transition_revision and record != existing:
+                    raise ValueError("behavior_policy_event_revision_conflict")
 
     def _record_for_idempotency(self, actor_id: str, idempotency_key: str) -> BehaviorPolicyRecord | None:
         return next(
@@ -224,7 +266,7 @@ class BehaviorPolicyStore:
 
     @staticmethod
     def _same_proposal(existing: BehaviorPolicyRecord, proposed: BehaviorPolicyRecord) -> bool:
-        mutable_fields = {"status", "consumed_count", "consumed_turn_ids"}
+        mutable_fields = {"status", "consumed_count", "consumed_turn_ids", "transition_revision", "failure_count"}
         existing_payload = existing.model_dump(mode="json", exclude=mutable_fields)
         proposed_payload = proposed.model_dump(mode="json", exclude=mutable_fields)
         return existing_payload == proposed_payload
@@ -245,7 +287,11 @@ class BehaviorPolicyStore:
         now: int,
         action: str,
     ) -> BehaviorPolicyRecord:
-        updated = record.model_copy(update={"status": status})
+        if record.status in self._TERMINAL_STATUSES:
+            return record.model_copy(deep=True)
+        if status not in self._TRANSITIONS.get(record.status, frozenset()):
+            raise ValueError("behavior_policy_transition_forbidden")
+        updated = record.model_copy(update={"status": status, "transition_revision": record.transition_revision + 1})
         self._write_record(
             updated,
             event_type="character_behavior_policy_reconciled",
@@ -266,6 +312,7 @@ class BehaviorPolicyStore:
         payload: dict[str, object] = {
             "record": record.model_dump(mode="json"),
             "action": action,
+            "metadata": self._metadata(record),
         }
         if turn_id is not None:
             payload["turn_id"] = turn_id
@@ -276,6 +323,34 @@ class BehaviorPolicyStore:
             payload=deepcopy(payload),
         )
         self._records_by_actor.setdefault(record.actor_id, {})[record.policy_id] = record
+
+    @staticmethod
+    def _metadata(record: BehaviorPolicyRecord) -> dict[str, object]:
+        return {
+            "actor_id": record.actor_id, "branch_id": record.branch_id,
+            "valid_at": record.valid_at, "causation_id": record.causation_id,
+            "correlation_id": record.correlation_id, "source_revision": record.source_revision,
+            "policy_revision": record.policy_revision, "transition_revision": record.transition_revision,
+            "idempotency_key": record.idempotency_key,
+        }
+
+    @staticmethod
+    def _validate_record_context(record: BehaviorPolicyRecord) -> None:
+        if record.valid_at > record.expires_at:
+            raise ValueError("behavior_policy_valid_time_after_expiry")
+
+    def _compatible_failure(self, record: BehaviorPolicyRecord) -> BehaviorPolicyRecord | None:
+        for existing in self._records_by_actor.get(record.actor_id, {}).values():
+            if existing.status in self._TERMINAL_STATUSES:
+                continue
+            if (
+                existing.policy_type == record.policy_type
+                and existing.failed_intent == record.failed_intent
+                and existing.branch_id == record.branch_id
+                and record.created_at - existing.created_at <= existing.failure_window
+            ):
+                return existing
+        return None
 
 
 __all__ = ["BehaviorPolicyStore"]
