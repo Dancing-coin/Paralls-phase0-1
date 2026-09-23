@@ -65,6 +65,15 @@ def test_relation_metadata_policy_mismatch_is_rejected():
     assert service._validated_result(result, "char_b", _turn(), reader) == (False, "stale_read_set")
 
 
+def test_runtime_generic_memory_revision_accepts_typed_graph_vector():
+    from types import SimpleNamespace
+    from app.models.siming_heavenly_graph import GraphReaderContext, GraphRevisionVector
+    turn = CharacterTurnContext.begin("char_b", "evt:1", 10, causation_id="c", correlation_id="r", input_revision_vector={}, memory_revision_vector={"memory": 0}, policy_revision="policy:v1", snapshot_revision=1, branch_id="main")
+    reader = GraphReaderContext(reader_principal="char_b", allowed_visibility_scopes=("actor_private",), world_id="w", session_id="s", story_branch_id="main", valid_at=10, recorded_at=10, policy_revision="policy:v1")
+    result = SimpleNamespace(policy_revision="policy:v1", revision_vector=GraphRevisionVector(node_revision=2, relation_revision=1), nodes=[], relations=[], selected_node_refs=[])
+    assert CharacterSemanticRecallService()._validated_result(result, "char_b", turn, reader) == (True, None)
+
+
 def test_light_actor_without_scope_uses_bounded_memory_only():
     result = CharacterSemanticRecallService(graph=object(), scope_resolver=lambda _actor: None).select(
         "char_a", {"memory": {"event_memories": [{"memory_id": "e", "actor_id": "char_a"}]}}, turn_context=_turn("char_a")

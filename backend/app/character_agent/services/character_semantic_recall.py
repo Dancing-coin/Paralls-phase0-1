@@ -170,7 +170,12 @@ class CharacterSemanticRecallService:
             expected_digest = "scope:" + hashlib.sha256(canonical.encode()).hexdigest()
             if getattr(result, "scope_digest", expected_digest) != expected_digest: return False, "stale_read_set"
         rv = self._revision_map(getattr(result, "revision_vector", None)); pins = self._revision_map(turn.memory_revision_vector)
-        if any(k not in pins or pins[k] < v for k, v in rv.items()): return False, "stale_read_set"
+        graph_streams = {"node_revision", "relation_revision", "source_revision", "policy_revision", "branch_revision"}
+        explicit_pins = graph_streams.intersection(pins)
+        if explicit_pins:
+            if any(k not in pins or pins[k] < v for k, v in rv.items()): return False, "stale_read_set"
+        elif set(pins) - {"memory"}:
+            return False, "stale_read_set"
         for node in getattr(result, "nodes", []) or []:
             scope = getattr(node, "scope", None); validity = getattr(node, "validity", None); metadata = getattr(node, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
