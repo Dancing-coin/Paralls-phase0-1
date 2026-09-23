@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from collections.abc import Mapping
+from copy import deepcopy
+import hashlib
+import json
 from typing import Literal
 
 from app.character_agent.models.turn_context import CharacterTurnContext
@@ -45,46 +48,45 @@ class CharacterTurnRecoveryService:
             return self._mark_missing_snapshot(actor_id)
         if not self._snapshot_valid(snapshot):
             return self._mark_missing_snapshot(actor_id, snapshot=snapshot, reason="snapshot_invalid")
-        try:
-            timeline = self._timeline(snapshot, actor_id)
-        except ValueError:
-            return self._mark_missing_snapshot(actor_id, snapshot=snapshot, reason="timeline_invalid")
-        contexts = self._pending_contexts(snapshot, actor_id)
-        if not contexts:
-            if not isinstance(snapshot.get("active_turns"), dict):
-                return self._mark_missing_snapshot(actor_id, snapshot=snapshot, reason="active_turns_invalid")
-            return CharacterTurnRecoveryResult("no_pending_turn", actor_id)
-        for context in contexts:
-            if context.lifecycle == "recovery_required":
-                return CharacterTurnRecoveryResult("recovery_required", actor_id, context.turn_id, "recovery_required")
-        for candidate in contexts:
-            if not self._valid_context_timeline(candidate, timeline):
-                return self._mark_recovery_required(candidate, timeline, "turn_timeline_invalid")
-        for context in contexts:
-            if context.lifecycle != "awaiting_settlement":
-                continue
+        while True:
+            snapshot = self._continuity_store.read_snapshot(actor_id) or snapshot
+            if not self._snapshot_valid(snapshot):
+                return self._mark_missing_snapshot(actor_id, snapshot=snapshot, reason="snapshot_invalid")
+            try:
+                timeline = self._timeline(snapshot, actor_id)
+                contexts = self._pending_contexts(snapshot, actor_id)
+            except ValueError as exc:
+                reason = "active_turns_invalid" if "active_turns" in str(exc) else "timeline_invalid"
+                return self._mark_missing_snapshot(actor_id, snapshot=snapshot, reason=reason)
+            if not contexts:
+                if not isinstance(snapshot.get("active_turns"), dict):
+                    return self._mark_missing_snapshot(actor_id, snapshot=snapshot, reason="active_turns_invalid")
+                return CharacterTurnRecoveryResult("no_pending_turn", actor_id)
+            for context in contexts:
+                if context.lifecycle == "recovery_required":
+                    return CharacterTurnRecoveryResult("recovery_required", actor_id, context.turn_id, "recovery_required")
+            for candidate in contexts:
+                if not self._valid_context_timeline(candidate, timeline):
+                    return self._mark_recovery_required(candidate, timeline, "turn_timeline_invalid", snapshot=snapshot)
+            awaiting = [item for item in contexts if item.lifecycle == "awaiting_settlement"]
+            if not awaiting:
+                committed = next((item for item in reversed(contexts) if item.lifecycle == "committed"), None)
+                if committed is not None:
+                    return CharacterTurnRecoveryResult("already_committed", actor_id, committed.turn_id)
+                context = contexts[-1]
+                return CharacterTurnRecoveryResult("resumed", actor_id, context.turn_id)
+            context = awaiting[0]
             pending = self._pending_execution(snapshot, context)
             if pending is None:
-                return self._mark_recovery_required(context, timeline, "pending_execution_invalid")
+                return self._mark_recovery_required(context, timeline, "pending_execution_invalid", snapshot=snapshot)
             receipt = self._authority_receipt_for(pending, timeline)
             if receipt is None:
-                return self._mark_recovery_required(context, timeline, "authority_receipt_missing")
-            result = self._commit_original_turn(context, receipt, snapshot=snapshot)
+                return self._mark_recovery_required(context, timeline, "authority_receipt_missing", snapshot=snapshot)
+            result = self._commit_original_turn(context, receipt, snapshot=snapshot, timeline=timeline)
             if result.status != "already_committed":
                 return result
-        committed = next((item for item in reversed(contexts) if item.lifecycle == "committed"), None)
-        if committed is not None:
-            return CharacterTurnRecoveryResult("already_committed", actor_id, committed.turn_id)
-        context = contexts[-1]
-        if context.lifecycle == "recovery_required":
-            return CharacterTurnRecoveryResult(
-                "recovery_required", actor_id, context.turn_id, "recovery_required"
-            )
-        if context.lifecycle == "committed":
-            return CharacterTurnRecoveryResult("already_committed", actor_id, context.turn_id)
-        if context.lifecycle != "awaiting_settlement":
-            return CharacterTurnRecoveryResult("resumed", actor_id, context.turn_id)
-        return CharacterTurnRecoveryResult("resumed", actor_id, context.turn_id)
+            # Reload the complete snapshot/timeline before touching the next pending turn.
+            # This prevents a stale active_turns map from overwriting prior commits.
 
     @staticmethod
     def _snapshot_valid(snapshot: dict[str, object]) -> bool:
@@ -98,11 +100,7 @@ class CharacterTurnRecoveryService:
             return False
         if not isinstance(snapshot.get("graph_source_event_ref"), str):
             return False
-        import hashlib, json
-        expected = "sha256:" + hashlib.sha256(
-            json.dumps({k: v for k, v in snapshot.items() if k not in {"snapshot_digest", "_continuity_source_event_ref"}}, sort_keys=True, separators=(",", ":"), default=str).encode()
-        ).hexdigest()
-        return digest == expected
+        return digest == CharacterTurnRecoveryService._snapshot_digest(snapshot)
 
     def _timeline(
         self, snapshot: dict[str, object], actor_id: str
@@ -110,22 +108,28 @@ class CharacterTurnRecoveryService:
         checkpoint = snapshot.get("session_timeline", [])
         if not isinstance(checkpoint, list):
             raise ValueError("timeline_invalid")
+        local = self._session_store.list_events(actor_id)
+        checkpoint = self._validate_timeline_source(checkpoint, actor_id)
+        local = self._validate_timeline_source(local, actor_id)
+        return self._merge_appended_events(checkpoint, local)
+
+    @staticmethod
+    def _validate_timeline_source(source: list[object], actor_id: str) -> list[dict[str, object]]:
         events: list[dict[str, object]] = []
-        event_ids: set[str] = set()
-        for source in (checkpoint, self._session_store.list_events(actor_id)):
-            for event in source:
-                if not isinstance(event, dict):
-                    raise ValueError("timeline_invalid")
-                event_id = event.get("event_id")
-                if not isinstance(event_id, str) or not event_id:
-                    raise ValueError("timeline_invalid")
-                if event_id in event_ids:
-                    prior = next(item for item in events if item.get("event_id") == event_id)
-                    if prior != event:
-                        raise ValueError("timeline_duplicate_conflict")
-                    continue
-                events.append(event)
-                event_ids.add(event_id)
+        seen: set[str] = set()
+        for event in source:
+            if not isinstance(event, dict):
+                raise ValueError("timeline_invalid")
+            event_id = event.get("event_id")
+            if not isinstance(event_id, str) or not event_id or event_id in seen:
+                raise ValueError("timeline_duplicate_conflict" if event_id in seen else "timeline_invalid")
+            if event.get("actor_id") != actor_id:
+                raise ValueError("timeline_invalid")
+            event_index = event.get("event_index")
+            if not isinstance(event_index, int) or isinstance(event_index, bool) or event_index < 1:
+                raise ValueError("timeline_invalid")
+            seen.add(event_id)
+            events.append(deepcopy(event))
         return events
 
     def _pending_contexts(
@@ -133,21 +137,22 @@ class CharacterTurnRecoveryService:
         snapshot: dict[str, object],
         actor_id: str,
     ) -> list[CharacterTurnContext]:
-        active = snapshot.get("active_turns", {})
+        active = snapshot.get("active_turns")
         if not isinstance(active, dict):
-            return []
+            raise ValueError("active_turns_invalid")
         contexts: list[CharacterTurnContext] = []
-        for raw in active.values():
-            if not isinstance(raw, dict):
-                continue
+        for turn_id, raw in active.items():
+            if not isinstance(turn_id, str) or not turn_id or not isinstance(raw, dict):
+                raise ValueError("active_turns_invalid")
             try:
                 context = CharacterTurnContext.model_validate(
                     self._normalize_context_payload(raw)
                 )
-            except ValueError:
-                continue
-            if context.actor_id == actor_id:
-                contexts.append(context)
+            except (TypeError, ValueError) as exc:
+                raise ValueError("active_turns_invalid") from exc
+            if context.actor_id != actor_id or context.turn_id != turn_id:
+                raise ValueError("active_turns_invalid")
+            contexts.append(context)
         return sorted(
             [item for item in contexts if item.lifecycle in {"awaiting_settlement", "recovery_required", "committed"}],
             key=lambda item: (item.producer_ts, item.turn_id),
@@ -158,12 +163,15 @@ class CharacterTurnRecoveryService:
         normalized = dict(raw)
         for field in ("stage_refs", "stage_idempotency_keys", "stage_events"):
             value = raw.get(field)
-            if isinstance(value, dict):
-                normalized[field] = {
-                    stage: value[stage]
-                    for stage in BEHAVIOR_TURN_STAGE_ORDER
-                    if stage in value
-                }
+            if not isinstance(value, dict):
+                continue
+            if any(stage not in BEHAVIOR_TURN_STAGE_ORDER for stage in value):
+                raise ValueError("active_turns_invalid")
+            normalized[field] = {
+                stage: value[stage]
+                for stage in BEHAVIOR_TURN_STAGE_ORDER
+                if stage in value
+            }
         return normalized
 
     @staticmethod
@@ -291,7 +299,12 @@ class CharacterTurnRecoveryService:
         return None
 
     def _commit_original_turn(
-        self, context: CharacterTurnContext, receipt: dict[str, object], *, snapshot: dict[str, object]
+        self,
+        context: CharacterTurnContext,
+        receipt: dict[str, object],
+        *,
+        snapshot: dict[str, object],
+        timeline: list[dict[str, object]],
     ) -> CharacterTurnRecoveryResult:
         for stage, payload in (
             ("settlement", receipt),
@@ -304,7 +317,7 @@ class CharacterTurnRecoveryService:
                 payload=payload,
                 producer_ts=int(receipt.get("producer_ts", 0) or 0),
             )
-        self._persist_context_snapshot(snapshot, context)
+        self._persist_context_snapshot(snapshot, context, timeline=timeline)
         return CharacterTurnRecoveryResult(
             "already_committed", context.actor_id, context.turn_id
         )
@@ -314,6 +327,8 @@ class CharacterTurnRecoveryService:
         context: CharacterTurnContext,
         timeline: list[dict[str, object]],
         reason: str,
+        *,
+        snapshot: dict[str, object],
     ) -> CharacterTurnRecoveryResult:
         try:
             updated = context.transition(
@@ -325,49 +340,52 @@ class CharacterTurnRecoveryService:
             )
         except ValueError:
             updated = context
-        if self._session_store.event_count(context.actor_id) >= len(timeline):
-            execution = context.stage_events.get("execution")
-            self._session_store.append_event(
-                actor_id=context.actor_id,
-                event_type="character_turn_lifecycle_transition",
-                producer_ts=max(
-                    (int(event.get("producer_ts", 0) or 0) for event in timeline),
-                    default=context.producer_ts,
-                ),
-                expected_revision=self._session_store.event_count(context.actor_id),
-                payload={
-                    "turn_id": context.turn_id,
-                    "transition": {
-                        "from_lifecycle": context.lifecycle,
-                        "to_lifecycle": "recovery_required",
-                        "transition_ref": f"recovery:{context.turn_id}",
-                        "idempotency_key": f"recovery:{context.turn_id}:{reason}",
-                        "producer_ts": max((int(event.get("producer_ts", 0) or 0) for event in timeline), default=context.producer_ts),
-                        "payload": {"reason": reason},
-                    },
-                    "authority_request_ref": (
-                        execution.payload.get("authority_request_ref", "")
-                        if execution is not None
-                        else ""
-                    ),
-                    "reason": reason,
+        execution = context.stage_events.get("execution")
+        self._session_store.append_event(
+            actor_id=context.actor_id,
+            event_type="character_turn_lifecycle_transition",
+            producer_ts=max(
+                (int(event.get("producer_ts", 0) or 0) for event in timeline),
+                default=context.producer_ts,
+            ),
+            expected_revision=self._session_store.event_count(context.actor_id),
+            payload={
+                "turn_id": context.turn_id,
+                "transition": {
+                    "from_lifecycle": context.lifecycle,
+                    "to_lifecycle": "recovery_required",
+                    "transition_ref": f"recovery:{context.turn_id}",
+                    "idempotency_key": f"recovery:{context.turn_id}:{reason}",
+                    "producer_ts": max((int(event.get("producer_ts", 0) or 0) for event in timeline), default=context.producer_ts),
+                    "payload": {"reason": reason},
                 },
-            )
-        self._persist_context_snapshot(self._continuity_store.read_snapshot(context.actor_id) or {}, updated)
+                "authority_request_ref": (
+                    execution.payload.get("authority_request_ref", "")
+                    if execution is not None
+                    else ""
+                ),
+                "reason": reason,
+            },
+        )
+        self._persist_context_snapshot(snapshot, updated, timeline=timeline)
         return CharacterTurnRecoveryResult(
             "recovery_required", context.actor_id, context.turn_id, reason
         )
 
     def _mark_missing_snapshot(self, actor_id: str, *, snapshot: dict[str, object] | None = None, reason: str = "snapshot_missing") -> CharacterTurnRecoveryResult:
         events = self._session_store.list_events(actor_id)
-        if events:
-            audit = self._session_store.append_event(
-                actor_id=actor_id,
-                event_type="character_turn_recovery_required",
-                producer_ts=int(events[-1].get("producer_ts", 0) or 0),
-                expected_revision=self._session_store.event_count(actor_id),
-                payload={"reason": reason},
-            )
+        producer_ts = max(
+            (int(event.get("producer_ts", 0) or 0) for event in events),
+            default=0,
+        )
+        audit = self._session_store.append_event(
+            actor_id=actor_id,
+            event_type="character_turn_recovery_required",
+            producer_ts=producer_ts,
+            expected_revision=self._session_store.event_count(actor_id),
+            payload={"reason": reason},
+        )
+        if audit:
             base = dict(snapshot or {})
             base.setdefault("working_memory", {})
             base.setdefault("dynamic_state", {})
@@ -383,7 +401,12 @@ class CharacterTurnRecoveryService:
             base.setdefault("seed_projection", {})
             base.setdefault("shared_module_state", {})
             base["schema_version"] = 2
-            base["session_timeline"] = self._session_store.list_events(actor_id)
+            try:
+                base["session_timeline"] = self._timeline(base, actor_id)
+            except ValueError:
+                base["session_timeline"] = self._reindexed_timeline(
+                    self._session_store.list_events(actor_id)
+                )
             base["session_timeline_checkpoint_index"] = len(base["session_timeline"])
             base["checkpoint_event_index"] = len(base["session_timeline"])
             base["graph_source_event_ref"] = str(audit["event_id"])
@@ -391,9 +414,8 @@ class CharacterTurnRecoveryService:
             base["pending_execution"] = base.get("pending_execution", {}) if isinstance(base.get("pending_execution"), dict) else {}
             base["policy_state"] = {"execution_blocked": True, "recovery_reason": reason}
             base["last_committed_turn_id"] = base.get("last_committed_turn_id")
-            base["snapshot_digest"] = "sha256:" + __import__("hashlib").sha256(
-                __import__("json").dumps({k: v for k, v in base.items() if k != "_continuity_source_event_ref"}, sort_keys=True, separators=(",", ":"), default=str).encode()
-            ).hexdigest()
+            base.pop("_continuity_source_event_ref", None)
+            base["snapshot_digest"] = self._snapshot_digest(base)
             self._continuity_store.write_snapshot(
                 actor_id=actor_id,
                 producer_ts=int(audit.get("producer_ts", 0) or 0),
@@ -402,7 +424,13 @@ class CharacterTurnRecoveryService:
             )
         return CharacterTurnRecoveryResult("recovery_required", actor_id, reason=reason)
 
-    def _persist_context_snapshot(self, snapshot: dict[str, object], context: CharacterTurnContext) -> None:
+    def _persist_context_snapshot(
+        self,
+        snapshot: dict[str, object],
+        context: CharacterTurnContext,
+        *,
+        timeline: list[dict[str, object]],
+    ) -> None:
         if not snapshot:
             return
         active = dict(snapshot.get("active_turns", {}))
@@ -417,11 +445,70 @@ class CharacterTurnRecoveryService:
         policy = dict(updated.get("policy_state", {}))
         policy["execution_blocked"] = context.lifecycle == "recovery_required"
         updated["policy_state"] = policy
-        updated["snapshot_digest"] = "sha256:" + __import__("hashlib").sha256(
-            __import__("json").dumps({k: v for k, v in updated.items() if k not in {"snapshot_digest", "_continuity_source_event_ref"}}, sort_keys=True, separators=(",", ":"), default=str).encode()
+        updated_timeline = self._merge_appended_events(
+            timeline, self._session_store.list_events(context.actor_id)
+        )
+        updated["session_timeline"] = updated_timeline
+        updated["checkpoint_event_index"] = len(updated_timeline)
+        updated["session_timeline_checkpoint_index"] = len(updated_timeline)
+        source = str(updated_timeline[-1]["event_id"])
+        updated["graph_source_event_ref"] = source
+        updated.pop("_continuity_source_event_ref", None)
+        updated["snapshot_digest"] = self._snapshot_digest(updated)
+        self._continuity_store.write_snapshot(
+            actor_id=context.actor_id,
+            producer_ts=max(
+                (int(event.get("producer_ts", 0) or 0) for event in updated_timeline),
+                default=context.producer_ts,
+            ),
+            source_event_ref=source,
+            snapshot=updated,
+        )
+
+    @staticmethod
+    def _merge_appended_events(
+        timeline: list[dict[str, object]], local_events: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
+        merged = [deepcopy(event) for event in timeline]
+        by_id = {str(event["event_id"]): event for event in merged}
+        for event in local_events:
+            event_id = str(event.get("event_id", "") or "")
+            existing = by_id.get(event_id)
+            if existing is not None:
+                comparable = dict(existing)
+                comparable["event_index"] = event.get("event_index")
+                if comparable != event:
+                    raise ValueError("timeline_duplicate_conflict")
+                continue
+            appended = deepcopy(event)
+            appended["event_index"] = len(merged) + 1
+            merged.append(appended)
+            by_id[event_id] = appended
+        return merged
+
+    @staticmethod
+    def _reindexed_timeline(events: list[dict[str, object]]) -> list[dict[str, object]]:
+        return [
+            {**deepcopy(event), "event_index": index}
+            for index, event in enumerate(events, start=1)
+        ]
+
+    @staticmethod
+    def _snapshot_digest(snapshot: dict[str, object]) -> str:
+        canonical = {
+            key: value
+            for key, value in snapshot.items()
+            if key not in {"snapshot_digest", "_continuity_source_event_ref"}
+        }
+        return "sha256:" + hashlib.sha256(
+            json.dumps(
+                canonical,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
         ).hexdigest()
-        source = f"recovery:{context.turn_id}:{context.lifecycle}"
-        self._continuity_store.write_snapshot(actor_id=context.actor_id, producer_ts=context.producer_ts, source_event_ref=source, snapshot=updated)
 
 
 __all__ = [

@@ -47,3 +47,18 @@ Verification:
 `python -m pytest backend/tests/test_character_turn_recovery.py backend/tests/test_character_graph_continuity_store.py backend/tests/test_character_agent_runtime_persistence_wiring.py -q`
 
 Result: **12 passed** (4 expected FastAPI deprecation warnings).
+
+## Fix round 3
+
+Closed the four remaining re-review findings:
+
+- malformed `active_turns` entries now produce a durable blocked recovery checkpoint;
+- duplicate event IDs are rejected within either persisted timeline source, even when payloads are identical;
+- multiple awaiting-settlement turns reload the complete snapshot and timeline after each commit so one update cannot overwrite another;
+- commit and recovery checkpoints now include newly appended session events, advance both checkpoint indexes, and survive a second graph-only restart.
+
+Focused verification command:
+
+`python -m pytest backend/tests/test_character_turn_recovery.py backend/tests/test_character_graph_continuity_store.py backend/tests/test_character_agent_runtime_persistence_wiring.py -q`
+
+Result: **15 passed** (4 expected FastAPI deprecation warnings).
