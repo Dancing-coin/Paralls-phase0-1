@@ -31,8 +31,8 @@ def export_gameplay(database: Path, target: Path):
             batch = load_durable_json(raw)
             # SQL索引与原事件体必须同一事实；不能只复制transactions而漏掉原events损坏。
             for event in batch["events"]:
-                row = connection.execute("SELECT global_sequence,event_id,stream_id,stream_revision,transaction_id,value FROM events WHERE event_id=?", (event["event_id"],)).fetchone()
-                if row is None or row[:5] != tuple(event[name] for name in ("global_sequence", "event_id", "stream_id", "stream_revision", "transaction_id")) or json.loads(row[5]) != event:
+                row = connection.execute("SELECT global_sequence,event_id,stream_id,stream_revision,transaction_id,COALESCE(full_value,value) FROM events WHERE event_id=?", (event["event_id"],)).fetchone()
+                if row is None or row[:5] != tuple(event[name] for name in ("global_sequence", "event_id", "stream_id", "stream_revision", "transaction_id")) or load_durable_json(row[5]) != event:
                     raise ValueError("mixed_authority_event_index_mismatch")
             outbox = []
             for row in connection.execute("SELECT id,delivery_state,topic,global_sequence,transaction_id,event_id,value FROM outbox WHERE transaction_id=? ORDER BY id", (transaction,)):

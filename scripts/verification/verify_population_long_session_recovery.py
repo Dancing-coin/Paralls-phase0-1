@@ -339,13 +339,20 @@ def authority_digest(database: Path) -> str:
     result = hashlib.sha256()
     json_columns = {"transactions": (1, 2), "outbox": (1,)}
     with sqlite3.connect(database.as_uri() + "?mode=ro", uri=True) as connection:
+        event_value = ("COALESCE(full_value,value)" if "full_value" in
+                       {row[1] for row in connection.execute("PRAGMA table_info(events)")} else "value")
         for table, order in (("events", "global_sequence"), ("transactions", "sequence"),
                              ("outbox", "id"), ("stream_heads", "stream_id"), ("metadata", "key")):
             result.update(table.encode())
-            for row in connection.execute(f"SELECT * FROM {table} ORDER BY {order}"):
+            query = (f"SELECT global_sequence,event_id,stream_id,stream_revision,transaction_id,{event_value} "
+                     f"FROM events ORDER BY {order}" if table == "events" else
+                     f"SELECT * FROM {table} ORDER BY {order}")
+            for row in connection.execute(query):
                 row = list(row)
-                for index in json_columns.get(table, ()):
+                for index in ((5,) if table == "events" else json_columns.get(table, ())):
                     row[index] = decode_durable_json(row[index])
+                if table == "metadata" and row[0] == "schema":
+                    row[1] = "logical-gameplay-ledger"
                 result.update(json.dumps(row, separators=(",", ":"), ensure_ascii=False).encode("utf-8"))
                 result.update(b"\n")
     return "sha256:" + result.hexdigest()

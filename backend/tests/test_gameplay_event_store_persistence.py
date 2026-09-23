@@ -228,7 +228,11 @@ def test_durable_store_compresses_non_query_json_without_changing_logical_snapsh
         ).fetchone() == ("blob", "blob")
         assert connection.execute("SELECT typeof(value) FROM outbox").fetchone() == ("blob",)
         assert connection.execute("SELECT typeof(value) FROM checkpoints").fetchone() == ("blob",)
-        assert connection.execute("SELECT typeof(value) FROM events").fetchone() == ("text",)
+        event_row = connection.execute(
+            "SELECT typeof(value), value, typeof(full_value), full_value FROM events"
+        ).fetchone()
+        assert event_row[:3] == ("text", '{"event_type":"gameplay.session_reserved"}', "blob")
+        assert json.loads(decode_durable_json(event_row[3]))["event_id"] == "evt:session:reserved"
 
     restored = DurableGameplayEventStore(path)
     assert restored.export_snapshot() == expected
@@ -249,10 +253,20 @@ def test_durable_store_compresses_non_query_json_without_changing_logical_snapsh
                     f"UPDATE {table} SET {column}=? WHERE rowid=?",
                     ((decode_durable_json(value), rowid) for rowid, value in rows),
                 )
+        event_rows = connection.execute("SELECT rowid, full_value FROM events").fetchall()
+        connection.executemany(
+            "UPDATE events SET value=? WHERE rowid=?",
+            ((decode_durable_json(value), rowid) for rowid, value in event_rows),
+        )
+        connection.execute("ALTER TABLE events DROP COLUMN full_value")
+        connection.execute("UPDATE metadata SET value='2' WHERE key='schema'")
 
     legacy = DurableGameplayEventStore(path)
     assert legacy.export_snapshot() == expected
     legacy.audit()
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone() == ("3",)
+        assert connection.execute("SELECT typeof(full_value) FROM events").fetchone() == ("null",)
 
 
 def test_durable_updates_never_copy_history_and_legacy_snapshot_migrates(tmp_path, monkeypatch):
