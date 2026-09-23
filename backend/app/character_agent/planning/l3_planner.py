@@ -2,6 +2,8 @@ from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import CharacterHigherOrderDelta
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MissingRequiredMemoryEvidence
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 from app.character_agent.models.cognition_delta import CharacterBeliefDelta
 from app.character_agent.models.cognition_delta import CharacterSocialDelta
 from app.character_agent.models.event_memory import CharacterEventMemoryRecord
@@ -24,10 +26,12 @@ class CharacterAgentL3Service:
         self,
         gateway: CharacterModelGateway | None = None,
         memory_recall_policy: CharacterMemoryRecallPolicy | None = None,
+        semantic_recall_service: CharacterSemanticRecallService | None = None,
     ) -> None:
         self._gateway = gateway or CharacterModelGateway()
         self._triple_filter = CharacterTripleFilter()
         self._memory_recall_policy = memory_recall_policy or CharacterMemoryRecallPolicy()
+        self._semantic_recall_service = semantic_recall_service
 
     def build_intent_plan(
         self,
@@ -48,6 +52,7 @@ class CharacterAgentL3Service:
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
         behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -81,6 +86,23 @@ class CharacterAgentL3Service:
         )
         if recall.metadata.get("missing_required_refs"):
             raise MissingRequiredMemoryEvidence(list(recall.metadata["missing_required_refs"]))
+        semantic_recall = None
+        if self._semantic_recall_service is not None and turn_context is not None:
+            semantic_context = {
+                "actor_id": interpretation.actor_id,
+                "snapshot": normalized_snapshot,
+                "interpretation": interpretation.model_dump(),
+                "current_goal_state": normalized_current_goal_state,
+                "memory": normalized_memory_bundle,
+                "profile": normalized_profile,
+                "effective_profile": normalized_effective_profile,
+            }
+            semantic_recall = self._semantic_recall_service.select(
+                interpretation.actor_id, semantic_context, turn_context=turn_context
+            )
+            recall_metadata = dict(recall.metadata)
+            recall_metadata.update(semantic_recall.metadata)
+            recall = recall.__class__(memory=recall.memory, metadata=recall_metadata)
         recalled_memory_bundle = self._memory_record_bundle_model(recall.memory)
         verification = self._verification_context(
             interpretation, normalized_snapshot, recall.memory, normalized_effective_profile,
@@ -128,6 +150,7 @@ class CharacterAgentL3Service:
                 "snapshot": normalized_snapshot,
                 "memory": recall.memory,
                 "memory_recall": recall.metadata,
+                **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
                 "verification": verification,
                 "behavior_policy": behavior_policy,
                 "working_memory_state": normalized_working_memory_state,
@@ -184,6 +207,7 @@ class CharacterAgentL3Service:
             "candidates": candidates,
             "filter_results": filter_results,
             "memory_recall": recall.metadata,
+            **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
             "verification": verification,
             "behavior_policy": behavior_policy,
         }
