@@ -204,6 +204,22 @@ def test_terminal_and_recovery_transitions_are_closed_and_receipt_is_pinned() ->
         recovery.transition(
             "recovery_required",
             transition_ref="recovery:1",
+            idempotency_key="recovery:key:changed",
+            producer_ts=3,
+            payload={"reason": "receipt_missing"},
+        )
+    with pytest.raises(TurnLifecycleError, match="idempotency payload mismatch"):
+        recovery.transition(
+            "recovery_required",
+            transition_ref="recovery:changed",
+            idempotency_key="recovery:key:1",
+            producer_ts=3,
+            payload={"reason": "receipt_missing"},
+        )
+    with pytest.raises(TurnLifecycleError, match="idempotency payload mismatch"):
+        recovery.transition(
+            "recovery_required",
+            transition_ref="recovery:1",
             idempotency_key="recovery:key:1",
             producer_ts=3,
             payload={"reason": "changed"},
