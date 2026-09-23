@@ -55,6 +55,31 @@ def test_policy_consumption_is_idempotent_across_restart(tmp_path: Path) -> None
     assert replay.record.consumed_count == 1
 
 
+def test_duplicate_consumption_requires_exact_linkage(tmp_path: Path) -> None:
+    store = BehaviorPolicyStore(tmp_path)
+    policy = store.propose(recovery_policy(actor_id="char_b", max_consumptions=2, expires_at=300))
+    first = store.consume(
+        "char_b", policy.policy_id, "turn:char_b:2", now=200,
+        branch_id="branch:main", causation_id="cause:turn:2", correlation_id="corr:turn:2",
+    )
+
+    replay = store.consume(
+        "char_b", policy.policy_id, "turn:char_b:2", now=200,
+        branch_id="branch:main", causation_id="cause:turn:2", correlation_id="corr:turn:2",
+    )
+    mismatch = store.consume(
+        "char_b", policy.policy_id, "turn:char_b:2", now=200,
+        branch_id="branch:other", causation_id="cause:turn:2", correlation_id="corr:turn:2",
+    )
+    missing = store.consume("char_b", policy.policy_id, "turn:char_b:2", now=200)
+
+    assert first.applied is True
+    assert replay.replayed is True and replay.applied is True
+    assert mismatch.applied is False and mismatch.replayed is False and mismatch.reason == "linkage_conflict"
+    assert missing.applied is False and missing.replayed is False and missing.reason == "missing_linkage"
+    assert store.get("char_b", policy.policy_id).consumed_count == 1
+
+
 def test_policy_store_rejects_cross_actor_and_altered_idempotency_payload(tmp_path: Path) -> None:
     store = BehaviorPolicyStore(tmp_path)
     policy = store.propose(

@@ -164,7 +164,15 @@ class BehaviorPolicyStore:
             if not branch_id or not causation_id or not correlation_id:
                 return BehaviorPolicyConsumption(record=record, applied=False, reason="missing_linkage")
             if turn_id in record.consumed_turn_ids:
-                return BehaviorPolicyConsumption(record=record, applied=True, replayed=True)
+                link = record.consumption_links.get(turn_id)
+                if (
+                    isinstance(link, dict)
+                    and link.get("branch_id") == branch_id
+                    and link.get("causation_id") == causation_id
+                    and link.get("correlation_id") == correlation_id
+                ):
+                    return BehaviorPolicyConsumption(record=record, applied=True, replayed=True)
+                return BehaviorPolicyConsumption(record=record, applied=False, reason="linkage_conflict")
             if now >= record.expires_at:
                 if record.status != "expired":
                     record = self._transition(record, status="expired", now=now, action="expired")

@@ -3030,11 +3030,25 @@ class CharacterAgentRuntime:
             canonical_correlation_id = str(settlement_payload.get("correlation_id", "") or "")
             if not all((canonical_turn_id, canonical_branch_id, canonical_causation_id, canonical_correlation_id)):
                 return evaluation
+            raw_source_revision = settlement_event.get("event_index")
+            if not isinstance(raw_source_revision, int) or isinstance(raw_source_revision, bool) or raw_source_revision < 1:
+                return evaluation
+            canonical_source_revision = raw_source_revision
+            supplied_source_revision = settlement_payload.get("source_revision")
+            if supplied_source_revision is not None:
+                if (
+                    not isinstance(supplied_source_revision, int)
+                    or isinstance(supplied_source_revision, bool)
+                    or supplied_source_revision != canonical_source_revision
+                ):
+                    return evaluation
             timeline = self.get_session_timeline(actor_id)
-            canonical_source_revision = int(
-                settlement_payload.get("source_revision", len(timeline)) or len(timeline)
-            )
-            if canonical_source_revision != len(timeline):
+            if not any(
+                isinstance(event, dict)
+                and event.get("event_id") == settlement_event.get("event_id")
+                and event.get("event_index") == canonical_source_revision
+                for event in timeline
+            ):
                 return evaluation
             canonical_valid_at = int(
                 settlement_payload.get("valid_at", settlement_event.get("producer_ts", producer_ts))

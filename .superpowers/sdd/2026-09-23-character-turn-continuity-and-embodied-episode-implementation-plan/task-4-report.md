@@ -117,3 +117,26 @@ python -m pytest backend/tests/test_behavior_policy_lifecycle.py backend/tests/t
 ```
 
 Result: **97 passed, 4 pre-existing FastAPI deprecation warnings in 4.18s**.
+
+## Fix round 3
+
+Addressed the final rereview issues:
+
+1. Policy `source_revision` now comes exclusively from the persisted settlement event's positive canonical `event_index`. A supplied settlement `source_revision` must match exactly; omitted/invalid event index and mismatches are rejected without policy admission. The regression suite verifies the valid pre-evaluation event index and both mismatch and missing-index cases.
+2. Duplicate consumption replay now compares supplied branch, causation, and correlation IDs with the durable consumption link. Exact linkage returns an idempotent replay; missing or mismatched linkage returns a policy-inert conflict without writing.
+
+Verification command:
+
+```text
+python -m pytest backend/tests/test_behavior_policy_lifecycle.py backend/tests/test_character_behavior_evaluation.py backend/tests/test_character_agent_l3_planning.py -q
+```
+
+Result: **72 passed in 1.98s**.
+
+Additional covering command:
+
+```text
+python -m pytest backend/tests/test_behavior_policy_lifecycle.py backend/tests/test_character_behavior_evaluation.py backend/tests/test_character_agent_l3_planning.py backend/tests/test_character_turn_recovery.py backend/tests/test_character_graph_continuity_store.py backend/tests/test_character_memory_recall_policy.py -q
+```
+
+Result: **100 passed, 4 pre-existing FastAPI deprecation warnings in 4.35s**.
