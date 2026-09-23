@@ -177,7 +177,7 @@ class CharacterSemanticRecallService:
             scope = getattr(relation, "scope", None); validity = getattr(relation, "validity", None); metadata = getattr(relation, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
-            if metadata and getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision: return False, "stale_read_set"
+            if metadata and (getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision or getattr(metadata, "scope_digest", "scope:actor-private") != "scope:actor-private"): return False, "stale_read_set"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(relation, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
         node_refs = {self._canonical_ref(self._node_ref(node)) for node in getattr(result, "nodes", []) or []}

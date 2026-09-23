@@ -54,3 +54,7 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 
 - Added shared graph query/result budgets, exact actor-private scope handling, actor-scoped raw memory admission, source-ref/source-event query support, and relation-to-card association filtering.
 - Dedicated semantic recall suite now reports 19 passing tests; compileall and diff-check pass.
+
+### Final relation/light-actor closure
+
+- Relation semantic metadata now requires the canonical actor-private scope digest; added relation mismatch and light-actor no-graph regressions.
