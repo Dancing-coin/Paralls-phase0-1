@@ -21,3 +21,10 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 - Added `backend/tests/test_character_semantic_recall.py`.
 - Exact focused output: `17 passed` for semantic recall plus memory policy tests.
 - `git diff --check` passed.
+
+## Fix round 2
+
+- Forwarded canonical turn context through L3 selection and self-body/Siming L2 paths; semantic cards are now passed as bounded read-only gateway context.
+- Exposed graph/scope seams through `CharacterMemoryStoreRouter`, with actor-aware scope handling for light stores.
+- Corrected graph visibility enum values to `actor_private`, `public`, and `branch_only`.
+- Verification: `python -m compileall -q backend/app/character_agent` passed; focused semantic/policy/L3 tests: 71 passed; `git diff --check` passed.

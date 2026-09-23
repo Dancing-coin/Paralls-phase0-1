@@ -128,9 +128,11 @@ class CharacterSemanticRecallService:
     def _reader_context(self, turn: CharacterTurnContext) -> GraphReaderContext | None:
         if not self._scope_resolver or not turn.branch_id: return None
         scope = self._scope_resolver(turn.actor_id)
+        if scope is None:
+            return None
         if scope.owner_actor_id not in (None, turn.actor_id) or scope.story_branch_id != turn.branch_id:
             raise ValueError("semantic recall scope does not match canonical turn")
-        return GraphReaderContext(reader_principal=turn.actor_id, allowed_visibility_scopes=("actor_private", "project", "world"),
+        return GraphReaderContext(reader_principal=turn.actor_id, allowed_visibility_scopes=("actor_private", "public", "branch_only"),
             world_id=scope.world_id, session_id=scope.session_id, story_branch_id=turn.branch_id,
             valid_at=turn.valid_at, recorded_at=turn.producer_ts, policy_revision=turn.policy_revision)
 
@@ -139,7 +141,7 @@ class CharacterSemanticRecallService:
         seeds = [self._node_id(ref) for ref in cards]
         yield "behavior", BehaviorTurnQuery(**kw, turn_id=turn.turn_id, correlation_id=turn.correlation_id, actor_id=actor)
         yield "causal", CausalPathQuery(**kw, seed_node_ids=seeds, max_depth=2, node_limit=self._max_graph_results, relation_limit=self._max_graph_results * 2, max_paths=20)
-        yield "perspective", PerspectiveQuery(**kw, actor_ref=actor, visibility_scopes=["actor_private", "project", "world"])
+        yield "perspective", PerspectiveQuery(**kw, actor_ref=actor, visibility_scopes=["actor_private", "public", "branch_only"])
         for card in cards.values():
             claim = card.payload.get("claim") if isinstance(card.payload, Mapping) else None
             if isinstance(claim, Mapping) and claim.get("subject_ref"):

@@ -21,6 +21,14 @@ class CharacterMemoryStoreRouter:
     def _store_for(self, actor_id: str) -> CharacterMemoryStorePort:
         return self._graph if actor_id in self._heavy_actor_ids else self._light
 
+    @property
+    def graph(self):
+        return getattr(self._graph, "graph", None)
+
+    def scope_for_actor(self, actor_id: str):
+        resolver = getattr(self._store_for(actor_id), "_scope_for_actor", None)
+        return resolver(actor_id) if resolver is not None else None
+
     def write_event(self, event: dict[str, object]) -> None:
         self._store_for(str(event.get("actor_id", "") or "")).write_event(event)
 

@@ -151,6 +151,7 @@ class CharacterAgentL3Service:
                 "memory": recall.memory,
                 "memory_recall": recall.metadata,
                 **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
+                **({"semantic_cards": [card.__dict__ for card in semantic_recall.cards]} if semantic_recall is not None else {}),
                 "verification": verification,
                 "behavior_policy": behavior_policy,
                 "working_memory_state": normalized_working_memory_state,
@@ -231,6 +232,7 @@ class CharacterAgentL3Service:
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
         behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterIntentDecision:
         plan = self.build_intent_plan(
             interpretation=interpretation,
@@ -249,6 +251,7 @@ class CharacterAgentL3Service:
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
             behavior_policy_snapshot=behavior_policy_snapshot,
+            turn_context=turn_context,
         )
         model_selected_candidate = str(plan.get("model_output", {}).get("selected_intent", "") or "")
         model_recommended_candidates = self._as_string_list(plan.get("model_output", {}).get("recommended_intents", []))

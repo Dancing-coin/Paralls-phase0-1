@@ -74,6 +74,7 @@ class CharacterAgentL2Service:
             context["memory"] = semantic.memory
             context["memory_recall"] = semantic.metadata
             context["semantic_recall"] = semantic.metadata
+            context["semantic_cards"] = [card.__dict__ for card in semantic.cards]
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
             context=context,
@@ -221,21 +222,13 @@ class CharacterAgentL2Service:
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
     ) -> CharacterInterpretation:
+        body_context = self._reasoning_context(actor_id=snapshot.actor_id, snapshot=snapshot.model_dump(), event=event.model_dump(), memory_bundle=memory_bundle, control_mode=control_mode, working_memory_state=working_memory_state, current_goal_state=current_goal_state, goal_state_history=goal_state_history, supervision_state=supervision_state, unresolved_tensions=unresolved_tensions, background_agenda_state=background_agenda_state)
+        if self._semantic_recall_service is not None and turn_context is not None:
+            semantic = self._semantic_recall_service.select(snapshot.actor_id, body_context, turn_context=turn_context)
+            body_context.update({"memory": semantic.memory, "memory_recall": semantic.metadata, "semantic_recall": semantic.metadata, "semantic_cards": [card.__dict__ for card in semantic.cards]})
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=event.model_dump(),
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-            ),
+            context=body_context,
         )
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
 
@@ -252,22 +245,15 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterInterpretation:
+        siming_context = self._reasoning_context(actor_id=snapshot.actor_id, snapshot=snapshot.model_dump(), event=payload, memory_bundle=memory_bundle, control_mode=control_mode, working_memory_state=working_memory_state, current_goal_state=current_goal_state, goal_state_history=goal_state_history, supervision_state=supervision_state, unresolved_tensions=unresolved_tensions, background_agenda_state=background_agenda_state)
+        if self._semantic_recall_service is not None and turn_context is not None:
+            semantic = self._semantic_recall_service.select(snapshot.actor_id, siming_context, turn_context=turn_context)
+            siming_context.update({"memory": semantic.memory, "memory_recall": semantic.metadata, "semantic_recall": semantic.metadata, "semantic_cards": [card.__dict__ for card in semantic.cards]})
         model_output = self._gateway.run_task(
             task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=payload,
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-            ),
+            context=siming_context,
         )
         return self.map_reasoning_output(actor_id=snapshot.actor_id, output=model_output)
 

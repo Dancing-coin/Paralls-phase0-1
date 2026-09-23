@@ -206,7 +206,7 @@ class CharacterAgentRuntime:
         if graph is not None:
             semantic_recall = CharacterSemanticRecallService(
                 graph=graph,
-                scope_resolver=getattr(self._memory_store, "_scope_for_actor", None),
+                scope_resolver=(getattr(self._memory_store, "scope_for_actor", None) or getattr(self._memory_store, "_scope_for_actor", None)),
                 memory_reader=self._memory_store.retrieval_bundle,
             )
             self._l2._semantic_recall_service = semantic_recall
