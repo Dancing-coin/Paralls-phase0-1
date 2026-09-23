@@ -49,3 +49,8 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 
 - Enforced policy/scope metadata and known revision streams, filtered relation refs to validated relation objects, and aligned required-card detection with both authored and effective profiles.
 - Verification: compileall passed; semantic/policy tests: 17 passed; `git diff --check` passed.
+
+### Acceptance closure
+
+- Added shared graph query/result budgets, exact actor-private scope handling, actor-scoped raw memory admission, source-ref/source-event query support, and relation-to-card association filtering.
+- Dedicated semantic recall suite now reports 19 passing tests; compileall and diff-check pass.

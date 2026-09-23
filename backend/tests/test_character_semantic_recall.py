@@ -31,3 +31,15 @@ def test_required_memory_evidence_blocks_before_model():
     except MissingRequiredMemoryEvidence:
         pass
 
+
+def test_effective_profile_marks_required_claim():
+    policy = CharacterMemoryRecallPolicy(pool_limit=1, token_budget=1)
+    memory = {"knowledge_memories": [{"memory_id": "claim", "actor_id": "char_b", "claim": {"subject_ref": "door", "predicate": "state", "valid_at": 1}}]}
+    import pytest
+    with pytest.raises(MissingRequiredMemoryEvidence):
+        CharacterSemanticRecallService(policy).select("char_b", {"memory": memory, "effective_profile": {"capability_constraint_layer": {"memory_retention": "strong"}}, "snapshot": {"current_attention_targets": ["door"]}}, turn_context=_turn())
+
+
+def test_graph_budget_is_bounded_without_graph_writes():
+    result = CharacterSemanticRecallService(max_graph_results=1).select("char_b", {"memory": {"event_memories": []}}, turn_context=_turn())
+    assert result.incomplete_reason is None

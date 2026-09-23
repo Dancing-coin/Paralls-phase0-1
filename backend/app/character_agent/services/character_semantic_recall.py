@@ -77,7 +77,12 @@ class CharacterSemanticRecallService:
         incomplete = "token_budget_exhausted" if policy.metadata.get("truncated") else None
         graph_truncated = False
         if self._graph is not None and reader is not None:
+            query_count = result_count = 0
             for kind, query in self._queries(actor_id, turn_context, cards, reader):
+                if query_count >= 16 or result_count >= self._max_graph_results * 8:
+                    incomplete = "graph_budget_exhausted"
+                    break
+                query_count += 1
                 try:
                     result = self._graph.query_semantic(query)
                 except Exception:
@@ -88,6 +93,7 @@ class CharacterSemanticRecallService:
                     incomplete = incomplete or reason or "stale_read_set"
                     continue
                 graph_truncated |= bool(getattr(result, "truncated", False))
+                result_count += len(getattr(result, "nodes", []) or []) + len(getattr(result, "relations", []) or [])
                 refs, rels = self._result_refs(result, actor_id)
                 relations.update(rels)
                 revisions.update(self._revision_map(getattr(result, "revision_vector", None)))
@@ -126,6 +132,7 @@ class CharacterSemanticRecallService:
             for item in value:
                 if not isinstance(item, Mapping): continue
                 owner = item.get("actor_id")
+                if key != "working_memory" and not owner: raise ValueError("semantic recall memory actor scope is required")
                 if owner and str(owner) != actor_id: raise ValueError("semantic recall memory actor scope mismatch")
                 entries.append(dict(item))
             out[str(key)] = entries
@@ -152,7 +159,7 @@ class CharacterSemanticRecallService:
             claim = card.payload.get("claim") if isinstance(card.payload, Mapping) else None
             if isinstance(claim, Mapping) and claim.get("subject_ref"):
                 yield "conflict", ConflictSetQuery(**kw, subject_ref=str(claim["subject_ref"]), property_key=str(claim.get("predicate") or "state"))
-            source = card.payload.get("source_event_id") if isinstance(card.payload, Mapping) else None
+            source = (card.payload.get("source_event_id") or card.payload.get("source_ref")) if isinstance(card.payload, Mapping) else None
             if source: yield "source", SourceImpactQuery(**kw, source_ref=str(source))
 
     def _validated_result(self, result: object, actor: str, turn: CharacterTurnContext, reader: GraphReaderContext):
@@ -163,7 +170,7 @@ class CharacterSemanticRecallService:
             scope = getattr(node, "scope", None); validity = getattr(node, "validity", None); metadata = getattr(node, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
-            if metadata and (getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision or not getattr(metadata, "scope_digest", "")): return False, "stale_read_set"
+            if metadata and (getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision or getattr(metadata, "scope_digest", "scope:actor-private") != "scope:actor-private"): return False, "stale_read_set"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(node, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
         for relation in getattr(result, "relations", []) or []:
@@ -185,7 +192,7 @@ class CharacterSemanticRecallService:
             if not ref: continue
             old = cards.get(ref); status = "disputed" if kind == "conflict" else (old.evidence_status if old else "graph_context")
             src = tuple(dict.fromkeys((old.source_refs if old else ()) + tuple(getattr(getattr(node, "provenance", None), "source_ref", "") for _ in [0] if getattr(getattr(node, "provenance", None), "source_ref", ""))))
-            rels = tuple(str(x) for x in getattr(result, "selected_relation_refs", []) or [])
+            rels = tuple(str(getattr(x, "relation_id", "")) for x in getattr(result, "relations", []) or [] if self._canonical_ref(str(getattr(x, "source_node_id", ""))).endswith(ref) or self._canonical_ref(str(getattr(x, "target_node_id", ""))).endswith(ref))
             cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or (old.payload if old else {})), evidence_status=status, source_refs=src, relation_refs=tuple(dict.fromkeys((old.relation_refs if old else ()) + rels)))
 
     def _result_refs(self, result: object, actor: str):
