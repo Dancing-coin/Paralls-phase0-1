@@ -10,7 +10,10 @@ from app.models.siming_heavenly_graph import (
     GraphProvenance,
     GraphRevisionVector,
     HeavenlyGraphScope,
+    HeavenlyNodeQuery,
 )
+from app.services.behavior_turn_recorder import BehaviorTurnRecorder
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
 
 def test_turn_carries_one_identity_from_context_to_awaiting_settlement() -> None:
@@ -125,6 +128,32 @@ def test_stage_replay_freezes_outcome_and_payload() -> None:
         )
 
 
+def test_canonical_projection_reconstructs_nested_payload_before_persistence() -> None:
+    """Mutating compact data after validation cannot alter canonical graph output."""
+    turn = _turn(branch_id="branch:main")
+    turn, event = turn.stage_event(
+        "context",
+        stage_ref="event:context:1",
+        idempotency_key="key:context",
+        producer_ts=2,
+        payload={"nested": {"x": 1}},
+    )
+    request = _canonical_request(turn, event)
+    request.stages[0].payload["nested"]["x"] = 9
+
+    graph = InMemoryHeavenlyGraphAdapter()
+    BehaviorTurnRecorder(graph).record(request)
+    stage_node = next(
+        node
+        for node in graph.query_nodes(
+            HeavenlyNodeQuery(scope=request.scope, valid_at=request.valid_at)
+        )
+        if node.attributes.get("entity_kind") == "stage"
+    )
+
+    assert stage_node.attributes["payload"] == {"nested": {"x": 1}}
+
+
 def test_context_mappings_are_immutable_and_revision_entries_are_non_negative() -> None:
     """In-place mutation must not bypass lifecycle validation."""
     turn = _turn(branch_id="branch:main")
@@ -164,6 +193,21 @@ def test_terminal_and_recovery_transitions_are_closed_and_receipt_is_pinned() ->
         producer_ts=3,
         payload={"reason": "receipt_missing"},
     )
+    assert recovery.transition(
+        "recovery_required",
+        transition_ref="recovery:1",
+        idempotency_key="recovery:key:1",
+        producer_ts=3,
+        payload={"reason": "receipt_missing"},
+    ) is recovery
+    with pytest.raises(TurnLifecycleError, match="idempotency payload mismatch"):
+        recovery.transition(
+            "recovery_required",
+            transition_ref="recovery:1",
+            idempotency_key="recovery:key:1",
+            producer_ts=3,
+            payload={"reason": "changed"},
+        )
     abandoned = recovery.transition(
         "abandoned",
         transition_ref="abandon:1",

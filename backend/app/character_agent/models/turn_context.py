@@ -263,6 +263,18 @@ class CharacterTurnContext(BaseModel):
         self, lifecycle: CharacterTurnLifecycle, *, transition_ref: str,
         idempotency_key: str, producer_ts: int, payload: Mapping[str, JsonValue],
     ) -> "CharacterTurnContext":
+        for existing in self.lifecycle_transitions:
+            if (
+                existing.transition_ref == transition_ref
+                or existing.idempotency_key == idempotency_key
+            ):
+                if (
+                    existing.to_lifecycle == lifecycle
+                    and existing.producer_ts == producer_ts
+                    and existing.payload == payload
+                ):
+                    return self
+                raise TurnLifecycleError("transition idempotency payload mismatch")
         candidate = CharacterTurnLifecycleTransition(
             from_lifecycle=self.lifecycle, to_lifecycle=lifecycle,
             transition_ref=transition_ref, idempotency_key=idempotency_key,

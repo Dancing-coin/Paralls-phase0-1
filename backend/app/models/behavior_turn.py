@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 from types import MappingProxyType
-from typing import Any, Literal, Mapping
+from typing import Any, Literal, Mapping, cast
 
 from pydantic import (
     BaseModel,
@@ -60,6 +60,28 @@ BEHAVIOR_TURN_STAGE_ORDER: tuple[BehaviorTurnStage, ...] = tuple(
 )
 
 
+def _freeze_json_value(value: JsonValue) -> JsonValue:
+    if isinstance(value, dict):
+        return MappingProxyType(
+            {key: _freeze_json_value(nested) for key, nested in value.items()}
+        )  # type: ignore[return-value]
+    if isinstance(value, list):
+        return tuple(_freeze_json_value(nested) for nested in value)  # type: ignore[return-value]
+    return value
+
+
+def _thaw_json_value(value: object) -> JsonValue:
+    if isinstance(value, Mapping):
+        return {str(key): _thaw_json_value(nested) for key, nested in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_thaw_json_value(nested) for nested in value]
+    return cast(JsonValue, value)
+
+
+def _thaw_json_mapping(payload: Mapping[str, JsonValue]) -> dict[str, JsonValue]:
+    return {key: _thaw_json_value(value) for key, value in payload.items()}
+
+
 class BehaviorTurnStageRecord(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -105,7 +127,9 @@ class CharacterTurnStageEvent(BaseModel):
     def freeze_canonical_payload(
         cls, payload: Mapping[str, JsonValue]
     ) -> Mapping[str, JsonValue]:
-        return MappingProxyType(dict(payload))
+        return MappingProxyType(
+            {key: _freeze_json_value(value) for key, value in payload.items()}
+        )
 
 
 class BehaviorTurnRecordRequest(BaseModel):
@@ -167,7 +191,7 @@ class BehaviorTurnRecordRequest(BaseModel):
                 stage=event.stage,
                 outcome=event.outcome,
                 source_refs=(event.stage_ref,),
-                payload=event.payload,
+                payload=_thaw_json_mapping(event.payload),
             )
             for event in self.canonical_stage_events
         )
@@ -224,10 +248,24 @@ class BehaviorTurnRecordRequest(BaseModel):
                     stage=event.stage,
                     outcome=event.outcome,
                     source_refs=(event.stage_ref,),
-                    payload=event.payload,
+                    payload=_thaw_json_mapping(event.payload),
                 )
                 for event in stage_events
             ),
+        )
+
+    def projected_stages(self) -> tuple[BehaviorTurnStageRecord, ...]:
+        """Rebuild canonical projections from frozen events at persistence time."""
+        if self.record_origin != "canonical_stage_events":
+            return self.stages
+        return tuple(
+            BehaviorTurnStageRecord(
+                stage=event.stage,
+                outcome=event.outcome,
+                source_refs=(event.stage_ref,),
+                payload=_thaw_json_mapping(event.payload),
+            )
+            for event in self.canonical_stage_events
         )
 
     @classmethod
