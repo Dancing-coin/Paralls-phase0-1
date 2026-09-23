@@ -166,8 +166,8 @@ class CharacterSemanticRecallService:
         if getattr(result, "policy_revision", reader.policy_revision) != reader.policy_revision: return False, "stale_read_set"
         scope = self._scope_resolver(actor) if self._scope_resolver else None
         if scope is not None:
-            canonical = json.dumps(scope.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
-            expected_digest = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+            canonical = json.dumps({"context": reader.model_dump(mode="json"), "scope": scope.model_dump(mode="json")}, sort_keys=True, separators=(",", ":"))
+            expected_digest = "scope:" + hashlib.sha256(canonical.encode()).hexdigest()
             if getattr(result, "scope_digest", expected_digest) != expected_digest: return False, "stale_read_set"
         rv = self._revision_map(getattr(result, "revision_vector", None)); pins = self._revision_map(turn.memory_revision_vector)
         if any(k not in pins or pins[k] < v for k, v in rv.items()): return False, "stale_read_set"
