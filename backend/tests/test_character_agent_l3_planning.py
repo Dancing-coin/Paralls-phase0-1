@@ -247,7 +247,7 @@ def test_l3_planner_uses_recalled_memory_for_model_and_local_filter() -> None:
     assert context["memory_recall"]["selected_memory_refs"] == ["event:event:letter"]
 
 
-def test_l3_planner_consumes_one_shot_recovery_policy_from_runtime_memory() -> None:
+def test_l3_planner_uses_evidence_qualified_accepted_recovery_policy_snapshot() -> None:
     gateway = _recording_gateway_for_candidates(
         ["share_info", "observe"],
         selected_intent="share_info",
@@ -257,25 +257,65 @@ def test_l3_planner_consumes_one_shot_recovery_policy_from_runtime_memory() -> N
     plan = planner.build_intent_plan(
         interpretation=_interpretation(),
         control_mode="agent_full_auto",
-        memory_bundle={
-            "working_memory": [
-                {
-                    "event_type": "character_policy_candidate_event",
-                    "producer_ts": 99,
-                    "payload": {
-                        "candidate_id": "candidate:recovery:1",
-                        "status": "candidate_only",
-                        "policy_type": "recovery_policy",
-                        "failed_intent": "share_info",
-                    },
-                }
-            ]
+        behavior_policy_snapshot={
+            "actor_id": "char_b",
+            "record": {
+                "policy_id": "policy:recovery:1",
+                "actor_id": "char_b",
+                "source_turn_id": "turn:char_b:1",
+                "policy_type": "recovery",
+                "failed_intent": "share_info",
+                "hypothesis": "try a different locally viable action",
+                "status": "accepted",
+                "created_at": 99,
+                "expires_at": 300,
+                "max_consumptions": 1,
+                "consumed_count": 0,
+                "consumed_turn_ids": [],
+                "failure_window": 60,
+                "failure_count": 1,
+                "policy_revision": 1,
+                "evidence_refs": ["settlement:1"],
+                "idempotency_key": "policy:recovery:1",
+            },
         },
     )
 
-    assert plan["behavior_policy"]["candidate_id"] == "candidate:recovery:1"
+    assert plan["behavior_policy"]["policy_id"] == "policy:recovery:1"
     assert "share_info" not in plan["candidates"]
     assert plan["model_output"]["selected_intent"] == "share_info"
+
+
+def test_l3_planner_recall_policy_raises_bounded_recall_requirement() -> None:
+    gateway = _recording_gateway_for_candidates(["observe"], selected_intent="observe")
+    planner = CharacterAgentL3Service(
+        gateway=gateway,
+        memory_recall_policy=CharacterMemoryRecallPolicy(pool_limit=1, token_budget=1200),
+    )
+
+    plan = planner.build_intent_plan(
+        interpretation=_interpretation(),
+        control_mode="agent_full_auto",
+        behavior_policy_snapshot={
+            "actor_id": "char_b",
+            "record": {
+                "policy_id": "policy:recall:1", "actor_id": "char_b", "source_turn_id": "turn:char_b:1",
+                "policy_type": "recall", "failed_intent": "", "hypothesis": "recall more evidence",
+                "status": "accepted", "created_at": 99, "expires_at": 300, "max_consumptions": 1,
+                "consumed_count": 0, "consumed_turn_ids": [], "failure_window": 60, "failure_count": 1,
+                "policy_revision": 1, "evidence_refs": ["settlement:1"], "idempotency_key": "policy:recall:1",
+            },
+        },
+        memory_bundle={
+            "event_memories": [
+                {"memory_id": "event:one", "actor_id": "char_b", "event_id": "one", "source_event_id": "one", "world_ts": 1, "event_type": "event", "summary": "first clue", "refs": []},
+                {"memory_id": "event:two", "actor_id": "char_b", "event_id": "two", "source_event_id": "two", "world_ts": 2, "event_type": "event", "summary": "second clue", "refs": []},
+            ],
+        },
+    )
+
+    assert plan["memory_recall"]["pool_limit"] == 2
+    assert len(gateway.requests[0]["context"]["memory"]["event_memories"]) == 2
 
 
 def test_l3_planner_passes_bounded_skill_affordance_to_model_without_overriding_selection() -> None:

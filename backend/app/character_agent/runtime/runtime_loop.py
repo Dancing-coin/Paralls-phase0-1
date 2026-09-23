@@ -77,6 +77,8 @@ from app.character_agent.services.character_turn_recovery import (
     CharacterTurnRecoveryService,
 )
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
+from app.character_agent.storage.behavior_policy_store import BehaviorPolicyStore
+from app.character_agent.models.behavior_policy import BehaviorPolicyRecord
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
 from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
@@ -181,6 +183,7 @@ class CharacterAgentRuntime:
         self._session_store = session_store or CharacterAgentSessionStore(
             storage_root=storage_root
         )
+        self._behavior_policy_store = BehaviorPolicyStore(session_store=self._session_store)
         self._turn_coordinator = CharacterTurnCoordinator(self._session_store)
         self._turn_recovery_service = (
             CharacterTurnRecoveryService(
@@ -437,6 +440,9 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            event.actor_id, now=event.producer_ts
+        )
         decision = self._select_intent_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -459,7 +465,11 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 need_tension_state=need_tension_state,
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
+                behavior_policy_snapshot=behavior_policy_snapshot,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision
         )
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -828,6 +838,9 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            event.actor_id, now=event.producer_ts
+        )
         decision = self._select_intent_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -847,7 +860,11 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
+                behavior_policy_snapshot=behavior_policy_snapshot,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision
         )
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -1104,6 +1121,9 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            actor_id, now=producer_ts
+        )
         decision = self._select_intent_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -1123,7 +1143,11 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(actor_id),
+                behavior_policy_snapshot=behavior_policy_snapshot,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=producer_ts, decision=decision
         )
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -2307,6 +2331,9 @@ class CharacterAgentRuntime:
                 interpretation=interpretation,
             )
         self._record_interpretation_event(actor_id, producer_ts, interpretation)
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            actor_id, now=producer_ts
+        )
         decision = self._select_intent_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -2326,7 +2353,14 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state.model_dump(),
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
+                behavior_policy_snapshot=behavior_policy_snapshot,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot,
+            turn_id=f"background:{actor_id}:{producer_ts}",
+            producer_ts=producer_ts,
+            decision=decision,
         )
         self._record_goal_state_event(actor_id, producer_ts, decision)
         self._last_background_tick_ms[actor_id] = producer_ts
@@ -2965,17 +2999,63 @@ class CharacterAgentRuntime:
         self._memory_store.write_event(stored)
         candidate = evaluation.get("candidate_policy")
         if isinstance(candidate, dict):
-            candidate_event = self._session_store.append_event(
-                actor_id=actor_id,
-                event_type="character_policy_candidate_event",
-                producer_ts=producer_ts,
-                payload=candidate,
+            policy_id = str(candidate.get("candidate_id", "") or "")
+            policy_type = str(candidate.get("policy_type", "") or "")
+            evidence = candidate.get("evidence", {})
+            evidence_refs = [
+                str(ref)
+                for ref in evaluation.get("source_refs", [])
+                if isinstance(ref, str) and ref
+            ]
+            if policy_id == "" or policy_type not in {"recovery", "recall", "skill_calibration", "cadence"}:
+                return evaluation
+            policy = self._behavior_policy_store.propose(
+                BehaviorPolicyRecord(
+                    policy_id=policy_id,
+                    actor_id=actor_id,
+                    source_turn_id=str(settlement_event.get("event_id", "") or policy_id),
+                    policy_type=policy_type,
+                    failed_intent=str(candidate.get("failed_intent", "") or ""),
+                    hypothesis=str(candidate.get("hypothesis", "") or ""),
+                    status="candidate",
+                    created_at=producer_ts,
+                    expires_at=producer_ts + 60_000,
+                    max_consumptions=1,
+                    failure_window=60_000,
+                    failure_count=1,
+                    evidence_refs=evidence_refs,
+                    idempotency_key=f"behavior-policy:{policy_id}",
+                )
             )
-            self._memory_store.write_event(candidate_event)
-            evaluation["policy_candidate_event_id"] = str(
-                candidate_event.get("event_id", "")
+            accepted = self._behavior_policy_store.reconcile_outcome(
+                actor_id,
+                policy.policy_id,
+                policy.source_turn_id,
+                "evidence_qualified" if evidence_refs and isinstance(evidence, dict) else "rejected",
+                now=producer_ts,
             )
+            evaluation["policy_id"] = accepted.policy_id
+            evaluation["policy_status"] = accepted.status
         return evaluation
+
+    def _consume_behavior_policy_for_turn(
+        self,
+        policy_snapshot: dict[str, object],
+        *,
+        turn_id: str,
+        producer_ts: int,
+        decision: CharacterIntentDecision,
+    ) -> None:
+        if decision.planning_status != "model":
+            return
+        raw_record = policy_snapshot.get("record") if isinstance(policy_snapshot, dict) else None
+        if not isinstance(raw_record, dict):
+            return
+        actor_id = str(policy_snapshot.get("actor_id", "") or "")
+        policy_id = str(raw_record.get("policy_id", "") or "")
+        if actor_id == "" or policy_id == "":
+            return
+        self._behavior_policy_store.consume(actor_id, policy_id, turn_id, producer_ts)
 
     def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
         advisory_metadata = self._settlement_advisory_metadata(payload)
@@ -4100,6 +4180,7 @@ class CharacterAgentRuntime:
             supervision_state=self.get_supervision_state(actor_id),
             unresolved_tensions=self.get_unresolved_tensions(actor_id),
             background_agenda_state=self.get_background_agenda_state(actor_id),
+            behavior_policy_snapshot=self._behavior_policy_store.accepted_snapshot(actor_id, now=producer_ts),
         )
         latest_goal_state = self._latest_goal_state_payload(actor_id)
         packet["actor_id"] = actor_id
@@ -4965,10 +5046,14 @@ class CharacterAgentRuntime:
             if isinstance(committed_turn_id, str) and committed_turn_id:
                 self._last_committed_turn_ids[actor_id] = committed_turn_id
             policy_state = snapshot.get("policy_state")
-            if isinstance(policy_state, dict) and policy_state.get(
-                "execution_blocked"
-            ):
-                self._recovery_blocked_actor_ids.add(actor_id)
+            if isinstance(policy_state, dict):
+                behavior_policies = policy_state.get("behavior_policies")
+                if isinstance(behavior_policies, dict):
+                    self._behavior_policy_store.restore_continuity_snapshot(
+                        actor_id, behavior_policies
+                    )
+                if policy_state.get("execution_blocked"):
+                    self._recovery_blocked_actor_ids.add(actor_id)
             if timeline:
                 replay_offset = self._graph_session_replay_offsets.get(actor_id, 0)
                 if replay_offset > len(timeline):
@@ -5040,6 +5125,7 @@ class CharacterAgentRuntime:
             "policy_state": {
                 "policy_revision": "policy:character-runtime:v1",
                 "execution_blocked": actor_id in self._recovery_blocked_actor_ids,
+                "behavior_policies": self._behavior_policy_store.continuity_snapshot(actor_id),
             },
             "last_committed_turn_id": self._last_committed_turn_id(actor_id),
         }

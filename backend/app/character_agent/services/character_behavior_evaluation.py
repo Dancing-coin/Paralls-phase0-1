@@ -141,17 +141,17 @@ class CharacterBehaviorEvaluationService:
         if score >= 0.75 and not bool(recall.get("truncated", False)):
             return None
         if not recall.get("selected_memory_refs"):
-            policy_type = "context_recall_policy"
+            policy_type = "recall"
         elif "world_constraint" in failure_domains or "missing_requirement" in failure_domains:
-            policy_type = "recovery_policy"
+            policy_type = "recovery"
         elif "skill_failure" in failure_domains:
-            policy_type = "skill_calibration_policy"
+            policy_type = "skill_calibration"
         else:
-            policy_type = "cadence_policy"
+            policy_type = "cadence"
         payload = {
             "actor_id": actor_id,
             "policy_type": policy_type,
-            "status": "candidate_only",
+            "status": "candidate",
             "score_before": score,
             "failure_domains": failure_domains,
             "failed_intent": failed_intent,
@@ -167,10 +167,10 @@ class CharacterBehaviorEvaluationService:
 
     def _hypothesis(self, policy_type: str) -> str:
         return {
-            "context_recall_policy": "increase relevant memory coverage before cognition",
-            "recovery_policy": "add a bounded recovery step after an authoritative constraint",
-            "skill_calibration_policy": "prefer an available skill path before repeating the failed intent",
-            "cadence_policy": "preserve continuity by refreshing the actor before the next decision",
+            "recall": "increase relevant memory coverage before cognition",
+            "recovery": "add a bounded recovery step after an authoritative constraint",
+            "skill_calibration": "prefer an available skill path before repeating the failed intent",
+            "cadence": "preserve continuity by refreshing the actor before the next decision",
         }[policy_type]
 
 

@@ -56,7 +56,7 @@ def test_behavior_evaluator_links_context_to_settlement_and_emits_recovery_candi
     assert result["context_hash"] == "hash:1"
     assert result["selected_memory_refs"] == ["event:event:letter"]
     assert result["behavior_score"] == 0.2
-    assert result["candidate_policy"]["policy_type"] == "recovery_policy"
+    assert result["candidate_policy"]["policy_type"] == "recovery"
     assert "settlement:1" in result["source_refs"]
 
 
@@ -87,9 +87,11 @@ def test_runtime_persists_behavior_evaluation_and_candidate_after_settlement() -
 
     timeline = runtime.get_session_timeline("char_a")
     evaluations = [entry for entry in timeline if entry["event_type"] == "character_behavior_evaluation_event"]
-    candidates = [entry for entry in timeline if entry["event_type"] == "character_policy_candidate_event"]
+    candidates = [entry for entry in timeline if entry["event_type"] == "character_behavior_policy_proposed"]
+    accepted = [entry for entry in timeline if entry["event_type"] == "character_behavior_policy_reconciled"]
     assert evaluations
     assert evaluations[-1]["payload"]["settlement_event_id"]
     assert evaluations[-1]["payload"]["behavior_score"] < 0.75
     assert candidates
-    assert candidates[-1]["payload"]["status"] == "candidate_only"
+    assert candidates[-1]["payload"]["record"]["status"] == "candidate"
+    assert accepted[-1]["payload"]["record"]["status"] == "accepted"

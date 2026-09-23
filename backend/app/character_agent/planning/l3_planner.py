@@ -12,6 +12,7 @@ from app.character_agent.models.memory_record_bundle import CharacterMemoryRecor
 from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
+from app.character_agent.models.behavior_policy import BehaviorPolicyRecord
 from app.character_agent.planning.triple_filter import CharacterTripleFilter
 from app.character_agent.profile.personality_projection import PersonalityProjectionResolver
 from app.models.character_agent_runtime import CharacterActiveGoalFrame
@@ -27,7 +28,6 @@ class CharacterAgentL3Service:
         self._gateway = gateway or CharacterModelGateway()
         self._triple_filter = CharacterTripleFilter()
         self._memory_recall_policy = memory_recall_policy or CharacterMemoryRecallPolicy()
-        self._consumed_behavior_policy_ids: set[str] = set()
 
     def build_intent_plan(
         self,
@@ -47,6 +47,7 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -63,6 +64,10 @@ class CharacterAgentL3Service:
             current_goal_state,
             actor_id=interpretation.actor_id,
         )
+        behavior_policy = self._behavior_policy_from_snapshot(
+            behavior_policy_snapshot,
+            actor_id=interpretation.actor_id,
+        )
         recall = self._memory_recall_policy.select(
             normalized_memory_bundle,
             context={
@@ -72,6 +77,7 @@ class CharacterAgentL3Service:
                 "profile": normalized_profile,
                 "effective_profile": normalized_effective_profile,
             },
+            requirements=self._policy_recall_requirements(behavior_policy),
         )
         if recall.metadata.get("missing_required_refs"):
             raise MissingRequiredMemoryEvidence(list(recall.metadata["missing_required_refs"]))
@@ -80,7 +86,6 @@ class CharacterAgentL3Service:
             interpretation, normalized_snapshot, recall.memory, normalized_effective_profile,
             self._list_entries(unresolved_tensions),
         )
-        behavior_policy = self._runtime_behavior_policy(recall.memory)
         normalized_goal_state_history = self._goal_state_history_mappings(
             goal_state_history,
             actor_id=interpretation.actor_id,
@@ -201,6 +206,7 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
     ) -> CharacterIntentDecision:
         plan = self.build_intent_plan(
             interpretation=interpretation,
@@ -218,6 +224,7 @@ class CharacterAgentL3Service:
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
+            behavior_policy_snapshot=behavior_policy_snapshot,
         )
         model_selected_candidate = str(plan.get("model_output", {}).get("selected_intent", "") or "")
         model_recommended_candidates = self._as_string_list(plan.get("model_output", {}).get("recommended_intents", []))
@@ -289,6 +296,7 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -312,6 +320,7 @@ class CharacterAgentL3Service:
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
+            behavior_policy_snapshot=behavior_policy_snapshot,
         )
         relational_memories = self._list_entries(normalized_memory_bundle.get("relational_memories"))
         guarded_relation_note = self._guarded_relational_note(
@@ -432,28 +441,24 @@ class CharacterAgentL3Service:
             return deduped_model_candidates
         return local_affordances
 
-    def _runtime_behavior_policy(
+    def _behavior_policy_from_snapshot(
         self,
-        memory_bundle: dict[str, list[dict[str, object]]],
+        snapshot: dict[str, object] | None,
+        *,
+        actor_id: str,
     ) -> dict[str, object]:
-        for entry in reversed(memory_bundle.get("working_memory", [])):
-            if str(entry.get("event_type", "") or "") != "character_policy_candidate_event":
-                continue
-            payload = entry.get("payload", {})
-            if not isinstance(payload, dict) or str(payload.get("status", "") or "") != "candidate_only":
-                continue
-            candidate_id = str(payload.get("candidate_id", "") or "")
-            if candidate_id == "" or candidate_id in self._consumed_behavior_policy_ids:
-                continue
-            self._consumed_behavior_policy_ids.add(candidate_id)
-            return {
-                "candidate_id": candidate_id,
-                "policy_type": str(payload.get("policy_type", "") or ""),
-                "failed_intent": str(payload.get("failed_intent", "") or ""),
-                "hypothesis": str(payload.get("hypothesis", "") or ""),
-                "status": "active_for_next_decision",
-            }
-        return {}
+        if not isinstance(snapshot, dict) or snapshot.get("actor_id") != actor_id:
+            return {}
+        raw_record = snapshot.get("record")
+        if not isinstance(raw_record, dict):
+            return {}
+        try:
+            record = BehaviorPolicyRecord.model_validate(raw_record)
+        except ValueError:
+            return {}
+        if record.actor_id != actor_id or record.status != "accepted" or not record.evidence_refs:
+            return {}
+        return record.model_dump(mode="json")
 
     def _apply_behavior_policy(
         self,
@@ -462,13 +467,19 @@ class CharacterAgentL3Service:
         *,
         local_affordances: list[str],
     ) -> list[str]:
-        if behavior_policy.get("policy_type") != "recovery_policy":
+        if behavior_policy.get("policy_type") != "recovery":
             return candidates
         failed_intent = str(behavior_policy.get("failed_intent", "") or "")
         if failed_intent == "":
             return candidates
         filtered = [candidate for candidate in candidates if candidate != failed_intent]
         return filtered or [candidate for candidate in local_affordances if candidate != failed_intent]
+
+    @staticmethod
+    def _policy_recall_requirements(behavior_policy: dict[str, object]) -> dict[str, int] | None:
+        if behavior_policy.get("policy_type") != "recall":
+            return None
+        return {"minimum_pool_limit": 2, "minimum_token_budget": 1600}
 
     def _model_owned_active_goal_tags(
         self,
