@@ -493,7 +493,8 @@ def test_character_agent_runtime_accepts_actor_id_only_siming_dict() -> None:
     assert commands[0].actor_id == "char_b"
     assert snapshot is not None
     assert snapshot.actor_id == "char_b"
-    assert timeline[0]["event_type"] == "siming_output_event"
+    assert timeline[0]["event_type"] == "character_turn_context_created"
+    assert timeline[0]["payload"]["turn_id"] == "turn:char_b:msg:siming:runtime:actor-id-only"
 
 
 def test_character_agent_runtime_accepts_bridge_input_without_optional_target_actor_id() -> None:

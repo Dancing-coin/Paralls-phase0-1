@@ -69,6 +69,8 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.gateway.memory_recall import MissingRequiredMemoryEvidence
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
@@ -105,6 +107,7 @@ class CharacterAgentRuntime:
         self,
         storage_root: str | Path | None = None,
         *,
+        session_store: CharacterAgentSessionStore | None = None,
         continuity_actor_ids: set[str] | frozenset[str] | None = None,
         skill_service: CharacterSkillService | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
@@ -170,7 +173,10 @@ class CharacterAgentRuntime:
         self._last_scheduling_tick_ts = 0
         self._last_emitted_scheduling_round_id = 0
         self._last_skill_affordance_summaries: dict[str, dict[str, object]] = {}
-        self._session_store = CharacterAgentSessionStore(storage_root=storage_root)
+        self._session_store = session_store or CharacterAgentSessionStore(
+            storage_root=storage_root
+        )
+        self._turn_coordinator = CharacterTurnCoordinator(self._session_store)
         self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
         self._graph_session_local_overlap_counts: dict[str, int] = {}
         self._graph_session_replay_offsets: dict[str, int] = {}
@@ -224,6 +230,15 @@ class CharacterAgentRuntime:
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if not self.supports_actor(event.actor_id):
             return []
+        turn = self._begin_canonical_turn(
+            actor_id=event.actor_id,
+            source_event_ref=event.source_candidate_event_id,
+            producer_ts=event.producer_ts,
+            causation_id=f"character_perceived:{event.actor_id}:{event.source_candidate_event_id}",
+            correlation_id=f"character_perceived:{event.actor_id}:{event.source_candidate_event_id}",
+        )
+        if "execution" in turn.stage_refs:
+            return []
         if self._should_defer_perception(event.actor_id, event.producer_ts):
             snapshot = self._get_snapshot_for_observatory(event.actor_id, event.producer_ts)
             self._queue_observatory_stage_event(
@@ -243,6 +258,12 @@ class CharacterAgentRuntime:
         self._record_character_perceived_event(event)
         self._record_relational_belief_from_perceived_event(event)
         snapshot = self._l1.apply_character_perceived_event(event)
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="context",
+            payload={"l1_snapshot": snapshot.model_dump(mode="json")},
+            producer_ts=event.producer_ts,
+        )
         self._refresh_weak_supervision_state(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -359,6 +380,12 @@ class CharacterAgentRuntime:
                 need_tension_state=need_tension_state,
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="interpretation",
+            payload=interpretation.model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
                 actor_id=event.actor_id,
@@ -414,6 +441,22 @@ class CharacterAgentRuntime:
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="goal",
+            payload=(decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="intent",
+            payload={
+                "selected_intent": decision.selected_intent,
+                "rationale": decision.rationale,
+                "planning_status": decision.planning_status,
+            },
+            producer_ts=event.producer_ts,
+        )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)
         self._set_observatory_context(event.actor_id, "decision_summary", decision.selected_intent)
         self._queue_observatory_stage_event(
@@ -456,6 +499,7 @@ class CharacterAgentRuntime:
             snapshot,
             interpretation,
             decision,
+            turn_context=turn,
         )
         return self.filter_commands_for_actor(
             event.actor_id,
@@ -616,6 +660,15 @@ class CharacterAgentRuntime:
     def ingest_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> list[CharacterGoalCommand]:
         if not self.supports_actor(event.actor_id):
             return []
+        turn = self._begin_canonical_turn(
+            actor_id=event.actor_id,
+            source_event_ref=event.source_body_result_id,
+            producer_ts=event.producer_ts,
+            causation_id=f"self_body_perceived:{event.actor_id}:{event.source_body_result_id}",
+            correlation_id=f"self_body_perceived:{event.actor_id}:{event.source_body_result_id}",
+        )
+        if "execution" in turn.stage_refs:
+            return []
         if self._should_defer_perception(event.actor_id, event.producer_ts):
             snapshot = self._get_snapshot_for_observatory(event.actor_id, event.producer_ts)
             self._queue_observatory_stage_event(
@@ -634,6 +687,12 @@ class CharacterAgentRuntime:
             return []
         self._record_self_body_event(event)
         snapshot = self._l1.apply_self_body_perceived_event(event)
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="context",
+            payload={"l1_snapshot": snapshot.model_dump(mode="json")},
+            producer_ts=event.producer_ts,
+        )
         self._refresh_weak_supervision_state(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -719,6 +778,12 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="interpretation",
+            payload=interpretation.model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
                 actor_id=event.actor_id,
@@ -764,6 +829,22 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="goal",
+            payload=(decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="intent",
+            payload={
+                "selected_intent": decision.selected_intent,
+                "rationale": decision.rationale,
+                "planning_status": decision.planning_status,
+            },
+            producer_ts=event.producer_ts,
+        )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)
         self._set_observatory_context(event.actor_id, "decision_summary", decision.selected_intent)
         self._queue_observatory_stage_event(
@@ -806,6 +887,7 @@ class CharacterAgentRuntime:
             snapshot,
             interpretation,
             decision,
+            turn_context=turn,
         )
         return self.filter_commands_for_actor(
             event.actor_id,
@@ -832,6 +914,16 @@ class CharacterAgentRuntime:
         if not self.supports_actor(actor_id):
             return []
         normalized_payload["target_actor_id"] = actor_id
+        producer_ts = int(normalized_payload.get("producer_ts", 0) or 0)
+        turn = self._begin_canonical_turn(
+            actor_id=actor_id,
+            source_event_ref=str(normalized_payload.get("message_id", "") or ""),
+            producer_ts=producer_ts,
+            causation_id=str(normalized_payload.get("causation_id", "") or ""),
+            correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
+        )
+        if "execution" in turn.stage_refs:
+            return []
         self._refresh_weak_supervision_from_siming(
             actor_id=actor_id,
             payload=normalized_payload,
@@ -857,6 +949,12 @@ class CharacterAgentRuntime:
             }
         self._record_siming_event(normalized_payload)
         snapshot = self._l1.apply_siming_output(normalized_payload)
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="context",
+            payload={"l1_snapshot": snapshot.model_dump(mode="json")},
+            producer_ts=producer_ts,
+        )
         self._set_observatory_context(
             actor_id,
             "latest_siming_summary",
@@ -901,7 +999,6 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
-        producer_ts = int(normalized_payload.get("producer_ts", 0) or 0)
         wake_up_input = self._is_wake_up_input(normalized_payload)
         if self._should_defer_cognition(actor_id, producer_ts) and not wake_up_input:
             self._queue_observatory_stage_event(
@@ -953,6 +1050,12 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(actor_id),
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="interpretation",
+            payload=interpretation.model_dump(mode="json"),
+            producer_ts=producer_ts,
+        )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
                 actor_id=actor_id,
@@ -1002,6 +1105,22 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(actor_id),
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="goal",
+            payload=(decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json"),
+            producer_ts=producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="intent",
+            payload={
+                "selected_intent": decision.selected_intent,
+                "rationale": decision.rationale,
+                "planning_status": decision.planning_status,
+            },
+            producer_ts=producer_ts,
+        )
         self._record_goal_state_event(actor_id, int(normalized_payload.get("producer_ts", 0) or 0), decision)
         self._set_observatory_context(actor_id, "decision_summary", decision.selected_intent)
         self._queue_observatory_stage_event(
@@ -1046,6 +1165,7 @@ class CharacterAgentRuntime:
             decision,
             causation_id=str(normalized_payload.get("causation_id", "") or ""),
             correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
+            turn_context=turn,
         )
         return self.filter_commands_for_actor(
             actor_id,
@@ -2545,6 +2665,28 @@ class CharacterAgentRuntime:
         )
         self._memory_store.write_event(stored)
 
+    def _begin_canonical_turn(
+        self,
+        *,
+        actor_id: str,
+        source_event_ref: str,
+        producer_ts: int,
+        causation_id: str,
+        correlation_id: str,
+    ) -> CharacterTurnContext:
+        return self._turn_coordinator.begin_or_replay(
+            actor_id=actor_id,
+            source_event_ref=source_event_ref,
+            producer_ts=producer_ts,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            input_revision_vector={"l1_input": producer_ts},
+            memory_revision_vector={"memory": 0},
+            policy_revision="policy:character-runtime:v1",
+            snapshot_revision=producer_ts,
+            branch_id="branch:main",
+        )
+
     def record_execution_request(
         self,
         *,
@@ -3546,6 +3688,7 @@ class CharacterAgentRuntime:
         *,
         causation_id: str = "",
         correlation_id: str = "",
+        turn_context: CharacterTurnContext | None = None,
     ) -> dict[str, object]:
         plan = self._l4_executor.build_execution_plan(
             snapshot=snapshot,
@@ -3557,10 +3700,35 @@ class CharacterAgentRuntime:
             for frame in frames:
                 if not isinstance(frame, dict):
                     continue
-                if causation_id:
-                    frame["causation_id"] = causation_id
-                if correlation_id:
-                    frame["correlation_id"] = correlation_id
+                frame["causation_id"] = (
+                    turn_context.causation_id if turn_context is not None else causation_id
+                ) or str(frame.get("causation_id", "") or "")
+                frame["correlation_id"] = (
+                    turn_context.correlation_id if turn_context is not None else correlation_id
+                ) or str(frame.get("correlation_id", "") or "")
+                if turn_context is not None:
+                    frame["turn_id"] = turn_context.turn_id
+                    frame["authority_request_ref"] = (
+                        f"authority-request:{turn_context.turn_id}"
+                    )
+        if turn_context is not None:
+            execution_ref = f"execution:{turn_context.turn_id}"
+            authority_request_ref = f"authority-request:{turn_context.turn_id}"
+            turn_context = self._turn_coordinator.mark_awaiting_settlement(
+                context=turn_context,
+                execution_ref=execution_ref,
+                authority_request_ref=authority_request_ref,
+                producer_ts=producer_ts,
+            )
+            plan["turn_id"] = turn_context.turn_id
+            plan["causation_id"] = turn_context.causation_id
+            plan["correlation_id"] = turn_context.correlation_id
+            plan["authority_request_ref"] = authority_request_ref
+            if self._behavior_turn_projection is not None:
+                self._behavior_turn_projection.record_context(
+                    turn_context,
+                    self.get_session_timeline(actor_id),
+                )
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
