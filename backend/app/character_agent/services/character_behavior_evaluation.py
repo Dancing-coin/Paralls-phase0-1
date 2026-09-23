@@ -67,6 +67,14 @@ class CharacterBehaviorEvaluationService:
         outcome_band = str(metadata.get("outcome_band", "") or "")
         settlement_status = str(settlement_payload.get("settlement_status", "") or settlement_payload.get("resolution_status", "") or "")
         score = self._score(outcome_band, settlement_status, failure_domains)
+        source_refs = [
+            str(event.get("event_id", ""))
+            for event in chain.values()
+            if isinstance(event, dict) and str(event.get("event_id", ""))
+        ]
+        settlement_event_id = str(settlement_event.get("event_id", "") or "")
+        if settlement_event_id:
+            source_refs.append(settlement_event_id)
         candidate = self._candidate_policy(
             actor_id=actor_id,
             score=score,
@@ -74,13 +82,9 @@ class CharacterBehaviorEvaluationService:
             recall=recall,
             settlement_payload=settlement_payload,
             failed_intent=failed_intent,
+            source_refs=source_refs,
+            settlement_event_id=settlement_event_id,
         )
-        source_refs = [
-            str(event.get("event_id", ""))
-            for event in chain.values()
-            if isinstance(event, dict) and str(event.get("event_id", ""))
-        ]
-        source_refs.append(str(settlement_event.get("event_id", "")))
         return {
             "actor_id": actor_id,
             "behavior_score": score,
@@ -101,7 +105,7 @@ class CharacterBehaviorEvaluationService:
             "selected_intent": str(goal_payload.get("dominant_goal_id", "") or execution_payload.get("selected_intent", "") or ""),
             "failed_intent": failed_intent,
             "execution_event_id": str(execution.get("event_id", "") if isinstance(execution, dict) else ""),
-            "settlement_event_id": str(settlement_event.get("event_id", "") or ""),
+            "settlement_event_id": settlement_event_id,
             "source_refs": source_refs,
             "candidate_policy": candidate,
         }
@@ -137,6 +141,8 @@ class CharacterBehaviorEvaluationService:
         recall: dict[str, object],
         settlement_payload: dict[str, object],
         failed_intent: str,
+        source_refs: list[str],
+        settlement_event_id: str,
     ) -> dict[str, object] | None:
         if score >= 0.75 and not bool(recall.get("truncated", False)):
             return None
@@ -158,6 +164,8 @@ class CharacterBehaviorEvaluationService:
             "hypothesis": self._hypothesis(policy_type),
             "evidence": {
                 "settlement_status": str(settlement_payload.get("settlement_status", "") or ""),
+                "settlement_event_id": settlement_event_id,
+                "evidence_refs": list(source_refs),
                 "selected_memory_refs": list(recall.get("selected_memory_refs", [])) if isinstance(recall.get("selected_memory_refs", []), list) else [],
                 "context_hash": str(recall.get("context_hash", "") or ""),
                 "confidence": 0.9 if score <= 0.5 and failure_domains else 0.0,

@@ -2937,9 +2937,10 @@ class CharacterAgentRuntime:
         )
         self._memory_store.write_event(stored)
         settlement_turn_id = str(stored_payload.get("turn_id", "") or "")
+        settlement_branch_id = str(stored_payload.get("branch_id", "") or "")
         settlement_causation_id = str(stored_payload.get("causation_id", "") or "")
         settlement_correlation_id = str(stored_payload.get("correlation_id", "") or "")
-        if settlement_turn_id and settlement_causation_id and settlement_correlation_id:
+        if settlement_turn_id and settlement_branch_id and settlement_causation_id and settlement_correlation_id:
             settlement_status = str(
                 stored_payload.get("settlement_status", "")
                 or stored_payload.get("resolution_status", "")
@@ -2948,6 +2949,7 @@ class CharacterAgentRuntime:
             if settlement_status in {"accepted", "applied", "observed"}:
                 self._behavior_policy_store.reconcile_consumed_turn(
                     actor_id, settlement_turn_id, "success", producer_ts,
+                    branch_id=settlement_branch_id,
                     causation_id=settlement_causation_id,
                     correlation_id=settlement_correlation_id,
                 )
@@ -3028,6 +3030,18 @@ class CharacterAgentRuntime:
             canonical_correlation_id = str(settlement_payload.get("correlation_id", "") or "")
             if not all((canonical_turn_id, canonical_branch_id, canonical_causation_id, canonical_correlation_id)):
                 return evaluation
+            timeline = self.get_session_timeline(actor_id)
+            canonical_source_revision = int(
+                settlement_payload.get("source_revision", len(timeline)) or len(timeline)
+            )
+            if canonical_source_revision != len(timeline):
+                return evaluation
+            canonical_valid_at = int(
+                settlement_payload.get("valid_at", settlement_event.get("producer_ts", producer_ts))
+                or producer_ts
+            )
+            if canonical_valid_at != int(settlement_event.get("producer_ts", producer_ts) or producer_ts):
+                return evaluation
             policy_id = str(candidate.get("candidate_id", "") or "")
             policy_type = str(candidate.get("policy_type", "") or "")
             evidence = candidate.get("evidence", {})
@@ -3044,10 +3058,10 @@ class CharacterAgentRuntime:
                     actor_id=actor_id,
                     source_turn_id=canonical_turn_id,
                     branch_id=canonical_branch_id,
-                    valid_at=int(settlement_event.get("producer_ts", producer_ts) or producer_ts),
+                    valid_at=canonical_valid_at,
                     causation_id=canonical_causation_id,
                     correlation_id=canonical_correlation_id,
-                    source_revision=len(self.get_session_timeline(actor_id)),
+                    source_revision=canonical_source_revision,
                     policy_type=policy_type,
                     failed_intent=str(candidate.get("failed_intent", "") or ""),
                     hypothesis=str(candidate.get("hypothesis", "") or ""),
@@ -3061,13 +3075,11 @@ class CharacterAgentRuntime:
                     idempotency_key=f"behavior-policy:{policy_id}",
                 )
             )
-            evidence_qualified = (
-                isinstance(evidence, dict)
-                and bool(evidence.get("qualified", False))
-                and bool(evidence.get("complete", False))
-                and isinstance(evidence.get("confidence"), int | float)
-                and float(evidence["confidence"]) >= 0.8
-                and len(evidence_refs) >= 2
+            evidence_qualified = self._behavior_evidence_is_qualified(
+                evidence=evidence,
+                evidence_refs=evidence_refs,
+                settlement_event=settlement_event,
+                timeline=timeline,
             )
             accepted = self._behavior_policy_store.reconcile_outcome(
                 actor_id,
@@ -3079,6 +3091,61 @@ class CharacterAgentRuntime:
             evaluation["policy_id"] = accepted.policy_id
             evaluation["policy_status"] = accepted.status
         return evaluation
+
+    def _behavior_evidence_is_qualified(
+        self,
+        *,
+        evidence: object,
+        evidence_refs: list[str],
+        settlement_event: dict[str, object],
+        timeline: list[dict[str, object]],
+    ) -> bool:
+        if not isinstance(evidence, dict):
+            return False
+        if not bool(evidence.get("qualified", False)) or not bool(evidence.get("complete", False)):
+            return False
+        confidence = evidence.get("confidence")
+        if not isinstance(confidence, (int, float)) or float(confidence) < 0.8:
+            return False
+        if len(evidence_refs) < 2 or len(set(evidence_refs)) != len(evidence_refs):
+            return False
+        if evidence.get("evidence_refs") != evidence_refs:
+            return False
+        event_by_id = {
+            str(event.get("event_id", "")): event
+            for event in timeline
+            if isinstance(event, dict) and str(event.get("event_id", ""))
+        }
+        settlement_event_id = str(settlement_event.get("event_id", "") or "")
+        if str(evidence.get("settlement_event_id", "") or "") != settlement_event_id:
+            return False
+        settlement_payload = settlement_event.get("payload")
+        if not isinstance(settlement_payload, dict):
+            return False
+        settlement_status = str(
+            settlement_payload.get("settlement_status", "")
+            or settlement_payload.get("resolution_status", "")
+            or ""
+        )
+        if settlement_status not in {"accepted", "applied", "observed", "rejected", "blocked", "denied"}:
+            return False
+        if not any(
+            str(settlement_payload.get(key, "") or "")
+            for key in ("result_type", "constraint_summary", "change_summary", "stable_state_summary")
+        ) and not isinstance(settlement_payload.get("action_settlement_result"), dict):
+            return False
+        context_hash = str(evidence.get("context_hash", "") or "")
+        if not context_hash:
+            return False
+        for ref in evidence_refs:
+            event = event_by_id.get(ref)
+            if not isinstance(event, dict) or not isinstance(event.get("payload"), dict) or not event["payload"]:
+                return False
+        if settlement_event_id not in evidence_refs or settlement_event_id not in event_by_id:
+            return False
+        if not any(ref != settlement_event_id for ref in evidence_refs):
+            return False
+        return True
 
     def _consume_behavior_policy_for_turn(
         self,
@@ -3099,6 +3166,7 @@ class CharacterAgentRuntime:
             return
         self._behavior_policy_store.consume(
             actor_id, policy_id, turn_id, producer_ts,
+            branch_id=str(raw_record.get("branch_id", "") or "") or None,
             causation_id=causation_id,
             correlation_id=correlation_id,
         )
