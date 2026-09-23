@@ -811,7 +811,7 @@ class GameplayEventStore:
 class DurableGameplayEventStore(GameplayEventStore):
     """SQLite 是持久账本；正常启动和定向查询不创建全历史内存副本。"""
 
-    _WAL_AUTOCHECKPOINT_PAGES = 128
+    _WAL_AUTOCHECKPOINT_PAGES = 1000
     _QUERY_INDEXES = (
         "CREATE INDEX IF NOT EXISTS outbox_topic_sequence ON outbox(topic, global_sequence, id)",
         "CREATE INDEX IF NOT EXISTS checkpoints_sequence ON checkpoints(global_sequence DESC, id DESC)",

@@ -163,6 +163,10 @@ from app.services.trusted_local_embodied_controller_launcher import (
     TrustedLocalEmbodiedControllerLaunchProfile,
 )
 from app.services.siming_audit_writer import SimingAuditWriter, SqliteSimingAuditWriter
+from app.services.sqlite_wal_checkpoint import (
+    SqliteWalCheckpointWorker,
+    start_sqlite_wal_checkpoint_worker,
+)
 from app.world_runtime.projection import project_world_result_delta
 from app.world_runtime.l1_fact_projection import FactProjectionLayer
 from app.world_runtime.l1_occupancy import SpatialOccupancyService
@@ -246,6 +250,7 @@ _population_mirror_source: PopulationMirrorSource | None = None
 runtime_execution: RuntimeExecution | None = None
 _runtime_execution_credit = None
 _runtime_storage_lease: RuntimeStorageLease | None = None
+_sqlite_wal_checkpoint_worker: SqliteWalCheckpointWorker | None = None
 _failed_runtime_resources: list[object] = []
 _dialogue_coordinator: DialogueCoordinator | None = None
 _dialogue_provider_slots = None
@@ -585,7 +590,17 @@ def start_population_runtime() -> asyncio.Task[None] | None:
 
 
 def get_population_runtime_failure() -> BaseException | None:
-    return _population_runtime_failure or _character_cognition_failure or _siming_cognition_failure
+    checkpoint_failure = (
+        _sqlite_wal_checkpoint_worker.failure()
+        if _sqlite_wal_checkpoint_worker is not None
+        else None
+    )
+    return (
+        _population_runtime_failure
+        or _character_cognition_failure
+        or _siming_cognition_failure
+        or checkpoint_failure
+    )
 
 
 def stop_population_runtime() -> None:
@@ -761,6 +776,18 @@ def _close_failed_runtime_resources() -> None:
     for resource in tuple(_failed_runtime_resources):
         resource.close()
         _failed_runtime_resources.remove(resource)
+
+
+def _close_sqlite_wal_checkpoint_worker() -> None:
+    global _sqlite_wal_checkpoint_worker
+    worker = _sqlite_wal_checkpoint_worker
+    if worker is None:
+        return
+    try:
+        worker.close()
+    finally:
+        if not worker.is_alive():
+            _sqlite_wal_checkpoint_worker = None
 
 
 def build_runtime_state(runtime_settings: Settings) -> RuntimeState:
@@ -1157,7 +1184,13 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global _pending_siming_character_dispatch_messages
     global websocket_transport_closers
     global activation_policy
+    global _sqlite_wal_checkpoint_worker
 
+    checkpoint_close_failure = None
+    try:
+        _close_sqlite_wal_checkpoint_worker()
+    except BaseException as exc:
+        checkpoint_close_failure = exc
     _close_failed_runtime_resources()
     previous_character = globals().get("character_agent_runtime")
     if isinstance(previous_character, CharacterAgentRuntime):
@@ -1177,6 +1210,8 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     previous_capabilities = globals().get("harness_capability_store")
     if isinstance(previous_capabilities, HarnessCapabilityStore):
         previous_capabilities.close()
+    if checkpoint_close_failure is not None:
+        raise checkpoint_close_failure
     graph_path = Path(settings.heavenly_graph_path)
     gameplay_event_store = (
         DurableGameplayEventStore(graph_path.with_name(f"{graph_path.name}.gameplay.json"))
@@ -1478,6 +1513,19 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     # before handing the fresh runtime to callers so later dispatch tests see
     # only newly committed player-facing events.
     gameplay_outbox_dispatcher.dispatch_pending()
+    if isinstance(gameplay_event_store, DurableGameplayEventStore):
+        checkpoint_bindings = [
+            (graph_path, heavenly_graph._connection),
+            (gameplay_event_store._snapshot_path, gameplay_event_store._database_connection()),
+        ]
+        session_connection = character_agent_runtime._session_store._connection
+        if session_connection is not None:
+            checkpoint_bindings.append((graph_path, session_connection))
+        if isinstance(siming_audit_writer, SqliteSimingAuditWriter):
+            checkpoint_bindings.append(
+                (graph_path.with_name(f"{graph_path.name}.siming-audit.sqlite3"), siming_audit_writer._connection)
+            )
+        _sqlite_wal_checkpoint_worker = start_sqlite_wal_checkpoint_worker(checkpoint_bindings)
 
 
 def _ack_siming_staging_request(event: AuthorityEvent) -> None:
@@ -1890,6 +1938,11 @@ def close_runtime_resources() -> None:
         _drop_mirror_transport_session(WebSocketConnectionContext(remote_host="", observed_at=int(time()),
             connection_ref=connection_ref), session_ref)
     _close_character_continuations(reason="shutdown")
+    checkpoint_close_failure = None
+    try:
+        _close_sqlite_wal_checkpoint_worker()
+    except BaseException as exc:
+        checkpoint_close_failure = exc
     _close_failed_runtime_resources()
     previous_character = globals().get("character_agent_runtime")
     if isinstance(previous_character, CharacterAgentRuntime):
@@ -1912,6 +1965,8 @@ def close_runtime_resources() -> None:
     if _runtime_storage_lease is not None:
         _runtime_storage_lease.close()
         _runtime_storage_lease = None
+    if checkpoint_close_failure is not None:
+        raise checkpoint_close_failure
 
 
 def _publish_staging_ack_once(event: AuthorityEvent, *, source: str) -> bool:
