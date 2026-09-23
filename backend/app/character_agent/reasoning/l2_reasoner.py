@@ -221,6 +221,7 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterInterpretation:
         body_context = self._reasoning_context(actor_id=snapshot.actor_id, snapshot=snapshot.model_dump(), event=event.model_dump(), memory_bundle=memory_bundle, control_mode=control_mode, working_memory_state=working_memory_state, current_goal_state=current_goal_state, goal_state_history=goal_state_history, supervision_state=supervision_state, unresolved_tensions=unresolved_tensions, background_agenda_state=background_agenda_state)
         if self._semantic_recall_service is not None and turn_context is not None:

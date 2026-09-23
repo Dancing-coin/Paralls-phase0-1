@@ -876,6 +876,7 @@ class CharacterAgentRuntime:
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 behavior_policy_snapshot=behavior_policy_snapshot,
+                turn_context=turn,
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -1101,6 +1102,7 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(actor_id),
+                turn_context=turn,
             ),
         )
         turn = self._turn_coordinator.append_stage(
@@ -1160,6 +1162,7 @@ class CharacterAgentRuntime:
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(actor_id),
                 behavior_policy_snapshot=behavior_policy_snapshot,
+                turn_context=turn,
             ),
         )
         self._consume_behavior_policy_for_turn(

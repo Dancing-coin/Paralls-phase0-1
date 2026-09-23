@@ -28,3 +28,8 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 - Exposed graph/scope seams through `CharacterMemoryStoreRouter`, with actor-aware scope handling for light stores.
 - Corrected graph visibility enum values to `actor_private`, `public`, and `branch_only`.
 - Verification: `python -m compileall -q backend/app/character_agent` passed; focused semantic/policy/L3 tests: 71 passed; `git diff --check` passed.
+
+## Fix round 3
+
+- Wired self-body and Siming runtime ingress lambdas through the canonical turn context for L2 and L3, and fixed the self-body L2 signature so semantic recall is invoked instead of continuity fallback.
+- Verification: `python -m compileall -q backend/app/character_agent` passed; `git diff --check` passed.
