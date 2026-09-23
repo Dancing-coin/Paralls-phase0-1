@@ -71,6 +71,33 @@ def test_keyset_outbox_page_keeps_entries_sharing_one_event(tmp_path, durable):
     assert store.get_transaction("missing") is None
 
 
+@pytest.mark.parametrize("durable", [False, True])
+def test_transaction_owner_event_membership_uses_ledger_identity(tmp_path, durable):
+    store = DurableGameplayEventStore(tmp_path / "ledger.db") if durable else GameplayEventStore()
+    assert store.append_batch(_batch()).committed
+
+    assert store.transaction_owns_event(
+        transaction_id="tx:gameplay:1",
+        event_id="evt:session:reserved",
+        principal_ref="player:local",
+    )
+    assert not store.transaction_owns_event(
+        transaction_id="tx:gameplay:1",
+        event_id="evt:session:reserved",
+        principal_ref="player:other",
+    )
+    assert not store.transaction_owns_event(
+        transaction_id="tx:gameplay:1",
+        event_id="evt:missing",
+        principal_ref="player:local",
+    )
+    assert not store.transaction_owns_event(
+        transaction_id="tx:missing",
+        event_id="evt:session:reserved",
+        principal_ref="player:local",
+    )
+
+
 def test_checkpoints_are_atomic_and_latest_query_is_bounded(tmp_path):
     path = tmp_path / "ledger.db"
     store = DurableGameplayEventStore(path)

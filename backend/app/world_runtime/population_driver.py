@@ -82,11 +82,12 @@ class PopulationCadenceDriver:
         advanced_count = due_count = deferred_count = rejected_count = 0
         for index, (cadence_id, window_start, window_end) in enumerate(selected):
             try:
-                cadence = self.world_runtime.build_population_cadence(
-                    window_start=window_start,
-                    window_end=window_end,
-                    cadence_id=cadence_id,
-                )
+                with self.world_runtime.store.group_commit():
+                    cadence = self.world_runtime.build_population_cadence(
+                        window_start=window_start,
+                        window_end=window_end,
+                        cadence_id=cadence_id,
+                    )
                 event = self.publish_window(cadence)
             except Exception as exc:
                 rejected.append(

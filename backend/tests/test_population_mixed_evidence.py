@@ -121,6 +121,32 @@ def test_extra_real_drain_windows_do_not_enter_steady_measurements():
     assert result["drain_max_lag_windows"] == pytest.approx(2)
 
 
+def test_transient_lag_that_drains_does_not_fail_one_x_performance():
+    rows, config, actors = trace(seconds=60)
+    # 模拟一次短暂阻塞后的逐窗追赶；验收关注持续积压和最终清空。
+    timings = {
+        2: (54.0, 54.4),
+        3: (54.4, 54.8),
+        4: (54.8, 55.2),
+        5: (55.2, 55.6),
+    }
+    for row in rows[1:]:
+        tick = row["target_tick"]
+        if tick not in timings:
+            continue
+        started, finished = timings[tick]
+        row["driver_started_at"] = started
+        row["driver_finished_at"] = finished
+        row["advance_lag_windows"] = max(0.0, finished - 50.0 - tick)
+        row["backlog"] = max(0, int(finished - 50.0) - tick)
+
+    result = evidence.replay_windows(rows, config, actors)
+
+    assert result["metrics"]["max_lag_windows"] == pytest.approx(2.4)
+    assert result["metrics"]["final_backlog"] == 0
+    assert result["performance_passed"]
+
+
 def test_windows_cannot_finish_before_actual_driver_deadlines():
     rows, config, actors = trace()
     for index, row in enumerate(rows[1:]):

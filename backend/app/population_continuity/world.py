@@ -54,6 +54,8 @@ class WorldContinuityRuntime:
         self.mode = mode
         self.authorized_actor_refs = authorized_actor_refs
         self.roster = roster if roster is not None else load_population_roster()
+        from .recovery import population_kernel_digest
+        self._population_kernel_digest = population_kernel_digest()
         self._cadence_cache: dict[tuple[object, ...], PopulationCadenceInput] = {}
         self._projection_cache: dict[tuple[object, ...], tuple[PopulationProjection, ...]] = {}
         self.population_hot_state = PopulationHotState(self.roster.actor_ids)

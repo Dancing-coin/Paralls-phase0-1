@@ -151,6 +151,20 @@ def test_delivered_restart_rebuilds_hot_rows_and_uses_tick_not_revision(tmp_path
     assert not restored_world.store.list_outbox(include_delivered=False)
 
 
+def test_runtime_freezes_kernel_identity_once_for_receipt_validation(tmp_path, monkeypatch):
+    from app.population_continuity import recovery
+
+    world = _runtime(tmp_path / "gameplay.json", ("one",))
+    expected = world._population_kernel_digest
+    monkeypatch.setattr(recovery, "population_kernel_digest", lambda: pytest.fail("运行中不应重复读取源码"))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+
+    assert publisher.kernel_digest == expected
+    assert publisher(cadence) is not None
+    assert recovery.durable_population_receipt(world, cadence) is not None
+
+
 def test_compact_anchor_and_roster_mismatch_fail_closed(tmp_path):
     path = tmp_path / "gameplay.json"
     actors = tuple(f"actor_{i}" for i in range(1000))
