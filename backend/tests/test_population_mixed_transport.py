@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from app.gameplay.godot_mirror_delivery import GameplayGodotMirrorSyncAdapter, GameplayMirrorDeltaEncoder
+from scripts.verification import population_mixed_transport
 from scripts.verification.population_mixed_transport import MixedLoadHttpWs, response_evidence, contention_winner
 from scripts.verification.verify_population_transport_cost import WireEvidence
 from test_gameplay_mirror_session_access_service import _projection_source
@@ -29,6 +30,44 @@ def test_response_evidence_keeps_exact_authority_correlation_without_calling_it_
     assert result["request_ref"] == "interact:123:obj_worktable"
     assert result["constraint_code"] == "invalid_interaction_state"
     assert "content" not in result and "committed" not in result
+
+
+def test_mixed_bound_session_disables_protocol_ping(monkeypatch):
+    options = {}
+
+    class Socket:
+        async def send(self, raw):
+            assert json.loads(raw)["message_type"] == "websocket_session_bind"
+
+        async def recv(self):
+            return json.dumps({"message_type": "websocket_session_bound", "payload": {
+                "allowed_actor_refs": ["character:char_a"], "connection_epoch": 1}})
+
+    class Context:
+        async def __aenter__(self):
+            return Socket()
+
+        async def __aexit__(self, *args):
+            return None
+
+    def connect(url, **kwargs):
+        options.update(url=url, **kwargs)
+        return Context()
+
+    monkeypatch.setattr(population_mixed_transport, "connect", connect)
+    monkeypatch.setattr(population_mixed_transport, "request_enrollment", lambda **_: SimpleNamespace(
+        model_dump=lambda **_: {"credential": "test"}))
+    client = MixedLoadHttpWs(http_url="http://unused", launcher_secret="unused",
+        launch_profile_ref="unused", record=lambda row: None)
+
+    async def exercise():
+        async with client.bound_session(max_queue=1):
+            pass
+
+    asyncio.run(exercise())
+
+    assert options == {"url": "ws://unused/ws", "compression": None,
+        "max_queue": 1, "ping_interval": None}
 
 
 def test_contention_requires_distinct_requests_one_authority_success_and_state_constraint():

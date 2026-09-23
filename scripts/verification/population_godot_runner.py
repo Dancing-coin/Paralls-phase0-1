@@ -75,6 +75,7 @@ def memory_bytes() -> int:
 
 def authority_boundary(main) -> dict:
     """仅在采样后停调度的 owner 截面读取；全扫描不计入运行/帧性能。"""
+    from app.gameplay.event_store import decode_durable_json
     from app.population_continuity.presentation import _confirmed_population_state
     driver = main._population_runtime_driver
     world = driver.world_runtime
@@ -88,7 +89,8 @@ def authority_boundary(main) -> dict:
                  for actor in runtime._session_store.actor_ids()}
     store = main.gameplay_event_store
     # 历史receipts与事件本体分别摘要，不用内存cache充当账本。
-    receipts = store._rows("SELECT transaction_id, result FROM transactions ORDER BY sequence")
+    receipts = [(transaction_id, decode_durable_json(result)) for transaction_id, result in
+                store._rows("SELECT transaction_id, result FROM transactions ORDER BY sequence")]
     events = [event.model_dump(mode="json") for event in store.read_events()]
     full_hash, tail_hash = world.replay_equivalence()
     if full_hash != tail_hash:

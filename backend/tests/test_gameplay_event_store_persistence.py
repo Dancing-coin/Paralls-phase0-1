@@ -202,6 +202,59 @@ def test_durable_store_persists_commit_and_rolls_back_when_snapshot_write_fails(
     assert [event.event_id for event in store.read_events()] == ["evt:durable"]
 
 
+def test_durable_store_compresses_non_query_json_without_changing_logical_snapshot(tmp_path) -> None:
+    from app.gameplay.event_store import decode_durable_json
+    from app.gameplay.models import ProjectionCheckpoint
+
+    path = tmp_path / "compressed-store.db"
+    store = DurableGameplayEventStore(path)
+    assert store.append_batch(_batch()).committed
+    store.mark_outbox_delivered("outbox:evt:session:reserved")
+    checkpoint = ProjectionCheckpoint(
+        checkpoint_id="cp:compressed",
+        projector_id="population",
+        projector_version="2",
+        projection_schema_version=2,
+        projection_hash="sha256:compressed",
+        state={"payload": "x" * 1024},
+    )
+    store.save_projection_checkpoint(checkpoint)
+    expected = store.export_snapshot()
+    store.close()
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute(
+            "SELECT typeof(batch), typeof(result) FROM transactions"
+        ).fetchone() == ("blob", "blob")
+        assert connection.execute("SELECT typeof(value) FROM outbox").fetchone() == ("blob",)
+        assert connection.execute("SELECT typeof(value) FROM checkpoints").fetchone() == ("blob",)
+        assert connection.execute("SELECT typeof(value) FROM events").fetchone() == ("text",)
+
+    restored = DurableGameplayEventStore(path)
+    assert restored.export_snapshot() == expected
+    restored.audit()
+    restored.close()
+
+    with sqlite3.connect(path) as connection:
+        for table, columns in (
+            ("transactions", ("batch", "result")),
+            ("outbox", ("value",)),
+            ("checkpoints", ("value",)),
+        ):
+            for column in columns:
+                rows = connection.execute(
+                    f"SELECT rowid, {column} FROM {table}"
+                ).fetchall()
+                connection.executemany(
+                    f"UPDATE {table} SET {column}=? WHERE rowid=?",
+                    ((decode_durable_json(value), rowid) for rowid, value in rows),
+                )
+
+    legacy = DurableGameplayEventStore(path)
+    assert legacy.export_snapshot() == expected
+    legacy.audit()
+
+
 def test_durable_updates_never_copy_history_and_legacy_snapshot_migrates(tmp_path, monkeypatch):
     from app.gameplay.models import ProjectionCheckpoint
 

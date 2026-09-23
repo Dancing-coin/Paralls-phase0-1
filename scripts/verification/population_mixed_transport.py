@@ -62,7 +62,12 @@ class MixedLoadHttpWs:
         # 每请求独立租约；30分钟负载不会在第5分钟沿用过期身份。
         enrollment = await asyncio.to_thread(request_enrollment, backend_http_url=self.http_url,
             launch_profile_ref=self.profile, launcher_secret=self.secret)
-        async with connect(self.ws_url, compression=None, max_queue=max_queue) as ws:
+        async with connect(
+            self.ws_url,
+            compression=None,
+            max_queue=max_queue,
+            ping_interval=None,
+        ) as ws:
             payload = enrollment.model_dump(mode="json")
             payload.update(protocol_version=2, capability_offer=dict(protocol_version=2,
                 supports_snapshot=True, supports_delta=True, supports_receipt=False,
