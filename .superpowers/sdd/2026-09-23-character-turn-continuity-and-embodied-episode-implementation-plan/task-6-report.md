@@ -44,3 +44,8 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 - Revalidated graph relations and node references against canonical scope, actor visibility, branch, valid time, recorded time, policy, and revision pins; unbacked selected refs are rejected.
 - Preserved required cards through global card/token bounds, attached relation/source evidence, and expanded context hashing to canonical turn pins plus final evidence metadata.
 - Verification: compileall passed; semantic/policy tests: 17 passed; `git diff --check` passed.
+
+### Closure amendment
+
+- Enforced policy/scope metadata and known revision streams, filtered relation refs to validated relation objects, and aligned required-card detection with both authored and effective profiles.
+- Verification: compileall passed; semantic/policy tests: 17 passed; `git diff --check` passed.

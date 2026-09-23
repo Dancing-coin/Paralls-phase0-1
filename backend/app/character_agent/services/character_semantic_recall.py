@@ -95,7 +95,8 @@ class CharacterSemanticRecallService:
                 elif kind == "conflict": conflicts.update(refs)
                 elif kind == "perspective": perspectives.update(refs)
                 self._merge_cards(kind, result, cards, actor_id)
-        required_cards = {ref for ref in selected if ref.startswith("knowledge:") and str((context.get("profile") or {}).get("capability_constraint_layer", {}).get("memory_retention", "")) == "strong"}
+        profiles = [context.get("profile"), context.get("effective_profile")]
+        required_cards = {ref for ref in selected if ref.startswith("knowledge:") and any(isinstance(p, Mapping) and isinstance(p.get("capability_constraint_layer"), Mapping) and p["capability_constraint_layer"].get("memory_retention") == "strong" for p in profiles)}
         cards, card_truncated, missing_cards = self._bound_cards(cards, required_cards)
         if missing_cards:
             raise MissingRequiredMemoryEvidence(missing_cards)
@@ -157,17 +158,19 @@ class CharacterSemanticRecallService:
     def _validated_result(self, result: object, actor: str, turn: CharacterTurnContext, reader: GraphReaderContext):
         if getattr(result, "policy_revision", reader.policy_revision) != reader.policy_revision: return False, "stale_read_set"
         rv = self._revision_map(getattr(result, "revision_vector", None)); pins = self._revision_map(turn.memory_revision_vector)
-        if any(pins.get(k, v) < v for k, v in rv.items()): return False, "stale_read_set"
+        if any(k not in pins or pins[k] < v for k, v in rv.items()): return False, "stale_read_set"
         for node in getattr(result, "nodes", []) or []:
             scope = getattr(node, "scope", None); validity = getattr(node, "validity", None); metadata = getattr(node, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
+            if metadata and (getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision or not getattr(metadata, "scope_digest", "")): return False, "stale_read_set"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(node, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
         for relation in getattr(result, "relations", []) or []:
             scope = getattr(relation, "scope", None); validity = getattr(relation, "validity", None); metadata = getattr(relation, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
+            if metadata and getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision: return False, "stale_read_set"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(relation, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
         node_refs = {self._canonical_ref(self._node_ref(node)) for node in getattr(result, "nodes", []) or []}
@@ -186,7 +189,8 @@ class CharacterSemanticRecallService:
             cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or (old.payload if old else {})), evidence_status=status, source_refs=src, relation_refs=tuple(dict.fromkeys((old.relation_refs if old else ()) + rels)))
 
     def _result_refs(self, result: object, actor: str):
-        refs, rels = set(), {str(x) for x in getattr(result, "selected_relation_refs", []) or [] if x}
+        valid_relation_ids = {str(getattr(x, "relation_id", "")) for x in getattr(result, "relations", []) or []}
+        refs, rels = set(), {str(x) for x in getattr(result, "selected_relation_refs", []) or [] if str(x) in valid_relation_ids}
         for node in getattr(result, "nodes", []) or []:
             scope = getattr(node, "scope", None); metadata = getattr(node, "semantic_metadata", None)
             if getattr(metadata, "visibility_scope", None) == "actor_private" and getattr(scope, "owner_actor_id", None) != actor: continue
