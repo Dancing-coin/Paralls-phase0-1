@@ -3,7 +3,11 @@ import asyncio
 from threading import Event
 from time import monotonic, time
 
-from app.services.siming_continuation import SimingProviderCompletion, run_siming_provider
+from app.services.siming_continuation import (
+    RETRYABLE_SIMING_PROVIDER_ERRORS,
+    SimingProviderCompletion,
+    run_siming_provider,
+)
 
 
 _PROVIDER_RETRY_DELAYS = (1.0, 2.0, 4.0)
@@ -50,19 +54,19 @@ class SimingDriver:
                         self._provider_attempts.pop(identity, None)
                         self._retry_after.pop(identity, None)
                     else:
-                        generic_error = SimingProviderCompletion.model_validate_json(
-                            completion).error == 'SimingLlmProviderError'
+                        completion_error = SimingProviderCompletion.model_validate_json(completion).error
+                        retryable_error = completion_error in RETRYABLE_SIMING_PROVIDER_ERRORS
                         attempt = self._provider_attempts.get(identity, 1)
-                        if generic_error and attempt > len(_PROVIDER_RETRY_DELAYS):
+                        if retryable_error and attempt > len(_PROVIDER_RETRY_DELAYS):
                             await self.owner_call(lambda: self.coordinator.fail_ready(key, job,
-                                provider_revision=revision, error_kind='SimingLlmProviderError',
+                                provider_revision=revision, error_kind=completion_error,
                                 now=self.clock()))
                             self._provider_attempts.pop(identity, None)
                             self._retry_after.pop(identity, None)
                         else:
                             await self.owner_call(lambda: self.coordinator.finish_ready(key, job, completion,
                                 provider_revision=revision, now=self.clock()))
-                            if generic_error:
+                            if retryable_error:
                                 self._provider_attempts[identity] = attempt + 1
                                 self._retry_after[identity] = (
                                     self.retry_clock() + _PROVIDER_RETRY_DELAYS[attempt - 1])

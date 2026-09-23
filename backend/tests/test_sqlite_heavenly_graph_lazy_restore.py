@@ -13,6 +13,18 @@ from app.models.siming_heavenly_graph import (
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 
 
+def test_runtime_connection_bounds_wal_checkpoint_work_and_uses_direct_model_json(tmp_path: Path):
+    graph = SQLiteHeavenlyGraphAdapter(tmp_path / "bounded-wal.db")
+    try:
+        node = graph_node(node_id="fact:direct-json")
+        assert graph._connection.execute("PRAGMA wal_autocheckpoint").fetchone() == (
+            SQLiteHeavenlyGraphAdapter._WAL_AUTOCHECKPOINT_PAGES,
+        )
+        assert json.loads(graph._payload_json(node)) == node.model_dump(mode="json")
+    finally:
+        graph.close()
+
+
 def test_reopen_and_point_access_do_not_decode_graph_history(tmp_path: Path, monkeypatch):
     path = tmp_path / "graph.db"
     scope = graph_scope()

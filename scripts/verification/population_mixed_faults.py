@@ -29,7 +29,16 @@ class MixedMirrorFaultClient:
             await context.__aexit__(None, None, None)
 
     async def _read(self):
-        raw = await self.socket.recv()
+        try:
+            raw = await self.socket.recv()
+        except ConnectionClosed as error:
+            close = error.rcvd
+            if close is None or close.code != 4403 or close.reason != "mirror_delivery_unrecoverable":
+                raise
+            payload = dict(reason_code=close.reason, route="gameplay_mirror_transport")
+            self.transport.record(dict(key=self.key, type="fault_controlled_close", at=perf_counter(),
+                epoch=self.receiver.wire.epoch, **payload))
+            raise MirrorControlledClose() from error
         message = json.loads(raw)
         if message["message_type"] == "websocket_session_revoked":
             payload = message["payload"]

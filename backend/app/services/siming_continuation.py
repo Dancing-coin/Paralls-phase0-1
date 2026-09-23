@@ -26,6 +26,10 @@ def digest(value: object) -> str:
 
 
 CANDIDATE_TIMELINE_REQUEUE = "candidate_timeline_changed"
+RETRYABLE_SIMING_PROVIDER_ERRORS = frozenset({
+    "SimingLlmProviderError",
+    "SimingLlmProviderInvalidOutput",
+})
 
 
 def candidate_timeline_changed(previous: dict, current: dict) -> bool:
