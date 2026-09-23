@@ -63,3 +63,10 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 
 - Validated result scope digests against the canonical graph scope digest and made entity metadata digest checks visibility-aware.
 - Verification: compileall passed; semantic/policy/L3 focused tests: 75 passed; `git diff --check` passed.
+
+### Final high-priority closure
+
+- Separated graph-query policy identity from canonical turn policy, admitted typed graph revision vectors under the runtime's generic memory marker, merged revision streams monotonically, propagated typed graph incompleteness, and preserved source/claim evidence through graph merging (`d44e8ae3..9f67fd9d`).
+- Real in-memory graph verification confirmed heavy-actor behavior/causal/perspective/source-impact queries, relation/revision preservation, and light-actor bounded private-memory fallback with zero graph queries.
+- Final scoped re-review: **APPROVE**.
+- Final focused semantic/policy/L3 suite: `77 passed` (three existing serializer warnings); compileall and `git diff --check` passed.
