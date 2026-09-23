@@ -164,25 +164,37 @@ class CharacterSemanticRecallService:
 
     def _validated_result(self, result: object, actor: str, turn: CharacterTurnContext, reader: GraphReaderContext):
         if getattr(result, "policy_revision", reader.policy_revision) != reader.policy_revision: return False, "stale_read_set"
+        scope = self._scope_resolver(actor) if self._scope_resolver else None
+        if scope is not None:
+            canonical = json.dumps(scope.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+            expected_digest = "sha256:" + hashlib.sha256(canonical.encode()).hexdigest()
+            if getattr(result, "scope_digest", expected_digest) != expected_digest: return False, "stale_read_set"
         rv = self._revision_map(getattr(result, "revision_vector", None)); pins = self._revision_map(turn.memory_revision_vector)
         if any(k not in pins or pins[k] < v for k, v in rv.items()): return False, "stale_read_set"
         for node in getattr(result, "nodes", []) or []:
             scope = getattr(node, "scope", None); validity = getattr(node, "validity", None); metadata = getattr(node, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
-            if metadata and (getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision or getattr(metadata, "scope_digest", "scope:actor-private") != "scope:actor-private"): return False, "stale_read_set"
+            if metadata and not self._valid_metadata_scope(metadata): return False, "stale_read_set"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(node, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
         for relation in getattr(result, "relations", []) or []:
             scope = getattr(relation, "scope", None); validity = getattr(relation, "validity", None); metadata = getattr(relation, "semantic_metadata", None)
             if scope and (scope.world_id != reader.world_id or scope.session_id != reader.session_id or scope.story_branch_id != reader.story_branch_id): return False, "stale_read_set"
             if scope and getattr(metadata, "visibility_scope", None) == "actor_private" and scope.owner_actor_id != actor: return False, "visibility_denied"
-            if metadata and (getattr(metadata, "policy_revision", reader.policy_revision) != reader.policy_revision or getattr(metadata, "scope_digest", "scope:actor-private") != "scope:actor-private"): return False, "stale_read_set"
+            if metadata and not self._valid_metadata_scope(metadata): return False, "stale_read_set"
             if validity and not validity.contains(turn.valid_at): return False, "stale_read_set"
             if getattr(relation, "recorded_at", turn.producer_ts) > turn.producer_ts: return False, "stale_read_set"
         node_refs = {self._canonical_ref(self._node_ref(node)) for node in getattr(result, "nodes", []) or []}
         if any(self._canonical_ref(str(ref)) not in node_refs for ref in getattr(result, "selected_node_refs", []) or []): return False, "visibility_denied"
         return True, None
+
+    def _valid_metadata_scope(self, metadata: object) -> bool:
+        digest = str(getattr(metadata, "scope_digest", "") or "")
+        visibility = str(getattr(metadata, "visibility_scope", "") or "")
+        if visibility == "actor_private": return digest == "scope:actor-private"
+        if visibility == "siming_internal": return digest.startswith("scope:siming-")
+        return digest.startswith("scope:")
 
     def _merge_cards(self, kind: str, result: object, cards: dict[str, SemanticRecallCard], actor: str):
         for node in getattr(result, "nodes", []) or []:

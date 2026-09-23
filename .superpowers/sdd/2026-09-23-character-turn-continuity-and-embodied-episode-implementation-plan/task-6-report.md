@@ -58,3 +58,8 @@ Implemented bounded semantic recall as a read-only facade over `CharacterMemoryR
 ### Final relation/light-actor closure
 
 - Relation semantic metadata now requires the canonical actor-private scope digest; added relation mismatch and light-actor no-graph regressions.
+
+### Integrity closure
+
+- Validated result scope digests against the canonical graph scope digest and made entity metadata digest checks visibility-aware.
+- Verification: compileall passed; semantic/policy/L3 focused tests: 75 passed; `git diff --check` passed.
