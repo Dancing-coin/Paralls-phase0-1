@@ -80,7 +80,8 @@ class CharacterSemanticRecallService:
         graph_truncated = False
         if self._graph is not None and reader is not None:
             query_count = result_count = 0
-            for kind, query in self._queries(actor_id, turn_context, cards, reader):
+            queries = list(self._queries(actor_id, turn_context, dict(cards), reader))
+            for kind, query in queries:
                 if query_count >= 16 or result_count >= self._max_graph_results * 8:
                     incomplete = "graph_budget_exhausted"
                     break
@@ -94,7 +95,12 @@ class CharacterSemanticRecallService:
                 if not valid:
                     incomplete = incomplete or reason or "stale_read_set"
                     continue
+                result_incomplete = getattr(result, "incomplete_reason", None)
+                if result_incomplete:
+                    incomplete = incomplete or str(result_incomplete)
                 graph_truncated |= bool(getattr(result, "truncated", False))
+                if getattr(result, "truncated", False) and not incomplete:
+                    incomplete = "graph_budget_exhausted"
                 result_count += len(getattr(result, "nodes", []) or []) + len(getattr(result, "relations", []) or [])
                 refs, rels = self._result_refs(result, actor_id)
                 relations.update(rels)
@@ -213,7 +219,10 @@ class CharacterSemanticRecallService:
             old = cards.get(ref); status = "disputed" if kind == "conflict" else (old.evidence_status if old else "graph_context")
             src = tuple(dict.fromkeys((old.source_refs if old else ()) + tuple(getattr(getattr(node, "provenance", None), "source_ref", "") for _ in [0] if getattr(getattr(node, "provenance", None), "source_ref", ""))))
             rels = tuple(str(getattr(x, "relation_id", "")) for x in getattr(result, "relations", []) or [] if self._canonical_ref(str(getattr(x, "source_node_id", ""))).endswith(ref) or self._canonical_ref(str(getattr(x, "target_node_id", ""))).endswith(ref))
-            cards[ref] = SemanticRecallCard(ref=ref, payload=deepcopy(getattr(node, "attributes", {}) or (old.payload if old else {})), evidence_status=status, source_refs=src, relation_refs=tuple(dict.fromkeys((old.relation_refs if old else ()) + rels)))
+            attributes = deepcopy(getattr(node, "attributes", {}) or {})
+            graph_payload = attributes.get("record", attributes) if isinstance(attributes, Mapping) else {}
+            payload = deepcopy(old.payload) if old else graph_payload
+            cards[ref] = SemanticRecallCard(ref=ref, payload=payload, evidence_status=status, source_refs=src, relation_refs=tuple(dict.fromkeys((old.relation_refs if old else ()) + rels)))
 
     def _result_refs(self, result: object, actor: str):
         valid_relation_ids = {str(getattr(x, "relation_id", "")) for x in getattr(result, "relations", []) or []}
