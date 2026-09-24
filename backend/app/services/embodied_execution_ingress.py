@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -18,6 +18,50 @@ class EmbodiedIngressResult(BaseModel):
     idempotent: bool = False
     accepted_payload: dict[str, object] = Field(default_factory=dict)
     outbound: list[dict[str, object]] = Field(default_factory=list)
+
+
+class TurnExecutionCorrelation(BaseModel):
+    """Optional continuity pins carried through the existing embodied route."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    turn_id: str = ""
+    execution_contract_ref: str = ""
+    episode_ref: str = ""
+    pre_capture_ref: str = ""
+    accepted: bool = True
+    error_code: str = ""
+
+    @classmethod
+    def from_payload(cls, payload: Mapping[str, object]) -> "TurnExecutionCorrelation":
+        turn_id = str(payload.get("turn_id", "") or "")
+        execution_contract_ref = str(
+            payload.get("execution_contract_ref", payload.get("idempotency_key", "")) or ""
+        )
+        episode_ref = str(payload.get("episode_ref", "") or "")
+        pre_capture_ref = str(payload.get("pre_capture_ref", "") or "")
+        if not turn_id:
+            return cls()
+        if not execution_contract_ref:
+            return cls(turn_id=turn_id, accepted=False, error_code="execution_contract_ref_required")
+        if not episode_ref:
+            return cls(turn_id=turn_id, execution_contract_ref=execution_contract_ref, accepted=False, error_code="episode_ref_required")
+        return cls(
+            turn_id=turn_id,
+            execution_contract_ref=execution_contract_ref,
+            episode_ref=episode_ref,
+            pre_capture_ref=pre_capture_ref,
+        )
+
+    @classmethod
+    def from_action_request(cls, request: object) -> "TurnExecutionCorrelation":
+        payload = getattr(request, "payload", {})
+        raw: dict[str, object] = dict(payload) if isinstance(payload, Mapping) else {}
+        raw.setdefault("turn_id", getattr(request, "turn_id", ""))
+        raw.setdefault("idempotency_key", getattr(request, "idempotency_key", ""))
+        if raw.get("turn_id") and not raw.get("episode_ref"):
+            raw["episode_ref"] = f"episode:{raw['turn_id']}:{getattr(request, 'request_id', 'action')}"
+        return cls.from_payload(raw)
 
 
 class RouteGateResult(BaseModel):

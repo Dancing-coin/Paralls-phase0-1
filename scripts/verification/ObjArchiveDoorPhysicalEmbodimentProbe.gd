@@ -36,6 +36,11 @@ var _screenshot_source := ""
 var _notes: Array[String] = []
 var _stage_written := false
 var _blocker_body: CharacterBody3D
+var _pre_capture_ref := ""
+var _post_capture_ref := ""
+var _episode_ref := ""
+var _turn_id := ""
+var _execution_contract_ref := ""
 
 
 func _ready() -> void:
@@ -66,6 +71,7 @@ func _process(_delta: float) -> void:
 func _run_probe() -> void:
 	var ok := false
 	_pre_snapshot = _snapshot()
+	_pre_capture_ref = "capture:godot:%s:pre" % _scenario
 	if not await _wait_for_backend():
 		await _finish(false)
 		return
@@ -122,6 +128,14 @@ func _run_success() -> bool:
 	_write_stage("success_interaction_emitted", _request_descriptor)
 	if not await _wait_for_settlement_applied():
 		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if str(_settlement_payload.get("outcome", "")) != "committed":
+		_notes.append("authority_result_not_committed")
+		return false
+	var post_snapshot := _snapshot()
+	if str(_received_world_result.get("current_state", "")) != "open" or str(post_snapshot.get("current_state", "")) != "open":
+		_notes.append("post_observation_mismatch")
+		return false
 	_write_stage("success_settlement_applied", _settlement_payload)
 	await get_tree().create_timer(0.25).timeout
 	return true
@@ -134,6 +148,10 @@ func _run_distance_failure() -> bool:
 		return false
 	if not await _wait_for_distance_constraint():
 		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if not _settlement_payload.is_empty() or not _received_world_result.is_empty():
+		_notes.append("distance_failure_mutated_authority")
+		return false
 	await get_tree().create_timer(0.15).timeout
 	return true
 
@@ -144,6 +162,10 @@ func _run_revision_failure() -> bool:
 	if not _emit_door_interaction():
 		return false
 	if not await _wait_for_rejected_settlement(["binding_revision_mismatch", "revision_conflict", "door_state_stale"]):
+		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if not _received_world_result.is_empty():
+		_notes.append("revision_failure_mutated_authority")
 		return false
 	await get_tree().create_timer(0.25).timeout
 	return true
@@ -156,6 +178,10 @@ func _run_stance_failure() -> bool:
 	if not _emit_door_interaction():
 		return false
 	if not await _wait_for_rejected_settlement(["stance_occupied"]):
+		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if not _received_world_result.is_empty():
+		_notes.append("stance_failure_mutated_authority")
 		return false
 	await get_tree().create_timer(0.15).timeout
 	return true
@@ -276,6 +302,11 @@ func _finish(ok: bool) -> void:
 		"scene": MAIN_DEMO_SCENE,
 		"launch_scene": LAUNCH_SCENE,
 		"request_id": str(_request_descriptor.get("request_id", "")),
+		"turn_id": str(_action_request_payload.get("request", {}).get("turn_id", "")),
+		"execution_contract_ref": str(_action_request_payload.get("request", {}).get("execution_contract_ref", _action_request_payload.get("request", {}).get("idempotency_key", ""))),
+		"episode_ref": str(_action_request_payload.get("request", {}).get("episode_ref", "episode:%s:%s" % [str(_action_request_payload.get("request", {}).get("turn_id", "")), str(_action_request_payload.get("request", {}).get("idempotency_key", ""))])),
+		"pre_capture_ref": _pre_capture_ref,
+		"post_capture_ref": _post_capture_ref if not _post_capture_ref.is_empty() else "capture:godot:%s:post" % _scenario,
 		"correlation_id": "interact:%s" % str(_request_descriptor.get("producer_ts", 0)) if not _request_descriptor.is_empty() else "",
 		"attempt_id": str(_action_request_payload.get("request", {}).get("interaction_attempt_id", "")),
 		"grant_id": str(_action_request_payload.get("grant", {}).get("grant_id", "")) if not _action_request_payload.is_empty() else null,
@@ -312,6 +343,16 @@ func _finish(ok: bool) -> void:
 		"replay_join": {
 			"attempt_id": str(_action_request_payload.get("request", {}).get("interaction_attempt_id", "")),
 			"settlement_id": str(_settlement_payload.get("settlement_id", "")),
+		},
+		"episode": {
+			"turn_id": str(_action_request_payload.get("request", {}).get("turn_id", "")),
+			"pre_capture_ref": _pre_capture_ref,
+			"post_capture_ref": _post_capture_ref if not _post_capture_ref.is_empty() else "capture:godot:%s:post" % _scenario,
+			"authority_result_ref": str(_settlement_payload.get("settlement_id", "")),
+			"expected_state": "open",
+			"observed_state": str(_final_snapshot.get("current_state", "")),
+			"recovery_evidence": {"typed_failure": str(_settlement_payload.get("error_code", "")), "notes": _notes},
+			"outcome": "confirmed_success" if ok else "recovery_required",
 		},
 		"screenshot": _screenshot_path if screenshot_result else "",
 		"screenshot_source": _screenshot_source,
