@@ -96,6 +96,37 @@ def test_expired_launch_credentials_are_pruned_without_revoking_active_bindings(
     assert service.bind_session(_enrollment(current), remote_host="127.0.0.1", now=21).accepted
 
 
+def test_used_launch_credentials_release_large_scope_and_keep_bounded_replay_tombstones() -> None:
+    service = WebSocketSessionAuthService()
+    actor_scope = tuple(f"actor:{index}" for index in range(1000))
+    credentials = []
+
+    for timestamp in range(300):
+        credential = service.create_trusted_local_launch_credential(
+            principal_ref="principal:population-probe",
+            allowed_actor_refs=actor_scope,
+            issued_at=timestamp,
+            expires_at=timestamp + 300,
+        )
+        assert service._trusted_credentials[credential].allowed_actor_refs is actor_scope
+        result = service.bind_session(
+            _enrollment(credential),
+            remote_host="127.0.0.1",
+            now=timestamp,
+        )
+        assert result.accepted
+        credentials.append(credential)
+
+    assert service._trusted_credentials == {}
+    assert len(service._closed_trusted_credentials) == 256
+    assert service.bind_session(
+        _enrollment(credentials[-1]), remote_host="127.0.0.1", now=300,
+    ).error_code == "trusted_local_launch_already_used"
+    assert service.bind_session(
+        _enrollment(credentials[0]), remote_host="127.0.0.1", now=300,
+    ).error_code == "trusted_local_launch_unknown"
+
+
 def test_closed_binding_diagnostics_are_bounded_to_recent_sessions() -> None:
     service = WebSocketSessionAuthService()
     session_refs = []

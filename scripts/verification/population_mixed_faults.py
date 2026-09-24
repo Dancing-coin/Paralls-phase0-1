@@ -23,13 +23,36 @@ class MixedMirrorFaultClient:
         self.context = self.socket = self.receiver = None
         self.pause_started = self.disconnected_at = self.disconnected_epoch = None
         self.pause_ready, self.disconnect_ready = asyncio.Event(), asyncio.Event()
+        self._pending_resync_actor_refs: list[str] = []
+        self._resync_in_flight: set[str] = set()
         self.key = ""
 
     async def close(self):
         context, self.context = self.context, None
         self.socket = None
+        self._pending_resync_actor_refs.clear()
+        self._resync_in_flight.clear()
         if context is not None:
             await context.__aexit__(None, None, None)
+
+    async def _send_resync_batch(self, actor_refs):
+        known = set(self._pending_resync_actor_refs) | self._resync_in_flight
+        for actor in actor_refs:
+            if actor not in known:
+                self._pending_resync_actor_refs.append(actor)
+                known.add(actor)
+        self._resync_in_flight.intersection_update(self.receiver.awaiting)
+        if self._resync_in_flight or not self._pending_resync_actor_refs:
+            return
+        batch = self._pending_resync_actor_refs[:_BASELINE_SUBSCRIPTION_BATCH]
+        del self._pending_resync_actor_refs[:_BASELINE_SUBSCRIPTION_BATCH]
+        self._resync_in_flight.update(batch)
+        for actor in batch:
+            self.transport.record(dict(key=self.key, type="fault_resync_request", at=perf_counter(), actor_ref=actor))
+            await self.socket.send(json.dumps(dict(
+                message_type="gameplay_mirror_resync_request",
+                payload=dict(actor_ref=actor),
+            )))
 
     async def _read(self):
         try:
@@ -61,9 +84,7 @@ class MixedMirrorFaultClient:
         if message["message_type"] in {"gameplay_mirror_delivery", "gameplay_mirror_resync_required"}:
             self.transport.record(dict(key=self.key, type="fault_mirror_packet", at=perf_counter(),
                 epoch=self.receiver.wire.epoch, raw_text=raw, decision=decision))
-        for actor in decision["request_actor_refs"]:
-            self.transport.record(dict(key=self.key, type="fault_resync_request", at=perf_counter(), actor_ref=actor))
-            await self.socket.send(json.dumps(dict(message_type="gameplay_mirror_resync_request", payload=dict(actor_ref=actor))))
+        await self._send_resync_batch(decision["request_actor_refs"])
         return decision
 
     async def _open(self, event):
@@ -78,6 +99,8 @@ class MixedMirrorFaultClient:
                 if not self.actors.issubset(binding["allowed_actor_refs"]):
                     raise ValueError("mixed_fault_scope_not_granted")
                 self.receiver = MixedMirrorReceiver(self.actors, epoch=binding["connection_epoch"])
+                self._pending_resync_actor_refs.clear()
+                self._resync_in_flight.clear()
                 self.key = event.transaction_id
                 self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
                     epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))

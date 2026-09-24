@@ -59,16 +59,13 @@ class WebSocketSessionLifecycleRecord(BaseModel):
     occurred_at: int
 
 
-class _TrustedLocalSessionCredential(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+@dataclass
+class _TrustedLocalSessionCredential:
     principal_ref: str
     allowed_actor_refs: tuple[str, ...]
-    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
     issued_at: int
     expires_at: int
-    used: bool = False
-    revoked: bool = False
+    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
 
 
 @dataclass
@@ -92,6 +89,7 @@ class WebSocketSessionAuthService:
     """Issues opaque connection bindings without importing controller execution policy."""
 
     _CLOSED_BINDING_LIMIT = 256
+    _CLOSED_CREDENTIAL_LIMIT = 256
 
     def __init__(
         self,
@@ -102,6 +100,7 @@ class WebSocketSessionAuthService:
         self.authenticated_session_adapter_configured = authenticated_session_adapter_configured
         self._renewal_scope_selector = renewal_scope_selector or (lambda binding: binding.allowed_actor_refs)
         self._trusted_credentials: dict[str, _TrustedLocalSessionCredential] = {}
+        self._closed_trusted_credentials: dict[str, Literal["used", "revoked", "expired"]] = {}
         self._bindings: dict[str, WebSocketSessionBinding] = {}
         self._closed_bindings: dict[str, WebSocketSessionLifecycleRecord] = {}
         self._next_connection_epoch = 1
@@ -115,9 +114,11 @@ class WebSocketSessionAuthService:
         issued_at: int,
         expires_at: int,
     ) -> str:
-        if not principal_ref or not allowed_actor_refs or any(not actor_ref for actor_ref in allowed_actor_refs):
+        if (not principal_ref or not allowed_actor_refs
+                or any(not isinstance(actor_ref, str) or not actor_ref for actor_ref in allowed_actor_refs)):
             raise ValueError("trusted_local_session_subject_required")
-        if any(not jurisdiction_ref for jurisdiction_ref in allowed_government_drought_advisory_jurisdiction_refs):
+        if any(not isinstance(jurisdiction_ref, str) or not jurisdiction_ref
+               for jurisdiction_ref in allowed_government_drought_advisory_jurisdiction_refs):
             raise ValueError("trusted_local_government_drought_advisory_scope_invalid")
         if expires_at < issued_at:
             raise ValueError("trusted_local_session_expiry_invalid")
@@ -125,12 +126,20 @@ class WebSocketSessionAuthService:
                       if record.expires_at < issued_at]:
             del self._trusted_credentials[stale]
         credential = f"trusted_local_launch:{token_urlsafe(24)}"
+        actor_scope = (allowed_actor_refs if isinstance(allowed_actor_refs, tuple)
+                       and len(set(allowed_actor_refs)) == len(allowed_actor_refs)
+                       else tuple(dict.fromkeys(allowed_actor_refs)))
+        jurisdiction_scope = (
+            allowed_government_drought_advisory_jurisdiction_refs
+            if isinstance(allowed_government_drought_advisory_jurisdiction_refs, tuple)
+            and len(set(allowed_government_drought_advisory_jurisdiction_refs))
+                == len(allowed_government_drought_advisory_jurisdiction_refs)
+            else tuple(dict.fromkeys(allowed_government_drought_advisory_jurisdiction_refs))
+        )
         self._trusted_credentials[credential] = _TrustedLocalSessionCredential(
             principal_ref=principal_ref,
-            allowed_actor_refs=tuple(dict.fromkeys(allowed_actor_refs)),
-            allowed_government_drought_advisory_jurisdiction_refs=tuple(
-                dict.fromkeys(allowed_government_drought_advisory_jurisdiction_refs)
-            ),
+            allowed_actor_refs=actor_scope,
+            allowed_government_drought_advisory_jurisdiction_refs=jurisdiction_scope,
             issued_at=issued_at,
             expires_at=expires_at,
         )
@@ -149,16 +158,16 @@ class WebSocketSessionAuthService:
             return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_adapter_not_implemented")
         if remote_host not in _LOOPBACK_HOSTS:
             return WebSocketSessionBindResult(accepted=False, error_code="trusted_local_launch_requires_loopback")
+        closed = self._closed_trusted_credentials.get(enrollment.credential)
+        if closed is not None:
+            suffix = "already_used" if closed == "used" else closed
+            return WebSocketSessionBindResult(accepted=False, error_code=f"trusted_local_launch_{suffix}")
         credential = self._trusted_credentials.get(enrollment.credential)
         if credential is None:
             return WebSocketSessionBindResult(accepted=False, error_code="trusted_local_launch_unknown")
-        if credential.revoked:
-            return WebSocketSessionBindResult(accepted=False, error_code="trusted_local_launch_revoked")
-        if credential.used:
-            return WebSocketSessionBindResult(accepted=False, error_code="trusted_local_launch_already_used")
         if now > credential.expires_at:
+            self._close_credential(enrollment.credential, "expired")
             return WebSocketSessionBindResult(accepted=False, error_code="trusted_local_launch_expired")
-        credential.used = True
         binding = WebSocketSessionBinding(
             session_ref=f"ws_session:{token_urlsafe(24)}",
             principal_ref=credential.principal_ref,
@@ -169,6 +178,7 @@ class WebSocketSessionAuthService:
             connection_epoch=self._next_connection_epoch,
             lease_expires_at=credential.expires_at,
         )
+        self._close_credential(enrollment.credential, "used")
         self._next_connection_epoch += 1
         self._bindings[binding.session_ref] = binding
         return WebSocketSessionBindResult(accepted=True, binding=binding)
@@ -183,10 +193,20 @@ class WebSocketSessionAuthService:
         """Server-only invalidation for an unconsumed opaque enrollment."""
 
         record = self._trusted_credentials.get(credential)
-        if record is None or record.used:
+        if record is None:
             return False
-        record.revoked = True
+        self._close_credential(credential, "revoked")
         return True
+
+    def _close_credential(
+        self,
+        credential: str,
+        state: Literal["used", "revoked", "expired"],
+    ) -> None:
+        self._trusted_credentials.pop(credential, None)
+        self._closed_trusted_credentials[credential] = state
+        while len(self._closed_trusted_credentials) > self._CLOSED_CREDENTIAL_LIMIT:
+            self._closed_trusted_credentials.pop(next(iter(self._closed_trusted_credentials)))
 
     def issue_replacement_enrollment(self, session_ref: str, now: int) -> WebSocketSessionEnrollment:
         """Replace an active binding with a fresh opaque enrollment chosen from backend state."""
