@@ -147,6 +147,36 @@ def test_transient_lag_that_drains_does_not_fail_one_x_performance():
     assert result["performance_passed"]
 
 
+def test_backlog_growth_gate_distinguishes_recovery_from_sustained_growth():
+    def replay(backlog_values):
+        rows, config, actors = trace(seconds=60)
+        last_finish = 50.0
+        for row, backlog in zip(rows[1:], backlog_values):
+            tick = row["target_tick"]
+            finish = 50.0 + tick + backlog + 0.4
+            row["driver_started_at"] = max(last_finish, 50.0 + tick)
+            row["driver_finished_at"] = finish
+            row["advance_lag_windows"] = backlog + 0.4
+            row["backlog"] = backlog
+            last_finish = finish
+        return evidence.replay_windows(rows, config, actors)
+
+    # 原长测形态：积压短时升至8，随后持续回落并在测量期内清空。
+    recovered = [1, 3, 3, 6, 8, 7, 7, 8, 8, 8, 7, 7, 7, 7, 6, 6, 6, 5,
+        6, 5, 6, 5, 5, 4, 4, 4, 5, 4, 4, 4, 5, 4, 5, 4, 5, 5, 5, 4,
+        4, 5, 5, 4, 5, 4, 4, 4, 3, 3, 2, 2, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0]
+    result = replay(recovered)
+    assert result["metrics"]["max_backlog"] == 8
+    assert result["metrics"]["final_backlog"] == 0
+    assert result["performance_passed"]
+
+    # 连续30窗单调不降且净增长，即使之后清空也必须保留性能失败。
+    growing = [1] * 15 + [2] * 15 + [1, 0] + [0] * 28
+    result = replay(growing)
+    assert result["metrics"]["final_backlog"] == 0
+    assert not result["performance_passed"]
+
+
 def test_windows_cannot_finish_before_actual_driver_deadlines():
     rows, config, actors = trace()
     for index, row in enumerate(rows[1:]):
