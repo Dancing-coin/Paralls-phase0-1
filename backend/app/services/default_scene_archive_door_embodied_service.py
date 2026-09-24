@@ -213,6 +213,10 @@ class DefaultSceneArchiveDoorEmbodiedService:
                 "correlation_id": action_request.correlation_id,
                 "realization_route": "embodied_controller_v1",
                 "settlement_writer_kind": "esm_compatibility_adapter",
+                "turn_id": correlation.turn_id,
+                "execution_contract_ref": correlation.execution_contract_ref,
+                "episode_ref": correlation.episode_ref,
+                "pre_capture_ref": correlation.pre_capture_ref,
             }
         )
         grant = self._auth.issue_execution_grant(
@@ -437,7 +441,11 @@ class DefaultSceneArchiveDoorEmbodiedService:
         )
         if attempt.turn_correlation is not None:
             object_result = object_result.model_copy(
-                update={"turn_id": attempt.turn_correlation.turn_id}
+                update={
+                    "turn_id": attempt.turn_correlation.turn_id,
+                    "execution_contract_ref": attempt.turn_correlation.execution_contract_ref,
+                    "episode_ref": attempt.turn_correlation.episode_ref,
+                }
             )
         self.commit_count += 1
         return DoorEmbodiedOutcomeResult(
@@ -477,6 +485,11 @@ class DefaultSceneArchiveDoorEmbodiedService:
                 "execution_contract_ref": correlation.execution_contract_ref,
                 "episode_ref": correlation.episode_ref,
                 "pre_capture_ref": correlation.pre_capture_ref,
+                "replay_join": {
+                    "turn_id": correlation.turn_id,
+                    "execution_contract_ref": correlation.execution_contract_ref,
+                    "episode_ref": correlation.episode_ref,
+                },
             })
         return payload
 

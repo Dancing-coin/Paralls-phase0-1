@@ -313,8 +313,10 @@ func _correlation_integrity_ok() -> bool:
 	for payload in [_settlement_payload, _received_world_result]:
 		if str(payload.get("turn_id", "")) != turn or str(payload.get("execution_contract_ref", payload.get("idempotency_key", ""))) != contract or str(payload.get("episode_ref", "")) != episode:
 			return false
-	var replay := {"turn_id": turn, "execution_contract_ref": contract, "episode_ref": episode}
-	return replay["turn_id"] == turn and replay["execution_contract_ref"] == contract and replay["episode_ref"] == episode
+	var replay: Variant = _settlement_payload.get("replay_join", {})
+	if not (replay is Dictionary):
+		return false
+	return str((replay as Dictionary).get("turn_id", "")) == turn and str((replay as Dictionary).get("execution_contract_ref", "")) == contract and str((replay as Dictionary).get("episode_ref", "")) == episode
 
 
 func _finish(ok: bool) -> void:

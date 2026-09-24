@@ -54,7 +54,8 @@ def episode_result_ok(
         if any(not artifacts.get(name) for name in required):
             notes.append("missing_backend_or_replay_trace")
         screenshots = artifacts.get("screenshots")
-        if not isinstance(screenshots, dict) or any(not value for value in screenshots.values()):
+        required_screenshots = {"success", "distance_failure", "revision_failure", "stance_failure"}
+        if not isinstance(screenshots, dict) or set(screenshots) < required_screenshots or any(not value for value in screenshots.values()):
             notes.append("missing_runtime_screenshots")
         if artifact_root is not None:
             paths = [artifacts.get(name) for name in required]

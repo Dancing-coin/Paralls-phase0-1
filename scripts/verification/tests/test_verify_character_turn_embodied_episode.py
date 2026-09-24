@@ -43,7 +43,7 @@ def test_verifier_accepts_complete_live_evidence_manifest() -> None:
             "backend_trace": "backend.json",
             "replay_trace": "replay.json",
             "runtime": "runtime.json",
-            "screenshots": {"success": "success.png"},
+            "screenshots": {name: f"{name}.png" for name in ("success", "distance_failure", "revision_failure", "stance_failure")},
         },
     })
     assert passed is True

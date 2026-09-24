@@ -160,6 +160,10 @@ class EmbodiedActionRequest(StrictEmbodiedModel):
     correlation_id: str = Field(min_length=1)
     realization_route: RealizationRoute
     settlement_writer_kind: SettlementWriterKind
+    turn_id: str = ""
+    execution_contract_ref: str = ""
+    episode_ref: str = ""
+    pre_capture_ref: str = ""
 
     @model_validator(mode="before")
     @classmethod

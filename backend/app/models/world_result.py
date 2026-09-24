@@ -15,6 +15,8 @@ class WorldResultBase(BaseModel):
     correlation_id: str = ""
     turn_id: str = ""
     idempotency_key: str = ""
+    execution_contract_ref: str = ""
+    episode_ref: str = ""
     expected_revision_vector: dict[str, int] = Field(default_factory=dict)
     expected_memory_revision_vector: dict[str, int] = Field(default_factory=dict)
     expected_snapshot_revision: int = 0
