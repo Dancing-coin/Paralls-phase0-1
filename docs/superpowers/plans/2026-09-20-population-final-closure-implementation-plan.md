@@ -150,3 +150,11 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - 本轮初次全量失败遗留的paralls-session-i4ab27nf、paralls-session-smcnwpd7仅有本轮临时存档；拥有进程已退出。自动审批以blocked by policy拒绝清理，未执行、未绕过或重试；与此前两个已记录清理阻塞分别保留。修复后新作用域正常清理。
 - 接续：源码保持不变完成完整双核后端复验，串行执行180秒local_probe事务分段诊断；完成审查及提交推送后重新冻结同版正式门禁。严格单窗lag门槛继续保留，六项总闭环尚未完成。
 - 最终双核后端复验6949 passed／2 skipped／0 failed（639.90秒），清理通过。180秒local_probe诊断完整采集180窗、15120个事务：fixture p95约144.75ms、max148.73ms；事务进入max0.31ms、正文max1.58ms、退出max14.23ms。WAL/FULL、autocheckpoint1000、busy_timeout5000不变。未复现旧tick221/1003停顿，不能宣称其已修复或归因checkpoint；下一步以覆盖221窗的真实provider诊断区分负载差异，旧性能失败继续保留。原始材料位于仓库外`D:/HarnessEvidence/pop-b795-fixture-transaction-diagnostic`，带仪表及local_probe结果不用于正式聚合。
+
+### fdf6a045 同版正式长测与 SQLite 页缓存
+
+- `fdf6a045` 的 correctness（1742项）、change-lifecycle、100/1000服务隔离、千人1000/10000历史各5次冷恢复、5配对transport及两档真实模型short均通过并完成离线复验。soak中100人/1000人各30分钟1x通过，10x完整性通过但独立性能门槛未过；千人2小时处理性能通过，RSS首60窗中位199716864字节、末60窗中位237352960字节，增长37636096字节，超过33554432字节门槛，因此整组soak失败且capacity未启动。不能把其他同版通过项合并为六项闭环。
+- tracemalloc和运行时类型快照确认Python活对象及显式缓存已稳定，AuthorityEvent只增长至事件总线上限；2小时内graph和gameplay SQLite文件分别增长到约3.4GB和5.5GB，四个长驻连接仍使用SQLite默认`cache_size=-2000`。根因修复只为四个长驻运行时连接设置`cache_size=-256`，保留WAL、FULL同步、autocheckpoint、事务粒度、事件保留及恢复语义。
+- 回归先观察缺失常量及默认`-2000`失败，再通过真实runtime核对Heavenly Graph、Character Session、Gameplay Event Store、Siming Audit四个连接均应用各自声明的256KiB上限。定向存储/生命周期回归48 passed；完整后端与验证工具合并回归7453 passed、2 skipped、0 failed（859.28秒）。
+- 1000人、1x、600秒同构诊断完整采集600窗：cadence p95约148.76ms、最终及最大backlog均为0，RSS首/末60窗中位约137.09/155.28MiB，增长18.20MiB；原`fdf6a045`相同前600窗为147.00/180.82MiB，增长33.82MiB。本结果只证明修复方向和早期余量，不能替代冻结新提交后的千人2小时正式门禁。
+- 下一步冻结并推送缓存修复提交，然后在同一干净SHA串行重采correctness、change-lifecycle、service、recovery、transport、真实模型short、完整soak和2/4局capacity，最后生成总聚合。Godot运行时、Archive Door获批准的`char_c` IK绑定、VLA真实凭据及当前SHA的mainline/all仍按外部实证状态报告；缺失时保持未完成。

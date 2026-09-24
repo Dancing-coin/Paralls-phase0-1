@@ -852,6 +852,7 @@ class DurableGameplayEventStore(GameplayEventStore):
     """SQLite 是持久账本；正常启动和定向查询不创建全历史内存副本。"""
 
     _WAL_AUTOCHECKPOINT_PAGES = 1000
+    _RUNTIME_CACHE_KIB = 256
     _QUERY_INDEXES = (
         "CREATE INDEX IF NOT EXISTS outbox_topic_sequence ON outbox(topic, global_sequence, id)",
         "CREATE INDEX IF NOT EXISTS checkpoints_sequence ON checkpoints(global_sequence DESC, id DESC)",
@@ -935,6 +936,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                 if connection.execute("PRAGMA journal_mode=WAL").fetchone() != ("wal",):
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_wal_unavailable")
                 connection.execute("PRAGMA synchronous=FULL")
+                connection.execute(f"PRAGMA cache_size=-{self._RUNTIME_CACHE_KIB}")
                 connection.execute(f"PRAGMA wal_autocheckpoint={self._WAL_AUTOCHECKPOINT_PAGES}")
             except BaseException:
                 connection.close()
