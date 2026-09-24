@@ -499,7 +499,11 @@ def replay_windows(rows, config, actors):
         raise ValueError("mixed_steady_window_samples_missing")
     durations = [row["cadence_ms"] for row in steady]
     backlog = [row["backlog"] for row in steady]
-    persistent = any(all(value > 0 for value in backlog[index:index+30]) for index in range(len(backlog)-29))
+    # 非零积压可以在有界追赶期间持续多窗；只有连续30窗单调不降且净增长才算持续增长。
+    persistent = any(all(value > 0 for value in backlog[index:index+30])
+        and backlog[index+29] > backlog[index]
+        and all(right >= left for left, right in zip(backlog[index:index+29], backlog[index+1:index+30]))
+        for index in range(len(backlog)-29))
     max_lag = max(row["advance_lag_windows"] for row in steady)
     growth, rss_passed = None, True
     if seconds >= 7200:

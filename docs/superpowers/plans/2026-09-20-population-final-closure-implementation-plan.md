@@ -2,6 +2,13 @@
 
 Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 
+### b896c601 长测积压判定缺陷与接续修复（2026-09-24）
+
+- `b896c601` 同版 correctness、change-lifecycle、100/1000 服务隔离、千人长历史恢复、传输五配对与真实模型 short 已通过并离线复验。完整 soak 的两档 30 分钟 1x 通过；两档 10x 完整性通过但独立性能门槛未过；千人 2 小时采集完整、drain proved、cadence p95 约 252.00ms、峰值 backlog 8、最终 backlog 0、进程 RSS 首末区间增长约 11.16MiB，所有完整性检查通过。
+- 千人 2 小时唯一失败来自 verifier 将“连续 30 窗 backlog 非零”直接判为持续增长。原序列最长连续非零 54 窗，但从峰值 8 持续回落并在测量期内清零；该规则与已接受的“backlog 不持续增长”不一致，也与既有“短时 lag 追平不失败”回归的语义冲突。
+- 修复保持 800ms p95、最终 backlog、SQLite 恢复、RSS、完整性、drain 和 10x 独立结论不变：只有 backlog 已连续非零 30 窗、该窗口内单调不降且末值高于初值时，才判为持续增长。新增恢复型原序列和连续 30 窗单调增长后清空的成对反例；完整 mixed 证据/矩阵单测通过，修正逻辑直接重放原 7200 窗后性能判定通过。
+- `b896c601` 原矩阵仍保留为该版本失败证据，不能用新 verifier 改签。提交并推送修复后重新冻结 SHA，所有要求同版的正式门禁须重新采集；容量测试不得复用旧版本或与 soak 并行。
+
 ### 4289bd2d 容量失败的接续修复（2026-09-21）
 
 - 同版 change-lifecycle、correctness（1710项）、真实模型 short、service 两档和 transport 五配对通过；capacity 完整采集并清理，但两个2局样本完整性失败。4局四个样本完整性通过，最大单窗 lag 1.094—1.156，严格性能门槛未过，不能将此前抽查 backlog=0 当最终通过。recovery/soak 未启动。
