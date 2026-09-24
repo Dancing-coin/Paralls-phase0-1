@@ -37,3 +37,11 @@ Blocker: the existing backend runtime reset fails before the live server starts 
 ## Scope
 
 Changed only the Task 9 implementation, test, verifier, profile, and report files. Existing unrelated worktree changes were preserved. No new authority, transport, cognition, or raw-pose path was introduced.
+
+## Review retry follow-up
+
+- Archive-door intents now carry optional turn/execution-contract/episode/pre-capture pins; the live route passes validated correlation into embodied preflight while legacy intents remain uncorrelated.
+- The dedicated verifier requires the legacy overall pass flag, backend/replay/runtime/screenshot artifacts, and verifies referenced paths when running the profile.
+- The Godot probe rejects success when request, settlement, world-result, and replay correlation refs disagree, and no longer invents `episode::` for uncorrelated failures.
+
+Targeted verifier/ESM tests pass (`41 passed`). Focused backend authority collection remains blocked by the existing persisted-state rehydration error (`vigilance_level` and `distraction_level` missing).

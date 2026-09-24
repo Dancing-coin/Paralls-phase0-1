@@ -103,7 +103,11 @@ from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
 from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService, EmbodiedControllerEnrollment
-from app.services.embodied_execution_ingress import EmbodiedExecutionIngress, EmbodiedRealizationRouteGate
+from app.services.embodied_execution_ingress import (
+    EmbodiedExecutionIngress,
+    EmbodiedRealizationRouteGate,
+    TurnExecutionCorrelation,
+)
 from app.services.embodied_carry_place_authority_service import EmbodiedCarryPlaceAuthorityService
 from app.services.embodied_custody_inventory_authority_service import EmbodiedCustodyInventoryAuthorityService
 from app.services.default_scene_archive_door_embodied_service import DefaultSceneArchiveDoorEmbodiedService
@@ -3276,6 +3280,7 @@ def _handle_envelope(
             preflight = default_scene_archive_door_embodied_service.preflight(
                 event=event,
                 action_request=action_request,
+                turn_correlation=TurnExecutionCorrelation.from_payload(event.model_dump()),
                 actor_position=actor_position,
                 connection_ref=connection_context.connection_ref,
                 now=event.producer_ts,

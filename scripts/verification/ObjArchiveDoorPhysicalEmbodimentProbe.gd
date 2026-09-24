@@ -132,6 +132,9 @@ func _run_success() -> bool:
 	if str(_settlement_payload.get("outcome", "")) != "committed":
 		_notes.append("authority_result_not_committed")
 		return false
+	if not _correlation_integrity_ok():
+		_notes.append("correlation_mismatch")
+		return false
 	var post_snapshot := _snapshot()
 	if str(_received_world_result.get("current_state", "")) != "open" or str(post_snapshot.get("current_state", "")) != "open":
 		_notes.append("post_observation_mismatch")
@@ -288,6 +291,32 @@ func _wait_for_rejected_settlement(accepted_error_codes: Array[String]) -> bool:
 	return false
 
 
+func _episode_ref_for_report() -> String:
+	var request := _action_request_payload.get("request", {})
+	if not (request is Dictionary):
+		return ""
+	var episode := str((request as Dictionary).get("episode_ref", ""))
+	if not episode.is_empty():
+		return episode
+	var turn := str((request as Dictionary).get("turn_id", ""))
+	var contract := str((request as Dictionary).get("idempotency_key", ""))
+	return "" if turn.is_empty() or contract.is_empty() else "episode:%s:%s" % [turn, contract]
+
+
+func _correlation_integrity_ok() -> bool:
+	var request: Dictionary = _action_request_payload.get("request", {})
+	var turn := str(request.get("turn_id", ""))
+	var contract := str(request.get("execution_contract_ref", request.get("idempotency_key", "")))
+	var episode := str(request.get("episode_ref", ""))
+	if turn.is_empty() or contract.is_empty() or episode.is_empty():
+		return false
+	for payload in [_settlement_payload, _received_world_result]:
+		if str(payload.get("turn_id", "")) != turn or str(payload.get("execution_contract_ref", payload.get("idempotency_key", ""))) != contract or str(payload.get("episode_ref", "")) != episode:
+			return false
+	var replay := {"turn_id": turn, "execution_contract_ref": contract, "episode_ref": episode}
+	return replay["turn_id"] == turn and replay["execution_contract_ref"] == contract and replay["episode_ref"] == episode
+
+
 func _finish(ok: bool) -> void:
 	if _blocker_body != null:
 		_blocker_body.queue_free()
@@ -304,7 +333,7 @@ func _finish(ok: bool) -> void:
 		"request_id": str(_request_descriptor.get("request_id", "")),
 		"turn_id": str(_action_request_payload.get("request", {}).get("turn_id", "")),
 		"execution_contract_ref": str(_action_request_payload.get("request", {}).get("execution_contract_ref", _action_request_payload.get("request", {}).get("idempotency_key", ""))),
-		"episode_ref": str(_action_request_payload.get("request", {}).get("episode_ref", "episode:%s:%s" % [str(_action_request_payload.get("request", {}).get("turn_id", "")), str(_action_request_payload.get("request", {}).get("idempotency_key", ""))])),
+		"episode_ref": _episode_ref_for_report(),
 		"pre_capture_ref": _pre_capture_ref,
 		"post_capture_ref": _post_capture_ref if not _post_capture_ref.is_empty() else "capture:godot:%s:post" % _scenario,
 		"correlation_id": "interact:%s" % str(_request_descriptor.get("producer_ts", 0)) if not _request_descriptor.is_empty() else "",

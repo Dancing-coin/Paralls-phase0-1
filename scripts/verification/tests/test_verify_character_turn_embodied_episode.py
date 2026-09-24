@@ -39,7 +39,12 @@ def test_verifier_accepts_complete_live_evidence_manifest() -> None:
         "overall_obj_archive_door_physical_embodiment_passed": True,
         "selected_scenarios_passed": True,
         "selected_scenarios": ["success", "distance_failure", "revision_failure", "stance_failure"],
-        "artifacts": {"backend_trace": "backend.json", "replay_trace": "replay.json"},
+        "artifacts": {
+            "backend_trace": "backend.json",
+            "replay_trace": "replay.json",
+            "runtime": "runtime.json",
+            "screenshots": {"success": "success.png"},
+        },
     })
     assert passed is True
     assert notes == []

@@ -599,7 +599,15 @@ class ESMService:
             causation_id=f"interact:{event.producer_ts}",
             correlation_id=f"interact:{event.producer_ts}",
             target_object_id=event.target_object_id,
-            payload={"interaction_type": event.interaction_type},
+            turn_id=event.turn_id,
+            idempotency_key=event.execution_contract_ref,
+            payload={
+                "interaction_type": event.interaction_type,
+                "turn_id": event.turn_id,
+                "execution_contract_ref": event.execution_contract_ref,
+                "episode_ref": event.episode_ref,
+                "pre_capture_ref": event.pre_capture_ref,
+            },
         )
 
     def build_environment_action_request(self, event: EnvironmentRequest) -> ActionRequest:

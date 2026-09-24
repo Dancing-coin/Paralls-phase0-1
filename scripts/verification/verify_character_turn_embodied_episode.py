@@ -28,13 +28,18 @@ def _runtime_report(root: Path) -> dict[str, object]:
     return payload if isinstance(payload, dict) else {}
 
 
-def episode_result_ok(report: dict[str, object], *, legacy_exit_code: int = 0) -> tuple[bool, list[str]]:
+def episode_result_ok(
+    report: dict[str, object],
+    *,
+    legacy_exit_code: int = 0,
+    artifact_root: Path | None = None,
+) -> tuple[bool, list[str]]:
     notes: list[str] = []
     if not report:
         return False, ["missing_legacy_verifier_report"]
     if legacy_exit_code != 0:
         notes.append("legacy_verifier_failed")
-    if "overall_obj_archive_door_physical_embodiment_passed" in report and not bool(report.get("overall_obj_archive_door_physical_embodiment_passed", False)):
+    if not bool(report.get("overall_obj_archive_door_physical_embodiment_passed", False)):
         notes.append("legacy_profile_not_passed")
     if not bool(report.get("selected_scenarios_passed", False)):
         notes.append("selected_scenarios_failed")
@@ -42,8 +47,21 @@ def episode_result_ok(report: dict[str, object], *, legacy_exit_code: int = 0) -
     if set(scenarios if isinstance(scenarios, list) else []) != {"success", "distance_failure", "revision_failure", "stance_failure"}:
         notes.append("incomplete_scenario_matrix")
     artifacts = report.get("artifacts", {})
-    if not isinstance(artifacts, dict) or not artifacts.get("backend_trace") or not artifacts.get("replay_trace"):
+    if not isinstance(artifacts, dict):
         notes.append("missing_backend_or_replay_trace")
+    else:
+        required = ("backend_trace", "replay_trace", "runtime")
+        if any(not artifacts.get(name) for name in required):
+            notes.append("missing_backend_or_replay_trace")
+        screenshots = artifacts.get("screenshots")
+        if not isinstance(screenshots, dict) or any(not value for value in screenshots.values()):
+            notes.append("missing_runtime_screenshots")
+        if artifact_root is not None:
+            paths = [artifacts.get(name) for name in required]
+            if isinstance(screenshots, dict):
+                paths.extend(screenshots.values())
+            if any(not isinstance(value, str) or not (artifact_root / value).exists() for value in paths):
+                notes.append("artifact_path_missing")
     return not notes, notes
 
 
@@ -60,7 +78,7 @@ def main() -> int:
         command.extend(["--godot-exe", str(godot_exe)])
     completed = subprocess.run(command, cwd=str(root), check=False)
     legacy = _runtime_report(root)
-    passed, notes = episode_result_ok(legacy, legacy_exit_code=completed.returncode)
+    passed, notes = episode_result_ok(legacy, legacy_exit_code=completed.returncode, artifact_root=root)
     report = {
         "overall_passed": passed,
         "profile": PROFILE_NAME,
