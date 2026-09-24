@@ -1,4 +1,4 @@
-extends Node
+extends Node3D
 
 const MAIN_DEMO_SCENE := "res://scenes/phase0/MainDemo.tscn"
 const LAUNCH_SCENE := "res://scenes/phase0/ObjArchiveDoorPhysicalEmbodimentProbe.tscn"
@@ -292,7 +292,7 @@ func _wait_for_rejected_settlement(accepted_error_codes: Array[String]) -> bool:
 
 
 func _episode_ref_for_report() -> String:
-	var request := _action_request_payload.get("request", {})
+	var request: Variant = _action_request_payload.get("request", {})
 	if not (request is Dictionary):
 		return ""
 	var episode := str((request as Dictionary).get("episode_ref", ""))
