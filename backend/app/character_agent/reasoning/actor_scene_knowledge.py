@@ -191,6 +191,22 @@ class ActorSceneKnowledgeStore:
                 incoming_ref=(incoming.source_refs[0] if incoming.source_refs else incoming.entry_id),
                 producer_ts=producer_ts,
             )
+        if INPUT_FACT_PRECEDENCE[incoming_source] < INPUT_FACT_PRECEDENCE[existing_source]:
+            retained = existing.model_copy(
+                update={
+                    "freshness": existing.freshness.model_copy(
+                        update={"state": "fresh", "last_confirmed_at": producer_ts}
+                    ),
+                    "source_refs": self._append_unique(existing.source_refs, incoming.source_refs),
+                    "source_ref_lineage": self._append_unique(
+                        existing.source_ref_lineage, incoming.source_ref_lineage
+                    ),
+                }
+            )
+            update = ActorSceneKnowledgeUpdate(operation="hit", entry=retained)
+            self._entries[key] = retained
+            self._trace(update)
+            return update
 
         if self._is_conflict(existing, incoming):
             conflict = ActorSceneKnowledgeConflict(

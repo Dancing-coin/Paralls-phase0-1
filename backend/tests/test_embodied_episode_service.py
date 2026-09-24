@@ -255,3 +255,40 @@ def test_knowledge_upsert_enforces_authority_over_provider_precedence() -> None:
     assert update.entry.source_kind == "committed_authority"
     assert update.conflict is not None
     assert "vla:door:open" in update.conflict.source_refs
+
+
+def test_lower_priority_equal_claim_cannot_promote_provider_source_or_marker() -> None:
+    store = ActorSceneKnowledgeStore()
+    authority = store.upsert(
+        ActorSceneKnowledgeEntry(
+            entry_id="ask:door:authority-equal",
+            actor_id="char_b",
+            session_id="room_demo",
+            scene_id="scene_demo",
+            subject_ref="obj_archive_door",
+            knowledge_type="target",
+            summary="door is closed",
+            source_kind="committed_authority",
+            source_refs=["authority:door:equal"],
+            confidence=0.4,
+            world_truth_marker="l1_projected_fact_ref",
+        ),
+        producer_ts=10,
+    ).entry
+
+    provider = authority.model_copy(update={
+        "entry_id": "ask:door:provider-equal",
+        "source_kind": "vla_advisory",
+        "source_refs": ["vla:door:equal"],
+        "confidence": 0.99,
+        "advisory": True,
+        "world_truth_marker": "subjective_not_world_truth",
+    })
+    update = store.upsert(provider, producer_ts=11)
+
+    assert update.operation == "hit"
+    assert update.entry.source_kind == "committed_authority"
+    assert update.entry.world_truth_marker == "l1_projected_fact_ref"
+    assert update.entry.summary == "door is closed"
+    assert update.entry.confidence == 0.4
+    assert "vla:door:equal" in update.entry.source_refs
