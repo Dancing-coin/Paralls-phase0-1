@@ -568,6 +568,9 @@ class ESMService:
         self._recent_state_machine_transitions: list[StateMachineTransitionEvent] = []
         self._registered_interaction_states: dict[tuple[str, str, str, str], str] = {}
         self._registered_interaction_owners: dict[tuple[str, str, str, str], str] = {}
+        self._canonical_interaction_settlements: dict[
+            str, tuple[tuple[object, ...], ActionResolutionResult | ConstraintStateResult]
+        ] = {}
 
     def build_action_request(self, event: InteractIntent, *, source_system: str = "player_input_bridge") -> ActionRequest:
         request_id = f"interact:{event.producer_ts}:{event.target_object_id}"
@@ -647,11 +650,19 @@ class ESMService:
         *,
         is_in_range: bool | None = None,
         actor_position: tuple[float, float, float] | None = None,
+        action_request: ActionRequest | None = None,
     ) -> ActionResolutionResult | ConstraintStateResult:
-        request = self.build_action_request(event)
+        request = action_request or self.build_action_request(event)
+        request_fingerprint = self._canonical_execution_fingerprint(request)
+        if request_fingerprint is not None:
+            existing = self._canonical_interaction_settlements.get(request.idempotency_key)
+            if existing is not None:
+                if existing[0] != request_fingerprint:
+                    raise ValueError("canonical interaction idempotency conflict")
+                return existing[1]
         next_is_in_range = is_in_range if is_in_range is not None else self._is_in_range(event.target_object_id, actor_position)
         if not next_is_in_range:
-            return ConstraintStateResult(
+            return self._with_execution_contract_pins(request, ConstraintStateResult(
                 request_ref=request.request_id,
                 result_id=f"constraint:{request.request_id}",
                 room_id=event.room_id,
@@ -662,15 +673,15 @@ class ESMService:
                 entity_id=event.target_object_id,
                 target_object_id=event.target_object_id,
                 result_type="constraint_state_result",
-                causation_id=f"interact:{event.producer_ts}",
-                correlation_id=f"interact:{event.producer_ts}",
+                causation_id=request.causation_id,
+                correlation_id=request.correlation_id,
                 producer_ts=event.producer_ts + 1,
                 constraint_type="distance_constraint",
                 constraint_code="out_of_range",
                 constraint_summary="target is too far away",
                 blocking_entity_refs=[event.target_object_id],
                 settlement_status="rejected",
-            )
+            ))
 
         read_record = None
         if event.interaction_type == "read":
@@ -693,7 +704,7 @@ class ESMService:
                 and event.actor_id in read_record.get("allowed_actor_ids", ())
             )
             if read_record is not None and not record_available:
-                return ConstraintStateResult(
+                return self._with_execution_contract_pins(request, ConstraintStateResult(
                     request_ref=request.request_id,
                     result_id=f"constraint:{request.request_id}",
                     room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id,
@@ -704,9 +715,9 @@ class ESMService:
                     constraint_type="record_access_constraint", constraint_code="record_unavailable",
                     constraint_summary="record is not available to this actor",
                     blocking_entity_refs=[event.target_object_id], settlement_status="rejected",
-                )
+                ))
 
-        return ActionResolutionResult(
+        return self._with_execution_contract_pins(request, ActionResolutionResult(
             request_ref=request.request_id,
             result_id=f"action_resolution:{request.request_id}",
             room_id=event.room_id,
@@ -717,8 +728,8 @@ class ESMService:
             entity_id=event.target_object_id,
             target_object_id=event.target_object_id,
             result_type="action_resolution_result",
-            causation_id=f"interact:{event.producer_ts}",
-            correlation_id=f"interact:{event.producer_ts}",
+            causation_id=request.causation_id,
+            correlation_id=request.correlation_id,
             producer_ts=event.producer_ts + 1,
             resolution_status="accepted",
             resolved_entities=[event.target_object_id],
@@ -731,6 +742,53 @@ class ESMService:
             settlement_status="accepted",
             read_content=str(read_record["content"]) if read_record is not None else None,
             read_source_ref=str(read_record["source_ref"]) if read_record is not None else None,
+        ))
+
+    def _with_execution_contract_pins(
+        self,
+        request: ActionRequest,
+        result: ActionResolutionResult | ConstraintStateResult,
+    ) -> ActionResolutionResult | ConstraintStateResult:
+        """Preserve canonical execution identity at the ESM settlement edge."""
+        if not request.turn_id:
+            return result
+        prefix = "constraint" if isinstance(result, ConstraintStateResult) else "action_resolution"
+        pinned = result.model_copy(update={
+            "request_ref": request.request_id,
+            "result_id": f"{prefix}:{request.request_id}",
+            "causation_id": request.causation_id,
+            "correlation_id": request.correlation_id,
+            "turn_id": request.turn_id,
+            "idempotency_key": request.idempotency_key,
+            "expected_revision_vector": dict(request.expected_revision_vector),
+            "expected_memory_revision_vector": dict(request.expected_memory_revision_vector),
+            "expected_snapshot_revision": request.expected_snapshot_revision,
+        })
+        fingerprint = self._canonical_execution_fingerprint(request)
+        if fingerprint is not None:
+            self._canonical_interaction_settlements[request.idempotency_key] = (
+                fingerprint,
+                pinned,
+            )
+        return pinned
+
+    @staticmethod
+    def _canonical_execution_fingerprint(
+        request: ActionRequest,
+    ) -> tuple[object, ...] | None:
+        if not request.turn_id or not request.idempotency_key:
+            return None
+        return (
+            request.request_id,
+            request.turn_id,
+            request.actor_id,
+            request.target_object_id,
+            request.action_profile,
+            request.causation_id,
+            request.correlation_id,
+            tuple(sorted(request.expected_revision_vector.items())),
+            tuple(sorted(request.expected_memory_revision_vector.items())),
+            request.expected_snapshot_revision,
         )
 
     def interaction_policy_for(

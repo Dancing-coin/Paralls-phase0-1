@@ -43,6 +43,7 @@ from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CharacterSuggestionPacket
 from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.contracts.l1.action_request import ActionRequest
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent, PickupIntent, RetrieveIntent, StowIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
@@ -2938,7 +2939,7 @@ def _handle_envelope(
             }
         ]
         action_requests = _as_character_agent_action_request_envelopes(
-            execution_contract.model_dump(), producer_ts=0
+            execution_contract.model_dump(), producer_ts=execution_contract.producer_ts
         )
         messages.extend(action_requests)
         for action in requested_actions:
@@ -2948,7 +2949,8 @@ def _handle_envelope(
                 response = _handle_character_agent_speech_action(
                     actor_id=actor_id,
                     action=action,
-                    producer_ts=0,
+                    producer_ts=execution_contract.producer_ts,
+                    execution_contract=execution_contract,
                 )
                 messages.append(
                     {
@@ -2960,13 +2962,13 @@ def _handle_envelope(
             request_type = str(action.get("request_type", "") or "")
             if request_type == "approach":
                 world_result = _actor_target_action_settlement(
-                    actor_id=actor_id,
                     request_type=request_type,
                     target_actor_id=str(action.get("target_actor_id", "") or ""),
+                    execution_contract=execution_contract,
                 )
                 character_agent_runtime.record_settlement_result(
                     actor_id=actor_id,
-                    producer_ts=1,
+                    producer_ts=int(world_result["producer_ts"]),
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
@@ -2976,13 +2978,13 @@ def _handle_envelope(
                 continue
             if request_type == "follow_target":
                 world_result = _actor_target_action_settlement(
-                    actor_id=actor_id,
                     request_type=request_type,
                     target_actor_id=str(action.get("target_actor_id", "") or ""),
+                    execution_contract=execution_contract,
                 )
                 character_agent_runtime.record_settlement_result(
                     actor_id=actor_id,
-                    producer_ts=1,
+                    producer_ts=int(world_result["producer_ts"]),
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
@@ -2992,13 +2994,13 @@ def _handle_envelope(
                 continue
             if request_type == "seek_private_distance":
                 world_result = _actor_target_action_settlement(
-                    actor_id=actor_id,
                     request_type=request_type,
                     target_actor_id=str(action.get("target_actor_id", "") or ""),
+                    execution_contract=execution_contract,
                 )
                 character_agent_runtime.record_settlement_result(
                     actor_id=actor_id,
-                    producer_ts=1,
+                    producer_ts=int(world_result["producer_ts"]),
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
@@ -3008,13 +3010,13 @@ def _handle_envelope(
                 continue
             if request_type == "withdraw":
                 world_result = _actor_target_action_settlement(
-                    actor_id=actor_id,
                     request_type=request_type,
                     target_actor_id=str(action.get("target_actor_id", "") or ""),
+                    execution_contract=execution_contract,
                 )
                 character_agent_runtime.record_settlement_result(
                     actor_id=actor_id,
-                    producer_ts=1,
+                    producer_ts=int(world_result["producer_ts"]),
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
@@ -3024,13 +3026,13 @@ def _handle_envelope(
                 continue
             if request_type == "break_contact":
                 world_result = _actor_target_action_settlement(
-                    actor_id=actor_id,
                     request_type=request_type,
                     target_actor_id=str(action.get("target_actor_id", "") or ""),
+                    execution_contract=execution_contract,
                 )
                 character_agent_runtime.record_settlement_result(
                     actor_id=actor_id,
-                    producer_ts=1,
+                    producer_ts=int(world_result["producer_ts"]),
                     payload=world_result,
                 )
                 messages.append(_as_world_result_envelope(world_result))
@@ -3040,6 +3042,7 @@ def _handle_envelope(
                 continue
             if request_type != "interact":
                 continue
+            action_request = ActionRequest.model_validate(action_requests[0]["payload"])
             interact_event = InteractIntent(
                 player_id="character_agent",
                 room_id="room_demo",
@@ -3047,11 +3050,14 @@ def _handle_envelope(
                 zone_id="zone_focus",
                 actor_id=str(action.get("actor_id", "") or actor_id),
                 intent_type="interact_intent",
-                producer_ts=0,
+                producer_ts=action_request.producer_ts,
                 target_object_id=str(action.get("target_object_id", "") or ""),
                 interaction_type=str(action.get("interaction_type", "inspect") or "inspect"),
             )
-            world_result = esm_service.resolve_interaction(interact_event)
+            world_result = esm_service.resolve_interaction(
+                interact_event,
+                action_request=action_request,
+            )
             character_agent_runtime.record_settlement_result(
                 actor_id=interact_event.actor_id,
                 producer_ts=int(world_result.producer_ts or 0),
@@ -4324,6 +4330,7 @@ def _handle_character_agent_speech_action(
     actor_id: str,
     action: dict[str, object],
     producer_ts: int,
+    execution_contract: CharacterExecutionContract | None = None,
 ) -> DialogueResponse:
     request_type = str(action.get("request_type", "") or "")
     speaking_actor_id = str(action.get("actor_id", "") or actor_id)
@@ -4336,13 +4343,43 @@ def _handle_character_agent_speech_action(
         actor_id=speaking_actor_id,
         room_id=room_id,
         output_type="dialogue_response",
-        causation_id=f"dialogue:{producer_ts}",
+        causation_id=(
+            execution_contract.causation_id
+            if execution_contract is not None
+            else f"dialogue:{producer_ts}"
+        ),
+        correlation_id=(
+            execution_contract.correlation_id
+            if execution_contract is not None
+            else f"dialogue:{producer_ts}"
+        ),
         producer_ts=producer_ts + 1,
         target_actor_id=target_actor_id,
         content=content,
         tone=tone,
         tts_required=True,
         audio=audio,
+        request_id=(
+            f"{execution_contract.idempotency_key}:0"
+            if execution_contract is not None
+            else None
+        ),
+        turn_id=execution_contract.turn_id if execution_contract is not None else "",
+        idempotency_key=(
+            execution_contract.idempotency_key if execution_contract is not None else ""
+        ),
+        expected_revision_vector=(
+            dict(execution_contract.expected_revision_vector)
+            if execution_contract is not None else {}
+        ),
+        expected_memory_revision_vector=(
+            dict(execution_contract.expected_memory_revision_vector)
+            if execution_contract is not None else {}
+        ),
+        expected_snapshot_revision=(
+            execution_contract.expected_snapshot_revision
+            if execution_contract is not None else 0
+        ),
     )
     character_agent_runtime.record_dialogue_response(
         actor_id=response.actor_id,
@@ -4630,6 +4667,7 @@ def _as_character_agent_contract_action_request_envelopes(
         return [{
             "message_type": "character_agent_dialogue_request",
             "payload": {
+                "request_id": request_identity,
                 "actor_id": actor_id,
                 "target_actor_id": target_actor_id,
                 "content": str(action["content"]),
@@ -5628,23 +5666,31 @@ def _publish_visual_fact_authority_event(event: VisualFactEvent) -> list[dict[st
 
 def _actor_target_action_settlement(
     *,
-    actor_id: str,
     request_type: str,
     target_actor_id: str,
+    execution_contract: CharacterExecutionContract,
 ) -> dict[str, object]:
+    request_ref = f"{execution_contract.idempotency_key}:0"
     return {
-        "request_ref": f"character_agent:0:{actor_id}:{request_type}",
-        "result_id": f"action_resolution:character_agent:0:{actor_id}:{request_type}",
+        "request_ref": request_ref,
+        "result_id": f"action_resolution:{request_ref}",
         "room_id": "room_demo",
         "scene_id": "scene_demo",
         "zone_id": "zone_focus",
-        "actor_id": actor_id,
+        "actor_id": execution_contract.actor_id,
         "source_type": "system",
         "entity_id": target_actor_id,
         "result_type": "action_resolution_result",
-        "causation_id": f"character_agent:0:{actor_id}",
-        "correlation_id": f"character_agent:0:{actor_id}",
-        "producer_ts": 1,
+        "causation_id": execution_contract.causation_id,
+        "correlation_id": execution_contract.correlation_id,
+        "turn_id": execution_contract.turn_id,
+        "idempotency_key": execution_contract.idempotency_key,
+        "expected_revision_vector": dict(execution_contract.expected_revision_vector),
+        "expected_memory_revision_vector": dict(
+            execution_contract.expected_memory_revision_vector
+        ),
+        "expected_snapshot_revision": execution_contract.expected_snapshot_revision,
+        "producer_ts": execution_contract.producer_ts + 1,
         "resolution_status": "accepted",
         "resolved_entities": [target_actor_id] if target_actor_id else [],
         "applied_state_changes": ["social_spatial_state_result"],

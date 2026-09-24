@@ -134,6 +134,7 @@ class CharacterExecutionContract(BaseModel):
         min_length=1,
         validation_alias=AliasChoices("source_ref", "source_event_ref"),
     )
+    producer_ts: int = Field(ge=0)
     target_refs: tuple[str, ...] = Field(default_factory=tuple)
     # `target_ref` is retained as a convenience for single-target consumers;
     # `target_refs` remains the canonical serialized representation.

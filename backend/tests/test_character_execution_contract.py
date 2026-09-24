@@ -37,6 +37,7 @@ def _valid_contract(**overrides: object) -> dict[str, object]:
         "turn_id": "turn:char_b:event:perception:1",
         "actor_ref": "character:char_b",
         "source_ref": "event:perception:1",
+        "producer_ts": 10,
         "target_refs": ("character:char_a",),
         "semantic_intent_id": "speak_public",
         "semantic_action_id": "open_close",
@@ -233,3 +234,120 @@ def test_execution_ingress_rejects_non_contract_body_authority_payload() -> None
     assert messages[0]["message_type"] == "ack"
     assert messages[0]["payload"]["accepted"] is False
     assert messages[0]["payload"]["route"] == "character_agent_execution_contract"
+
+
+@pytest.mark.parametrize(
+    ("requested_action", "target_ref", "semantic_action_id"),
+    [
+        ("approach", "character:char_a", "approach"),
+        ("interact", "object:obj_letter", "inspect"),
+    ],
+)
+def test_contract_pins_reach_actual_settlement_result(
+    requested_action: str,
+    target_ref: str,
+    semantic_action_id: str,
+) -> None:
+    from app.main import Envelope, _handle_envelope, reset_runtime_state
+
+    reset_runtime_state()
+    contract = _valid_contract(
+        target_refs=(target_ref,),
+        semantic_action_id=semantic_action_id,
+        expected_memory_revision_vector={"memory:char_b": 4},
+        expected_snapshot_revision=5,
+        expected_observation={"requested_action": requested_action},
+    )
+
+    messages = _handle_envelope(
+        Envelope(message_type="character_agent_execution", payload=contract)
+    )
+
+    settlements = [
+        message["payload"]
+        for message in messages
+        if message["message_type"] == "world_result"
+    ]
+    settlements.extend(
+        message["payload"]["payload"]
+        for message in messages
+        if message["message_type"] == "authority_event"
+        and message["payload"]["event_type"]
+        in {"esm_result_event", "constraint_state_event"}
+    )
+    assert settlements
+    settlement = settlements[0]
+    assert settlement["request_ref"] == "execution:turn:char_b:event:perception:1:0"
+    assert settlement["result_id"] == (
+        "action_resolution:execution:turn:char_b:event:perception:1:0"
+    )
+    assert settlement["turn_id"] == contract["turn_id"]
+    assert settlement["idempotency_key"] == contract["idempotency_key"]
+    assert settlement["causation_id"] == contract["causation_id"]
+    assert settlement["correlation_id"] == contract["correlation_id"]
+    assert settlement["expected_revision_vector"] == contract["expected_revision_vector"]
+    assert settlement["expected_memory_revision_vector"] == contract[
+        "expected_memory_revision_vector"
+    ]
+    assert settlement["expected_snapshot_revision"] == contract[
+        "expected_snapshot_revision"
+    ]
+
+    replay_messages = _handle_envelope(
+        Envelope(message_type="character_agent_execution", payload=contract)
+    )
+    replay_settlements = [
+        message["payload"]
+        for message in replay_messages
+        if message["message_type"] == "world_result"
+    ]
+    replay_settlements.extend(
+        message["payload"]["payload"]
+        for message in replay_messages
+        if message["message_type"] == "authority_event"
+        and message["payload"]["event_type"]
+        in {"esm_result_event", "constraint_state_event"}
+    )
+    assert replay_settlements
+    assert replay_settlements[0]["request_ref"] == settlement["request_ref"]
+    assert replay_settlements[0]["result_id"] == settlement["result_id"]
+    assert replay_settlements[0]["idempotency_key"] == settlement["idempotency_key"]
+
+
+def test_contract_pins_reach_social_dialogue_settlement(monkeypatch: pytest.MonkeyPatch) -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    monkeypatch.setattr(main, "_backfill_character_agent_speech_perception", lambda **_: None)
+    contract = _valid_contract(
+        semantic_intent_id="speak_public",
+        semantic_action_id="speak_public",
+        expected_memory_revision_vector={"memory:char_b": 4},
+        expected_snapshot_revision=5,
+        expected_observation={
+            "requested_action": "speak_public",
+            "summary": "Please look here.",
+        },
+    )
+
+    messages = main._handle_envelope(
+        main.Envelope(message_type="character_agent_execution", payload=contract)
+    )
+
+    response = next(
+        message["payload"]
+        for message in messages
+        if message["message_type"] == "dialogue_response"
+    )
+    assert response["request_id"] == "execution:turn:char_b:event:perception:1:0"
+    assert response["turn_id"] == contract["turn_id"]
+    assert response["idempotency_key"] == contract["idempotency_key"]
+    assert response["causation_id"] == contract["causation_id"]
+    assert response["correlation_id"] == contract["correlation_id"]
+    assert response["expected_revision_vector"] == contract["expected_revision_vector"]
+    assert response["expected_memory_revision_vector"] == contract[
+        "expected_memory_revision_vector"
+    ]
+    assert response["expected_snapshot_revision"] == contract[
+        "expected_snapshot_revision"
+    ]

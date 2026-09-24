@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class WorldResultBase(BaseModel):
@@ -13,6 +13,11 @@ class WorldResultBase(BaseModel):
     result_type: str
     causation_id: str
     correlation_id: str = ""
+    turn_id: str = ""
+    idempotency_key: str = ""
+    expected_revision_vector: dict[str, int] = Field(default_factory=dict)
+    expected_memory_revision_vector: dict[str, int] = Field(default_factory=dict)
+    expected_snapshot_revision: int = 0
     producer_ts: int
     target_actor_id: str | None = None
     target_object_id: str | None = None

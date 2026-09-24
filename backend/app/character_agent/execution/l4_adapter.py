@@ -128,6 +128,7 @@ class CharacterAgentL4Adapter:
             turn_id=turn_context.turn_id,
             actor_ref=f"character:{command.actor_id}",
             source_ref=turn_context.source_event_ref,
+            producer_ts=turn_context.producer_ts,
             target_refs=target_refs,
             target_ref=target_refs[0] if len(target_refs) == 1 else None,
             semantic_intent_id=str(
