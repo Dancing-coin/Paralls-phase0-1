@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import hashlib
 from typing import Any
 
 from app.character_agent.models.embodied_episode import (
@@ -53,6 +54,11 @@ class EmbodiedEpisodeService:
                 episode, "perception", authority_ref, authority_status,
                 post_capture_ref, observed_state, evidence_refs,
             )
+        if not observed_state.strip():
+            return self._failure(
+                episode, "perception", authority_ref, authority_status,
+                post_capture_ref, observed_state, evidence_refs,
+            )
         expected_state = self._expected_state(episode.candidate)
         if expected_state and observed_state != expected_state:
             return self._failure(
@@ -69,7 +75,22 @@ class EmbodiedEpisodeService:
             "recovery_candidate": {},
             "evidence_refs": evidence_refs,
             "reobserve_required": False,
+            "completion_idempotency_key": self.completion_identity(episode, authority_ref, post_capture_ref),
         })
+
+    @staticmethod
+    def completion_identity(
+        episode: EmbodiedEpisodeRecord,
+        authority_result: Mapping[str, Any] | object | None = None,
+        post_capture_ref: str = "",
+    ) -> str:
+        if isinstance(authority_result, str):
+            authority_ref = authority_result
+        else:
+            authority = EmbodiedEpisodeService._as_mapping(authority_result)
+            authority_ref = EmbodiedEpisodeService._authority_ref(authority)
+        raw = f"{episode.episode_ref}|{authority_ref}|{post_capture_ref}"
+        return f"episode-completion:{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:24]}"
 
     @staticmethod
     def _as_mapping(authority_result: Mapping[str, Any] | object | None) -> Mapping[str, Any]:
@@ -132,6 +153,7 @@ class EmbodiedEpisodeService:
             "recovery_candidate": self.recovery_candidate(episode, failure_class),
             "evidence_refs": evidence_refs,
             "reobserve_required": failure_class in {"perception", "localization", "wrong_target", "stale_scene", "timeout", "observation_mismatch"},
+            "completion_idempotency_key": self.completion_identity(episode, authority_ref, post_capture_ref),
         })
 
     @staticmethod

@@ -18,6 +18,9 @@ KnowledgeSourceKind = Literal[
     "world_failure",
     "embodied_failure",
     "active_perception",
+    "committed_authority",
+    "structured_percept",
+    "model_inference",
 ]
 InputFactSource = Literal[
     "committed_authority", "structured_percept", "provider_advisory", "model_inference",
@@ -175,6 +178,19 @@ class ActorSceneKnowledgeStore:
             update = ActorSceneKnowledgeUpdate(operation="add", entry=entry)
             self._trace(update)
             return update
+
+        existing_source = self._input_fact_source(existing)
+        incoming_source = self._input_fact_source(incoming)
+        if (
+            INPUT_FACT_PRECEDENCE[incoming_source] < INPUT_FACT_PRECEDENCE[existing_source]
+            and self._claims_disagree(existing, incoming)
+        ):
+            return self.record_percept_conflict(
+                retained_entry=existing,
+                incoming_source=incoming_source,
+                incoming_ref=(incoming.source_refs[0] if incoming.source_refs else incoming.entry_id),
+                producer_ts=producer_ts,
+            )
 
         if self._is_conflict(existing, incoming):
             conflict = ActorSceneKnowledgeConflict(
@@ -535,6 +551,25 @@ class ActorSceneKnowledgeStore:
         if incoming.source_kind.endswith("failure") and existing.confidence >= 0.7:
             return True
         return False
+
+    @staticmethod
+    def _input_fact_source(entry: ActorSceneKnowledgeEntry) -> InputFactSource:
+        if entry.source_kind == "committed_authority" or entry.world_truth_marker == "l1_projected_fact_ref" and entry.source_kind == "authority_event":
+            return "committed_authority"
+        if entry.source_kind in {"canonical_percept_bundle", "l1_projected_fact", "structured_percept", "interaction_failure", "world_failure", "embodied_failure", "active_perception"}:
+            return "structured_percept"
+        if entry.source_kind == "vla_advisory":
+            return "provider_advisory"
+        return "model_inference"
+
+    @staticmethod
+    def _claims_disagree(existing: ActorSceneKnowledgeEntry, incoming: ActorSceneKnowledgeEntry) -> bool:
+        comparison = compare_memory_claims(existing.claim, incoming.claim)
+        if comparison == "conflicted":
+            return True
+        if comparison == "equivalent":
+            return False
+        return existing.summary != incoming.summary or existing.target_ref != incoming.target_ref
 
     def _revision(
         self,

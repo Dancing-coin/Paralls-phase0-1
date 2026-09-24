@@ -131,10 +131,13 @@ def _door_result(request: VLAProviderRequest, *, freshness: str = "fresh") -> VL
         status=VLAProviderStatus.MOCK_PROVIDER_VERIFIED,
         subject_ref=request.subject_ref,
         target_ref="obj_archive_door",
+        world_anchor_id=request.world_anchor_id,
+        source_ref_lineage=list(request.source_ref_lineage),
         capture_root_id=request.capture_root_id,
         capture_id=request.capture_id,
         clock_domain=request.clock_domain,
         monotonic_tick=request.monotonic_tick,
+        source_frame_index=request.source_frame_index,
         provider_id="mock",
         model_id="mock",
         model_version="1",
@@ -165,3 +168,30 @@ def test_vla_candidate_rejects_stale_capture_before_intent_admission() -> None:
 
     with pytest.raises(ValueError, match="stale"):
         adapter.to_candidate_action(_door_result(request, freshness="stale"))
+
+
+def test_vla_candidate_rejects_identity_envelope_mismatch() -> None:
+    adapter, request = _reviewed_adapter()
+    with pytest.raises(ValueError, match="world_anchor_id"):
+        adapter.to_candidate_action(_door_result(request).model_copy(update={"world_anchor_id": "world_anchor:other"}))
+    with pytest.raises(ValueError, match="source_ref_lineage"):
+        adapter.to_candidate_action(_door_result(request).model_copy(update={"source_ref_lineage": ["lineage:other"]}))
+    with pytest.raises(ValueError, match="source_frame_index"):
+        adapter.to_candidate_action(_door_result(request).model_copy(update={"source_frame_index": 99}))
+
+
+def test_http_provider_candidate_refs_normalize_to_reviewed_action_candidate() -> None:
+    adapter, request = _reviewed_adapter()
+    result = _door_result(request).model_copy(update={
+        "findings": [{
+            "summary": "candidate door affordance",
+            "candidate_entity_refs": ["obj_archive_door"],
+            "candidate_affordance_refs": ["affordance:archive-door:open-close"],
+            "uncertainty": "",
+            "evidence_artifact_refs": ["runtime://archive-door.png"],
+        }]
+    })
+    candidate = adapter.to_candidate_action(result)
+    assert candidate.target_ref == "obj_archive_door"
+    assert candidate.reviewed_action_ref == "affordance:archive-door:open-close"
+    assert candidate.semantic_action_id == "open_close"

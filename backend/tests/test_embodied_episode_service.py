@@ -79,6 +79,15 @@ def test_episode_requires_authority_and_post_capture_for_success() -> None:
     assert mismatch.failure_class == "observation_mismatch"
     assert mismatch.reobserve_required is True
 
+    unknown = service.complete(
+        episode,
+        authority_result=_accepted_door_result(),
+        post_capture_ref="capture:2",
+        observed_state="",
+    )
+    assert unknown.outcome == "recovery_required"
+    assert unknown.failure_class == "perception"
+
 
 def test_candidate_rejects_unreviewed_or_control_fields() -> None:
     candidate = _door_candidate().model_dump()
@@ -133,6 +142,52 @@ def test_runtime_persists_episode_and_routes_mismatch_to_private_recovery() -> N
     assert not any(event["event_type"] == "character_agent_settlement_result" for event in timeline)
 
 
+def test_runtime_episode_completion_replay_is_idempotent_and_conflicts_fail_closed() -> None:
+    runtime = CharacterAgentRuntime()
+    episode = runtime.begin_embodied_episode(turn=_running_turn(), candidate=_door_candidate(), pre_capture_ref="capture:1", producer_ts=10)
+    first = runtime.complete_embodied_episode(
+        episode=episode, authority_result=_accepted_door_result(), post_capture_ref="capture:2", observed_state="open", producer_ts=11
+    )
+    before = runtime.get_session_timeline("char_b")
+    replay = runtime.complete_embodied_episode(
+        episode=episode, authority_result=_accepted_door_result(), post_capture_ref="capture:2", observed_state="open", producer_ts=11
+    )
+    assert replay == first
+    assert runtime.get_session_timeline("char_b") == before
+
+    import pytest
+    with pytest.raises(ValueError, match="embodied_episode_completion_replay_conflict"):
+        runtime.complete_embodied_episode(
+            episode=episode,
+            authority_result=_accepted_door_result(),
+            post_capture_ref="capture:3",
+            observed_state="open",
+            producer_ts=11,
+        )
+    with pytest.raises(ValueError, match="embodied_episode_completion_replay_conflict"):
+        runtime.complete_embodied_episode(
+            episode=episode,
+            authority_result=_accepted_door_result(),
+            post_capture_ref="capture:2",
+            observed_state="closed",
+            producer_ts=11,
+        )
+
+
+def test_runtime_rejects_unknown_or_mismatched_episode_completion() -> None:
+    runtime = CharacterAgentRuntime()
+    episode = runtime.begin_embodied_episode(turn=_running_turn(), candidate=_door_candidate(), pre_capture_ref="capture:1", producer_ts=10)
+    import pytest
+    with pytest.raises(ValueError, match="actor-private episode"):
+        runtime.complete_embodied_episode(
+            episode=episode.model_copy(update={"episode_ref": "episode:unknown"}),
+            authority_result=_accepted_door_result(),
+            post_capture_ref="capture:2",
+            observed_state="open",
+            producer_ts=11,
+        )
+
+
 def test_percept_conflict_retains_structured_fact_and_requires_fresh_observation() -> None:
     store = ActorSceneKnowledgeStore()
     retained = store.upsert(
@@ -165,3 +220,38 @@ def test_percept_conflict_retains_structured_fact_and_requires_fresh_observation
     assert "fact:door:closed" in result.conflict.source_refs
     assert "vla_result:door-open" in result.conflict.source_refs
     assert result.active_perception_reasons == ["percept_conflict", "fresh_observation_required"]
+
+
+def test_knowledge_upsert_enforces_authority_over_provider_precedence() -> None:
+    store = ActorSceneKnowledgeStore()
+    authority = store.upsert(
+        ActorSceneKnowledgeEntry(
+            entry_id="ask:door:authority",
+            actor_id="char_b",
+            session_id="room_demo",
+            scene_id="scene_demo",
+            subject_ref="obj_archive_door",
+            knowledge_type="target",
+            summary="door is closed by authority",
+            source_kind="committed_authority",
+            source_refs=["authority:door:1"],
+            confidence=0.9,
+            world_truth_marker="l1_projected_fact_ref",
+        ),
+        producer_ts=10,
+    ).entry
+    update = store.upsert(
+        authority.model_copy(update={
+            "entry_id": "ask:door:provider",
+            "summary": "provider claims door is open",
+            "source_kind": "vla_advisory",
+            "source_refs": ["vla:door:open"],
+            "advisory": True,
+            "world_truth_marker": "subjective_not_world_truth",
+        }),
+        producer_ts=11,
+    )
+    assert update.operation == "conflict"
+    assert update.entry.source_kind == "committed_authority"
+    assert update.conflict is not None
+    assert "vla:door:open" in update.conflict.source_refs

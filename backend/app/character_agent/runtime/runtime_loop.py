@@ -1418,14 +1418,55 @@ class CharacterAgentRuntime:
         producer_ts: int,
     ) -> EmbodiedEpisodeRecord:
         """Record evaluated evidence and a recovery candidate without settlement."""
+        persisted: EmbodiedEpisodeRecord | None = None
+        for event in self.get_session_timeline(episode.actor_id):
+            payload = event.get("payload", {}) if isinstance(event, dict) else {}
+            if event.get("event_type") != "character_embodied_episode_begun" or not isinstance(payload, dict):
+                continue
+            if payload.get("episode_ref") != episode.episode_ref:
+                continue
+            record = payload.get("record")
+            if isinstance(record, dict):
+                persisted = EmbodiedEpisodeRecord.model_validate(record)
+                break
+        if persisted is None:
+            persisted = self._embodied_episodes.get(episode.episode_ref)
+        if persisted is None or persisted.actor_id != episode.actor_id or persisted.turn_id != episode.turn_id:
+            raise ValueError("actor-private episode is unknown or does not match persisted begin record")
+        if persisted != episode:
+            raise ValueError("actor-private episode is unknown or does not match persisted begin record")
+        completion_key = self._embodied_episode_service.completion_identity(
+            episode, authority_result, post_capture_ref
+        )
         completed = self._embodied_episode_service.complete(
             episode, authority_result, post_capture_ref, observed_state
         )
+        prior_completion: EmbodiedEpisodeRecord | None = None
+        for event in self.get_session_timeline(episode.actor_id):
+            payload = event.get("payload", {}) if isinstance(event, dict) else {}
+            if not isinstance(payload, dict) or payload.get("episode_ref") != episode.episode_ref:
+                continue
+            record = payload.get("record")
+            if event.get("event_type") == "character_embodied_episode_completed" and isinstance(record, dict):
+                candidate_record = EmbodiedEpisodeRecord.model_validate(record)
+                if candidate_record.completion_idempotency_key == completion_key:
+                    prior_completion = candidate_record
+                    break
+                raise ValueError("embodied_episode_completion_replay_conflict")
+        if prior_completion is not None:
+            if prior_completion != completed:
+                raise ValueError("embodied_episode_completion_replay_conflict")
+            return prior_completion
         stored = self._session_store.append_event(
             actor_id=completed.actor_id,
             event_type="character_embodied_episode_completed",
             producer_ts=producer_ts,
-            payload={"turn_id": completed.turn_id, "episode_ref": completed.episode_ref, "record": completed.model_dump(mode="json")},
+            payload={
+                "turn_id": completed.turn_id,
+                "episode_ref": completed.episode_ref,
+                "completion_idempotency_key": completed.completion_idempotency_key,
+                "record": completed.model_dump(mode="json"),
+            },
         )
         self._memory_store.write_event(stored)
         self._embodied_episodes[completed.episode_ref] = completed

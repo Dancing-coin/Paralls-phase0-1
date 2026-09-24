@@ -138,6 +138,7 @@ class EmbodiedEpisodeRecord(BaseModel):
     recovery_candidate: Mapping[str, JsonValue] = Field(default_factory=dict)
     evidence_refs: tuple[str, ...] = ()
     reobserve_required: bool = False
+    completion_idempotency_key: str = ""
 
     @field_validator("recovery_candidate", mode="after")
     @classmethod
