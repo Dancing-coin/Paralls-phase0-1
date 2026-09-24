@@ -7,6 +7,7 @@ from app.world_runtime.vla_percept_bridge import (
     vla_result_to_modality_result,
 )
 from app.world_runtime.vla_provider import VLAProviderResult, VLAProviderStatus
+from app.character_agent.models.embodied_episode import CandidateActionObservation
 
 
 def _result() -> VLAProviderResult:
@@ -75,3 +76,19 @@ def test_vla_advisory_merges_into_bundle_uncertainty_without_overwriting_l1_trut
     assert merged.uncertainty["vla_advisory"]["world_anchor_id"] == "world_anchor:object:obj_letter"
     assert merged.uncertainty["vla_advisory"]["conflict_refs"] == ["raw_fact_event:los_conflict:1"]
     assert merged.world_hypotheses[0]["hypothesis_type"] == "vla_visual_spatial_advisory"
+
+
+def test_candidate_action_observation_has_no_motor_or_world_fields() -> None:
+    candidate = CandidateActionObservation(
+        candidate_id="candidate:door",
+        target_ref="obj_archive_door",
+        semantic_action_id="open_close",
+        reviewed_target_ref="obj_archive_door",
+        reviewed_action_ref="affordance:archive-door:open-close",
+        expected_observation={"observed_state": "open"},
+        confidence=0.6,
+        evidence_refs=["vla_result:door"],
+    )
+
+    assert "velocity" not in candidate.model_dump()
+    assert "global_position" not in candidate.model_dump()

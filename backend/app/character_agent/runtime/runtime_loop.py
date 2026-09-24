@@ -72,8 +72,10 @@ from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.models.character_execution import CharacterExecutionContract
 from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.embodied_episode import CandidateActionObservation, EmbodiedEpisodeRecord
 from app.models.behavior_turn import CharacterTurnStageEvent
 from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
+from app.character_agent.services.embodied_episode_service import EmbodiedEpisodeService
 from app.character_agent.services.character_turn_recovery import (
     CharacterTurnRecoveryResult,
     CharacterTurnRecoveryService,
@@ -188,6 +190,8 @@ class CharacterAgentRuntime:
         )
         self._behavior_policy_store = BehaviorPolicyStore(session_store=self._session_store)
         self._turn_coordinator = CharacterTurnCoordinator(self._session_store)
+        self._embodied_episode_service = EmbodiedEpisodeService()
+        self._embodied_episodes: dict[str, EmbodiedEpisodeRecord] = {}
         self._turn_recovery_service = (
             CharacterTurnRecoveryService(
                 session_store=self._session_store,
@@ -1372,6 +1376,102 @@ class CharacterAgentRuntime:
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
         return self._session_timeline_after(actor_id, 0)
+
+    def begin_embodied_episode(
+        self,
+        *,
+        turn: CharacterTurnContext,
+        candidate: CandidateActionObservation,
+        pre_capture_ref: str,
+        producer_ts: int | None = None,
+    ) -> EmbodiedEpisodeRecord:
+        """Persist an actor-private episode reference before authority execution.
+
+        This is deliberately an actor timeline event, not a settlement write.
+        The execution contract and its authority route remain independently
+        owned by the existing runtime boundary.
+        """
+        episode = self._embodied_episode_service.begin(turn, candidate, pre_capture_ref)
+        existing = self._embodied_episodes.get(episode.episode_ref)
+        if existing is not None:
+            if existing != episode:
+                raise ValueError("embodied episode idempotency conflict")
+            return existing
+        timestamp = turn.producer_ts if producer_ts is None else producer_ts
+        stored = self._session_store.append_event(
+            actor_id=turn.actor_id,
+            event_type="character_embodied_episode_begun",
+            producer_ts=timestamp,
+            payload={"turn_id": turn.turn_id, "episode_ref": episode.episode_ref, "record": episode.model_dump(mode="json")},
+        )
+        self._memory_store.write_event(stored)
+        self._embodied_episodes[episode.episode_ref] = episode
+        return episode
+
+    def complete_embodied_episode(
+        self,
+        *,
+        episode: EmbodiedEpisodeRecord,
+        authority_result: object | None,
+        post_capture_ref: str,
+        observed_state: str,
+        producer_ts: int,
+    ) -> EmbodiedEpisodeRecord:
+        """Record evaluated evidence and a recovery candidate without settlement."""
+        completed = self._embodied_episode_service.complete(
+            episode, authority_result, post_capture_ref, observed_state
+        )
+        stored = self._session_store.append_event(
+            actor_id=completed.actor_id,
+            event_type="character_embodied_episode_completed",
+            producer_ts=producer_ts,
+            payload={"turn_id": completed.turn_id, "episode_ref": completed.episode_ref, "record": completed.model_dump(mode="json")},
+        )
+        self._memory_store.write_event(stored)
+        self._embodied_episodes[completed.episode_ref] = completed
+        if completed.failure_class is not None:
+            recovery_event = self._session_store.append_event(
+                actor_id=completed.actor_id,
+                event_type="character_embodied_episode_recovery_candidate",
+                producer_ts=producer_ts,
+                payload={
+                    "turn_id": completed.turn_id,
+                    "episode_ref": completed.episode_ref,
+                    "failure_class": completed.failure_class,
+                    "reobserve_required": completed.reobserve_required,
+                    "candidate": completed.recovery_candidate,
+                    "evidence_refs": list(completed.evidence_refs),
+                },
+            )
+            self._memory_store.write_event(recovery_event)
+            if completed.reobserve_required:
+                observation_event = self._session_store.append_event(
+                    actor_id=completed.actor_id,
+                    event_type="character_embodied_episode_observation_requested",
+                    producer_ts=producer_ts,
+                    payload={
+                        "turn_id": completed.turn_id,
+                        "episode_ref": completed.episode_ref,
+                        "target_ref": completed.candidate.target_ref,
+                        "reason": completed.failure_class,
+                        "evidence_refs": list(completed.evidence_refs),
+                    },
+                )
+                self._memory_store.write_event(observation_event)
+        return completed
+
+    def get_embodied_episode(self, actor_id: str, episode_ref: str) -> EmbodiedEpisodeRecord | None:
+        episode = self._embodied_episodes.get(episode_ref)
+        if episode is not None and episode.actor_id == actor_id:
+            return episode
+        for event in reversed(self.get_session_timeline(actor_id)):
+            payload = event.get("payload", {}) if isinstance(event, dict) else {}
+            if not isinstance(payload, dict) or payload.get("episode_ref") != episode_ref:
+                continue
+            record = payload.get("record")
+            if isinstance(record, dict):
+                return EmbodiedEpisodeRecord.model_validate(record)
+        return None
 
     def _session_timeline_event_count(self, actor_id: str) -> int:
         graph_count = len(self._graph_session_timelines.get(actor_id, ()))

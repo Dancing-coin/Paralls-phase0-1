@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
 from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle, PerceptionQueryFrame, SampleInputRef, SpatialReference, TimeWindow
-from app.world_runtime.vla_percept_bridge import merge_vla_advisory_into_bundle
+from app.world_runtime.vla_percept_bridge import VLAAdvisoryCandidateAdapter, merge_vla_advisory_into_bundle
 from app.world_runtime.vla_provider import DeterministicMockVLAProvider, VLAProviderRequest, VLAProviderResult, VLAProviderStatus
 
 
@@ -85,3 +89,79 @@ def test_vla_runtime_consumption_never_writes_world_truth_or_esm_or_actor_contro
     assert bundle.local_spatial_state["source"] == "L1"
     assert "settlement" not in bundle.uncertainty["vla_advisory"]
     assert "actor_control" not in bundle.uncertainty["vla_advisory"]
+
+
+def _reviewed_adapter() -> tuple[VLAAdvisoryCandidateAdapter, VLAProviderRequest]:
+    frame = PerceptionQueryFrame(
+        query_id="pqf:archive-door:1",
+        consumer_kind="character",
+        subject_id="char_b",
+        target_ref="obj_archive_door",
+        time_window=TimeWindow(started_at=0, ended_at=1),
+        spatial_reference=SpatialReference(room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus"),
+        visual_inputs=[SampleInputRef(provider_kind="visual_patch", ref_id="runtime://archive-door.png")],
+        grounding_entity_refs=["obj_archive_door"],
+        grounding_affordance_refs=["affordance:archive-door:open-close"],
+        multimodal_context_id="character_mm:char_b",
+        cache_namespace="character_mm:char_b:vla_cache",
+    )
+    request = VLAProviderRequest.from_pqf(frame, owner_kind="character", owner_id="char_b", model_id="mock")
+    record = SimpleNamespace(
+        entity_ref="obj_archive_door",
+        affordances=[SimpleNamespace(
+            affordance_id="affordance:archive-door:open-close",
+            action_semantic="open_close",
+            preconditions=["door_closed"],
+        )],
+    )
+    registry = SimpleNamespace(resolve=lambda **_: SimpleNamespace(status="available", record=record))
+    return VLAAdvisoryCandidateAdapter(
+        request=request,
+        registry=registry,
+        scene_instance_id="scene_instance:main:1",
+        binding_revision=1,
+        required_anchor_roles=["contact"],
+    ), request
+
+
+def _door_result(request: VLAProviderRequest, *, freshness: str = "fresh") -> VLAProviderResult:
+    return VLAProviderResult(
+        result_id="vla_result:archive-door",
+        request_id=request.request_id,
+        status=VLAProviderStatus.MOCK_PROVIDER_VERIFIED,
+        subject_ref=request.subject_ref,
+        target_ref="obj_archive_door",
+        capture_root_id=request.capture_root_id,
+        capture_id=request.capture_id,
+        clock_domain=request.clock_domain,
+        monotonic_tick=request.monotonic_tick,
+        provider_id="mock",
+        model_id="mock",
+        model_version="1",
+        findings=[{
+            "affordance_id": "affordance:archive-door:open-close",
+            "target_ref": "obj_archive_door",
+            "expected_observation": {"observed_state": "open"},
+        }],
+        confidence=0.8,
+        freshness=freshness,
+        expires_at=2,
+    )
+
+
+def test_vla_candidate_becomes_intent_candidate_not_motor_command() -> None:
+    adapter, request = _reviewed_adapter()
+
+    candidate = adapter.to_candidate_action(_door_result(request))
+
+    assert candidate.semantic_action_id == "open_close"
+    assert candidate.target_ref == "obj_archive_door"
+    assert "velocity" not in candidate.model_dump()
+    assert "global_position" not in candidate.model_dump()
+
+
+def test_vla_candidate_rejects_stale_capture_before_intent_admission() -> None:
+    adapter, request = _reviewed_adapter()
+
+    with pytest.raises(ValueError, match="stale"):
+        adapter.to_candidate_action(_door_result(request, freshness="stale"))
