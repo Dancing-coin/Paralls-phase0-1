@@ -49,3 +49,18 @@
 ### Fix-round commit
 
 - `d3e99d54 fix: harden advisory embodied episode replay`
+
+## Fix round 2 (precedence promotion closure)
+
+- Lower-priority admissions now retain the existing higher-priority source,
+  world-truth marker, summary, confidence, and claim even when the incoming
+  claim is equivalent but has higher confidence. Evidence refs and lineage are
+  still appended; disagreements continue through `percept_conflict`.
+- Added regression coverage for committed-authority followed by equal-claim
+  provider advisory input.
+
+### Fix-round 2 verification
+
+- Focus + adjacent suite — **58 passed**, 4 existing FastAPI deprecation warnings.
+- `python -m compileall -q` on Task 8 production files — passed.
+- `git diff --check` — passed.
