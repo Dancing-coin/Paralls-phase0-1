@@ -581,11 +581,6 @@ async def _run_child(commands, controls, results, notifications, settings_json):
     for name in config.Settings.model_fields:
         setattr(config.settings, name, getattr(configured, name))
     from app import main
-    if multiprocessing.parent_process() is not None:
-        import gc
-        # 仅调整真实 owner 子进程；保留高代策略，GC 仍正常运行。
-        _, generation_one, generation_two = gc.get_threshold()
-        gc.set_threshold(21000, generation_one, generation_two)
     main.settings = config.settings
     main._runtime_execution_credit = execution_credit
     generation = uuid4().hex

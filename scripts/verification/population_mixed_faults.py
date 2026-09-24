@@ -10,6 +10,9 @@ from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
 from scripts.verification.verify_population_service_isolation import until
 
 
+_BASELINE_SUBSCRIPTION_BATCH = 8
+
+
 class MirrorControlledClose(Exception):
     """服务端明确收回不可恢复的投影连接；只能以新绑定重建公开基线。"""
 
@@ -78,11 +81,17 @@ class MixedMirrorFaultClient:
                 self.key = event.transaction_id
                 self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
                     epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))
-                # 逐 actor 建立第一份实际基线，避免把初次批量订阅溢出误算成暂停读取故障。
+                # 小批量流水建立基线，限制未读取投递量，也避免长历史下逐项往返耗尽IPC容量。
                 async with asyncio.timeout(self.transport.timeout):
-                    for actor in sorted(self.actors):
-                        await self.socket.send(json.dumps(dict(message_type="gameplay_mirror_subscribe", payload=dict(actor_ref=actor))))
-                        while actor not in self.receiver.wire.snapshots:
+                    actors = sorted(self.actors)
+                    for start in range(0, len(actors), _BASELINE_SUBSCRIPTION_BATCH):
+                        batch = actors[start:start + _BASELINE_SUBSCRIPTION_BATCH]
+                        for actor in batch:
+                            await self.socket.send(json.dumps(dict(
+                                message_type="gameplay_mirror_subscribe",
+                                payload=dict(actor_ref=actor),
+                            )))
+                        while any(actor not in self.receiver.wire.snapshots for actor in batch):
                             await self._read()
                 return
             except MirrorControlledClose:

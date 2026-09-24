@@ -9,6 +9,46 @@ import pytest
 from scripts.verification.population_mixed_faults import MirrorControlledClose, MixedMirrorFaultClient
 
 
+def test_fault_baseline_subscriptions_are_pipelined_in_bounded_batches(monkeypatch):
+    actors = {f"character:actor_{index:02d}" for index in range(17)}
+    sent, read_send_counts = [], []
+
+    class Socket:
+        async def send(self, raw):
+            sent.append(json.loads(raw)["payload"]["actor_ref"])
+
+    @asynccontextmanager
+    async def context(**kwargs):
+        assert kwargs == {"max_queue": 1}
+        yield Socket(), dict(allowed_actor_refs=sorted(actors), connection_epoch=1)
+
+    class Receiver:
+        def __init__(self, actor_refs, *, epoch):
+            self.wire = SimpleNamespace(epoch=epoch, snapshots={})
+
+    client = MixedMirrorFaultClient(SimpleNamespace(
+        bound_session=context,
+        timeout=1.,
+        record=lambda row: None,
+    ), actors)
+
+    async def read_one():
+        read_send_counts.append(len(sent))
+        actor = next(actor for actor in sent if actor not in client.receiver.wire.snapshots)
+        client.receiver.wire.snapshots[actor] = object()
+
+    monkeypatch.setattr("scripts.verification.population_mixed_faults.MixedMirrorReceiver", Receiver)
+    client._read = read_one
+
+    asyncio.run(client._open(SimpleNamespace(transaction_id="fault:baseline")))
+
+    assert sorted(sent) == sorted(actors)
+    assert read_send_counts[:8] == [8] * 8
+    assert read_send_counts[8:16] == [16] * 8
+    assert read_send_counts[16:] == [17]
+    asyncio.run(client.close())
+
+
 @pytest.mark.parametrize("already_closed", [False, True])
 def test_controlled_close_recovery_uses_fresh_epoch_and_never_swallows_other_revocations(already_closed):
     from scripts.verification.population_mixed_load import MixedLoadEvent
