@@ -49,3 +49,7 @@ Targeted verifier/ESM tests pass (`41 passed`). Focused backend authority collec
 ## Re-review 1 follow-up
 
 Embodied action requests and world results now preserve execution-contract and episode refs (plus pre-capture on the request); settlement payloads expose an observed replay join, and the Godot probe validates that join rather than synthesizing one. The verifier requires named screenshots for success and each typed failure scenario. Targeted tests and backend compile checks pass; the persisted-state runtime blocker remains unchanged.
+
+## Re-review 2 follow-up
+
+The archive-door probe now uses explicit `Variant` typing at the reported inference site and the probe script/root scene are both `Node3D`, eliminating the script attachment type mismatch. Static Godot/verifier tests pass (`30 passed`). A Godot executable was not available in this environment, so headless runtime parsing remains unverified.
