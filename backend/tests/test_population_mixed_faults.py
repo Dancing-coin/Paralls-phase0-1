@@ -49,6 +49,72 @@ def test_fault_baseline_subscriptions_are_pipelined_in_bounded_batches(monkeypat
     asyncio.run(client.close())
 
 
+def test_fault_resync_requests_wait_for_each_bounded_batch(monkeypatch):
+    actors = [f"character:actor_{index:02d}" for index in range(17)]
+    sent, records = [], []
+
+    class Socket:
+        def __init__(self):
+            self.responses = [
+                json.dumps(dict(message_type="gameplay_mirror_resync_required", payload={})),
+                *[
+                    json.dumps(dict(
+                        message_type="gameplay_mirror_delivery",
+                        payload=dict(actor_ref=actor),
+                    ))
+                    for actor in actors
+                ],
+            ]
+
+        async def recv(self):
+            return self.responses.pop(0)
+
+        async def send(self, raw):
+            sent.append(json.loads(raw)["payload"]["actor_ref"])
+
+    class Receiver:
+        def __init__(self, actor_refs, *, epoch):
+            self.wire = SimpleNamespace(epoch=epoch, snapshots={})
+            self.awaiting = set()
+
+        def receive(self, raw):
+            message = json.loads(raw)
+            if message["message_type"] == "gameplay_mirror_resync_required":
+                self.awaiting = set(actors)
+                return dict(applied=False, request_actor_refs=list(actors), recovered=False)
+            actor = message["payload"]["actor_ref"]
+            self.awaiting.discard(actor)
+            self.wire.snapshots[actor] = object()
+            return dict(applied=True, request_actor_refs=[], recovered=False)
+
+    monkeypatch.setattr("scripts.verification.population_mixed_faults.MixedMirrorReceiver", Receiver)
+    client = MixedMirrorFaultClient(SimpleNamespace(record=records.append), set(actors))
+    client.socket = Socket()
+    client.receiver = Receiver(set(actors), epoch=1)
+    client.key = "fault:resync"
+
+    async def exercise():
+        await client._read()
+        assert len(sent) == 8
+        for _ in range(7):
+            await client._read()
+            assert len(sent) == 8
+        await client._read()
+        assert len(sent) == 16
+        for _ in range(7):
+            await client._read()
+            assert len(sent) == 16
+        await client._read()
+        assert len(sent) == 17
+        await client._read()
+
+    asyncio.run(exercise())
+
+    assert sent == actors
+    assert client.receiver.awaiting == set()
+    assert [row["actor_ref"] for row in records if row["type"] == "fault_resync_request"] == actors
+
+
 @pytest.mark.parametrize("already_closed", [False, True])
 def test_controlled_close_recovery_uses_fresh_epoch_and_never_swallows_other_revocations(already_closed):
     from scripts.verification.population_mixed_load import MixedLoadEvent
