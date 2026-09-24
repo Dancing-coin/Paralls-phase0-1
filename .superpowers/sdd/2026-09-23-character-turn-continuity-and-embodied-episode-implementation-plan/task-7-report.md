@@ -63,7 +63,7 @@ Task 7-owned files should be staged for the implementation commit.
 - The authority projection derives one semantic action from the contract and
   carries its exact turn, idempotency, causation/correlation, and all revision
   pins. Request identity is `${idempotency_key}:0`, independent of producer
-  timestamp.
+  timestamp; the egress handler does not record a duplicate execution request.
 - Runtime contract augmentation now uses JSON-normalized data followed by
   `CharacterExecutionContract.model_validate(...)`; no unsafe
   `model_copy(update=...)` remains on that path.
@@ -96,4 +96,4 @@ passed
 
 ### Commit
 
-`COMMIT_SHA_PENDING`
+Implementation commit: `79db55b486a6edba55228f09668a05fce01d9305`
