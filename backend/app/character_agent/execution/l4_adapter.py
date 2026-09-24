@@ -569,16 +569,6 @@ class CharacterAgentL4Adapter:
         """Return presentation-only skill hints suitable for a realization adapter."""
         metadata = plan.get("skill_realization_metadata", {})
         source = metadata if isinstance(metadata, dict) else {}
-        settlement_outcome = source.get("settlement_outcome", {})
-        if not isinstance(settlement_outcome, dict):
-            settlement_outcome = {}
-        if action_settlement_result is not None:
-            settlement_outcome = {
-                "outcome_band": action_settlement_result.outcome_band,
-                "failure_domains": list(action_settlement_result.failure_domains),
-                "primary_failure_domain": action_settlement_result.primary_failure_domain,
-                "realization_hints": list(action_settlement_result.realization_hints),
-            }
         return {
             "selected_skill_path": dict(source.get("selected_skill_path", {}))
             if isinstance(source.get("selected_skill_path"), dict)
@@ -589,7 +579,6 @@ class CharacterAgentL4Adapter:
             "primitive_realization_keys": list(source.get("primitive_realization_keys", []))
             if isinstance(source.get("primitive_realization_keys"), list)
             else [],
-            "settlement_outcome": settlement_outcome,
         }
 
     def attach_skill_realization_metadata(

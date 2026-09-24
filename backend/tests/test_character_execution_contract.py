@@ -1,3 +1,5 @@
+import warnings
+
 import pytest
 from pydantic import ValidationError
 
@@ -152,4 +154,82 @@ def test_executor_contract_keeps_realization_hints_advisory() -> None:
 
     assert contract.allowed_realization_hints
     assert "settlement_result" not in contract.allowed_realization_hints
+    assert "settlement_outcome" not in contract.allowed_realization_hints["skill"]
     assert contract.expected_observation
+
+
+def test_contract_revalidates_runtime_hint_augmentation_and_default_dump_is_plain() -> None:
+    contract = CharacterExecutionContract.model_validate(_valid_contract())
+
+    with warnings.catch_warnings(record=True) as captured:
+        dumped = contract.model_dump()
+
+    assert not captured
+    assert isinstance(dumped["allowed_realization_hints"], dict)
+    assert isinstance(dumped["expected_revision_vector"], dict)
+    with pytest.raises(ValidationError, match="forbidden execution field"):
+        CharacterExecutionContract.model_validate(
+            {
+                **dumped,
+                "allowed_realization_hints": {
+                    "presentation": {"global_position": [1, 2, 3]}
+                },
+            }
+        )
+
+
+def test_canonical_execution_egress_and_authority_request_preserve_contract_pins() -> None:
+    from app.main import (
+        _as_character_agent_action_request_envelopes,
+        _as_character_agent_execution_envelopes,
+    )
+
+    contract = CharacterExecutionContract.model_validate(
+        _valid_contract(
+            expected_memory_revision_vector={"memory:char_b": 4},
+            expected_snapshot_revision=5,
+            expected_observation={"requested_action": "approach"},
+        )
+    )
+    command = _legacy_command().model_copy(
+        update={"execution_payload": {"execution_contract": contract.model_dump()}}
+    )
+
+    emitted = _as_character_agent_execution_envelopes([command])
+
+    assert emitted == [
+        {"message_type": "character_agent_execution", "payload": contract.model_dump()}
+    ]
+    authority_requests = _as_character_agent_action_request_envelopes(
+        emitted[0]["payload"], producer_ts=0
+    )
+    request = authority_requests[0]["payload"]
+    assert request["request_id"] == f"{contract.idempotency_key}:0"
+    assert request["turn_id"] == contract.turn_id
+    assert request["idempotency_key"] == contract.idempotency_key
+    assert request["causation_id"] == contract.causation_id
+    assert request["correlation_id"] == contract.correlation_id
+    assert request["expected_revision_vector"] == dict(contract.expected_revision_vector)
+    assert request["expected_memory_revision_vector"] == dict(
+        contract.expected_memory_revision_vector
+    )
+    assert request["expected_snapshot_revision"] == contract.expected_snapshot_revision
+
+
+def test_execution_ingress_rejects_non_contract_body_authority_payload() -> None:
+    from app.main import Envelope, _handle_envelope
+
+    messages = _handle_envelope(
+        Envelope(
+            message_type="character_agent_execution",
+            payload=_valid_contract(
+                allowed_realization_hints={
+                    "presentation": {"global_position": [1, 2, 3]}
+                }
+            ),
+        )
+    )
+
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["route"] == "character_agent_execution_contract"

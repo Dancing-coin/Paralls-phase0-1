@@ -70,6 +70,7 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.gateway.memory_recall import MissingRequiredMemoryEvidence
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.models.character_execution import CharacterExecutionContract
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.models.behavior_turn import CharacterTurnStageEvent
 from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
@@ -4186,20 +4187,29 @@ class CharacterAgentRuntime:
                 decision=decision,
                 turn_context=turn_context,
             )
-            # Skill/settlement metadata remains advisory realization input; it
-            # is never promoted to an authority result in the contract.
+            # Revalidate augmented presentation metadata at the contract
+            # boundary.  Skill hints are advisory only and deliberately omit
+            # settlement outcomes/results.
             realization_metadata = self._l4.realization_metadata_from_execution_plan(plan)
-            allowed_hints = dict(execution_contract.allowed_realization_hints)
+            dumped_contract = execution_contract.model_dump(mode="json")
+            allowed_hints = dict(dumped_contract["allowed_realization_hints"])
             allowed_hints["skill"] = realization_metadata
-            execution_contract = execution_contract.model_copy(
-                update={"allowed_realization_hints": allowed_hints}
+            execution_contract = CharacterExecutionContract.model_validate(
+                {
+                    **dumped_contract,
+                    "allowed_realization_hints": allowed_hints,
+                }
             )
             plan["execution_contract"] = execution_contract.model_dump(mode="json")
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
             producer_ts=producer_ts,
-            payload=plan,
+            payload=(
+                execution_contract.model_dump(mode="json")
+                if turn_context is not None
+                else plan
+            ),
         )
         self._queue_observatory_stage_event(
             actor_id=actor_id,

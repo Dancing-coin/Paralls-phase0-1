@@ -42,6 +42,7 @@ from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.environment_request import EnvironmentRequest
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CharacterSuggestionPacket
+from app.character_agent.models.character_execution import CharacterExecutionContract
 from app.models.player_input import DialogueSubmit, FocusTargetChange, InteractIntent, MoveIntent, PickupIntent, RetrieveIntent, StowIntent
 from app.models.raw_fact import RawFactEvent
 from app.models.runtime_state import ConversationCandidateEvent
@@ -2911,15 +2912,21 @@ def _handle_envelope(
 
     if envelope.message_type == "character_agent_execution":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
-        actor_id = str(payload.get("actor_id", "") or "")
+        try:
+            execution_contract = CharacterExecutionContract.model_validate(payload)
+        except ValidationError as error:
+            return [_as_error_ack(
+                source_type=envelope.message_type,
+                route="character_agent_execution_contract",
+                error=error,
+            )]
+        actor_id = execution_contract.actor_id
         route_name = "esm_service"
-        bundle = payload.get("action_request_bundle", {})
-        requested_actions = bundle.get("requested_actions", []) if isinstance(bundle, dict) else []
-        if isinstance(requested_actions, list):
-            for action in requested_actions:
-                if isinstance(action, dict) and str(action.get("request_type", "") or "") in {"speak_public", "speak_private", "share_info", "withhold"}:
-                    route_name = "character_service"
-                    break
+        requested_actions = [_semantic_action_from_execution_contract(execution_contract)]
+        if str(requested_actions[0].get("request_type", "") or "") in {
+            "speak_public", "speak_private", "share_info", "withhold"
+        }:
+            route_name = "character_service"
         messages: list[dict[str, object]] = [
             {
                 "message_type": "ack",
@@ -2930,17 +2937,14 @@ def _handle_envelope(
                 },
             }
         ]
-        action_requests = _as_character_agent_action_request_envelopes(payload, producer_ts=0)
+        action_requests = _as_character_agent_action_request_envelopes(
+            execution_contract.model_dump(), producer_ts=0
+        )
         messages.extend(action_requests)
         for action in requested_actions:
             if not isinstance(action, dict):
                 continue
             if str(action.get("request_type", "") or "") in {"speak_public", "speak_private", "share_info", "withhold"}:
-                character_agent_runtime.record_execution_request(
-                    actor_id=actor_id,
-                    producer_ts=0,
-                    payload=action,
-                )
                 response = _handle_character_agent_speech_action(
                     actor_id=actor_id,
                     action=action,
@@ -2953,11 +2957,6 @@ def _handle_envelope(
                     }
                 )
                 continue
-            character_agent_runtime.record_execution_request(
-                actor_id=actor_id,
-                producer_ts=0,
-                payload=action,
-            )
             request_type = str(action.get("request_type", "") or "")
             if request_type == "approach":
                 world_result = _actor_target_action_settlement(
@@ -4549,18 +4548,131 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
 def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
     envelopes: list[dict[str, object]] = []
     for command in commands:
-        payload = dict(character_agent_l4_adapter.command_to_execution_payload(command))
-        payload["actor_id"] = command.actor_id
-        payload["producer_ts"] = command.producer_ts
-        payload["causation_id"] = command.causation_id
-        payload["correlation_id"] = command.correlation_id
-        envelopes.append(
-            {
-                "message_type": "character_agent_execution",
-                "payload": payload,
-            }
-        )
+        execution_payload = command.execution_payload or {}
+        raw_contract = execution_payload.get("execution_contract")
+        if isinstance(raw_contract, dict):
+            contract = CharacterExecutionContract.model_validate(raw_contract)
+            envelopes.append(
+                {
+                    "message_type": "character_agent_execution",
+                    "payload": contract.model_dump(),
+                }
+            )
+            continue
     return envelopes
+
+
+def _semantic_action_from_execution_contract(
+    contract: CharacterExecutionContract,
+) -> dict[str, object]:
+    """Project a contract into the one semantic authority request it permits."""
+    expected_observation = contract.expected_observation
+    requested_action = str(
+        expected_observation.get("requested_action", "") or contract.semantic_intent_id
+    )
+    target_actor_id = ""
+    target_object_id = ""
+    target_environment_id = ""
+    for target_ref in contract.target_refs:
+        if target_ref.startswith(("character:", "char_")) and not target_actor_id:
+            target_actor_id = target_ref.removeprefix("character:")
+        elif target_ref.startswith(("object:", "obj_")) and not target_object_id:
+            target_object_id = target_ref.removeprefix("object:")
+        elif target_ref.startswith(("environment:", "env_")) and not target_environment_id:
+            target_environment_id = target_ref.removeprefix("environment:")
+
+    presentation = contract.allowed_realization_hints.get("presentation", {})
+    speech_state = (
+        presentation.get("speech_state", {})
+        if isinstance(presentation, Mapping)
+        else {}
+    )
+    content = (
+        str(speech_state.get("utterance_request", "") or "")
+        if isinstance(speech_state, Mapping)
+        else ""
+    )
+    if not content:
+        content = str(expected_observation.get("summary", "") or "")
+    return {
+        "request_type": requested_action,
+        "actor_id": contract.actor_id,
+        "target_actor_id": target_actor_id,
+        "target_object_id": target_object_id,
+        "target_environment_id": target_environment_id,
+        "interaction_type": contract.semantic_action_id,
+        "content": content,
+    }
+
+
+def _as_character_agent_contract_action_request_envelopes(
+    contract: CharacterExecutionContract,
+    *,
+    producer_ts: int,
+) -> list[dict[str, object]]:
+    action = _semantic_action_from_execution_contract(contract)
+    request_type = str(action["request_type"])
+    actor_id = contract.actor_id
+    target_actor_id = str(action["target_actor_id"])
+    target_object_id = str(action["target_object_id"])
+    target_environment_id = str(action["target_environment_id"])
+    request_identity = f"{contract.idempotency_key}:0"
+    contract_pins: dict[str, object] = {
+        "turn_id": contract.turn_id,
+        "idempotency_key": contract.idempotency_key,
+        "expected_revision_vector": dict(contract.expected_revision_vector),
+        "expected_memory_revision_vector": dict(contract.expected_memory_revision_vector),
+        "expected_snapshot_revision": contract.expected_snapshot_revision,
+        "causation_id": contract.causation_id,
+        "correlation_id": contract.correlation_id,
+    }
+    if request_type in {"speak_public", "speak_private", "share_info", "withhold"}:
+        return [{
+            "message_type": "character_agent_dialogue_request",
+            "payload": {
+                "actor_id": actor_id,
+                "target_actor_id": target_actor_id,
+                "content": str(action["content"]),
+                "producer_ts": producer_ts,
+                "source_system": "character_agent_l4",
+                **contract_pins,
+            },
+        }]
+
+    if request_type not in {
+        "interact", "approach", "seek_private_distance", "withdraw", "follow_target", "break_contact",
+    }:
+        return []
+    payload: dict[str, object] = {
+        "request_id": request_identity,
+        "request_type": request_type,
+        "room_id": "room_demo",
+        "scene_id": "scene_demo",
+        "zone_id": "zone_focus",
+        "actor_id": actor_id,
+        "action_type": "character_agent_execution",
+        "source": {"layer": "L4", "system": "character_agent_l4", "actor_id": actor_id},
+        "target_entity_refs": {
+            "actor_ids": [target_actor_id] if target_actor_id else [],
+            "object_ids": [target_object_id] if target_object_id else [],
+            "environment_ids": [target_environment_id] if target_environment_id else [],
+        },
+        "action_profile": (
+            str(action["interaction_type"]) if request_type == "interact" else request_type
+        ),
+        "intent_strength": "normal",
+        "constraints_hint": {},
+        "producer_ts": producer_ts,
+        "target_actor_id": target_actor_id,
+        "target_object_id": target_object_id,
+        "target_environment_id": target_environment_id,
+        "payload": (
+            {"interaction_type": str(action["interaction_type"])}
+            if request_type == "interact" else {}
+        ),
+        **contract_pins,
+    }
+    return [_as_action_request_envelope(payload)]
 
 
 def _as_character_agent_action_request_envelopes(
@@ -4568,6 +4680,11 @@ def _as_character_agent_action_request_envelopes(
     *,
     producer_ts: int,
 ) -> list[dict[str, object]]:
+    if "turn_id" in execution_payload:
+        return _as_character_agent_contract_action_request_envelopes(
+            CharacterExecutionContract.model_validate(execution_payload),
+            producer_ts=producer_ts,
+        )
     bundle = execution_payload.get("action_request_bundle", {})
     if not isinstance(bundle, dict):
         return []

@@ -72,13 +72,6 @@ class CharacterAgentL4Executor:
         primitive_tags = list(primitive_tags) if isinstance(primitive_tags, list) else []
         primitive_keys = metadata.get("primitive_realization_keys", [])
         primitive_keys = list(primitive_keys) if isinstance(primitive_keys, list) else []
-        settlement_hints: list[str] = []
-        if action_settlement_result is not None:
-            settlement_hints = list(action_settlement_result.realization_hints)
-        elif isinstance(metadata.get("settlement_outcome"), dict):
-            raw_hints = metadata["settlement_outcome"].get("realization_hints", [])
-            settlement_hints = list(raw_hints) if isinstance(raw_hints, list) else []
-
         presentation = plan.get("presentation_plan", {})
         presentation = presentation if isinstance(presentation, dict) else {}
         # Keep the hint vocabulary intentionally local/presentation-safe.  The
@@ -96,7 +89,6 @@ class CharacterAgentL4Executor:
                 "selected_path": selected_path,
                 "primitive_action_tags": primitive_tags,
                 "primitive_realization_keys": primitive_keys,
-                "realization_hints": settlement_hints,
             },
         }
         expected_observation: dict[str, object] = {

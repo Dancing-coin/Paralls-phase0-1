@@ -228,7 +228,7 @@ class CharacterExecutionContract(BaseModel):
         "expected_observation",
         "expected_revision_vector",
         "expected_memory_revision_vector",
-        when_used="json",
+        when_used="always",
     )
     def serialize_frozen_maps(self, value: object) -> object:
         return _thaw_json(value)

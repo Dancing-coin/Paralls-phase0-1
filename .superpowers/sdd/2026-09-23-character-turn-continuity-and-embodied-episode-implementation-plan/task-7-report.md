@@ -40,3 +40,60 @@ passed
 
 The working tree contains pre-existing user/other-thread changes. Only the
 Task 7-owned files should be staged for the implementation commit.
+
+---
+
+## Fix round 1 — canonical egress convergence
+
+### Changed files
+
+- `backend/app/main.py`
+- `backend/app/character_agent/models/character_execution.py`
+- `backend/app/character_agent/execution/l4_executor.py`
+- `backend/app/character_agent/execution/l4_adapter.py`
+- `backend/app/character_agent/runtime/runtime_loop.py`
+- `backend/tests/test_character_execution_contract.py`
+
+### Requirements addressed
+
+- Production `character_agent_execution` egress now accepts and emits a
+  top-level validated `CharacterExecutionContract`; the envelope builder no
+  longer manufactures a legacy execution payload for commands without the
+  canonical contract.
+- The authority projection derives one semantic action from the contract and
+  carries its exact turn, idempotency, causation/correlation, and all revision
+  pins. Request identity is `${idempotency_key}:0`, independent of producer
+  timestamp.
+- Runtime contract augmentation now uses JSON-normalized data followed by
+  `CharacterExecutionContract.model_validate(...)`; no unsafe
+  `model_copy(update=...)` remains on that path.
+- Skill realization metadata excludes settlement outcomes/results. Frozen map
+  serializers now apply to normal `model_dump()` as well as JSON output.
+- Regressions cover canonical egress pins, unsafe nested `global_position`,
+  normal dump warnings/proxies, ingress rejection, and settlement metadata
+  exclusion.
+
+### Verification
+
+```text
+python -m pytest backend/tests/test_character_execution_contract.py backend/tests/test_character_agent_l4_execution.py backend/tests/test_character_agent_goal_command_runtime.py -v
+22 passed (FastAPI startup/shutdown deprecation warnings only)
+
+python -m compileall -q backend/app/character_agent
+passed
+
+git diff --check
+passed
+```
+
+### Residual risks
+
+- The repository-wide `python -m pytest -q` was started but not allowed to
+  complete within this fix run; pre-existing tests that inject legacy
+  plan-shaped `character_agent_execution` envelopes will need migration to the
+  canonical contract ingress.
+- No Godot editor/runtime check was applicable because this fix is backend-only.
+
+### Commit
+
+`COMMIT_SHA_PENDING`
