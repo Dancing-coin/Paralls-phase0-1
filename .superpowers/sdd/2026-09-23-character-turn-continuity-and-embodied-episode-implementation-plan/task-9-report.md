@@ -45,3 +45,7 @@ Changed only the Task 9 implementation, test, verifier, profile, and report file
 - The Godot probe rejects success when request, settlement, world-result, and replay correlation refs disagree, and no longer invents `episode::` for uncorrelated failures.
 
 Targeted verifier/ESM tests pass (`41 passed`). Focused backend authority collection remains blocked by the existing persisted-state rehydration error (`vigilance_level` and `distraction_level` missing).
+
+## Re-review 1 follow-up
+
+Embodied action requests and world results now preserve execution-contract and episode refs (plus pre-capture on the request); settlement payloads expose an observed replay join, and the Godot probe validates that join rather than synthesizing one. The verifier requires named screenshots for success and each typed failure scenario. Targeted tests and backend compile checks pass; the persisted-state runtime blocker remains unchanged.
