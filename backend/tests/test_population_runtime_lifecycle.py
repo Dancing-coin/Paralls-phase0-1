@@ -33,6 +33,21 @@ def test_persistent_runtime_moves_wal_checkpoints_to_one_owned_worker(
         assert main.siming_audit_writer._connection.execute(
             "PRAGMA wal_autocheckpoint"
         ).fetchone() == (0,)
+        runtime_connections = (
+            main.heavenly_graph,
+            main.character_agent_runtime._session_store,
+            main.gameplay_event_store,
+            main.siming_audit_writer,
+        )
+        for component in runtime_connections:
+            connection = (
+                component._database_connection()
+                if hasattr(component, "_database_connection")
+                else component._connection
+            )
+            assert connection.execute("PRAGMA cache_size").fetchone() == (
+                -component._RUNTIME_CACHE_KIB,
+            )
     finally:
         main.reset_runtime_state()
 

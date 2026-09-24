@@ -75,6 +75,8 @@ class SimingAuditWriter:
 class SqliteSimingAuditWriter(SimingAuditWriter):
     """完整审计和读模型保留在磁盘索引中，不随仿真窗口保留内存副本。"""
 
+    _RUNTIME_CACHE_KIB = 256
+
     def __init__(self, path: str | Path) -> None:
         super().__init__()
         path = Path(path)
@@ -85,6 +87,7 @@ class SqliteSimingAuditWriter(SimingAuditWriter):
             with self._connection:
                 self._connection.execute("PRAGMA journal_mode=WAL")
                 self._connection.execute("PRAGMA synchronous=FULL")
+                self._connection.execute(f"PRAGMA cache_size=-{self._RUNTIME_CACHE_KIB}")
                 self._connection.execute(
                     "CREATE TABLE IF NOT EXISTS records ("
                     "sequence INTEGER PRIMARY KEY, kind TEXT NOT NULL, id TEXT NOT NULL, "

@@ -14,6 +14,8 @@ from . import ask_storage, memory_summary
 
 
 class CharacterAgentSessionStore:
+    _RUNTIME_CACHE_KIB = 256
+
     def __init__(
         self,
         storage_root: str | Path | None = None,
@@ -55,6 +57,7 @@ class CharacterAgentSessionStore:
             self._connection = sqlite3.connect(str(database_path), check_same_thread=False)
             try:
                 self._connection.execute("PRAGMA journal_mode=WAL")
+                self._connection.execute(f"PRAGMA cache_size=-{self._RUNTIME_CACHE_KIB}")
                 self._initialize_database()
                 marker = self._connection.execute("SELECT value FROM character_session_metadata WHERE key='recovery_version'").fetchone()
                 if marker is not None:
