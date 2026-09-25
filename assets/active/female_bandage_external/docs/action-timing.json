@@ -1,0 +1,7 @@
+{
+  "package_id": "female_bandage_external",
+  "source_frame_rate": 60.0,
+  "runtime_action_status": "unavailable",
+  "runtime_action_status_reason": "source-only candidate; Blender export and Godot qualification are pending",
+  "actions": []
+}

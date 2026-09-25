@@ -1,0 +1,48 @@
+{
+	"actions": [],
+	"checks": {
+		"skeleton": false
+	},
+	"clip_audits": {
+
+	},
+	"contract": "character_qualification_report.v1",
+	"delivery_level": "presentation_extension",
+	"fallback": {
+		"locomotion_compatibility": "suspend",
+		"mode": "presentation_only",
+		"policy": "do_not_admit"
+	},
+	"fallbacks": [],
+	"locomotion": {
+
+	},
+	"locomotion_compatibility": "not_admitted_until_blender_export_and_godot_qualification",
+	"manifest_path": "res://assets/active/female_bandage_external/manifest.json",
+	"optional": [],
+	"package_id": "female_bandage_external",
+	"provenance": {
+		"authoring_contract": "external_provider_authoring_rig_unverified",
+		"package_digest": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
+		"qualification_report_ref": "assets/characters/qualification_reports/female_bandage_external.json",
+		"source_claims": {
+			"qualification_status": "user_declared_unverified",
+			"weapon_equipped": true
+		},
+		"source_format": "blend",
+		"source_uri": "file:///E:/下载/建模1%20绷带血迹黑长直%20T字版本%20多动作版本.blend",
+		"working_copy": "production-assets/characters/female_bandage_external/source/female_bandage_external_source.blend"
+	},
+	"reasons": [
+		"skeleton_missing",
+		"blender_export_unverified",
+		"godot_import_unverified"
+	],
+	"report_path": ".harness/verification/female_bandage_external-qualification-report.json",
+	"source": {
+		"digest_sha256": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
+		"format": "blend",
+		"model_path": ""
+	},
+	"status": "rejected"
+}

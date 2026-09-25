@@ -1,0 +1,76 @@
+{
+  "contract": "character_action_asset_manifest.v1",
+  "package_id": "female_bandage_external",
+  "candidate_status": "source_only",
+  "task8_primary": true,
+  "runtime_admission": "blocked_pending_qualification",
+  "source_model_path": "",
+  "source": {
+    "model_path": "",
+    "digest_sha256": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
+    "format": "blend"
+  },
+  "provenance": {
+    "source_uri": "file:///E:/下载/建模1%20绷带血迹黑长直%20T字版本%20多动作版本.blend",
+    "authoring_contract": "external_provider_authoring_rig_unverified",
+    "source_format": "blend",
+    "working_copy": "production-assets/characters/female_bandage_external/source/female_bandage_external_source.blend",
+    "qualification_report_ref": "assets/characters/qualification_reports/female_bandage_external.json",
+    "package_digest": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
+    "source_claims": {
+      "weapon_equipped": true,
+      "qualification_status": "user_declared_unverified"
+    }
+  },
+  "source_frame_rate": 60.0,
+  "unit_scale": 1.0,
+  "forward_axis": "-z",
+  "up_axis": "+y",
+  "rest_pose": {
+    "import_policy": "pending_blender_export",
+    "pose": "unverified_source_pose",
+    "pose_is_t_pose": false,
+    "root_translation_policy": "qualification_pending"
+  },
+  "authoring_rig": {
+    "source_armature": "unverified",
+    "total_bones": null,
+    "deform_bones": null,
+    "controller_bones_retained_in_source": null,
+    "runtime_boundary": "not_exported"
+  },
+  "canonical_mapping": {
+    "profile_id": "humanoid.v1",
+    "deform_skeleton_ref": "unverified_source_skeleton",
+    "bones": {}
+  },
+  "required_slots": [],
+  "slots": {},
+  "locomotion_map": {},
+  "root_motion_profile": {
+    "profile_id": "female_bandage_external.root.pending.v1",
+    "policy": "hold",
+    "max_distance": 0.0,
+    "max_duration_ticks": 1
+  },
+  "physical_profile": {
+    "profile_id": "humanoid_kinematic.pending.v1",
+    "collision_shape": "capsule",
+    "contact_policy": "unverified",
+    "root_motion_owner": "CharacterMotor"
+  },
+  "fallback": {
+    "mode": "presentation_only",
+    "locomotion_compatibility": "suspend",
+    "policy": "do_not_admit"
+  },
+  "delivery_level": "presentation_extension",
+  "locomotion_compatibility": "not_admitted_until_blender_export_and_godot_qualification",
+  "actions_qualification_status": "rejected",
+  "qualification_blockers": [
+    "blender_export_unverified",
+    "godot_import_unverified"
+  ],
+  "report_path": ".harness/verification/female_bandage_external-qualification-report.json",
+  "actions": []
+}
