@@ -1,0 +1,16 @@
+{
+  "package_id": "female_t_external",
+  "source_frame_rate": 60.0,
+  "runtime_action_status": "qualified_motion_only_pending_physics_contact",
+  "runtime_action_status_reason": "attack and interaction clips are build-time copies from female_jk_external; contact markers remain physics evidence candidates",
+  "actions": [
+    {"action_id": "Idle", "clip": "idle", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 16.683333, "source_frames": [1, 1001]}},
+    {"action_id": "Walk", "clip": "walking", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 1.1, "source_frames": [1, 67]}},
+    {"action_id": "Run", "clip": "running", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 0.7, "source_frames": [1, 43]}},
+    {"action_id": "Jump", "clip": "jump", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 1.666667, "source_frames": [1, 101]}},
+    {"action_id": "Turn", "clip": "left turn|right turn", "variant": "left_right", "atomic_sequence": [], "timing": {"duration_seconds": 1.0, "source_frames": [1, 60]}},
+    {"action_id": "UnarmedPunch", "clip": "boxing", "variant": "copied_from_female_jk_external", "atomic_sequence": [], "status": "full_body_exclusive", "timing": {"duration_seconds": 1.066667, "source_frames": [1, 64], "contact_window_frames": [49, 57], "contact_peak_frame": 53, "cancel_window_frames": [58, 64], "source_package": "female_jk_external"}},
+    {"action_id": "ShortPunch", "clip": "short punch", "variant": "derived_upper_body_copy", "derived_from_package": "female_jk_external", "atomic_sequence": [], "status": "qualified_derived_upper_body", "timing": {"duration_seconds": 1.066667, "source_frames": [1, 64], "contact_window_frames": [49, 57], "contact_peak_frame": 53, "cancel_window_frames": [58, 64], "source_package": "female_jk_external"}},
+    {"action_id": "SwordSlash", "clip": "sword attack", "variant": "copied_from_female_jk_external", "atomic_sequence": [], "status": "full_body_exclusive", "timing": {"duration_seconds": 0.766667, "source_frames": [1, 46], "contact_window_frames": [33, 41], "contact_peak_frame": 36, "cancel_window_frames": [42, 46], "source_package": "female_jk_external"}}
+  ]
+}

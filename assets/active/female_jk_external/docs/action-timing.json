@@ -1,0 +1,16 @@
+{
+  "package_id": "female_jk_external",
+  "source_frame_rate": 60.0,
+  "runtime_action_status": "qualified_motion_only_pending_physics_contact",
+  "runtime_action_status_reason": "short punch has qualified derived upper-body coexistence; contact markers remain physics evidence candidates",
+  "actions": [
+    {"action_id": "Idle", "clip": "idle", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 1.666667, "source_frames": [1, 100]}},
+    {"action_id": "Walk", "clip": "walking", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 1.416667, "source_frames": [1, 85]}},
+    {"action_id": "Run", "clip": "running", "variant": "default", "atomic_sequence": [], "timing": {"duration_seconds": 0.716667, "source_frames": [1, 43]}},
+    {"action_id": "Jump", "clip": "jump", "variant": "copied_from_female_t_external_source", "atomic_sequence": [], "timing": {"duration_seconds": 1.666667, "source_frames": [1, 101], "source_package": "female_t_external"}},
+    {"action_id": "Turn", "clip": "left turn|right turn", "variant": "left_right", "atomic_sequence": [], "timing": {"duration_seconds": 0.5, "source_frames": [1, 31]}},
+    {"action_id": "UnarmedPunch", "clip": "boxing", "variant": "full_body_exclusive_candidate", "atomic_sequence": [], "status": "contact_window_candidate", "timing": {"duration_seconds": 1.066667, "source_frames": [1, 64], "contact_window_frames": [49, 57], "contact_peak_frame": 53, "cancel_window_frames": [58, 64]}},
+    {"action_id": "ShortPunch", "clip": "short punch", "variant": "derived_upper_body", "derived_from_clip": "boxing", "atomic_sequence": [], "status": "qualified_derived_upper_body", "timing": {"duration_seconds": 1.066667, "source_frames": [1, 64], "contact_window_frames": [49, 57], "contact_peak_frame": 53, "cancel_window_frames": [58, 64]}},
+    {"action_id": "SwordSlash", "clip": "sword attack", "variant": "full_body_exclusive_candidate", "atomic_sequence": [], "status": "contact_window_candidate", "timing": {"duration_seconds": 0.766667, "source_frames": [1, 46], "contact_window_frames": [33, 41], "contact_peak_frame": 36, "cancel_window_frames": [42, 46]}}
+  ]
+}
