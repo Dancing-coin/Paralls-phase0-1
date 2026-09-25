@@ -87,23 +87,30 @@ class MixedMirrorFaultClient:
         await self._send_resync_batch(decision["request_actor_refs"])
         return decision
 
-    async def _open(self, event):
+    async def _bind(self, event):
         if self.context is not None:
             raise ValueError("mixed_fault_connection_already_open")
+        context = self.transport.bound_session(max_queue=1)
+        self.socket, binding = await context.__aenter__()
+        self.context = context
+        try:
+            if not self.actors.issubset(binding["allowed_actor_refs"]):
+                raise ValueError("mixed_fault_scope_not_granted")
+            self.receiver = MixedMirrorReceiver(self.actors, epoch=binding["connection_epoch"])
+            self._pending_resync_actor_refs.clear()
+            self._resync_in_flight.clear()
+            self.key = event.transaction_id
+            self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
+                epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))
+        except BaseException:
+            await self.close()
+            raise
+
+    async def _open(self, event):
         deadline = perf_counter() + self.transport.timeout
         while True:
-            context = self.transport.bound_session(max_queue=1)
             try:
-                self.socket, binding = await context.__aenter__()
-                self.context = context
-                if not self.actors.issubset(binding["allowed_actor_refs"]):
-                    raise ValueError("mixed_fault_scope_not_granted")
-                self.receiver = MixedMirrorReceiver(self.actors, epoch=binding["connection_epoch"])
-                self._pending_resync_actor_refs.clear()
-                self._resync_in_flight.clear()
-                self.key = event.transaction_id
-                self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
-                    epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))
+                await self._bind(event)
                 # 小批量流水建立基线，限制未读取投递量，也避免长历史下逐项往返耗尽IPC容量。
                 async with asyncio.timeout(self.transport.timeout):
                     actors = sorted(self.actors)
@@ -197,7 +204,8 @@ class MixedMirrorFaultClient:
 
     async def disconnect(self, event):
         self.disconnect_ready.clear()
-        await self._open(event)
+        # 断连故障只需证明真实授权连接已建立；恢复方负责建立并验证完整公开基线。
+        await self._bind(event)
         self.disconnected_epoch = self.receiver.wire.epoch
         await self.close()
         self.disconnected_at = perf_counter()
