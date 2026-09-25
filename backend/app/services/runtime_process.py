@@ -515,12 +515,16 @@ class RuntimeProcess:
 
         try:
             if self.process.pid is not None and self.process.is_alive():
-                try:
-                    # control 本身也可能被阻塞，必须共享同一关闭期限。
-                    await asyncio.wait_for(shutdown(), 15)
-                except (TimeoutError, RuntimeProcessError):
-                    self._fail("runtime_shutdown_unknown")
+                # 结果读取任务退出后已无人能消费 stopped，继续等待只会耗尽关闭期限。
+                if self._reader is not None and self._reader.done() and not self._stopped.done():
                     self.process.terminate()
+                else:
+                    try:
+                        # control 本身也可能被阻塞，必须共享同一关闭期限。
+                        await asyncio.wait_for(shutdown(), 15)
+                    except (TimeoutError, RuntimeProcessError):
+                        self._fail("runtime_shutdown_unknown")
+                        self.process.terminate()
             if self.process.pid is not None:
                 await asyncio.to_thread(self.process.join, 5)
                 if self.process.is_alive():
