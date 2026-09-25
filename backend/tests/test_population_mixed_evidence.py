@@ -344,3 +344,32 @@ def test_ws_fault_replay_requires_a_new_applied_packet_after_pause():
     new_tasks = deepcopy(tasks)
     new_tasks[1]['result'].update(epoch=2, sequence=1)
     assert evidence.replay_ws_faults(new_rows, new_tasks, ['char_a'], healthy)['pause_seconds'] == [5.]
+
+
+def test_ws_fault_replay_discards_only_resync_work_owned_by_a_closed_epoch(monkeypatch):
+    import json
+    from scripts.verification import population_mixed_mirror
+
+    class Receiver:
+        def __init__(self, actor_refs, *, epoch):
+            self.awaiting = set()
+
+        def receive(self, raw_text):
+            actor_refs = json.loads(raw_text)["request_actor_refs"]
+            self.awaiting.update(actor_refs)
+            return dict(applied=False, request_actor_refs=actor_refs, recovered=False)
+
+    monkeypatch.setattr(population_mixed_mirror, "MixedMirrorReceiver", Receiver)
+    decision = dict(applied=False, request_actor_refs=["character:char_a"], recovered=False)
+    bound = dict(key="slow", type="fault_bound", at=1., epoch=1,
+        actor_refs=["character:char_a"], max_queue=1)
+    packet = dict(key="slow", type="fault_mirror_packet", at=2., epoch=1,
+        raw_text=json.dumps(dict(request_actor_refs=["character:char_a"])), decision=decision)
+    closed = dict(key="slow", type="fault_controlled_close", at=3., epoch=1,
+        reason_code="mirror_delivery_unrecoverable", route="gameplay_mirror_transport")
+
+    assert evidence.replay_ws_faults([bound, packet, closed], [], ["char_a"], {}) == {
+        "pause_seconds": [], "disconnect_seconds": [], "recovery_seconds": [],
+    }
+    with pytest.raises(ValueError, match="resync_not_sent"):
+        evidence.replay_ws_faults([bound, packet], [], ["char_a"], {})
