@@ -49,6 +49,40 @@ def test_fault_baseline_subscriptions_are_pipelined_in_bounded_batches(monkeypat
     asyncio.run(client.close())
 
 
+def test_disconnect_closes_real_bound_session_without_building_a_baseline():
+    from scripts.verification.population_mixed_load import MixedLoadEvent
+
+    actors = {f"character:actor_{index:02d}" for index in range(17)}
+    closed, records = [], []
+
+    class Socket:
+        async def send(self, raw):
+            raise AssertionError("disconnect must not start baseline delivery")
+
+    @asynccontextmanager
+    async def context(**kwargs):
+        assert kwargs == {"max_queue": 1}
+        try:
+            yield Socket(), dict(allowed_actor_refs=sorted(actors), connection_epoch=7)
+        finally:
+            closed.append(True)
+
+    client = MixedMirrorFaultClient(SimpleNamespace(
+        bound_session=context,
+        timeout=1.,
+        record=records.append,
+    ), actors)
+    event = MixedLoadEvent(0, "disconnect", 1, "fault:disconnect")
+
+    result = asyncio.run(client.disconnect(event))
+
+    assert result["epoch"] == 7
+    assert closed == [True]
+    assert client.context is None and client.socket is None
+    assert client.disconnect_ready.is_set()
+    assert [row["type"] for row in records] == ["fault_bound", "fault_disconnect"]
+
+
 def test_fault_resync_requests_wait_for_each_bounded_batch(monkeypatch):
     actors = [f"character:actor_{index:02d}" for index in range(17)]
     sent, records = [], []
