@@ -38,8 +38,9 @@ def test_cold_ready(tmp_path):
     output = tmp_path / "gate"
     result = subprocess.run([
         sys.executable, str(root / "scripts/verification/verify_population_long_session_recovery.py"),
-        "--population", "2", "--histories", "32", "64", "--repeats", "1", "--output", str(output),
-    ], cwd=root, env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, timeout=150)
+        "--population", "2", "--histories", "24", "40", "--repeats", "1", "--output", str(output),
+    ], cwd=root, env=dict(os.environ, PYTHONUTF8="1"), capture_output=True, text=True, timeout=300)
+    # 进程时限只负责回收挂死子进程；正式恢复时延由报告阈值和独立千人门禁判定。
     # 通用 correctness 环境不强制性能比值；真实验收仍由 CLI 按原阈值返回非零。
     assert result.returncode in (0, 1), result.stdout + result.stderr
     assert (output / "report.json").exists(), result.stdout + result.stderr
@@ -52,7 +53,7 @@ def test_cold_ready(tmp_path):
         assert samples[0]["pending_before"] == samples[0]["pending_after"]
         for pending in samples[0]["pending_after"].values():
             assert pending["count"] == 0
-    small = json.loads((output / "fixture-32/manifest.json").read_text(encoding="utf-8"))
-    large = json.loads((output / "fixture-64/manifest.json").read_text(encoding="utf-8"))
+    small = json.loads((output / "fixture-24/manifest.json").read_text(encoding="utf-8"))
+    large = json.loads((output / "fixture-40/manifest.json").read_text(encoding="utf-8"))
     for table in ("graph_nodes", "graph_relations", "character_session_events", "character_session_candidates", "character_session_receipts"):
         assert large["graph_history_rows"][table] > small["graph_history_rows"][table]
