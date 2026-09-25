@@ -299,7 +299,8 @@ def replay_ws_faults(records, requests, actors, healthy_snapshots):
 
     scopes = {"character:"+actor for actor in actors[:100]}
     sessions, pauses, resumes, disconnects = {}, {}, {}, {}
-    current, last_epoch, resync = None, 0, []
+    current, last_epoch = None, 0
+    resync_pending, resync_in_flight, resync_batch_budget = [], set(), 0
     for row in records:
         category, key = row["type"], row["key"]
         if not category.startswith("fault_"):
@@ -310,6 +311,9 @@ def replay_ws_faults(records, requests, actors, healthy_snapshots):
             if epoch <= last_epoch or row["actor_refs"] != sorted(scopes) or row["max_queue"] != 1:
                 raise ValueError("mixed_fault_binding_invalid")
             current = dict(receiver=MixedMirrorReceiver(scopes, epoch=epoch), bound_at=at, last_applied_at=None, closed_at=None)
+            resync_pending.clear()
+            resync_in_flight.clear()
+            resync_batch_budget = 0
             sessions[epoch], last_epoch = current, epoch
         elif current is None:
             raise ValueError("mixed_fault_packet_without_binding")
@@ -323,10 +327,16 @@ def replay_ws_faults(records, requests, actors, healthy_snapshots):
                 raise ValueError("mixed_fault_receiver_decision_changed")
             if decision["applied"]:
                 current["last_applied_at"] = at
-            resync.extend((key, actor) for actor in decision["request_actor_refs"])
+            resync_in_flight.intersection_update(current["receiver"].awaiting)
+            known = {actor for _, actor in resync_pending} | resync_in_flight
+            resync_pending.extend((key, actor) for actor in decision["request_actor_refs"] if actor not in known)
+            resync_batch_budget = min(8, len(resync_pending)) if not resync_in_flight else 0
         elif category == "fault_resync_request":
-            if not resync or (key, row["actor_ref"]) != resync.pop(0):
+            if (not resync_pending or (key, row["actor_ref"]) != resync_pending.pop(0)
+                    or resync_batch_budget <= 0):
                 raise ValueError("mixed_fault_resync_not_requested")
+            resync_in_flight.add(row["actor_ref"])
+            resync_batch_budget -= 1
         elif category == "fault_controlled_close":
             if current['closed_at'] is not None:
                 raise ValueError('mixed_fault_epoch_already_closed')
@@ -334,14 +344,21 @@ def replay_ws_faults(records, requests, actors, healthy_snapshots):
                     or row["route"] != "gameplay_mirror_transport"):
                 raise ValueError("mixed_fault_close_invalid")
             current['closed_at'] = at
+            resync_pending.clear()
+            resync_in_flight.clear()
+            resync_batch_budget = 0
         elif category in {"fault_pause", "fault_resume", "fault_disconnect"}:
             mapping = {"fault_pause":pauses, "fault_resume":resumes, "fault_disconnect":disconnects}[category]
             if key in mapping:
                 raise ValueError("mixed_fault_control_duplicate")
             mapping[key] = dict(at=at, epoch=last_epoch)
+            if category == "fault_disconnect":
+                resync_pending.clear()
+                resync_in_flight.clear()
+                resync_batch_budget = 0
         else:
             raise ValueError("mixed_fault_record_type_invalid")
-    if resync:
+    if resync_pending:
         raise ValueError("mixed_fault_resync_not_sent")
     pause_seconds, disconnect_seconds, recoveries = [], [], []
     slow = disconnected = None
