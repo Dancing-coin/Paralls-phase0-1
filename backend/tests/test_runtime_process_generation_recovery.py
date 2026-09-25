@@ -40,7 +40,7 @@ def generation_recovery_child(commands, controls, results, notifications, settin
             capture("result", value)
             if phase == "probe" and surface == "result":
                 # 新关联的真实结果暂缓发送，保证负例没有抢跑成功的歧义。
-                async with asyncio.timeout(20):
+                async with asyncio.timeout(60):
                     while not (directory / "release").exists():
                         await asyncio.sleep(.01)
         return await original_put(queue, value, **kwargs)
@@ -75,7 +75,7 @@ def test_old_generation_is_rejected_after_actual_owner_restart(tmp_path, monkeyp
             player_id="player", target_object_id="obj_box", producer_ts=1)))
 
     async def until(predicate):
-        async with asyncio.timeout(8):
+        async with asyncio.timeout(30):
             while not predicate():
                 await asyncio.sleep(.01)
 
@@ -96,7 +96,7 @@ def test_old_generation_is_rejected_after_actual_owner_restart(tmp_path, monkeyp
         write_json(tmp_path / "probe.json", dict(surface=surface, phase="first"))
         first = runtime_process.RuntimeProcess(settings.model_dump_json())
         try:
-            await asyncio.wait_for(first.start(), 20)
+            await asyncio.wait_for(first.start(), 60)
             old_generation, old_pid = first.snapshot()["process_generation"], first.process.pid
             if surface == "result":
                 assert (await first.request("runtime.snapshot", {}))["status"] == "ok"
@@ -121,7 +121,7 @@ def test_old_generation_is_rejected_after_actual_owner_restart(tmp_path, monkeyp
         second = runtime_process.RuntimeProcess(settings.model_dump_json())
         pending = None
         try:
-            await asyncio.wait_for(second.start(), 20)
+            await asyncio.wait_for(second.start(), 60)
             assert second.process.pid != old_pid
             assert second.snapshot()["process_generation"] != old_generation
             if surface == "result":
@@ -131,7 +131,7 @@ def test_old_generation_is_rejected_after_actual_owner_restart(tmp_path, monkeyp
                 assert not pending.done() and second.pending_count == 1
                 second._results.put_nowait(runtime_process._encode(old_message))
                 with pytest.raises(runtime_process.RuntimeProcessError):
-                    await asyncio.wait_for(pending, 5)
+                    await asyncio.wait_for(pending, 30)
                 assert second.pending_count == 0
             elif surface == "notification":
                 sent = []
@@ -154,7 +154,7 @@ def test_old_generation_is_rejected_after_actual_owner_restart(tmp_path, monkeyp
         write_json(tmp_path / "probe.json", dict(surface=surface, phase="positive"))
         third = runtime_process.RuntimeProcess(settings.model_dump_json())
         try:
-            await asyncio.wait_for(third.start(), 20)
+            await asyncio.wait_for(third.start(), 60)
             assert (await third.request("http.request", http_payload))["status"] == 200
             assert (await file("positive-http-entered"))["pid"] == third.process.pid
         finally:

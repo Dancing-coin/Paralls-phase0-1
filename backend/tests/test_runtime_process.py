@@ -246,6 +246,30 @@ def test_shutdown_deadline_includes_full_control_queue(monkeypatch):
     asyncio.run(run())
 
 
+def test_shutdown_terminates_immediately_when_result_reader_already_failed(monkeypatch):
+    import app.services.runtime_process as module
+    writes = []
+
+    async def record_put(*args, **kwargs):
+        writes.append((args, kwargs))
+
+    monkeypatch.setattr(module, '_put', record_put)
+
+    async def run():
+        host = RuntimeProcess(settings_json())
+        host.process = ControlledProcess()
+        host._stopped = asyncio.get_running_loop().create_future()
+        host._reader = asyncio.create_task(asyncio.sleep(0))
+        await host._reader
+
+        await asyncio.wait_for(host.close(), .2)
+
+        assert not host.process.is_alive()
+        assert writes == [], '结果读取任务已结束后不能再等待其消费 stopped'
+
+    asyncio.run(run())
+
+
 def test_failed_termination_retains_channels_and_allows_close_retry(monkeypatch):
     import app.services.runtime_process as module
     original_wait_for = asyncio.wait_for

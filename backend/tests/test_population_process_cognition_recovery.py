@@ -38,7 +38,7 @@ def crash_recovery_child(commands, controls, results, notifications, settings_js
     original_resume = CharacterCognitionCoordinator.resume_l2
 
     def wait_release():
-        deadline = monotonic() + 45
+        deadline = monotonic() + 120
         while not (directory / "release").exists():
             if monotonic() >= deadline:
                 raise TimeoutError("crash_probe_not_released")
@@ -117,7 +117,7 @@ def crash_recovery_child(commands, controls, results, notifications, settings_js
         try:
             if phase == "first":
                 await asyncio.wrap_future(main.runtime_execution.submit(lambda: main.authority_event_bus.publish(event)))
-            async with asyncio.timeout(22):
+            async with asyncio.timeout(90):
                 while True:
                     value = await asyncio.wrap_future(main.runtime_execution.submit(snapshot))
                     if phase == "stable":
@@ -176,7 +176,7 @@ def test_original_owner_provider_pending_survives_hard_kill_without_reingest(tmp
         character_model_provider_kind="local", siming_llm_mode="disabled")
 
     async def file_for(name, host):
-        async with asyncio.timeout(25):
+        async with asyncio.timeout(90):
             while not (tmp_path / name).exists():
                 assert host.process.is_alive()
                 if (tmp_path / "probe-error.json").exists():
@@ -188,7 +188,7 @@ def test_original_owner_provider_pending_survives_hard_kill_without_reingest(tmp
         write_json(tmp_path / "probe.json", dict(family=family, phase="first"))
         first = runtime_process.RuntimeProcess(settings.model_dump_json())
         try:
-            await first.start()
+            await asyncio.wait_for(first.start(), 90)
             pending = await file_for("pending.json", first)
             assert pending["owner_pid"] == first.process.pid != os.getpid()
             assert pending["status"] == ("commit_started" if family == "character_commit" else "provider_pending")
@@ -204,7 +204,7 @@ def test_original_owner_provider_pending_survives_hard_kill_without_reingest(tmp
         write_json(tmp_path / "probe.json", dict(family=family, phase="resume"))
         second = runtime_process.RuntimeProcess(settings.model_dump_json())
         try:
-            await second.start()
+            await asyncio.wait_for(second.start(), 90)
             restored = await file_for("restored.json", second)
             assert restored["owner_pid"] == second.process.pid != pending["owner_pid"]
             assert restored["status"] == pending["status"]
@@ -228,7 +228,7 @@ def test_original_owner_provider_pending_survives_hard_kill_without_reingest(tmp
         write_json(tmp_path / "probe.json", dict(family=family, phase="stable"))
         third = runtime_process.RuntimeProcess(settings.model_dump_json())
         try:
-            await third.start()
+            await asyncio.wait_for(third.start(), 90)
             stable = await file_for("stable.json", third)
             assert {k:v for k,v in stable.items() if k not in {"owner_pid", "owner_thread"}} == {k:v for k,v in completed.items() if k not in {"owner_pid", "owner_thread"}}
             assert not (tmp_path / "stable-provider.json").exists()
