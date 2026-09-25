@@ -44,7 +44,7 @@ def gc_observing_child(commands, controls, results, notifications, settings_json
     Path(str(path) + '.qos-restored.json').write_text(json.dumps(process_qos_snapshot()), encoding='utf-8')
 
 
-def test_real_spawn_preserves_standard_gc_threshold_and_keeps_it_child_only(monkeypatch, tmp_path):
+def test_real_spawn_raises_young_gc_threshold_and_keeps_it_child_only(monkeypatch, tmp_path):
     import gc
     import json
     import app.services.runtime_process as module
@@ -62,7 +62,7 @@ def test_real_spawn_preserves_standard_gc_threshold_and_keeps_it_child_only(monk
             assert policy['pid'] == host.process.pid
             if os.name == 'nt':
                 assert policy['applied'][1] & 1 and not policy['applied'][2] & 1
-            assert observed == {'threshold': [700, 13, 17], 'enabled': True, 'pid': host.process.pid}
+            assert observed == {'threshold': [21000, 13, 17], 'enabled': True, 'pid': host.process.pid}
             assert host.process.pid != os.getpid()
         finally:
             await host.close()
