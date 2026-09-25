@@ -585,6 +585,11 @@ async def _run_child(commands, controls, results, notifications, settings_json):
     for name in config.Settings.model_fields:
         setattr(config.settings, name, getattr(configured, name))
     from app import main
+    if multiprocessing.parent_process() is not None:
+        import gc
+        # owner 热路径会产生大量短命对象；降低第零代回收频率以限制 Windows 堆碎片。
+        _, generation_one, generation_two = gc.get_threshold()
+        gc.set_threshold(21000, generation_one, generation_two)
     main.settings = config.settings
     main._runtime_execution_credit = execution_credit
     generation = uuid4().hex
