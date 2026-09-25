@@ -199,8 +199,9 @@ async def run():
                     await asyncio.sleep(.04)
                     marker=len(messages)
                     release.set()
-                    stop=time.monotonic()+.8
-                    while main._transient_cognition_tasks and time.monotonic()<stop:await asyncio.sleep(.02)
+                    async with asyncio.timeout(10):
+                        while main._transient_cognition_tasks:
+                            await asyncio.sleep(.02)
                     after=await owner(lambda:len(main.character_agent_runtime._session_store.list_events('char_a')))
                     assert after == before
                     assert not current
