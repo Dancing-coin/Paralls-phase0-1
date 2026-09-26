@@ -165,3 +165,11 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - 回归先观察缺失常量及默认`-2000`失败，再通过真实runtime核对Heavenly Graph、Character Session、Gameplay Event Store、Siming Audit四个连接均应用各自声明的256KiB上限。定向存储/生命周期回归48 passed；完整后端与验证工具合并回归7453 passed、2 skipped、0 failed（859.28秒）。
 - 1000人、1x、600秒同构诊断完整采集600窗：cadence p95约148.76ms、最终及最大backlog均为0，RSS首/末60窗中位约137.09/155.28MiB，增长18.20MiB；原`fdf6a045`相同前600窗为147.00/180.82MiB，增长33.82MiB。本结果只证明修复方向和早期余量，不能替代冻结新提交后的千人2小时正式门禁。
 - 下一步冻结并推送缓存修复提交，然后在同一干净SHA串行重采correctness、change-lifecycle、service、recovery、transport、真实模型short、完整soak和2/4局capacity，最后生成总聚合。Godot运行时、Archive Door获批准的`char_c` IK绑定、VLA真实凭据及当前SHA的mainline/all仍按外部实证状态报告；缺失时保持未完成。
+
+### 2118134b 千人2小时RSS复诊与增量扫描修复
+
+- `2118134b` 的100/1000人各30分钟1x通过；两档10x数据完整、性能单列未达标；1000人2小时性能通过，完整性仅在RSS增长门禁失败：首/末30分钟工作集和的中位数增长44,728,320字节，超过33,554,432字节上限。原始完整证据在`D:/HarnessEvidence/population-mixed-soak-2118134b-20260926`，不能视作soak通过。同版2/4局capacity尚未执行。
+- D盘独立进程采样确认private commit也增长；SQLite due堆在高峰后恢复到约1000条，不能将RSS增长简单归因于堆索引泄漏。`OrganizationWindowDueSource.read()`扫描每个新事件时都计算一次完整事件JSON摘要，但checkpoint最终只保留最后一条事件的anchor；在每次调用末尾仅对最后一条计算摘要，保留原逐事件序号、owner和投影校验。RED回归命中6次摘要，GREEN仅1次，并覆盖持久库重开。
+- 修复后1000人360秒真实provider诊断的首/末60窗RSS中位数增长13,256,704字节；原版同类诊断为15,210,496字节。这只说明短时方向有利，**不能推断2小时RSS门禁已通过**。诊断分别在`D:/HarnessEvidence/pop-rss-anchor-once-diagnostic-20260926`与`D:/HarnessEvidence/pop-rss-private-vs-ws-2118134b-20260926`。
+- 在D盘隔离Python 3.12环境安装`backend/ci-constraints.txt`锁定依赖后，完整backend回归`7009 passed、2 skipped、0 failed`（882.15秒）。初次使用仅父进程可见的用户站点依赖时，50项子进程测试因缺`pytest`、`yaml`、`fastapi`失败；该次不能计作源码缺陷或通过。完整重验日志为`D:/HarnessEvidence/pop-rss-fixture-isolation-2118134b-20260926/pytest-full-venv.log`。
+- 下一步：冻结并提交当前最小修复；在该干净SHA先重跑正式1000人2小时RSS门禁，若仍超过32MiB，继续据原始进程与SQLite指标定位，保持失败。通过后完成同SHA的2/4局capacity及其余正式证据重采/离线复验；外机Godot和所需外部授权仍独立阻断总聚合。所有诊断与旧SHA证据均不得改签为新SHA通过。

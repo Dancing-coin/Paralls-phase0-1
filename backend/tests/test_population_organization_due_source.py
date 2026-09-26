@@ -98,6 +98,38 @@ def test_source_owner_check_does_not_decode_full_transactions(tmp_path, monkeypa
     assert len(read(source(store)).projections) == 1
 
 
+def test_incremental_scan_hashes_only_final_anchor_and_reopens(tmp_path, monkeypatch):
+    from app.population_continuity import organization_due_source as module
+
+    path = tmp_path / "gameplay.sqlite3"
+    store = DurableGameplayEventStore(path)
+    owner = OrganizationAuthority(store=store)
+    schedule(owner, "one")
+    window(owner, "one")
+    head = store.get_last_global_sequence()
+    last_event = store.read_events(global_sequence_after=head - 1, limit=1)[0]
+    original_digest = module._digest
+    anchor_ids = []
+
+    def counted_digest(value):
+        if isinstance(value, dict) and "event_id" in value and "global_sequence" in value:
+            anchor_ids.append(value["event_id"])
+        return original_digest(value)
+
+    monkeypatch.setattr(module, "_digest", counted_digest)
+    projector = source(store)
+    original = read(projector).projections
+    assert anchor_ids == [last_event.event_id]
+    checkpoint = store.get_projection_checkpoint(projector.checkpoint_id)
+    assert checkpoint.last_global_sequence == head
+    assert checkpoint.state["anchor"] == dict(
+        event_id=last_event.event_id, digest=original_digest(last_event.model_dump(mode="json")))
+
+    monkeypatch.setattr(module, "_digest", original_digest)
+    reopened = DurableGameplayEventStore(path)
+    assert read(source(reopened)).projections == original
+
+
 def test_live_source_reuses_verified_checkpoint_state(tmp_path, monkeypatch):
     store = DurableGameplayEventStore(tmp_path / "gameplay.sqlite3")
     owner = OrganizationAuthority(store=store)

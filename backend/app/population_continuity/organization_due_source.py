@@ -187,6 +187,7 @@ class OrganizationWindowDueSource:
             return OrganizationWindowDueRead((), (), 0)
         schedules, windows, cursor, anchor, prior_checkpoint = self._restore()
         high_water = self._store.get_last_global_sequence()
+        last_event = None
         while cursor < high_water:
             tail = self._store.read_events(global_sequence_after=cursor, limit=min(256, high_water - cursor))
             if not tail:
@@ -197,7 +198,9 @@ class OrganizationWindowDueSource:
                 if (event.event_type == SCHEDULE or event.stream_id.startswith("gameplay:organization:window:")) and self._owner_event(event):
                     self._apply(event, schedules, windows)
                 cursor = event.global_sequence
-                anchor = dict(event_id=event.event_id, digest=_digest(event.model_dump(mode="json")))
+                last_event = event
+        if last_event is not None:
+            anchor = dict(event_id=last_event.event_id, digest=_digest(last_event.model_dump(mode="json")))
         if cursor != self._store.get_last_global_sequence():
             raise ValueError("organization_due_source_changed")
         current_windows = {}
