@@ -25,6 +25,7 @@ class MixedMirrorFaultClient:
         self.pause_ready, self.disconnect_ready = asyncio.Event(), asyncio.Event()
         self._pending_resync_actor_refs: list[str] = []
         self._resync_in_flight: set[str] = set()
+        self._subscribed_actor_refs: set[str] = set()
         self.key = ""
 
     async def close(self):
@@ -32,13 +33,14 @@ class MixedMirrorFaultClient:
         self.socket = None
         self._pending_resync_actor_refs.clear()
         self._resync_in_flight.clear()
+        self._subscribed_actor_refs.clear()
         if context is not None:
             await context.__aexit__(None, None, None)
 
     async def _send_resync_batch(self, actor_refs):
         known = set(self._pending_resync_actor_refs) | self._resync_in_flight
         for actor in actor_refs:
-            if actor not in known:
+            if actor in self._subscribed_actor_refs and actor not in known:
                 self._pending_resync_actor_refs.append(actor)
                 known.add(actor)
         self._resync_in_flight.intersection_update(self.receiver.awaiting)
@@ -99,6 +101,7 @@ class MixedMirrorFaultClient:
             self.receiver = MixedMirrorReceiver(self.actors, epoch=binding["connection_epoch"])
             self._pending_resync_actor_refs.clear()
             self._resync_in_flight.clear()
+            self._subscribed_actor_refs.clear()
             self.key = event.transaction_id
             self.transport.record(dict(key=self.key, type="fault_bound", at=perf_counter(),
                 epoch=binding["connection_epoch"], actor_refs=sorted(self.actors), max_queue=1))
@@ -121,6 +124,9 @@ class MixedMirrorFaultClient:
                                 message_type="gameplay_mirror_subscribe",
                                 payload=dict(actor_ref=actor),
                             )))
+                            self._subscribed_actor_refs.add(actor)
+                            self.transport.record(dict(key=self.key, type="fault_subscribe_request",
+                                at=perf_counter(), actor_ref=actor))
                         while any(actor not in self.receiver.wire.snapshots for actor in batch):
                             await self._read()
                 return

@@ -310,13 +310,20 @@ def replay_ws_faults(records, requests, actors, healthy_snapshots):
             epoch = number(row["epoch"], integer=True, minimum=1)
             if epoch <= last_epoch or row["actor_refs"] != sorted(scopes) or row["max_queue"] != 1:
                 raise ValueError("mixed_fault_binding_invalid")
-            current = dict(receiver=MixedMirrorReceiver(scopes, epoch=epoch), bound_at=at, last_applied_at=None, closed_at=None)
+            current = dict(receiver=MixedMirrorReceiver(scopes, epoch=epoch), bound_at=at,
+                last_applied_at=None, closed_at=None, subscribed=set())
             resync_pending.clear()
             resync_in_flight.clear()
             resync_batch_budget = 0
             sessions[epoch], last_epoch = current, epoch
         elif current is None:
             raise ValueError("mixed_fault_packet_without_binding")
+        elif category == "fault_subscribe_request":
+            actor = row["actor_ref"]
+            if (current["closed_at"] is not None or actor not in scopes
+                    or actor in current["subscribed"]):
+                raise ValueError("mixed_fault_subscription_invalid")
+            current["subscribed"].add(actor)
         elif category == "fault_mirror_packet":
             if current['closed_at'] is not None:
                 raise ValueError('mixed_fault_epoch_closed')
@@ -329,9 +336,12 @@ def replay_ws_faults(records, requests, actors, healthy_snapshots):
                 current["last_applied_at"] = at
             resync_in_flight.intersection_update(current["receiver"].awaiting)
             known = {actor for _, actor in resync_pending} | resync_in_flight
-            resync_pending.extend((key, actor) for actor in decision["request_actor_refs"] if actor not in known)
+            resync_pending.extend((key, actor) for actor in decision["request_actor_refs"]
+                if actor in current["subscribed"] and actor not in known)
             resync_batch_budget = min(8, len(resync_pending)) if not resync_in_flight else 0
         elif category == "fault_resync_request":
+            if row["actor_ref"] not in current["subscribed"]:
+                raise ValueError("mixed_fault_resync_unsubscribed")
             if (not resync_pending or (key, row["actor_ref"]) != resync_pending.pop(0)
                     or resync_batch_budget <= 0):
                 raise ValueError("mixed_fault_resync_not_requested")

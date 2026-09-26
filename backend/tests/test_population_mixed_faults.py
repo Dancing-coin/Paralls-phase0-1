@@ -49,6 +49,58 @@ def test_fault_baseline_subscriptions_are_pipelined_in_bounded_batches(monkeypat
     asyncio.run(client.close())
 
 
+def test_gap_during_baseline_never_resyncs_unsubscribed_actor(monkeypatch):
+    actors = [f"character:actor_{index:02d}" for index in range(17)]
+    subscribed, resynced, records = [], [], []
+
+    class Socket:
+        def __init__(self):
+            self.responses = [dict(message_type="gap"), *[
+                dict(message_type="gameplay_mirror_delivery", payload=dict(actor_ref=actor))
+                for actor in actors]]
+
+        async def send(self, raw):
+            message = json.loads(raw)
+            actor = message["payload"]["actor_ref"]
+            if message["message_type"] == "gameplay_mirror_subscribe":
+                subscribed.append(actor)
+            else:
+                assert actor in subscribed
+                resynced.append(actor)
+
+        async def recv(self):
+            return json.dumps(self.responses.pop(0))
+
+    class Receiver:
+        def __init__(self, actor_refs, *, epoch):
+            self.wire = SimpleNamespace(epoch=epoch, snapshots={})
+            self.awaiting = set()
+
+        def receive(self, raw):
+            message = json.loads(raw)
+            if message["message_type"] == "gap":
+                self.awaiting = set(actors)
+                return dict(applied=False, request_actor_refs=actors)
+            actor = message["payload"]["actor_ref"]
+            self.wire.snapshots[actor] = object()
+            self.awaiting.discard(actor)
+            return dict(applied=True, request_actor_refs=[])
+
+    @asynccontextmanager
+    async def context(**kwargs):
+        assert kwargs == {"max_queue": 1}
+        yield Socket(), dict(allowed_actor_refs=actors, connection_epoch=1)
+
+    monkeypatch.setattr("scripts.verification.population_mixed_faults.MixedMirrorReceiver", Receiver)
+    client = MixedMirrorFaultClient(SimpleNamespace(bound_session=context, timeout=3., record=records.append), set(actors))
+    asyncio.run(client._open(SimpleNamespace(transaction_id="fault:baseline-gap")))
+
+    assert subscribed == actors
+    assert resynced == actors[:8]
+    assert [row["actor_ref"] for row in records if row["type"] == "fault_subscribe_request"] == actors
+    asyncio.run(client.close())
+
+
 def test_disconnect_closes_real_bound_session_without_building_a_baseline():
     from scripts.verification.population_mixed_load import MixedLoadEvent
 
@@ -125,6 +177,7 @@ def test_fault_resync_requests_wait_for_each_bounded_batch(monkeypatch):
     client = MixedMirrorFaultClient(SimpleNamespace(record=records.append), set(actors))
     client.socket = Socket()
     client.receiver = Receiver(set(actors), epoch=1)
+    client._subscribed_actor_refs.update(actors)
     client.key = "fault:resync"
 
     async def exercise():
@@ -169,6 +222,7 @@ def test_fault_ack_is_recorded_when_it_releases_next_resync_batch():
     client.receiver.awaiting.add("character:char_b")
     client._pending_resync_actor_refs.append("character:char_b")
     client._resync_in_flight.add("character:char_a")
+    client._subscribed_actor_refs.update(actors)
     client.key = "fault:resync"
 
     decision = asyncio.run(client._read())

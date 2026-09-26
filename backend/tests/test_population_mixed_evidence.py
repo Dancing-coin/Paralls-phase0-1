@@ -363,16 +363,17 @@ def test_ws_fault_replay_discards_only_resync_work_owned_by_a_closed_epoch(monke
     decision = dict(applied=False, request_actor_refs=["character:char_a"], recovered=False)
     bound = dict(key="slow", type="fault_bound", at=1., epoch=1,
         actor_refs=["character:char_a"], max_queue=1)
+    subscribed = dict(key="slow", type="fault_subscribe_request", at=1.5, actor_ref="character:char_a")
     packet = dict(key="slow", type="fault_mirror_packet", at=2., epoch=1,
         raw_text=json.dumps(dict(request_actor_refs=["character:char_a"])), decision=decision)
     closed = dict(key="slow", type="fault_controlled_close", at=3., epoch=1,
         reason_code="mirror_delivery_unrecoverable", route="gameplay_mirror_transport")
 
-    assert evidence.replay_ws_faults([bound, packet, closed], [], ["char_a"], {}) == {
+    assert evidence.replay_ws_faults([bound, subscribed, packet, closed], [], ["char_a"], {}) == {
         "pause_seconds": [], "disconnect_seconds": [], "recovery_seconds": [],
     }
     with pytest.raises(ValueError, match="resync_not_sent"):
-        evidence.replay_ws_faults([bound, packet], [], ["char_a"], {})
+        evidence.replay_ws_faults([bound, subscribed, packet], [], ["char_a"], {})
 
 
 def test_ws_fault_replay_requires_ack_evidence_for_next_stale_resync_batch(monkeypatch):
@@ -401,6 +402,8 @@ def test_ws_fault_replay_requires_ack_evidence_for_next_stale_resync_batch(monke
     receiver = Receiver(set(actors), epoch=1)
     rows = [dict(key="reconnect", type="fault_bound", at=1., epoch=1,
                  actor_refs=sorted(actors), max_queue=1)]
+    rows.extend(dict(key="reconnect", type="fault_subscribe_request", at=1. + index * .0001,
+                     actor_ref=actor) for index, actor in enumerate(actors, 1))
 
     def packet(message):
         raw = json.dumps(message)
@@ -426,3 +429,31 @@ def test_ws_fault_replay_requires_ack_evidence_for_next_stale_resync_batch(monke
     request(actors[16])
     assert evidence.replay_ws_faults(rows, [], [actor.removeprefix("character:") for actor in actors], {}) == {
         "pause_seconds": [], "disconnect_seconds": [], "recovery_seconds": []}
+
+
+def test_ws_fault_replay_rejects_resync_before_subscription(monkeypatch):
+    import json
+    from scripts.verification import population_mixed_mirror
+
+    actors = ["character:actor_00", "character:actor_01"]
+
+    class Receiver:
+        def __init__(self, actor_refs, *, epoch):
+            self.awaiting = set()
+
+        def receive(self, raw_text):
+            self.awaiting.update(actors)
+            return dict(applied=False, request_actor_refs=actors)
+
+    monkeypatch.setattr(population_mixed_mirror, "MixedMirrorReceiver", Receiver)
+    rows = [dict(key="slow", type="fault_bound", at=1., epoch=1, actor_refs=actors, max_queue=1),
+            dict(key="slow", type="fault_subscribe_request", at=1.1, actor_ref=actors[0]),
+            dict(key="slow", type="fault_mirror_packet", at=1.2, epoch=1,
+                 raw_text=json.dumps(dict(message_type="gap")),
+                 decision=dict(applied=False, request_actor_refs=actors))]
+    valid = rows + [dict(key="slow", type="fault_resync_request", at=1.3, actor_ref=actors[0])]
+    assert evidence.replay_ws_faults(valid, [], [actor.removeprefix("character:") for actor in actors], {}) == {
+        "pause_seconds": [], "disconnect_seconds": [], "recovery_seconds": []}
+    invalid = rows + [dict(key="slow", type="fault_resync_request", at=1.3, actor_ref=actors[1])]
+    with pytest.raises(ValueError, match="resync_unsubscribed"):
+        evidence.replay_ws_faults(invalid, [], [actor.removeprefix("character:") for actor in actors], {})
