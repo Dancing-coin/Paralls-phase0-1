@@ -526,7 +526,10 @@ async def load(directory, config, shared_start=None):
             write_json(directory / "client.json", result)
             return result
         finally:
-            await fault.close()
+            try:
+                await fault.close()
+            finally:
+                await transport.aclose()
 
 
 async def load_while_backend_alive(directory, config, process, shared_start=None):

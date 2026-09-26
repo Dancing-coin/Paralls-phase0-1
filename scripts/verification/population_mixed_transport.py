@@ -51,6 +51,10 @@ class MixedLoadHttpWs:
         self.secret, self.profile = launcher_secret, launch_profile_ref
         self.record, self.timeout = record, timeout_seconds
         self._timestamp = 0
+        self._health_http = httpx.AsyncClient(timeout=self.timeout, trust_env=False)
+
+    async def aclose(self) -> None:
+        await self._health_http.aclose()
 
     def timestamp(self) -> int:
         # 同一进程的并发意图也不能碰撞原 ESM/visual fact 的毫秒身份。
@@ -88,10 +92,9 @@ class MixedLoadHttpWs:
             yield ws
 
     async def health(self, event) -> dict:
-        async with httpx.AsyncClient(timeout=self.timeout, trust_env=False) as http:
-            response = await http.get(self.http_url + "/health")
-            if response.status_code != 200 or response.json().get("status") != "ok":
-                raise ValueError("mixed_health_failed")
+        response = await self._health_http.get(self.http_url + "/health")
+        if response.status_code != 200 or response.json().get("status") != "ok":
+            raise ValueError("mixed_health_failed")
         now = perf_counter()
         self.record(dict(key=event.transaction_id, type="health_response", at=now, status="ok"))
         return dict(response_at=now, status="ok")

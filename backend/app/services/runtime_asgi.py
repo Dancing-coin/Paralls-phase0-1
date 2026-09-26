@@ -1,6 +1,7 @@
 """真实 ASGI transport；整局装配和业务只在原 spawn child 中执行。"""
 from contextlib import asynccontextmanager, suppress
 import asyncio
+import gc
 import json
 from uuid import uuid4
 
@@ -74,7 +75,10 @@ def create_runtime_app(component_app):
     # 保留原 typed HTTP 文档；请求仍必须经上面登记的 route 名与原 child 验证。
     app.openapi = component_app.openapi
 
+    closed_websocket_count = 0
+
     async def connection(websocket: WebSocket):
+        nonlocal closed_websocket_count
         from app import main
         host = app.state.runtime_process
         connection_ref = f'websocket:{uuid4().hex}'
@@ -139,6 +143,10 @@ def create_runtime_app(component_app):
                 await host.disconnect(connection_ref)
                 if close_reason is not None:
                     await close(*close_reason)
+                closed_websocket_count += 1
+                if closed_websocket_count % 64 == 0:
+                    # Windows Proactor 的关闭 transport 循环引用需及时扫过老代。
+                    gc.collect(2)
     app.websocket('/ws')(connection)
     app.websocket('/debug/ws')(connection)
     return app
