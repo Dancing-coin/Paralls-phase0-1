@@ -81,7 +81,7 @@ class MixedMirrorFaultClient:
             raise MirrorControlledClose()
         decision = self.receiver.receive(raw)
         # 先验证授权和协议，再保存公开原包；bind/模型正文均不进入证据。
-        if message["message_type"] in {"gameplay_mirror_delivery", "gameplay_mirror_resync_required"}:
+        if message["message_type"] in {"gameplay_mirror_delivery", "gameplay_mirror_resync_required", "ack"}:
             self.transport.record(dict(key=self.key, type="fault_mirror_packet", at=perf_counter(),
                 epoch=self.receiver.wire.epoch, raw_text=raw, decision=decision))
         await self._send_resync_batch(decision["request_actor_refs"])

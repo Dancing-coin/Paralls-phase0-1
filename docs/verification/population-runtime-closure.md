@@ -1,6 +1,8 @@
 # 群体运行时补齐与外机 Godot 验证交接
 
-当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。最新后端续作分支为 `codex/population-final-closure-20260920`，短路径工作树为 `D:/MyConfiguration/TCLXUSER/.codex/worktrees/pfc/Paralls-phase0-1`；不要将静态测试或合成证据测试记为引擎通过。
+当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。当前工作目录为`D:/Paralls-phase0-1`的`main`，历史隔离工作树不再作为续作入口；不要将静态测试或合成证据测试记为引擎通过。
+
+最新续作检查点（2026-09-26）：当前工作目录为`D:/Paralls-phase0-1`的`main`。`58e2d86f`的完整真实provider soak矩阵原始采集结束，但离线回放在千人2小时case报`mixed_fault_resync_not_requested`，顶层状态`failed`，不能计入六项通过。该case的原始parent/owner配对RSS首末30分钟中位数分别为290,287,616/311,502,848字节，增长21,215,232字节，低于33,554,432字节阈值；这是失败矩阵的独立诊断值，不是完整验收通过。根因是故障WS收到的有效`ack`可触发下一批resync，原采集器没有记录ACK原包，复验器因缺触发证据正确拒绝。修复仅扩展故障包记录至ACK，保持原批次、权限、业务性能和严格离线回放；RED为1 failed/1 passed，定向43 passed，完整后端7011 passed/2 skipped。原证据位于`D:/HarnessEvidence/population-mixed-soak-58e2d86f-20260926`，修复后须冻结新提交重采完整矩阵。2/4局容量、其余同版门禁、外机Godot及最终聚合仍待完成；不得将旧SHA证据改签。
 
 最新检查点（2026-09-21）：`4289bd2d` 的 correctness（focused1710项）、change-lifecycle、两档真实模型short、两档service和五配对transport通过，证据位于仓库外 `D:/HarnessEvidence/pop-final-4289bd2d`。capacity已完整采集但失败：2局性能通过，Character分别出现非法calm=-0.03与无法解析的L3 JSON，另有受控Siming超时后的stale_pin终态未满足原completed门槛；4局完整性通过，第300/600高峰窗口max lag 1.094—1.156，严格性能未过。该版本recovery/soak尚未启动，不能套用旧证据。CI #210静态smoke和population-correctness通过，all在Phase0缺17项运行证据，cleanup通过，根因待外机日志；不认定为已暂缓的Godot导入P2。
 

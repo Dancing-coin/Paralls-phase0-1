@@ -373,3 +373,56 @@ def test_ws_fault_replay_discards_only_resync_work_owned_by_a_closed_epoch(monke
     }
     with pytest.raises(ValueError, match="resync_not_sent"):
         evidence.replay_ws_faults([bound, packet], [], ["char_a"], {})
+
+
+def test_ws_fault_replay_requires_ack_evidence_for_next_stale_resync_batch(monkeypatch):
+    import json
+    from scripts.verification import population_mixed_mirror
+
+    actors = [f"character:resident_{index:05d}" for index in range(17)]
+
+    class Receiver:
+        def __init__(self, actor_refs, *, epoch):
+            self.awaiting = set()
+
+        def receive(self, raw_text):
+            message = json.loads(raw_text)
+            if message["message_type"] == "gap":
+                self.awaiting = set(actors)
+                requested = actors
+            else:
+                if message["message_type"] == "delivery":
+                    self.awaiting.discard(message["actor_ref"])
+                requested = []
+            return dict(applied=message["message_type"] == "delivery",
+                        request_actor_refs=requested, recovered=not self.awaiting)
+
+    monkeypatch.setattr(population_mixed_mirror, "MixedMirrorReceiver", Receiver)
+    receiver = Receiver(set(actors), epoch=1)
+    rows = [dict(key="reconnect", type="fault_bound", at=1., epoch=1,
+                 actor_refs=sorted(actors), max_queue=1)]
+
+    def packet(message):
+        raw = json.dumps(message)
+        rows.append(dict(key="reconnect", type="fault_mirror_packet", at=1. + len(rows) * .01,
+                         epoch=1, raw_text=raw, decision=receiver.receive(raw)))
+
+    def request(actor):
+        rows.append(dict(key="reconnect", type="fault_resync_request", at=1. + len(rows) * .01,
+                         actor_ref=actor))
+
+    packet(dict(message_type="gap"))
+    for actor in actors[:8]:
+        request(actor)
+    for actor in actors[8:] + actors[:8]:
+        packet(dict(message_type="delivery", actor_ref=actor))
+    for actor in actors[8:16]:
+        request(actor)
+    without_ack = rows + [dict(key="reconnect", type="fault_resync_request", at=2., actor_ref=actors[16])]
+    with pytest.raises(ValueError, match="mixed_fault_resync_not_requested"):
+        evidence.replay_ws_faults(without_ack, [], [actor.removeprefix("character:") for actor in actors], {})
+
+    packet(dict(message_type="ack"))
+    request(actors[16])
+    assert evidence.replay_ws_faults(rows, [], [actor.removeprefix("character:") for actor in actors], {}) == {
+        "pause_seconds": [], "disconnect_seconds": [], "recovery_seconds": []}

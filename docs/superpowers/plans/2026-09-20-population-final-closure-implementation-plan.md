@@ -173,3 +173,11 @@ Status: execution_in_progress; godot_unverified; current_population_ceiling_1000
 - 修复后1000人360秒真实provider诊断的首/末60窗RSS中位数增长13,256,704字节；原版同类诊断为15,210,496字节。这只说明短时方向有利，**不能推断2小时RSS门禁已通过**。诊断分别在`D:/HarnessEvidence/pop-rss-anchor-once-diagnostic-20260926`与`D:/HarnessEvidence/pop-rss-private-vs-ws-2118134b-20260926`。
 - 在D盘隔离Python 3.12环境安装`backend/ci-constraints.txt`锁定依赖后，完整backend回归`7009 passed、2 skipped、0 failed`（882.15秒）。初次使用仅父进程可见的用户站点依赖时，50项子进程测试因缺`pytest`、`yaml`、`fastapi`失败；该次不能计作源码缺陷或通过。完整重验日志为`D:/HarnessEvidence/pop-rss-fixture-isolation-2118134b-20260926/pytest-full-venv.log`。
 - 下一步：冻结并提交当前最小修复；在该干净SHA先重跑正式1000人2小时RSS门禁，若仍超过32MiB，继续据原始进程与SQLite指标定位，保持失败。通过后完成同SHA的2/4局capacity及其余正式证据重采/离线复验；外机Godot和所需外部授权仍独立阻断总聚合。所有诊断与旧SHA证据均不得改签为新SHA通过。
+
+### 58e2d86f 正式soak的ACK证据缺口
+
+- `58e2d86f`完整采集100/1000人各30分钟1x、两档10x及千人2小时1x；顶层复验在2小时case的故障WS回放报`mixed_fault_resync_not_requested`，退出1，整组未通过。第7029窗出现backlog1并在随后追平，该窗口不被删除，仍需新版本完整性能复验。原证据在`D:/HarnessEvidence/population-mixed-soak-58e2d86f-20260926`。
+- 仅从原始parent和owner的720对10秒心跳独立复算：千人2小时首/末30分钟RSS中位数为290,287,616/311,502,848字节，增长21,215,232字节，低于33,554,432字节上限。这表明上一步摘要修复方向在本轮实测有效，但原矩阵完整性失败，不能称soak通过或迁移该数值到新SHA。
+- 首次不一致发生在reconnect epoch 8198：跳序产生待重同步actor队列，先前投递已恢复部分排队actor；故障客户端读到有效ACK后会清除已结束的在途批次并发送下一批。原`MixedMirrorFaultClient._read()`只记录delivery/resync-required原包，未记录可触发下一批的ACK；离线回放缺少这个触发事实，因而正确拒绝第9条连续请求。绑定包由`bound_session`在交给故障客户端前消费，不属于此处缺项。
+- 最小修复在验证ACK后将其原包和决策写入既有`fault_mirror_packet`证据，使原`replay_ws_faults`复用同一接收状态机与批次检查；不允许验证器从缺证据旧包推测ACK，也不改变发送逻辑、8条批次上限或任何性能阈值。新增回归先1 failed/1 passed，修复后故障/离线/矩阵定向43 passed；完整backend为7011 passed、2 skipped、0 failed，日志在`D:/HarnessEvidence/population-mixed-soak-58e2d86f-full-ack.log`。
+- 下一步冻结并提交ACK证据修复，使用新干净SHA完整重跑soak并离线复验；若通过，再做2/4局capacity和其余同SHA证据。Godot外机、批准`char_c`绑定、VLA真实凭据及当前SHA的mainline/all仍是总闭环独立缺项；Goal保持进行中。

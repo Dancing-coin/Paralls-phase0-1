@@ -149,6 +149,38 @@ def test_fault_resync_requests_wait_for_each_bounded_batch(monkeypatch):
     assert [row["actor_ref"] for row in records if row["type"] == "fault_resync_request"] == actors
 
 
+def test_fault_ack_is_recorded_when_it_releases_next_resync_batch():
+    from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
+
+    actors = {"character:char_a", "character:char_b"}
+    raw_ack = json.dumps(dict(message_type="ack", payload=dict(accepted=True)))
+    records, sent = [], []
+
+    class Socket:
+        async def recv(self):
+            return raw_ack
+
+        async def send(self, raw):
+            sent.append(json.loads(raw))
+
+    client = MixedMirrorFaultClient(SimpleNamespace(record=records.append), actors)
+    client.socket = Socket()
+    client.receiver = MixedMirrorReceiver(actors, epoch=1)
+    client.receiver.awaiting.add("character:char_b")
+    client._pending_resync_actor_refs.append("character:char_b")
+    client._resync_in_flight.add("character:char_a")
+    client.key = "fault:resync"
+
+    decision = asyncio.run(client._read())
+
+    assert decision["request_actor_refs"] == []
+    assert [row["type"] for row in records] == ["fault_mirror_packet", "fault_resync_request"]
+    assert records[0]["raw_text"] == raw_ack and records[0]["decision"] == decision
+    assert records[1]["actor_ref"] == "character:char_b"
+    assert sent == [dict(message_type="gameplay_mirror_resync_request",
+                         payload=dict(actor_ref="character:char_b"))]
+
+
 @pytest.mark.parametrize("already_closed", [False, True])
 def test_controlled_close_recovery_uses_fresh_epoch_and_never_swallows_other_revocations(already_closed):
     from scripts.verification.population_mixed_load import MixedLoadEvent
