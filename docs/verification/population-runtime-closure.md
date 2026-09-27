@@ -2,6 +2,8 @@
 
 当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。当前工作目录为`D:/Paralls-phase0-1`的`main`，历史隔离工作树不再作为续作入口；不要将静态测试或合成证据测试记为引擎通过。
 
+2026-09-27 `02931e06`干净源码的真实模型短矩阵见`D:/HarnessEvidence/population-short-02931e06-20260927/manifest.json`，采集器退出1，独立离线复验同样判定`passed=false`。100人与1,000人各30窗的完整性均通过，真实provider各有2次合格调用；千人性能通过，最大lag为0.266窗；100人性能失败，最大lag为3.672窗。100人第23窗认知准备owner命令耗时约1,703ms，第24窗fixture耗时约1,675ms，其中`slow_group_exit`精确记录gameplay `group_commit()`退出阶段1,588.8ms；第24窗结束时owner队列深度12，至第29窗恢复。同期owner CPU从第22窗的7.11秒至第24窗仅增约0.41秒，说明这段墙钟延迟不能按CPU计算量解释。源码核对gameplay写连接已在启动时由`SqliteWalCheckpointWorker`关闭自动checkpoint，独立线程做PASSIVE checkpoint；不能把这次慢提交直接归因为提交线程自动checkpoint，更不能在没有文件级I/O证据时断言物理盘、同步写或其他进程是唯一根因。短矩阵失败且只有30秒，不代替正式soak或容量。当前版本CI #257（`36308824257`）在本段记录时仍运行中；结果须重新读取，不以此行推定通过或失败。
+
 2026-09-27 远端[CI #255](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/36302919031)按job页面核对：静态契约成功（1分32秒）、`population-correctness`成功（29分21秒），`harness`失败（36分30秒）；本次push的两个专用runner job按条件跳过。`harness`的`ci-all`因首个`phase0` profile失败而退出1，公开结构化报告将对话和observatory各结果标为`missing`；后续profile未执行，不能把`all`或mainline视为通过。公开annotation仅给出失败结果，没有证明是Godot导入、资产还是其他运行时原因；Godot外机验证和导入提前退出仍按用户约定另行处理。该CI源码为`2e6a4b11`，不能为其后的本地提交改签通过。
 
 后续[CI #256](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/36306641816)对应`f8ba99ed`：静态契约、`population-correctness`、Harness工具测试和change-lifecycle步骤均成功；`Capture full harness evidence`仍在`phase0`报告同一批对话及observatory结果`missing`并退出1，mainline步骤跳过，两个专用runner job因push条件跳过。已按结构化job状态和公开annotations核对，不将重复失败归因于尚未取得的Godot日志；本轮`all`及总门禁继续未通过。
