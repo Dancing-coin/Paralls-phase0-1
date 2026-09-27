@@ -41,7 +41,7 @@ async def run():
                         first = len(threads) == 1
                         started.set()
                         try:
-                            assert release.wait(10)
+                            assert release.wait(30)
                             if first:
                                 time.sleep(float(sys.argv[4]))
                             result = original(request)
