@@ -221,6 +221,26 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
                             finished_at=finished_at, duration_ms=(finished_at-started_at)*1000))
             return invoke
         boundaries = install_writer_probes(stack, writer)
+        from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+        from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
+
+        def graph_stage(name, original):
+            def invoke(*args, **kwargs):
+                started_at = perf_counter()
+                try:
+                    return original(*args, **kwargs)
+                finally:
+                    finished_at = perf_counter()
+                    if probe.origin is not None and finished_at - started_at >= .25:
+                        record(dict(type='slow_graph_stage', name=name, started_at=started_at,
+                            finished_at=finished_at, duration_ms=(finished_at-started_at)*1000))
+            return invoke
+
+        for cls, method, name in (
+            (InMemoryHeavenlyGraphAdapter, 'write_batch', 'graph_plan'),
+            (SQLiteHeavenlyGraphAdapter, '_persist_write_batch_delta', 'graph_persist'),
+        ):
+            stack.enter_context(patch.object(cls, method, graph_stage(name, getattr(cls, method))))
         execute = RuntimeExecution._execute
         def owner(instance, fn, future, queued_at):
             measuring = probe.origin is not None
