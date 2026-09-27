@@ -349,7 +349,9 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
                     await asyncio.wait_for(asyncio.shield(main._population_runtime_task), 30)
                 if meter is not None:
                     record(dict(type='capacity_resources', phase='after_drain', at=perf_counter(),
-                        cpu_seconds=process_time(), sqlite=meter.snapshot()))
+                        cpu_seconds=process_time(), sqlite=meter.snapshot(),
+                        wal_checkpoint=(main._sqlite_wal_checkpoint_worker.snapshot()
+                            if main._sqlite_wal_checkpoint_worker is not None else None)))
                 def final():
                     driver = main._population_runtime_driver
                     world = driver.world_runtime

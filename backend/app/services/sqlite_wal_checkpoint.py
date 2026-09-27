@@ -5,6 +5,7 @@ import math
 from pathlib import Path
 import sqlite3
 from threading import Event, Lock, Thread
+from time import perf_counter
 
 
 class SqliteWalCheckpointError(RuntimeError):
@@ -29,6 +30,7 @@ class SqliteWalCheckpointWorker:
         self._attempts = 0
         self._completed = 0
         self._busy = 0
+        self._slowest_by_path: dict[str, dict[str, float | int]] = {}
         self._failure: BaseException | None = None
         self._thread = Thread(target=self._run, name="sqlite-wal-checkpoint", daemon=True)
         self._thread.start()
@@ -44,7 +46,8 @@ class SqliteWalCheckpointWorker:
                 connection.execute("PRAGMA wal_autocheckpoint=0")
                 connections.append(connection)
             while not self._stop.wait(self._interval_seconds):
-                for connection in connections:
+                for path, connection in zip(self._paths, connections):
+                    started_at = perf_counter()
                     try:
                         busy, frames, checkpointed = connection.execute(
                             "PRAGMA wal_checkpoint(PASSIVE)"
@@ -56,8 +59,19 @@ class SqliteWalCheckpointWorker:
                                 self._busy += 1
                             continue
                         raise
+                    finished_at = perf_counter()
                     with self._lock:
                         self._attempts += 1
+                        previous = self._slowest_by_path.get(str(path))
+                        duration_ms = (finished_at - started_at) * 1000
+                        if previous is None or duration_ms > previous["duration_ms"]:
+                            self._slowest_by_path[str(path)] = {
+                                "started_at": started_at,
+                                "finished_at": finished_at,
+                                "duration_ms": duration_ms,
+                                "frames": frames,
+                                "checkpointed": checkpointed,
+                            }
                         if busy:
                             self._busy += 1
                         elif frames == checkpointed:
@@ -77,6 +91,7 @@ class SqliteWalCheckpointWorker:
                 "attempts": self._attempts,
                 "completed": self._completed,
                 "busy": self._busy,
+                "slowest_by_path": {path: row.copy() for path, row in self._slowest_by_path.items()},
                 "failure": type(self._failure).__name__ if self._failure is not None else None,
             }
 

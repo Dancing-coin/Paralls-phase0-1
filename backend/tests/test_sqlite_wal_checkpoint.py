@@ -29,6 +29,10 @@ def test_background_checkpoint_moves_wal_work_off_writer_and_stops_cleanly(tmp_p
         assert snapshot["database_count"] == 1
         assert snapshot["completed"] > 0
         assert snapshot["failure"] is None
+        slowest = snapshot["slowest_by_path"][str(path.resolve())]
+        assert slowest["started_at"] <= slowest["finished_at"]
+        assert slowest["duration_ms"] >= 0
+        assert slowest["frames"] >= slowest["checkpointed"] >= 0
         worker.close()
         assert writer.execute("PRAGMA wal_autocheckpoint").fetchone() == (1000,)
     finally:
