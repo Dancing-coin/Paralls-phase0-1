@@ -1,25 +1,29 @@
 {
   "contract": "character_action_asset_manifest.v1",
   "package_id": "female_bandage_external",
-  "candidate_status": "source_only",
+  "candidate_status": "candidate",
   "task8_primary": true,
-  "runtime_admission": "blocked_pending_qualification",
-  "source_model_path": "",
+  "runtime_admission": "qualified",
+  "source_model_path": "res://assets/active/female_bandage_external/female_bandage_external.glb",
   "source": {
-    "model_path": "",
-    "digest_sha256": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
-    "format": "blend"
+    "model_path": "assets/active/female_bandage_external/female_bandage_external.glb",
+    "digest_sha256": "EE0E846E0B2BC239CC2E91B1C5F3B5789CEE339C977AD40ED8C01E3A41335EDB",
+    "format": "glb"
   },
   "provenance": {
     "source_uri": "file:///E:/下载/建模1%20绷带血迹黑长直%20T字版本%20多动作版本.blend",
-    "authoring_contract": "external_provider_authoring_rig_unverified",
+    "authoring_contract": "external_provider_authoring_rig",
     "source_format": "blend",
     "working_copy": "production-assets/characters/female_bandage_external/source/female_bandage_external_source.blend",
     "qualification_report_ref": "assets/characters/qualification_reports/female_bandage_external.json",
-    "package_digest": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
+    "package_digest": "EE0E846E0B2BC239CC2E91B1C5F3B5789CEE339C977AD40ED8C01E3A41335EDB",
+    "authoring_frame_rate": 30.0,
+    "runtime_export_frame_rate": 60.0,
+    "original_source_digest_sha256": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
+    "export_tool": "Blender 5.1.2",
+    "export_cleanup": "pruned_non_deform_controller_nodes_and_tracks",
     "source_claims": {
-      "weapon_equipped": true,
-      "qualification_status": "user_declared_unverified"
+      "weapon_equipped": true
     }
   },
   "source_frame_rate": 60.0,
@@ -27,50 +31,171 @@
   "forward_axis": "-z",
   "up_axis": "+y",
   "rest_pose": {
-    "import_policy": "pending_blender_export",
-    "pose": "unverified_source_pose",
+    "import_policy": "applied_transforms",
+    "pose": "declared_authoring_rest",
     "pose_is_t_pose": false,
-    "root_translation_policy": "qualification_pending"
+    "root_translation_policy": "qualified_pending_godot_import"
   },
   "authoring_rig": {
-    "source_armature": "unverified",
-    "total_bones": null,
-    "deform_bones": null,
-    "controller_bones_retained_in_source": null,
-    "runtime_boundary": "not_exported"
+    "source_armature": "rig",
+    "total_bones": 344,
+    "deform_bones": 68,
+    "controller_bones_retained_in_source": true,
+    "runtime_boundary": "deform_skeleton_only",
+    "export_note": "controller constraints baked onto weighted deform bones"
   },
   "canonical_mapping": {
     "profile_id": "humanoid.v1",
-    "deform_skeleton_ref": "unverified_source_skeleton",
-    "bones": {}
+    "deform_skeleton_ref": "rig:68_weighted_deform_bones",
+    "bones": {
+      "root": "root.x",
+      "pelvis": "spine_01.x",
+      "spine": "spine_02.x",
+      "chest": "spine_03.x",
+      "head": "head.x",
+      "left_upper_arm": "arm_stretch.l",
+      "left_lower_arm": "forearm_stretch.l",
+      "left_hand": "hand.l",
+      "right_upper_arm": "arm_stretch.r",
+      "right_lower_arm": "forearm_stretch.r",
+      "right_hand": "hand.r",
+      "left_upper_leg": "thigh_stretch.l",
+      "left_lower_leg": "leg_stretch.l",
+      "left_foot": "foot.l",
+      "right_upper_leg": "thigh_stretch.r",
+      "right_lower_leg": "leg_stretch.r",
+      "right_foot": "foot.r"
+    }
   },
-  "required_slots": [],
-  "slots": {},
-  "locomotion_map": {},
+  "required_slots": [
+    "weapon_hand",
+    "weapon_slot:sword",
+    "weapon_hit_volume:sword"
+  ],
+  "slots": {
+    "weapon_hand": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_hand",
+      "held_item": true
+    },
+    "weapon_slot:sword": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_slot:sword"
+    },
+    "weapon_hit_volume:sword": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_hit_volume:sword"
+    }
+  },
+  "clip_aliases": {
+    "idle": "idle",
+    "walk_forward": "walking",
+    "run_forward": "running",
+    "jump_start": "jump",
+    "jump_loop": "jump",
+    "jump_land": "jump"
+  },
+  "locomotion_map": {
+    "idle": "idle",
+    "walk_forward": "walking",
+    "run_forward": "running",
+    "jump_start": "jump",
+    "jump_loop": "jump",
+    "jump_land": "jump"
+  },
   "root_motion_profile": {
-    "profile_id": "female_bandage_external.root.pending.v1",
+    "profile_id": "female_bandage_external.root.v1",
     "policy": "hold",
     "max_distance": 0.0,
     "max_duration_ticks": 1
   },
   "physical_profile": {
-    "profile_id": "humanoid_kinematic.pending.v1",
+    "profile_id": "humanoid_kinematic.v1",
     "collision_shape": "capsule",
-    "contact_policy": "unverified",
+    "contact_policy": "motor_evidence_only",
     "root_motion_owner": "CharacterMotor"
   },
   "fallback": {
-    "mode": "presentation_only",
-    "locomotion_compatibility": "suspend",
-    "policy": "do_not_admit"
+    "mode": "full_body_exclusive",
+    "locomotion_compatibility": "replace_locomotion",
+    "policy": "queue_until_compatible"
   },
-  "delivery_level": "presentation_extension",
-  "locomotion_compatibility": "not_admitted_until_blender_export_and_godot_qualification",
-  "actions_qualification_status": "rejected",
-  "qualification_blockers": [
-    "blender_export_unverified",
-    "godot_import_unverified"
-  ],
+  "delivery_level": "concurrent_action",
+  "locomotion_compatibility": "boxing and SWORD ATTACK remain full-body exclusive",
+  "actions_qualification_status": "qualified",
   "report_path": ".harness/verification/female_bandage_external-qualification-report.json",
-  "actions": []
+  "actions": [
+    {
+      "semantic_action_id": "action:melee.unarmed_punch",
+      "clip_ref": "boxing",
+      "mode": "full_body_exclusive",
+      "locomotion_compatibility": "replace_locomotion",
+      "root_motion_policy": "hold",
+      "root_motion_required": false,
+      "required_slots": [],
+      "markers": [
+        {
+          "marker_id": "punch_contact_window",
+          "time_seconds": 0.866667,
+          "window_start_seconds": 0.8,
+          "window_end_seconds": 0.933333,
+          "marker_kind": "melee_contact_candidate",
+          "emits_attempt": true,
+          "evidence_requirement": "physics_contact"
+        }
+      ],
+      "cancel_windows": [
+        {
+          "start_seconds": 0.95,
+          "end_seconds": 1.05
+        }
+      ],
+      "resource_claims": [
+        "right_arm",
+        "left_arm"
+      ],
+      "physics_claims": [],
+      "authority_route_ref": "esm",
+      "fallback_policy": "queue_until_compatible"
+    },
+    {
+      "semantic_action_id": "action:melee.sword_slash",
+      "clip_ref": "SWORD ATTACK",
+      "mode": "full_body_exclusive",
+      "locomotion_compatibility": "replace_locomotion",
+      "root_motion_policy": "hold",
+      "root_motion_required": false,
+      "required_slots": [
+        "weapon_hand",
+        "weapon_slot:sword",
+        "weapon_hit_volume:sword"
+      ],
+      "markers": [
+        {
+          "marker_id": "sword_contact_window",
+          "time_seconds": 0.6,
+          "window_start_seconds": 0.533333,
+          "window_end_seconds": 0.666667,
+          "marker_kind": "melee_contact_candidate",
+          "emits_attempt": true,
+          "evidence_requirement": "physics_contact"
+        }
+      ],
+      "cancel_windows": [
+        {
+          "start_seconds": 0.683333,
+          "end_seconds": 0.75
+        }
+      ],
+      "resource_claims": [
+        "right_arm",
+        "weapon_slot:sword"
+      ],
+      "physics_claims": [
+        "weapon_hit_volume:sword"
+      ],
+      "authority_route_ref": "esm",
+      "fallback_policy": "queue_until_compatible"
+    }
+  ]
 }

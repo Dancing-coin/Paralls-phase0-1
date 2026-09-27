@@ -33,10 +33,12 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 	last_command_digest = str(command.get("source_digest", ""))
 	body.rotation.y = rotate_toward(body.rotation.y, float(command.get("facing_yaw", body.rotation.y)), _get_body_float(body, "facing_turn_speed", 8.0) * delta)
 	var desired: Vector3 = command.get("desired_velocity", Vector3.ZERO)
-	var planar: Vector3 = desired + (command.get("root_delta", Vector3.ZERO) as Vector3) / max(delta, 0.0001) + command.get("impulse", Vector3.ZERO) + command.get("runtime_correction", Vector3.ZERO)
+	var impulse: Vector3 = command.get("impulse", Vector3.ZERO)
+	var planar: Vector3 = desired + (command.get("root_delta", Vector3.ZERO) as Vector3) / max(delta, 0.0001) + Vector3(impulse.x, 0.0, impulse.z) + command.get("runtime_correction", Vector3.ZERO)
 	body.velocity.x = move_toward(body.velocity.x, planar.x, _get_body_float(body, "acceleration", 18.0) * delta)
 	body.velocity.z = move_toward(body.velocity.z, planar.z, _get_body_float(body, "acceleration", 18.0) * delta)
 	if not body.is_on_floor(): body.velocity.y -= _get_body_float(body, "fall_gravity", 9.8) * delta
+	elif impulse.y > 0.0: body.velocity.y = impulse.y
 	elif body.velocity.y < 0.0: body.velocity.y = 0.0
 	body.move_and_slide()
 	body_revision += 1

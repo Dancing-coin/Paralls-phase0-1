@@ -45,6 +45,7 @@ class _StubL2:
         background_agenda_state=None,
         effective_profile=None,
         need_tension_state=None,
+        turn_context=None,
     ) -> dict[str, object]:
         return {
             "task_kind": "l2_reasoning",
@@ -80,6 +81,7 @@ class _StubL2:
         background_agenda_state=None,
         effective_profile=None,
         need_tension_state=None,
+        turn_context=None,
     ) -> CharacterInterpretation:
         return CharacterInterpretation(
             actor_id=event.actor_id,

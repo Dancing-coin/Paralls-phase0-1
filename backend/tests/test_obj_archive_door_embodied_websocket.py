@@ -40,7 +40,7 @@ def test_archive_door_route_rejects_terminal_outcome_from_a_different_connection
     first_connection = _connection("ws_connection:door-one")
     second_connection = _connection("ws_connection:door-two")
     _bind(first_connection)
-    main.runtime._actor_positions["char_c"] = (0.0, 1.2, -3.1)  # type: ignore[attr-defined]
+    main.runtime._actor_positions["char_c"] = (0.0, 0.5, -7.55)  # type: ignore[attr-defined]
 
     preflight = main._handle_envelope(
         Envelope(

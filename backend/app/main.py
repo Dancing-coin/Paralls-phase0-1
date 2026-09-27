@@ -5,6 +5,7 @@ import os
 from collections.abc import Callable, Mapping
 from secrets import compare_digest
 from dataclasses import dataclass
+from types import SimpleNamespace
 from queue import Empty, Queue
 from pathlib import Path
 from threading import RLock
@@ -108,6 +109,8 @@ from app.services.embodied_execution_ingress import (
     EmbodiedRealizationRouteGate,
     TurnExecutionCorrelation,
 )
+from app.services.embodied_authority_settlement_service import EmbodiedAuthoritySettlementService
+from app.models.embodied_interaction import ActionAttempt
 from app.services.embodied_carry_place_authority_service import EmbodiedCarryPlaceAuthorityService
 from app.services.embodied_custody_inventory_authority_service import EmbodiedCustodyInventoryAuthorityService
 from app.services.default_scene_archive_door_embodied_service import DefaultSceneArchiveDoorEmbodiedService
@@ -657,6 +660,7 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global _pending_siming_character_dispatch_messages
     global websocket_transport_closers
     global activation_policy
+    global unified_character_action_settlement_service
 
     previous_graph = globals().get("heavenly_graph")
     if isinstance(previous_graph, SQLiteHeavenlyGraphAdapter):
@@ -723,6 +727,7 @@ def reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         harness_trace=harness_execution_trace,
     )
     embodied_controller_auth_service = EmbodiedControllerAuthService()
+    unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
         esm_service=esm_service,
@@ -1965,8 +1970,6 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     if not bool(stream_event.get("committed")):
                         await send(_dialogue_stream_end(request_id, "requeued", partial_chars, fallback_used))
                         return
-                    if stream is None:
-                        raise ValueError("character dialogue stream ended without a completion event")
                     continue
                 if event_kind == "activation_error":
                     await send(_dialogue_stream_end(request_id, "failed", partial_chars, fallback_used))
@@ -2019,7 +2022,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if cancelled.is_set():
                     await send(_dialogue_stream_end(request_id, "cancelled", partial_chars, fallback_used))
                     return
-                audio = character_service.tts.synthesize(response.actor_id, response.content)
+                try:
+                    audio = await asyncio.wait_for(
+                        asyncio.to_thread(
+                            character_service.tts.synthesize,
+                            response.actor_id,
+                            response.content,
+                        ),
+                        timeout=3.0,
+                    )
+                except asyncio.TimeoutError:
+                    audio = character_service.tts._fallback_audio(
+                        actor_id=response.actor_id,
+                        voice_id=character_service.tts.resolve_voice_id(response.actor_id),
+                    )
                 response = response.model_copy(update={"audio": audio})
                 _record_completed_dialogue_response(response)
                 event_trace.record(response.output_type)
@@ -2135,6 +2151,16 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     ):
                         transport_close_revocation_received.set()
                     continue
+                if envelope.message_type == "transport_barrier" and raw_fact_followup_tasks:
+                    # A barrier is a causal boundary for the client: all raw-fact
+                    # follow-ups accepted before it must have completed before the
+                    # barrier ACK is emitted.  Without this drain, the next player
+                    # interaction can race an earlier character continuity append
+                    # and be rejected with a stale character revision.
+                    await asyncio.gather(
+                        *tuple(raw_fact_followup_tasks),
+                        return_exceptions=True,
+                    )
                 outbound = _handle_websocket_envelope(envelope, connection_context)
                 if _session_bound_by(outbound, envelope.message_type, connection_context):
                     gameplay_mirror_connection_registry.register(
@@ -2148,6 +2174,41 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 if isinstance(raw, dict):
                     source_type = str(raw.get("message_type", "unknown"))
                 outbound = [_as_error_ack(source_type=source_type, route="invalid_payload", error=exc)]
+            except WebSocketDisconnect:
+                return
+            except Exception as exc:
+                source_type = "unknown"
+                payload: dict[str, object] = {}
+                if isinstance(raw, dict):
+                    source_type = str(raw.get("message_type", "unknown"))
+                    raw_payload = raw.get("payload", {})
+                    if isinstance(raw_payload, dict):
+                        payload = raw_payload
+                _publish_debug_event(
+                    build_debug_event(
+                        producer_ts=int(payload.get("producer_ts", 0) or 0),
+                        domain="backend",
+                        stage="websocket_handler_failed",
+                        actor_id=str(payload.get("actor_id", "") or "") or None,
+                        summary="结构化 WebSocket 请求处理失败，返回相关错误确认。",
+                        detail={
+                            "source_type": source_type,
+                            "intent_type": str(payload.get("intent_type", "") or ""),
+                            "request_id": str(payload.get("request_id", "") or ""),
+                            "error_type": type(exc).__name__,
+                        },
+                    )
+                )
+                outbound = [
+                    _as_error_ack(
+                        source_type=source_type,
+                        route="handler_failed",
+                        error=exc,
+                        request_id=str(payload.get("request_id", "") or ""),
+                        intent_type=str(payload.get("intent_type", "") or ""),
+                        producer_ts=int(payload.get("producer_ts", 0) or 0),
+                    )
+                ]
             await send_batch(outbound)
     except WebSocketDisconnect:
         return
@@ -2372,6 +2433,54 @@ def _handle_envelope(
                 },
             }
         ]
+    if envelope.message_type == "street_combat_pose":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        actor_id = payload.get("actor_id")
+        raw_position = payload.get("position")
+        physics_tick = payload.get("physics_tick")
+        valid = (
+            isinstance(actor_id, str)
+            and isinstance(raw_position, list)
+            and len(raw_position) == 3
+            and all(isinstance(value, (int, float)) and not isinstance(value, bool) for value in raw_position)
+            and isinstance(physics_tick, int)
+            and not isinstance(physics_tick, bool)
+        )
+        accepted = bool(valid) and unified_character_action_settlement_service.record_street_pose(
+            actor_id,
+            tuple(float(value) for value in raw_position),
+            physics_tick=physics_tick,
+        )
+        return [_as_envelope("street_combat_pose_result", {"actor_id": actor_id if isinstance(actor_id, str) else "", "physics_tick": physics_tick if isinstance(physics_tick, int) else -1, "accepted": accepted, "actor_state": unified_character_action_settlement_service.street_actor_state(actor_id) if accepted else {}})]
+    if envelope.message_type == "street_combat_attempt":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        try:
+            attempt = ActionAttempt.model_validate(payload.get("attempt"))
+        except ValidationError as exc:
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": f"invalid_action_attempt:{exc.errors()[0]['type']}"})]
+        prior_mutation_count = unified_character_action_settlement_service.mutation_count
+        result = unified_character_action_settlement_service.settle_street_combat(attempt)
+        messages = [_as_envelope("street_combat_result", {"accepted": result.outcome == "committed", "authority_result": result.to_payload()})]
+        if result.outcome == "committed" and unified_character_action_settlement_service.mutation_count > prior_mutation_count:
+            target_actor_id = attempt.target_refs[0].removeprefix("character:")
+            source_actor_id = attempt.actor_ref.removeprefix("character:")
+            if target_actor_id in {"char_a", "char_b"} and character_agent_runtime.supports_actor(target_actor_id):
+                perceived = CharacterPerceivedEvent(
+                    actor_id=target_actor_id,
+                    percept_channel="combat",
+                    producer_ts=int(attempt.submitted_at or attempt.physics_tick * 17),
+                    room_id="room_street",
+                    scene_id="scene_street_combat",
+                    zone_id="zone_intersection",
+                    perceived_summary=f"Struck by {source_actor_id} in the street",
+                    source_candidate_event_id=result.committed_event_ids[0],
+                    source_actor_id=source_actor_id,
+                    target_actor_id=source_actor_id,
+                    distance_m=float(result.committed_projection.get("distance_m", 0.0)),
+                )
+                commands = character_agent_runtime.ingest_character_perceived_event(perceived)
+                messages.extend(_as_character_agent_execution_envelopes(commands))
+        return messages
     if envelope.message_type == "siming_staging_ack":
         payload = envelope.payload
         required_text = ("room_id", "scene_id", "zone_id", "correlation_id")
@@ -2440,6 +2549,12 @@ def _handle_envelope(
         )
     if envelope.message_type == "embodied_interaction_session_probe":
         return _handle_embodied_interaction_session_probe(envelope)
+
+    if envelope.message_type == "unified_character_action_foundation_probe":
+        return _handle_unified_character_action_foundation_probe(envelope)
+
+    if envelope.message_type == "embodied_interaction_session_projection_pull":
+        return _handle_embodied_interaction_session_projection_pull(envelope)
 
     if envelope.message_type == "embodied_handoff_probe":
         return _handle_embodied_handoff_probe(envelope)
@@ -2917,17 +3032,50 @@ def _handle_envelope(
 
     if envelope.message_type == "character_agent_execution":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
-        try:
-            execution_contract = CharacterExecutionContract.model_validate(payload)
-        except ValidationError as error:
-            return [_as_error_ack(
-                source_type=envelope.message_type,
-                route="character_agent_execution_contract",
-                error=error,
-            )]
-        actor_id = execution_contract.actor_id
+        legacy_bundle = payload.get("action_request_bundle")
+        is_legacy_bundle = (
+            "turn_id" not in payload
+            and isinstance(legacy_bundle, dict)
+            and isinstance(legacy_bundle.get("requested_actions"), list)
+        )
+        if is_legacy_bundle:
+            producer_ts = int(payload.get("producer_ts", 0) or 0)
+            actor_id = str(payload.get("actor_id", "") or "")
+            requested_actions = [
+                action for action in legacy_bundle["requested_actions"]
+                if isinstance(action, dict)
+            ]
+            if not requested_actions:
+                return [_as_error_ack(
+                    source_type=envelope.message_type,
+                    route="character_agent_execution_legacy",
+                    error=ValueError("legacy action_request_bundle has no requested actions"),
+                )]
+            execution_contract = SimpleNamespace(
+                actor_id=actor_id,
+                producer_ts=producer_ts,
+                turn_id="",
+                idempotency_key=f"legacy:{producer_ts}:{actor_id}",
+                causation_id=f"legacy:{producer_ts}:{actor_id}",
+                correlation_id=f"legacy:{producer_ts}:{actor_id}",
+                expected_revision_vector={"legacy": 0},
+                expected_memory_revision_vector={},
+                expected_snapshot_revision=0,
+            )
+            execution_payload = payload
+        else:
+            try:
+                execution_contract = CharacterExecutionContract.model_validate(payload)
+            except ValidationError as error:
+                return [_as_error_ack(
+                    source_type=envelope.message_type,
+                    route="character_agent_execution_contract",
+                    error=error,
+                )]
+            actor_id = execution_contract.actor_id
+            requested_actions = [_semantic_action_from_execution_contract(execution_contract)]
+            execution_payload = execution_contract.model_dump()
         route_name = "esm_service"
-        requested_actions = [_semantic_action_from_execution_contract(execution_contract)]
         if str(requested_actions[0].get("request_type", "") or "") in {
             "speak_public", "speak_private", "share_info", "withhold"
         }:
@@ -2943,18 +3091,35 @@ def _handle_envelope(
             }
         ]
         action_requests = _as_character_agent_action_request_envelopes(
-            execution_contract.model_dump(), producer_ts=execution_contract.producer_ts
+            execution_payload, producer_ts=execution_contract.producer_ts
         )
         messages.extend(action_requests)
-        for action in requested_actions:
+        for action_index, action in enumerate(requested_actions):
             if not isinstance(action, dict):
                 continue
+            request_type = str(action.get("request_type", "") or "")
+            if is_legacy_bundle:
+                execution_contract.producer_ts = len(
+                    character_agent_runtime.get_session_timeline(actor_id)
+                ) + action_index
+                execution_contract.idempotency_key = (
+                    f"legacy:{execution_contract.producer_ts}:{actor_id}:{action_index}:{request_type}:"
+                    f"{str(action.get('target_actor_id', '') or action.get('target_object_id', '') or '')}"
+                )
+                execution_contract.causation_id = execution_contract.idempotency_key
+                execution_contract.correlation_id = execution_contract.idempotency_key
             if str(action.get("request_type", "") or "") in {"speak_public", "speak_private", "share_info", "withhold"}:
+                if is_legacy_bundle:
+                    character_agent_runtime.record_execution_request(
+                        actor_id=actor_id,
+                        producer_ts=execution_contract.producer_ts,
+                        payload=action,
+                    )
                 response = _handle_character_agent_speech_action(
                     actor_id=actor_id,
                     action=action,
                     producer_ts=execution_contract.producer_ts,
-                    execution_contract=execution_contract,
+                    execution_contract=None if is_legacy_bundle else execution_contract,
                 )
                 messages.append(
                     {
@@ -2963,7 +3128,12 @@ def _handle_envelope(
                     }
                 )
                 continue
-            request_type = str(action.get("request_type", "") or "")
+            if is_legacy_bundle:
+                character_agent_runtime.record_execution_request(
+                    actor_id=actor_id,
+                    producer_ts=execution_contract.producer_ts,
+                    payload=action,
+                )
             if request_type == "approach":
                 world_result = _actor_target_action_settlement(
                     request_type=request_type,
@@ -3432,10 +3602,43 @@ def _handle_envelope(
             )
             _ = character_perceived_input_service.apply_self_body_perceived_event(self_body_perceived)
             messages.append(_as_envelope("self_body_perceived_event", self_body_perceived.model_dump()))
-            self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
+            try:
+                self_body_commands = character_agent_runtime.ingest_self_body_perceived_event(self_body_perceived)
+            except ValueError as exc:
+                if str(exc) != "character_revision_conflict":
+                    raise
+                self_body_commands = []
+                _publish_debug_event(
+                    build_debug_event(
+                        producer_ts=self_body_perceived.producer_ts,
+                        domain="character",
+                        stage="self_body_perception_deferred",
+                        actor_id=event.actor_id,
+                        summary="角色自身体感因连续性版本冲突延期。",
+                        detail={"reason": str(exc)},
+                    )
+                )
             messages.extend(_as_character_agent_execution_envelopes(self_body_commands))
             if os.environ.get("SIMING_HEAVENLY_AUTOTEST_SETUP") != "1":
-                character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
+                try:
+                    character_agent_runtime.run_scheduled_background_cognition_ticks(self_body_perceived.producer_ts)
+                except ValueError as exc:
+                    # Background cognition is advisory and must not invalidate an
+                    # already-authoritative world interaction.  A stale continuity
+                    # tick can be retried on the next cadence; preserve the world
+                    # result and expose the deferral in debug telemetry.
+                    if str(exc) != "character_revision_conflict":
+                        raise
+                    _publish_debug_event(
+                        build_debug_event(
+                            producer_ts=self_body_perceived.producer_ts,
+                            domain="character",
+                            stage="background_cognition_deferred",
+                            actor_id=event.actor_id,
+                            summary="后台角色认知 tick 因连续性版本冲突延期。",
+                            detail={"reason": str(exc)},
+                        )
+                    )
             if event.actor_id != "char_c":
                 messages.extend(
                     _as_character_agent_suggestion_envelopes(
@@ -3713,8 +3916,84 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
                 "route": "embodied_interaction_session",
             },
         ),
-        *session_messages,
     ]
+
+
+def _handle_unified_character_action_foundation_probe(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    raw_attempt = payload.get("attempt", {})
+    if not isinstance(raw_attempt, dict):
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "attempt_required")
+    try:
+        attempt = ActionAttempt.model_validate(raw_attempt)
+    except ValidationError as exc:
+        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, f"invalid_action_attempt:{exc.errors()[0]['type']}")
+    result = unified_character_action_settlement_service.settle(attempt)
+    return [
+        _as_envelope(
+            "unified_character_action_foundation_result",
+            {
+                "package_ids": [str(item) for item in payload.get("package_ids", [])] if isinstance(payload.get("package_ids", []), list) else [],
+                "authority_result": result.to_payload(),
+                "mode": "B",
+                "body_stream_seen": False,
+            },
+        )
+    ]
+
+
+def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> list[dict[str, object]]:
+    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+    session_id = str(payload.get("session_id", "") or "")
+    after_global_sequence = payload.get("after_global_sequence")
+    if not session_id:
+        return EmbodiedExecutionIngress.protocol_error(
+            envelope.message_type,
+            "session_id_required",
+        )
+    if (
+        not isinstance(after_global_sequence, int)
+        or isinstance(after_global_sequence, bool)
+        or after_global_sequence < 0
+    ):
+        return EmbodiedExecutionIngress.protocol_error(
+            envelope.message_type,
+            "after_global_sequence_invalid",
+        )
+
+    stream_events = gameplay_event_store.read_stream(f"session:{session_id}")
+    if not stream_events:
+        return EmbodiedExecutionIngress.protocol_error(
+            envelope.message_type,
+            "session_projection_unknown",
+        )
+    next_event = next(
+        (event for event in stream_events if event.global_sequence > after_global_sequence),
+        None,
+    )
+    if next_event is None:
+        return [
+            _as_envelope(
+                "embodied_interaction_session_projection_exhausted",
+                {
+                    "session_id": session_id,
+                    "after_global_sequence": after_global_sequence,
+                },
+            )
+        ]
+    matching_authority_event = next(
+        (
+            event
+            for event in authority_event_bus.list_events()
+            if event.event_id == next_event.event_id
+        ),
+        None,
+    )
+    if matching_authority_event is not None:
+        projected = _embodied_session_event_envelope_from_authority_event(matching_authority_event)
+        if projected is not None:
+            return [projected]
+    return [_embodied_session_event_envelope_from_gameplay_event(next_event)]
 
 
 def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
@@ -3761,6 +4040,56 @@ def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent)
             safe_payload[field_name] = payload[field_name]
         elif field_name in committed_payload:
             safe_payload[field_name] = committed_payload[field_name]
+    return _as_envelope("embodied_interaction_session_event", safe_payload)
+
+
+def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[str, object]:
+    event_type = str(getattr(event, "event_type", "") or "")
+    event_payload = getattr(event, "payload", {})
+    payload = dict(event_payload) if isinstance(event_payload, dict) else {}
+    state = str(payload.get("state", "") or "")
+    safe_payload: dict[str, object] = {
+        "event_type": event_type,
+        "session_id": str(payload.get("session_id", "") or ""),
+        "semantic_action": str(payload.get("semantic_action", "") or ""),
+        "state": state,
+        "safe_phase": state,
+        "sync_status": state,
+        "transaction_id": str(getattr(event, "transaction_id", "") or ""),
+        "event_id": str(getattr(event, "event_id", "") or ""),
+        "stream_id": str(getattr(event, "stream_id", "") or ""),
+        "stream_revision": int(getattr(event, "stream_revision", 0) or 0),
+        "global_sequence": int(getattr(event, "global_sequence", 0) or 0),
+    }
+    session_projection = (
+        embodied_interaction_session_service.public_projection(safe_payload["session_id"])
+        if safe_payload["session_id"]
+        else {}
+    )
+    for field_name in ("semantic_action", "participant_refs", "target_refs"):
+        if not safe_payload.get(field_name) and field_name in session_projection:
+            safe_payload[field_name] = session_projection[field_name]
+    allowed_projection_fields = {
+        "initiator_ref",
+        "participant_ref",
+        "participant_refs",
+        "target_refs",
+        "slot_assignments",
+        "reservation_refs",
+        "actor_ref",
+        "target_ref",
+        "reason_code",
+        "attempt_ref",
+        "attempt_refs",
+        "terminal_status",
+        "settlement_ref",
+        "policy_revision",
+        "scene_revision",
+        "visibility_policy",
+    }
+    for field_name in allowed_projection_fields:
+        if field_name in payload:
+            safe_payload[field_name] = payload[field_name]
     return _as_envelope("embodied_interaction_session_event", safe_payload)
 
 
@@ -5532,16 +5861,31 @@ def _ack_payloads_match(first_payload: object, second_payload: object) -> bool:
     return all(first_payload.get(key) == second_payload.get(key) for key in keys)
 
 
-def _as_error_ack(*, source_type: str, route: str, error: Exception) -> dict[str, object]:
+def _as_error_ack(
+    *,
+    source_type: str,
+    route: str,
+    error: Exception,
+    request_id: str = "",
+    intent_type: str = "",
+    producer_ts: int = 0,
+) -> dict[str, object]:
+    payload: dict[str, object] = {
+        "accepted": False,
+        "source_type": source_type,
+        "route": route,
+        "error_type": type(error).__name__,
+        "error_message": str(error),
+    }
+    if request_id:
+        payload["request_id"] = request_id
+    if intent_type:
+        payload["intent_type"] = intent_type
+    if producer_ts:
+        payload["producer_ts"] = producer_ts
     return {
         "message_type": "ack",
-        "payload": {
-            "accepted": False,
-            "source_type": source_type,
-            "route": route,
-            "error_type": type(error).__name__,
-            "error_message": str(error),
-        },
+        "payload": payload,
     }
 
 

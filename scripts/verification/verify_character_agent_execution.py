@@ -121,7 +121,7 @@ def main() -> int:
             execution_entry["evidence"] = []
             execution_entry["notes"] = (
                 "Probe did not confirm the received execution payload directly carried "
-                "actor_control_frames/presentation_plan/action_request_bundle."
+                "the canonical semantic contract without legacy control frames or action bundles."
             )
         consumer_ok = (
             CONSUMER_SEEN_MARKER in main_log_text

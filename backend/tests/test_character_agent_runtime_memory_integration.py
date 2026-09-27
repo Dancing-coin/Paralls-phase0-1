@@ -99,14 +99,16 @@ def test_runtime_writes_character_perceived_event_into_session_timeline() -> Non
     runtime.ingest_character_perceived_event(event)
     timeline = runtime.get_session_timeline("char_a")
 
-    assert len(timeline) == 6
-    assert timeline[0]["event_type"] == "character_perceived_event"
-    assert timeline[0]["payload"]["summary"] == "visual_fact/fixed_gaze_on_target"
-    assert timeline[1]["event_type"] == "need_tension_state_event"
-    assert timeline[2]["event_type"] == "l2_reasoning_request"
-    assert timeline[3]["event_type"] == "character_interpretation_event"
-    assert timeline[4]["event_type"] == "goal_state_event"
-    assert timeline[5]["event_type"] == "character_agent_execution_request"
+    event_types = [entry["event_type"] for entry in timeline]
+    perceived = next(entry for entry in timeline if entry["event_type"] == "character_perceived_event")
+    assert perceived["payload"]["summary"] == "visual_fact/fixed_gaze_on_target"
+    assert "character_turn_context_created" in event_types
+    assert event_types.count("character_turn_stage_recorded") >= 4
+    assert "need_tension_state_event" in event_types
+    assert "l2_reasoning_request" in event_types
+    assert "character_interpretation_event" in event_types
+    assert "goal_state_event" in event_types
+    assert "character_agent_execution_request" in event_types
 
 
 def test_runtime_writes_self_body_event_into_working_memory_bundle() -> None:
@@ -1514,7 +1516,8 @@ def test_runtime_execution_request_and_returned_commands_stay_causally_aligned()
     assert commands
     assert execution_requests
     latest_request = execution_requests[-1]
-    assert latest_request["payload"]["actor_id"] == commands[0].actor_id
+    assert latest_request["payload"]["actor_ref"] == f"character:{commands[0].actor_id}"
+    assert latest_request["payload"]["turn_id"] == commands[0].turn_id
 
 
 def test_player_priority_suggestion_packets_are_written_into_runtime_timeline() -> None:

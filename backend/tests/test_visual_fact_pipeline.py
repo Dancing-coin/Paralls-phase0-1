@@ -403,9 +403,10 @@ def test_raw_visual_fact_for_char_a_emits_character_agent_execution() -> None:
 
     assert output_messages == []
     assert execution_messages
-    assert execution_messages[0]["payload"]["actor_id"] == "char_a"
-    assert "actor_control_frames" in execution_messages[0]["payload"]
-    assert "presentation_plan" in execution_messages[0]["payload"]
+    assert execution_messages[0]["payload"]["actor_ref"] == "character:char_a"
+    assert execution_messages[0]["payload"]["turn_id"]
+    assert "actor_control_frames" not in execution_messages[0]["payload"]
+    assert "presentation" in execution_messages[0]["payload"]["allowed_realization_hints"]
 
 
 def test_raw_thermal_fact_for_char_a_emits_character_agent_execution() -> None:
@@ -449,7 +450,7 @@ def test_raw_thermal_fact_for_char_a_emits_character_agent_execution() -> None:
     perceived = character_perceived_input_service.get_latest("char_a")
 
     assert execution_messages
-    assert execution_messages[0]["payload"]["actor_id"] == "char_a"
+    assert execution_messages[0]["payload"]["actor_ref"] == "character:char_a"
     assert perceived is not None
     assert perceived.percept_channel == "thermal"
     assert perceived.target_object_id == "obj_letter"

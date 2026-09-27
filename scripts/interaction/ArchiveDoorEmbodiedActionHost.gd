@@ -266,8 +266,6 @@ func _process_align() -> void:
 		player_bridge.set_forced_facing_yaw(desired_yaw)
 	if absf(wrapf(player.rotation.y - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
 		return
-	if player_bridge != null:
-		player_bridge.clear_forced_facing_yaw()
 	var replica := _character_replica()
 	if replica == null or not replica.has_method("begin_right_hand_reach"):
 		_finalize_local_failure("failed_alignment", "ik_chain_unavailable")

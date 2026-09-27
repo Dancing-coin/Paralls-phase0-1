@@ -60,14 +60,37 @@ def test_probe_scene_wraps_main_demo_and_rejects_synthetic_probe_shortcuts() -> 
     assert "get_viewport().get_texture().get_image()" in script_text
 
 
-def test_probe_uses_a_launch_time_player_shell_fixture_with_a_nonzero_real_approach() -> None:
+def test_probe_uses_a_launch_time_player_shell_fixture_clear_of_intervening_objects() -> None:
     scene_text = (
         ROOT / "scenes" / "phase0" / "ObjArchiveDoorPhysicalEmbodimentProbe.tscn"
     ).read_text(encoding="utf-8")
 
     assert '[editable path="MainDemo/PlayerCharacter"]' in scene_text
     assert '[node name="PlayerCharacter" parent="MainDemo"' in scene_text
-    assert "transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -1.9625)" in scene_text
+    # Keep the launch fixture in the open lane; the runtime probe then moves
+    # to the x=2 approach lane before navigating to the door stance.
+    assert "transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.5, -1.9625)" in scene_text
+
+
+def test_probe_approach_target_uses_clear_side_lane() -> None:
+    script_text = (
+        ROOT / "scripts" / "verification" / "ObjArchiveDoorPhysicalEmbodimentProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    approach_body = script_text.split("func _approach_start_position() -> Vector3:", maxsplit=1)[1].split(
+        "func _current_facing_error_rad", maxsplit=1
+    )[0]
+    assert "Vector3(stance.global_position.x, 0.5, stance.global_position.z + 0.75)" in approach_body
+
+
+def test_probe_mounts_the_approved_local_role_asset_before_embodied_attempt() -> None:
+    script_text = (
+        ROOT / "scripts" / "verification" / "ObjArchiveDoorPhysicalEmbodimentProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert "func _ensure_embodied_role_asset() -> bool:" in script_text
+    assert 'role_scene_ref": "res://scenes/active/crusader_knight/KnightRoleSkin.tscn"' in script_text
+    assert "await _ensure_embodied_role_asset()" in script_text
 
 
 def test_probe_treats_the_server_controller_bound_state_as_a_completed_bind() -> None:

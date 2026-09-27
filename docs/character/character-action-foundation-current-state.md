@@ -1,6 +1,6 @@
 # Character Action Foundation Current State
 
-Date: `2026-09-14`
+Date: `2026-09-24`
 
 Status: `current-state ledger; implementation gap remains`
 
@@ -9,10 +9,141 @@ see `docs/character/character-runtime-design-drift-audit.md`.
 
 ## Executive Finding
 
+Release-gate boundary: Godot owns local embodiment/presentation through one
+`CharacterMotor`; backend ESM/Gameplay/composite owns semantic authority and
+committed `ActionAttempt` results. The connected transport is Mode B only;
+Mode C body streaming, rollback, raw-pose replication, and authoritative
+multiplayer physics remain disabled.
+
+Task 14 runtime evidence is available from the fresh live run:
+
+- `.harness/verification/unified-character-action-foundation-runtime.json`
+- `.harness/verification/unified-character-action-foundation-runtime-verifier.json`
+- `.harness/verification/unified-character-action-foundation-godot.log`
+
+The run starts a real backend and Godot headless scene, mounts
+`female_jk_external` and `female_t_external`, moves both actors through their
+`CharacterMotor`, and records Agent/INF semantic intent, ESM melee commit,
+Gameplay semantic hitscan commit, duplicate replay, stale revision rejection,
+and client-truth rejection. It proves Mode B only; it does not claim
+rollback, raw-pose replication, or authoritative multiplayer physics.
+
 The repository has a formally correct shared-actor direction, but the action
 foundation is not yet a single coherent runtime. Player locomotion already
 uses `CharacterControllerPort -> CharacterMotor`; NPC embodiment still has a
 direct-coordinate path, and action/presentation state is partly model-specific.
+
+## 2026-09-23 Character-Turn Prerequisite Gate
+
+The character-turn continuity implementation has closed its two latest
+continuity regressions, but its dependency gate is currently **conditional**:
+the fresh archive-door success scenario and repository-wide verification remain
+red. It does **not** mean that the unified action-foundation Tasks 1-15 are
+already implemented or that the repository has a globally green aggregate run.
+The controlling plan and its consumer order are:
+
+- `docs/superpowers/plans/2026-09-23-character-turn-continuity-and-embodied-episode-implementation-plan.md`
+- `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md`
+
+`CharacterTurnContext` is the canonical live turn from before L1 through
+settlement, evaluation, policy, and checkpoint/recovery. Completed behavior-turn
+records are completed audit/projection evidence; current behavior-turn records
+are views of that active context; legacy behavior-turn records remain read-only
+compatibility inputs and cannot start, dispatch, or settle a live turn.
+
+The action-foundation consumers are fixed: `CharacterExecutionContract` feeds
+Task 9 semantic ingress; `turn_id`, revision, causation/correlation, and
+idempotency feed Task 10 `ActionAttempt`/`AuthorityResult`; typed recovery feeds
+the local and transport recovery work and, together with local/authority/
+post-observation episode evidence, feeds Tasks 13 and 14 replay and runtime
+proof.
+
+`CharacterAgentL4Adapter` remains a one-way legacy compatibility translator,
+not an execution or settlement owner. VLA/provider output remains advisory; it
+can nominate an actor intent candidate but cannot control a body, Motor, pose,
+or authority/world truth. Likewise, an episode is not authority truth: only
+ESM, Gameplay, or a registered Composite owner can commit the corresponding
+world state.
+
+### Gate evidence and remaining exclusions
+
+The complete archive-door physical-embodiment proof was run with:
+
+```powershell
+python scripts/verification/verify_obj_archive_door_physical_embodiment.py `
+  --godot-exe 'D:\godot\Godot_v4.6.3-stable_win64.exe' `
+  --python-exe 'C:\Anaconda3\python.exe'
+```
+
+It passed all four live-boundary scenarios (`success`, `distance_failure`,
+`revision_failure`, and `stance_failure`). The primary result is
+`.harness/verification/obj-archive-door-physical-embodiment-report.json`; the
+linked runtime, backend-settlement, replay, screenshot, and Godot-log evidence
+is stored beside it under `.harness/verification/`.
+
+The designated predecessor profile was then run with:
+
+```powershell
+python scripts/verification/verify_character_turn_embodied_episode.py
+```
+
+The preceding designated run returned `overall_passed=True`, but the fresh
+2026-09-24 rerun returned `overall_passed=False`: the archive-door `success`
+scenario has `wrong_scene`, missing live-backend/replay evidence, and no open
+settlement. Its parent report is
+`.harness/verification/character-turn-embodied-episode-report.json`. This is
+an active blocker, so the former successful report is historical evidence only.
+
+The focused continuity-contract suite was:
+
+```powershell
+python -m pytest backend/tests/test_character_turn_context.py backend/tests/test_character_turn_coordinator.py backend/tests/test_character_turn_recovery.py backend/tests/test_behavior_policy_lifecycle.py backend/tests/test_character_behavior_evaluation.py backend/tests/test_character_semantic_recall.py backend/tests/test_character_execution_contract.py backend/tests/test_embodied_episode_service.py backend/tests/test_vla_percept_bridge.py backend/tests/test_vla_runtime_consumption.py backend/tests/test_character_turn_embodied_episode.py -q
+```
+
+It returned `82 passed`. Together with the designated profile, this is the
+evidence for the checked predecessor completion checklist; it is not a claim
+that an unrelated full-repository regression is green.
+
+The focused follow-up was:
+
+```powershell
+C:\Anaconda3\python.exe -m pytest backend/tests/test_obj_archive_door_embodied_local_static.py scripts/verification/tests/test_verify_obj_archive_door_physical_embodiment.py -q
+D:\godot\Godot_v4.6.3-stable_win64.exe --headless --path . --editor --quit --rendering-method gl_compatibility
+```
+
+Both passed at this gate. A live external VLA provider credential is not
+required for this evidence: the covered VLA/provider path is advisory-boundary
+validation, while the door proof uses real local embodiment plus authority
+settlement. External-asset qualification remains pending: the preserved knight
+resources and the two external character packages still need the separate
+qualified Skeleton3D/AnimationPlayer/action-clip evidence before the later
+two-character foundation milestone can be claimed.
+
+### Aggregate status recorded for Task 10
+
+The fresh `python -m pytest -q` run completed with `5711 passed, 28 failed,
+76 warnings`. The former tuple-snapshot and legacy action-request route
+failures are now closed. Remaining failures include test doubles that predate
+the canonical `turn_context` L2 interface, the archive-door/profile chain,
+external asset qualification expectations, Siming idempotency, and several
+WebSocket/runtime integration paths. `python scripts/verification/harness.py
+--profile all` now clears its first `docs` profile, but was not green as an
+aggregate because the fresh episode verifier is red. `git diff --check`
+passed.
+
+Accordingly, the dependency gate remains conditional. It does not waive the
+recorded repository-wide failures or authorize a first-milestone completion
+claim until the fresh episode and aggregate gates are green.
+
+### Asset qualification clarification (2026-09-24)
+
+The external-asset contract has been corrected to distinguish an authoring rig
+from its deform skeleton and runtime canonical mapping. A source `.blend` may
+contain controller, IK/FK, pole, twist, and reference bones. A T-pose is not
+required, and deform-bone count is not a quality gate. Qualification instead
+requires a reproducible declared rest pose, identified deform bones, complete
+deform-to-canonical mapping, and a stable export/retarget boundary. This
+clarification does not by itself qualify any package for runtime admission.
 
 The latest unified target is defined in:
 

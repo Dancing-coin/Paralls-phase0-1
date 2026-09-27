@@ -248,12 +248,27 @@ class ConversationRelationService:
     def _get_or_create_relation_state(self, actor_id: str, room_id: str, scene_id: str, zone_id: str) -> dict[str, str]:
         existing = self._relation_by_actor.get(actor_id)
         if existing is not None:
+            if (
+                existing.get("room_id") != room_id
+                or existing.get("scene_id") != scene_id
+                or existing.get("zone_id") != zone_id
+            ):
+                existing = self._new_relation_state(room_id, scene_id, zone_id)
+                self._relation_by_actor[actor_id] = existing
+                self._last_emitted_candidate_by_actor.pop(actor_id, None)
+                return existing
             existing["room_id"] = room_id
             existing["scene_id"] = scene_id
             existing["zone_id"] = zone_id
             return existing
 
-        state = {
+        state = self._new_relation_state(room_id, scene_id, zone_id)
+        self._relation_by_actor[actor_id] = state
+        return state
+
+    @staticmethod
+    def _new_relation_state(room_id: str, scene_id: str, zone_id: str) -> dict[str, str]:
+        return {
             "room_id": room_id,
             "scene_id": scene_id,
             "zone_id": zone_id,
@@ -275,8 +290,6 @@ class ConversationRelationService:
             "candidate_privacy_risk_hint": "",
             "candidate_producer_ts": "0",
         }
-        self._relation_by_actor[actor_id] = state
-        return state
 
     def _is_mirrored_focus_visual_fact(self, relation: dict[str, str], target_kind: str) -> bool:
         focus_target = relation.get("focus_target_actor_id", "") if target_kind == "actor" else relation.get("focus_target_object_id", "")

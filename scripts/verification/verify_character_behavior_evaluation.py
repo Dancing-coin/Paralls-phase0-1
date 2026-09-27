@@ -28,15 +28,24 @@ def main() -> int:
                 target_object_id="obj_letter",
             )
         )
+        context_event = next(
+            entry
+            for entry in runtime.get_session_timeline("char_b")
+            if entry.get("event_type") == "character_turn_context_created"
+        )
+        context_payload = context_event["payload"]
+        context = context_payload["context"]
         runtime.record_settlement_result(
             actor_id="char_b",
             producer_ts=101,
             payload={
+                "turn_id": context["turn_id"],
+                "branch_id": context["branch_id"],
+                "causation_id": context["causation_id"],
+                "correlation_id": context["correlation_id"],
                 "settlement_status": "rejected",
                 "result_type": "constraint_state_result",
                 "constraint_summary": "requires a key",
-                "causation_id": "cause:behavior:101",
-                "correlation_id": "corr:behavior:101",
             },
         )
         timeline = runtime.get_session_timeline("char_b")
@@ -52,11 +61,19 @@ def main() -> int:
         "character_agent_execution_request",
         "character_agent_settlement_result",
         "character_behavior_evaluation_event",
-        "character_policy_candidate_event",
+        "character_behavior_policy_proposed",
     ]
     chain_ok = all(any(entry.get("event_type") == event_type for entry in timeline) for event_type in chain_types)
     evaluation_ok = bool(evaluation) and bool(evaluation[-1].get("payload", {}).get("source_refs"))
-    candidate_ok = bool(candidates) and candidates[-1].get("payload", {}).get("status") == "candidate_only"
+    proposed = [entry for entry in timeline if entry.get("event_type") == "character_behavior_policy_proposed"]
+    proposed_record = proposed[-1].get("payload", {}).get("record", {}) if proposed else {}
+    candidate_payload = evaluation[-1].get("payload", {}).get("candidate_policy", {}) if evaluation else {}
+    candidate_ok = (
+        isinstance(proposed_record, dict)
+        and proposed_record.get("status") == "candidate"
+        and isinstance(candidate_payload, dict)
+        and candidate_payload.get("status") == "candidate"
+    )
     report = {
         "results": [
             {"id": "behavior_chain", "status": "proved" if chain_ok else "missing", "evidence": chain_types if chain_ok else []},

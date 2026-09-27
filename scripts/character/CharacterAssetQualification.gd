@@ -9,7 +9,7 @@ const LOCOMOTION_RELATIONS := [&"coexist", &"drive_locomotion", &"replace_locomo
 const ROOT_MOTION_POLICIES := [&"hold", &"bounded_continue", &"reversible_continue"]
 const CONCURRENT_MODES := [&"native_upper_body", &"derived_upper_body"]
 const LOWER_BODY_BONES := [&"left_upper_leg", &"left_lower_leg", &"left_foot", &"right_upper_leg", &"right_lower_leg", &"right_foot"]
-const REQUIRED_LOCOMOTION_TAGS := [&"idle", &"walk_forward", &"run_forward", &"jump_start", &"jump_land", &"turn_left", &"turn_right"]
+const REQUIRED_LOCOMOTION_TAGS := [&"idle", &"walk_forward", &"run_forward", &"jump_start", &"jump_land"]
 const FORBIDDEN_TRUTH_FIELDS := ["transform", "global_position", "velocity", "damage", "inventory", "status", "hit_outcome", "ownership_transfer"]
 const TRACK_TOLERANCE := 0.0001
 
@@ -176,7 +176,6 @@ static func _validate_locomotion(manifest: Dictionary, clips: Dictionary, profil
 	var locomotion_map: Dictionary = raw_map if raw_map is Dictionary else {}
 	for tag in REQUIRED_LOCOMOTION_TAGS:
 		_validate_locomotion_tag(String(tag), locomotion_map, clips, profile, report, reasons)
-	_validate_locomotion_tag("turn_right", locomotion_map, clips, profile, report, reasons)
 	if not locomotion_map.has("jump_loop") and not locomotion_map.has("fall"):
 		reasons.values.append("locomotion_tag_unmapped:jump_loop_or_fall")
 	else:
@@ -325,13 +324,25 @@ static func _find_skeleton(root: Node) -> Skeleton3D:
 
 
 static func _track_has_non_rest_value(clip: Animation, track_index: int) -> bool:
-	for key_index in clip.track_get_key_count(track_index):
+	var key_count := clip.track_get_key_count(track_index)
+	if key_count < 2:
+		return false
+	var first_value: Variant = clip.track_get_key_value(track_index, 0)
+	for key_index in range(1, key_count):
 		var value: Variant = clip.track_get_key_value(track_index, key_index)
-		if value is Vector3 and (value as Vector3).length() > TRACK_TOLERANCE:
-			return true
-		if value is Quaternion and not (value as Quaternion).is_equal_approx(Quaternion.IDENTITY):
+		if not _animation_values_equal(first_value, value):
 			return true
 	return false
+
+
+static func _animation_values_equal(left: Variant, right: Variant) -> bool:
+	if left is Vector3 and right is Vector3:
+		return (left as Vector3).is_equal_approx(right as Vector3)
+	if left is Quaternion and right is Quaternion:
+		return (left as Quaternion).is_equal_approx(right as Quaternion)
+	if left is Transform3D and right is Transform3D:
+		return (left as Transform3D).is_equal_approx(right as Transform3D)
+	return left == right
 
 
 static func _append_once(values: StringCollector, value: String) -> void:

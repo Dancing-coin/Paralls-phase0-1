@@ -21,7 +21,9 @@ class ESMService:
         "obj_letter": (0.0, 0.95, -2.0),
         "obj_plaque": (-2.2, 1.2, -2.0),
         "obj_lamp_switch": (2.2, 1.2, -2.0),
-        "obj_archive_door": (0.0, 1.2, -4.0),
+        # Keep authority geometry aligned with the live MainDemo instance:
+        # ArchiveDoorPhysical is placed at (0, 1.2, -8.8).
+        "obj_archive_door": (0.0, 1.2, -8.8),
         "obj_worktable": (-0.9, 0.85, -2.0),
         "obj_observation_bench": (15.4, 0.7, -6.6),
     }

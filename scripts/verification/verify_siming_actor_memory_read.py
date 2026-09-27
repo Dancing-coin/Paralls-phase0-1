@@ -1,16 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
-import app.main as app_main
 from app.models.siming_actor_memory_read import ActorMemoryReadRequest
 from app.models.siming_heavenly_graph import HeavenlyNodeQuery
-from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
 from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
 
@@ -46,6 +45,10 @@ def main() -> int:
     pytest_result = run_command([resolve_python_exe(args.python_exe), "-m", "pytest", "-q", *TEST_FILES], project_root, pytest_log)
 
     with tempfile.TemporaryDirectory(dir=log_dir) as temporary_directory:
+        os.environ["PARALLS_HEAVENLY_GRAPH_PATH"] = str(Path(temporary_directory) / "actor-memory.sqlite3")
+        import app.main as app_main
+        from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
+
         app_main.settings.heavenly_graph_path = str(Path(temporary_directory) / "actor-memory.sqlite3")
         app_main.settings.character_graph_memory_heavy_actor_ids = ["char_b"]
         app_main.reset_runtime_state()

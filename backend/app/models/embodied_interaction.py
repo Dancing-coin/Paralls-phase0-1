@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from hashlib import sha256
+import json
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -7,6 +9,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 RealizationRoute = Literal["legacy_character_replica", "embodied_controller_v1"]
 SettlementWriterKind = Literal["esm_compatibility_adapter", "gameplay_event_batch_writer"]
+AuthorityRoute = Literal["esm", "gameplay", "composite"]
+AuthorityOutcome = Literal["committed", "rejected", "unknown"]
 AnchorRole = Literal[
     "approach_stance",
     "contact",
@@ -69,10 +73,101 @@ FORBIDDEN_LOCAL_OUTCOME_FIELDS = {
     "world_truth_claim",
     "character_actor_status",
 }
+FORBIDDEN_ACTION_ATTEMPT_FIELDS = {
+    "damage", "hit", "hit_confirmed", "ammo", "ammo_delta", "projectile",
+    "projectile_id", "ballistic_outcome", "ballistic_truth", "pose",
+    "transform", "velocity", "raw_pose", "raw_clip_filename",
+}
 
 
 class StrictEmbodiedModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+class ActionAttempt(StrictEmbodiedModel):
+    """Canonical semantic request crossing the embodiment/authority boundary."""
+
+    attempt_id: str = Field(min_length=1)
+    actor_ref: str = Field(min_length=1)
+    action_instance_id: str = Field(min_length=1)
+    semantic_action_id: str = Field(min_length=1)
+    target_refs: list[str] = Field(default_factory=list)
+    contact_marker_id: str = Field(min_length=1)
+    contact_marker_time_seconds: float | None = Field(default=None, ge=0.0)
+    action_family: str | None = None
+    weapon_ref: str | None = None
+    physics_tick: int = Field(ge=0)
+    physics_evidence_refs: list[str] = Field(default_factory=list)
+    physics_evidence_digest: str | None = None
+    authority_route: AuthorityRoute
+    owner_contract_ref: str | None = None
+    expected_revisions: dict[str, int] = Field(default_factory=dict)
+    idempotency_key: str = Field(min_length=1)
+    command_version: str = Field(min_length=1)
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    source: str = Field(min_length=1)
+    privacy_scope: str = Field(min_length=1)
+    collider_refs: list[str] = Field(default_factory=list)
+    hit_sensor_refs: list[str] = Field(default_factory=list)
+    contact_points: list[dict[str, object]] = Field(default_factory=list)
+    submitted_at: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def reject_client_truth(cls, value: object) -> object:
+        if isinstance(value, dict):
+            present = sorted(FORBIDDEN_ACTION_ATTEMPT_FIELDS.intersection(value.keys()))
+            if present:
+                raise ValueError(f"forbidden action attempt field: {', '.join(present)}")
+        return value
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "ActionAttempt":
+        limits = {
+            "target_refs": (self.target_refs, 8),
+            "physics_evidence_refs": (self.physics_evidence_refs, 8),
+            "collider_refs": (self.collider_refs, 32),
+            "hit_sensor_refs": (self.hit_sensor_refs, 16),
+            "contact_points": (self.contact_points, 32),
+        }
+        for name, (values, limit) in limits.items():
+            if len(values) > limit:
+                raise ValueError(f"{name}_limit")
+        if len(self.canonical_payload_bytes()) > 32 * 1024:
+            raise ValueError("payload_limit_exceeded")
+        return self
+
+    def canonical_payload(self) -> dict[str, object]:
+        payload = self.model_dump(mode="json", exclude={"submitted_at"})
+        return payload
+
+    def canonical_payload_bytes(self) -> bytes:
+        return json.dumps(self.canonical_payload(), sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+    @property
+    def payload_digest(self) -> str:
+        return "sha256:" + sha256(self.canonical_payload_bytes()).hexdigest()
+
+
+class AuthorityResult(StrictEmbodiedModel):
+    attempt_id: str = Field(min_length=1)
+    action_instance_id: str = Field(min_length=1)
+    transaction_id: str | None = None
+    outcome: AuthorityOutcome
+    committed_event_ids: list[str] = Field(default_factory=list)
+    resulting_revisions: dict[str, int] = Field(default_factory=dict)
+    failed_stage: str | None = None
+    failed_code: str | None = None
+    failed_precondition: str | None = None
+    recovery_action: str | None = None
+    causation_id: str = Field(min_length=1)
+    correlation_id: str = Field(min_length=1)
+    authority_scope: str = Field(min_length=1)
+    committed_projection: dict[str, object] = Field(default_factory=dict)
+
+    def to_payload(self) -> dict[str, object]:
+        return self.model_dump(mode="json")
 
 
 def _reject_forbidden_fields(value: object, forbidden_fields: set[str]) -> object:

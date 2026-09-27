@@ -137,6 +137,12 @@ class CharacterAgentRuntime:
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         # ponytail: 单 runtime 的低频修复串行执行；多进程写入时需使用 owner 事务锁。
         self._memory_correction_lock = RLock()
+        # A canonical turn spans many append-only events.  The session-store
+        # lock protects each append, but cannot make the complete turn atomic;
+        # serialize turns per actor so concurrent perceptions cannot invalidate
+        # one another's optimistic revision pins mid-turn.
+        self._actor_turn_locks_guard = RLock()
+        self._actor_turn_locks: dict[str, RLock] = {}
         self._memory_correction_authorizer = memory_correction_authorizer
         self._memory_source_resolver = memory_source_resolver
         self._memory_now_ts_provider = memory_now_ts_provider
@@ -268,6 +274,14 @@ class CharacterAgentRuntime:
                     self.reconcile_character_turn(actor_id)
 
     def ingest_character_perceived_event(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
+        with self._actor_turn_lock(event.actor_id):
+            return self._ingest_character_perceived_event_locked(event)
+
+    def _actor_turn_lock(self, actor_id: str) -> RLock:
+        with self._actor_turn_locks_guard:
+            return self._actor_turn_locks.setdefault(actor_id, RLock())
+
+    def _ingest_character_perceived_event_locked(self, event: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
         if not self.supports_actor(event.actor_id):
             return []
         turn = self._begin_canonical_turn(

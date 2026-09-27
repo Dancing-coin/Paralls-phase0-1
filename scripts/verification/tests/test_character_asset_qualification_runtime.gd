@@ -30,7 +30,7 @@ func _run() -> void:
 	var missing_root := qualification.qualify(_manifest({"remove_mapping": "root"}))
 	var missing_tag_manifest := _manifest().duplicate(true)
 	var missing_tag_map: Dictionary = missing_tag_manifest["locomotion_map"]
-	missing_tag_map.erase("turn_right")
+	missing_tag_map.erase("run_forward")
 	missing_tag_manifest["locomotion_map"] = missing_tag_map
 	var missing_tag := qualification.qualify(missing_tag_manifest)
 	var missing_clip := qualification.qualify(_manifest({"missing_clip": true}))
@@ -74,8 +74,6 @@ func _manifest(options: Dictionary = {}) -> Dictionary:
 		"jump_start": "jump_start",
 		"jump_loop": "jump_loop",
 		"jump_land": "jump_land",
-		"turn_left": "turn_left",
-		"turn_right": "turn_right",
 	}
 	if options.has("remove_locomotion_tag"):
 		var filtered_locomotion := {}

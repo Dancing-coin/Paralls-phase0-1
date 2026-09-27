@@ -7,8 +7,11 @@ var transport_barrier_sequence := 0
 var _embodied_controller_enrollment: Dictionary = {}
 var _embodied_controller_bind_sent := false
 
+const TRANSPORT_BUFFER_SIZE := 8 * 1024 * 1024
+
 func _ready() -> void:
-    ws.inbound_buffer_size = 1024 * 1024
+    ws.inbound_buffer_size = TRANSPORT_BUFFER_SIZE
+    ws.outbound_buffer_size = TRANSPORT_BUFFER_SIZE
     load_embodied_controller_enrollment_from_environment()
     var bus := _get_bus()
     if bus and bus.has_signal("character_actor_status_emitted"):
@@ -33,7 +36,8 @@ func connect_to_backend(url: String) -> int:
     if ws.get_ready_state() != WebSocketPeer.STATE_CLOSED:
         ws.close()
         ws = WebSocketPeer.new()
-        ws.inbound_buffer_size = 1024 * 1024
+        ws.inbound_buffer_size = TRANSPORT_BUFFER_SIZE
+        ws.outbound_buffer_size = TRANSPORT_BUFFER_SIZE
 
     var err := ws.connect_to_url(url)
     if err == OK:
@@ -54,6 +58,11 @@ func send_envelope(envelope: Dictionary) -> int:
     var err := ws.send_text(JSON.stringify(envelope))
     if err == OK:
         _bus_log("backend_send:%s" % envelope.get("message_type", "unknown"))
+        var payload_value: Variant = envelope.get("payload", {})
+        if payload_value is Dictionary:
+            var request_id := str((payload_value as Dictionary).get("request_id", ""))
+            if not request_id.is_empty():
+                _bus_log("phase0_transport_request_sent:%s:%s" % [str(envelope.get("message_type", "")), request_id])
     else:
         _bus_log("backend_send_failed:%s" % err)
     return err
@@ -144,15 +153,29 @@ func _handle_state_transition() -> void:
             _bus_emit("backend_disconnected", [ws.get_close_code()])
 
 func _dispatch_message(raw_text: String) -> void:
-    _bus_log("backend_message_raw:%s" % raw_text)
     var parsed: Variant = JSON.parse_string(raw_text)
     if typeof(parsed) != TYPE_DICTIONARY:
+        _bus_log("backend_message_raw:%s" % raw_text)
         _bus_log("backend_message_parse_failed")
         return
 
     var parsed_dict: Dictionary = parsed
     var message_type: String = str(parsed_dict.get("message_type", ""))
     var payload: Dictionary = parsed_dict.get("payload", {})
+    if message_type == "dialogue_response":
+        var sanitized_payload := payload.duplicate(true)
+        var audio_value: Variant = sanitized_payload.get("audio", {})
+        if audio_value is Dictionary and (audio_value as Dictionary).has("payload"):
+            var audio := audio_value as Dictionary
+            var encoded_audio := str(audio.get("payload", ""))
+            audio["payload"] = "<omitted:%s_chars>" % encoded_audio.length()
+            sanitized_payload["audio"] = audio
+            _bus_log(
+                "backend_message_raw_truncated:dialogue_response:audio_payload:%s" % encoded_audio.length()
+            )
+        _bus_log("backend_message_raw:%s" % JSON.stringify({"message_type": message_type, "payload": sanitized_payload}))
+    else:
+        _bus_log("backend_message_raw:%s" % raw_text)
     _bus_log("backend_message_type:%s" % message_type)
 
     match message_type:
@@ -228,6 +251,13 @@ func _dispatch_message(raw_text: String) -> void:
         "embodied_settlement_result":
             _bus_log("embodied_settlement_result:%s" % JSON.stringify(payload))
             _bus_emit("embodied_settlement_result_received", [payload])
+        "unified_character_action_foundation_result":
+            _bus_log("unified_character_action_foundation_result:%s" % JSON.stringify(payload))
+            _bus_emit("unified_character_action_foundation_result_received", [payload])
+        "street_combat_pose_result":
+            _bus_emit("street_combat_pose_result_received", [payload])
+        "street_combat_result":
+            _bus_emit("street_combat_result_received", [payload])
         "embodied_cancel_directive":
             _bus_log("embodied_cancel_directive:%s" % JSON.stringify(payload))
             _bus_emit("embodied_cancel_directive_received", [payload])

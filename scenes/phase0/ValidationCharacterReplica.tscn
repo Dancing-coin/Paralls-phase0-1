@@ -13,7 +13,7 @@
 [ext_resource type="Script" path="res://scripts/l1/facts/emitters/PhysiologyStateFactEmitter.gd" id="11_physiology"]
 [ext_resource type="Script" path="res://scripts/visual/VisualFactEmitter.gd" id="12_visual_root"]
 
-[node name="CharacterReplica" type="Node3D"]
+[node name="CharacterReplica" type="CharacterBody3D"]
 script = ExtResource("1_character")
 
 [node name="VisualRoot" type="Node3D" parent="."]

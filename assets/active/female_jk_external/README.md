@@ -22,12 +22,9 @@ Observed source actions:
 - `waveing`
 - `walking2`
 
-This package now qualifies for `concurrent_action` through the derived
-upper-body `short punch` clip. The copied jump clip comes from the reviewed
-black-haired female source. Contact windows for boxing, short punch, and sword
-attack remain evidence candidates, not automatic hit results. The working export
-contains a separate `short punch` derived upper-body clip; the original `boxing`
-action remains intact. The working export now contains three explicit right-hand sockets (`weapon_hand`,
+The copied jump clip comes from the reviewed black-haired female source.
+Contact windows for boxing and sword attack remain evidence candidates, not
+automatic hit results. The working export contains three explicit right-hand sockets (`weapon_hand`,
 `weapon_slot:sword`, and `weapon_hit_volume:sword`), but those sockets do not
 turn the sword clip into a qualified melee action without timing evidence. The
 action names are not treated as qualification evidence. No action is promoted

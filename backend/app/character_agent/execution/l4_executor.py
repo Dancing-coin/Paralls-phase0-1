@@ -11,10 +11,161 @@ from app.character_agent.skills.models import (
     PrimitiveActionPlan,
     SkillEvaluationResult,
 )
+from app.models.siming_character_bridge import CharacterSemanticIntentProposal
 from copy import deepcopy
 
 
 class CharacterAgentL4Executor:
+    def build_intent_proposal(
+        self,
+        *,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+        turn_context: CharacterTurnContext,
+    ) -> CharacterSemanticIntentProposal:
+        """Project cognition/INF inputs into the shared semantic ingress.
+
+        This is deliberately narrower than the historical execution plan: it
+        contains semantic IDs, canonical claims, locomotion relation, and
+        provenance only.  Local profile selection and body execution remain in
+        Godot's controller port/arbiter path.
+        """
+        if not isinstance(turn_context, CharacterTurnContext):
+            raise TypeError("current canonical turn context is required")
+        if turn_context.actor_id != decision.actor_id or turn_context.actor_id != snapshot.actor_id:
+            raise ValueError("intent proposal actor does not match canonical turn")
+        if turn_context.lifecycle not in {"prepared", "running", "awaiting_settlement"}:
+            raise ValueError("intent proposal requires an active canonical turn")
+
+        selected_intent = str(decision.selected_intent or "observe")
+        target_ref = interpretation.attention_target or (
+            snapshot.attention_targets[0] if snapshot.attention_targets else None
+        )
+        claims, locomotion_relation = self._semantic_claims(selected_intent)
+        context_tags = self._context_tags(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+        )
+        intent_tags = [f"intent:{selected_intent}"]
+        return CharacterSemanticIntentProposal(
+            actor_ref=f"character:{decision.actor_id}",
+            source_id="character_agent_l4",
+            intent_tags=intent_tags,
+            context_tags=context_tags,
+            semantic_action_id=self._semantic_action_id(selected_intent),
+            target_ref=target_ref,
+            claims=claims,
+            locomotion_relation=locomotion_relation,
+            presentation_cues=self._presentation_cues(selected_intent),
+            reason_codes=["character_agent:l4", *self._reason_codes(decision)],
+            source="character_agent",
+            confidence=float(max(0.0, min(1.0, interpretation.salience_score))),
+            provenance={
+                "turn_id": turn_context.turn_id,
+                "source_ref": turn_context.source_event_ref,
+                "producer_ts": turn_context.producer_ts,
+                "branch_id": turn_context.branch_id,
+            },
+            privacy_scope=f"actor_private:{decision.actor_id}",
+            authority_scope="world:default",
+            expected_revision_vector=dict(turn_context.input_revision_vector),
+            causation_id=turn_context.causation_id,
+            correlation_id=turn_context.correlation_id,
+        )
+
+    @staticmethod
+    def _semantic_action_id(selected_intent: str) -> str:
+        return {
+            "short_punch": "action:melee.short_punch",
+            "unarmed_punch": "action:melee.unarmed_punch",
+            "sword_slash": "action:melee.sword_slash",
+            "observe": "action:observe",
+            "observe_target": "action:observe",
+            "attention_shift": "action:observe",
+            "inspect_object": "action:inspect",
+            "speak_public": "action:speak",
+            "speak_private": "action:speak",
+            "share_info": "action:speak",
+            "withhold": "action:speak",
+            "approach": "action:approach",
+            "follow_target": "action:approach",
+            "seek_private_distance": "action:approach",
+            "withdraw": "action:withdraw",
+            "break_contact": "action:withdraw",
+        }.get(selected_intent, f"action:{selected_intent}")
+
+    @staticmethod
+    def _semantic_claims(selected_intent: str) -> tuple[list[str], str]:
+        if selected_intent == "short_punch":
+            return ["upper_body", "right_arm"], "coexist"
+        if selected_intent == "unarmed_punch":
+            return ["right_arm", "left_arm"], "replace_locomotion"
+        if selected_intent == "sword_slash":
+            return ["right_arm", "weapon_slot:sword", "weapon_hit_volume:sword"], "replace_locomotion"
+        if selected_intent in {"approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"}:
+            return ["world_motion", "facing"], "drive_locomotion"
+        if selected_intent in {"speak_public", "speak_private", "share_info", "withhold"}:
+            return ["upper_body", "voice_channel"], "coexist"
+        if selected_intent in {"inspect_object", "interact"}:
+            return ["upper_body", "interaction_reach"], "coexist"
+        return ["head"], "coexist"
+
+    @staticmethod
+    def _presentation_cues(selected_intent: str) -> list[str]:
+        if selected_intent in {"speak_public", "speak_private", "share_info", "withhold"}:
+            return ["presentation:focus_target", "expression:focused"]
+        if selected_intent in {"approach", "follow_target", "seek_private_distance"}:
+            return ["presentation:locomotion_walk"]
+        return ["presentation:observe"]
+
+    @staticmethod
+    def _reason_codes(decision: CharacterIntentDecision) -> list[str]:
+        return [f"goal_source:{value}" for value in decision.goal_sources if value]
+
+    @staticmethod
+    def _context_tags(
+        *,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+    ) -> list[str]:
+        tags: list[str] = []
+
+        def add(namespace: str, value: object) -> None:
+            rendered = str(value or "").strip()
+            if not rendered:
+                return
+            if ":" in rendered and rendered.split(":", 1)[0] in {
+                "goal", "intent", "evidence", "capability", "affordance", "constraint",
+                "state", "status", "action", "phase", "occupy", "event", "authority",
+                "presentation", "expression",
+            }:
+                tags.append(rendered)
+            else:
+                tags.append(f"{namespace}:{rendered}")
+
+        for value in (
+            decision.primary_goal,
+            decision.long_term_goal,
+            decision.mid_term_strategy,
+            decision.immediate_goal,
+            *decision.supporting_goals,
+        ):
+            add("goal", value)
+        for value in (*decision.evidence_tags, *snapshot.evidence_tags, *snapshot.salience_tags):
+            add("evidence", value)
+        for value in (*decision.capability_tags, *snapshot.capability_tags):
+            add("capability", value)
+        for value in (*decision.affordance_tags, *snapshot.affordance_tags):
+            add("affordance", value)
+        for value in (*decision.constraint_tags, *decision.blockers, *snapshot.recent_constraint_results):
+            add("constraint", value)
+        if interpretation.attention_target:
+            add("evidence", f"target:{interpretation.attention_target}")
+        return list(dict.fromkeys(tags))
+
     def build_execution_contract(
         self,
         snapshot: CharacterPrivateWorldSnapshot,
@@ -51,6 +202,12 @@ class CharacterAgentL4Executor:
             else []
         )
         action = requested_actions[0] if requested_actions and isinstance(requested_actions[0], dict) else {}
+        semantic_proposal = self.build_intent_proposal(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+            turn_context=turn_context,
+        )
         target_refs: list[str] = []
         for key in ("target_actor_id", "target_object_id", "target_environment_id"):
             target = str(action.get(key, "") or "")
@@ -112,7 +269,12 @@ class CharacterAgentL4Executor:
             target_refs=tuple(target_refs),
             target_ref=target_refs[0] if len(target_refs) == 1 else None,
             semantic_intent_id=decision.selected_intent,
-            semantic_action_id=str(expected_observation["semantic_action_id"]),
+            semantic_action_id=str(semantic_proposal.semantic_action_id or expected_observation["semantic_action_id"]),
+            source_id=semantic_proposal.source_id,
+            intent_tags=tuple(semantic_proposal.intent_tags),
+            context_tags=tuple(semantic_proposal.context_tags),
+            claims=tuple(semantic_proposal.claims),
+            locomotion_relation=semantic_proposal.locomotion_relation,
             allowed_realization_hints=allowed_hints,
             expected_revision_vector=dict(turn_context.input_revision_vector),
             expected_memory_revision_vector=dict(turn_context.memory_revision_vector),

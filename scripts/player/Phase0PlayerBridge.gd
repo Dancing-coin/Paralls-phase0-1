@@ -47,9 +47,13 @@ func toggle_crouch_mode() -> void:
 	locomotion_control_state.toggle_crouch_mode()
 
 func trigger_dialogue() -> void:
+	trigger_dialogue_request()
+
+func trigger_dialogue_request() -> Dictionary:
 	var main_demo := _get_main_demo()
 	if main_demo != null and main_demo.has_method("submit_dialogue"):
-		main_demo.submit_dialogue()
+		return main_demo.submit_dialogue()
+	return {}
 
 func trigger_interaction() -> void:
 	var main_demo := _get_main_demo()
@@ -109,13 +113,15 @@ func set_forced_player_motion(world_direction: Vector3, wants_run: bool = false)
 	program_control_state.set_forced_player_motion(world_direction, wants_run)
 	if player and player.has_method("set_forced_control"):
 		var local_x: float = program_control_state.forced_move_direction.dot(player.global_basis.x)
-		var local_y: float = program_control_state.forced_move_direction.dot(-player.global_basis.z)
+		var local_y: float = program_control_state.forced_move_direction.dot(player.global_basis.z)
 		player.set_forced_control(Vector2(local_x, local_y), wants_run)
 
 func clear_forced_player_motion() -> void:
 	program_control_state.clear_forced_player_motion()
 	if player and player.has_method("clear_forced_control"):
 		player.clear_forced_control()
+	if player and player.has_method("stop_forced_motion"):
+		player.stop_forced_motion()
 
 func set_forced_facing_yaw(next_yaw: float) -> void:
 	if player and player.has_method("set_forced_facing_yaw"):

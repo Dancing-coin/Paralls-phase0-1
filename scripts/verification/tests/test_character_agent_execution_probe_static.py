@@ -32,8 +32,9 @@ def test_character_agent_execution_probe_script_targets_execution_contract() -> 
     assert 'const CONSUMER_SEEN_MARKER := "character_agent_execution_probe:consumer_seen=true"' in script_text
     assert 'const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_complete=true"' in script_text
     assert 'backend_message_type:character_agent_execution' in script_text
-    assert '"controller_source":"agent"' in script_text
-    assert '"control_mode":"agent_controlled"' in script_text
+    assert '"semantic_intent_id"' in script_text
+    assert '"semantic_action_id"' in script_text
+    assert '"allowed_realization_hints"' in script_text
     assert '"focus_state":{' in script_text
     assert '"action_state":{' in script_text
     assert '"speech_state":{' in script_text

@@ -55,6 +55,9 @@ signal backend_connected(url)
 signal backend_disconnected(code)
 signal backend_ack_received(payload)
 signal backend_connection_failed(url, code)
+signal unified_character_action_foundation_result_received(payload)
+signal street_combat_pose_result_received(payload)
+signal street_combat_result_received(payload)
 
 var debug_logging_enabled := false
 

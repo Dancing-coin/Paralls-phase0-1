@@ -5,14 +5,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_presentation_asset_manifest_is_a_valid_empty_approved_binding_registry() -> None:
+def test_presentation_asset_manifest_keeps_candidates_out_of_the_approved_registry() -> None:
     manifest_path = ROOT / "assets" / "characters" / "asset_manifests" / "character_presentation_bindings.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
 
-    assert manifest == {
-        "contract": "character_presentation_bindings.v1",
-        "bindings": [],
-    }
+    assert manifest["contract"] == "character_presentation_bindings.v1"
+    assert isinstance(manifest["bindings"], list)
+    # Package candidates may be catalogued for qualification, but only an
+    # explicit approved actor binding can change a replica at runtime.
+    assert not any(
+        binding.get("binding_status") == "approved"
+        for binding in manifest["bindings"]
+        if isinstance(binding, dict)
+    )
 
 
 def test_main_demo_mounts_the_presentation_asset_resolver() -> None:

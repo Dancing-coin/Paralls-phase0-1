@@ -16,6 +16,20 @@ def _manifest(package_id: str) -> dict:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _glb_document(package_id: str) -> dict:
+    path = ACTIVE / package_id / f"{package_id}.glb"
+    data = path.read_bytes()
+    _, _, total_length = struct.unpack_from("<4sII", data, 0)
+    offset = 12
+    while offset < total_length:
+        chunk_length, chunk_type = struct.unpack_from("<II", data, offset)
+        chunk = data[offset + 8 : offset + 8 + chunk_length]
+        offset += 8 + chunk_length
+        if chunk_type == 0x4E4F534A:
+            return json.loads(chunk.rstrip(b" ").decode("utf-8"))
+    raise AssertionError(f"missing JSON chunk in {path}")
+
+
 def test_two_external_packages_declare_provenance_and_runtime_contract() -> None:
     manifests = [_manifest("crusader_knight"), _manifest("external_character_b")]
     assert {m["package_id"] for m in manifests} == {"crusader_knight", "external_character_b"}
@@ -76,7 +90,7 @@ def test_task8_primary_roles_include_female_jk_female_t_and_bandage() -> None:
     }
 
 
-def test_female_bandage_source_is_staged_as_a_non_promoted_task7_candidate() -> None:
+def test_female_bandage_source_provenance_is_preserved_after_runtime_promotion() -> None:
     package = ACTIVE / "female_bandage_external"
     manifest_path = package / "manifest.json"
     report_path = REPORTS / "female_bandage_external.json"
@@ -90,15 +104,93 @@ def test_female_bandage_source_is_staged_as_a_non_promoted_task7_candidate() -> 
     report = json.loads(report_path.read_text(encoding="utf-8"))
     copy_manifest = json.loads(working_copy_manifest.read_text(encoding="utf-8"))
     assert manifest["package_id"] == "female_bandage_external"
-    assert manifest["candidate_status"] == "source_only"
-    assert manifest["source"]["format"] == "blend"
+    assert manifest["candidate_status"] == "candidate"
+    assert manifest["source"]["format"] == "glb"
     assert len(manifest["source"]["digest_sha256"]) == 64
-    assert manifest["actions"] == []
-    assert report["status"] == "rejected"
-    assert "blender_export_unverified" in report["reasons"]
-    assert "godot_import_unverified" in report["reasons"]
+    assert manifest["provenance"]["original_source_digest_sha256"] == copy_manifest["source_digest_sha256"]
+    assert report["status"] in {"qualified", "qualified_with_fallback", "rejected"}
     assert copy_manifest["copy_policy"] == "new_file_only"
     assert copy_manifest["original_source"] == r"E:\下载\建模1 绷带血迹黑长直 T字版本 多动作版本.blend"
+
+
+def test_primary_packages_record_authoring_and_runtime_frame_rates() -> None:
+    expected_authoring_rates = {
+        "female_jk_external": 60.0,
+        "female_t_external": 60.0,
+        "female_bandage_external": 30.0,
+    }
+    for package_id, authoring_rate in expected_authoring_rates.items():
+        manifest = _manifest(package_id)
+        timing = json.loads(
+            (ACTIVE / package_id / "docs" / "action-timing.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        provenance = manifest["provenance"]
+        assert provenance["authoring_frame_rate"] == authoring_rate
+        assert provenance["runtime_export_frame_rate"] == 60.0
+        assert timing["authoring_frame_rate"] == authoring_rate
+        assert timing["runtime_frame_rate"] == 60.0
+
+
+def test_primary_role_packages_share_the_same_runtime_action_contract() -> None:
+    package_ids = ("female_bandage_external", "female_jk_external", "female_t_external")
+    semantic_sets = []
+    for package_id in package_ids:
+        manifest = _manifest(package_id)
+        semantic_sets.append({action["semantic_action_id"] for action in manifest["actions"]})
+        assert semantic_sets[-1] == {
+            "action:melee.unarmed_punch",
+            "action:melee.sword_slash",
+        }
+        animation_names = {animation["name"] for animation in _glb_document(package_id)["animations"]}
+        lowered_names = {name.lower() for name in animation_names}
+        assert {"idle", "walking", "running", "jump", "boxing", "sword attack"} <= lowered_names
+        assert "short punch" not in lowered_names
+    assert semantic_sets[0] == semantic_sets[1] == semantic_sets[2]
+
+
+def test_female_bandage_is_qualified_third_primary_after_real_blender_export() -> None:
+    manifest = _manifest("female_bandage_external")
+    report = json.loads((REPORTS / "female_bandage_external.json").read_text(encoding="utf-8"))
+    glb_path = ACTIVE / "female_bandage_external" / "female_bandage_external.glb"
+    assert glb_path.is_file()
+    assert manifest["source"]["format"] == "glb"
+    assert manifest["source_model_path"] == "res://assets/active/female_bandage_external/female_bandage_external.glb"
+    assert manifest["actions_qualification_status"] in {"qualified", "qualified_with_fallback"}
+    assert manifest["runtime_admission"] == "qualified"
+    assert report["status"] in {"qualified", "qualified_with_fallback"}
+    assert report["delivery_level"] == "concurrent_action"
+    assert set(manifest["locomotion_map"]) >= {"idle", "walk_forward", "run_forward", "jump_start", "jump_land"}
+    assert "turn_left" not in manifest["locomotion_map"]
+    assert "turn_right" not in manifest["locomotion_map"]
+    action_ids = {action["semantic_action_id"] for action in manifest["actions"]}
+    assert action_ids == {"action:melee.unarmed_punch", "action:melee.sword_slash"}
+    assert set(manifest["required_slots"]) >= {"weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"}
+
+    data = glb_path.read_bytes()
+    _, _, total_length = struct.unpack_from("<4sII", data, 0)
+    offset = 12
+    document = None
+    while offset < total_length:
+        chunk_length, chunk_type = struct.unpack_from("<II", data, offset)
+        chunk = data[offset + 8 : offset + 8 + chunk_length]
+        offset += 8 + chunk_length
+        if chunk_type == 0x4E4F534A:
+            document = json.loads(chunk.rstrip(b" ").decode("utf-8"))
+            break
+    assert document is not None
+    assert len(document["skins"][0]["joints"]) == 68
+    animation_names = {animation["name"] for animation in document["animations"]}
+    assert {"idle", "walking", "running", "jump", "boxing", "SWORD ATTACK"} <= animation_names
+    assert "short punch" not in {name.lower() for name in animation_names}
+    assert {action["semantic_action_id"] for action in report["actions"]} == {
+        "action:melee.unarmed_punch",
+        "action:melee.sword_slash",
+    }
+    assert {node.get("name") for node in document["nodes"]} >= {
+        "weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"
+    }
 
 
 def test_reports_are_machine_readable_and_expose_fallback_and_concurrency_claims() -> None:
@@ -144,25 +236,24 @@ def test_female_t_source_package_is_staged_with_qualified_action_contract() -> N
     assert len(manifest["source"]["digest_sha256"]) == 64
     assert manifest["canonical_mapping"]["deform_skeleton_ref"]
     assert manifest["rest_pose"]["pose"]
-    assert set(manifest["locomotion_map"]) >= {"idle", "walk_forward", "run_forward", "jump_start", "jump_land", "turn_left", "turn_right"}
+    assert set(manifest["locomotion_map"]) >= {"idle", "walk_forward", "run_forward", "jump_start", "jump_land"}
+    assert "turn_left" not in manifest["locomotion_map"]
+    assert "turn_right" not in manifest["locomotion_map"]
     assert manifest["actions_qualification_status"] in {"qualified", "qualified_with_fallback", "rejected"}
 
 
-def test_female_t_receives_copied_short_punch_and_weapon_slot_contract() -> None:
+def test_female_t_exposes_shared_melee_and_weapon_slot_contract() -> None:
     manifest = _manifest("female_t_external")
     actions = {action["semantic_action_id"]: action for action in manifest["actions"]}
-    short_punch = actions["action:melee.short_punch"]
-    assert short_punch["clip_ref"] == "short punch"
-    assert short_punch["derived_from_package"] == "female_jk_external"
-    assert short_punch["derived_from_clip_ref"] == "short punch"
-    assert short_punch["mode"] == "derived_upper_body"
-    assert short_punch["locomotion_compatibility"] == "coexist"
+    assert set(actions) == {"action:melee.unarmed_punch", "action:melee.sword_slash"}
+    assert actions["action:melee.unarmed_punch"]["clip_ref"] == "boxing"
+    assert actions["action:melee.sword_slash"]["clip_ref"].lower() == "sword attack"
     assert set(manifest["required_slots"]) >= {"weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"}
     assert manifest["slots"]["weapon_hand"]["canonical_bone"] == "right_hand"
     assert manifest["actions_qualification_status"] in {"qualified", "qualified_with_fallback"}
 
 
-def test_female_t_glb_contains_copied_short_punch_and_weapon_socket_nodes() -> None:
+def test_female_t_glb_contains_weapon_socket_nodes() -> None:
     glb_path = ACTIVE / "female_t_external" / "female_t_external.glb"
     data = glb_path.read_bytes()
     _, _, total_length = struct.unpack_from("<4sII", data, 0)
@@ -176,7 +267,8 @@ def test_female_t_glb_contains_copied_short_punch_and_weapon_socket_nodes() -> N
             document = json.loads(chunk.decode("utf-8"))
             break
     assert document is not None
-    assert any(animation["name"] == "short punch" for animation in document["animations"])
+    animation_names = {animation["name"] for animation in document["animations"]}
+    assert "short punch" not in {name.lower() for name in animation_names}
     node_names = {node.get("name") for node in document["nodes"]}
     assert {"weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"} <= node_names
 
@@ -190,7 +282,9 @@ def test_female_jk_source_candidate_is_staged_without_promoting_unqualified_acti
     assert len(manifest["source"]["digest_sha256"]) == 64
     assert manifest["canonical_mapping"]["profile_id"] == "humanoid.v1"
     assert manifest["rest_pose"]["pose"]
-    assert set(manifest["locomotion_map"]) >= {"idle", "walk_forward", "run_forward", "jump_start", "jump_land", "turn_left", "turn_right"}
+    assert set(manifest["locomotion_map"]) >= {"idle", "walk_forward", "run_forward", "jump_start", "jump_land"}
+    assert "turn_left" not in manifest["locomotion_map"]
+    assert "turn_right" not in manifest["locomotion_map"]
     assert manifest["actions"]
     assert manifest["actions_qualification_status"] in {"qualified", "qualified_with_fallback", "rejected"}
 
@@ -208,19 +302,16 @@ def test_female_jk_melee_actions_declare_contact_windows_and_cancel_windows() ->
         assert action["cancel_windows"]
 
 
-def test_female_jk_short_punch_is_a_derived_copy_and_preserves_boxing() -> None:
+def test_female_jk_melee_actions_preserve_boxing_and_sword_attack() -> None:
     manifest = _manifest("female_jk_external")
     actions = {action["semantic_action_id"]: action for action in manifest["actions"]}
     assert "action:melee.unarmed_punch" in actions
     assert actions["action:melee.unarmed_punch"]["clip_ref"] == "boxing"
-    short_punch = actions["action:melee.short_punch"]
-    assert short_punch["clip_ref"] == "short punch"
-    assert short_punch["mode"] == "derived_upper_body"
-    assert short_punch["locomotion_compatibility"] == "coexist"
-    assert short_punch["derived_from_clip_ref"] == "boxing"
+    assert set(actions) == {"action:melee.unarmed_punch", "action:melee.sword_slash"}
+    assert actions["action:melee.sword_slash"]["clip_ref"].lower() == "sword attack"
 
 
-def test_female_jk_short_punch_glb_contains_only_upper_body_targets() -> None:
+def test_female_jk_glb_contains_no_short_punch() -> None:
     glb_path = ACTIVE / "female_jk_external" / "female_jk_external.glb"
     data = glb_path.read_bytes()
     _, _, total_length = struct.unpack_from("<4sII", data, 0)
@@ -234,24 +325,15 @@ def test_female_jk_short_punch_glb_contains_only_upper_body_targets() -> None:
             document = json.loads(chunk.decode("utf-8"))
             break
     assert document is not None
-    nodes = {index: node.get("name", "") for index, node in enumerate(document["nodes"])}
-    short_punch = next(animation for animation in document["animations"] if animation["name"] == "short punch")
-    targets = {nodes[channel["target"]["node"]] for channel in short_punch["channels"]}
-    assert targets
-    assert not any(
-        name in {"root.x", "spine_01.x"}
-        or name.startswith(("thigh", "leg", "foot", "toes"))
-        for name in targets
-    )
+    animation_names = {animation["name"] for animation in document["animations"]}
+    assert "short punch" not in {name.lower() for name in animation_names}
 
 
-def test_female_jk_short_punch_qualification_ignores_static_imported_rest_tracks() -> None:
+def test_female_jk_qualification_reports_only_shared_melee_actions() -> None:
     report = json.loads((REPORTS / "female_jk_external.json").read_text(encoding="utf-8"))
     assert report["status"] == "qualified"
     assert report["delivery_level"] == "concurrent_action"
-    action = next(item for item in report["actions"] if item["semantic_action_id"] == "action:melee.short_punch")
-    audit = action["audit"]
-    assert audit["duration_seconds"] > 1.0
-    assert audit["lower_body_impact"] == []
-    assert audit["root_motion"] == {"translation": False, "rotation": False}
-    assert audit["pelvis_motion"] == {"translation": False, "rotation": False}
+    assert {item["semantic_action_id"] for item in report["actions"]} == {
+        "action:melee.unarmed_punch",
+        "action:melee.sword_slash",
+    }

@@ -1,601 +1,448 @@
 {
-	"actions": [
-		{
-			"audit": {
-				"bone_impact": [
-					"root",
-					"left_foot",
-					"right_foot",
-					"pelvis",
-					"spine",
-					"chest",
-					"head",
-					"left_lower_leg",
-					"right_lower_leg",
-					"left_upper_leg",
-					"right_upper_leg",
-					"left_upper_arm",
-					"right_upper_arm",
-					"left_lower_arm",
-					"right_lower_arm",
-					"left_hand",
-					"right_hand"
-				],
-				"duration_seconds": 1.06666672229767,
-				"lower_body_impact": [
-					"left_foot",
-					"left_foot",
-					"right_foot",
-					"right_foot",
-					"left_lower_leg",
-					"left_lower_leg",
-					"right_lower_leg",
-					"right_lower_leg",
-					"left_upper_leg",
-					"left_upper_leg",
-					"right_upper_leg",
-					"right_upper_leg"
-				],
-				"pelvis_motion": {
-					"rotation": true,
-					"translation": true
-				},
-				"root_motion": {
-					"rotation": true,
-					"translation": true
-				},
-				"source_step_seconds": 0.0333333350718021,
-				"valid": true
-			},
-			"clip_ref": "boxing",
-			"mode": "full_body_exclusive",
-			"semantic_action_id": "action:melee.unarmed_punch"
-		},
-		{
-			"audit": {
-				"bone_impact": [
-					"root",
-					"left_foot",
-					"right_foot",
-					"pelvis",
-					"spine",
-					"chest",
-					"head",
-					"left_lower_leg",
-					"right_lower_leg",
-					"left_upper_leg",
-					"right_upper_leg",
-					"left_upper_arm",
-					"right_upper_arm",
-					"left_lower_arm",
-					"right_lower_arm",
-					"left_hand",
-					"right_hand"
-				],
-				"duration_seconds": 0.766666650772095,
-				"lower_body_impact": [
-					"left_foot",
-					"left_foot",
-					"right_foot",
-					"right_foot",
-					"left_lower_leg",
-					"left_lower_leg",
-					"right_lower_leg",
-					"right_lower_leg",
-					"left_upper_leg",
-					"left_upper_leg",
-					"right_upper_leg",
-					"right_upper_leg"
-				],
-				"pelvis_motion": {
-					"rotation": true,
-					"translation": true
-				},
-				"root_motion": {
-					"rotation": true,
-					"translation": true
-				},
-				"source_step_seconds": 0.0333333350718021,
-				"valid": true
-			},
-			"clip_ref": "sword attack",
-			"mode": "full_body_exclusive",
-			"semantic_action_id": "action:melee.sword_slash"
-		},
-		{
-			"audit": {
-				"bone_impact": [
-					"spine",
-					"chest",
-					"head",
-					"left_upper_arm",
-					"right_upper_arm",
-					"left_lower_arm",
-					"right_lower_arm",
-					"left_hand",
-					"right_hand"
-				],
-				"duration_seconds": 1.06666672229767,
-				"lower_body_impact": [],
-				"pelvis_motion": {
-					"rotation": false,
-					"translation": false
-				},
-				"root_motion": {
-					"rotation": false,
-					"translation": false
-				},
-				"source_step_seconds": 0.0333333350718021,
-				"valid": true
-			},
-			"clip_ref": "short punch",
-			"mode": "derived_upper_body",
-			"semantic_action_id": "action:melee.short_punch"
-		}
-	],
-	"checks": {
-		"axis_convention": true,
-		"canonical_mapping": true,
-		"required_slots": true,
-		"skeleton": true,
-		"source_frame_rate": true,
-		"unit_scale": true
-	},
-	"clip_audits": {
-		"boxing": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 1.06666672229767,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"idle": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 1.66666662693024,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"jump": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 1.68333327770233,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"left turn": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 0.483333319425583,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"right turn": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 0.516666650772095,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"running": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 0.716666638851166,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"short punch": {
-			"bone_impact": [
-				"spine",
-				"chest",
-				"head",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 1.06666672229767,
-			"lower_body_impact": [],
-			"pelvis_motion": {
-				"rotation": false,
-				"translation": false
-			},
-			"root_motion": {
-				"rotation": false,
-				"translation": false
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"sword attack": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 0.766666650772095,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		},
-		"walking": {
-			"bone_impact": [
-				"root",
-				"left_foot",
-				"right_foot",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
-				"left_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"left_upper_arm",
-				"right_upper_arm",
-				"left_lower_arm",
-				"right_lower_arm",
-				"left_hand",
-				"right_hand"
-			],
-			"duration_seconds": 1.41666662693024,
-			"lower_body_impact": [
-				"left_foot",
-				"left_foot",
-				"right_foot",
-				"right_foot",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_lower_leg",
-				"right_lower_leg",
-				"left_upper_leg",
-				"left_upper_leg",
-				"right_upper_leg",
-				"right_upper_leg"
-			],
-			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"root_motion": {
-				"rotation": true,
-				"translation": true
-			},
-			"source_step_seconds": 0.0333333350718021,
-			"valid": true
-		}
-	},
-	"contract": "character_qualification_report.v1",
-	"delivery_level": "concurrent_action",
-	"fallback": {
-		"locomotion_compatibility": "replace_locomotion",
-		"mode": "full_body_exclusive",
-		"policy": "queue_until_compatible"
-	},
-	"fallbacks": [],
-	"locomotion": {
-		"idle": {
-			"classification": "root_motion",
-			"clip_ref": "idle"
-		},
-		"jump_land": {
-			"classification": "root_motion",
-			"clip_ref": "jump"
-		},
-		"jump_loop": {
-			"classification": "root_motion",
-			"clip_ref": "jump"
-		},
-		"jump_start": {
-			"classification": "root_motion",
-			"clip_ref": "jump"
-		},
-		"run_forward": {
-			"classification": "root_motion",
-			"clip_ref": "running"
-		},
-		"turn_left": {
-			"classification": "root_motion",
-			"clip_ref": "left turn"
-		},
-		"turn_right": {
-			"classification": "root_motion",
-			"clip_ref": "right turn"
-		},
-		"walk_forward": {
-			"classification": "root_motion",
-			"clip_ref": "walking"
-		}
-	},
-	"locomotion_compatibility": "short punch upper-body coexist; boxing and sword attack remain full-body exclusive",
-	"manifest_path": "res://assets/active/female_jk_external/manifest.json",
-	"optional": [],
-	"package_id": "female_jk_external",
-	"provenance": {
-		"authoring_contract": "external_provider_authoring_rig",
-		"package_digest": "2A13F3266FBF7B294B596D88EE4D15C0D97C5CE51B795849A568C4A50C9C9447",
-		"qualification_report_ref": "assets/characters/qualification_reports/female_jk_external.json",
-		"source_format": "blend",
-		"source_uri": "file:///E:/下载/建模3%20%20金色卷发jk女%20T字版%20%20多动作版.blend",
-		"working_copy": "production-assets/characters/female_jk_external/source/female_jk_external.glb"
-	},
-	"reasons": [],
-	"report_path": ".harness/verification/female_jk_external-qualification-report.json",
-	"source": {
-		"digest_sha256": "2A13F3266FBF7B294B596D88EE4D15C0D97C5CE51B795849A568C4A50C9C9447",
-		"format": "glb",
-		"model_path": "assets/active/female_jk_external/female_jk_external.glb"
-	},
-	"status": "qualified"
+  "actions": [
+    {
+      "audit": {
+        "bone_impact": [
+          "root",
+          "left_foot",
+          "right_foot",
+          "pelvis",
+          "spine",
+          "chest",
+          "head",
+          "left_lower_leg",
+          "right_lower_leg",
+          "left_upper_leg",
+          "right_upper_leg",
+          "left_upper_arm",
+          "right_upper_arm",
+          "left_lower_arm",
+          "right_lower_arm",
+          "left_hand",
+          "right_hand"
+        ],
+        "duration_seconds": 1.06666672229767,
+        "lower_body_impact": [
+          "left_foot",
+          "left_foot",
+          "right_foot",
+          "right_foot",
+          "left_lower_leg",
+          "left_lower_leg",
+          "right_lower_leg",
+          "right_lower_leg",
+          "left_upper_leg",
+          "left_upper_leg",
+          "right_upper_leg",
+          "right_upper_leg"
+        ],
+        "pelvis_motion": {
+          "rotation": true,
+          "translation": true
+        },
+        "root_motion": {
+          "rotation": true,
+          "translation": true
+        },
+        "source_step_seconds": 0.0333333350718021,
+        "valid": true
+      },
+      "clip_ref": "boxing",
+      "mode": "full_body_exclusive",
+      "semantic_action_id": "action:melee.unarmed_punch"
+    },
+    {
+      "audit": {
+        "bone_impact": [
+          "root",
+          "left_foot",
+          "right_foot",
+          "pelvis",
+          "spine",
+          "chest",
+          "head",
+          "left_lower_leg",
+          "right_lower_leg",
+          "left_upper_leg",
+          "right_upper_leg",
+          "left_upper_arm",
+          "right_upper_arm",
+          "left_lower_arm",
+          "right_lower_arm",
+          "left_hand",
+          "right_hand"
+        ],
+        "duration_seconds": 0.766666650772095,
+        "lower_body_impact": [
+          "left_foot",
+          "left_foot",
+          "right_foot",
+          "right_foot",
+          "left_lower_leg",
+          "left_lower_leg",
+          "right_lower_leg",
+          "right_lower_leg",
+          "left_upper_leg",
+          "left_upper_leg",
+          "right_upper_leg",
+          "right_upper_leg"
+        ],
+        "pelvis_motion": {
+          "rotation": true,
+          "translation": true
+        },
+        "root_motion": {
+          "rotation": true,
+          "translation": true
+        },
+        "source_step_seconds": 0.0333333350718021,
+        "valid": true
+      },
+      "clip_ref": "sword attack",
+      "mode": "full_body_exclusive",
+      "semantic_action_id": "action:melee.sword_slash"
+    }
+  ],
+  "checks": {
+    "axis_convention": true,
+    "canonical_mapping": true,
+    "required_slots": true,
+    "skeleton": true,
+    "source_frame_rate": true,
+    "unit_scale": true
+  },
+  "clip_audits": {
+    "boxing": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 1.06666672229767,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.0333333350718021,
+      "valid": true
+    },
+    "idle": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 1.66666662693024,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.0333333350718021,
+      "valid": true
+    },
+    "jump": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 1.68333327770233,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.0333333350718021,
+      "valid": true
+    },
+    "running": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 0.716666638851166,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.0333333350718021,
+      "valid": true
+    },
+    "sword attack": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 0.766666650772095,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.0333333350718021,
+      "valid": true
+    },
+    "walking": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 1.41666662693024,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.0333333350718021,
+      "valid": true
+    }
+  },
+  "contract": "character_qualification_report.v1",
+  "delivery_level": "concurrent_action",
+  "fallback": {
+    "locomotion_compatibility": "replace_locomotion",
+    "mode": "full_body_exclusive",
+    "policy": "queue_until_compatible"
+  },
+  "fallbacks": [],
+  "locomotion": {
+    "idle": {
+      "classification": "root_motion",
+      "clip_ref": "idle"
+    },
+    "jump_land": {
+      "classification": "root_motion",
+      "clip_ref": "jump"
+    },
+    "jump_loop": {
+      "classification": "root_motion",
+      "clip_ref": "jump"
+    },
+    "jump_start": {
+      "classification": "root_motion",
+      "clip_ref": "jump"
+    },
+    "run_forward": {
+      "classification": "root_motion",
+      "clip_ref": "running"
+    },
+    "walk_forward": {
+      "classification": "root_motion",
+      "clip_ref": "walking"
+    }
+  },
+  "locomotion_compatibility": "boxing and sword attack remain full-body exclusive",
+  "manifest_path": "res://assets/active/female_jk_external/manifest.json",
+  "optional": [],
+  "package_id": "female_jk_external",
+  "provenance": {
+    "authoring_contract": "external_provider_authoring_rig",
+    "authoring_frame_rate": 60.0,
+    "package_digest": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "qualification_report_ref": "assets/characters/qualification_reports/female_jk_external.json",
+    "runtime_export_frame_rate": 60.0,
+    "source_format": "blend",
+    "source_uri": "file:///E:/下载/建模3%20%20金色卷发jk女%20T字版%20%20多动作版.blend",
+    "working_copy": "production-assets/characters/female_jk_external/source/female_jk_external.glb"
+  },
+  "reasons": [],
+  "report_path": ".harness/verification/female_jk_external-qualification-report.json",
+  "source": {
+    "digest_sha256": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "format": "glb",
+    "model_path": "assets/active/female_jk_external/female_jk_external.glb"
+  },
+  "status": "qualified"
 }

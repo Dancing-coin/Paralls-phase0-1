@@ -1,0 +1,150 @@
+{
+  "contract": "paralls_anchor_manifest.v1",
+  "pack_id": "citystreets_209",
+  "version": "0.3.0",
+  "scene_id": "city_block_planned_01",
+  "coordinate_system": {
+    "units": "meters",
+    "east": "+X",
+    "north": "+Y",
+    "up": "+Z",
+    "ground_z": 0.0
+  },
+  "anchors": [
+    {
+      "name": "ANCHOR__player_spawn",
+      "semantic_id": "player_spawn",
+      "position_m": [
+        0.0,
+        -22.0,
+        0.2
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "player spawn"
+    },
+    {
+      "name": "ANCHOR__character_spawn_a",
+      "semantic_id": "character_spawn:a",
+      "position_m": [
+        -6.0,
+        -21.0,
+        0.2
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "character stand"
+    },
+    {
+      "name": "ANCHOR__character_spawn_b",
+      "semantic_id": "character_spawn:b",
+      "position_m": [
+        6.0,
+        -21.0,
+        0.2
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "character stand"
+    },
+    {
+      "name": "ANCHOR__camera_primary",
+      "semantic_id": "camera:primary",
+      "position_m": [
+        0.0,
+        -57.0,
+        20.0
+      ],
+      "rotation_euler_deg": [
+        72.0,
+        0.0,
+        0.0
+      ],
+      "use": "north-facing camera"
+    },
+    {
+      "name": "ANCHOR__approach_nw",
+      "semantic_id": "approach:nw_building",
+      "position_m": [
+        -18.0,
+        16.0,
+        0.2
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "approach check"
+    },
+    {
+      "name": "ANCHOR__contact_nw",
+      "semantic_id": "contact:nw_building",
+      "position_m": [
+        -25.0,
+        16.0,
+        0.2
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "contact check"
+    },
+    {
+      "name": "ANCHOR__observation_intersection",
+      "semantic_id": "observation:intersection",
+      "position_m": [
+        0.0,
+        -12.0,
+        1.7
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "observation point"
+    },
+    {
+      "name": "ANCHOR__placement_southwest",
+      "semantic_id": "placement:southwest",
+      "position_m": [
+        -16.0,
+        -13.0,
+        0.2
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "placement point"
+    },
+    {
+      "name": "ANCHOR__zone_validation",
+      "semantic_id": "zone:validation",
+      "position_m": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "rotation_euler_deg": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "use": "32 m intersection validation zone"
+    }
+  ]
+}

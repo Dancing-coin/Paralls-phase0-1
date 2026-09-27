@@ -235,7 +235,7 @@ def test_esm_service_accepts_only_open_for_the_registered_archive_door_policy() 
         interaction_type="open",
     )
 
-    result = service.resolve_interaction(event, actor_position=(0.0, 1.2, -3.0))
+    result = service.resolve_interaction(event, actor_position=(0.0, 0.5, -7.55))
 
     assert result.result_type == "action_resolution_result"
     assert service.interaction_policy_for("obj_archive_door", "open") == {

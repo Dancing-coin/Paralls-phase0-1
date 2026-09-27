@@ -25,6 +25,7 @@ from app.gameplay.shared_contracts import (
     ProfileBackedActorRef,
     StructuredFailure,
 )
+from app.models.siming_character_bridge import CharacterSemanticIntentProposal
 
 
 _WORK_INTENT_COMMANDS = {
@@ -73,6 +74,14 @@ class CharacterAgentL4Adapter:
         self._compat_work_digests: dict[str, str] = {}
         self._legacy_execution_digests: dict[str, str] = {}
         self._legacy_execution_contracts: dict[str, CharacterExecutionContract] = {}
+
+    def build_intent_proposal(
+        self, message: dict[str, object] | CharacterSemanticIntentProposal
+    ) -> CharacterSemanticIntentProposal:
+        """Validate one semantic proposal before it reaches the Godot bridge."""
+        if isinstance(message, CharacterSemanticIntentProposal):
+            return message
+        return CharacterSemanticIntentProposal.model_validate(message)
 
     def from_legacy_command(
         self,
@@ -570,7 +579,17 @@ class CharacterAgentL4Adapter:
         """Return presentation-only skill hints suitable for a realization adapter."""
         metadata = plan.get("skill_realization_metadata", {})
         source = metadata if isinstance(metadata, dict) else {}
-        return {
+        settlement_outcome = source.get("settlement_outcome", {})
+        if not isinstance(settlement_outcome, dict) and action_settlement_result is not None:
+            settlement_outcome = {}
+        if not settlement_outcome and action_settlement_result is not None:
+            settlement_outcome = {
+                "outcome_band": action_settlement_result.outcome_band,
+                "failure_domains": list(action_settlement_result.failure_domains),
+                "primary_failure_domain": action_settlement_result.primary_failure_domain,
+                "realization_hints": list(action_settlement_result.realization_hints),
+            }
+        result = {
             "selected_skill_path": dict(source.get("selected_skill_path", {}))
             if isinstance(source.get("selected_skill_path"), dict)
             else {},
@@ -581,6 +600,9 @@ class CharacterAgentL4Adapter:
             if isinstance(source.get("primitive_realization_keys"), list)
             else [],
         }
+        if settlement_outcome:
+            result["settlement_outcome"] = settlement_outcome
+        return result
 
     def attach_skill_realization_metadata(
         self,

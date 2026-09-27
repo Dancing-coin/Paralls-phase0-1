@@ -50,8 +50,10 @@ class CharacterDynamicState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     actor_id: str
-    vigilance_level: float = Field(ge=0.0, le=1.0)
-    distraction_level: float = Field(ge=0.0, le=1.0)
+    # Backward-compatible defaults for continuity snapshots written before
+    # these attention fields were added.
+    vigilance_level: float = Field(default=0.0, ge=0.0, le=1.0)
+    distraction_level: float = Field(default=0.0, ge=0.0, le=1.0)
     stress_load: float = Field(default=0.0, ge=0.0, le=1.0)
     social_pressure: float = Field(default=0.0, ge=0.0, le=1.0)
     masking_pressure: float = Field(default=0.0, ge=0.0, le=1.0)

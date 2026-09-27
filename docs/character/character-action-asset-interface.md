@@ -75,6 +75,13 @@ locomotion-driving clip, or an additive clip. Profile selection is based on
 qualification results and current claims; it is never inferred from a folder
 name or performed by runtime track surgery.
 
+`canonical_skeleton_mapping_ref` refers to the package's deform-to-canonical
+mapping, not to a requirement that the source file contain a minimal skeleton.
+An external authoring rig may retain controller, IK/FK, pole, twist, and
+reference bones. The package qualification record identifies the deform bones
+that actually cross the runtime boundary. A declared relaxed or A-shaped rest
+pose is valid; T-pose and a fixed deform-bone count are not acceptance rules.
+
 The detailed import, canonical mapping, full-body derivation, mask validation,
 fallback, and qualification-report contract lives in:
 

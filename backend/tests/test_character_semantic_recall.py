@@ -14,6 +14,31 @@ def test_semantic_recall_uses_canonical_refs_and_cards():
     assert result.cards_by_ref["event:door-opened:1"].source_refs == ()
 
 
+def test_semantic_recall_card_payload_exports_tuple_refs_as_json_arrays():
+    result = CharacterSemanticRecallService().select(
+        "char_b",
+        {
+            "memory": {
+                "event_memories": [
+                    {
+                        "memory_id": "door-opened:1",
+                        "actor_id": "char_b",
+                        "world_ts": 1,
+                        "source_ref": "evt:1",
+                    }
+                ]
+            }
+        },
+        turn_context=_turn(),
+    )
+
+    payload = result.cards[0].to_payload()
+
+    assert payload["source_refs"] == ["evt:1"]
+    assert payload["relation_refs"] == []
+    assert isinstance(payload["source_refs"], list)
+
+
 def test_semantic_recall_rejects_cross_actor_memory():
     try:
         CharacterSemanticRecallService().select("char_b", {"memory": {"event_memories": [{"memory_id": "private", "actor_id": "char_a"}]}}, turn_context=_turn())

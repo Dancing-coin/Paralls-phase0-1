@@ -243,7 +243,25 @@ dynamic state 不能被糊进别的层里。
 - social-spatial
 - physiology
 
-### 10. 不能破坏现有 smoke path
+### 10. canonical live turn 是心智输出进入具身动作前的唯一连续性边界
+
+`CharacterTurnContext` 是每个角色事件的 canonical live turn，必须在 `L1`
+之前创建，并让同一个 `turn_id`、revision、causation、correlation 和
+idempotency 元数据贯穿 `L1 -> L2 -> L3 -> L4`、权威结算、评估、策略与
+checkpoint/recovery。
+
+它不把已有记录全部重命名成活跃回合：completed behavior-turn records 是完成后
+可查询的审计/投影；current behavior-turn records 是当前 canonical context 的
+时间线或 checkpoint 视图；legacy behavior-turn records 只保留只读兼容/单向翻译，
+不得恢复、派发或结算一个 live turn。
+
+`L4` 的正式下游对象是 `CharacterExecutionContract`。旧
+`CharacterGoalCommand`/`CharacterAgentL4Adapter` 只允许单向兼容输入；VLA/provider
+输出只能提出带证据和不确定性的候选意图，不能控制 body、Motor、pose 或
+authority/world truth。episode 把本地、authority 与 post-observation 证据关联起来，
+不是 world truth 的写入者。
+
+### 11. 不能破坏现有 smoke path
 
 心智核心完成不能以破坏当前可运行验证链为代价。
 

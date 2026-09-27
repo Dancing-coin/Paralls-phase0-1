@@ -24,6 +24,11 @@ def _resource_to_path(project_root: Path, resource: str) -> Path:
     return project_root / resource.removeprefix("res://")
 
 
+def _is_dynamic_resource_reference(resource: str) -> bool:
+    """Ignore runtime-composed GDScript paths while checking literal resources."""
+    return "%" in resource or "{" in resource or "}" in resource
+
+
 def _project_resources(project_root: Path) -> list[tuple[Path, str]]:
     resources: list[tuple[Path, str]] = []
     scan_roots = [project_root / "project.godot", project_root / "scenes", project_root / "scripts"]
@@ -89,6 +94,7 @@ def evaluate_godot_project(project_root: Path) -> dict[str, object]:
     missing_resources = [
         f"{source.relative_to(project_root)} -> {resource}"
         for source, resource in _project_resources(project_root)
+        if not _is_dynamic_resource_reference(resource)
         if not _resource_to_path(project_root, resource).exists()
     ]
 

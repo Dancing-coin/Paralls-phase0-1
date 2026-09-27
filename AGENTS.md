@@ -1,6 +1,6 @@
 # Paralls Runtime Guidance
 
-This repository implements the `world-character-Siming-authority` mainline runtime. The preserved Phase 0 demo is a smoke-compatibility slice, not the architectural target. Start with `docs/INDEX.md`; for design decisions, follow `docs/superpowers/specs/world-character-siming-authority-mainline/README.md` and then its master design.
+This repository implements the `world-character-Siming-authority` mainline runtime. The preserved Phase 0 demo is a smoke-compatibility slice, not the architectural target. Start with `docs/INDEX.md`, `docs/harness.md`, and `docs/ai-engineering-workflow.md`; for design decisions, follow `docs/superpowers/specs/world-character-siming-authority-mainline/README.md` and then its master design.
 
 ## Runtime Boundaries
 
@@ -19,6 +19,8 @@ This repository implements the `world-character-Siming-authority` mainline runti
 
 - Backend: run `python -m pytest -v`.
 - Broad changes: run `python scripts/verification/harness.py --profile all`.
+- For multi-step work, use the Goal ledger and Superpowers workflow described in `docs/ai-engineering-workflow.md`; retain the resulting acceptance evidence under `.harness/verification/`.
+- Use native subagents only for independent, bounded lanes; the lead agent remains responsible for integrating their work and verifying the result.
 - Godot changes need editor or runtime evidence. Integration claims need a running backend, a real boundary message, and a visible scene result.
 - Use Godot MCP when it is available for scene, autoload, and runtime checks. Otherwise report Godot work as static-only or editor-unverified.
 

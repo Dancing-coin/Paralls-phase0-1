@@ -72,6 +72,10 @@ func _run_probe() -> void:
 	var ok := false
 	_pre_snapshot = _snapshot()
 	_pre_capture_ref = "capture:godot:%s:pre" % _scenario
+	if not await _ensure_embodied_role_asset():
+		_notes.append("embodied_role_asset_unavailable")
+		await _finish(false)
+		return
 	if not await _wait_for_backend():
 		await _finish(false)
 		return
@@ -92,6 +96,22 @@ func _run_probe() -> void:
 			_notes.append("unknown_scenario")
 			ok = false
 	await _finish(ok)
+
+
+func _ensure_embodied_role_asset() -> bool:
+	var replica := main_demo.get_node_or_null("PlayerCharacter/CharacterReplica") if main_demo != null else null
+	if replica == null or not replica.has_method("apply_presentation_asset_binding"):
+		return false
+	var binding := {
+		"actor_id": "char_c",
+		"binding_status": "approved",
+		"visual_assets": {
+			"role_scene_ref": "res://scenes/active/crusader_knight/KnightRoleSkin.tscn",
+		},
+	}
+	var applied: Variant = replica.call("apply_presentation_asset_binding", binding)
+	await get_tree().process_frame
+	return bool(applied) and replica.has_method("begin_right_hand_reach")
 
 
 func _connect_bus() -> void:
@@ -432,7 +452,7 @@ func _approach_start_position() -> Vector3:
 	var stance := _approach_stance()
 	if stance == null:
 		return Vector3(0.0, 0.5, -1.8)
-	return Vector3(stance.global_position.x, 0.5, stance.global_position.z + 1.6)
+	return Vector3(stance.global_position.x, 0.5, stance.global_position.z + 0.75)
 
 
 func _current_facing_error_rad() -> float:
@@ -472,6 +492,8 @@ func _on_action_request_received(payload: Dictionary) -> void:
 	if str((request as Dictionary).get("target_ref", "")) != OBJECT_ID:
 		return
 	_action_request_payload = payload.duplicate(true)
+	if _scenario == "success":
+		_write_stage("action_request_received", payload)
 	if _scenario == "revision_failure" and not _stage_written:
 		_write_stage(
 			"preflight_accepted",
@@ -506,6 +528,8 @@ func _on_world_result_received(payload: Dictionary) -> void:
 	var result_type := str(payload.get("result_type", ""))
 	if result_type == "constraint_state_result":
 		_received_constraint = payload.duplicate(true)
+		if _scenario == "success":
+			_write_stage("constraint_received", payload)
 	if result_type == "object_state_result":
 		_received_world_result = payload.duplicate(true)
 

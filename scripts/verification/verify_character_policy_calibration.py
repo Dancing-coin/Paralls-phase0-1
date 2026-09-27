@@ -31,10 +31,15 @@ def main() -> int:
         },
     )
     candidate = result.get("candidate_policy")
-    candidate_ok = isinstance(candidate, dict) and candidate.get("status") == "candidate_only" and candidate.get("policy_type") == "context_recall_policy"
+    candidate_ok = (
+        isinstance(candidate, dict)
+        and candidate.get("status") == "candidate"
+        and candidate.get("policy_type") == "recovery"
+        and candidate.get("evidence", {}).get("qualified") is True
+    )
     report = {
         "results": [
-            {"id": "context_recall_policy_candidate", "status": "proved" if candidate_ok else "missing", "evidence": ["candidate_only", "context_recall_policy"] if candidate_ok else []},
+            {"id": "recovery_policy_candidate", "status": "proved" if candidate_ok else "missing", "evidence": ["candidate", "recovery", "qualified"] if candidate_ok else []},
             {"id": "no_automatic_profile_mutation", "status": "proved", "evidence": ["candidate_only"]},
         ],
         "overall_character_policy_calibration_passed": candidate_ok,

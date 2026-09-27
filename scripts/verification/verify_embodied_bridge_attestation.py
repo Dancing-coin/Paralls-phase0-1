@@ -11,6 +11,7 @@ from common import read_text, repo_root, resolve_python_exe, run_command, verifi
 
 
 TEST_FILES = ["backend/tests/test_embodied_controller_auth_ingress.py"]
+verification_env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"}
 
 
 def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -33,7 +34,12 @@ def main() -> int:
     log_dir = verification_dir(project_root)
     python_exe = resolve_python_exe(args.python_exe)
     pytest_log = log_dir / "embodied-bridge-attestation-pytest.log"
-    pytest_result = run_command([python_exe, "-m", "pytest", "-q", *TEST_FILES], project_root, pytest_log)
+    pytest_result = run_command(
+        [python_exe, "-m", "pytest", "-q", *TEST_FILES],
+        project_root,
+        pytest_log,
+        env=verification_env,
+    )
 
     godot_log = log_dir / "embodied-bridge-attestation-godot.log"
     godot_artifact = log_dir / "embodied-bridge-attestation-godot-runtime.json"

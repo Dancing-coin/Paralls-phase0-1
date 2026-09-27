@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "unified-character-action-foundation",
+  "order": 49,
+  "script": "scripts/verification/verify_unified_character_action_foundation.py",
+  "requires_godot": true,
+  "result_artifact": ".harness/verification/unified-character-action-foundation-baseline.json",
+  "include_in_profile_order": false,
+  "description": "Mode B semantic action foundation and logical replay evidence; Mode C is not enabled"
+}

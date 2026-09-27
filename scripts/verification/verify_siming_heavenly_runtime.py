@@ -87,6 +87,29 @@ def _env(name: str, default: str = "") -> str:
     return os.environ.get(name, _project_env().get(name, default)).strip()
 
 
+def _shared_character_deepseek_config() -> dict[str, str]:
+    """Return the character agent's DeepSeek surface for Siming reuse."""
+    if _env("CHARACTER_MODEL_PROVIDER_KIND").lower() != "deepseek":
+        return {}
+    return {
+        "endpoint": _env("CHARACTER_MODEL_ENDPOINT", "https://api.deepseek.com"),
+        "api_key": _env("CHARACTER_MODEL_API_KEY"),
+        "model": _env("CHARACTER_MODEL_MODEL", "deepseek-chat"),
+        "timeout": _env("CHARACTER_MODEL_TIMEOUT_SECONDS", "30"),
+    }
+
+
+def _effective_siming_config() -> dict[str, str]:
+    shared = _shared_character_deepseek_config()
+    return {
+        "endpoint": _env("SIMING_LLM_ENDPOINT") or shared.get("endpoint", ""),
+        "api_key": _env("SIMING_LLM_API_KEY") or shared.get("api_key", ""),
+        "model": _env("SIMING_LLM_MODEL") or shared.get("model", ""),
+        "timeout": _env("SIMING_LLM_TIMEOUT_SECONDS") or shared.get("timeout", "30"),
+        "provider": (_env("SIMING_LLM_PROVIDER_ORDER") or ("deepseek_chat" if shared else "")).split(",")[0].strip().lower(),
+    }
+
+
 def _routes() -> list[dict[str, object]]:
     raw = _env("SIMING_LLM_ROUTES_JSON")
     if not raw:
@@ -107,7 +130,8 @@ def live_preflight(project_root: Path, godot_exe: str | None = None) -> Prefligh
         reasons.append("godot_exe_required")
     if _env("SIMING_HEAVENLY_MODE") != "active":
         reasons.append("siming_heavenly_mode_active_required")
-    if _env("SIMING_LLM_MODE") != "http":
+    shared_character_config = _shared_character_deepseek_config()
+    if _env("SIMING_LLM_MODE") != "http" and not shared_character_config.get("api_key"):
         reasons.append("online_siming_llm_required")
 
     routes = _routes()
@@ -126,16 +150,17 @@ def live_preflight(project_root: Path, godot_exe: str | None = None) -> Prefligh
         if not configured:
             reasons.append("online_http_route_required")
     else:
-        provider = _env("SIMING_LLM_PROVIDER_ORDER", "openai_responses").split(",")[0].strip().lower()
+        effective = _effective_siming_config()
+        provider = effective["provider"] or "openai_responses"
         if provider in {"", "disabled", "fake"}:
             reasons.append("online_http_route_required")
-        if not _env("SIMING_LLM_ENDPOINT"):
+        if not effective["endpoint"]:
             reasons.append("online_endpoint_required")
-        if not _env("SIMING_LLM_MODEL"):
+        if not effective["model"]:
             reasons.append("online_model_required")
-        if not _env("SIMING_LLM_API_KEY"):
+        if not effective["api_key"]:
             reasons.append("online_api_key_required")
-        configured.append({"route_id": provider or "unconfigured", "model": _env("SIMING_LLM_MODEL")})
+        configured.append({"route_id": provider or "unconfigured", "model": effective["model"]})
     summary["routes"] = configured
 
     db_value = _env("PARALLS_HEAVENLY_GRAPH_PATH", ".runtime/siming-heavenly.sqlite3")
@@ -649,6 +674,15 @@ def main() -> int:
             "CHARACTER_MODEL_PROVIDER_KIND": "local",
             "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
         }
+        shared_character_config = _shared_character_deepseek_config()
+        if shared_character_config and not _routes():
+            runtime_env.update({
+                "SIMING_LLM_PROVIDER_ORDER": "deepseek_chat",
+                "SIMING_LLM_ENDPOINT": shared_character_config["endpoint"],
+                "SIMING_LLM_API_KEY": shared_character_config["api_key"],
+                "SIMING_LLM_MODEL": shared_character_config["model"],
+                "SIMING_LLM_TIMEOUT_SECONDS": shared_character_config["timeout"],
+            })
         online_character_env = {
             **runtime_env,
             "SIMING_LLM_ADVISORY_DISABLED": "",
@@ -657,10 +691,10 @@ def main() -> int:
             "CHARACTER_MODEL_REQUIRE_ONLINE": "1",
             "CHARACTER_GRAPH_REQUIRE_CONTINUITY": "1",
             "CHARACTER_MODEL_ROUTE_OVERRIDE": "",
-            "CHARACTER_MODEL_ENDPOINT": _env("SIMING_LLM_ENDPOINT"),
-            "CHARACTER_MODEL_API_KEY": _env("SIMING_LLM_API_KEY"),
-            "CHARACTER_MODEL_MODEL": _env("SIMING_LLM_MODEL", "deepseek-chat"),
-            "CHARACTER_MODEL_TIMEOUT_SECONDS": _env("SIMING_LLM_TIMEOUT_SECONDS", "30"),
+            "CHARACTER_MODEL_ENDPOINT": _effective_siming_config()["endpoint"],
+            "CHARACTER_MODEL_API_KEY": _effective_siming_config()["api_key"],
+            "CHARACTER_MODEL_MODEL": _effective_siming_config()["model"] or "deepseek-chat",
+            "CHARACTER_MODEL_TIMEOUT_SECONDS": _effective_siming_config()["timeout"],
         }
         _, backend_process = _ensure_live_backend(root, python_exe, runtime_env)
         godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe", "--rendering-method", "gl_compatibility"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)

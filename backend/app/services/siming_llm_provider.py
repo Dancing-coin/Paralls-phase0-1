@@ -620,6 +620,17 @@ class FakeSimingLlmCandidateProvider:
 
 def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
     providers: list[SimingLlmCandidateProvider] = []
+    # The character agent and Siming must use one DeepSeek credential surface
+    # when the caller has not supplied a separate Siming route. This keeps the
+    # two cognition hosts on the same provider, endpoint, model, and timeout.
+    if (
+        not settings.siming_llm_routes
+        and settings.character_model_provider_kind == "deepseek"
+    ):
+        providers.append(
+            _build_character_deepseek_provider(settings)
+        )
+        return SimingLlmProviderRouter(providers or [DisabledSimingLlmCandidateProvider()])
     if settings.siming_llm_routes:
         for route in settings.siming_llm_routes:
             providers.append(_build_route_provider(settings, route))
@@ -631,6 +642,19 @@ def build_siming_llm_provider(settings: Settings) -> SimingLlmCandidateProvider:
             elif provider_name in {"openai_responses", "deepseek_chat", "seed_doubao", "qwen"}:
                 providers.append(_build_openai_responses_provider(settings))
     return SimingLlmProviderRouter(providers or [DisabledSimingLlmCandidateProvider()])
+
+
+def _build_character_deepseek_provider(settings: Settings) -> SimingLlmCandidateProvider:
+    if not settings.character_model_api_key:
+        return DisabledSimingLlmCandidateProvider()
+    return HttpSimingLlmCandidateProvider(
+        api_key=settings.character_model_api_key,
+        endpoint=settings.character_model_endpoint or "https://api.deepseek.com",
+        model=settings.character_model_model or "deepseek-chat",
+        timeout_seconds=settings.character_model_timeout_seconds,
+        route_id="character_model_deepseek",
+        provider_name="deepseek_chat",
+    )
 
 
 def _build_route_provider(settings: Settings, route: SimingLlmRouteSettings) -> SimingLlmCandidateProvider:

@@ -101,7 +101,8 @@ def _settlement_outcome(nodes: list[object]) -> str:
 
 
 def _replay_request() -> BehaviorTurnRecordRequest:
-    return BehaviorTurnRecordRequest(
+    return BehaviorTurnRecordRequest.from_legacy_projection(
+        legacy_reader_ref="harness:behavior-turn-runtime:legacy-replay",
         turn_id="turn:harness:replay",
         scope=_scope("char_b"),
         valid_at=120,

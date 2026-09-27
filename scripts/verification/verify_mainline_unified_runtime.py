@@ -16,6 +16,8 @@ from common import (
     write_markdown,
 )
 
+verification_env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"}
+
 
 def _result(result_id: str, title: str, exit_code: int, evidence: list[str], notes: str = "") -> dict[str, object]:
     return {
@@ -36,7 +38,7 @@ def _run_profile(
     command: list[str],
 ) -> tuple[int, str]:
     log_path = log_dir / log_name
-    result = run_command(command, project_root, log_path)
+    result = run_command(command, project_root, log_path, env=verification_env)
     return result.returncode, str(log_path)
 
 

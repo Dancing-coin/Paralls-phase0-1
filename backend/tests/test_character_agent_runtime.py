@@ -663,14 +663,16 @@ def test_character_agent_runtime_routes_siming_high_level_hints_through_reasonin
     assert hinted_decision["detail"]["selected_intent"]
     assert base_decision["intent_label"] == base_decision["detail"]["selected_intent"]
     assert hinted_decision["intent_label"] == hinted_decision["detail"]["selected_intent"]
-    assert base_execution["actor_control_frames"][0]["action"] == base_decision["detail"]["selected_intent"]
-    assert hinted_execution["actor_control_frames"][0]["action"] == hinted_decision["detail"]["selected_intent"]
-    assert base_execution["presentation_plan"]["action_state"]["requested_action"] == base_decision["detail"]["selected_intent"]
-    assert hinted_execution["presentation_plan"]["action_state"]["requested_action"] == hinted_decision["detail"]["selected_intent"]
-    assert base_execution["physiology_channel"]["guarding"] == "low"
-    assert hinted_execution["physiology_channel"]["guarding"] == "low"
-    assert base_execution["speech_channel"]["dialogue_act"] == base_decision["detail"]["selected_intent"]
-    assert hinted_execution["speech_channel"]["dialogue_act"] == hinted_decision["detail"]["selected_intent"]
+    # Timeline egress is the authority-neutral L4 contract, not the local
+    # presentation plan that produced it.
+    assert base_execution["actor_ref"] == "character:char_a"
+    assert hinted_execution["actor_ref"] == "character:char_a"
+    assert base_execution["semantic_intent_id"] == base_decision["detail"]["selected_intent"]
+    assert hinted_execution["semantic_intent_id"] == hinted_decision["detail"]["selected_intent"]
+    assert base_execution["turn_id"]
+    assert hinted_execution["turn_id"]
+    assert "actor_control_frames" not in base_execution
+    assert "actor_control_frames" not in hinted_execution
 
 
 def test_character_agent_runtime_local_l2_stays_in_stub_mode_without_writing_cognition_deltas() -> None:

@@ -35,6 +35,7 @@ FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS = 120.0
 PHASE0_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
+    "DIALOGUE_MODE": "stub",
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
 }
@@ -286,6 +287,7 @@ def main() -> int:
             "scene_load",
             "backend_connectivity",
             "dialogue_loop",
+            "live_transport_ack_ordering",
             "successful_interaction",
             "failed_interaction",
             "visible_world_state_change",

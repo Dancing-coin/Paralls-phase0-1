@@ -125,7 +125,21 @@ def _websocket_trace(log_dir: Path) -> Path:
                 },
             }
         )
-        messages = [websocket.receive_json() for _ in range(5)]
+        messages = [websocket.receive_json()]
+        cursor = 0
+        for _ in range(4):
+            websocket.send_json(
+                {
+                    "message_type": "embodied_interaction_session_projection_pull",
+                    "payload": {
+                        "session_id": "session:handshake:websocket-verify",
+                        "after_global_sequence": cursor,
+                    },
+                }
+            )
+            message = websocket.receive_json()
+            messages.append(message)
+            cursor = int(message["payload"]["global_sequence"])
 
     session_messages = [message for message in messages if message.get("message_type") == "embodied_interaction_session_event"]
     session_payloads = [message.get("payload", {}) for message in session_messages]
@@ -180,7 +194,7 @@ def main() -> int:
                 "--scene",
                 GODOT_PROBE_SCENE,
                 "--quit-after",
-                "120",
+                "900",
                 "--headless",
                 "--render-thread",
                 "safe",

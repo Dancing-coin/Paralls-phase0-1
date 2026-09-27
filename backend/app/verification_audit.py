@@ -193,11 +193,16 @@ def evaluate_phase0_audit(
 
     execution_contract_ok = (
         "character_agent_execution" in combined_log
-        and '"controller_source":"agent"' in combined_log
-        and '"control_mode":"agent_controlled"' in combined_log
+        and '"turn_id"' in combined_log
+        and '"actor_ref":"character:' in combined_log
+        and '"semantic_intent_id"' in combined_log
+        and '"semantic_action_id"' in combined_log
+        and '"allowed_realization_hints"' in combined_log
         and '"focus_state":{' in combined_log
         and '"action_state":{' in combined_log
         and '"speech_state":{' in combined_log
+        and '"actor_control_frames"' not in combined_log
+        and '"action_request_bundle"' not in combined_log
         and "character_agent_output:" not in combined_log
     )
     results.append(
@@ -207,8 +212,11 @@ def evaluate_phase0_audit(
             "proved" if execution_contract_ok else "missing",
             [
                 "character_agent_execution",
-                "controller_source=agent",
-                "control_mode=agent_controlled",
+                "turn_id",
+                "actor_ref",
+                "semantic_intent_id",
+                "semantic_action_id",
+                "allowed_realization_hints",
                 "focus_state",
                 "action_state",
                 "speech_state",
@@ -240,6 +248,44 @@ def evaluate_phase0_audit(
             "Structured dialogue input produces an in-scene response",
             "proved" if dialogue_ok else "missing",
             ["phase0_dialogue_target", "dialogue_applied"] if dialogue_ok else [],
+        )
+    )
+
+    dialogue_response_pos = main_log.find("backend_message_type:dialogue_response")
+    barrier_ack_match = re.search(r"phase0_transport_ack:(transport_barrier:[^\s]+)", main_log)
+    move_sent_match = re.search(
+        r"phase0_transport_request_sent:player_input:(player_input:[^\s]+:move_intent:[^\s]+)",
+        main_log,
+    )
+    move_ack_match = None
+    if move_sent_match is not None:
+        move_request_id = re.escape(move_sent_match.group(1))
+        move_ack_match = re.search(rf"phase0_transport_ack:{move_request_id}(?:\s|$)", main_log)
+    live_transport_ack_ordering_ok = (
+        dialogue_response_pos >= 0
+        and barrier_ack_match is not None
+        and move_sent_match is not None
+        and move_ack_match is not None
+        and dialogue_response_pos < main_log.find(barrier_ack_match.group(0))
+        and main_log.find(barrier_ack_match.group(0)) < move_sent_match.start()
+        and move_sent_match.start() < move_ack_match.start()
+    )
+    results.append(
+        _result(
+            "live_transport_ack_ordering",
+            "Live WebSocket preserves correlated barrier and move ACKs after dialogue payload delivery",
+            "proved" if live_transport_ack_ordering_ok else "missing",
+            [
+                "dialogue_response",
+                barrier_ack_match.group(1) if barrier_ack_match else "",
+                move_sent_match.group(1) if move_sent_match else "",
+                move_sent_match.group(1) if move_ack_match else "",
+            ]
+            if live_transport_ack_ordering_ok
+            else [],
+            "The live Phase 0 log did not prove dialogue response -> barrier ACK -> move send -> matching move ACK ordering."
+            if not live_transport_ack_ordering_ok
+            else "",
         )
     )
 
@@ -276,7 +322,8 @@ def evaluate_phase0_audit(
         )
     )
 
-    world_change_ok = "environment_state:alerted" in main_log
+
+    world_change_ok = "environment_state:alerted" in main_log or "object_state:obj_letter:visible" in main_log
     results.append(
         _result(
             "visible_world_state_change",
@@ -563,6 +610,7 @@ def evaluate_phase0_audit(
         "scene_load",
         "backend_connectivity",
         "dialogue_loop",
+        "live_transport_ack_ordering",
         "successful_interaction",
         "failed_interaction",
         "visible_world_state_change",

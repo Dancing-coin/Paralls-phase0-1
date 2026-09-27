@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 from types import MappingProxyType
-from typing import Mapping
+from typing import Literal, Mapping
 
 from pydantic import (
     AliasChoices,
@@ -149,6 +149,13 @@ class CharacterExecutionContract(BaseModel):
         min_length=1,
         validation_alias=AliasChoices("semantic_action_id", "action_id", "action"),
     )
+    source_id: str = Field(default="character_agent_l4", min_length=1)
+    intent_tags: tuple[str, ...] = Field(default_factory=tuple)
+    context_tags: tuple[str, ...] = Field(default_factory=tuple)
+    claims: tuple[str, ...] = Field(default_factory=tuple)
+    locomotion_relation: Literal[
+        "coexist", "drive_locomotion", "replace_locomotion", "suspend"
+    ] = "coexist"
     allowed_realization_hints: Mapping[str, JsonValue] = Field(
         default_factory=dict,
         validation_alias=AliasChoices(
@@ -244,6 +251,18 @@ class CharacterExecutionContract(BaseModel):
             object.__setattr__(self, "target_ref", self.target_refs[0])
         if self.semantic_intent_id == "" or self.semantic_action_id == "":
             raise ValueError("semantic intent and action are required")
+        allowed_namespaces = {
+            "goal", "intent", "evidence", "capability", "affordance", "constraint",
+            "state", "status", "action", "phase", "occupy", "event", "authority",
+            "presentation", "expression",
+        }
+        if any(
+            len(str(tag).split(":", 1)) != 2
+            or str(tag).split(":", 1)[0] not in allowed_namespaces
+            or not str(tag).split(":", 1)[1]
+            for tag in (*self.intent_tags, *self.context_tags)
+        ):
+            raise ValueError("execution tags must be namespaced")
         return self
 
     @property

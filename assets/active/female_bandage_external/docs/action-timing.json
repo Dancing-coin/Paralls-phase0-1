@@ -1,7 +1,124 @@
 {
   "package_id": "female_bandage_external",
-  "source_frame_rate": 60.0,
-  "runtime_action_status": "unavailable",
-  "runtime_action_status_reason": "source-only candidate; Blender export and Godot qualification are pending",
-  "actions": []
+  "source_frame_rate": 30.0,
+  "authoring_frame_rate": 30.0,
+  "runtime_frame_rate": 60.0,
+  "runtime_action_status": "qualified",
+  "actions": [
+    {
+      "action_id": "Idle",
+      "clip": "idle",
+      "atomic_sequence": [],
+      "status": "locomotion",
+      "timing": {
+        "duration_seconds": 6.7,
+        "source_frames": [
+          1,
+          402
+        ]
+      }
+    },
+    {
+      "action_id": "Walk",
+      "clip": "walking",
+      "atomic_sequence": [],
+      "status": "locomotion",
+      "timing": {
+        "duration_seconds": 2.833333,
+        "source_frames": [
+          1,
+          170
+        ]
+      }
+    },
+    {
+      "action_id": "Run",
+      "clip": "running",
+      "atomic_sequence": [],
+      "status": "locomotion",
+      "timing": {
+        "duration_seconds": 0.716667,
+        "source_frames": [
+          1,
+          44
+        ]
+      }
+    },
+    {
+      "action_id": "Jump",
+      "clip": "jump",
+      "atomic_sequence": [],
+      "status": "locomotion",
+      "timing": {
+        "duration_seconds": 1.683333,
+        "source_frames": [
+          1,
+          102
+        ]
+      }
+    },
+    {
+      "action_id": "Turn",
+      "clip": "left turn",
+      "variant": "left/right aliases",
+      "atomic_sequence": [],
+      "status": "locomotion",
+      "timing": {
+        "duration_seconds": 0.966667,
+        "source_frames": [
+          1,
+          58
+        ],
+        "right_variant_duration_seconds": 1.033333,
+        "right_variant_source_frames": [
+          1,
+          62
+        ]
+      }
+    },
+    {
+      "action_id": "UnarmedPunch",
+      "clip": "boxing",
+      "atomic_sequence": [],
+      "status": "full_body_exclusive",
+      "timing": {
+        "duration_seconds": 2.133333,
+        "source_frames": [
+          1,
+          128
+        ],
+        "contact_window_frames": [
+          97,
+          113
+        ],
+        "contact_peak_frame": 105,
+        "cancel_window_frames": [
+          114,
+          128
+        ]
+      }
+    },
+    {
+      "action_id": "SwordSlash",
+      "clip": "SWORD ATTACK",
+      "atomic_sequence": [],
+      "status": "full_body_exclusive",
+      "timing": {
+        "duration_seconds": 1.533333,
+        "source_frames": [
+          1,
+          92
+        ],
+        "contact_window_frames": [
+          65,
+          81
+        ],
+        "contact_peak_frame": 73,
+        "cancel_window_frames": [
+          82,
+          92
+        ]
+      }
+    }
+  ]
 }

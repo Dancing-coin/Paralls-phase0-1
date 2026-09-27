@@ -11,7 +11,13 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 		if raw.has(field):
 			return {"accepted": false, "reason": "world_write_forbidden:%s" % field}
 	var raw_tags: Array[StringName] = []
-	for value in raw.get("intent_tags", []) + raw.get("context_tags", []):
+	var raw_intent_tags: Array[StringName] = []
+	var raw_context_tags: Array[StringName] = []
+	for value in raw.get("intent_tags", []):
+		raw_intent_tags.append(StringName(value))
+	for value in raw.get("context_tags", []):
+		raw_context_tags.append(StringName(value))
+	for value in raw_intent_tags + raw_context_tags:
 		raw_tags.append(StringName(value))
 	var tag_result := CharacterTagContractRef.normalize_ingress_tags(
 		raw_tags,
@@ -26,14 +32,24 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 		"accepted": true,
 		"source_id": source_id,
 		"control_mode": control_mode,
-		"intent_tags": tag_result["accepted"],
-		"context_tags": [],
+		"intent_tags": _filter_tags(tag_result["accepted"], raw_intent_tags),
+		"context_tags": _filter_tags(tag_result["accepted"], raw_context_tags),
 		"move_local": move if move is Vector2 else Vector2.ZERO,
 		"desired_facing_yaw": facing,
 		"action_id": StringName(raw.get("action_id", "")),
 		"target_ref": StringName(raw.get("target_ref", "")),
+		"claims": raw.get("claims", []).duplicate(),
+		"locomotion_relation": StringName(raw.get("locomotion_relation", "coexist")),
 		"priority": int(raw.get("priority", 0)),
 		"causation_id": StringName(raw.get("causation_id", "")),
 		"correlation_id": StringName(raw.get("correlation_id", "")),
 		"metadata": raw.get("metadata", {}).duplicate(true),
 	}
+
+
+static func _filter_tags(values: Array[StringName], wanted: Array[StringName]) -> Array[StringName]:
+	var result: Array[StringName] = []
+	for value in values:
+		if value in wanted:
+			result.append(value)
+	return result

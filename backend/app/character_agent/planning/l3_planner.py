@@ -151,7 +151,7 @@ class CharacterAgentL3Service:
                 "memory": recall.memory,
                 "memory_recall": recall.metadata,
                 **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
-                **({"semantic_cards": [card.__dict__ for card in semantic_recall.cards]} if semantic_recall is not None else {}),
+                **({"semantic_cards": [card.to_payload() for card in semantic_recall.cards]} if semantic_recall is not None else {}),
                 "verification": verification,
                 "behavior_policy": behavior_policy,
                 "working_memory_state": normalized_working_memory_state,
@@ -702,6 +702,8 @@ class CharacterAgentL3Service:
         control_mode: str,
     ) -> list[str]:
         candidates = ["observe", "inspect_object", "self_protect"]
+        if interpretation.interpretation_type == "combat_threat" and interpretation.attention_target:
+            candidates.append("short_punch")
         candidates.extend(["pause", "defer", "withhold"])
         if interpretation.attention_target:
             candidates.extend(
@@ -955,6 +957,7 @@ class CharacterAgentL3Service:
             "approach": "observe_target",
             "speak_public": "speak_public",
             "self_protect": "physiology_hint",
+            "short_punch": "short_punch",
             "stay_silent": "observe_target",
         }
         return mapping.get(candidate, "observe_target")

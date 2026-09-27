@@ -80,10 +80,26 @@ func _run_probe() -> void:
 	state.set_director_mode(true)
 	state.set_script_mode(true)
 	var main_controller := main_demo
+	# Keep the probe's request queue bounded: explicit dialogue/interaction
+	# requests are the evidence under test, while ambient fact emitters would
+	# otherwise starve the websocket response stream.
+	if main_controller.has_method("_set_autotest_actor_local_perception_enabled"):
+		main_controller.call("_set_autotest_actor_local_perception_enabled", false)
+	main_controller.set("suspend_near_object_visual_fact", true)
+	main_controller.set("suspend_spatial_access_fact", true)
 	var actor_node := main_demo.get_node_or_null("CharacterA")
 	var object_node := main_demo.get_node_or_null("InteractiveObject")
 	print("character_director_observatory_probe:actor_node_id=%s" % str(actor_node.get("actor_id") if actor_node != null else "<missing>"))
 	print("character_director_observatory_probe:backend_url=%s" % str(main_demo.call("_resolve_backend_url")))
+	if main_controller != null and main_controller.has_method("_force_focus_target") and actor_node != null:
+		main_controller.call("_force_focus_target", actor_node)
+	if main_controller != null and main_controller.has_method("_force_focus_target") and object_node != null:
+		main_controller.call("_force_focus_target", object_node)
+	await get_tree().create_timer(0.2).timeout
+	if main_controller != null and main_controller.has_method("_emit_interaction_request"):
+		main_controller.call("_emit_interaction_request", "obj_letter", "inspect")
+	await _wait_for_state_payloads(state, 8000)
+	print("character_director_observatory_probe:interaction_stage")
 	if main_controller != null and main_controller.has_method("_force_focus_target") and actor_node != null:
 		main_controller.call("_force_focus_target", actor_node)
 	await get_tree().create_timer(0.2).timeout
@@ -95,13 +111,6 @@ func _run_probe() -> void:
 	print("character_director_observatory_probe:dialogue_stage")
 	var early_bottom_strip_siming_populated: bool = await _wait_for_bottom_strip_siming(state, observatory_root, 1500)
 	print("character_director_observatory_probe:bottom_wait_stage")
-	if main_controller != null and main_controller.has_method("_force_focus_target") and object_node != null:
-		main_controller.call("_force_focus_target", object_node)
-	await get_tree().create_timer(0.2).timeout
-	if main_controller != null and main_controller.has_method("_emit_interaction_request"):
-		main_controller.call("_emit_interaction_request", "obj_letter", "inspect")
-	await get_tree().create_timer(1.2).timeout
-	print("character_director_observatory_probe:interaction_stage")
 	var state_payloads_ok: bool = (
 		state.get_visible_actor_states().size() > 0
 		and not state.get_latest_siming_state().is_empty()
@@ -370,6 +379,20 @@ func _wait_for_bottom_strip_siming(state: Node, observatory_root: Node, timeout_
 			if not formatted_siming_row.is_empty():
 				print("character_director_observatory_probe:diag_bottom_strip_formatter_row=%s" % formatted_siming_row)
 		await get_tree().create_timer(0.1).timeout
+	return false
+
+
+func _wait_for_state_payloads(state: Node, timeout_ms: int) -> bool:
+	var deadline := Time.get_ticks_msec() + timeout_ms
+	while Time.get_ticks_msec() < deadline:
+		if (
+			state.get_visible_actor_states().size() > 0
+			and not state.get_latest_siming_state().is_empty()
+			and state.get_recent_world_outcomes().size() > 0
+			and state.get_recent_script_beats().size() > 0
+		):
+			return true
+		await get_tree().process_frame
 	return false
 
 

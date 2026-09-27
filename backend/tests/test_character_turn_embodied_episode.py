@@ -59,7 +59,7 @@ def _move_actor(connection: WebSocketConnectionContext) -> None:
             payload={
                 "player_id": "character_agent", "room_id": "room_demo", "scene_id": "scene_demo",
                 "zone_id": "zone_focus", "actor_id": "char_c", "intent_type": "move_intent",
-                "move_mode": "walk", "producer_ts": 90, "target_point": [0.0, 1.2, -3.1],
+                "move_mode": "walk", "producer_ts": 90, "target_point": [0.0, 0.5, -7.55],
             },
         ),
         connection_context=connection,
@@ -108,7 +108,7 @@ def test_archive_door_turn_has_one_contract_receipt_and_confirmed_episode() -> N
         episode_ref="episode:turn:char_c:door-1:candidate:turn-door", pre_capture_ref="capture:door:pre",
     )
     preflight = main.default_scene_archive_door_embodied_service.preflight(
-        event=_event(), action_request=_turn_request(), actor_position=(0.0, 1.2, -3.1),
+        event=_event(), action_request=_turn_request(), actor_position=(0.0, 0.5, -7.55),
         connection_ref=connection.connection_ref, now=110, turn_correlation=correlation,
     )
 
@@ -150,7 +150,7 @@ def test_turn_correlation_requires_contract_identity_and_rejected_settlement_doe
     )
     preflight = main.default_scene_archive_door_embodied_service.preflight(
         event=_event(), action_request=_turn_request().model_copy(update={"turn_id": correlation.turn_id, "idempotency_key": correlation.execution_contract_ref}),
-        actor_position=(0.0, 1.2, -3.1), connection_ref=connection.connection_ref, now=110,
+        actor_position=(0.0, 0.5, -7.55), connection_ref=connection.connection_ref, now=110,
         turn_correlation=correlation,
     )
     grant = preflight.embodied_action_request["grant"]

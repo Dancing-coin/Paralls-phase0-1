@@ -914,9 +914,7 @@ class SimingLedPopulationFixture:
             "decision": activation_event["detail"]["decision"],
             "route": ack["payload"],
             "dialogue_response": response["payload"],
-            "local_structured_intent": execution["payload"]["execution_semantics"][
-                "movement_intent"
-            ],
+            "local_structured_intent": execution["payload"]["semantic_intent_id"],
             "cognition_status": interpretation["payload"]["cognition_status"],
             "actual_player_input_path": True,
         }

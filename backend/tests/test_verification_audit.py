@@ -12,15 +12,70 @@ def _index_by_id(results: list[dict[str, object]]) -> dict[str, dict[str, object
     return {str(entry["id"]): entry for entry in results}
 
 
+def test_phase0_audit_requires_live_dialogue_to_move_ack_ordering() -> None:
+    report = evaluate_phase0_audit(
+        pytest_passed=True,
+        scene_load_ok=True,
+        main_log="""
+        backend_connected:ws://127.0.0.1:8000/ws
+        phase0_autotest_stage:dialogue_submitted
+        backend_message_type:dialogue_response
+        phase0_transport_request_sent:transport_barrier:transport_barrier:100:1
+        phase0_transport_ack:transport_barrier:100:1
+        phase0_transport_request_sent:player_input:player_input:char_c:move_intent:201:3
+        phase0_transport_ack:player_input:char_c:move_intent:201:3
+        phase0_autotest_complete
+        phase0_dialogue_target:char_a
+        dialogue_applied:char_a
+        phase0_interact_target:obj_letter
+        object_state:obj_letter:visible
+        environment_state:alerted
+        phase0_screenshot_saved:D:\\demo-main.png:0
+        """,
+        focus_log="phase0_focus_autotest_begin\nphase0_screenshot_saved:D:\\demo-focus.png:0",
+        main_screenshot_exists=True,
+        focus_screenshot_exists=True,
+        interaction_source="request_ref=world_result.request_ref\ncausation_id=world_result.causation_id\ncorrelation_id=world_result.correlation_id",
+        esm_service_source='thermal_level=field_state.thermal_level\n"thermal_level"',
+        voice_controller_source='func play_stub_voice(_payload: Dictionary) -> void:\n    _bus_log("voice_stub_played")',
+        player_bridge_source='func before_player_shell_move(delta: float) -> void:\n    _apply_player_root_motion_drive(delta)',
+        character_replica_source='func consume_player_root_motion_request(delta: float) -> Vector3:\n    return _consume_role_root_motion_world_delta()',
+    )
+
+    result = _index_by_id(report["results"])["live_transport_ack_ordering"]
+    assert result["status"] == "proved"
+
+
+def test_phase0_main_demo_waits_for_correlated_dialogue_before_transport_barrier() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    controller_source = (
+        project_root / "scripts" / "phase0" / "MainDemoController.gd"
+    ).read_text(encoding="utf-8")
+
+    autotest = controller_source.split("func _run_autotest_inputs() -> void:", 1)[1].split(
+        "func _set_autotest_actor_local_perception_enabled", 1
+    )[0]
+    dialogue_wait = autotest.index("await _wait_for_dialogue_response(dialogue_request_id")
+    barrier = autotest.index('_drain_backend_transport("pre_interaction_barrier_ack_timeout")')
+    move = autotest.index('_emit_move_intent_request(autotest_interact_position')
+    assert dialogue_wait < barrier < move
+    assert "dialogue_response_timeout" in autotest
+
+
 def test_phase0_audit_marks_missing_failed_interaction_and_weak_voice() -> None:
     report = evaluate_phase0_audit(
         pytest_passed=True,
         scene_load_ok=True,
         main_log="""
         [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
-        [LocalPresentationBus] phase0_dialogue_target:char_a
-        [LocalPresentationBus] dialogue_applied:char_a
-        [LocalPresentationBus] phase0_interact_target:obj_letter
+            [LocalPresentationBus] phase0_dialogue_target:char_a
+            [LocalPresentationBus] dialogue_applied:char_a
+            [LocalPresentationBus] backend_message_type:dialogue_response
+            [LocalPresentationBus] phase0_transport_request_sent:transport_barrier:transport_barrier:100:1
+            [LocalPresentationBus] phase0_transport_ack:transport_barrier:100:1
+            [LocalPresentationBus] phase0_transport_request_sent:player_input:player_input:char_c:move_intent:201:3
+            [LocalPresentationBus] phase0_transport_ack:player_input:char_c:move_intent:201:3
+            [LocalPresentationBus] phase0_interact_target:obj_letter
         [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
@@ -60,6 +115,11 @@ def test_phase0_audit_accepts_siming_output_runtime_evidence_without_attention_a
         [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] backend_message_type:dialogue_response
+        [LocalPresentationBus] phase0_transport_request_sent:transport_barrier:transport_barrier:100:1
+        [LocalPresentationBus] phase0_transport_ack:transport_barrier:100:1
+        [LocalPresentationBus] phase0_transport_request_sent:player_input:player_input:char_c:move_intent:201:3
+        [LocalPresentationBus] phase0_transport_ack:player_input:char_c:move_intent:201:3
         [LocalPresentationBus] phase0_interact_target:obj_letter
         [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] constraint_state_result:distance
@@ -265,6 +325,11 @@ def test_phase0_audit_requires_stronger_siming_ui_presence_in_observatory() -> N
         [LocalPresentationBus] backend_connected:ws://127.0.0.1:8000/ws
         [LocalPresentationBus] phase0_dialogue_target:char_a
         [LocalPresentationBus] dialogue_applied:char_a
+        [LocalPresentationBus] backend_message_type:dialogue_response
+        [LocalPresentationBus] phase0_transport_request_sent:transport_barrier:transport_barrier:100:1
+        [LocalPresentationBus] phase0_transport_ack:transport_barrier:100:1
+        [LocalPresentationBus] phase0_transport_request_sent:player_input:player_input:char_c:move_intent:201:3
+        [LocalPresentationBus] phase0_transport_ack:player_input:char_c:move_intent:201:3
         [LocalPresentationBus] phase0_interact_target:obj_letter
         [LocalPresentationBus] object_state:obj_letter:visible
         [LocalPresentationBus] constraint_state_result:distance
@@ -381,8 +446,8 @@ def test_phase0_audit_proves_character_agent_execution_contract_runtime_evidence
         [LocalPresentationBus] constraint_state_result:distance
         [LocalPresentationBus] environment_state:alerted
         [LocalPresentationBus] attention_applied:char_b
-        [LocalPresentationBus] backend_message_raw:{"message_type":"character_agent_execution","payload":{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}}
-        [LocalPresentationBus] character_agent_execution:{"actor_id":"char_a","actor_control_frames":[{"actor_id":"char_a","controller_source":"agent","control_mode":"agent_controlled","target_ref":"char_a","action":"observe","gait":"walk"}],"presentation_plan":{"actor_id":"char_a","target_ref":"char_a","motion_state":{},"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe","override_state":""},"equipment_state":{},"expression_hint":"execution_bridge","physiology_hint":"stable","speech_state":{"active_command_type":"observe","utterance_request":"observe"}},"action_request_bundle":{"requested_actions":[]}}
+        [LocalPresentationBus] backend_message_raw:{"message_type":"character_agent_execution","payload":{"turn_id":"turn:char_a:901","actor_ref":"character:char_a","source_ref":"visual_fact:901","semantic_intent_id":"observe","semantic_action_id":"survey_scene","allowed_realization_hints":{"presentation":{"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe"},"speech_state":{"active_command_type":"observe"}}}}}
+        [LocalPresentationBus] character_agent_execution:{"turn_id":"turn:char_a:901","actor_ref":"character:char_a","source_ref":"visual_fact:901","semantic_intent_id":"observe","semantic_action_id":"survey_scene","allowed_realization_hints":{"presentation":{"focus_state":{"target_id":"char_a"},"action_state":{"requested_action":"observe"},"speech_state":{"active_command_type":"observe"}}}}
         [LocalPresentationBus] voice_stub_played
         [LocalPresentationBus] player_root_motion_step:char_c
         [LocalPresentationBus] patrol_root_motion_step:char_a

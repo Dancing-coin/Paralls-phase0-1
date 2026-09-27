@@ -65,6 +65,9 @@ class CharacterPrivateWorldSnapshot(BaseModel):
     distorted_details: list[str] = Field(default_factory=list)
     missed_details: list[str] = Field(default_factory=list)
     salience_tags: list[str] = Field(default_factory=list)
+    evidence_tags: list[str] = Field(default_factory=list)
+    capability_tags: list[str] = Field(default_factory=list)
+    affordance_tags: list[str] = Field(default_factory=list)
     attention_pressure: float = Field(default=0.0, ge=0.0, le=1.0)
     clarity_score: float = 1.0
     certainty_score: float = 1.0
@@ -105,6 +108,10 @@ class CharacterIntentDecision(BaseModel):
     supporting_goals: list[str] = Field(default_factory=list)
     blockers: list[str] = Field(default_factory=list)
     goal_sources: list[str] = Field(default_factory=list)
+    evidence_tags: list[str] = Field(default_factory=list)
+    capability_tags: list[str] = Field(default_factory=list)
+    affordance_tags: list[str] = Field(default_factory=list)
+    constraint_tags: list[str] = Field(default_factory=list)
     urgency: Literal["low", "medium", "high"] = "low"
     active_goal_frame: CharacterActiveGoalFrame | None = None
     planning_status: Literal["model", "continuity_floor"] = "model"

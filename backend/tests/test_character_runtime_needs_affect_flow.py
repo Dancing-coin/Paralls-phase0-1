@@ -82,6 +82,7 @@ class _RecordingL2(CharacterAgentL2Service):
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context=None,
     ) -> dict[str, object]:
         self.prepare_context = self._reasoning_context(
             actor_id=snapshot.actor_id,
@@ -115,6 +116,7 @@ class _RecordingL2(CharacterAgentL2Service):
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context=None,
     ) -> CharacterInterpretation:
         self.interpret_context = self._reasoning_context(
             actor_id=snapshot.actor_id,
@@ -164,6 +166,8 @@ class _RecordingL3:
         background_agenda_state: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context=None,
     ) -> CharacterIntentDecision:
         self.select_context = {
             "interpretation": interpretation.model_dump(),

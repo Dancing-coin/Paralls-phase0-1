@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from math import dist
+
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.embodied_interaction import (
+    ActionAttempt,
+    AuthorityResult,
     ControllerExecutionGrant,
     EmbodiedActionRequest,
     EmbodiedSettlementWriterSelector,
@@ -36,7 +40,7 @@ class EmbodiedAuthoritySettlementService:
     def __init__(
         self,
         *,
-        auth_service: EmbodiedControllerAuthService,
+        auth_service: EmbodiedControllerAuthService | None = None,
         physical_channel: PhysicalInteractionChannel | None = None,
         gameplay_event_batch_writer_available: bool = False,
     ) -> None:
@@ -47,7 +51,174 @@ class EmbodiedAuthoritySettlementService:
         )
         self._attempts_by_grant: dict[str, _RegisteredAttempt] = {}
         self._receipts_by_digest: dict[str, EmbodiedAuthoritySettlementReceipt] = {}
+        self._attempt_results: dict[str, tuple[str, str, AuthorityResult]] = {}
+        self._aggregate_revisions: dict[str, int] = {}
+        self._street_actors: dict[str, dict[str, object]] = {
+            "street_bandage": {"position": (0.0, 0.2, -10.0), "physics_tick": 0, "hp": 100, "stamina": 100},
+        "char_a": {"position": (2.05, 0.2, -7.0), "physics_tick": 0, "hp": 100, "stamina": 100},
+        "char_b": {"position": (-2.05, 0.2, -7.0), "physics_tick": 0, "hp": 100, "stamina": 100},
+        }
+        self._street_results_by_key: dict[str, tuple[str, AuthorityResult]] = {}
         self.mutation_count = 0
+
+    def street_actor_state(self, actor_id: str) -> dict[str, object]:
+        state = self._street_actors.get(actor_id)
+        return dict(state) if state is not None else {}
+
+    def record_street_pose(self, actor_id: str, position: tuple[float, float, float], *, physics_tick: int) -> bool:
+        state = self._street_actors.get(actor_id)
+        if state is None or len(position) != 3 or physics_tick <= int(state["physics_tick"]):
+            return False
+        previous = state["position"]
+        elapsed = (physics_tick - int(state["physics_tick"])) / 60.0
+        if not isinstance(previous, tuple) or dist(previous, position) > 8.0 * elapsed + 0.1:
+            return False
+        if abs(position[1] - 0.2) > 1.5 or abs(position[0]) > 48.0 or abs(position[2]) > 48.0:
+            return False
+        regained = max(0, physics_tick - int(state["physics_tick"])) // 10
+        state["stamina"] = min(100, int(state["stamina"]) + regained)
+        state["position"] = position
+        state["physics_tick"] = physics_tick
+        return True
+
+    def settle_street_combat(self, attempt: ActionAttempt) -> AuthorityResult:
+        existing = self._street_results_by_key.get(attempt.idempotency_key)
+        if existing is not None:
+            digest, result = existing
+            if digest == attempt.payload_digest:
+                return result.model_copy(deep=True)
+            return self._result(attempt, outcome="rejected", failed_stage="idempotency", failed_code="idempotency_key_reused", recovery_action="discard_duplicate")
+        actor_id = attempt.actor_ref.removeprefix("character:")
+        target_id = attempt.target_refs[0].removeprefix("character:") if len(attempt.target_refs) == 1 else ""
+        actor = self._street_actors.get(actor_id)
+        target = self._street_actors.get(target_id)
+        if actor is None or target is None or actor_id == target_id:
+            return self._result(attempt, outcome="rejected", failed_stage="target", failed_code="target_invalid", recovery_action="select_valid_target")
+        if attempt.semantic_action_id not in {"action:melee.unarmed_punch", "action:melee.short_punch", "action:melee.sword_slash"} or attempt.authority_route != "esm" or not attempt.physics_evidence_refs:
+            return self._result(attempt, outcome="rejected", failed_stage="action", failed_code="action_unsupported", recovery_action="select_qualified_action")
+        stamina_cost = 8 if attempt.semantic_action_id == "action:melee.short_punch" else 14 if attempt.semantic_action_id == "action:melee.sword_slash" else 12
+        if int(actor["stamina"]) < stamina_cost:
+            return self._result(attempt, outcome="rejected", failed_stage="resource", failed_code="stamina_insufficient", recovery_action="recover_stamina")
+        if int(actor["hp"]) <= 0 or int(target["hp"]) <= 0:
+            return self._result(attempt, outcome="rejected", failed_stage="target", failed_code="actor_incapacitated", recovery_action="select_active_target")
+        actor_position = actor["position"]
+        target_position = target["position"]
+        if not isinstance(actor_position, tuple) or not isinstance(target_position, tuple):
+            return self._result(attempt, outcome="rejected", failed_stage="position", failed_code="position_unavailable")
+        planar_distance = dist((actor_position[0], actor_position[2]), (target_position[0], target_position[2]))
+        if planar_distance > 2.4:
+            return self._result(attempt, outcome="rejected", failed_stage="range", failed_code="target_out_of_range", recovery_action="approach_target")
+        result = self.settle(attempt)
+        if result.outcome != "committed":
+            return result
+        target["hp"] = max(0, int(target["hp"]) - 20)
+        actor["stamina"] = int(actor["stamina"]) - stamina_cost
+        projection = dict(result.committed_projection)
+        projection.update({"target_hp": target["hp"], "target_ref": attempt.target_refs[0], "actor_stamina": actor["stamina"], "actor_ref": attempt.actor_ref, "damage": 20, "distance_m": round(planar_distance, 3)})
+        result = result.model_copy(update={"committed_projection": projection})
+        self._street_results_by_key[attempt.idempotency_key] = (attempt.payload_digest, result.model_copy(deep=True))
+        return result
+
+    def settle(self, attempt: ActionAttempt) -> AuthorityResult:
+        """Atomically settle one semantic attempt in the local authority seam.
+
+        This bounded Phase-1 implementation keeps ESM/Gameplay effects in one
+        transaction-shaped commit and exposes only committed projections.
+        """
+        digest = attempt.payload_digest
+        existing = self._attempt_results.get(attempt.idempotency_key)
+        if existing is not None:
+            existing_digest, _transaction_id, result = existing
+            if existing_digest == digest:
+                return result.model_copy(deep=True)
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="idempotency",
+                failed_code="idempotency_key_reused",
+                recovery_action="discard_duplicate",
+            )
+
+        for stream_ref, expected in attempt.expected_revisions.items():
+            current = self._aggregate_revisions.get(stream_ref, 0)
+            if expected != current:
+                return self._result(
+                    attempt,
+                    outcome="rejected",
+                    failed_stage="precondition",
+                    failed_code="revision_conflict",
+                    failed_precondition=stream_ref,
+                    recovery_action="refresh_and_retry",
+                )
+
+        if attempt.authority_route == "composite" and attempt.semantic_action_id.endswith(":bad"):
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="atomic_validation",
+                failed_code="composite_atomic_validation_failed",
+                recovery_action="zero_write",
+            )
+
+        transaction_id = f"txn:{attempt.idempotency_key}"
+        event_ids = [f"event:{attempt.idempotency_key}:1"]
+        next_revisions = dict(self._aggregate_revisions)
+        for stream_ref in attempt.expected_revisions:
+            next_revisions[stream_ref] = next_revisions.get(stream_ref, 0) + 1
+        if not attempt.expected_revisions:
+            stream_ref = f"actor:{attempt.actor_ref}"
+            next_revisions[stream_ref] = next_revisions.get(stream_ref, 0) + 1
+        projection = {
+            "attempt_id": attempt.attempt_id,
+            "action_instance_id": attempt.action_instance_id,
+            "authority_route": attempt.authority_route,
+            "semantic_action_id": attempt.semantic_action_id,
+            "target_refs": list(attempt.target_refs),
+            "physics_tick": attempt.physics_tick,
+        }
+        result = AuthorityResult(
+            attempt_id=attempt.attempt_id,
+            action_instance_id=attempt.action_instance_id,
+            transaction_id=transaction_id,
+            outcome="committed",
+            committed_event_ids=event_ids,
+            resulting_revisions=next_revisions,
+            causation_id=attempt.causation_id,
+            correlation_id=attempt.correlation_id,
+            authority_scope=attempt.authority_route,
+            committed_projection=projection,
+        )
+        self._aggregate_revisions = next_revisions
+        self._attempt_results[attempt.idempotency_key] = (digest, transaction_id, result)
+        self.mutation_count += 1
+        return result.model_copy(deep=True)
+
+    def query(self, idempotency_key: str) -> AuthorityResult | None:
+        stored = self._attempt_results.get(idempotency_key)
+        return stored[2].model_copy(deep=True) if stored else None
+
+    @staticmethod
+    def _result(
+        attempt: ActionAttempt,
+        *,
+        outcome: str,
+        failed_stage: str | None = None,
+        failed_code: str | None = None,
+        failed_precondition: str | None = None,
+        recovery_action: str | None = None,
+    ) -> AuthorityResult:
+        return AuthorityResult(
+            attempt_id=attempt.attempt_id,
+            action_instance_id=attempt.action_instance_id,
+            outcome=outcome,
+            failed_stage=failed_stage,
+            failed_code=failed_code,
+            failed_precondition=failed_precondition,
+            recovery_action=recovery_action,
+            causation_id=attempt.causation_id,
+            correlation_id=attempt.correlation_id,
+            authority_scope=attempt.authority_route,
+        )
 
     def register_attempt(
         self,

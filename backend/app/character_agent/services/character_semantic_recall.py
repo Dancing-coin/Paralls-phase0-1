@@ -22,6 +22,16 @@ class SemanticRecallCard:
     source_refs: tuple[str, ...] = ()
     relation_refs: tuple[str, ...] = ()
 
+    def to_payload(self) -> dict[str, object]:
+        """Export a JSON-compatible card for reasoning and persistence contexts."""
+        return {
+            "ref": self.ref,
+            "payload": _json_compatible(self.payload),
+            "evidence_status": self.evidence_status,
+            "source_refs": list(self.source_refs),
+            "relation_refs": list(self.relation_refs),
+        }
+
 
 @dataclass(frozen=True)
 class SemanticRecallResult:
@@ -39,6 +49,14 @@ class SemanticRecallResult:
     cards_by_ref: Mapping[str, SemanticRecallCard] = field(default_factory=dict)
     memory: Mapping[str, list[dict[str, object]]] = field(default_factory=dict)
     metadata: Mapping[str, object] = field(default_factory=dict)
+
+
+def _json_compatible(value: object) -> object:
+    if isinstance(value, Mapping):
+        return {str(key): _json_compatible(nested) for key, nested in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_compatible(nested) for nested in value]
+    return deepcopy(value)
 
 
 class CharacterSemanticRecallService:
@@ -141,7 +159,8 @@ class CharacterSemanticRecallService:
             for item in value:
                 if not isinstance(item, Mapping): continue
                 owner = item.get("actor_id")
-                if key != "working_memory" and not owner: raise ValueError("semantic recall memory actor scope is required")
+                if key != "working_memory" and not owner:
+                    continue
                 if owner and str(owner) != actor_id: raise ValueError("semantic recall memory actor scope mismatch")
                 entries.append(dict(item))
             out[str(key)] = entries

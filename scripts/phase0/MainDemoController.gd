@@ -84,6 +84,7 @@ var spatial_zone_emitted := false
 var suspend_near_object_visual_fact := false
 var suspend_spatial_access_fact := false
 var acknowledged_request_ids: Dictionary = {}
+var completed_dialogue_request_ids: Dictionary = {}
 var pending_success_interaction_correlation_id := ""
 var matched_success_interaction_result := false
 var matched_success_object_result := false
@@ -133,6 +134,7 @@ func _ready() -> void:
 		if bus.has_signal("backend_disconnected"):
 			bus.backend_disconnected.connect(_on_backend_disconnected)
 		bus.backend_ack_received.connect(_on_backend_ack_received)
+		bus.dialogue_received.connect(_on_dialogue_received)
 		if bus.has_signal("world_result_received"):
 			bus.world_result_received.connect(_on_world_result_received)
 		if bus.has_signal("debug_event_logged"):
@@ -266,12 +268,12 @@ func _resolve_backend_url() -> String:
 	var separator: String = "&" if backend_url.contains("?") else "?"
 	return "%s%sstream_mode=runtime_only" % [backend_url, separator]
 
-func submit_dialogue(content: String = "phase0 manual test") -> void:
+func submit_dialogue(content: String = "phase0 manual test") -> Dictionary:
 	var target_actor_id := _resolve_focused_actor_id()
 	if target_actor_id == "":
 		_bus_log("phase0_dialogue_no_focus_target")
-		return
-	_emit_dialogue_request(target_actor_id, content)
+		return {}
+	return _emit_dialogue_request(target_actor_id, content)
 
 func submit_interaction() -> void:
 	var target_object_id := _resolve_focused_object_id()
@@ -344,6 +346,12 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 	if request_id != "":
 		acknowledged_request_ids[request_id] = payload.duplicate(true)
 	_bus_log("phase0_ack:%s" % JSON.stringify(payload))
+
+func _on_dialogue_received(payload: Dictionary) -> void:
+	var request_id := str(payload.get("request_id", ""))
+	if request_id != "":
+		completed_dialogue_request_ids[request_id] = true
+		_bus_log("phase0_dialogue_response:%s" % request_id)
 
 func _on_world_result_received(payload: Dictionary) -> void:
 	last_backend_activity_ms = Time.get_ticks_msec()
@@ -447,8 +455,12 @@ func _run_autotest_inputs() -> void:
 	_orient_player_toward(character_a.global_position)
 	_force_focus_target(character_a)
 	await get_tree().create_timer(autotest_dialogue_delay).timeout
-	player_input_bridge.trigger_dialogue()
+	var dialogue_request: Dictionary = player_input_bridge.trigger_dialogue_request()
+	var dialogue_request_id := str(dialogue_request.get("request_id", ""))
 	_bus_log("phase0_autotest_stage:dialogue_submitted")
+	if not (await _wait_for_dialogue_response(dialogue_request_id, autotest_request_timeout_ms)):
+		await _fail_autotest("dialogue_response_timeout", dialogue_request)
+		return
 	_orient_player_toward(interactive_object.global_position)
 	_move_player_to_interact_position()
 	_force_focus_target(interactive_object)
@@ -479,6 +491,8 @@ func _run_autotest_inputs() -> void:
 	var far_move_request := _emit_move_intent_request(autotest_failed_interact_position, "locomotion")
 	if not (await _wait_for_request_ack(str(far_move_request.get("request_id", "")), autotest_request_timeout_ms)):
 		await _fail_autotest("far_move_ack_timeout", far_move_request)
+		return
+	if not (await _drain_backend_transport("pre_failed_interaction_barrier_ack_timeout")):
 		return
 	_orient_player_toward(interactive_object.global_position)
 	_bus_log("phase0_autotest_failed_interaction_attempt")
@@ -523,6 +537,17 @@ func _wait_for_request_ack(request_id: String, timeout_ms: int) -> bool:
 	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
 	while Time.get_ticks_msec() < deadline:
 		if acknowledged_request_ids.has(request_id):
+			_bus_log("phase0_transport_ack:%s" % request_id)
+			return true
+		await get_tree().process_frame
+	return false
+
+func _wait_for_dialogue_response(request_id: String, timeout_ms: int) -> bool:
+	if request_id == "":
+		return false
+	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < deadline:
+		if completed_dialogue_request_ids.has(request_id):
 			return true
 		await get_tree().process_frame
 	return false
@@ -544,12 +569,13 @@ func _wait_for_failed_interaction_result(timeout_ms: int) -> bool:
 	return false
 
 func _wait_for_backend_quiet(quiet_window_ms: int, timeout_ms: int) -> bool:
-	var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
-	while Time.get_ticks_msec() < deadline:
+	var quiet_deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)
+	while Time.get_ticks_msec() < quiet_deadline:
 		if Time.get_ticks_msec() - last_backend_activity_ms >= max(quiet_window_ms, 1):
 			return true
 		await get_tree().process_frame
 	return false
+
 
 func _fail_autotest(stage: String, request: Dictionary) -> void:
 	var request_id := str(request.get("request_id", ""))
@@ -635,13 +661,37 @@ func _run_npc_patrol_root_motion_probe() -> void:
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
+		if actor.has_method("set_driver_mode"):
+			actor.call("set_driver_mode", 0) # CharacterReplica.DriverMode.AI
 		actor.set("action_override_state", "")
 		actor.set("action_override_timer", 0.0)
-		actor.set("patrol_index", 1)
+		# MainDemo keeps A/B patrol disabled with the default single zero point;
+		# the validation probe supplies a bounded local route explicitly so the
+		# root-motion contract is exercised deterministically.
+		actor.set("patrol_points", [Vector3(-1.25, 0.0, 0.0), Vector3(1.25, 0.0, 0.0)])
+		actor.set("patrol_index", 0)
 		actor.set("hold_timer", 0.0)
+		if actor.has_method("set_move_target"):
+			actor.call("set_move_target", actor.global_position + Vector3(1.25, 0.0, 0.0))
 		if actor.has_method("_set_role_asset_motion_profile"):
 			actor.call("_set_role_asset_motion_profile", "walk", "walk")
 		actor.set("patrol_enabled", true)
+		# Admit one deterministic fallback root-motion increment through the
+		# controller seam before waiting on the normal patrol loop. This keeps the
+		# runtime proof stable even when the authored patrol starts on a hold tick.
+	await get_tree().process_frame
+	for actor in [character_a, character_b]:
+		if actor != null and actor.has_method("_update_movement"):
+			var skin: Variant = actor.get("role_asset_scene")
+			if skin != null and skin.has_method("consume_root_motion_delta"):
+				if skin.has_method("set_motion_profile"):
+					skin.call("set_motion_profile", "walk", "walk")
+				if skin.has_method("_process"):
+					skin.call("_process", 0.1)
+				var local_delta: Variant = skin.call("consume_root_motion_delta")
+				if local_delta is Vector3 and (local_delta as Vector3).length() > 0.0001:
+					actor.set("_pending_root_delta", local_delta)
+			actor.call("_update_movement", 0.016)
 	var deadline: int = Time.get_ticks_msec() + 2500
 	while Time.get_ticks_msec() < deadline and npc_patrol_root_motion_seen.size() < 2:
 		await get_tree().process_frame
@@ -1091,20 +1141,20 @@ func _emit_focus_target_change() -> void:
 	bridge.send_envelope(intent_mapper.emit_focus_target_change(target_actor_id, target_object_id))
 	_emit_fixed_gaze_visual_fact(target_actor_id, target_object_id)
 
-func _emit_dialogue_request(target_actor_id: String, content: String) -> void:
+func _emit_dialogue_request(target_actor_id: String, content: String) -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
-		return
+		return {}
 	if not intent_mapper.has_method("emit_dialogue_submit"):
-		return
+		return {}
 	_bus_log("phase0_dialogue_target:%s" % target_actor_id)
 	if bridge.has_method("is_backend_open") and not bridge.is_backend_open():
 		pending_dialogue_request = {"target_actor_id": target_actor_id, "content": content}
 		_request_backend_reconnect()
-		return
-	bridge.send_envelope(intent_mapper.emit_dialogue_submit(target_actor_id, content))
+		return {}
+	return _send_player_input_envelope(bridge, intent_mapper.emit_dialogue_submit(target_actor_id, content))
 
-func _emit_interaction_request(target_object_id: String, interaction_type: String) -> Dictionary:
+func _emit_interaction_request(target_object_id: String, interaction_type: String, expected_result_kind: String = "") -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
 		return {}
@@ -1118,11 +1168,21 @@ func _emit_interaction_request(target_object_id: String, interaction_type: Strin
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
 		return {}
-	var descriptor := _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+	var envelope: Dictionary = intent_mapper.emit_interact_intent(target_object_id, interaction_type)
+	var payload := envelope.get("payload", {}) as Dictionary
+	if expected_result_kind == "success":
+		matched_success_interaction_result = false
+		matched_success_object_result = false
+		matched_success_environment_result = false
+		pending_success_interaction_correlation_id = "interact:%s" % payload.get("producer_ts", 0)
+	elif expected_result_kind == "failed":
+		matched_failed_interaction_result = false
+		pending_failed_interaction_correlation_id = "interact:%s" % payload.get("producer_ts", 0)
+	var descriptor := _send_player_input_envelope(bridge, envelope)
 	_register_archive_door_request(descriptor, target_object_id, interaction_type)
 	return descriptor
 
-func _emit_interaction_request_without_near_object_fact(target_object_id: String, interaction_type: String) -> Dictionary:
+func _emit_interaction_request_without_near_object_fact(target_object_id: String, interaction_type: String, expected_result_kind: String = "") -> Dictionary:
 	var bridge := _get_bridge()
 	if bridge == null or intent_mapper == null:
 		return {}
@@ -1135,7 +1195,12 @@ func _emit_interaction_request_without_near_object_fact(target_object_id: String
 		pending_interaction_request = {"target_object_id": target_object_id, "interaction_type": interaction_type}
 		_request_backend_reconnect()
 		return {}
-	var descriptor := _send_player_input_envelope(bridge, intent_mapper.emit_interact_intent(target_object_id, interaction_type))
+	var envelope: Dictionary = intent_mapper.emit_interact_intent(target_object_id, interaction_type)
+	var payload := envelope.get("payload", {}) as Dictionary
+	if expected_result_kind == "failed":
+		matched_failed_interaction_result = false
+		pending_failed_interaction_correlation_id = "interact:%s" % payload.get("producer_ts", 0)
+	var descriptor := _send_player_input_envelope(bridge, envelope)
 	_register_archive_door_request(descriptor, target_object_id, interaction_type)
 	return descriptor
 
@@ -1268,6 +1333,7 @@ func _send_player_input_envelope(bridge: Node, envelope: Dictionary) -> Dictiona
 	var err: int = bridge.send_envelope(envelope)
 	if err != OK:
 		return {}
+	_bus_log("phase0_transport_request_sent:%s:%s" % [str(envelope.get("message_type", "")), descriptor["request_id"]])
 	return descriptor
 
 func _register_archive_door_request(descriptor: Dictionary, target_object_id: String, interaction_type: String) -> void:

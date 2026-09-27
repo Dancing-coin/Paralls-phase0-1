@@ -5,7 +5,7 @@
   "source_model_path": "res://assets/active/female_t_external/female_t_external.glb",
   "source": {
     "model_path": "assets/active/female_t_external/female_t_external.glb",
-    "digest_sha256": "1DC5A38FB0B630FA8C5377F2EDD0FA4EFBB7C73B1E738E0B23D1D240E169561F",
+    "digest_sha256": "F53189AE2760FA7309A5CB44CAD74F27737CFE2BAEECF63EE8538FBED81FFE75",
     "format": "glb"
   },
   "provenance": {
@@ -14,7 +14,9 @@
     "source_format": "blend",
     "working_copy": "production-assets/characters/female_t_external/source/female_t_external.glb",
     "qualification_report_ref": "assets/characters/qualification_reports/female_t_external.json",
-    "package_digest": "1DC5A38FB0B630FA8C5377F2EDD0FA4EFBB7C73B1E738E0B23D1D240E169561F"
+    "package_digest": "F53189AE2760FA7309A5CB44CAD74F27737CFE2BAEECF63EE8538FBED81FFE75",
+    "authoring_frame_rate": 60.0,
+    "runtime_export_frame_rate": 60.0
   },
   "source_frame_rate": 60.0,
   "unit_scale": 1.0,
@@ -56,11 +58,25 @@
       "right_foot": "foot.r"
     }
   },
-  "required_slots": ["weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"],
+  "required_slots": [
+    "weapon_hand",
+    "weapon_slot:sword",
+    "weapon_hit_volume:sword"
+  ],
   "slots": {
-    "weapon_hand": {"canonical_bone": "right_hand", "anchor_ref": "weapon_hand", "held_item": true},
-    "weapon_slot:sword": {"canonical_bone": "right_hand", "anchor_ref": "weapon_slot:sword"},
-    "weapon_hit_volume:sword": {"canonical_bone": "right_hand", "anchor_ref": "weapon_hit_volume:sword"}
+    "weapon_hand": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_hand",
+      "held_item": true
+    },
+    "weapon_slot:sword": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_slot:sword"
+    },
+    "weapon_hit_volume:sword": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_hit_volume:sword"
+    }
   },
   "clip_aliases": {
     "idle": "idle",
@@ -68,9 +84,7 @@
     "run_forward": "running",
     "jump_start": "jump",
     "jump_loop": "jump",
-    "jump_land": "jump",
-    "turn_left": "left turn",
-    "turn_right": "right turn"
+    "jump_land": "jump"
   },
   "locomotion_map": {
     "idle": "idle",
@@ -78,9 +92,7 @@
     "run_forward": "running",
     "jump_start": "jump",
     "jump_loop": "jump",
-    "jump_land": "jump",
-    "turn_left": "left turn",
-    "turn_right": "right turn"
+    "jump_land": "jump"
   },
   "root_motion_profile": {
     "profile_id": "female_t_external.root.v1",
@@ -100,7 +112,7 @@
     "policy": "queue_until_compatible"
   },
   "delivery_level": "concurrent_action",
-  "locomotion_compatibility": "short punch upper-body coexist; boxing and sword attack remain full-body exclusive",
+  "locomotion_compatibility": "boxing and sword attack remain full-body exclusive",
   "actions_qualification_status": "qualified",
   "report_path": ".harness/verification/female_t_external-qualification-report.json",
   "actions": [
@@ -112,9 +124,27 @@
       "root_motion_policy": "hold",
       "root_motion_required": false,
       "required_slots": [],
-      "markers": [{"marker_id": "punch_contact_window", "time_seconds": 0.866667, "window_start_seconds": 0.800000, "window_end_seconds": 0.933333, "marker_kind": "melee_contact_candidate", "emits_attempt": true, "evidence_requirement": "physics_contact"}],
-      "cancel_windows": [{"start_seconds": 0.950000, "end_seconds": 1.050000}],
-      "resource_claims": ["right_arm", "left_arm"],
+      "markers": [
+        {
+          "marker_id": "punch_contact_window",
+          "time_seconds": 0.866667,
+          "window_start_seconds": 0.8,
+          "window_end_seconds": 0.933333,
+          "marker_kind": "melee_contact_candidate",
+          "emits_attempt": true,
+          "evidence_requirement": "physics_contact"
+        }
+      ],
+      "cancel_windows": [
+        {
+          "start_seconds": 0.95,
+          "end_seconds": 1.05
+        }
+      ],
+      "resource_claims": [
+        "right_arm",
+        "left_arm"
+      ],
       "physics_claims": [],
       "authority_route_ref": "esm",
       "fallback_policy": "queue_until_compatible",
@@ -128,35 +158,39 @@
       "locomotion_compatibility": "replace_locomotion",
       "root_motion_policy": "hold",
       "root_motion_required": false,
-      "required_slots": ["weapon_hand", "weapon_slot:sword", "weapon_hit_volume:sword"],
-      "markers": [{"marker_id": "sword_contact_window", "time_seconds": 0.600000, "window_start_seconds": 0.533333, "window_end_seconds": 0.666667, "marker_kind": "melee_contact_candidate", "emits_attempt": true, "evidence_requirement": "physics_contact"}],
-      "cancel_windows": [{"start_seconds": 0.683333, "end_seconds": 0.750000}],
-      "resource_claims": ["right_arm", "weapon_slot:sword"],
-      "physics_claims": ["weapon_hit_volume:sword"],
+      "required_slots": [
+        "weapon_hand",
+        "weapon_slot:sword",
+        "weapon_hit_volume:sword"
+      ],
+      "markers": [
+        {
+          "marker_id": "sword_contact_window",
+          "time_seconds": 0.6,
+          "window_start_seconds": 0.533333,
+          "window_end_seconds": 0.666667,
+          "marker_kind": "melee_contact_candidate",
+          "emits_attempt": true,
+          "evidence_requirement": "physics_contact"
+        }
+      ],
+      "cancel_windows": [
+        {
+          "start_seconds": 0.683333,
+          "end_seconds": 0.75
+        }
+      ],
+      "resource_claims": [
+        "right_arm",
+        "weapon_slot:sword"
+      ],
+      "physics_claims": [
+        "weapon_hit_volume:sword"
+      ],
       "authority_route_ref": "esm",
       "fallback_policy": "queue_until_compatible",
       "derived_from_package": "female_jk_external",
       "derived_from_clip_ref": "sword attack"
-    },
-    {
-      "semantic_action_id": "action:melee.short_punch",
-      "clip_ref": "short punch",
-      "source_clip_ref": "short punch",
-      "derived_clip_ref": "short punch",
-      "derived_from_package": "female_jk_external",
-      "derived_from_clip_ref": "short punch",
-      "mode": "derived_upper_body",
-      "locomotion_compatibility": "coexist",
-      "root_motion_policy": "hold",
-      "root_motion_required": false,
-      "required_slots": [],
-      "markers": [{"marker_id": "short_punch_contact_window", "time_seconds": 0.866667, "window_start_seconds": 0.800000, "window_end_seconds": 0.933333, "marker_kind": "melee_contact_candidate", "emits_attempt": true, "evidence_requirement": "physics_contact"}],
-      "cancel_windows": [{"start_seconds": 0.950000, "end_seconds": 1.050000}],
-      "resource_claims": ["upper_body", "right_arm"],
-      "physics_claims": [],
-      "authority_route_ref": "esm",
-      "fallback": {"mode": "full_body_exclusive", "locomotion_compatibility": "replace_locomotion", "clip_ref": "boxing"},
-      "fallback_policy": "queue_until_compatible"
     }
   ]
 }

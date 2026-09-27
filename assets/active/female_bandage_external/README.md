@@ -1,23 +1,22 @@
-# Female Bandage External Candidate
+# Female Bandage External
 
-This package stages the new source file:
+This package is a fresh runtime export from:
 
 `E:\下载\建模1 绷带血迹黑长直 T字版本 多动作版本.blend`
 
-The original source is unchanged. A byte-for-byte working copy is recorded in
-`paralls-art-assets/production-assets/characters/female_bandage_external/source/`.
+The source blend and its byte-for-byte working copy remain unchanged. Blender
+5.1.2 exported the GLB, then the export script removed only the two non-deform
+hand-FK controller nodes/tracks from the runtime boundary. The package keeps
+the source's 344-bone authoring rig boundary and ships 68 weighted deform skin
+joints.
 
-This is intentionally a `source_only` Task 7 candidate and the third Task 8
-primary-role candidate. The user's statement that the model is equipped with a
-weapon is preserved as an unverified provenance claim; it does not create a
-qualified hand anchor, weapon slot, hit volume, or action profile.
+The package contains Idle/Walk/Run/Jump/Turn locomotion, full-body exclusive
+boxing and `SWORD ATTACK`. The three weapon anchors are real GLB nodes attached
+to `hand.r`: `weapon_hand`, `weapon_slot:sword`, and
+`weapon_hit_volume:sword`.
 
-The existing archived
-`downloaded_female_trio` exports are historical evidence and are not silently
-treated as an export of this new source file. Until Blender 5.1.2 produces a
-new runtime GLB from this exact digest, with a declared deform skeleton,
-canonical mapping, locomotion suite, action timing, slots, and a Godot
-qualification report, this candidate remains rejected and cannot enter Task 8's
-runtime registry. Its matrix role is therefore `task8_primary=true` with
-`runtime_admission=blocked_pending_qualification`, not a qualified runtime
-admission.
+The Godot 4.6.3 headless qualification runner imported this exact GLB and
+reported `qualified`; the machine-readable result is recorded under
+`assets/characters/qualification_reports/female_bandage_external.json`. The
+qualification claim comes from that import and audit, not from the source
+filename or the user's declaration.

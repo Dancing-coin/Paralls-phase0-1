@@ -18,6 +18,9 @@ static func from_intent(proposal: Dictionary) -> Dictionary:
 		"add_projection_tags": proposal.get("intent_tags", []).duplicate(),
 		"remove_projection_tags": [],
 		"requested_claims": requested_claims,
+		"semantic_action_id": StringName(proposal.get("semantic_action_id", proposal.get("action_id", ""))),
+		"claims": proposal.get("claims", []).duplicate(),
+		"locomotion_relation": StringName(proposal.get("locomotion_relation", "coexist")),
 		"cancellation_policy": StringName(proposal.get("cancellation_policy", "queue")),
 		"root_motion_policy": StringName(proposal.get("root_motion_policy", "hold")),
 	}

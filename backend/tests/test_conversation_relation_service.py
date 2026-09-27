@@ -1,4 +1,5 @@
 from app.services.conversation_relation_service import ConversationRelationService
+from app.models.visual_fact import VisualFactEvent
 
 
 def test_relation_service_builds_candidate_for_char_c_looking_at_char_a() -> None:
@@ -58,3 +59,36 @@ def test_relation_service_exposes_unified_relation_snapshot() -> None:
     assert snapshot["room_id"] == "room_demo"
     assert snapshot["focus_target_actor_id"] == "char_a"
     assert snapshot["focus_producer_ts"] == "100"
+
+
+def test_relation_service_does_not_carry_focus_state_into_a_new_runtime_context() -> None:
+    service = ConversationRelationService()
+    service.apply_focus_state(
+        actor_id="char_c",
+        room_id="room_previous",
+        scene_id="scene_previous",
+        zone_id="zone_previous",
+        target_actor_id="char_a",
+        target_object_id="",
+        producer_ts=22_000_000,
+    )
+
+    service.apply_visual_fact(
+        VisualFactEvent(
+            actor_id="char_c",
+            room_id="room_current",
+            scene_id="scene_current",
+            zone_id="zone_current",
+            producer_ts=1_096,
+            fact_type="fixed_gaze_on_target",
+            relation_type="actor_looks_at_object",
+            target_object_id="obj_letter",
+        )
+    )
+
+    projection = service.project_runtime_state("char_c")
+
+    assert projection is not None
+    assert projection["room_id"] == "room_current"
+    assert projection["current_attention_source"] == "visual_fact"
+    assert projection["current_focus_target"] == "obj_letter"

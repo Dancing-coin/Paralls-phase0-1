@@ -12,6 +12,17 @@ This project uses a narrow Harness Engineering layer so agents can verify the de
 The unified bakery loop profile is an opt-in verification surface:
 `unified-bakery-gameplay-loop-v1`.
 
+The character-turn embodied episode profile verifies the canonical turn,
+execution-contract, authority-settlement, replay, and failure-path harness:
+`character-turn-embodied-episode`.
+
+The `street-combat` profile is the fresh runtime gate for the new playable
+street slice. It loads the staged `citystreets_209/0.3.0` environment, the
+three qualified local character packages, backend-settled player and agent
+combat, and the read-only combat HUD. It writes
+`.harness/verification/street-combat-runtime.json` and requires live markers
+for player hit, agent hit, duplicate replay, stale rejection, and recovery.
+
 ## Command Surface
 
 Run profiles through:
@@ -33,6 +44,7 @@ python scripts/verification/harness.py --profile harness-embodied-task
 python scripts/verification/harness.py --profile character-behavior-evaluation
 python scripts/verification/harness.py --profile character-policy-calibration
 python scripts/verification/harness.py --profile phase0
+python scripts/verification/harness.py --profile street-combat
 python scripts/verification/harness.py --profile phase1-slice
 python scripts/verification/harness.py --profile phase2a-actor-to-gameplay-participation
 python scripts/verification/harness.py --profile phase2b-organization-work-lifecycle
@@ -151,6 +163,18 @@ python scripts/verification/harness.py --profile authority-graph-projection
 python scripts/verification/harness.py --profile siming-behavior-turn-runtime
 python scripts/verification/harness.py --profile siming-led-population-seed-continuity
 python scripts/verification/harness.py --profile all
+
+### `unified-character-action-foundation`
+
+This Godot-required runtime profile starts an isolated backend with an
+in-memory heavenly graph, launches
+`res://scenes/integration/UnifiedCharacterActionFoundation.tscn`, and records
+live evidence for the two qualified packages `female_jk_external` and
+`female_t_external`. The probe proves shared Motor movement, Agent/INF
+semantic intent, ESM melee settlement, Gameplay semantic hitscan settlement,
+duplicate replay, stale-revision rejection, client-truth rejection, and the
+absence of Mode C body-stream fields. It writes the runtime report and Godot
+log under `.harness/verification/`.
 ```
 
 Every run writes an aggregate summary:

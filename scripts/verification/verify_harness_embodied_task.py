@@ -28,11 +28,13 @@ def main() -> int:
     args = parser.parse_args()
     root = repo_root()
     output = verification_dir(root)
+    verification_env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"}
     log_path = output / "harness-embodied-task-pytest.log"
     result = run_command(
         [resolve_python_exe(args.python_exe), "-m", "pytest", "-q", *TEST_FILES],
         root,
         log_path,
+        env=verification_env,
     )
     godot_log = output / "harness-embodied-task-godot.log"
     godot_result = run_command(
@@ -46,6 +48,7 @@ def main() -> int:
         ],
         root,
         godot_log,
+        env=verification_env,
     )
     passed = result.returncode == 0 and godot_result.returncode == 0
     results = [
