@@ -207,13 +207,18 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
                     active = counters["active_writers"]
                     active[tid] = active.get(tid, 0) + 1
                     counters["max_writers"] = max(counters["max_writers"], len(active))
+                started_at = perf_counter()
                 try:
                     return original(*args, **kwargs)
                 finally:
+                    finished_at = perf_counter()
                     with counter_lock:
                         active[tid] -= 1
                         if not active[tid]:
                             del active[tid]
+                    if finished_at - started_at >= .25:
+                        record(dict(type='slow_writer', name=name, started_at=started_at,
+                            finished_at=finished_at, duration_ms=(finished_at-started_at)*1000))
             return invoke
         boundaries = install_writer_probes(stack, writer)
         execute = RuntimeExecution._execute
