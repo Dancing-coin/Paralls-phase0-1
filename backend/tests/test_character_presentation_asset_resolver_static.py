@@ -67,3 +67,18 @@ def test_resolver_only_applies_approved_bindings_through_the_character_replica_c
     assert "func apply_presentation_asset_binding(binding: Dictionary) -> bool:" in replica_source
     assert "role_scene_ref" in replica_source
     assert "_fallback_role_asset_scene" in replica_source
+
+
+def test_presentation_asset_manifest_keeps_candidates_out_of_the_approved_registry() -> None:
+    manifest_path = ROOT / "assets" / "characters" / "asset_manifests" / "character_presentation_bindings.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+
+    assert manifest["contract"] == "character_presentation_bindings.v1"
+    assert isinstance(manifest["bindings"], list)
+    # Package candidates may be catalogued for qualification, but only an
+    # explicit approved actor binding can change a replica at runtime.
+    assert not any(
+        binding.get("binding_status") == "approved"
+        for binding in manifest["bindings"]
+        if isinstance(binding, dict)
+    )

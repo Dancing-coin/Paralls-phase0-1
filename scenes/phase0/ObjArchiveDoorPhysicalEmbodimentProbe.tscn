@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://scripts/verification/ObjArchiveDoorPhysicalEmbodimentProbe.gd" id="1_probe"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/MainDemo.tscn" id="2_main_demo"]
 
-[node name="ObjArchiveDoorPhysicalEmbodimentProbe" type="Node"]
+[node name="ObjArchiveDoorPhysicalEmbodimentProbe" type="Node3D"]
 script = ExtResource("1_probe")
 
 [node name="MainDemo" parent="." instance=ExtResource("2_main_demo")]
@@ -11,4 +11,4 @@ script = ExtResource("1_probe")
 [editable path="MainDemo/PlayerCharacter"]
 
 [node name="PlayerCharacter" parent="MainDemo"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.5, -1.9625)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2, 0.5, -1.9625)

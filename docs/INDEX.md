@@ -84,6 +84,8 @@
 - `docs/superpowers/plans/world-character-siming-authority-mainline/2026-08-03-tts-voice-profile-adapter-closure-implementation-plan.md`
 - `scripts/verification/verify_tts_voice_profile_adapter.py` (presentation-only voice-profile/catalog verification)
 - `docs/superpowers/specs/2026-06-29-complete-character-mind-core-design.md`
+- `docs/superpowers/specs/2026-09-23-character-turn-continuity-and-embodied-episode-design.md`（角色回合连续性、持久策略/评估、语义召回、受限 VLA episode 与动作底座前置门禁）
+- `docs/superpowers/plans/2026-09-23-character-turn-continuity-and-embodied-episode-implementation-plan.md`（先于剩余动作底座实施的唯一前置顺序）
 - `docs/superpowers/specs/2026-07-08-character-needs-personality-affect-runtime-design.md`
 - `docs/superpowers/plans/2026-07-08-character-needs-personality-affect-runtime-implementation-plan.md`
 - `docs/superpowers/specs/2026-07-10-character-skill-system-master-design.md`
@@ -359,3 +361,6 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/character/character-debug-and-verification.md`
 
 Reference docs 只是支持上下文。当前任务真相仍以 `AGENTS.md` 和活跃 specs/plans 为准。
+# Unified character action foundation release gate
+
+The single execution order is `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md` (Tasks 10-15). It defines the ControllerPort/Arbiter -> Motor boundary, semantic ActionAttempt settlement through ESM/Gameplay/composite, qualified asset admission, bounded debug/replay tools, and Mode B transport. Mode C body streaming and rollback remain explicit deferrals.

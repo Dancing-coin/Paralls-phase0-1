@@ -46,8 +46,9 @@ Every external character package follows this path before runtime admission:
 
 ```text
 GLB / qualified FBX intake
-    -> canonical skeleton mapping
-    -> rest-pose, unit, slot, and clip discovery
+    -> authoring-rig and deform-skeleton discovery
+    -> deform-to-canonical skeleton mapping
+    -> declared rest-pose, unit, slot, and clip discovery
     -> animation track and root-motion analysis
     -> optional build-time derived realization
     -> visual/physics claim review
@@ -59,6 +60,31 @@ GLB / qualified FBX intake
 The runtime must consume only registered realization profiles. It must not
 inspect arbitrary tracks and decide at play time that a full-body clip is safe
 to use as an upper-body action.
+
+### Authoring rig, deform skeleton, and canonical mapping
+
+An external source may be a production authoring rig rather than a minimal
+runtime skeleton. It may contain controllers, IK/FK helpers, pole targets,
+reference bones, twist helpers, and other non-deforming rig elements. Those
+elements are valid source-authoring data and are not runtime failures by
+themselves.
+
+Qualification distinguishes three layers:
+
+```text
+authoring rig
+    -> deform skeleton (bones that actually deform the mesh)
+    -> canonical runtime mapping (semantic IDs used by the runtime)
+```
+
+The package must identify the deform skeleton and provide a versioned mapping
+from its required deform bones to canonical IDs. Controller and helper bones
+must be excluded from the runtime mapping unless a package explicitly proves
+that a helper is itself a required deform bone. A source rig does not need to
+be reduced to only deform bones, and a fixed deform-bone count is not a
+qualification rule. The qualification gate instead checks mapping coverage,
+mesh deformation, stable rest-pose declaration, action bake/retarget
+stability, and runtime export boundaries.
 
 The package should retain provenance for every derived result:
 
@@ -352,7 +378,9 @@ from animation curves.
 For each of at least two external characters, the qualification package must
 provide:
 
-- a complete canonical skeleton mapping and stable rest pose;
+- a complete deform-to-canonical skeleton mapping and a declared stable rest
+  pose; the rest pose may be relaxed, A-shaped, T-shaped, or another
+  explicitly documented authoring pose;
 - qualified Idle/Walk/Run/Jump/Turn locomotion;
 - one external attack or interaction action with phase timing, cancellation,
   markers, authority route, and recovery policy;
@@ -395,11 +423,16 @@ fallback. `MAY` describes an optional extension.
 1. The package **MUST** contain a runtime-ready `.glb` model. FBX **MAY** be
    supplied as source, but it **MUST** be converted and qualification-tested
    before runtime use.
-2. The model **MUST** declare metres, applied object transforms, a stable rest
-   pose, a declared root bone, and the canonical forward/up convention.
-3. The package **MUST** provide a versioned external-bone-to-canonical-bone
-   mapping. Exact external bone names are not required; unmapped required
-   canonical bones are a qualification failure.
+2. The model **MUST** declare metres, applied object transforms, a stable and
+   reproducible rest pose, a declared root bone, and the canonical forward/up
+   convention. The source may contain a complex authoring rig; a T-pose is not
+   required.
+3. The package **MUST** identify its deform skeleton and provide a versioned
+   deform-bone-to-canonical-bone mapping. Controller, IK/FK, pole, and
+   reference bones may remain in the source authoring rig but **MUST NOT** be
+   mistaken for runtime deform bones. Exact external bone names and a fixed
+   bone count are not required; unmapped required deform/canonical semantics
+   are a qualification failure.
 4. Required equipment and interaction attachment slots **MUST** be declared
    when the package contains combat or interaction actions.
 5. A fixed character height range is **NOT** a contract requirement. Unit,

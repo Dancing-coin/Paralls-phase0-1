@@ -201,6 +201,11 @@ func clear_forced_control() -> void:
 	forced_move_local = Vector2.ZERO
 	forced_run_state = false
 
+func stop_forced_motion() -> void:
+	clear_forced_control()
+	velocity.x = 0.0
+	velocity.z = 0.0
+
 func set_forced_facing_yaw(next_yaw: float) -> void:
 	forced_desired_facing_yaw = next_yaw
 	forced_facing_active = true

@@ -7,6 +7,33 @@ from app.services.siming_character_dispatch_adapter import SimingCharacterDispat
 from app.ws_protocol import Envelope
 
 
+def _execution_contract_payload(
+    *,
+    actor_id: str,
+    producer_ts: int,
+    causation_id: str,
+    correlation_id: str,
+) -> dict[str, object]:
+    return {
+        "turn_id": f"turn:siming:{producer_ts}:{actor_id}",
+        "actor_ref": f"character:{actor_id}",
+        "source_ref": causation_id,
+        "producer_ts": producer_ts,
+        "target_refs": [],
+        "semantic_intent_id": "observe",
+        "semantic_action_id": "observe",
+        "allowed_realization_hints": {},
+        "expected_revision_vector": {"world:default": 0},
+        "expected_memory_revision_vector": {},
+        "expected_snapshot_revision": 0,
+        "idempotency_key": f"execution:turn:siming:{producer_ts}:{actor_id}",
+        "causation_id": causation_id,
+        "correlation_id": correlation_id,
+        "privacy_scope": f"actor_private:{actor_id}",
+        "authority_scope": "world:default",
+        "expected_observation": {"requested_action": "observe"},
+    }
+
 def test_godot_staging_ack_is_published_as_authority_event() -> None:
     main.reset_runtime_state()
 
@@ -90,12 +117,17 @@ def test_character_execution_envelope_retains_siming_staging_correlation() -> No
         ttl_ms=1000,
         causation_id="siming:staging_request:503:destroy",
         correlation_id="corr:destroy:1",
-        execution_payload={"actor_id": "char_b", "action_request_bundle": {"requested_actions": []}},
+        execution_payload={"execution_contract": _execution_contract_payload(
+            actor_id="char_b",
+            producer_ts=503,
+            causation_id="siming:staging_request:503:destroy",
+            correlation_id="corr:destroy:1",
+        )},
     )
 
     envelope = main._as_character_agent_execution_envelopes([command])[0]
 
-    assert envelope["payload"]["actor_id"] == "char_b"
+    assert envelope["payload"]["actor_ref"] == "character:char_b"
     assert envelope["payload"]["correlation_id"] == "corr:destroy:1"
     assert envelope["payload"]["causation_id"] == "siming:staging_request:503:destroy"
 
@@ -209,7 +241,12 @@ def test_character_dispatch_reaches_godot_character_execution(event_type: str) -
         ttl_ms=1000,
         causation_id=event.causation_id,
         correlation_id=event.correlation_id,
-        execution_payload={"actor_id": "char_b", "action_request_bundle": {"requested_actions": []}},
+        execution_payload={"execution_contract": _execution_contract_payload(
+            actor_id="char_b",
+            producer_ts=503,
+            causation_id=event.causation_id,
+            correlation_id=event.correlation_id,
+        )},
     )
 
     main._queue_siming_character_dispatch_messages(

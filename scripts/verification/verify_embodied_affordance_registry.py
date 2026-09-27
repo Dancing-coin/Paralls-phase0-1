@@ -27,6 +27,7 @@ TEST_FILES = [
     "backend/tests/test_ws_protocol.py::test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture",
     "backend/tests/test_ws_protocol.py::test_websocket_interact_intent_emits_constraint_when_player_is_far",
 ]
+verification_env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"}
 
 
 def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -172,7 +173,12 @@ def main() -> int:
     log_dir = verification_dir(project_root)
     python_exe = resolve_python_exe(args.python_exe)
     pytest_log = log_dir / "embodied-affordance-registry-pytest.log"
-    pytest_result = run_command([python_exe, "-m", "pytest", "-q", *TEST_FILES], project_root, pytest_log)
+    pytest_result = run_command(
+        [python_exe, "-m", "pytest", "-q", *TEST_FILES],
+        project_root,
+        pytest_log,
+        env=verification_env,
+    )
     trace_path = _backend_registry_trace(log_dir)
 
     godot_log = log_dir / "embodied-affordance-registry-godot.log"
@@ -194,6 +200,7 @@ def main() -> int:
             ],
             project_root,
             godot_log,
+            env=verification_env,
         )
         godot_text = read_text(godot_log)
         godot_ok = (
@@ -229,6 +236,7 @@ def main() -> int:
             ],
             project_root,
             letter_godot_log,
+            env=verification_env,
         )
         letter_godot_text = read_text(letter_godot_log)
         letter_godot_ok = (

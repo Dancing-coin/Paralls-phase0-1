@@ -29,6 +29,11 @@ class InteractIntent(PlayerInputBase):
     intent_type: str = "interact_intent"
     target_object_id: str
     interaction_type: str
+    # Optional character-turn continuity pins. Legacy player interactions omit these.
+    turn_id: str = ""
+    execution_contract_ref: str = ""
+    episode_ref: str = ""
+    pre_capture_ref: str = ""
 
 
 class PickupIntent(PlayerInputBase):

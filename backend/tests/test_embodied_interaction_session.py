@@ -9,6 +9,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
+from app.ws_protocol import Envelope
 
 
 def _service() -> tuple[EmbodiedInteractionSessionService, GameplayEventStore, InMemoryAuthorityEventBus, EmbodiedEvidenceLedger]:
@@ -247,17 +248,30 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
             }
         )
 
-        received = [websocket.receive_json() for _ in range(5)]
+        ack = websocket.receive_json()
+        store_events = main.gameplay_event_store.read_stream("session:session:handshake:websocket")
+        session_messages = []
+        cursor = 0
+        for _ in store_events:
+            websocket.send_json(
+                {
+                    "message_type": "embodied_interaction_session_projection_pull",
+                    "payload": {
+                        "session_id": "session:handshake:websocket",
+                        "after_global_sequence": cursor,
+                    },
+                }
+            )
+            message = websocket.receive_json()
+            session_messages.append(message)
+            cursor = int(message["payload"]["global_sequence"])
 
-    ack = received[0]
-    session_events = [message for message in received if message["message_type"] == "embodied_interaction_session_event"]
-    session_payloads = [message["payload"] for message in session_events]
+    session_payloads = [message["payload"] for message in session_messages]
     bus_events = [
         event
         for event in main.authority_event_bus.list_events()
         if event.payload.get("session_id") == "session:handshake:websocket"
     ]
-    store_events = main.gameplay_event_store.read_stream("session:session:handshake:websocket")
 
     assert ack == {
         "message_type": "ack",
@@ -274,6 +288,9 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
         "embodied.interaction_session.realizing",
     ]
     assert [event.event_type for event in bus_events] == [event.event_type for event in store_events]
+    assert [message["message_type"] for message in session_messages] == [
+        "embodied_interaction_session_event" for _ in store_events
+    ]
     assert [payload["event_type"] for payload in session_payloads] == [event.event_type for event in store_events]
     assert [payload["global_sequence"] for payload in session_payloads] == [
         event.global_sequence for event in store_events
@@ -298,3 +315,30 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
     assert "character_actor_status" not in str(session_payloads)
     assert "bone_transforms" not in str(session_payloads)
     assert "rigid_body_velocity" not in str(session_payloads)
+
+
+def test_websocket_session_probe_returns_only_admission_ack_before_projection_pulls() -> None:
+    reset_runtime_state()
+    messages = main._handle_envelope(
+        Envelope(
+            message_type="embodied_interaction_session_probe",
+            payload={
+                "session_id": "session:handshake:projection-pull",
+                "semantic_action": "handshake",
+                "initiator_ref": "character:siming",
+                "participant_refs": ["character:siming", "character:maya"],
+                "target_refs": ["character:maya"],
+            },
+        )
+    )
+
+    assert messages == [
+        {
+            "message_type": "ack",
+            "payload": {
+                "accepted": True,
+                "source_type": "embodied_interaction_session_probe",
+                "route": "embodied_interaction_session",
+            },
+        }
+    ]

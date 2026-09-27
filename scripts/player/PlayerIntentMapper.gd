@@ -32,9 +32,7 @@ func emit_interact_intent(target_object_id: String, interaction_type: String) ->
     var metadata := _next_request_metadata("interact_intent")
     var producer_ts: int = metadata["producer_ts"]
     var request_id: String = metadata["request_id"]
-    return {
-        "message_type": "player_input",
-        "payload": {
+    var payload := {
             "player_id": player_id,
             "room_id": room_id,
             "scene_id": scene_id,
@@ -45,8 +43,15 @@ func emit_interact_intent(target_object_id: String, interaction_type: String) ->
             "request_id": request_id,
             "target_object_id": target_object_id,
             "interaction_type": interaction_type,
-        }
     }
+    if target_object_id == "obj_archive_door" and interaction_type == "open":
+        var turn_id := "turn:%s" % request_id
+        var contract_ref := "execution_contract:%s" % request_id
+        payload["turn_id"] = turn_id
+        payload["execution_contract_ref"] = contract_ref
+        payload["episode_ref"] = "episode:%s:%s" % [turn_id, contract_ref]
+        payload["pre_capture_ref"] = "capture:godot:%s:pre" % request_id
+    return {"message_type": "player_input", "payload": payload}
 
 func emit_pickup_intent(target_object_id: String) -> Dictionary:
     var metadata := _next_request_metadata("pickup_intent")

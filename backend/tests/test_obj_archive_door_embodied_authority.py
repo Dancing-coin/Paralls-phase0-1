@@ -5,6 +5,9 @@ from app.ws_protocol import Envelope
 import app.main as main
 
 
+DOOR_NEAR_POSITION = (0.0, 0.5, -7.55)
+
+
 def _connection(connection_ref: str = "ws_connection:door-test") -> WebSocketConnectionContext:
     return WebSocketConnectionContext(
         remote_host="127.0.0.1",
@@ -149,7 +152,7 @@ def _door_outcome(
 def test_archive_door_open_requires_bound_controller_and_close_fails_closed() -> None:
     main.reset_runtime_state()
     connection = _connection()
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     missing_binding = _interact(connection, producer_ts=100, interaction_type="open")
     missing_constraint = _first_world_result(missing_binding, "constraint_state_result")
@@ -169,7 +172,7 @@ def test_archive_door_preflight_replays_same_grant_and_blocks_competing_attempts
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     first = _interact(connection, producer_ts=110, interaction_type="open")
     replay = _interact(connection, producer_ts=110, interaction_type="open")
@@ -191,7 +194,7 @@ def test_expired_abandoned_door_grant_releases_only_its_local_occupancy_reservat
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     first = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     retry_at = int(first["payload"]["grant"]["expires_at"]) + 1
@@ -206,7 +209,7 @@ def test_archive_door_outcome_commits_once_and_duplicate_replays_without_second_
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     preflight = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     grant = preflight["payload"]["grant"]
@@ -251,7 +254,7 @@ def test_archive_door_range_and_revision_failures_do_not_mutate_state() -> None:
     assert range_constraint["payload"]["constraint_code"] == "out_of_range"
     assert _door_state() == "closed"
 
-    _move_actor(connection, actor_id="char_c", producer_ts=91, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=91, target_point=DOOR_NEAR_POSITION)
     accepted = _first_message(_interact(connection, producer_ts=112, interaction_type="open"), "embodied_action_request")
     grant = accepted["payload"]["grant"]
     main.default_scene_archive_door_embodied_service.binding_revision += 1
@@ -284,7 +287,7 @@ def test_archive_door_rejected_terminal_receives_settlement_without_object_mutat
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     preflight = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     grant = preflight["payload"]["grant"]
@@ -326,7 +329,7 @@ def test_archive_door_grant_remains_valid_for_a_bounded_physical_approach() -> N
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     preflight = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     grant = preflight["payload"]["grant"]
@@ -352,7 +355,7 @@ def test_archive_door_state_change_after_preflight_rejects_as_door_state_stale()
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     preflight = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     grant = preflight["payload"]["grant"]
@@ -390,7 +393,7 @@ def test_archive_door_changed_duplicate_digest_is_rejected_without_second_mutati
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     preflight = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     grant = preflight["payload"]["grant"]
@@ -418,7 +421,7 @@ def test_archive_door_settlement_is_ledger_correlated_and_receipt_pins_object_re
     main.reset_runtime_state()
     connection = _connection()
     _bind_controller(connection)
-    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=(0.0, 1.2, -3.1))
+    _move_actor(connection, actor_id="char_c", producer_ts=90, target_point=DOOR_NEAR_POSITION)
 
     preflight = _first_message(_interact(connection, producer_ts=110, interaction_type="open"), "embodied_action_request")
     request = preflight["payload"]["request"]

@@ -43,6 +43,7 @@ MemoryRecord = (
 
 
 class CharacterGraphMemoryStore:
+    graph_policy_revision = "policy:v1"
     POOLS = (
         ("event", "event_memories", CharacterEventMemoryRecord),
         ("observation", "observation_memories", CharacterObservationMemoryRecord),

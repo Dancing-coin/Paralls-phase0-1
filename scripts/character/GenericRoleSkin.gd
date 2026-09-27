@@ -8,8 +8,35 @@ var current_motion_profile := "default"
 var current_action := ""
 var focused := false
 var presentation_input: Dictionary = {}
+var current_qualified_profile: Dictionary = {}
+var pending_root_motion := Vector3.ZERO
+
+const FALLBACK_WALK_ROOT_SPEED := 0.55
+const FALLBACK_RUN_ROOT_SPEED := 0.9
 
 @onready var visual: Node3D = $GreyboxHumanoidVisual
+
+func _ready() -> void:
+	# Keep the greybox fallback bound to the same skeletal seam as reviewed
+	# character assets.  The fallback has no imported rig, so expose a minimal
+	# deterministic root bone for local debug-replay snapshots only.
+	var skeleton := get_node_or_null("Skeleton3D") as Skeleton3D
+	if skeleton == null:
+		skeleton = Skeleton3D.new()
+		skeleton.name = "Skeleton3D"
+		add_child(skeleton)
+	if skeleton.get_bone_count() == 0:
+		skeleton.add_bone("root")
+
+
+func _process(delta: float) -> void:
+	# The greybox fallback has no AnimationPlayer track. Expose a bounded,
+	# deterministic locomotion increment so CharacterReplica can exercise the
+	# same controller-authoritative root-motion seam as a reviewed asset.
+	if current_state not in ["walk", "run"]:
+		return
+	var speed := FALLBACK_RUN_ROOT_SPEED if current_motion_profile == "run" else FALLBACK_WALK_ROOT_SPEED
+	pending_root_motion += Vector3(0.0, 0.0, -speed * max(delta, 0.0))
 
 
 func configure_role(next_actor_id: String) -> void:
@@ -48,6 +75,22 @@ func apply_presentation_input(next_input: Dictionary) -> void:
 		set_state(_state_for_action(requested_action))
 
 
+func play_qualified_profile(profile: Dictionary) -> Dictionary:
+	var semantic_action_id := str(profile.get("semantic_action_id", ""))
+	var profile_id := str(profile.get("profile_id", ""))
+	if semantic_action_id.is_empty() or profile_id.is_empty() or str(profile.get("qualification_status", "rejected")) == "rejected":
+		return {"accepted": false, "reason": "qualified_profile_invalid"}
+	current_qualified_profile = profile.duplicate(true)
+	current_action = semantic_action_id
+	set_state(_state_for_action(semantic_action_id))
+	return {
+		"accepted": true,
+		"semantic_action_id": semantic_action_id,
+		"profile_id": profile_id,
+		"presentation_mode": "qualified_profile",
+	}
+
+
 func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
 	current_action = action_tag
 	set_state(_state_for_action(action_tag))
@@ -66,11 +109,13 @@ func restore_reviewed_action_playback() -> void:
 
 
 func consume_root_motion_delta() -> Vector3:
-	return Vector3.ZERO
+	var delta := pending_root_motion
+	pending_root_motion = Vector3.ZERO
+	return delta
 
 
 func reset_root_motion() -> void:
-	pass
+	pending_root_motion = Vector3.ZERO
 
 
 func get_current_clip_name() -> String:

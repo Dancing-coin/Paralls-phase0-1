@@ -112,7 +112,10 @@ class CharacterAgentMemoryStore:
         actor_id = str(event.get("actor_id", "") or "")
         if actor_id == "":
             return
-        if include_working:
+        if include_working and event.get("event_type") not in {
+            "character_turn_context_created", "character_turn_stage_recorded",
+            "character_turn_lifecycle_transition", "character_turn_authority_receipt",
+        }:
             self._working.remember_event(actor_id, self._sanitize_working_memory_event(event))
 
         event_type = str(event.get("event_type", "") or "")

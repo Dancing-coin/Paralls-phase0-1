@@ -48,6 +48,39 @@ the action executor remain the only local embodiment path.
 The corresponding action/INF contract is maintained in
 `docs/superpowers/specs/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-design.md`.
 
+## Canonical Live Turn And Advisory Boundary (2026-09-23)
+
+`CharacterTurnContext is the canonical live turn` for one actor event. It is
+created before L1 and carries the same `turn_id`, expected revision vector,
+causation, correlation, and idempotency identity through L1/L2/L3/L4,
+authority settlement, evaluation, policy, and checkpoint/recovery.
+
+This does not rename all historical records into a live coordinator:
+
+- completed behavior-turn records are immutable completed stage/evaluation
+  projections and audit evidence;
+- current behavior-turn records are timeline/checkpoint views of the active
+  canonical context, not an independent execution owner; and
+- legacy behavior-turn records remain read-compatible projection/adapter
+  inputs only. They cannot recreate, dispatch, or settle a live turn.
+
+`CharacterExecutionContract` is the sole L4 production-shaped output. The
+`CharacterAgentL4Adapter` accepts legacy command shapes only as a
+translation-only compatibility input; its translation cannot dispatch the
+contract, control local embodiment, or replace authority settlement.
+
+VLA/provider output is advisory only. It may nominate a normal actor intent
+candidate with evidence and uncertainty, but must not control a body,
+CharacterMotor, pose, or authority/world truth. Godot remains the local
+embodiment/presentation owner, while ESM, Gameplay, or their registered
+Composite owner alone settles world truth. An embodied episode joins local,
+authority, and post-observation evidence; it is not authority truth.
+
+The dependency and consumer mapping for this closure is maintained in
+`docs/superpowers/plans/2026-09-23-character-turn-continuity-and-embodied-episode-implementation-plan.md`
+and in the predecessor-gate section of
+`docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md`.
+
 ## Runtime Shape
 
 Current runtime chain:

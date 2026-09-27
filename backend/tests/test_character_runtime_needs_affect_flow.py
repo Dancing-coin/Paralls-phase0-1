@@ -84,6 +84,7 @@ class _RecordingL2(CharacterAgentL2Service):
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context=None,
     ) -> dict[str, object]:
         self.prepare_context = self._reasoning_context(
             actor_id=snapshot.actor_id,
@@ -118,6 +119,7 @@ class _RecordingL2(CharacterAgentL2Service):
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context=None,
     ) -> bytes:
         self.interpret_context = self._reasoning_context(
             actor_id=snapshot.actor_id,
@@ -139,7 +141,8 @@ class _RecordingL2(CharacterAgentL2Service):
             working_memory_state=working_memory_state, current_goal_state=current_goal_state,
             goal_state_history=goal_state_history, supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions, background_agenda_state=background_agenda_state,
-            effective_profile=effective_profile, need_tension_state=need_tension_state))
+            effective_profile=effective_profile, need_tension_state=need_tension_state,
+            turn_context=turn_context))
 
     def map_reasoning_output(self, *, actor_id, output):
         return CharacterInterpretation(actor_id=actor_id, interpreted_summary="recorded runtime reasoning context",
@@ -172,6 +175,8 @@ class _RecordingL3(CharacterAgentL3Service):
         background_agenda_state: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context=None,
     ) -> CharacterIntentDecision:
         self.select_context = {
             "interpretation": interpretation.model_dump(),

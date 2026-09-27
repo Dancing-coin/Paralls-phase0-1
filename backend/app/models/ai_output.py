@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.models.dialogue_audio import DialogueAudio
 
@@ -8,6 +8,7 @@ class AIOutputBase(BaseModel):
     room_id: str
     output_type: str
     causation_id: str
+    correlation_id: str = ""
     producer_ts: int
 
 
@@ -19,6 +20,11 @@ class DialogueResponse(AIOutputBase):
     tts_required: bool = True
     audio: DialogueAudio | None = None
     request_id: str | None = None
+    turn_id: str = ""
+    idempotency_key: str = ""
+    expected_revision_vector: dict[str, int] = Field(default_factory=dict)
+    expected_memory_revision_vector: dict[str, int] = Field(default_factory=dict)
+    expected_snapshot_revision: int = 0
 
 
 class AttentionShift(AIOutputBase):

@@ -39,6 +39,37 @@ baseline -> shared contracts -> arbitration -> Motor command -> contact recovery
          -> debug tools -> replay proof -> two-character runtime -> truth closure
 ```
 
+## 2026-09-23 Predecessor Gate: Character Turn Continuity and Embodied Episode
+
+The remaining work in this plan is sequenced after the approved character
+continuity program at:
+
+`docs/superpowers/plans/2026-09-23-character-turn-continuity-and-embodied-episode-implementation-plan.md`
+
+That program is not a second actor-body or authority runtime. It closes the
+upstream CharacterAgent turn identity, recovery, durable policy/evaluation,
+bounded semantic recall, execution-contract, and advisory episode seams that
+this plan must consume. No new unchecked action-foundation implementation task
+may claim a complete CharacterAgent/INF path until its predecessor gate is
+complete.
+
+The dependency mapping is fixed:
+
+| Predecessor output | Consumer in this plan |
+| --- | --- |
+| `CharacterExecutionContract` | Task 9 converts it to the sole semantic actor proposal ingress. |
+| `turn_id`, expected revision, causation/correlation, and idempotency | Task 10 carries them into canonical `ActionAttempt` / `AuthorityResult`. |
+| typed recovery and pending-turn reconciliation | Tasks 5, 10, and 11 preserve safe local/transport recovery without resending a world action. |
+| typed recovery and episode evidence | Tasks 13 and 14 preserve failure/recovery alongside local/authority/post-observation evidence in replay and live runtime proof. |
+| actor-owned VLA advisory candidate | Task 9 accepts it only through `IntentProposal`; it never becomes Motor, pose, or authority control. |
+| local/authority/post-observation episode record | Tasks 13 and 14 include it in replay and live two-character evidence. |
+
+The user-selected delivery order is strict: do not begin any remaining
+action-foundation implementation task until the predecessor plan's completion
+checklist has its required evidence. It also blocks a first-milestone claim
+until both this predecessor and the existing action-foundation acceptance
+checklist have evidence.
+
 ## File Map
 
 | Area | Files | Responsibility |
@@ -263,9 +294,9 @@ command, evidence record, request, and replay record:
 - `CharacterAssetQualification.qualify(package_manifest: Dictionary) -> Dictionary` returns report status `qualified|qualified_with_fallback|rejected`.
 - `CharacterAssetQualification.inspect_clip(clip: Animation, profile: Dictionary) -> Dictionary` returns bone impact, root/pelvis audit, markers, slot/mask compatibility, and root-motion audit.
 
-- [ ] Write a manifest fixture containing a valid humanoid mapping, invalid rest pose, missing root bone, unmapped required locomotion tag, and a full-body clip incorrectly declared as upper-body concurrent. Assert only the valid package reaches `qualified`.
-- [ ] Define the canonical bones, root, pelvis, spine, arm/leg chains, attachment slots, forward/up convention, rest-pose tolerance, unit/scale, and required Phase 1 locomotion tags: `idle`, `walk_forward`, `run_forward`, `jump_start`, `jump_loop` or `fall`, `jump_land`, `turn_left`, and `turn_right`.
-- [ ] Make the qualification gate fail closed for missing `Skeleton3D`, invalid rest pose, missing required root bone, incompatible required slots, unmapped required action/locomotion tags, and any missing required clip; optional finger/facial bones may be reported separately without failing the body package.
+- [ ] Write a manifest fixture containing a valid humanoid mapping, a malformed or unreproducible rest-pose declaration, missing root bone, unmapped required locomotion tag, and a full-body clip incorrectly declared as upper-body concurrent. Assert only the valid package reaches `qualified`; a non-T-shaped but declared rest pose remains valid.
+- [ ] Define the canonical bones, root, pelvis, spine, arm/leg chains, attachment slots, forward/up convention, declared rest-pose tolerance, unit/scale, and required Phase 1 locomotion tags: `idle`, `walk_forward`, `run_forward`, `jump_start`, `jump_loop` or `fall`, `jump_land`, `turn_left`, and `turn_right`. A rest pose is not required to be T-shaped.
+- [ ] Make the qualification gate fail closed for missing `Skeleton3D`, missing or unreproducible rest-pose declaration, missing required root bone, incompatible required slots, unmapped required deform/canonical semantics, unmapped required action/locomotion tags, and any missing required clip. Authoring controller/IK/FK/reference bones and a non-minimal deform-bone count are allowed when excluded from the runtime mapping; optional finger/facial bones may be reported separately without failing the body package.
 - [ ] Add explicit mapping fixtures for the existing Bip001 knight and a Mixamo-style candidate skeleton. Add clip fixtures proving the knight/NPC source actions are full-body and cannot be silently admitted as upper-body concurrent.
 - [ ] Support explicit external mappings and candidate lists for qualification diagnostics, but prohibit runtime name guessing; record unmapped optional finger/facial bones separately from required body failures.
 - [ ] Record source frame rate and clip duration, distinguish meaningful lower-body curves from rest-pose tracks with a configured tolerance, and classify locomotion clips as `in_place` or `root_motion`.

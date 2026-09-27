@@ -20,7 +20,19 @@ KnowledgeSourceKind = Literal[
     "world_failure",
     "embodied_failure",
     "active_perception",
+    "committed_authority",
+    "structured_percept",
+    "model_inference",
 ]
+InputFactSource = Literal[
+    "committed_authority", "structured_percept", "provider_advisory", "model_inference",
+]
+INPUT_FACT_PRECEDENCE: dict[InputFactSource, int] = {
+    "committed_authority": 4,
+    "structured_percept": 3,
+    "provider_advisory": 2,
+    "model_inference": 1,
+}
 FreshnessState = Literal["fresh", "stale", "expired", "contested"]
 RevisionOperation = Literal["add", "hit", "revise", "conflict", "stale", "expire", "resolve"]
 
@@ -212,6 +224,35 @@ class ActorSceneKnowledgeStore:
             self._entries[key] = entry
             update = ActorSceneKnowledgeUpdate(operation="add", entry=entry)
             self._trace(update, counts=counts)
+            return update
+
+        existing_source = self._input_fact_source(existing)
+        incoming_source = self._input_fact_source(incoming)
+        if (
+            INPUT_FACT_PRECEDENCE[incoming_source] < INPUT_FACT_PRECEDENCE[existing_source]
+            and self._claims_disagree(existing, incoming)
+        ):
+            return self.record_percept_conflict(
+                retained_entry=existing,
+                incoming_source=incoming_source,
+                incoming_ref=(incoming.source_refs[0] if incoming.source_refs else incoming.entry_id),
+                producer_ts=producer_ts,
+            )
+        if INPUT_FACT_PRECEDENCE[incoming_source] < INPUT_FACT_PRECEDENCE[existing_source]:
+            retained = existing.model_copy(
+                update={
+                    "freshness": existing.freshness.model_copy(
+                        update={"state": "fresh", "last_confirmed_at": producer_ts}
+                    ),
+                    "source_refs": self._append_unique(existing.source_refs, incoming.source_refs),
+                    "source_ref_lineage": self._append_unique(
+                        existing.source_ref_lineage, incoming.source_ref_lineage
+                    ),
+                }
+            )
+            update = ActorSceneKnowledgeUpdate(operation="hit", entry=retained)
+            self._entries[key] = retained
+            self._trace(update)
             return update
 
         if self._is_conflict(existing, incoming):
@@ -430,6 +471,58 @@ class ActorSceneKnowledgeStore:
             producer_ts=producer_ts,
         )
 
+    def record_percept_conflict(
+        self,
+        *,
+        retained_entry: ActorSceneKnowledgeEntry,
+        incoming_source: InputFactSource,
+        incoming_ref: str,
+        producer_ts: int,
+    ) -> ActorSceneKnowledgeUpdate:
+        """Record a lower-priority disagreement without rewriting retained fact.
+
+        Provider advice is retained only as conflict evidence: it cannot replace
+        an authority/structured fact or become a memory claim through this path.
+        """
+        if not incoming_ref:
+            raise ValueError("percept conflict requires an incoming evidence ref")
+        conflict = ActorSceneKnowledgeConflict(
+            conflict_id=f"percept_conflict:{retained_entry.actor_id}:{retained_entry.world_anchor_id}:{producer_ts}:{len(retained_entry.conflicts) + 1}",
+            world_anchor_id=retained_entry.world_anchor_id,
+            subject_ref=retained_entry.subject_ref,
+            target_ref=retained_entry.target_ref,
+            reason="percept_conflict",
+            source_refs=[*retained_entry.source_refs, incoming_ref],
+            source_ref_lineage=append_unique_lineage(retained_entry.source_ref_lineage, [incoming_ref]),
+        )
+        updated = retained_entry.model_copy(
+            update={
+                "freshness": retained_entry.freshness.model_copy(update={"state": "contested"}),
+                "conflicts": [*retained_entry.conflicts, conflict],
+                "revisions": [
+                    *retained_entry.revisions,
+                    ActorSceneKnowledgeRevision(
+                        revision_id=f"ask_revision:{retained_entry.entry_id}:{producer_ts}:percept_conflict",
+                        operation="conflict",
+                        producer_ts=producer_ts,
+                        summary=f"percept_conflict retained={retained_entry.source_kind} incoming={incoming_source}",
+                        source_refs=[incoming_ref],
+                        previous_confidence=retained_entry.confidence,
+                        confidence=retained_entry.confidence,
+                    ),
+                ],
+            }
+        )
+        self._entries[self._key(updated)] = updated
+        result = ActorSceneKnowledgeUpdate(
+            operation="conflict",
+            entry=updated,
+            conflict=conflict,
+            active_perception_reasons=["percept_conflict", "fresh_observation_required"],
+        )
+        self._trace(result)
+        return result
+
     def mark_stale(self, entry_id: str, *, producer_ts: int, reason: str = "stale_before_action") -> ActorSceneKnowledgeUpdate:
         entry = self._entry_by_id(entry_id)
         updated = entry.model_copy(
@@ -526,6 +619,25 @@ class ActorSceneKnowledgeStore:
         if incoming.source_kind.endswith("failure") and existing.confidence >= 0.7:
             return True
         return False
+
+    @staticmethod
+    def _input_fact_source(entry: ActorSceneKnowledgeEntry) -> InputFactSource:
+        if entry.source_kind == "committed_authority" or entry.world_truth_marker == "l1_projected_fact_ref" and entry.source_kind == "authority_event":
+            return "committed_authority"
+        if entry.source_kind in {"canonical_percept_bundle", "l1_projected_fact", "structured_percept", "interaction_failure", "world_failure", "embodied_failure", "active_perception"}:
+            return "structured_percept"
+        if entry.source_kind == "vla_advisory":
+            return "provider_advisory"
+        return "model_inference"
+
+    @staticmethod
+    def _claims_disagree(existing: ActorSceneKnowledgeEntry, incoming: ActorSceneKnowledgeEntry) -> bool:
+        comparison = compare_memory_claims(existing.claim, incoming.claim)
+        if comparison == "conflicted":
+            return True
+        if comparison == "equivalent":
+            return False
+        return existing.summary != incoming.summary or existing.target_ref != incoming.target_ref
 
     def _revision(
         self,

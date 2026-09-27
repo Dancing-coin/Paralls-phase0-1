@@ -41,7 +41,8 @@ class BehaviorTurnRecorder:
         return True
 
     def plan_record(self, request: BehaviorTurnRecordRequest) -> HeavenlyGraphWriteBatch:
-        self._validate_stage_order(request.stages)
+        stages = request.projected_stages()
+        self._validate_stage_order(stages)
         anchor_id = f"behavior-turn:{request.turn_id}"
         metadata = GraphSemanticMetadata(
             record_kind="projection",
@@ -51,7 +52,7 @@ class BehaviorTurnRecorder:
                 else "siming_internal"
             ),
             derivation_kind="projection",
-            source_event_refs=self._source_refs(request),
+            source_event_refs=self._source_refs(stages),
             source_revision_vector=request.source_revision_vector,
             policy_revision=request.policy_revision,
             scope_digest=request.scope_digest,
@@ -74,7 +75,7 @@ class BehaviorTurnRecorder:
         )
         nodes = [anchor]
         relations: list[HeavenlyGraphRelation] = []
-        for index, stage in enumerate(request.stages):
+        for index, stage in enumerate(stages):
             stage_node_id = self._stage_node_id(request.turn_id, index, stage)
             stage_metadata = metadata.model_copy(
                 update={"source_event_refs": stage.source_refs}
@@ -144,10 +145,10 @@ class BehaviorTurnRecorder:
         return f"behavior-turn:{turn_id}:stage:{index:02d}-{stage.stage}"
 
     @staticmethod
-    def _source_refs(request: BehaviorTurnRecordRequest) -> tuple[str, ...]:
+    def _source_refs(stages: tuple[BehaviorTurnStageRecord, ...]) -> tuple[str, ...]:
         return tuple(
             dict.fromkeys(
-                ref for stage in request.stages for ref in stage.source_refs
+                ref for stage in stages for ref in stage.source_refs
             )
         )
 

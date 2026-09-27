@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from collections.abc import Mapping
 from typing import Callable
 
-from app.models.behavior_turn import BehaviorTurnRecordRequest, BehaviorTurnStageRecord
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.behavior_evaluation import BehaviorEvaluation
+from app.models.behavior_turn import (
+    BehaviorTurnRecordRequest,
+    BehaviorTurnStageRecord,
+    CharacterTurnStageEvent,
+)
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
     GraphRevisionVector,
@@ -40,6 +47,7 @@ class CharacterBehaviorTurnProjection:
         evaluation: dict[str, object],
         timeline: list[dict[str, object]],
     ) -> None:
+        evaluation = self._evaluation_payload(evaluation) or {}
         settlement_payload = settlement_event.get("payload", {})
         if not isinstance(settlement_payload, dict):
             return
@@ -47,7 +55,18 @@ class CharacterBehaviorTurnProjection:
             settlement_payload.get("correlation_id", "")
             or settlement_event.get("event_id", "")
         )
-        chain = self._latest_chain(timeline, producer_ts, correlation_id)
+        turn_id = str(settlement_payload.get("turn_id", "") or "")
+        if turn_id:
+            context = self._context_for_turn(turn_id, timeline)
+            if context is not None:
+                self.record_context(
+                    context,
+                    timeline,
+                    evaluation=evaluation,
+                    settlement_event=settlement_event,
+                )
+                return
+        chain = self._legacy_latest_chain(timeline, producer_ts, correlation_id)
         if any(event_type not in chain for event_type in self._CHAIN_TYPES):
             return
         causation_id = str(
@@ -64,6 +83,12 @@ class CharacterBehaviorTurnProjection:
         policy_payload = evaluation.get("candidate_policy")
         if not isinstance(policy_payload, dict):
             policy_payload = {"status": "unchanged"}
+        else:
+            policy_payload = deepcopy(policy_payload)
+            # Historical compact projections exposed candidate_only. Canonical
+            # evaluation records retain the durable store's candidate status.
+            if policy_payload.get("status") == "candidate":
+                policy_payload["status"] = "candidate_only"
         reasoning = chain["l2_reasoning_request"]
         interpretation = chain["character_interpretation_event"]
         goal = chain["goal_state_event"]
@@ -126,7 +151,8 @@ class CharacterBehaviorTurnProjection:
             authority_event_ref and settlement_payload.get("authority_owner_ref")
         )
         self._recorder.record(
-            BehaviorTurnRecordRequest(
+            BehaviorTurnRecordRequest.from_legacy_projection(
+                legacy_reader_ref="legacy:character-behavior-turn-projection:v1",
                 turn_id=str(settlement_payload.get("turn_id", "") or correlation_id),
                 scope=self._scope_resolver(actor_id),
                 valid_at=producer_ts,
@@ -152,13 +178,189 @@ class CharacterBehaviorTurnProjection:
             )
         )
 
-    def _latest_chain(
+    def record_context(
+        self,
+        turn: CharacterTurnContext,
+        timeline: list[dict[str, object]],
+        *,
+        evaluation: BehaviorEvaluation | dict[str, object] | None = None,
+        settlement_event: dict[str, object] | None = None,
+    ) -> None:
+        """Project the exact canonical stage sequence for one live turn."""
+        stage_events = self._canonical_stage_events(turn.turn_id, timeline)
+        if not stage_events:
+            return
+        if turn.stage_events and tuple(stage_events) != tuple(turn.stage_events.values()):
+            return
+        source_revision = max(
+            (
+                int(entry.get("event_index", 0) or 0)
+                for entry in timeline
+                if entry.get("event_type") == "character_turn_stage_recorded"
+                and isinstance(entry.get("payload"), dict)
+                and entry["payload"].get("turn_id") == turn.turn_id
+            ),
+            default=0,
+        )
+        if settlement_event is not None:
+            source_revision = max(
+                source_revision, int(settlement_event.get("event_index", 0) or 0)
+            )
+        evaluation_payload = self._evaluation_payload(evaluation)
+        if evaluation_payload is not None and settlement_event is not None:
+            settlement_payload = settlement_event.get("payload", {})
+            if not isinstance(settlement_payload, dict):
+                settlement_payload = {}
+            policy_payload = evaluation_payload.get("candidate_policy")
+            if not isinstance(policy_payload, dict):
+                policy_payload = {"status": "unchanged"}
+            projected_stages = tuple(
+                BehaviorTurnStageRecord(
+                    stage=event.stage,
+                    outcome=event.outcome,
+                    source_refs=(event.stage_ref,),
+                    payload=self._thaw_json_value(event.payload),
+                )
+                for event in stage_events
+            ) + (
+                BehaviorTurnStageRecord(
+                    stage="settlement",
+                    outcome=self._settlement_outcome(settlement_payload),
+                    source_refs=(str(settlement_event.get("event_id", "")),),
+                    payload=self._payload(settlement_event),
+                ),
+                BehaviorTurnStageRecord(
+                    stage="evaluation",
+                    outcome=self._typed_evaluation_outcome(evaluation_payload),
+                    source_refs=self._evaluation_source_refs(evaluation_payload),
+                    payload=evaluation_payload,
+                ),
+                BehaviorTurnStageRecord(
+                    stage="policy",
+                    outcome="recorded" if policy_payload.get("status") in {"candidate", "candidate_only"} else "skipped",
+                    source_refs=self._policy_source_refs(evaluation_payload, settlement_event),
+                    payload=policy_payload,
+                ),
+            )
+            settlement_identity = str(
+                settlement_payload.get("result_id", "")
+                or settlement_event.get("event_id", "")
+                or stage_events[-1].idempotency_key
+            )
+            request = BehaviorTurnRecordRequest.from_legacy_projection(
+                legacy_reader_ref="legacy:canonical-character-behavior-turn-projection:v2",
+                stages=projected_stages,
+                turn_id=turn.turn_id,
+                scope=self._scope_resolver(turn.actor_id),
+                valid_at=turn.valid_at,
+                recorded_at=stage_events[-1].producer_ts,
+                policy_revision=turn.policy_revision,
+                source_revision_vector=GraphRevisionVector(source_revision=source_revision),
+                scope_digest="scope:actor-private",
+                provenance=GraphProvenance(
+                    source_kind="runtime_outcome",
+                    source_ref=str(settlement_event.get("event_id", "") or stage_events[-1].stage_ref),
+                    causation_id=turn.causation_id,
+                    correlation_id=turn.correlation_id,
+                    producer_system="character_agent_runtime",
+                    actor_id=turn.actor_id,
+                    evidence_refs=list(self._evaluation_source_refs(evaluation_payload)),
+                ),
+                transaction_id=f"canonical-behavior-turn:{turn.turn_id}",
+                idempotency_key=f"canonical-behavior-turn:{turn.turn_id}:{settlement_identity}",
+            )
+            self._recorder.record(request)
+            return
+        self._recorder.record(
+            BehaviorTurnRecordRequest.from_canonical_stage_events(
+                stage_events=tuple(stage_events),
+                turn_id=turn.turn_id,
+                scope=self._scope_resolver(turn.actor_id),
+                valid_at=turn.valid_at,
+                recorded_at=stage_events[-1].producer_ts,
+                policy_revision=turn.policy_revision,
+                source_revision_vector=GraphRevisionVector(source_revision=source_revision),
+                scope_digest="scope:actor-private",
+                provenance=GraphProvenance(
+                    source_kind="runtime_outcome",
+                    source_ref=stage_events[-1].stage_ref,
+                    causation_id=turn.causation_id,
+                    correlation_id=turn.correlation_id,
+                    producer_system="character_agent_runtime",
+                    actor_id=turn.actor_id,
+                ),
+                transaction_id=f"canonical-behavior-turn:{turn.turn_id}",
+                idempotency_key=(
+                    f"canonical-behavior-turn:{turn.turn_id}:"
+                    f"{stage_events[-1].idempotency_key}"
+                ),
+                branch_id=turn.branch_id,
+                input_revision_vector=turn.input_revision_vector,
+                memory_revision_vector=turn.memory_revision_vector,
+                snapshot_revision=turn.snapshot_revision,
+            )
+        )
+
+    @staticmethod
+    def _evaluation_payload(
+        evaluation: BehaviorEvaluation | dict[str, object] | None,
+    ) -> dict[str, object] | None:
+        if evaluation is None:
+            return None
+        if isinstance(evaluation, BehaviorEvaluation):
+            return evaluation.model_dump(mode="json")
+        return deepcopy(evaluation) if isinstance(evaluation, dict) else None
+
+    @staticmethod
+    def _payload(entry: dict[str, object]) -> dict[str, object]:
+        payload = entry.get("payload", {})
+        return deepcopy(payload) if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _thaw_json_value(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): CharacterBehaviorTurnProjection._thaw_json_value(nested)
+                for key, nested in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [CharacterBehaviorTurnProjection._thaw_json_value(nested) for nested in value]
+        return value
+
+    @staticmethod
+    def _typed_evaluation_outcome(evaluation: dict[str, object]) -> str:
+        # Canonical evaluation preserves unknowns as data; no scalar score is
+        # translated into an accepted/failed graph outcome.
+        return "recorded"
+
+    def _legacy_latest_chain(
         self, timeline: list[dict[str, object]], producer_ts: int, correlation_id: str
     ) -> dict[str, dict[str, object]]:
+        strict = self._legacy_chain_candidates(
+            timeline, producer_ts, correlation_id, require_correlation=True
+        )
+        result = self._select_legacy_chain(strict)
+        if result:
+            return result
+        # Pre-migration records did not carry the canonical correlation on every
+        # producer event; retain the historical timestamp-only reader explicitly.
+        return self._select_legacy_chain(
+            self._legacy_chain_candidates(
+                timeline, producer_ts, correlation_id, require_correlation=False
+            )
+        )
+
+    def _legacy_chain_candidates(
+        self,
+        timeline: list[dict[str, object]],
+        producer_ts: int,
+        correlation_id: str,
+        *,
+        require_correlation: bool,
+    ) -> dict[str, list[dict[str, object]]]:
         candidates: dict[str, list[dict[str, object]]] = {
             event_type: [] for event_type in self._CHAIN_TYPES
         }
-        candidate_timestamps: set[int] = set()
         for entry in timeline:
             if int(entry.get("producer_ts", 0) or 0) > producer_ts:
                 continue
@@ -173,10 +375,19 @@ class CharacterBehaviorTurnProjection:
                 or payload.get("causation_id", "")
                 or ""
             )
-            if entry_correlation and entry_correlation != correlation_id:
+            if require_correlation and entry_correlation and entry_correlation != correlation_id:
                 continue
             candidates[event_type].append(entry)
-            candidate_timestamps.add(int(entry.get("producer_ts", 0) or 0))
+        return candidates
+
+    def _select_legacy_chain(
+        self, candidates: dict[str, list[dict[str, object]]]
+    ) -> dict[str, dict[str, object]]:
+        candidate_timestamps = {
+            int(entry.get("producer_ts", 0) or 0)
+            for entries in candidates.values()
+            for entry in entries
+        }
         common_timestamps = {
             timestamp
             for timestamp in candidate_timestamps
@@ -204,6 +415,37 @@ class CharacterBehaviorTurnProjection:
         return chain
 
     @staticmethod
+    def _canonical_stage_events(
+        turn_id: str, timeline: list[dict[str, object]]
+    ) -> list[CharacterTurnStageEvent]:
+        events: list[CharacterTurnStageEvent] = []
+        for entry in timeline:
+            if entry.get("event_type") != "character_turn_stage_recorded":
+                continue
+            payload = entry.get("payload")
+            if not isinstance(payload, dict) or payload.get("turn_id") != turn_id:
+                continue
+            raw_event = payload.get("stage_event")
+            if not isinstance(raw_event, dict):
+                return []
+            events.append(CharacterTurnStageEvent.model_validate(raw_event))
+        return events
+
+    def _context_for_turn(
+        self, turn_id: str, timeline: list[dict[str, object]]
+    ) -> CharacterTurnContext | None:
+        for entry in timeline:
+            if entry.get("event_type") != "character_turn_context_created":
+                continue
+            payload = entry.get("payload")
+            if not isinstance(payload, dict) or payload.get("turn_id") != turn_id:
+                continue
+            raw_context = payload.get("context")
+            if isinstance(raw_context, dict):
+                return CharacterTurnContext.model_validate(raw_context)
+        return None
+
+    @staticmethod
     def _intent_from_payload(entry: dict[str, object]) -> str:
         payload = entry.get("payload", {})
         if not isinstance(payload, dict):
@@ -221,6 +463,9 @@ class CharacterBehaviorTurnProjection:
         candidate_event_id = str(evaluation.get("policy_candidate_event_id", ""))
         if candidate_event_id:
             return (candidate_event_id,)
+        candidate = evaluation.get("candidate_policy")
+        if isinstance(candidate, dict) and candidate.get("candidate_id"):
+            return (f"character_policy_candidate_event:{candidate['candidate_id']}",)
         return (str(settlement_event.get("event_id", "")),)
 
     @staticmethod

@@ -352,7 +352,8 @@ def test_game_start_upgrade_preserves_v3_audit_and_restarts_on_same_sqlite(tmp_p
     scope = HeavenlyGraphScope(world_id="world:demo", session_id="session:demo", story_branch_id="branch:main")
     legacy_correlation = "population:bakery-district:game-start:v3"
     # 预置升级必须保留的旧版审计键，避免回归测试依赖 Git 或历史源码。
-    legacy_request = BehaviorTurnRecordRequest(
+    legacy_request = BehaviorTurnRecordRequest.from_legacy_projection(
+        legacy_reader_ref="legacy:test-siming-population-cadence",
         turn_id=f"siming:{legacy_correlation}", scope=scope,
         valid_at=1, recorded_at=1, policy_revision="policy:siming-runtime:v1",
         source_revision_vector=GraphRevisionVector(source_revision=1), scope_digest="scope:siming-authority",

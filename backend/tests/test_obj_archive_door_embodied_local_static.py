@@ -64,6 +64,7 @@ def test_door_binding_pins_the_reachable_contact_anchor_revision() -> None:
     bridge = _read("scripts/interaction/ArchiveDoorEmbodiedAffordanceBridge.gd")
 
     assert 'position = Vector3(-0.15, 0.46, 0.18)' in scene
+    assert 'position = Vector3(0, 0, 0.5)' in scene
     assert "const BINDING_REVISION := 4" in bridge
 
 
@@ -183,6 +184,19 @@ def test_custom_reach_modifier_is_solved_on_the_host_physics_measurement_path() 
     assert 'archive_door_reach_modifier.call("solve_reach_now")' in measurement_body
 
 
+def test_custom_reach_modifier_handles_antiparallel_hand_and_target_directions() -> None:
+    modifier = _read("scripts/character/ArchiveDoorReachModifier.gd")
+    body = modifier.split("func _rotate_chain_bone_toward_target", maxsplit=1)[1].split(
+        "func _force_bone_update", maxsplit=1
+    )[0]
+
+    assert "alignment_dot >= 0.0" in body
+    assert "Vector3.UP.cross(source_world)" in body
+    assert "Vector3.RIGHT.cross(source_world)" in body
+    assert "const MAX_HAND_TRANSLATION_M := 0.75" in modifier
+    assert "residual_length <= MAX_HAND_TRANSLATION_M" in modifier
+
+
 def test_custom_reach_modifier_has_enough_iterations_for_the_contact_window() -> None:
     modifier = _read("scripts/character/ArchiveDoorReachModifier.gd")
 
@@ -219,6 +233,32 @@ def test_motor_consumes_the_existing_desired_facing_field_without_a_second_owner
     assert "rotate_toward" in motor
     assert shell.count("move_and_slide(") == 0
     assert bridge.count("move_and_slide(") == 0
+
+
+def test_forced_world_motion_converts_z_direction_for_the_motor_composer() -> None:
+    bridge = _read("scripts/player/Phase0PlayerBridge.gd")
+
+    # MotionContributionComposer maps local Y directly to world Z. A world
+    # direction toward negative Z must therefore use the character's +Z basis
+    # when converted into local Y.
+    assert "var local_y: float = program_control_state.forced_move_direction.dot(player.global_basis.z)" in bridge
+
+
+def test_clearing_forced_motion_stops_horizontal_shell_velocity() -> None:
+    bridge = _read("scripts/player/Phase0PlayerBridge.gd")
+    shell = _read("scripts/player/PlayerShell.gd")
+
+    assert "func stop_forced_motion() -> void:" in shell
+    assert "player.stop_forced_motion()" in bridge
+
+
+def test_door_host_keeps_forced_facing_through_contact_alignment() -> None:
+    host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
+    align_body = host.split("func _process_align() -> void:", maxsplit=1)[1].split(
+        "func _process_contact()", maxsplit=1
+    )[0]
+
+    assert "clear_forced_facing_yaw()" not in align_body
 
 
 def test_controller_exposes_nonblocking_attempt_lifecycle_while_preserving_probe_wrapper() -> None:

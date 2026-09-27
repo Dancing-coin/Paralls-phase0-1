@@ -5,6 +5,7 @@ const VerificationPaths := preload("res://scripts/verification/VerificationPaths
 const CONSUMER := preload("res://scripts/interaction/InteractionSessionSlotConsumer.gd")
 const REPORT_PATH := ".harness/verification/embodied-interaction-session-godot-runtime.json"
 const VERIFIED_MARKER := "embodied_interaction_session_probe:verified=true"
+const LIVE_SESSION_ID := "session:handshake:godot-websocket"
 
 var _emitted_observations: Array[Dictionary] = []
 var _backend_session_events: Array[Dictionary] = []
@@ -140,7 +141,7 @@ func _run_backend_bridge_probe(backend_url: String) -> Dictionary:
 		{
 			"message_type": "embodied_interaction_session_probe",
 			"payload": {
-				"session_id": "session:handshake:godot-websocket",
+				"session_id": LIVE_SESSION_ID,
 				"semantic_action": "handshake",
 				"initiator_ref": "character:siming",
 				"participant_refs": ["character:siming", "character:maya"],
@@ -155,11 +156,40 @@ func _run_backend_bridge_probe(backend_url: String) -> Dictionary:
 	if send_err != OK:
 		return {"accepted": false, "error_code": "send_failed", "send_err": send_err}
 
+	var ack_deadline := Time.get_ticks_msec() + 3000
+	while Time.get_ticks_msec() < ack_deadline and _backend_acks.is_empty():
+		await get_tree().process_frame
+	if _backend_acks.is_empty():
+		bridge.close_backend_connection()
+		return {"accepted": false, "error_code": "ack_timeout", "url": backend_url}
+
+	var cursor := 0
+	var pull_pending := false
+	var event_count_at_pull := 0
 	var receive_deadline := Time.get_ticks_msec() + 5000
 	while Time.get_ticks_msec() < receive_deadline:
 		if _backend_session_events.size() >= 4 and live_consumer.state == "realizing":
 			break
+		if not pull_pending:
+			var pull_err: int = bridge.send_envelope(
+				{
+					"message_type": "embodied_interaction_session_projection_pull",
+					"payload": {
+						"session_id": LIVE_SESSION_ID,
+						"after_global_sequence": cursor,
+					},
+				}
+			)
+			if pull_err != OK:
+				bridge.close_backend_connection()
+				return {"accepted": false, "error_code": "pull_send_failed", "send_err": pull_err}
+			pull_pending = true
+			event_count_at_pull = _backend_session_events.size()
 		await get_tree().process_frame
+		if _backend_session_events.size() > event_count_at_pull:
+			pull_pending = false
+			if live_consumer.last_global_sequence > cursor:
+				cursor = live_consumer.last_global_sequence
 	bridge.close_backend_connection()
 	var ack_ok := false
 	for ack: Dictionary in _backend_acks:
@@ -195,6 +225,7 @@ func _run_backend_bridge_probe(backend_url: String) -> Dictionary:
 		"consumer_state": live_consumer.state,
 		"slot_id": live_consumer.slot_id,
 		"last_global_sequence": live_consumer.last_global_sequence,
+		"projection_cursor": cursor,
 		"sequence_ok": sequence_ok,
 		"privacy_ok": privacy_ok,
 		"event_types": _backend_session_events.map(func(item: Dictionary) -> String: return str(item.get("event_type", ""))),

@@ -410,7 +410,7 @@ def test_every_runtime_append_uses_single_transaction_entrypoint():
     routed = [node for node in calls if node.func.attr == '_append_session_event']
     assert len(direct) == 1
     # 四类认知写回统一由计划循环提交，原四处 append 收敛成一处。
-    assert len(routed) == 28
+    assert len(routed) == 31
     planner = next(node for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)
                    and node.name == '_plan_cognition_update')
     assert not any(isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)

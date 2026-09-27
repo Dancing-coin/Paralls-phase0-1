@@ -3,40 +3,18 @@
 		{
 			"audit": {
 				"bone_impact": [
-					"root",
-					"pelvis",
-					"spine",
 					"chest",
-					"head",
-					"left_upper_arm",
-					"left_lower_arm",
-					"left_hand",
-					"right_upper_arm",
-					"right_lower_arm",
-					"right_hand",
-					"left_upper_leg",
-					"left_lower_leg",
-					"right_upper_leg",
-					"right_lower_leg"
+					"head"
 				],
 				"duration_seconds": 1.0,
-				"lower_body_impact": [
-					"left_upper_leg",
-					"left_upper_leg",
-					"left_lower_leg",
-					"left_lower_leg",
-					"right_upper_leg",
-					"right_upper_leg",
-					"right_lower_leg",
-					"right_lower_leg"
-				],
+				"lower_body_impact": [],
 				"pelvis_motion": {
-					"rotation": true,
-					"translation": true
+					"rotation": false,
+					"translation": false
 				},
 				"root_motion": {
 					"rotation": false,
-					"translation": true
+					"translation": false
 				},
 				"source_step_seconds": 0.0333333350718021,
 				"valid": true
@@ -48,35 +26,18 @@
 		{
 			"audit": {
 				"bone_impact": [
-					"pelvis",
-					"spine",
 					"chest",
 					"head",
 					"left_upper_arm",
 					"left_lower_arm",
-					"left_hand",
 					"right_upper_arm",
-					"right_lower_arm",
-					"right_hand",
-					"left_upper_leg",
-					"left_lower_leg",
-					"right_upper_leg",
-					"right_lower_leg"
+					"right_lower_arm"
 				],
 				"duration_seconds": 1.33333337306976,
-				"lower_body_impact": [
-					"left_upper_leg",
-					"left_upper_leg",
-					"left_lower_leg",
-					"left_lower_leg",
-					"right_upper_leg",
-					"right_upper_leg",
-					"right_lower_leg",
-					"right_lower_leg"
-				],
+				"lower_body_impact": [],
 				"pelvis_motion": {
-					"rotation": true,
-					"translation": true
+					"rotation": false,
+					"translation": false
 				},
 				"root_motion": {
 					"rotation": false,
@@ -92,35 +53,18 @@
 		{
 			"audit": {
 				"bone_impact": [
-					"pelvis",
-					"spine",
 					"chest",
 					"head",
 					"left_upper_arm",
 					"left_lower_arm",
-					"left_hand",
 					"right_upper_arm",
-					"right_lower_arm",
-					"right_hand",
-					"left_upper_leg",
-					"left_lower_leg",
-					"right_upper_leg",
-					"right_lower_leg"
+					"right_lower_arm"
 				],
 				"duration_seconds": 1.33333337306976,
-				"lower_body_impact": [
-					"left_upper_leg",
-					"left_upper_leg",
-					"left_lower_leg",
-					"left_lower_leg",
-					"right_upper_leg",
-					"right_upper_leg",
-					"right_lower_leg",
-					"right_lower_leg"
-				],
+				"lower_body_impact": [],
 				"pelvis_motion": {
-					"rotation": true,
-					"translation": true
+					"rotation": false,
+					"translation": false
 				},
 				"root_motion": {
 					"rotation": false,
@@ -146,35 +90,14 @@
 		"idle_guard": {
 			"bone_impact": [
 				"root",
-				"pelvis",
-				"spine",
 				"chest",
-				"head",
-				"left_upper_arm",
-				"left_lower_arm",
-				"left_hand",
-				"right_upper_arm",
-				"right_lower_arm",
-				"right_hand",
-				"left_upper_leg",
-				"left_lower_leg",
-				"right_upper_leg",
-				"right_lower_leg"
+				"head"
 			],
 			"duration_seconds": 1.33333337306976,
-			"lower_body_impact": [
-				"left_upper_leg",
-				"left_upper_leg",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_upper_leg",
-				"right_upper_leg",
-				"right_lower_leg",
-				"right_lower_leg"
-			],
+			"lower_body_impact": [],
 			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
+				"rotation": false,
+				"translation": false
 			},
 			"root_motion": {
 				"rotation": false,
@@ -185,40 +108,18 @@
 		},
 		"inspect_relic": {
 			"bone_impact": [
-				"root",
-				"pelvis",
-				"spine",
 				"chest",
-				"head",
-				"left_upper_arm",
-				"left_lower_arm",
-				"left_hand",
-				"right_upper_arm",
-				"right_lower_arm",
-				"right_hand",
-				"left_upper_leg",
-				"left_lower_leg",
-				"right_upper_leg",
-				"right_lower_leg"
+				"head"
 			],
 			"duration_seconds": 1.0,
-			"lower_body_impact": [
-				"left_upper_leg",
-				"left_upper_leg",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_upper_leg",
-				"right_upper_leg",
-				"right_lower_leg",
-				"right_lower_leg"
-			],
+			"lower_body_impact": [],
 			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
+				"rotation": false,
+				"translation": false
 			},
 			"root_motion": {
 				"rotation": false,
-				"translation": true
+				"translation": false
 			},
 			"source_step_seconds": 0.0333333350718021,
 			"valid": true
@@ -227,15 +128,9 @@
 			"bone_impact": [
 				"root",
 				"pelvis",
-				"spine",
-				"chest",
 				"head",
 				"left_upper_arm",
-				"left_lower_arm",
-				"left_hand",
 				"right_upper_arm",
-				"right_lower_arm",
-				"right_hand",
 				"left_upper_leg",
 				"left_lower_leg",
 				"right_upper_leg",
@@ -244,17 +139,13 @@
 			"duration_seconds": 0.533333361148834,
 			"lower_body_impact": [
 				"left_upper_leg",
-				"left_upper_leg",
-				"left_lower_leg",
 				"left_lower_leg",
 				"right_upper_leg",
-				"right_upper_leg",
-				"right_lower_leg",
 				"right_lower_leg"
 			],
 			"pelvis_motion": {
 				"rotation": true,
-				"translation": true
+				"translation": false
 			},
 			"root_motion": {
 				"rotation": false,
@@ -265,35 +156,18 @@
 		},
 		"observe_watch": {
 			"bone_impact": [
-				"pelvis",
-				"spine",
 				"chest",
 				"head",
 				"left_upper_arm",
 				"left_lower_arm",
-				"left_hand",
 				"right_upper_arm",
-				"right_lower_arm",
-				"right_hand",
-				"left_upper_leg",
-				"left_lower_leg",
-				"right_upper_leg",
-				"right_lower_leg"
+				"right_lower_arm"
 			],
 			"duration_seconds": 1.33333337306976,
-			"lower_body_impact": [
-				"left_upper_leg",
-				"left_upper_leg",
-				"left_lower_leg",
-				"left_lower_leg",
-				"right_upper_leg",
-				"right_upper_leg",
-				"right_lower_leg",
-				"right_lower_leg"
-			],
+			"lower_body_impact": [],
 			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
+				"rotation": false,
+				"translation": false
 			},
 			"root_motion": {
 				"rotation": false,
@@ -305,16 +179,10 @@
 		"run_charge": {
 			"bone_impact": [
 				"root",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
 				"left_upper_arm",
 				"left_lower_arm",
-				"left_hand",
 				"right_upper_arm",
 				"right_lower_arm",
-				"right_hand",
 				"left_upper_leg",
 				"left_lower_leg",
 				"right_upper_leg",
@@ -323,17 +191,13 @@
 			"duration_seconds": 0.600000023841858,
 			"lower_body_impact": [
 				"left_upper_leg",
-				"left_upper_leg",
-				"left_lower_leg",
 				"left_lower_leg",
 				"right_upper_leg",
-				"right_upper_leg",
-				"right_lower_leg",
 				"right_lower_leg"
 			],
 			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
+				"rotation": false,
+				"translation": false
 			},
 			"root_motion": {
 				"rotation": false,
@@ -345,16 +209,10 @@
 		"walk_guard": {
 			"bone_impact": [
 				"root",
-				"pelvis",
-				"spine",
-				"chest",
-				"head",
 				"left_upper_arm",
 				"left_lower_arm",
-				"left_hand",
 				"right_upper_arm",
 				"right_lower_arm",
-				"right_hand",
 				"left_upper_leg",
 				"left_lower_leg",
 				"right_upper_leg",
@@ -363,17 +221,13 @@
 			"duration_seconds": 0.800000011920929,
 			"lower_body_impact": [
 				"left_upper_leg",
-				"left_upper_leg",
-				"left_lower_leg",
 				"left_lower_leg",
 				"right_upper_leg",
-				"right_upper_leg",
-				"right_lower_leg",
 				"right_lower_leg"
 			],
 			"pelvis_motion": {
-				"rotation": true,
-				"translation": true
+				"rotation": false,
+				"translation": false
 			},
 			"root_motion": {
 				"rotation": false,
@@ -390,24 +244,7 @@
 		"mode": "full_body_exclusive",
 		"policy": "queue_until_compatible"
 	},
-	"fallbacks": [
-		{
-			"fallback": {
-				"locomotion_compatibility": "replace_locomotion",
-				"mode": "full_body_exclusive"
-			},
-			"reason": "upper_body_lower_body_motion",
-			"semantic_action_id": "action:aim.upper_body"
-		},
-		{
-			"fallback": {
-				"locomotion_compatibility": "replace_locomotion",
-				"mode": "full_body_exclusive"
-			},
-			"reason": "upper_body_lower_body_motion",
-			"semantic_action_id": "action:hitscan.aim_fire"
-		}
-	],
+	"fallbacks": [],
 	"locomotion": {
 		"idle": {
 			"classification": "root_motion",
@@ -459,5 +296,5 @@
 		"format": "glb",
 		"model_path": "assets/active/crusader_knight/crusader_knight.glb"
 	},
-	"status": "qualified_with_fallback"
+	"status": "qualified"
 }

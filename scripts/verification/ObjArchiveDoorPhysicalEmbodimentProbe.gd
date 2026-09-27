@@ -1,4 +1,4 @@
-extends Node
+extends Node3D
 
 const MAIN_DEMO_SCENE := "res://scenes/phase0/MainDemo.tscn"
 const LAUNCH_SCENE := "res://scenes/phase0/ObjArchiveDoorPhysicalEmbodimentProbe.tscn"
@@ -36,6 +36,11 @@ var _screenshot_source := ""
 var _notes: Array[String] = []
 var _stage_written := false
 var _blocker_body: CharacterBody3D
+var _pre_capture_ref := ""
+var _post_capture_ref := ""
+var _episode_ref := ""
+var _turn_id := ""
+var _execution_contract_ref := ""
 
 
 func _ready() -> void:
@@ -66,6 +71,11 @@ func _process(_delta: float) -> void:
 func _run_probe() -> void:
 	var ok := false
 	_pre_snapshot = _snapshot()
+	_pre_capture_ref = "capture:godot:%s:pre" % _scenario
+	if not await _ensure_embodied_role_asset():
+		_notes.append("embodied_role_asset_unavailable")
+		await _finish(false)
+		return
 	if not await _wait_for_backend():
 		await _finish(false)
 		return
@@ -86,6 +96,22 @@ func _run_probe() -> void:
 			_notes.append("unknown_scenario")
 			ok = false
 	await _finish(ok)
+
+
+func _ensure_embodied_role_asset() -> bool:
+	var replica := main_demo.get_node_or_null("PlayerCharacter/CharacterReplica") if main_demo != null else null
+	if replica == null or not replica.has_method("apply_presentation_asset_binding"):
+		return false
+	var binding := {
+		"actor_id": "char_c",
+		"binding_status": "approved",
+		"visual_assets": {
+			"role_scene_ref": "res://scenes/active/crusader_knight/KnightRoleSkin.tscn",
+		},
+	}
+	var applied: Variant = replica.call("apply_presentation_asset_binding", binding)
+	await get_tree().process_frame
+	return bool(applied) and replica.has_method("begin_right_hand_reach")
 
 
 func _connect_bus() -> void:
@@ -122,6 +148,17 @@ func _run_success() -> bool:
 	_write_stage("success_interaction_emitted", _request_descriptor)
 	if not await _wait_for_settlement_applied():
 		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if str(_settlement_payload.get("outcome", "")) != "committed":
+		_notes.append("authority_result_not_committed")
+		return false
+	if not _correlation_integrity_ok():
+		_notes.append("correlation_mismatch")
+		return false
+	var post_snapshot := _snapshot()
+	if str(_received_world_result.get("current_state", "")) != "open" or str(post_snapshot.get("current_state", "")) != "open":
+		_notes.append("post_observation_mismatch")
+		return false
 	_write_stage("success_settlement_applied", _settlement_payload)
 	await get_tree().create_timer(0.25).timeout
 	return true
@@ -134,6 +171,10 @@ func _run_distance_failure() -> bool:
 		return false
 	if not await _wait_for_distance_constraint():
 		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if not _settlement_payload.is_empty() or not _received_world_result.is_empty():
+		_notes.append("distance_failure_mutated_authority")
+		return false
 	await get_tree().create_timer(0.15).timeout
 	return true
 
@@ -144,6 +185,10 @@ func _run_revision_failure() -> bool:
 	if not _emit_door_interaction():
 		return false
 	if not await _wait_for_rejected_settlement(["binding_revision_mismatch", "revision_conflict", "door_state_stale"]):
+		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if not _received_world_result.is_empty():
+		_notes.append("revision_failure_mutated_authority")
 		return false
 	await get_tree().create_timer(0.25).timeout
 	return true
@@ -156,6 +201,10 @@ func _run_stance_failure() -> bool:
 	if not _emit_door_interaction():
 		return false
 	if not await _wait_for_rejected_settlement(["stance_occupied"]):
+		return false
+	_post_capture_ref = "capture:godot:%s:post" % _scenario
+	if not _received_world_result.is_empty():
+		_notes.append("stance_failure_mutated_authority")
 		return false
 	await get_tree().create_timer(0.15).timeout
 	return true
@@ -262,6 +311,34 @@ func _wait_for_rejected_settlement(accepted_error_codes: Array[String]) -> bool:
 	return false
 
 
+func _episode_ref_for_report() -> String:
+	var request: Variant = _action_request_payload.get("request", {})
+	if not (request is Dictionary):
+		return ""
+	var episode := str((request as Dictionary).get("episode_ref", ""))
+	if not episode.is_empty():
+		return episode
+	var turn := str((request as Dictionary).get("turn_id", ""))
+	var contract := str((request as Dictionary).get("idempotency_key", ""))
+	return "" if turn.is_empty() or contract.is_empty() else "episode:%s:%s" % [turn, contract]
+
+
+func _correlation_integrity_ok() -> bool:
+	var request: Dictionary = _action_request_payload.get("request", {})
+	var turn := str(request.get("turn_id", ""))
+	var contract := str(request.get("execution_contract_ref", request.get("idempotency_key", "")))
+	var episode := str(request.get("episode_ref", ""))
+	if turn.is_empty() or contract.is_empty() or episode.is_empty():
+		return false
+	for payload in [_settlement_payload, _received_world_result]:
+		if str(payload.get("turn_id", "")) != turn or str(payload.get("execution_contract_ref", payload.get("idempotency_key", ""))) != contract or str(payload.get("episode_ref", "")) != episode:
+			return false
+	var replay: Variant = _settlement_payload.get("replay_join", {})
+	if not (replay is Dictionary):
+		return false
+	return str((replay as Dictionary).get("turn_id", "")) == turn and str((replay as Dictionary).get("execution_contract_ref", "")) == contract and str((replay as Dictionary).get("episode_ref", "")) == episode
+
+
 func _finish(ok: bool) -> void:
 	if _blocker_body != null:
 		_blocker_body.queue_free()
@@ -276,6 +353,11 @@ func _finish(ok: bool) -> void:
 		"scene": MAIN_DEMO_SCENE,
 		"launch_scene": LAUNCH_SCENE,
 		"request_id": str(_request_descriptor.get("request_id", "")),
+		"turn_id": str(_action_request_payload.get("request", {}).get("turn_id", "")),
+		"execution_contract_ref": str(_action_request_payload.get("request", {}).get("execution_contract_ref", _action_request_payload.get("request", {}).get("idempotency_key", ""))),
+		"episode_ref": _episode_ref_for_report(),
+		"pre_capture_ref": _pre_capture_ref,
+		"post_capture_ref": _post_capture_ref if not _post_capture_ref.is_empty() else "capture:godot:%s:post" % _scenario,
 		"correlation_id": "interact:%s" % str(_request_descriptor.get("producer_ts", 0)) if not _request_descriptor.is_empty() else "",
 		"attempt_id": str(_action_request_payload.get("request", {}).get("interaction_attempt_id", "")),
 		"grant_id": str(_action_request_payload.get("grant", {}).get("grant_id", "")) if not _action_request_payload.is_empty() else null,
@@ -312,6 +394,16 @@ func _finish(ok: bool) -> void:
 		"replay_join": {
 			"attempt_id": str(_action_request_payload.get("request", {}).get("interaction_attempt_id", "")),
 			"settlement_id": str(_settlement_payload.get("settlement_id", "")),
+		},
+		"episode": {
+			"turn_id": str(_action_request_payload.get("request", {}).get("turn_id", "")),
+			"pre_capture_ref": _pre_capture_ref,
+			"post_capture_ref": _post_capture_ref if not _post_capture_ref.is_empty() else "capture:godot:%s:post" % _scenario,
+			"authority_result_ref": str(_settlement_payload.get("settlement_id", "")),
+			"expected_state": "open",
+			"observed_state": str(_final_snapshot.get("current_state", "")),
+			"recovery_evidence": {"typed_failure": str(_settlement_payload.get("error_code", "")), "notes": _notes},
+			"outcome": "confirmed_success" if ok else "recovery_required",
 		},
 		"screenshot": _screenshot_path if screenshot_result else "",
 		"screenshot_source": _screenshot_source,
@@ -360,7 +452,7 @@ func _approach_start_position() -> Vector3:
 	var stance := _approach_stance()
 	if stance == null:
 		return Vector3(0.0, 0.5, -1.8)
-	return Vector3(stance.global_position.x, 0.5, stance.global_position.z + 1.6)
+	return Vector3(stance.global_position.x, 0.5, stance.global_position.z + 0.75)
 
 
 func _current_facing_error_rad() -> float:
@@ -400,6 +492,8 @@ func _on_action_request_received(payload: Dictionary) -> void:
 	if str((request as Dictionary).get("target_ref", "")) != OBJECT_ID:
 		return
 	_action_request_payload = payload.duplicate(true)
+	if _scenario == "success":
+		_write_stage("action_request_received", payload)
 	if _scenario == "revision_failure" and not _stage_written:
 		_write_stage(
 			"preflight_accepted",
@@ -434,6 +528,8 @@ func _on_world_result_received(payload: Dictionary) -> void:
 	var result_type := str(payload.get("result_type", ""))
 	if result_type == "constraint_state_result":
 		_received_constraint = payload.duplicate(true)
+		if _scenario == "success":
+			_write_stage("constraint_received", payload)
 	if result_type == "object_state_result":
 		_received_world_result = payload.duplicate(true)
 

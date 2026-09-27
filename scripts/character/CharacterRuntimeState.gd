@@ -35,12 +35,21 @@ var capability_projection: Array[StringName] = []
 var status_projection: Array[StringName] = []
 var latest_authority_result: Dictionary = {}
 var presentation_cues: Array[StringName] = []
+var agent_intent_proposal: Dictionary = {}
 
 
 func record_arbitration_frame(frame: Dictionary) -> void:
 	active_lease_summaries = _dictionary_array(frame.get("admitted", []), &"lease_id")
 	active_action_summaries = _dictionary_array(frame.get("admitted", []), &"action_instance_id")
 	occupancy = frame.get("occupancy", {}).duplicate(true)
+
+
+func stage_agent_intent_proposal(proposal: Dictionary) -> void:
+	agent_intent_proposal = proposal.duplicate(true)
+
+
+func get_agent_intent_proposal() -> Dictionary:
+	return agent_intent_proposal.duplicate(true)
 
 
 func _dictionary_array(values: Array, identity_key: StringName) -> Array[Dictionary]:
@@ -499,7 +508,13 @@ func get_payload_string(payload: Dictionary, key: String, fallback: String = "")
 
 
 func get_payload_actor_id(payload: Dictionary) -> String:
-	return str(payload.get("actor_id", ""))
+	var actor_id := str(payload.get("actor_id", ""))
+	if not actor_id.is_empty():
+		return actor_id
+	var actor_ref := str(payload.get("actor_ref", ""))
+	if actor_ref.begins_with("character:"):
+		return actor_ref.trim_prefix("character:")
+	return actor_ref
 
 
 func get_payload_target_actor_id(payload: Dictionary) -> String:
@@ -560,8 +575,34 @@ func get_execution_payload_first_frame_from_payload(payload: Dictionary) -> Dict
 func get_execution_payload_intent_frame(payload: Dictionary, actor_id: String) -> Dictionary:
 	var first_frame := get_execution_payload_first_frame_from_payload(payload)
 	if first_frame.is_empty():
-		return {}
+		# The canonical L4 contract intentionally carries no motor/frame data.
+		# Godot derives this local presentation frame from its semantic action;
+		# the default frame never grants the backend pose or movement authority.
+		var semantic_action_id := str(payload.get("semantic_action_id", ""))
+		if semantic_action_id.is_empty():
+			return {}
+		first_frame = {
+			"actor_id": actor_id,
+			"controller_source": "program",
+			"control_mode": "program_controlled",
+			"causation_id": str(payload.get("causation_id", "")),
+			"correlation_id": str(payload.get("correlation_id", "")),
+			"action": semantic_action_id,
+		}
 	return build_agent_intent_frame(actor_id, first_frame)
+
+
+func build_agent_intent_proposal(payload: Dictionary, actor_id: String) -> Dictionary:
+	var proposal_payload := payload.duplicate(true)
+	proposal_payload["actor_id"] = actor_id
+	proposal_payload["source_id"] = str(payload.get("source_id", "character_agent_l4"))
+	proposal_payload["semantic_action_id"] = str(payload.get("semantic_action_id", ""))
+	proposal_payload["action_id"] = proposal_payload["semantic_action_id"]
+	proposal_payload["claims"] = payload.get("claims", []).duplicate() if payload.get("claims", []) is Array else []
+	proposal_payload["locomotion_relation"] = str(payload.get("locomotion_relation", "coexist"))
+	proposal_payload["intent_tags"] = payload.get("intent_tags", []).duplicate() if payload.get("intent_tags", []) is Array else []
+	proposal_payload["context_tags"] = payload.get("context_tags", []).duplicate() if payload.get("context_tags", []) is Array else []
+	return AgentControllerAdapterRef.build_intent_proposal(proposal_payload)
 
 
 func get_execution_payload_first_frame(actor_control_frames: Array) -> Dictionary:
@@ -577,6 +618,13 @@ func get_execution_payload_presentation_plan(payload: Dictionary) -> Dictionary:
 	var value: Variant = payload.get("presentation_plan", {})
 	if value is Dictionary:
 		return value
+	var allowed_hints: Variant = payload.get("allowed_realization_hints", {})
+	if allowed_hints is Dictionary:
+		var presentation: Variant = allowed_hints.get("presentation", {})
+		if presentation is Dictionary:
+			var local_presentation: Dictionary = presentation.duplicate(true)
+			local_presentation["target_ref"] = str(payload.get("target_ref", ""))
+			return local_presentation
 	return {}
 
 

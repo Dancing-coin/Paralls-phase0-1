@@ -44,6 +44,9 @@ var _ik_solver_settle_ticks := 0
 var _custom_reach_requested := false
 var _custom_reach_settle_ticks := 0
 var _contact_started_at_ms := 0
+var _turn_id := ""
+var _execution_contract_ref := ""
+var _episode_ref := ""
 
 
 func _ready() -> void:
@@ -156,6 +159,9 @@ func _begin_attempt(request: Dictionary, grant: Dictionary) -> void:
 		recover_without_grant("registry_binding_unavailable")
 		return
 	_request = request.duplicate(true)
+	_turn_id = str(_request.get("turn_id", ""))
+	_execution_contract_ref = str(_request.get("execution_contract_ref", _request.get("idempotency_key", "")))
+	_episode_ref = str(_request.get("episode_ref", ""))
 	_request["realization_metadata"] = {
 		"primitive_action_tags": ["start_move", "turn_to_target", "raise_hand", "tap_contact", "recover_balance"],
 	}
@@ -260,8 +266,6 @@ func _process_align() -> void:
 		player_bridge.set_forced_facing_yaw(desired_yaw)
 	if absf(wrapf(player.rotation.y - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
 		return
-	if player_bridge != null:
-		player_bridge.clear_forced_facing_yaw()
 	var replica := _character_replica()
 	if replica == null or not replica.has_method("begin_right_hand_reach"):
 		_finalize_local_failure("failed_alignment", "ik_chain_unavailable")
@@ -376,6 +380,9 @@ func _finish_attempt(
 	_pending_authority_attempt = {
 		"interaction_attempt_id": str(_request.get("interaction_attempt_id", "")),
 		"correlation_id": str(_request.get("correlation_id", "")),
+		"turn_id": _turn_id,
+		"execution_contract_ref": _execution_contract_ref,
+		"episode_ref": _episode_ref,
 	}
 	_awaiting_authority_result = true
 	var bus := _get_bus()
@@ -499,6 +506,9 @@ func runtime_status() -> Dictionary:
 		"received_action_request_count": _received_action_request_count,
 		"active": _active,
 		"awaiting_authority_result": _awaiting_authority_result,
+		"turn_id": _turn_id,
+		"execution_contract_ref": _execution_contract_ref,
+		"episode_ref": _episode_ref,
 		"stage": _stage,
 		"last_transition": _last_transition,
 		"last_error_code": _last_error_code,

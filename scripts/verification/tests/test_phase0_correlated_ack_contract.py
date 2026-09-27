@@ -91,7 +91,8 @@ def test_main_demo_wait_helpers_use_explicit_integer_deadlines() -> None:
     helper_block = source.split("func _wait_for_request_ack", 1)[1].split("func _fail_autotest", 1)[0]
     typed_deadline = "var deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)"
 
-    assert helper_block.count(typed_deadline) == 5
+    assert helper_block.count(typed_deadline) == 4
+    assert "var quiet_deadline: int = Time.get_ticks_msec() + max(timeout_ms, 1)" in helper_block
     assert "var deadline :=" not in helper_block
 
 
@@ -132,10 +133,12 @@ def test_phase0_autotest_submits_dialogue_to_its_explicit_actor_and_waits_for_sc
         "func _set_autotest_actor_local_perception_enabled", 1
     )[0]
 
-    assert 'var dialogue_request := _emit_dialogue_request("char_a", "phase0 automated dialogue")' in run_section
-    assert "await _wait_for_dialogue_response(autotest_request_timeout_ms)" in run_section
+    assert "_force_focus_target(character_a)" in run_section
+    assert "var dialogue_request: Dictionary = player_input_bridge.trigger_dialogue_request()" in run_section
+    assert "await _wait_for_dialogue_response(dialogue_request_id, autotest_request_timeout_ms)" in run_section
     assert 'await _fail_autotest("dialogue_response_timeout", dialogue_request)' in run_section
-    assert "func _wait_for_dialogue_response(timeout_ms: int) -> bool:" in source
+    assert "func _wait_for_dialogue_response(request_id: String, timeout_ms: int) -> bool:" in source
+    assert "return _emit_dialogue_request(target_actor_id, content)" in source
     assert 'message.contains("dialogue_applied:char_a")' in source
 
 

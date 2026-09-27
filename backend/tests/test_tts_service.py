@@ -293,6 +293,7 @@ def test_godot_voice_controller_consumes_the_complete_wav_contract() -> None:
     replica_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
     live_probe_source = (project_root / "scripts" / "verification" / "TTSGodotLivePlaybackProbe.gd").read_text(encoding="utf-8")
     bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(encoding="utf-8")
+    backend_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
 
     assert "Marshalls.base64_to_raw(encoded)" in controller_source
     assert "func _decode_pcm_wav" in controller_source
@@ -302,7 +303,13 @@ def test_godot_voice_controller_consumes_the_complete_wav_contract() -> None:
     assert "voice.play_voice(payload)" in replica_source
     assert "tts_godot_playback_verified" in live_probe_source
     assert "voice.play_voice(payload)" in live_probe_source
-    assert "ws.inbound_buffer_size = 1024 * 1024" in bridge_source
+    assert "const TRANSPORT_BUFFER_SIZE := 8 * 1024 * 1024" in bridge_source
+    assert "ws.inbound_buffer_size = TRANSPORT_BUFFER_SIZE" in bridge_source
+    assert "ws.outbound_buffer_size = TRANSPORT_BUFFER_SIZE" in bridge_source
+    assert "backend_message_raw_truncated" in bridge_source
+    assert "asyncio.wait_for(" in backend_source
+    assert "asyncio.to_thread(" in backend_source
+    assert "character_service.tts.synthesize" in backend_source
 
 
 def test_live_tts_verifiers_require_final_binding_preflight_and_safe_probe_arguments() -> None:

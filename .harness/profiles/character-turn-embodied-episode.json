@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "character-turn-embodied-episode",
+  "order": 86,
+  "script": "scripts/verification/verify_character_turn_embodied_episode.py",
+  "requires_godot": true,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/character-turn-embodied-episode-report.json",
+  "description": "Live backend and Godot archive-door proof with turn, execution-contract, episode, authority, replay, and typed recovery evidence"
+}

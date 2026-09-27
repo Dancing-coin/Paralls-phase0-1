@@ -282,10 +282,15 @@ Each external asset package contains:
 4. action/locomotion tag manifest
 5. optional root-motion profiles
 
-Import qualification rejects missing Skeleton3D, invalid rest pose, missing
-required clips, missing required root bone, incompatible slots, and unmapped
-action tags. Optional root motion may fall back to Motor-driven displacement;
-required root motion rejects the action package.
+Import qualification rejects missing Skeleton3D, missing or unreproducible rest
+pose declarations, missing required clips, missing required root bone,
+incompatible slots, and unmapped action tags. A source authoring rig may
+contain controller, IK/FK, pole, twist, or reference bones; qualification
+identifies the deform skeleton and validates its deform-to-canonical mapping
+instead of requiring the source file to contain only runtime bones. A T-pose
+and a fixed deform-bone count are not requirements. Optional root motion may
+fall back to Motor-driven displacement; required root motion rejects the action
+package.
 
 External animation content remains authored outside the project. The asset
 qualification pipeline may map package bone names, analyze actual animation
@@ -691,7 +696,9 @@ not branch on its measurements.
 
 ## External-Asset Authoring Contract
 
-The canonical skeleton mapping is the semantic contract. The following
+The deform-to-canonical skeleton mapping is the semantic contract. The source
+may be a complex authoring rig; only the identified deform skeleton crosses
+the runtime boundary. The following
 conventions make third-party assets qualification-ready without requiring the
 project to author animation content.
 
@@ -746,10 +753,11 @@ package's canonical-skeleton mapping.
 - Use metres: one authored unit equals one Godot world metre. Apply object
   transforms, uniform scale, and rotation before export; do not rely on
   runtime scene scaling to correct an asset.
-- Export a stable rest pose, a declared root bone, and animations sampled at
-  60 FPS unless a manifest explicitly declares a justified source rate. The
-  qualification report records the actual rate; runtime timing is marker/time
-  based, never inferred from a clip filename.
+- Export a reproducible declared rest pose, a declared root bone, and
+  animations sampled at 60 FPS unless a manifest explicitly declares a
+  justified source rate. T-pose is not required. The qualification report
+  records the actual rate; runtime timing is marker/time based, never inferred
+  from a clip filename.
 - Bake only the skeletal transforms intended for the clip. Root translation
   and rotation must be explicit and match the manifest root-motion policy.
 - Preserve the canonical forward/up convention, skeleton names/mapping, and

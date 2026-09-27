@@ -27,6 +27,17 @@ class CharacterMemoryStoreRouter:
 
     def debug_memory_summary(self, actor_id: str) -> str:
         return self._store_for(actor_id).debug_memory_summary(actor_id)
+    @property
+    def graph(self):
+        return getattr(self._graph, "graph", None)
+
+    @property
+    def graph_policy_revision(self):
+        return getattr(self._graph, "graph_policy_revision", None)
+
+    def scope_for_actor(self, actor_id: str):
+        resolver = getattr(self._store_for(actor_id), "_scope_for_actor", None)
+        return resolver(actor_id) if resolver is not None else None
 
     def write_event(self, event: dict[str, object]) -> None:
         self._store_for(str(event.get("actor_id", "") or "")).write_event(event)

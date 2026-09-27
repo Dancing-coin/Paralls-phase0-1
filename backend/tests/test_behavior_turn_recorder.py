@@ -38,7 +38,8 @@ def _scope() -> HeavenlyGraphScope:
 def _request(
     *, stages: tuple[BehaviorTurnStageRecord, ...] | None = None
 ) -> BehaviorTurnRecordRequest:
-    return BehaviorTurnRecordRequest(
+    return BehaviorTurnRecordRequest.from_legacy_projection(
+        legacy_reader_ref="legacy:test-behavior-turn-recorder",
         turn_id="turn:char-b:1",
         scope=_scope(),
         valid_at=10,
@@ -242,12 +243,50 @@ def test_character_runtime_records_rejected_action_as_complete_behavior_turn() -
         "constraint:1202:char_b"
     )
     assert by_stage["evaluation"].attributes["outcome"] == "failed"
+    evaluation_payload = by_stage["evaluation"].attributes["payload"]
+    assert "unknown_dimensions" in evaluation_payload
+    assert "social_consequence" in evaluation_payload["unknown_dimensions"]
+    assert evaluation_payload["social_consequence_score"] is None
     assert by_stage["policy"].attributes["payload"]["status"] == "candidate_only"
     assert by_stage["policy"].semantic_metadata.source_event_refs
     assert "character_policy_candidate_event" in by_stage[
         "policy"
     ].semantic_metadata.source_event_refs[0]
     assert all(node.semantic_metadata.record_kind == "projection" for node in stage_nodes)
+
+
+def test_completed_evaluation_projection_replays_with_same_graph_identity() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    runtime = CharacterAgentRuntime(
+        behavior_turn_recorder=BehaviorTurnRecorder(graph),
+        behavior_turn_scope_resolver=lambda actor_id: _scope().model_copy(
+            update={"owner_actor_id": actor_id}
+        ),
+    )
+    runtime.ingest_character_perceived_event(_event_for_test(1300, "replay"))
+    settlement = {
+        "turn_id": "turn:char_b:visual:1300",
+        "branch_id": "branch:main",
+        "causation_id": "character_perceived:char_b:visual:1300",
+        "correlation_id": "character_perceived:char_b:visual:1300",
+        "result_id": "object-state:replay",
+        "result_type": "object_state_result",
+        "settlement_status": "accepted",
+        "change_summary": "replayed object change",
+        "authority_event_ref": "authority:event:replay",
+        "authority_owner_ref": "esm:world",
+    }
+    runtime.record_settlement_result(actor_id="char_b", producer_ts=1301, payload=settlement)
+    runtime.record_settlement_result(actor_id="char_b", producer_ts=1301, payload=settlement)
+
+    result = graph.query_nodes(
+        HeavenlyNodeQuery(scope=_scope(), valid_at=1301)
+    )
+    evaluation_nodes = [
+        node for node in result if node.attributes.get("stage") == "evaluation"
+    ]
+    assert len(evaluation_nodes) == 1
+    assert "unknown_dimensions" in evaluation_nodes[0].attributes["payload"]
 
 
 def test_application_runtime_wires_character_turns_to_shared_sqlite_graph(

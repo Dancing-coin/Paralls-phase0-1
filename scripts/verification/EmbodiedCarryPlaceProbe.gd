@@ -8,6 +8,7 @@ const VERIFIED_MARKER := "embodied_carry_place_probe:verified=true"
 
 var _backend_carry_place_events: Array[Dictionary] = []
 var _backend_acks: Array[Dictionary] = []
+var _live_session_id := ""
 
 
 func _ready() -> void:
@@ -18,6 +19,7 @@ func _ready() -> void:
 
 
 func _run_probe() -> void:
+	_live_session_id = "session:carry-place:godot-websocket:%s" % Time.get_ticks_msec()
 	var consumer: Variant = CONSUMER.new()
 	consumer.name = "CarryPlaceMirrorConsumer"
 	add_child(consumer)
@@ -113,7 +115,7 @@ func _run_backend_bridge_probe(backend_url: String) -> Dictionary:
 	var send_err: int = bridge.send_envelope({
 		"message_type": "embodied_grab_carry_place_probe",
 		"payload": {
-			"session_id": "session:carry-place:godot-websocket:1",
+			"session_id": _live_session_id,
 			"asset_ref": "item:crate_01",
 			"actor_ref": "character:siming",
 			"source_holder_ref": "world:anchor:table_01",

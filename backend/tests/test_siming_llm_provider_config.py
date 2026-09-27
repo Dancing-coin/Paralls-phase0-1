@@ -229,6 +229,24 @@ def test_provider_factory_builds_deepseek_provider_when_configured() -> None:
     assert provider.providers[0].route_id == "deepseek_chat"
 
 
+def test_provider_factory_reuses_character_deepseek_configuration_for_siming() -> None:
+    provider = build_siming_llm_provider(
+        Settings(
+            character_model_provider_kind="deepseek",
+            character_model_endpoint="https://api.deepseek.com",
+            character_model_api_key="character-key",
+            character_model_model="deepseek-chat",
+            character_model_timeout_seconds=12.0,
+        )
+    )
+
+    assert isinstance(provider, SimingLlmProviderRouter)
+    assert isinstance(provider.providers[0], HttpSimingLlmCandidateProvider)
+    assert provider.providers[0].route_id == "character_model_deepseek"
+    assert provider.providers[0].model == "deepseek-chat"
+    assert provider.providers[0].timeout_seconds == 12.0
+
+
 @pytest.mark.parametrize("provider_name", ["seed_doubao", "qwen"])
 def test_provider_factory_builds_recommended_chat_completion_providers(provider_name: str) -> None:
     provider = build_siming_llm_provider(

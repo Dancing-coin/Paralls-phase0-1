@@ -8,6 +8,7 @@ const VERIFIED_MARKER := "embodied_handoff_probe:verified=true"
 
 var _backend_handoff_events: Array[Dictionary] = []
 var _backend_acks: Array[Dictionary] = []
+var _live_session_id := ""
 
 
 func _ready() -> void:
@@ -18,6 +19,7 @@ func _ready() -> void:
 
 
 func _run_probe() -> void:
+	_live_session_id = "session:handoff:godot-websocket:%s" % Time.get_ticks_msec()
 	var consumer: Variant = CONSUMER.new()
 	consumer.name = "HandoffMirrorConsumer"
 	add_child(consumer)
@@ -111,7 +113,7 @@ func _run_backend_bridge_probe(backend_url: String) -> Dictionary:
 	var send_err: int = bridge.send_envelope({
 		"message_type": "embodied_handoff_probe",
 		"payload": {
-			"session_id": "session:handoff:godot-websocket:1",
+			"session_id": _live_session_id,
 			"asset_ref": "item:letter_01",
 			"from_actor_ref": "character:siming",
 			"to_actor_ref": "character:maya",

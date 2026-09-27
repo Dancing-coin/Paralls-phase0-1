@@ -568,6 +568,46 @@ def test_websocket_move_intent_emits_ack_and_runtime_snapshot() -> None:
     assert runtime_snapshot["payload"]["zone_id"] == "zone_focus"
 
 
+def test_websocket_handler_failure_preserves_correlated_player_input_ack(monkeypatch) -> None:
+    _reset_runtime_state_with_local_character_model()
+    original = main._handle_websocket_envelope
+
+    def fail_move(envelope, connection_context):
+        if envelope.message_type == "player_input" and envelope.payload.get("intent_type") == "move_intent":
+            raise RuntimeError("synthetic move handler failure")
+        return original(envelope, connection_context)
+
+    monkeypatch.setattr(main, "_handle_websocket_envelope", fail_move)
+    request_id = "player_input:char_c:move_intent:444:9"
+    client = TestClient(app)
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json(
+            {
+                "message_type": "player_input",
+                "payload": {
+                    "player_id": "p1",
+                    "room_id": "room_demo",
+                    "scene_id": "scene_demo",
+                    "zone_id": "zone_focus",
+                    "actor_id": "char_c",
+                    "intent_type": "move_intent",
+                    "producer_ts": 444,
+                    "request_id": request_id,
+                    "move_mode": "locomotion",
+                    "target_point": [1.0, 0.5, 2.0],
+                },
+            }
+        )
+        ack = websocket.receive_json()
+
+    assert ack["message_type"] == "ack"
+    assert ack["payload"]["accepted"] is False
+    assert ack["payload"]["route"] == "handler_failed"
+    assert ack["payload"]["request_id"] == request_id
+    assert ack["payload"]["intent_type"] == "move_intent"
+    assert ack["payload"]["producer_ts"] == 444
+
+
 def test_websocket_legacy_move_intent_echoes_empty_request_id() -> None:
     _reset_runtime_state_with_local_character_model()
     client = TestClient(app)
@@ -844,7 +884,7 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
     assert drop_siming_output["payload"]["authority_event_id"].startswith("siming:dispatch_intent:")
     assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert drop_character_agent_execution["message_type"] == "character_agent_execution"
-    assert drop_character_agent_execution["payload"]["actor_id"] == "char_b"
+    assert drop_character_agent_execution["payload"]["actor_ref"] == "character:char_b"
     ack = next(message for message in received if message["message_type"] == "ack")
     action_request = next(message for message in received if message["message_type"] == "action_request")
     action_resolution = next(
@@ -1244,7 +1284,7 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert siming_output["message_type"] == "siming_output"
     assert siming_output["payload"]["target_actor_id"] == "char_b"
     assert character_agent_execution["message_type"] == "character_agent_execution"
-    assert character_agent_execution["payload"]["actor_id"] == "char_b"
+    assert character_agent_execution["payload"]["actor_ref"] == "character:char_b"
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert projection_delta["message_type"] == "character_runtime_state_delta"
@@ -1748,10 +1788,11 @@ def test_websocket_raw_visual_fact_event_emits_character_agent_execution_for_cha
 
     assert outputs == []
     assert executions
-    assert executions[0]["payload"]["actor_id"] == "char_a"
-    assert all(message["payload"]["actor_id"] == "char_a" for message in executions)
-    assert "actor_control_frames" in executions[0]["payload"]
-    assert "presentation_plan" in executions[0]["payload"]
+    assert executions[0]["payload"]["actor_ref"] == "character:char_a"
+    assert all(message["payload"]["actor_ref"] == "character:char_a" for message in executions)
+    assert executions[0]["payload"]["turn_id"]
+    assert "actor_control_frames" not in executions[0]["payload"]
+    assert "presentation" in executions[0]["payload"]["allowed_realization_hints"]
 
 
 def test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_for_char_b() -> None:
@@ -1805,9 +1846,10 @@ def test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_
 
     assert outputs == []
     assert executions
-    assert executions[0]["payload"]["actor_id"] == "char_b"
-    assert "actor_control_frames" in executions[0]["payload"]
-    assert "presentation_plan" in executions[0]["payload"]
+    assert executions[0]["payload"]["actor_ref"] == "character:char_b"
+    assert executions[0]["payload"]["turn_id"]
+    assert "actor_control_frames" not in executions[0]["payload"]
+    assert "presentation" in executions[0]["payload"]["allowed_realization_hints"]
 
 
 def test_autonomous_approach_can_emit_arrival_fact_after_execution() -> None:

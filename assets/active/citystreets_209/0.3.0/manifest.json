@@ -1,0 +1,68 @@
+{
+  "contract": "paralls_environment_art_pack.v1",
+  "pack_id": "citystreets_209",
+  "version": "0.3.0",
+  "qualification_status": "candidate",
+  "scene_id": "city_block_planned_01",
+  "source_scene": "production-assets/environments/citystreets_209/assembly/city_block_planned_01.blend",
+  "source_scene_runtime_dependency": false,
+  "export_file": "environment.glb",
+  "unit_scale": "meters",
+  "forward_axis": "+Y",
+  "up_axis": "+Z",
+  "ground_z_m": 0.0,
+  "collision_scene": "collision.glb",
+  "navigation_geometry": "navigation.glb",
+  "navigation_input": "metadata/navigation.json",
+  "anchors_file": "metadata/anchors.json",
+  "anchors": {
+    "player_spawn": "ANCHOR__player_spawn",
+    "character_spawns": [
+      "ANCHOR__character_spawn_a",
+      "ANCHOR__character_spawn_b"
+    ],
+    "zones": [
+      "ANCHOR__zone_validation"
+    ],
+    "approach": [
+      "ANCHOR__approach_nw"
+    ],
+    "contact": [
+      "ANCHOR__contact_nw"
+    ],
+    "observation": [
+      "ANCHOR__observation_intersection"
+    ],
+    "placement": [
+      "ANCHOR__placement_southwest"
+    ],
+    "camera": [
+      "ANCHOR__camera_primary"
+    ]
+  },
+  "state_fixtures": [
+    {
+      "name": "FIXTURE__intersection_lighting",
+      "environment_id": "citystreets_209",
+      "state_tags": [
+        "dusk",
+        "street_lights_on"
+      ]
+    }
+  ],
+  "previews": [
+    "previews/perspective.png",
+    "previews/topdown.png"
+  ],
+  "validation": {
+    "blender_audit": "metadata/blender-audit.json",
+    "glb_import": "metadata/import-validation.json",
+    "result": "pass"
+  },
+  "known_limitations": [
+    "Godot must bake and qualify navigation from navigation.glb.",
+    "Collision proxies require runtime qualification and may need tuning after staging.",
+    "The original local KB3D source pack did not include a repository license record.",
+    "Blender reported legacy material graphs with multiple image texture nodes sharing a texture sampler; review imported material sampling during Godot qualification."
+  ]
+}

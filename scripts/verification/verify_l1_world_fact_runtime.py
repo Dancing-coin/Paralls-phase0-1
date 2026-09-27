@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 from uuid import uuid4
+
+verification_env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"}
+os.environ.update(verification_env)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
@@ -459,7 +463,6 @@ def main() -> int:
     project_root = repo_root()
     log_dir = verification_dir(project_root)
     python_exe = resolve_python_exe(args.python_exe)
-
     godot_exe = _resolve_optional_godot(project_root, args.godot_exe)
     godot_status = "godot-runtime-unverified"
     godot_log = log_dir / "l1-world-fact-runtime-godot.log"
@@ -482,6 +485,7 @@ def main() -> int:
             godot_log,
             success_markers=["l1_world_fact_runtime_probe:runtime_source_refs=true"],
             timeout_seconds=60,
+            env=verification_env,
         )
         godot_text = read_text(godot_log)
         godot_probe_ok = (
@@ -506,6 +510,7 @@ def main() -> int:
         ],
         project_root,
         pytest_log,
+        env=verification_env,
     )
     provider_refs_ok = _provider_runtime_refs_present(project_root)
     backend_space_model_ok = _space_model_has_required_runtime_sources(Path(artifacts["space_model"]))

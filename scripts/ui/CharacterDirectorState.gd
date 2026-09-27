@@ -191,6 +191,21 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 			}
 		)
 	for beat in get_recent_script_beats():
+		var beat_siming_rows: Variant = beat.get("siming_summaries", [])
+		if beat_siming_rows is Array:
+			for siming_row in beat_siming_rows:
+				if not siming_row is Dictionary:
+					continue
+				var siming_summary := str((siming_row as Dictionary).get("summary", "") or (siming_row as Dictionary).get("reason_summary", "") or "")
+				if siming_summary.is_empty():
+					continue
+				rows.append(
+					{
+						"type": "司命",
+						"summary": siming_summary,
+						"producer_ts": int(beat.get("producer_ts", 0)),
+					}
+				)
 		rows.append(
 			{
 				"type": "节拍",

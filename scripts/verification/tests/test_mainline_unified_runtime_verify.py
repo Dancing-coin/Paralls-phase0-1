@@ -204,3 +204,10 @@ def test_mainline_unified_runtime_verifier_includes_asset_registry_and_kimodo_co
 
     assert "backend/tests/test_character_asset_registry_static.py" in source
     assert "backend/tests/test_kimodo_adapter_contract.py" in source
+
+
+def test_mainline_unified_runtime_profiles_isolate_default_character_agent_persistence() -> None:
+    source = Path(verifier.__file__).read_text(encoding="utf-8")
+
+    assert '"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"' in source
+    assert "env=verification_env" in source

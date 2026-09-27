@@ -21,3 +21,14 @@ def test_l1_mainline_contract_uses_a_fresh_graph_database_per_run() -> None:
     assert "uuid4" in source
     assert "l1-mainline-route-" in source
     assert "heavenly_graph_path" in source
+
+
+def test_l1_world_fact_verifier_isolates_default_character_agent_persistence() -> None:
+    source = (Path(__file__).resolve().parents[1] / "verify_l1_world_fact_runtime.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "verification_env" in source
+    assert '"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"' in source
+    assert "env=verification_env" in source
+    assert "os.environ.update(verification_env)" in source.split("from app.models", 1)[0]

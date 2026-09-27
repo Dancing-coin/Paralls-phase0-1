@@ -12,6 +12,7 @@ from common import repo_root, resolve_python_exe, run_command, verification_dir,
 
 
 TEST_FILES = ["backend/tests/test_interaction_orchestration_runtime_service.py"]
+verification_env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:"}
 
 
 def _result(result_id: str, title: str, proved: bool, evidence: list[str], notes: str = "") -> dict[str, object]:
@@ -41,7 +42,12 @@ def main() -> int:
     log_dir = verification_dir(project_root)
     python_exe = resolve_python_exe(args.python_exe)
     pytest_log = log_dir / "interaction-orchestration-service-pytest.log"
-    pytest_result = run_command([python_exe, "-m", "pytest", "-q", *TEST_FILES], project_root, pytest_log)
+    pytest_result = run_command(
+        [python_exe, "-m", "pytest", "-q", *TEST_FILES],
+        project_root,
+        pytest_log,
+        env=verification_env,
+    )
 
     service = InteractionOrchestrationService()
     semantic = service.execute(_request(InteractionIntentFrame(intent_id="verify:semantic", actor_id="char_a", target_refs={"object_ids": ["obj_box"]}, semantic_intent="inspect")))

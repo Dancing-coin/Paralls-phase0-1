@@ -19,7 +19,7 @@ metadata/grounding_refs = PackedStringArray("collider:obj_archive_door:body", "a
 metadata/entity_ref = "obj_archive_door"
 
 [node name="ApproachStance" type="Marker3D" parent="."]
-position = Vector3(0, 0, 1.25)
+position = Vector3(0, 0, 0.5)
 
 [node name="ContactAnchor" type="Marker3D" parent="."]
 position = Vector3(-0.15, 0.46, 0.18)

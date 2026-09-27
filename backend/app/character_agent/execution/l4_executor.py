@@ -3,16 +3,290 @@ from app.models.character_agent_runtime import (
     CharacterInterpretation,
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
+from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.skills.models import (
     ActionSettlementResult,
     CompositeActionProposal,
     PrimitiveActionPlan,
     SkillEvaluationResult,
 )
+from app.models.siming_character_bridge import CharacterSemanticIntentProposal
 from copy import deepcopy
 
 
 class CharacterAgentL4Executor:
+    def build_intent_proposal(
+        self,
+        *,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+        turn_context: CharacterTurnContext,
+    ) -> CharacterSemanticIntentProposal:
+        """Project cognition/INF inputs into the shared semantic ingress.
+
+        This is deliberately narrower than the historical execution plan: it
+        contains semantic IDs, canonical claims, locomotion relation, and
+        provenance only.  Local profile selection and body execution remain in
+        Godot's controller port/arbiter path.
+        """
+        if not isinstance(turn_context, CharacterTurnContext):
+            raise TypeError("current canonical turn context is required")
+        if turn_context.actor_id != decision.actor_id or turn_context.actor_id != snapshot.actor_id:
+            raise ValueError("intent proposal actor does not match canonical turn")
+        if turn_context.lifecycle not in {"prepared", "running", "awaiting_settlement"}:
+            raise ValueError("intent proposal requires an active canonical turn")
+
+        selected_intent = str(decision.selected_intent or "observe")
+        target_ref = interpretation.attention_target or (
+            snapshot.attention_targets[0] if snapshot.attention_targets else None
+        )
+        claims, locomotion_relation = self._semantic_claims(selected_intent)
+        context_tags = self._context_tags(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+        )
+        intent_tags = [f"intent:{selected_intent}"]
+        return CharacterSemanticIntentProposal(
+            actor_ref=f"character:{decision.actor_id}",
+            source_id="character_agent_l4",
+            intent_tags=intent_tags,
+            context_tags=context_tags,
+            semantic_action_id=self._semantic_action_id(selected_intent),
+            target_ref=target_ref,
+            claims=claims,
+            locomotion_relation=locomotion_relation,
+            presentation_cues=self._presentation_cues(selected_intent),
+            reason_codes=["character_agent:l4", *self._reason_codes(decision)],
+            source="character_agent",
+            confidence=float(max(0.0, min(1.0, interpretation.salience_score))),
+            provenance={
+                "turn_id": turn_context.turn_id,
+                "source_ref": turn_context.source_event_ref,
+                "producer_ts": turn_context.producer_ts,
+                "branch_id": turn_context.branch_id,
+            },
+            privacy_scope=f"actor_private:{decision.actor_id}",
+            authority_scope="world:default",
+            expected_revision_vector=dict(turn_context.input_revision_vector),
+            causation_id=turn_context.causation_id,
+            correlation_id=turn_context.correlation_id,
+        )
+
+    @staticmethod
+    def _semantic_action_id(selected_intent: str) -> str:
+        return {
+            "short_punch": "action:melee.short_punch",
+            "unarmed_punch": "action:melee.unarmed_punch",
+            "sword_slash": "action:melee.sword_slash",
+            "observe": "action:observe",
+            "observe_target": "action:observe",
+            "attention_shift": "action:observe",
+            "inspect_object": "action:inspect",
+            "speak_public": "action:speak",
+            "speak_private": "action:speak",
+            "share_info": "action:speak",
+            "withhold": "action:speak",
+            "approach": "action:approach",
+            "follow_target": "action:approach",
+            "seek_private_distance": "action:approach",
+            "withdraw": "action:withdraw",
+            "break_contact": "action:withdraw",
+        }.get(selected_intent, f"action:{selected_intent}")
+
+    @staticmethod
+    def _semantic_claims(selected_intent: str) -> tuple[list[str], str]:
+        if selected_intent == "short_punch":
+            return ["upper_body", "right_arm"], "coexist"
+        if selected_intent == "unarmed_punch":
+            return ["right_arm", "left_arm"], "replace_locomotion"
+        if selected_intent == "sword_slash":
+            return ["right_arm", "weapon_slot:sword", "weapon_hit_volume:sword"], "replace_locomotion"
+        if selected_intent in {"approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"}:
+            return ["world_motion", "facing"], "drive_locomotion"
+        if selected_intent in {"speak_public", "speak_private", "share_info", "withhold"}:
+            return ["upper_body", "voice_channel"], "coexist"
+        if selected_intent in {"inspect_object", "interact"}:
+            return ["upper_body", "interaction_reach"], "coexist"
+        return ["head"], "coexist"
+
+    @staticmethod
+    def _presentation_cues(selected_intent: str) -> list[str]:
+        if selected_intent in {"speak_public", "speak_private", "share_info", "withhold"}:
+            return ["presentation:focus_target", "expression:focused"]
+        if selected_intent in {"approach", "follow_target", "seek_private_distance"}:
+            return ["presentation:locomotion_walk"]
+        return ["presentation:observe"]
+
+    @staticmethod
+    def _reason_codes(decision: CharacterIntentDecision) -> list[str]:
+        return [f"goal_source:{value}" for value in decision.goal_sources if value]
+
+    @staticmethod
+    def _context_tags(
+        *,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+    ) -> list[str]:
+        tags: list[str] = []
+
+        def add(namespace: str, value: object) -> None:
+            rendered = str(value or "").strip()
+            if not rendered:
+                return
+            if ":" in rendered and rendered.split(":", 1)[0] in {
+                "goal", "intent", "evidence", "capability", "affordance", "constraint",
+                "state", "status", "action", "phase", "occupy", "event", "authority",
+                "presentation", "expression",
+            }:
+                tags.append(rendered)
+            else:
+                tags.append(f"{namespace}:{rendered}")
+
+        for value in (
+            decision.primary_goal,
+            decision.long_term_goal,
+            decision.mid_term_strategy,
+            decision.immediate_goal,
+            *decision.supporting_goals,
+        ):
+            add("goal", value)
+        for value in (*decision.evidence_tags, *snapshot.evidence_tags, *snapshot.salience_tags):
+            add("evidence", value)
+        for value in (*decision.capability_tags, *snapshot.capability_tags):
+            add("capability", value)
+        for value in (*decision.affordance_tags, *snapshot.affordance_tags):
+            add("affordance", value)
+        for value in (*decision.constraint_tags, *decision.blockers, *snapshot.recent_constraint_results):
+            add("constraint", value)
+        if interpretation.attention_target:
+            add("evidence", f"target:{interpretation.attention_target}")
+        return list(dict.fromkeys(tags))
+
+    def build_execution_contract(
+        self,
+        snapshot: CharacterPrivateWorldSnapshot,
+        interpretation: CharacterInterpretation,
+        decision: CharacterIntentDecision,
+        turn_context: CharacterTurnContext,
+        *,
+        skill_evaluation_result: SkillEvaluationResult | None = None,
+        action_settlement_result: ActionSettlementResult | None = None,
+    ) -> CharacterExecutionContract:
+        """Build the sole production-shaped L4 output for a canonical turn.
+
+        The existing execution plan remains a useful local shadow projection;
+        this method selects only semantic and presentation-safe data for the
+        authority boundary.  It deliberately does not copy body/world-write
+        fields or authoritative settlement effects.
+        """
+        if not isinstance(turn_context, CharacterTurnContext):
+            raise TypeError("current canonical turn context is required")
+        if turn_context.actor_id != decision.actor_id or turn_context.actor_id != snapshot.actor_id:
+            raise ValueError("execution contract actor does not match canonical turn")
+        if turn_context.lifecycle not in {"prepared", "running", "awaiting_settlement"}:
+            raise ValueError("execution contract requires an active canonical turn")
+
+        plan = self.build_execution_plan(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+        )
+        action_bundle = plan.get("action_request_bundle", {})
+        requested_actions = (
+            action_bundle.get("requested_actions", [])
+            if isinstance(action_bundle, dict)
+            else []
+        )
+        action = requested_actions[0] if requested_actions and isinstance(requested_actions[0], dict) else {}
+        semantic_proposal = self.build_intent_proposal(
+            snapshot=snapshot,
+            interpretation=interpretation,
+            decision=decision,
+            turn_context=turn_context,
+        )
+        target_refs: list[str] = []
+        for key in ("target_actor_id", "target_object_id", "target_environment_id"):
+            target = str(action.get(key, "") or "")
+            if target and target not in target_refs:
+                target_refs.append(target)
+        if not target_refs:
+            spatial = plan.get("social_spatial_channel", {})
+            target = str(spatial.get("target_ref", "") or "") if isinstance(spatial, dict) else ""
+            if target:
+                target_refs.append(target)
+
+        metadata = plan.get("skill_realization_metadata", {})
+        metadata = metadata if isinstance(metadata, dict) else {}
+        selected_path = metadata.get("selected_skill_path", {})
+        selected_path = selected_path if isinstance(selected_path, dict) else {}
+        if skill_evaluation_result is not None:
+            selected_path = dict(skill_evaluation_result.selected_path)
+        primitive_tags = metadata.get("primitive_action_tags", [])
+        primitive_tags = list(primitive_tags) if isinstance(primitive_tags, list) else []
+        primitive_keys = metadata.get("primitive_realization_keys", [])
+        primitive_keys = list(primitive_keys) if isinstance(primitive_keys, list) else []
+        presentation = plan.get("presentation_plan", {})
+        presentation = presentation if isinstance(presentation, dict) else {}
+        # Keep the hint vocabulary intentionally local/presentation-safe.  The
+        # contract scanner rejects any accidental body/world authority fields.
+        allowed_hints: dict[str, object] = {
+            "presentation": {
+                "motion_state": presentation.get("motion_state", {}),
+                "focus_state": presentation.get("focus_state", {}),
+                "action_state": presentation.get("action_state", {}),
+                "expression_hint": presentation.get("expression_hint", ""),
+                "physiology_hint": presentation.get("physiology_hint", ""),
+                "speech_state": presentation.get("speech_state", {}),
+            },
+            "skill": {
+                "selected_path": selected_path,
+                "primitive_action_tags": primitive_tags,
+                "primitive_realization_keys": primitive_keys,
+            },
+        }
+        expected_observation: dict[str, object] = {
+            "semantic_intent_id": decision.selected_intent,
+            "semantic_action_id": str(
+                plan.get("composite_action_proposal", {}).get("action_id", decision.selected_intent)
+                if isinstance(plan.get("composite_action_proposal"), dict)
+                else decision.selected_intent
+            ),
+            "target_refs": target_refs,
+            "requested_action": str(action.get("request_type", "") or decision.selected_intent),
+        }
+        if interpretation.interpreted_summary:
+            expected_observation["summary"] = interpretation.interpreted_summary
+
+        return CharacterExecutionContract(
+            turn_id=turn_context.turn_id,
+            actor_ref=f"character:{decision.actor_id}",
+            source_ref=turn_context.source_event_ref,
+            producer_ts=turn_context.producer_ts,
+            target_refs=tuple(target_refs),
+            target_ref=target_refs[0] if len(target_refs) == 1 else None,
+            semantic_intent_id=decision.selected_intent,
+            semantic_action_id=str(semantic_proposal.semantic_action_id or expected_observation["semantic_action_id"]),
+            source_id=semantic_proposal.source_id,
+            intent_tags=tuple(semantic_proposal.intent_tags),
+            context_tags=tuple(semantic_proposal.context_tags),
+            claims=tuple(semantic_proposal.claims),
+            locomotion_relation=semantic_proposal.locomotion_relation,
+            allowed_realization_hints=allowed_hints,
+            expected_revision_vector=dict(turn_context.input_revision_vector),
+            expected_memory_revision_vector=dict(turn_context.memory_revision_vector),
+            expected_snapshot_revision=turn_context.snapshot_revision,
+            idempotency_key=f"execution:{turn_context.turn_id}",
+            causation_id=turn_context.causation_id,
+            correlation_id=turn_context.correlation_id,
+            privacy_scope=f"actor_private:{turn_context.actor_id}",
+            authority_scope="world:default",
+            expected_observation=expected_observation,
+        )
+
     def attach_realization_hints(self, plan: dict[str, object]) -> dict[str, object]:
         presentation_plan = plan.get("presentation_plan", {})
         if not isinstance(presentation_plan, dict):

@@ -453,8 +453,12 @@ class CharacterModelProvider:
             or "model cognition unavailable; local-only stub active"
         )
         interpretation_type = "cognition_unavailable"
+        if str(event.get("percept_channel", "") or "") == "combat" and str(event.get("target_actor_id", "") or ""):
+            interpretation_type = "combat_threat"
         if str(event.get("body_state_class", "") or "") or bool(snapshot.get("body_state_hints", [])):
             interpretation_type = "body_state"
+        if str(event.get("percept_channel", "") or "") == "combat" and str(event.get("target_actor_id", "") or ""):
+            interpretation_type = "combat_threat"
         salience_score = float(event.get("clarity_score", snapshot.get("clarity_score", 0.5)) or 0.5)
         salience_boost = event.get("salience_boost")
         if isinstance(salience_boost, (int, float)):
@@ -462,7 +466,7 @@ class CharacterModelProvider:
         attention_targets = snapshot.get("attention_targets", [])
         if not isinstance(attention_targets, list):
             attention_targets = []
-        attention_target = str(
+        attention_target = str(event.get("target_actor_id", "") or "") if interpretation_type == "combat_threat" else str(
             attention_targets[0]
             if attention_targets
             else event.get("target_actor_id", "") or event.get("target_object_id", "") or event.get("target_environment_id", "") or ""
@@ -484,7 +488,7 @@ class CharacterModelProvider:
         if str(event.get("percept_channel", "") or "") == "siming" and interpretation_type != "body_state":
             risk_level = "low"
         else:
-            risk_level = "medium" if interpretation_type == "body_state" or active_anomalies or recent_constraint_results else "low"
+            risk_level = "high" if interpretation_type == "combat_threat" else ("medium" if interpretation_type == "body_state" or active_anomalies or recent_constraint_results else "low")
         ambiguity_level = "high"
         return {
             "interpreted_summary": summary,
@@ -533,10 +537,15 @@ class CharacterModelProvider:
         distraction_level = str(snapshot.get("distraction_level", "") or "")
         salience_score = float(interpretation.get("salience_score", 0.0) or 0.0)
         candidate_intents = ["observe", "self_protect"]
+        combat_threat = str(interpretation.get("interpretation_type", "")) == "combat_threat" and bool(attention_target)
+        if combat_threat:
+            candidate_intents.append("short_punch")
         if control_mode == "player_priority_assisted":
             candidate_intents.append("stay_silent")
         selected_intent = "observe"
-        if recent_constraint_results or str(interpretation.get("risk_level", "") or "low") in {"medium", "high"}:
+        if combat_threat:
+            selected_intent = "short_punch"
+        elif recent_constraint_results or str(interpretation.get("risk_level", "") or "low") in {"medium", "high"}:
             selected_intent = "self_protect"
         elif control_mode == "player_priority_assisted":
             selected_intent = "stay_silent"

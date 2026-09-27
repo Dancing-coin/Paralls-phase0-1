@@ -13,7 +13,7 @@ const REQUIRED_BONES := [
 ]
 const OPTIONAL_BONES := [&"left_finger_1", &"right_finger_1", &"facial_jaw"]
 const REQUIRED_LOCOMOTION_TAGS := [
-	&"idle", &"walk_forward", &"run_forward", &"jump_start", &"jump_land", &"turn_left", &"turn_right",
+	&"idle", &"walk_forward", &"run_forward", &"jump_start", &"jump_land",
 ]
 const REST_SCALE_TOLERANCE := 0.01
 

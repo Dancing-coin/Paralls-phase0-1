@@ -9,6 +9,7 @@ const CharacterControllerPortRef = preload("res://scripts/character/CharacterCon
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
 const ContinuousControlLeaseRef = preload("res://scripts/character/ContinuousControlLease.gd")
 const ActorActionArbiterRef = preload("res://scripts/character/ActorActionArbiter.gd")
+const ActionInstanceRef = preload("res://scripts/character/ActionInstance.gd")
 const MotionContributionComposerRef = preload("res://scripts/character/MotionContributionComposer.gd")
 
 enum LocomotionState {
@@ -284,6 +285,24 @@ func begin_embodied_control_frame(world_position: Vector3, move_direction: Vecto
 	player_shell_active = true
 	player_control_move_direction = Vector3(move_direction.x, 0.0, move_direction.z)
 	player_control_wants_run = wants_run
+	var shell_grounded := is_grounded and jump_type == "none"
+	var shell_velocity := velocity
+	var shell_motion_state := _normalize_motion_state({
+		"position": world_position,
+		"velocity_world": shell_velocity,
+		"move_local_actual": Vector2(player_control_move_direction.x, player_control_move_direction.z),
+		"gait_actual": gait_name,
+		"grounded": shell_grounded,
+		"support_ref": "floor" if shell_grounded else "",
+		"support_loss": not shell_grounded,
+	})
+	runtime_state.stage_player_shell_pose(
+		shell_motion_state,
+		_build_player_presentation_input(),
+		stance_name,
+		gait_name,
+		jump_type,
+	)
 	if stance_name == "crouch":
 		posture_target = Vector3(0.0, -0.22, 0.02)
 	elif hold_timer <= 0.0 and focus_attention_posture_timer <= 0.0:
@@ -425,6 +444,11 @@ func _on_siming_output_received(payload: Dictionary) -> void:
 func _on_character_agent_execution_received(payload: Dictionary) -> void:
 	if not runtime_state.execution_payload_targets_actor(payload, actor_id):
 		return
+	var semantic_proposal := runtime_state.build_agent_intent_proposal(payload, actor_id)
+	if not bool(semantic_proposal.get("accepted", false)):
+		_bus_log("character_agent_intent_rejected:%s:%s" % [actor_id, str(semantic_proposal.get("reason", "unknown"))])
+		return
+	runtime_state.stage_agent_intent_proposal(semantic_proposal)
 	var presentation_plan: Dictionary = runtime_state.get_execution_payload_presentation_plan(payload)
 	var frame: Dictionary = runtime_state.get_execution_payload_intent_frame(payload, actor_id)
 	if frame.is_empty():
@@ -854,12 +878,16 @@ func _update_movement(delta: float) -> void:
 	var normalized_move := Vector2.ZERO
 	if move_direction.length() > 0.001:
 		var world_direction := move_direction.normalized()
-		normalized_move = Vector2(world_direction.dot(global_basis.x), world_direction.dot(-global_basis.z))
-	var action := runtime_state.get_active_command_type() if runtime_state.has_method("get_active_command_type") else "locomotion"
+		normalized_move = Vector2(world_direction.x, world_direction.z)
+	var agent_proposal := runtime_state.get_agent_intent_proposal() if driver_mode != DriverMode.PLAYER else {}
+	var action := str(agent_proposal.get("semantic_action_id", "")) if not agent_proposal.is_empty() else (runtime_state.get_active_command_type() if runtime_state.has_method("get_active_command_type") else "locomotion")
+	var proposal_claims: Array = agent_proposal.get("claims", []) if agent_proposal.get("claims", []) is Array else []
 	var proposal := CharacterControllerPortRef.submit_intent_proposal({
 		"move_local": normalized_move,
 		"desired_facing_yaw": _pending_facing_yaw,
 		"action_id": action,
+		"claims": proposal_claims,
+		"locomotion_relation": str(agent_proposal.get("locomotion_relation", "coexist")),
 		"intent_tags": [StringName("intent:move_to_affordance")] if move_direction.length() > 0.001 else [],
 	}, StringName("player" if driver_mode == DriverMode.PLAYER else "npc:%s" % actor_id), CharacterControlModeRef.HUMAN_CONTROLLED if driver_mode == DriverMode.PLAYER else CharacterControlModeRef.AGENT_CONTROLLED)
 	var lease := ContinuousControlLeaseRef.create(
@@ -874,16 +902,32 @@ func _update_movement(delta: float) -> void:
 	if bool(proposal.get("accepted", false)):
 		leases.append(lease)
 	var actions: Array[Dictionary] = []
+	if not agent_proposal.is_empty() and not action.is_empty():
+		var action_instance := ActionInstanceRef.create(
+			StringName("agent:%s:%s" % [actor_id, _physics_tick]),
+			StringName(action),
+			StringName("npc:%s" % actor_id),
+			StringName(agent_proposal.get("target_ref", "")),
+			_physics_tick,
+		)
+		action_instance["claims"] = proposal_claims.duplicate()
+		action_instance["locomotion_relation"] = str(agent_proposal.get("locomotion_relation", "coexist"))
+		actions.append(action_instance)
 	var frame := ActorActionArbiterRef.resolve(_physics_tick, leases, actions, {"occupancy": {}})
+	runtime_state.record_arbitration_frame(frame)
 	var speed := run_speed_for_actor() if driver_mode == DriverMode.PLAYER and player_control_wants_run else move_speed
 	var root_entry := {"request_id": "root:%s:%s" % [actor_id, _physics_tick], "kind": "action", "source_kind": "root_motion", "action_instance_id": "root:%s:%s" % [actor_id, _physics_tick], "root_delta": _pending_root_delta, "root_motion_policy": "hold"}
 	if _pending_root_delta.length() > 0.0001:
 		frame["admitted"].append(root_entry)
 	var command := MotionContributionComposerRef.compose(frame, {"actor_ref": actor_id, "speed": speed, "facing_yaw": _pending_facing_yaw}, delta)
 	var previous_position := global_position
+	if driver_mode == DriverMode.PLAYER and player_shell_active and runtime_state.get_player_jump_type() != "none" and is_on_floor():
+		command["impulse"] = (command.get("impulse", Vector3.ZERO) as Vector3) + Vector3.UP * 4.5
 	var result: Dictionary = character_motor.apply_physics_command(self, command, delta) if character_motor != null and character_motor.has_method("apply_physics_command") else {}
 	current_velocity = result.get("velocity_world", Vector3.ZERO)
 	last_root_motion_world_delta = command.get("root_delta", Vector3.ZERO)
+	if driver_mode != DriverMode.PLAYER and last_root_motion_world_delta.length() > 0.0001:
+		_log_root_motion_step("patrol_root_motion_step", false)
 	_pending_root_delta = Vector3.ZERO
 	var planar_step := global_position - previous_position
 	planar_step.y = 0.0
@@ -893,6 +937,17 @@ func _update_movement(delta: float) -> void:
 
 func run_speed_for_actor() -> float:
 	return move_speed
+
+
+func get_numeric_setting(property_name: StringName, fallback: float) -> float:
+	# Camera-facing turns are body rotation, not animation actions.  Expose the
+	# actor's configured turn speed to the shared Motor so camera yaw changes
+	# converge through the same physical facing path as every other actor.
+	match property_name:
+		&"facing_turn_speed":
+			return turn_speed
+		_:
+			return fallback
 
 func _move_toward_patrol_target(target: Vector3, delta: float) -> void:
 	_move_toward_target(target, delta, false)

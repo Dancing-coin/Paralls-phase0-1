@@ -83,6 +83,14 @@ def test_dynamic_state_tracks_live_subjective_pressure_fields() -> None:
     assert state.motivation_stack == ["preserve_order", "avoid_public_exposure"]
 
 
+def test_dynamic_state_rehydrates_legacy_snapshot_without_attention_fields() -> None:
+    state = CharacterDynamicState(actor_id="char_legacy", stress_load=0.4)
+
+    assert state.vigilance_level == 0.0
+    assert state.distraction_level == 0.0
+    assert state.stress_load == 0.4
+
+
 def test_higher_order_memory_tracks_who_knows_what_about_whom() -> None:
     record = CharacterHigherOrderMemoryRecord(
         memory_id="hom:1",

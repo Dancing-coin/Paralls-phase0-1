@@ -3,6 +3,107 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+SEMANTIC_FORBIDDEN_FIELDS = {"raw_hit", "hit", "damage", "ammo", "projectile", "pose", "transform", "velocity", "ballistic_truth"}
+
+
+class ActorControlIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    session_id: str = Field(min_length=1)
+    actor_ref: str = Field(min_length=1)
+    connection_epoch: int = Field(ge=1)
+    client_sequence: int = Field(ge=1)
+    physics_tick: int = Field(ge=0)
+    lease_revision: int = Field(ge=0)
+    control_intents: list[dict[str, object]] = Field(default_factory=list)
+    action_request_ids: list[str] = Field(default_factory=list)
+    sent_at: int = Field(ge=0)
+
+
+class ActorActionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    session_id: str = Field(min_length=1)
+    actor_ref: str = Field(min_length=1)
+    connection_epoch: int = Field(ge=1)
+    client_sequence: int = Field(ge=1)
+    physics_tick: int = Field(ge=0)
+    action_instance_id: str = Field(min_length=1)
+    idempotency_key: str = Field(min_length=1)
+    expected_revisions: dict[str, int] = Field(default_factory=dict)
+    request: dict[str, object]
+
+    @model_validator(mode="after")
+    def semantic_only(self) -> "ActorActionRequest":
+        present = SEMANTIC_FORBIDDEN_FIELDS.intersection(self.request)
+        if present:
+            raise ValueError(f"forbidden semantic action field: {', '.join(sorted(present))}")
+        return self
+
+
+class FutureBodyStreamEnvelope(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    actor_ref: str = Field(min_length=1)
+    authority_epoch: int = Field(ge=1)
+    physics_tick: int = Field(ge=0)
+    body_revision: int = Field(ge=1)
+    base_body_revision: int | None = Field(default=None, ge=0)
+    position: tuple[float, float, float]
+    velocity: tuple[float, float, float]
+    facing: tuple[float, float, float]
+    grounded: bool
+    support_ref: str = ""
+    active_action_ids: list[str] = Field(default_factory=list)
+    correction_reason: str = ""
+    snapshot_checksum: str = Field(min_length=1)
+
+
+class ProtocolAdmission(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    accepted: bool
+    code: str
+    admission_only: bool = True
+
+
+class ConnectedActionProtocol:
+    mode = "B"
+    mode_c_gates = (
+        "physical_authority_owner", "fixed_tick_body_schema", "collision_determinism",
+        "prediction_correction_budget", "interest_management", "body_revision_replay_rollback",
+        "abuse_validation",
+    )
+
+    def __init__(self) -> None:
+        self._epoch = 1
+        self._next_sequence = 1
+        self._lease_revision = 0
+
+    def reconnect(self) -> int:
+        self._epoch += 1
+        self._next_sequence = 1
+        self._lease_revision = 0
+        return self._epoch
+
+    def admit_control(self, intent: ActorControlIntent) -> ProtocolAdmission:
+        if intent.connection_epoch != self._epoch:
+            return ProtocolAdmission(accepted=False, code="connection_epoch_stale")
+        if intent.client_sequence < self._next_sequence:
+            return ProtocolAdmission(accepted=False, code="duplicate_client_sequence")
+        if intent.client_sequence > self._next_sequence:
+            return ProtocolAdmission(accepted=False, code="sequence_gap")
+        if intent.lease_revision < self._lease_revision:
+            return ProtocolAdmission(accepted=False, code="lease_revision_stale")
+        self._lease_revision = intent.lease_revision
+        self._next_sequence += 1
+        return ProtocolAdmission(accepted=True, code="admitted")
+
+    def admit_action(self, request: ActorActionRequest) -> ProtocolAdmission:
+        if request.connection_epoch != self._epoch:
+            return ProtocolAdmission(accepted=False, code="connection_epoch_stale")
+        expires_at = request.request.get("expires_at_tick")
+        if isinstance(expires_at, int) and request.physics_tick > expires_at:
+            return ProtocolAdmission(accepted=False, code="action_expired")
+        return ProtocolAdmission(accepted=True, code="admitted")
+
+
 class Envelope(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

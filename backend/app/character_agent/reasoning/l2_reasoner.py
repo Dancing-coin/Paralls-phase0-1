@@ -18,6 +18,8 @@ from app.models.character_agent_runtime import CharacterInterpretation
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 
 
 class CharacterAgentL2Service:
@@ -26,12 +28,14 @@ class CharacterAgentL2Service:
         gateway: CharacterModelGateway | None = None,
         profile_loader: CharacterProfileLoader | None = None,
         profile_registry: CharacterProfileRegistry | None = None,
+        semantic_recall_service: CharacterSemanticRecallService | None = None,
     ) -> None:
         self._gateway = gateway or CharacterModelGateway()
         self._context_builder = CharacterContextBuilder()
         self._profile_registry = profile_registry
         self._profile_loader = profile_loader or CharacterProfileLoader()
         self._profile_cache: dict[str, dict[str, object]] = {}
+        self._semantic_recall_service = semantic_recall_service
 
     def prepare_reasoning_request(
         self,
@@ -48,24 +52,32 @@ class CharacterAgentL2Service:
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> dict[str, object]:
+        context = self._reasoning_context(
+            actor_id=snapshot.actor_id,
+            snapshot=snapshot.model_dump(),
+            event=event if isinstance(event, dict) else event.model_dump(),
+            memory_bundle=memory_bundle,
+            control_mode=control_mode,
+            working_memory_state=working_memory_state,
+            current_goal_state=current_goal_state,
+            goal_state_history=goal_state_history,
+            supervision_state=supervision_state,
+            unresolved_tensions=unresolved_tensions,
+            background_agenda_state=background_agenda_state,
+            effective_profile=effective_profile,
+            need_tension_state=need_tension_state,
+        )
+        if self._semantic_recall_service is not None and turn_context is not None:
+            semantic = self._semantic_recall_service.select(snapshot.actor_id, context, turn_context=turn_context)
+            context["memory"] = semantic.memory
+            context["memory_recall"] = semantic.metadata
+            context["semantic_recall"] = semantic.metadata
+            context["semantic_cards"] = [card.to_payload() for card in semantic.cards]
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
-            context=self._reasoning_context(
-                actor_id=snapshot.actor_id,
-                snapshot=snapshot.model_dump(),
-                event=event if isinstance(event, dict) else event.model_dump(),
-                memory_bundle=memory_bundle,
-                control_mode=control_mode,
-                working_memory_state=working_memory_state,
-                current_goal_state=current_goal_state,
-                goal_state_history=goal_state_history,
-                supervision_state=supervision_state,
-                unresolved_tensions=unresolved_tensions,
-                background_agenda_state=background_agenda_state,
-                effective_profile=effective_profile,
-                need_tension_state=need_tension_state,
-            ),
+            context=context,
         )
 
     def map_reasoning_output(
@@ -168,6 +180,7 @@ class CharacterAgentL2Service:
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> bytes:
         request = self.prepare_reasoning_request(
             snapshot=snapshot,
@@ -200,6 +213,7 @@ class CharacterAgentL2Service:
         background_agenda_state: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterInterpretation:
         request_json = self.prepare_perceived_event(
             snapshot, event,
@@ -213,6 +227,7 @@ class CharacterAgentL2Service:
             background_agenda_state=background_agenda_state,
             effective_profile=effective_profile,
             need_tension_state=need_tension_state,
+            turn_context=turn_context,
         )
         model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
@@ -230,6 +245,7 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> bytes:
         request = self.prepare_reasoning_request(
             snapshot=snapshot,
@@ -242,6 +258,7 @@ class CharacterAgentL2Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            turn_context=turn_context,
         )
         return CharacterModelGateway.freeze_prepared_request(request)
 
@@ -258,6 +275,7 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterInterpretation:
         request_json = self.prepare_self_body_event(
             snapshot, event,
@@ -269,6 +287,7 @@ class CharacterAgentL2Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            turn_context=turn_context,
         )
         model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=event.actor_id, output=model_output)
@@ -286,6 +305,7 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> bytes:
         request = self.prepare_reasoning_request(
             snapshot=snapshot,
@@ -298,6 +318,7 @@ class CharacterAgentL2Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            turn_context=turn_context,
         )
         return CharacterModelGateway.freeze_prepared_request(request)
 
@@ -314,6 +335,7 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterInterpretation:
         request_json = self.prepare_siming_output(
             snapshot, payload,
@@ -325,6 +347,7 @@ class CharacterAgentL2Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            turn_context=turn_context,
         )
         model_output = self._gateway.complete_prepared_request(request_json)
         return self.map_reasoning_output(actor_id=snapshot.actor_id, output=model_output)

@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 from threading import RLock, get_ident
 from typing import Callable
+from collections.abc import Mapping
 
 from app.character_agent.logic.affect_engine import AffectEngine
 from app.character_agent.logic.drift_accumulator import DriftAccumulator
@@ -79,8 +80,20 @@ from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.gateway.memory_recall import MissingRequiredMemoryEvidence
 from app.character_agent.execution.l4_adapter import CharacterAgentL4Adapter
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.embodied_episode import CandidateActionObservation, EmbodiedEpisodeRecord
+from app.models.behavior_turn import CharacterTurnStageEvent
+from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
+from app.character_agent.services.embodied_episode_service import EmbodiedEpisodeService
+from app.character_agent.services.character_turn_recovery import (
+    CharacterTurnRecoveryResult,
+    CharacterTurnRecoveryService,
+)
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.memory.working_memory import CharacterWorkingMemory
+from app.character_agent.storage.behavior_policy_store import BehaviorPolicyStore
+from app.character_agent.models.behavior_policy import BehaviorPolicyRecord
 from app.character_agent.storage.memory_store import CharacterAgentMemoryStore, CharacterMemoryStorePort
 from app.character_agent.storage.dynamic_state_store import CharacterDynamicStateStore
 from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
@@ -93,6 +106,7 @@ from app.population_continuity.models import ActivationDecision, ActivationRecei
 from app.character_agent.services.character_behavior_evaluation import CharacterBehaviorEvaluationService
 from app.character_agent.services.behavior_turn_projection import CharacterBehaviorTurnProjection
 from app.character_agent.services.character_continuity import CharacterContinuityService
+from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 from app.services.character_agent_debug_projection import CharacterAgentDebugProjection
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
@@ -150,6 +164,12 @@ class CharacterAgentRuntime:
         self._profile_registry = CharacterProfileRegistry.from_directory(self._PROFILE_DIRECTORY)
         # ponytail: 单 runtime 的低频修复串行执行；多进程写入时需使用 owner 事务锁。
         self._memory_correction_lock = RLock()
+        # A canonical turn spans many append-only events.  The session-store
+        # lock protects each append, but cannot make the complete turn atomic;
+        # serialize turns per actor so concurrent perceptions cannot invalidate
+        # one another's optimistic revision pins mid-turn.
+        self._actor_turn_locks_guard = RLock()
+        self._actor_turn_locks: dict[str, RLock] = {}
         self._memory_correction_authorizer = memory_correction_authorizer
         self._memory_source_resolver = memory_source_resolver
         self._memory_now_ts_provider = memory_now_ts_provider
@@ -207,7 +227,35 @@ class CharacterAgentRuntime:
         self._session_store = session_store or CharacterAgentSessionStore(storage_root=storage_root,
             database_path=getattr(continuity_store, 'session_database_path', None))
         try:
+            self._behavior_policy_store = BehaviorPolicyStore(
+                session_store=self._session_store, project_event=self._project_session_event)
+            self._turn_coordinator = CharacterTurnCoordinator(
+                self._session_store, project_event=self._project_session_event)
+            self._embodied_episode_service = EmbodiedEpisodeService()
+            self._embodied_episodes: dict[str, EmbodiedEpisodeRecord] = {}
+            self._turn_recovery_service = (
+                CharacterTurnRecoveryService(session_store=self._session_store, continuity_store=continuity_store)
+                if continuity_store is not None and getattr(continuity_store, "_require_complete_snapshot", False)
+                else None
+            )
+            self._recovery_blocked_actor_ids: set[str] = set()
+            self._restored_active_turns: dict[str, dict[str, dict[str, object]]] = {}
+            self._last_committed_turn_ids: dict[str, str] = {}
+            self._graph_session_timelines: dict[str, list[dict[str, object]]] = {}
+            self._graph_session_local_overlap_counts: dict[str, int] = {}
+            self._graph_session_replay_offsets: dict[str, int] = {}
+            self._projected_memory_scene_events: set[tuple[str, str]] = set()
             self._memory_store = memory_store or CharacterAgentMemoryStore()
+            graph = getattr(self._memory_store, "graph", None)
+            if graph is not None:
+                semantic_recall = CharacterSemanticRecallService(
+                    graph=graph,
+                    scope_resolver=(getattr(self._memory_store, "scope_for_actor", None) or getattr(self._memory_store, "_scope_for_actor", None)),
+                    memory_reader=self._memory_store.retrieval_bundle,
+                    graph_policy_revision=getattr(self._memory_store, "graph_policy_revision", "policy:v1"),
+                )
+                self._l2._semantic_recall_service = semantic_recall
+                self._l3._semantic_recall_service = semantic_recall
             self._dynamic_state_store = CharacterDynamicStateStore()
             self._need_tension_store = CharacterNeedTensionStore()
             self._goal_state_store = CharacterGoalStateStore()
@@ -239,6 +287,10 @@ class CharacterAgentRuntime:
             self._runtime_field_versions = {}
             self._rehydrate_graph_continuity()
             self._rehydrate_runtime_state_from_timeline()
+            if self._turn_recovery_service is not None:
+                for actor_id in self._continuity_actor_ids:
+                    if self._continuity_store.read_snapshot(actor_id) is not None:
+                        self.reconcile_character_turn(actor_id)
         except BaseException:
             self.close()
             raise
@@ -522,6 +574,15 @@ class CharacterAgentRuntime:
     def _ingest_character_perceived_event_steps(self, event: CharacterPerceivedEvent) -> Generator[CognitionRequest, dict[str, object], list[CharacterGoalCommand]]:
         if not self.supports_actor(event.actor_id):
             return []
+        turn = self._begin_canonical_turn(
+            actor_id=event.actor_id,
+            source_event_ref=event.source_candidate_event_id,
+            producer_ts=event.producer_ts,
+            causation_id=f"character_perceived:{event.actor_id}:{event.source_candidate_event_id}",
+            correlation_id=f"character_perceived:{event.actor_id}:{event.source_candidate_event_id}",
+        )
+        if "execution" in turn.stage_refs:
+            return []
         if self._should_defer_perception(event.actor_id, event.producer_ts):
             snapshot = self._get_snapshot_for_observatory(event.actor_id, event.producer_ts)
             self._queue_observatory_stage_event(
@@ -541,6 +602,12 @@ class CharacterAgentRuntime:
         self._record_character_perceived_event(event)
         self._record_relational_belief_from_perceived_event(event)
         snapshot = self._l1.apply_character_perceived_event(event)
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="context",
+            payload={"l1_snapshot": snapshot.model_dump(mode="json")},
+            producer_ts=event.producer_ts,
+        )
         self._refresh_weak_supervision_state(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -642,7 +709,14 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 effective_profile=effective_profile,
                 need_tension_state=need_tension_state,
+                turn_context=turn,
             ),
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="interpretation",
+            payload=interpretation.model_dump(mode="json"),
+            producer_ts=event.producer_ts,
         )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
@@ -677,6 +751,9 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            event.actor_id, now=event.producer_ts
+        )
         decision = yield from self._select_intent_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -699,7 +776,29 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 need_tension_state=need_tension_state,
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
+                behavior_policy_snapshot=behavior_policy_snapshot,
+                turn_context=turn,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision,
+            causation_id=turn.causation_id, correlation_id=turn.correlation_id,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="goal",
+            payload=(decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="intent",
+            payload={
+                "selected_intent": decision.selected_intent,
+                "rationale": decision.rationale,
+                "planning_status": decision.planning_status,
+            },
+            producer_ts=event.producer_ts,
         )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)
         self._set_observatory_context(event.actor_id, "decision_summary", decision.selected_intent)
@@ -743,6 +842,7 @@ class CharacterAgentRuntime:
             snapshot,
             interpretation,
             decision,
+            turn_context=turn,
         )
         return self.filter_commands_for_actor(
             event.actor_id,
@@ -903,6 +1003,15 @@ class CharacterAgentRuntime:
     def _ingest_self_body_perceived_event_steps(self, event: SelfBodyPerceivedEvent) -> Generator[CognitionRequest, dict[str, object], list[CharacterGoalCommand]]:
         if not self.supports_actor(event.actor_id):
             return []
+        turn = self._begin_canonical_turn(
+            actor_id=event.actor_id,
+            source_event_ref=event.source_body_result_id,
+            producer_ts=event.producer_ts,
+            causation_id=f"self_body_perceived:{event.actor_id}:{event.source_body_result_id}",
+            correlation_id=f"self_body_perceived:{event.actor_id}:{event.source_body_result_id}",
+        )
+        if "execution" in turn.stage_refs:
+            return []
         if self._should_defer_perception(event.actor_id, event.producer_ts):
             snapshot = self._get_snapshot_for_observatory(event.actor_id, event.producer_ts)
             self._queue_observatory_stage_event(
@@ -921,6 +1030,12 @@ class CharacterAgentRuntime:
             return []
         self._record_self_body_event(event)
         snapshot = self._l1.apply_self_body_perceived_event(event)
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="context",
+            payload={"l1_snapshot": snapshot.model_dump(mode="json")},
+            producer_ts=event.producer_ts,
+        )
         self._refresh_weak_supervision_state(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -995,6 +1110,12 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
             ),
         )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="interpretation",
+            payload=interpretation.model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
                 actor_id=event.actor_id,
@@ -1019,6 +1140,9 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            event.actor_id, now=event.producer_ts
+        )
         decision = yield from self._select_intent_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -1038,7 +1162,29 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
+                behavior_policy_snapshot=behavior_policy_snapshot,
+                turn_context=turn,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=event.producer_ts, decision=decision,
+            causation_id=turn.causation_id, correlation_id=turn.correlation_id,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="goal",
+            payload=(decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json"),
+            producer_ts=event.producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="intent",
+            payload={
+                "selected_intent": decision.selected_intent,
+                "rationale": decision.rationale,
+                "planning_status": decision.planning_status,
+            },
+            producer_ts=event.producer_ts,
         )
         self._record_goal_state_event(event.actor_id, event.producer_ts, decision)
         self._set_observatory_context(event.actor_id, "decision_summary", decision.selected_intent)
@@ -1082,6 +1228,7 @@ class CharacterAgentRuntime:
             snapshot,
             interpretation,
             decision,
+            turn_context=turn,
         )
         return self.filter_commands_for_actor(
             event.actor_id,
@@ -1258,6 +1405,7 @@ class CharacterAgentRuntime:
         if not self.supports_actor(actor_id):
             return []
         normalized_payload["target_actor_id"] = actor_id
+        producer_ts = int(normalized_payload.get("producer_ts", 0) or 0)
         self._refresh_weak_supervision_from_siming(
             actor_id=actor_id,
             payload=normalized_payload,
@@ -1312,7 +1460,6 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
-        producer_ts = int(normalized_payload.get("producer_ts", 0) or 0)
         wake_up_input = self._is_wake_up_input(normalized_payload)
         if self._should_defer_cognition(actor_id, producer_ts) and not wake_up_input:
             self._queue_observatory_stage_event(
@@ -1358,6 +1505,27 @@ class CharacterAgentRuntime:
                     unresolved_tensions=unresolved_tensions, background_agenda_state=self.get_background_agenda_state(actor_id)),
                 memory_override=memory_override),
         )
+        turn = self._begin_canonical_turn(
+            actor_id=actor_id,
+            source_event_ref=str(normalized_payload.get("message_id", "") or ""),
+            producer_ts=producer_ts,
+            causation_id=str(normalized_payload.get("causation_id", "") or ""),
+            correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
+        )
+        if "execution" in turn.stage_refs:
+            return []
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="context",
+            payload={"l1_snapshot": snapshot.model_dump(mode="json")},
+            producer_ts=producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="interpretation",
+            payload=interpretation.model_dump(mode="json"),
+            producer_ts=producer_ts,
+        )
         if interpretation.cognition_status == "model":
             self._apply_cognition_update(
                 actor_id=actor_id,
@@ -1386,6 +1554,9 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             memory_bundle=memory_record_bundle,
         )
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            actor_id, now=producer_ts
+        )
         decision = yield from self._select_intent_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -1399,6 +1570,26 @@ class CharacterAgentRuntime:
                     current_goal_state=current_goal_state, goal_state_history=goal_state_history,
                     supervision_state=supervision_state, unresolved_tensions=unresolved_tensions),
                 memory_override=memory_override),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot, turn_id=turn.turn_id, producer_ts=producer_ts, decision=decision,
+            causation_id=turn.causation_id, correlation_id=turn.correlation_id,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="goal",
+            payload=(decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json"),
+            producer_ts=producer_ts,
+        )
+        turn = self._turn_coordinator.append_stage(
+            context=turn,
+            stage="intent",
+            payload={
+                "selected_intent": decision.selected_intent,
+                "rationale": decision.rationale,
+                "planning_status": decision.planning_status,
+            },
+            producer_ts=producer_ts,
         )
         self._record_goal_state_event(actor_id, int(normalized_payload.get("producer_ts", 0) or 0), decision)
         self._set_observatory_context(actor_id, "decision_summary", decision.selected_intent)
@@ -1444,6 +1635,7 @@ class CharacterAgentRuntime:
             decision,
             causation_id=str(normalized_payload.get("causation_id", "") or ""),
             correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
+            turn_context=turn,
         )
         return self.filter_commands_for_actor(
             actor_id,
@@ -1665,6 +1857,139 @@ class CharacterAgentRuntime:
 
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
         return self._session_timeline_after(actor_id, 0)
+
+    def begin_embodied_episode(
+        self,
+        *,
+        turn: CharacterTurnContext,
+        candidate: CandidateActionObservation,
+        pre_capture_ref: str,
+        producer_ts: int | None = None,
+    ) -> EmbodiedEpisodeRecord:
+        """Persist an actor-private episode reference before authority execution.
+
+        This is deliberately an actor timeline event, not a settlement write.
+        The execution contract and its authority route remain independently
+        owned by the existing runtime boundary.
+        """
+        episode = self._embodied_episode_service.begin(turn, candidate, pre_capture_ref)
+        existing = self._embodied_episodes.get(episode.episode_ref)
+        if existing is not None:
+            if existing != episode:
+                raise ValueError("embodied episode idempotency conflict")
+            return existing
+        timestamp = turn.producer_ts if producer_ts is None else producer_ts
+        self._append_session_event(
+            actor_id=turn.actor_id,
+            event_type="character_embodied_episode_begun",
+            producer_ts=timestamp,
+            payload={"turn_id": turn.turn_id, "episode_ref": episode.episode_ref, "record": episode.model_dump(mode="json")},
+        )
+        self._embodied_episodes[episode.episode_ref] = episode
+        return episode
+
+    def complete_embodied_episode(
+        self,
+        *,
+        episode: EmbodiedEpisodeRecord,
+        authority_result: object | None,
+        post_capture_ref: str,
+        observed_state: str,
+        producer_ts: int,
+    ) -> EmbodiedEpisodeRecord:
+        """Record evaluated evidence and a recovery candidate without settlement."""
+        persisted: EmbodiedEpisodeRecord | None = None
+        for event in self.get_session_timeline(episode.actor_id):
+            payload = event.get("payload", {}) if isinstance(event, dict) else {}
+            if event.get("event_type") != "character_embodied_episode_begun" or not isinstance(payload, dict):
+                continue
+            if payload.get("episode_ref") != episode.episode_ref:
+                continue
+            record = payload.get("record")
+            if isinstance(record, dict):
+                persisted = EmbodiedEpisodeRecord.model_validate(record)
+                break
+        if persisted is None:
+            persisted = self._embodied_episodes.get(episode.episode_ref)
+        if persisted is None or persisted.actor_id != episode.actor_id or persisted.turn_id != episode.turn_id:
+            raise ValueError("actor-private episode is unknown or does not match persisted begin record")
+        if persisted != episode:
+            raise ValueError("actor-private episode is unknown or does not match persisted begin record")
+        completion_key = self._embodied_episode_service.completion_identity(
+            episode, authority_result, post_capture_ref
+        )
+        completed = self._embodied_episode_service.complete(
+            episode, authority_result, post_capture_ref, observed_state
+        )
+        prior_completion: EmbodiedEpisodeRecord | None = None
+        for event in self.get_session_timeline(episode.actor_id):
+            payload = event.get("payload", {}) if isinstance(event, dict) else {}
+            if not isinstance(payload, dict) or payload.get("episode_ref") != episode.episode_ref:
+                continue
+            record = payload.get("record")
+            if event.get("event_type") == "character_embodied_episode_completed" and isinstance(record, dict):
+                candidate_record = EmbodiedEpisodeRecord.model_validate(record)
+                if candidate_record.completion_idempotency_key == completion_key:
+                    prior_completion = candidate_record
+                    break
+                raise ValueError("embodied_episode_completion_replay_conflict")
+        if prior_completion is not None:
+            if prior_completion != completed:
+                raise ValueError("embodied_episode_completion_replay_conflict")
+            return prior_completion
+        self._append_session_event(
+            actor_id=completed.actor_id,
+            event_type="character_embodied_episode_completed",
+            producer_ts=producer_ts,
+            payload={
+                "turn_id": completed.turn_id,
+                "episode_ref": completed.episode_ref,
+                "completion_idempotency_key": completed.completion_idempotency_key,
+                "record": completed.model_dump(mode="json"),
+            },
+        )
+        self._embodied_episodes[completed.episode_ref] = completed
+        if completed.failure_class is not None:
+            self._append_session_event(
+                actor_id=completed.actor_id,
+                event_type="character_embodied_episode_recovery_candidate",
+                producer_ts=producer_ts,
+                payload={
+                    "turn_id": completed.turn_id,
+                    "episode_ref": completed.episode_ref,
+                    "failure_class": completed.failure_class,
+                    "reobserve_required": completed.reobserve_required,
+                    "candidate": completed.recovery_candidate,
+                    "evidence_refs": list(completed.evidence_refs),
+                },
+            )
+            if completed.reobserve_required:
+                self._append_session_event(
+                    actor_id=completed.actor_id,
+                    event_type="character_embodied_episode_observation_requested",
+                    producer_ts=producer_ts,
+                    payload={
+                        "turn_id": completed.turn_id,
+                        "episode_ref": completed.episode_ref,
+                        "target_ref": completed.candidate.target_ref,
+                        "reason": completed.failure_class,
+                        "evidence_refs": list(completed.evidence_refs),
+                    },
+                )
+        return completed
+
+    def get_embodied_episode(self, actor_id: str, episode_ref: str) -> EmbodiedEpisodeRecord | None:
+        episode = self._embodied_episodes.get(episode_ref)
+        if episode is not None and episode.actor_id == actor_id:
+            return episode
+        for event in reversed(self.get_session_timeline(actor_id)):
+            payload = event.get("payload", {}) if isinstance(event, dict) else {}
+            if not isinstance(payload, dict) or payload.get("episode_ref") != episode_ref:
+                continue
+            record = payload.get("record")
+            if isinstance(record, dict):
+                return EmbodiedEpisodeRecord.model_validate(record)
+        return None
 
     def _session_timeline_event_count(self, actor_id: str) -> int:
         return self._session_store.event_count(actor_id)
@@ -2509,6 +2834,9 @@ class CharacterAgentRuntime:
                 interpretation=interpretation,
             )
         self._record_interpretation_event(actor_id, producer_ts, interpretation)
+        behavior_policy_snapshot = self._behavior_policy_store.accepted_snapshot(
+            actor_id, now=producer_ts
+        )
         decision = yield from self._select_intent_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -2528,7 +2856,16 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state.model_dump(),
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
+                behavior_policy_snapshot=behavior_policy_snapshot,
             ),
+        )
+        self._consume_behavior_policy_for_turn(
+            behavior_policy_snapshot,
+            turn_id=f"background:{actor_id}:{producer_ts}",
+            producer_ts=producer_ts,
+            decision=decision,
+            causation_id=f"background:{actor_id}:{producer_ts}",
+            correlation_id=f"background:{actor_id}:{producer_ts}",
         )
         self._record_goal_state_event(actor_id, producer_ts, decision)
         self._last_background_tick_ms[actor_id] = producer_ts
@@ -2921,6 +3258,95 @@ class CharacterAgentRuntime:
         self._last_social_request_tick_ms = {key: value for key, value in self._last_social_request_tick_ms.items() if key[0] != actor_id}
         self._last_social_request_tick_ms.update({(actor_id, kind, target): tick for kind, target, tick in state['social_ticks']})
 
+    def _begin_canonical_turn(
+        self,
+        *,
+        actor_id: str,
+        source_event_ref: str,
+        producer_ts: int,
+        causation_id: str,
+        correlation_id: str,
+    ) -> CharacterTurnContext:
+        return self._turn_coordinator.begin_or_replay(
+            actor_id=actor_id,
+            source_event_ref=source_event_ref,
+            producer_ts=producer_ts,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+            input_revision_vector={"l1_input": producer_ts},
+            memory_revision_vector={"memory": 0},
+            policy_revision="policy:character-runtime:v1",
+            snapshot_revision=producer_ts,
+            branch_id="branch:main",
+        )
+
+    # These helpers deliberately construct only durable canonical records.  They
+    # are test seams; normal execution remains owned by the cognition runtime.
+    def begin_test_turn_awaiting_settlement(
+        self, actor_id: str, request_ref: str
+    ) -> CharacterTurnContext:
+        turn = self._begin_canonical_turn(
+            actor_id=actor_id,
+            source_event_ref=f"test-pending:{request_ref}",
+            producer_ts=1,
+            causation_id=f"test-cause:{request_ref}",
+            correlation_id=f"test-correlation:{request_ref}",
+        )
+        for stage in ("context", "interpretation", "goal", "intent"):
+            turn = self._turn_coordinator.append_stage(
+                context=turn,
+                stage=stage,
+                payload={"test_stage": stage},
+                producer_ts=1,
+            )
+        expected_revision = self._session_timeline_event_count(actor_id)
+        return self._turn_coordinator.append_stage(
+            context=turn,
+            stage="execution",
+            payload={
+                "execution_ref": f"execution:{turn.turn_id}",
+                "authority_request_ref": request_ref,
+                "expected_revision": expected_revision,
+            },
+            producer_ts=1,
+        )
+
+    def flush_continuity_snapshot(self, actor_id: str) -> None:
+        """Force a complete recovery checkpoint; unlike the hot current state."""
+        self._persist_graph_continuity(
+            actor_id=actor_id,
+            producer_ts=max(
+                (
+                    int(event.get("producer_ts", 0) or 0)
+                    for event in self.get_session_timeline(actor_id)
+                ),
+                default=0,
+            ),
+            force_checkpoint=True,
+        )
+
+    def reconcile_character_turn(self, actor_id: str) -> CharacterTurnRecoveryResult:
+        if self._turn_recovery_service is None:
+            return CharacterTurnRecoveryResult("no_pending_turn", actor_id)
+        result = self._turn_recovery_service.reconcile(actor_id)
+        if result.status == "recovery_required":
+            self._recovery_blocked_actor_ids.add(actor_id)
+        elif result.status in {"resumed", "already_committed"} and result.reason is None:
+            self._recovery_blocked_actor_ids.discard(actor_id)
+        elif result.status == "no_pending_turn" and result.reason is not None:
+            self._recovery_blocked_actor_ids.add(actor_id)
+        return result
+
+    def outgoing_authority_request_count(self, turn_id: str) -> int:
+        return sum(
+            1
+            for actor_id in self._session_store.actor_ids()
+            for event in self.get_session_timeline(actor_id)
+            if event.get("event_type") == "character_agent_execution_request"
+            and isinstance(event.get("payload"), dict)
+            and event["payload"].get("turn_id") == turn_id
+        )
+
     def record_execution_request(
         self,
         *,
@@ -2928,6 +3354,8 @@ class CharacterAgentRuntime:
         producer_ts: int,
         payload: dict[str, object],
     ) -> None:
+        if actor_id in self._recovery_blocked_actor_ids:
+            return
         request = self._primary_requested_action(payload)
         request_type = str(request.get("request_type", "") or "")
         target_actor_id = str(request.get("target_actor_id", "") or "")
@@ -2971,6 +3399,21 @@ class CharacterAgentRuntime:
         producer_ts: int,
         payload: dict[str, object],
     ) -> None:
+        replay_result_id = str(payload.get("result_id", "") or "")
+        if replay_result_id:
+            for event in self.get_session_timeline(actor_id):
+                if (
+                    not isinstance(event, dict)
+                    or event.get("event_type") != "character_agent_settlement_result"
+                    or not isinstance(event.get("payload"), dict)
+                    or str(event["payload"].get("result_id", "") or "") != replay_result_id
+                ):
+                    continue
+                prior_payload = self._normalize_settlement_replay_payload(event["payload"])
+                incoming_payload = self._normalize_settlement_replay_payload(payload)
+                if prior_payload != incoming_payload:
+                    raise ValueError("character_settlement_replay_conflict")
+                return
         self._refresh_weak_supervision_state(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -3095,13 +3538,20 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         settlement_event: dict[str, object],
-        timeline: list[dict[str, object]],
+        timeline: list[dict[str, object]] | None = None,
     ) -> dict[str, object]:
-        evaluation = self._behavior_evaluation.evaluate(
+        timeline_before_evaluation = self.get_session_timeline(actor_id)
+        turn = self._canonical_turn_context_for_settlement(
+            settlement_event=settlement_event,
+            timeline=timeline_before_evaluation,
+        )
+        evaluation_model = self._behavior_evaluation.evaluate(
+            turn=turn,
             actor_id=actor_id,
             settlement_event=settlement_event,
-            timeline=timeline,
+            timeline=timeline if timeline is not None else timeline_before_evaluation,
         )
+        evaluation = evaluation_model.model_dump(mode="json")
         stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_behavior_evaluation_event",
@@ -3111,17 +3561,273 @@ class CharacterAgentRuntime:
         self._project_session_event(stored)
         candidate = evaluation.get("candidate_policy")
         if isinstance(candidate, dict):
-            candidate_event = self._append_session_event(
-                actor_id=actor_id,
-                event_type="character_policy_candidate_event",
-                producer_ts=producer_ts,
-                payload=candidate,
+            settlement_payload = settlement_event.get("payload", {})
+            if not isinstance(settlement_payload, dict):
+                return evaluation
+            canonical_turn_id = str(settlement_payload.get("turn_id", "") or "")
+            canonical_branch_id = str(settlement_payload.get("branch_id", "") or "")
+            canonical_causation_id = str(settlement_payload.get("causation_id", "") or "")
+            canonical_correlation_id = str(settlement_payload.get("correlation_id", "") or "")
+            if not all((canonical_turn_id, canonical_branch_id, canonical_causation_id, canonical_correlation_id)):
+                return evaluation
+            raw_source_revision = settlement_event.get("event_index")
+            if not isinstance(raw_source_revision, int) or isinstance(raw_source_revision, bool) or raw_source_revision < 1:
+                return evaluation
+            canonical_source_revision = raw_source_revision
+            supplied_source_revision = settlement_payload.get("source_revision")
+            if supplied_source_revision is not None:
+                if (
+                    not isinstance(supplied_source_revision, int)
+                    or isinstance(supplied_source_revision, bool)
+                    or supplied_source_revision != canonical_source_revision
+                ):
+                    return evaluation
+            timeline = self.get_session_timeline(actor_id)
+            if not any(
+                isinstance(event, dict)
+                and event.get("event_id") == settlement_event.get("event_id")
+                and event.get("event_index") == canonical_source_revision
+                for event in timeline
+            ):
+                return evaluation
+            canonical_valid_at = int(
+                settlement_payload.get("valid_at", settlement_event.get("producer_ts", producer_ts))
+                or producer_ts
             )
-            self._project_session_event(candidate_event)
-            evaluation["policy_candidate_event_id"] = str(
-                candidate_event.get("event_id", "")
+            if canonical_valid_at != int(settlement_event.get("producer_ts", producer_ts) or producer_ts):
+                return evaluation
+            policy_id = str(candidate.get("candidate_id", "") or "")
+            policy_type = str(candidate.get("policy_type", "") or "")
+            evidence = candidate.get("evidence", {})
+            evidence_refs = [
+                str(ref)
+                for ref in evaluation.get("source_refs", [])
+                if isinstance(ref, str) and ref
+            ]
+            if policy_id == "" or policy_type not in {"recovery", "recall", "skill_calibration", "cadence"}:
+                return evaluation
+            policy = self._behavior_policy_store.propose(
+                BehaviorPolicyRecord(
+                    policy_id=policy_id,
+                    actor_id=actor_id,
+                    source_turn_id=canonical_turn_id,
+                    branch_id=canonical_branch_id,
+                    valid_at=canonical_valid_at,
+                    causation_id=canonical_causation_id,
+                    correlation_id=canonical_correlation_id,
+                    source_revision=canonical_source_revision,
+                    policy_type=policy_type,
+                    failed_intent=str(candidate.get("failed_intent", "") or ""),
+                    hypothesis=str(candidate.get("hypothesis", "") or ""),
+                    status="candidate",
+                    created_at=producer_ts,
+                    expires_at=producer_ts + 60_000,
+                    max_consumptions=1,
+                    failure_window=60_000,
+                    failure_count=1,
+                    evidence_refs=evidence_refs,
+                    idempotency_key=f"behavior-policy:{policy_id}",
+                )
             )
+            evidence_qualified = self._behavior_evidence_is_qualified(
+                evidence=evidence,
+                evidence_refs=evidence_refs,
+                settlement_event=settlement_event,
+                timeline=timeline,
+            )
+            accepted = self._behavior_policy_store.reconcile_outcome(
+                actor_id,
+                policy.policy_id,
+                policy.source_turn_id,
+                "evidence_qualified" if evidence_qualified else "rejected",
+                now=producer_ts,
+            )
+            evaluation["policy_id"] = accepted.policy_id
+            evaluation["policy_status"] = accepted.status
         return evaluation
+
+    @staticmethod
+    def _canonical_turn_context_for_settlement(
+        *,
+        settlement_event: dict[str, object],
+        timeline: list[dict[str, object]],
+    ) -> CharacterTurnContext | None:
+        settlement_payload = settlement_event.get("payload", {})
+        if not isinstance(settlement_payload, dict):
+            return None
+        turn_id = str(settlement_payload.get("turn_id", "") or "")
+        if not turn_id:
+            return None
+        context: CharacterTurnContext | None = None
+        for entry in timeline:
+            if entry.get("event_type") != "character_turn_context_created":
+                continue
+            payload = entry.get("payload")
+            if not isinstance(payload, dict) or payload.get("turn_id") != turn_id:
+                continue
+            raw_context = payload.get("context")
+            if isinstance(raw_context, dict):
+                context = CharacterTurnContext.model_validate(raw_context)
+                break
+        if context is None:
+            return None
+        stage_entries = [
+            entry for entry in timeline
+            if entry.get("event_type") == "character_turn_stage_recorded"
+            and isinstance(entry.get("payload"), dict)
+            and entry["payload"].get("turn_id") == turn_id
+        ]
+        for entry in stage_entries:
+            payload = entry["payload"]
+            assert isinstance(payload, dict)
+            raw_event = payload.get("stage_event")
+            if not isinstance(raw_event, dict):
+                continue
+            stage_event = CharacterTurnStageEvent.model_validate(raw_event)
+            canonical_payload = CharacterAgentRuntime._thaw_json_value(stage_event.payload)
+            context, _ = context.stage_event(
+                stage_event.stage,
+                stage_ref=stage_event.stage_ref,
+                idempotency_key=stage_event.idempotency_key,
+                producer_ts=stage_event.producer_ts,
+                outcome=stage_event.outcome,
+                payload=canonical_payload,
+            )
+        return context
+
+    @staticmethod
+    def _thaw_json_value(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): CharacterAgentRuntime._thaw_json_value(nested)
+                for key, nested in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [CharacterAgentRuntime._thaw_json_value(nested) for nested in value]
+        return value
+
+    def _behavior_evidence_is_qualified(
+        self,
+        *,
+        evidence: object,
+        evidence_refs: list[str],
+        settlement_event: dict[str, object],
+        timeline: list[dict[str, object]],
+    ) -> bool:
+        if not isinstance(evidence, dict):
+            return False
+        if not bool(evidence.get("qualified", False)) or not bool(evidence.get("complete", False)):
+            return False
+        confidence = evidence.get("confidence")
+        if not isinstance(confidence, (int, float)) or float(confidence) < 0.8:
+            return False
+        if len(evidence_refs) < 2 or len(set(evidence_refs)) != len(evidence_refs):
+            return False
+        if evidence.get("evidence_refs") != evidence_refs:
+            return False
+        settlement_payload = settlement_event.get("payload")
+        if not isinstance(settlement_payload, dict):
+            return False
+        event_by_id = {
+            str(event.get("event_id", "")): event
+            for event in timeline
+            if isinstance(event, dict) and str(event.get("event_id", ""))
+        }
+        settlement_event_id = str(
+            settlement_payload.get("result_id", "")
+            or settlement_event.get("event_id", "")
+            or ""
+        )
+        if str(evidence.get("settlement_event_id", "") or "") != settlement_event_id:
+            return False
+        settlement_status = str(
+            settlement_payload.get("settlement_status", "")
+            or settlement_payload.get("resolution_status", "")
+            or ""
+        )
+        if settlement_status not in {"accepted", "applied", "observed", "rejected", "blocked", "denied"}:
+            return False
+        if not any(
+            str(settlement_payload.get(key, "") or "")
+            for key in ("result_type", "constraint_summary", "change_summary", "stable_state_summary")
+        ) and not (
+            isinstance(settlement_payload.get("action_settlement_result"), dict)
+            and bool(settlement_payload.get("action_settlement_result"))
+        ):
+            return False
+        context_hash = str(evidence.get("context_hash", "") or "")
+        if not context_hash:
+            return False
+        result_id = str(settlement_payload.get("result_id", "") or "")
+        if result_id:
+            collision = event_by_id.get(result_id)
+            if collision is not None:
+                if not isinstance(collision, dict) or not isinstance(collision.get("payload"), dict):
+                    return False
+                collision_payload = collision["payload"]
+                if str(collision_payload.get("result_id", "") or "") != result_id:
+                    return False
+                if self._normalize_settlement_replay_payload(collision_payload) != self._normalize_settlement_replay_payload(settlement_payload):
+                    return False
+            for event in timeline:
+                if not isinstance(event, dict) or not isinstance(event.get("payload"), dict):
+                    continue
+                event_payload = event["payload"]
+                if str(event_payload.get("result_id", "") or "") != result_id:
+                    continue
+                if self._normalize_settlement_replay_payload(event_payload) != self._normalize_settlement_replay_payload(settlement_payload):
+                    return False
+        for ref in evidence_refs:
+            if result_id and ref == result_id:
+                event = settlement_event
+            else:
+                event = event_by_id.get(ref)
+            if not isinstance(event, dict) or not isinstance(event.get("payload"), dict) or not event["payload"]:
+                return False
+        actual_event_id = str(settlement_event.get("event_id", "") or "")
+        if settlement_event_id not in evidence_refs:
+            return False
+        if (
+            settlement_event_id not in event_by_id
+            and settlement_event_id != str(settlement_payload.get("result_id", "") or "")
+            and actual_event_id not in evidence_refs
+        ):
+            return False
+        if not any(ref != settlement_event_id for ref in evidence_refs):
+            return False
+        return True
+
+    @staticmethod
+    def _normalize_settlement_replay_payload(payload: dict[str, object]) -> dict[str, object]:
+        normalized = dict(payload)
+        # This field is derived by the runtime from the substantive settlement
+        # payload; callers may include the equivalent derived value on replay.
+        normalized.pop("action_settlement_result", None)
+        return normalized
+
+    def _consume_behavior_policy_for_turn(
+        self,
+        policy_snapshot: dict[str, object],
+        *,
+        turn_id: str,
+        producer_ts: int,
+        decision: CharacterIntentDecision,
+        causation_id: str,
+        correlation_id: str,
+    ) -> None:
+        raw_record = policy_snapshot.get("record") if isinstance(policy_snapshot, dict) else None
+        if not isinstance(raw_record, dict):
+            return
+        actor_id = str(policy_snapshot.get("actor_id", "") or "")
+        policy_id = str(raw_record.get("policy_id", "") or "")
+        if actor_id == "" or policy_id == "":
+            return
+        self._behavior_policy_store.consume(
+            actor_id, policy_id, turn_id, producer_ts,
+            branch_id=str(raw_record.get("branch_id", "") or "") or None,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
 
     def _action_settlement_result_metadata(self, payload: dict[str, object]) -> dict[str, object]:
         advisory_metadata = self._settlement_advisory_metadata(payload)
@@ -3928,7 +4634,7 @@ class CharacterAgentRuntime:
         producer_ts: int,
         candidate: DriftCandidateRecord,
     ) -> None:
-        for entry in self.get_session_timeline(actor_id):
+        for entry in self._session_timeline_after(actor_id, 0):
             if entry.get("event_type") != "character_personality_drift_promotion_event":
                 continue
             payload = entry.get("payload", {})
@@ -3947,7 +4653,10 @@ class CharacterAgentRuntime:
         )
         self._project_session_event(stored)
 
-    def _build_execution_plan(self, actor_id, snapshot, interpretation, decision, *, causation_id='', correlation_id=''):
+    def _build_execution_plan(self, actor_id, snapshot, interpretation, decision, *, causation_id='', correlation_id='',
+                              producer_ts=0, turn_context: CharacterTurnContext | None = None):
+        if actor_id in self._recovery_blocked_actor_ids:
+            return {"actor_id": actor_id, "execution_status": "recovery_required", "recovery_required": True}
         plan = self._l4_executor.build_execution_plan(
             snapshot=snapshot,
             interpretation=interpretation,
@@ -3958,10 +4667,36 @@ class CharacterAgentRuntime:
             for frame in frames:
                 if not isinstance(frame, dict):
                     continue
-                if causation_id:
-                    frame["causation_id"] = causation_id
-                if correlation_id:
-                    frame["correlation_id"] = correlation_id
+                frame["causation_id"] = (
+                    turn_context.causation_id if turn_context is not None else causation_id
+                ) or str(frame.get("causation_id", "") or "")
+                frame["correlation_id"] = (
+                    turn_context.correlation_id if turn_context is not None else correlation_id
+                ) or str(frame.get("correlation_id", "") or "")
+                if turn_context is not None:
+                    frame["turn_id"] = turn_context.turn_id
+                    frame["authority_request_ref"] = (
+                        f"authority-request:{turn_context.turn_id}"
+                    )
+        if turn_context is not None:
+            execution_ref = f"execution:{turn_context.turn_id}"
+            authority_request_ref = f"authority-request:{turn_context.turn_id}"
+            turn_context = self._turn_coordinator.mark_awaiting_settlement(
+                context=turn_context,
+                execution_ref=execution_ref,
+                authority_request_ref=authority_request_ref,
+                producer_ts=producer_ts,
+                expected_revision=self._session_timeline_event_count(actor_id),
+            )
+            self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts, force_checkpoint=True)
+            plan["turn_id"] = turn_context.turn_id
+            plan["causation_id"] = turn_context.causation_id
+            plan["correlation_id"] = turn_context.correlation_id
+            plan["authority_request_ref"] = authority_request_ref
+            # Completed behavior-turn projection is written after authoritative
+            # settlement so evaluation/unknown dimensions share the same graph
+            # anchor and replay identity. Canonical stage events remain durable
+            # in the session timeline while awaiting settlement.
         self._attach_skill_shadow_fields(actor_id=actor_id, plan=plan)
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         return plan
@@ -3991,14 +4726,35 @@ class CharacterAgentRuntime:
         *,
         causation_id: str = "",
         correlation_id: str = "",
+        turn_context: CharacterTurnContext | None = None,
     ) -> dict[str, object]:
         plan = self._build_execution_plan(actor_id, snapshot, interpretation, decision,
-            causation_id=causation_id, correlation_id=correlation_id)
+            causation_id=causation_id, correlation_id=correlation_id,
+            producer_ts=producer_ts, turn_context=turn_context)
+        if plan.get("recovery_required"):
+            return plan
+        if turn_context is not None and not plan.get("recovery_required"):
+            execution_contract = self._l4_executor.build_execution_contract(
+                snapshot=snapshot, interpretation=interpretation, decision=decision,
+                turn_context=turn_context,
+            )
+            realization_metadata = self._l4.realization_metadata_from_execution_plan(plan)
+            dumped_contract = execution_contract.model_dump(mode="json")
+            allowed_hints = dict(dumped_contract["allowed_realization_hints"])
+            allowed_hints["skill"] = realization_metadata
+            execution_contract = CharacterExecutionContract.model_validate({
+                **dumped_contract, "allowed_realization_hints": allowed_hints,
+            })
+            plan["execution_contract"] = execution_contract.model_dump(mode="json")
         self._set_observatory_context(actor_id, "execution_summary", str(plan.get("social_spatial_channel", {}).get("spacing_behavior", "") if isinstance(plan.get("social_spatial_channel"), dict) else ""))
         self.record_execution_request(
             actor_id=actor_id,
             producer_ts=producer_ts,
-            payload=plan,
+            payload=(
+                execution_contract.model_dump(mode="json")
+                if turn_context is not None and not plan.get("recovery_required")
+                else plan
+            ),
         )
         self._queue_observatory_stage_event(
             actor_id=actor_id,
@@ -4940,7 +5696,9 @@ class CharacterAgentRuntime:
             import_legacy=self._import_legacy_graph_continuity,
             project_event=self._update_memory_scene_knowledge_unchecked,
         )
-        if self._continuity_store is not None and hasattr(self._continuity_store, 'bind_snapshot_reader'):
+        if (self._continuity_store is not None
+                and not getattr(self._continuity_store, '_require_complete_snapshot', False)
+                and hasattr(self._continuity_store, 'bind_snapshot_reader')):
             self._continuity_store.bind_snapshot_reader(self._export_continuity_snapshot)
 
     def _working_memory_events(self, actor_id: str, max_entries: int | None = None):
@@ -5027,15 +5785,21 @@ class CharacterAgentRuntime:
                 self._legacy_runtime_extras[actor_id] = extra
         return self._legacy_runtime_extras
 
-    def _persist_graph_continuity(self, *, actor_id: str, producer_ts: int) -> None:
+    def _persist_graph_continuity(self, *, actor_id: str, producer_ts: int,
+                                  force_checkpoint: bool = False) -> None:
         with self._continuity_flush_locks.setdefault(actor_id, RLock()):
-            self._persist_graph_continuity_locked(actor_id=actor_id, producer_ts=producer_ts)
+            self._persist_graph_continuity_locked(
+                actor_id=actor_id,
+                producer_ts=producer_ts,
+                force_checkpoint=force_checkpoint,
+            )
 
-    def _persist_graph_continuity_locked(self, *, actor_id: str, producer_ts: int) -> None:
+    def _persist_graph_continuity_locked(self, *, actor_id: str, producer_ts: int,
+                                         force_checkpoint: bool = False) -> None:
         count = self._session_timeline_event_count(actor_id)
         if not count:
             return
-        self._finish_session_projections(actor_id)
+        self._finish_session_projections(actor_id, migration=force_checkpoint)
         snapshot = {'continuity_state': self.get_runtime_continuity_state(actor_id),
                     'dynamic_state': self._dynamic_state_store.read_record(actor_id).storage_dump()}
         # 弱监管也可能由 Siming 更新而没有独立 authorization event。
@@ -5045,6 +5809,30 @@ class CharacterAgentRuntime:
             field_versions=self._runtime_field_versions.get(actor_id, {}))
         state = self._session_store.read_runtime_state(actor_id)
         if self._continuity_store is not None:
+            if force_checkpoint or (
+                isinstance(self._continuity_store, CharacterGraphContinuityStore)
+                and getattr(self._session_store, "_connection", None) is None
+            ):
+                checkpoint = self._export_continuity_snapshot(actor_id)
+                if checkpoint is not None:
+                    checkpoint.update({
+                        "schema_version": 2,
+                        "session_timeline_checkpoint_index": count,
+                        "graph_source_event_ref": str(state['event_id']),
+                        "active_turns": self._active_turns_snapshot(actor_id),
+                        "pending_execution": self._pending_execution_snapshot(actor_id),
+                        "policy_state": {
+                            "policy_revision": "policy:character-runtime:v1",
+                            "execution_blocked": actor_id in self._recovery_blocked_actor_ids,
+                            "behavior_policies": self._behavior_policy_store.continuity_snapshot(actor_id),
+                        },
+                        "last_committed_turn_id": self._last_committed_turn_id(actor_id),
+                    })
+                    checkpoint["snapshot_digest"] = self._continuity_snapshot_digest(checkpoint)
+                    self._continuity_store.write_snapshot(
+                        actor_id=actor_id, producer_ts=producer_ts,
+                        source_event_ref=str(state['event_id']), snapshot=checkpoint,
+                    )
             self._continuity_store.write_current_state(actor_id=actor_id, producer_ts=producer_ts,
                 source_event_ref=str(state['event_id']), snapshot=state)
 
@@ -5070,6 +5858,132 @@ class CharacterAgentRuntime:
             'checkpoint_event_index': state['event_index'],
             CharacterGraphContinuityStore.SOURCE_EVENT_REF_FIELD: state['event_id'],
         }
+
+    def _active_turns_snapshot(self, actor_id: str) -> dict[str, dict[str, object]]:
+        contexts: dict[str, CharacterTurnContext] = {}
+        for entry in self._session_timeline_after(actor_id, 0):
+            payload = entry.get("payload")
+            if not isinstance(payload, dict):
+                continue
+            if entry.get("event_type") == "character_turn_context_created":
+                raw_context = payload.get("context")
+                if not isinstance(raw_context, dict):
+                    continue
+                try:
+                    context = CharacterTurnContext.model_validate(raw_context)
+                except ValueError:
+                    continue
+                if context.actor_id == actor_id:
+                    contexts[context.turn_id] = context
+                continue
+            if entry.get("event_type") != "character_turn_stage_recorded":
+                continue
+            turn_id = payload.get("turn_id")
+            raw_stage = payload.get("stage_event")
+            context = contexts.get(turn_id) if isinstance(turn_id, str) else None
+            if context is None or not isinstance(raw_stage, dict):
+                continue
+            try:
+                stage_event = context.stage_events.get(str(raw_stage.get("stage", "")))
+                if stage_event is not None:
+                    continue
+                from app.models.behavior_turn import CharacterTurnStageEvent
+
+                parsed = CharacterTurnStageEvent.model_validate(raw_stage)
+                context, rebuilt = context.stage_event(
+                    parsed.stage,
+                    stage_ref=parsed.stage_ref,
+                    idempotency_key=parsed.idempotency_key,
+                    producer_ts=parsed.producer_ts,
+                    outcome=parsed.outcome,
+                    payload=self._snapshot_json_data(parsed.model_dump(warnings=False))["payload"],
+                )
+                rebuilt_payload = self._snapshot_json_data(
+                    rebuilt.model_dump(warnings=False)
+                )
+                if rebuilt_payload != raw_stage:
+                    continue
+                contexts[context.turn_id] = context
+            except (ValueError, TypeError):
+                continue
+        restored = self._restored_active_turns.get(actor_id, {})
+        for turn_id, raw_context in restored.items():
+            if turn_id not in contexts:
+                try:
+                    contexts[turn_id] = CharacterTurnContext.model_validate(raw_context)
+                except ValueError:
+                    continue
+        return {
+            turn_id: self._snapshot_json_data(
+                context.model_dump(warnings=False)
+            )
+            for turn_id, context in contexts.items()
+            if context.lifecycle not in {"committed", "rejected", "abandoned", "failed"}
+        }
+
+    def _pending_execution_snapshot(self, actor_id: str) -> dict[str, dict[str, object]]:
+        pending: dict[str, dict[str, object]] = {}
+        for turn_id, raw_context in self._active_turns_snapshot(actor_id).items():
+            context = CharacterTurnContext.model_validate(raw_context)
+            execution = context.stage_events.get("execution")
+            if context.lifecycle != "awaiting_settlement" or execution is None:
+                continue
+            raw_execution = self._snapshot_json_data(
+                execution.model_dump(warnings=False)
+            )
+            payload = raw_execution["payload"]
+            expected_revision = payload.get("expected_revision", context.snapshot_revision)
+            if not isinstance(expected_revision, int) or isinstance(expected_revision, bool):
+                expected_revision = context.snapshot_revision
+            pending[turn_id] = {
+                "turn_id": turn_id,
+                "authority_request_ref": payload.get("authority_request_ref", ""),
+                "expected_revision": expected_revision,
+                "idempotency_key": execution.idempotency_key,
+                "receipt_ref": None,
+            }
+        return pending
+
+    def _last_committed_turn_id(self, actor_id: str) -> str | None:
+        if actor_id in self._last_committed_turn_ids:
+            return self._last_committed_turn_ids[actor_id]
+        committed = [
+            turn_id
+            for turn_id, context in self._active_turns_snapshot(actor_id).items()
+            if context.get("lifecycle") == "committed"
+        ]
+        return max(committed) if committed else None
+
+    @staticmethod
+    def _snapshot_json_data(value: object) -> object:
+        if isinstance(value, Mapping):
+            return {
+                str(key): CharacterAgentRuntime._snapshot_json_data(nested)
+                for key, nested in value.items()
+            }
+        if isinstance(value, (list, tuple)):
+            return [CharacterAgentRuntime._snapshot_json_data(nested) for nested in value]
+        if hasattr(value, "model_dump"):
+            return CharacterAgentRuntime._snapshot_json_data(
+                value.model_dump(warnings=False)
+            )
+        return value
+
+    @staticmethod
+    def _continuity_snapshot_digest(snapshot: dict[str, object]) -> str:
+        canonical = {
+            key: value for key, value in snapshot.items()
+            if key not in {"snapshot_digest", CharacterGraphContinuityStore.SOURCE_EVENT_REF_FIELD}
+        }
+        return "sha256:" + hashlib.sha256(
+            json.dumps(
+                canonical,
+                ensure_ascii=False,
+                sort_keys=True,
+                separators=(",", ":"),
+                default=str,
+            ).encode("utf-8")
+        ).hexdigest()
 
     def _observatory_context(self, actor_id: str) -> dict[str, str]:
         return self._observatory_actor_context.setdefault(

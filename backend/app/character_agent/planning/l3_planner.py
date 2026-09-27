@@ -8,6 +8,8 @@ from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import CharacterHigherOrderDelta
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MissingRequiredMemoryEvidence
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 from app.character_agent.models.cognition_delta import CharacterBeliefDelta
 from app.character_agent.models.cognition_delta import CharacterSocialDelta
 from app.character_agent.models.event_memory import CharacterEventMemoryRecord
@@ -18,6 +20,7 @@ from app.character_agent.models.memory_record_bundle import CharacterMemoryRecor
 from app.character_agent.models.observation_memory import CharacterObservationMemoryRecord
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
+from app.character_agent.models.behavior_policy import BehaviorPolicyRecord
 from app.character_agent.planning.triple_filter import CharacterTripleFilter
 from app.character_agent.profile.personality_projection import PersonalityProjectionResolver
 from app.models.character_agent_runtime import CharacterActiveGoalFrame
@@ -61,10 +64,12 @@ class CharacterAgentL3Service:
         self,
         gateway: CharacterModelGateway | None = None,
         memory_recall_policy: CharacterMemoryRecallPolicy | None = None,
+        semantic_recall_service: CharacterSemanticRecallService | None = None,
     ) -> None:
         self._gateway = gateway or CharacterModelGateway()
         self._triple_filter = CharacterTripleFilter()
         self._memory_recall_policy = memory_recall_policy or CharacterMemoryRecallPolicy()
+        self._semantic_recall_service = semantic_recall_service
         self._consumed_behavior_policy_ids: set[str] = set()
 
     def build_intent_plan(
@@ -85,6 +90,8 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> dict[str, object]:
         prepared = self.prepare_intent_plan(
             interpretation=interpretation,
@@ -102,6 +109,8 @@ class CharacterAgentL3Service:
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
+            behavior_policy_snapshot=behavior_policy_snapshot,
+            turn_context=turn_context,
         )
         output = self._gateway.complete_prepared_request(prepared.request_json)
         return self.finish_intent_plan(prepared, output)
@@ -124,6 +133,8 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> PreparedCharacterIntentPlan:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -140,6 +151,12 @@ class CharacterAgentL3Service:
             current_goal_state,
             actor_id=interpretation.actor_id,
         )
+        behavior_policy = self._behavior_policy_from_snapshot(
+            behavior_policy_snapshot,
+            actor_id=interpretation.actor_id,
+        )
+        if not behavior_policy and behavior_policy_snapshot is None:
+            behavior_policy = self._legacy_behavior_policy_from_memory(normalized_memory_bundle)
         recall = self._memory_recall_policy.select(
             normalized_memory_bundle,
             context={
@@ -149,15 +166,32 @@ class CharacterAgentL3Service:
                 "profile": normalized_profile,
                 "effective_profile": normalized_effective_profile,
             },
+            requirements=self._policy_recall_requirements(behavior_policy),
         )
         if recall.metadata.get("missing_required_refs"):
             raise MissingRequiredMemoryEvidence(list(recall.metadata["missing_required_refs"]))
+        semantic_recall = None
+        if self._semantic_recall_service is not None and turn_context is not None:
+            semantic_context = {
+                "actor_id": interpretation.actor_id,
+                "snapshot": normalized_snapshot,
+                "interpretation": interpretation.model_dump(),
+                "current_goal_state": normalized_current_goal_state,
+                "memory": normalized_memory_bundle,
+                "profile": normalized_profile,
+                "effective_profile": normalized_effective_profile,
+            }
+            semantic_recall = self._semantic_recall_service.select(
+                interpretation.actor_id, semantic_context, turn_context=turn_context
+            )
+            recall_metadata = dict(recall.metadata)
+            recall_metadata.update(semantic_recall.metadata)
+            recall = recall.__class__(memory=recall.memory, metadata=recall_metadata)
         recalled_memory_bundle = self._memory_record_bundle_model(recall.memory)
         verification = self._verification_context(
             interpretation, normalized_snapshot, recall.memory, normalized_effective_profile,
             self._list_entries(unresolved_tensions),
         )
-        behavior_policy = self._runtime_behavior_policy(recall.memory)
         normalized_goal_state_history = self._goal_state_history_mappings(
             goal_state_history,
             actor_id=interpretation.actor_id,
@@ -200,6 +234,8 @@ class CharacterAgentL3Service:
                 "snapshot": normalized_snapshot,
                 "memory": recall.memory,
                 "memory_recall": recall.metadata,
+                **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
+                **({"semantic_cards": [card.to_payload() for card in semantic_recall.cards]} if semantic_recall is not None else {}),
                 "verification": verification,
                 "behavior_policy": behavior_policy,
                 "working_memory_state": normalized_working_memory_state,
@@ -323,6 +359,8 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> CharacterIntentDecision:
         plan = self.build_intent_plan(
             interpretation=interpretation,
@@ -340,6 +378,8 @@ class CharacterAgentL3Service:
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
+            behavior_policy_snapshot=behavior_policy_snapshot,
+            turn_context=turn_context,
         )
         return self.decision_from_plan(plan, interpretation=interpretation)
 
@@ -416,6 +456,7 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object] | None = None,
         dynamic_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        behavior_policy_snapshot: dict[str, object] | None = None,
     ) -> dict[str, object]:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -439,6 +480,7 @@ class CharacterAgentL3Service:
             need_tension_state=need_tension_state,
             dynamic_state=dynamic_state,
             skill_affordance_summary=skill_affordance_summary,
+            behavior_policy_snapshot=behavior_policy_snapshot,
         )
         return self.suggestion_from_plan(
             plan, interpretation=interpretation, snapshot=normalized_snapshot,
@@ -574,18 +616,36 @@ class CharacterAgentL3Service:
             return deduped_model_candidates
         return local_affordances
 
-    def _runtime_behavior_policy(
+    def _behavior_policy_from_snapshot(
         self,
-        memory_bundle: dict[str, list[dict[str, object]]],
+        snapshot: dict[str, object] | None,
+        *,
+        actor_id: str,
+    ) -> dict[str, object]:
+        if not isinstance(snapshot, dict) or snapshot.get("actor_id") != actor_id:
+            return {}
+        raw_record = snapshot.get("record")
+        if not isinstance(raw_record, dict):
+            return {}
+        try:
+            record = BehaviorPolicyRecord.model_validate(raw_record)
+        except ValueError:
+            return {}
+        if record.actor_id != actor_id or record.status != "accepted" or not record.evidence_refs:
+            return {}
+        return record.model_dump(mode="json")
+
+    def _legacy_behavior_policy_from_memory(
+        self, memory_bundle: dict[str, list[dict[str, object]]]
     ) -> dict[str, object]:
         for entry in reversed(memory_bundle.get("working_memory", [])):
-            if str(entry.get("event_type", "") or "") != "character_policy_candidate_event":
+            if entry.get("event_type") != "character_policy_candidate_event":
                 continue
             payload = entry.get("payload", {})
-            if not isinstance(payload, dict) or str(payload.get("status", "") or "") != "candidate_only":
+            if not isinstance(payload, dict) or payload.get("status") != "candidate_only":
                 continue
             candidate_id = str(payload.get("candidate_id", "") or "")
-            if candidate_id == "" or candidate_id in self._consumed_behavior_policy_ids:
+            if not candidate_id or candidate_id in self._consumed_behavior_policy_ids:
                 continue
             return {
                 "candidate_id": candidate_id,
@@ -603,13 +663,19 @@ class CharacterAgentL3Service:
         *,
         local_affordances: list[str],
     ) -> list[str]:
-        if behavior_policy.get("policy_type") != "recovery_policy":
+        if behavior_policy.get("policy_type") != "recovery":
             return candidates
         failed_intent = str(behavior_policy.get("failed_intent", "") or "")
         if failed_intent == "":
             return candidates
         filtered = [candidate for candidate in candidates if candidate != failed_intent]
         return filtered or [candidate for candidate in local_affordances if candidate != failed_intent]
+
+    @staticmethod
+    def _policy_recall_requirements(behavior_policy: dict[str, object]) -> dict[str, int] | None:
+        if behavior_policy.get("policy_type") != "recall":
+            return None
+        return {"minimum_pool_limit": 2, "minimum_token_budget": 1600}
 
     def _model_owned_active_goal_tags(
         self,
@@ -805,6 +871,8 @@ class CharacterAgentL3Service:
         control_mode: str,
     ) -> list[str]:
         candidates = ["observe", "inspect_object", "self_protect"]
+        if interpretation.interpretation_type == "combat_threat" and interpretation.attention_target:
+            candidates.append("short_punch")
         candidates.extend(["pause", "defer", "withhold"])
         if interpretation.attention_target:
             candidates.extend(
@@ -1058,6 +1126,7 @@ class CharacterAgentL3Service:
             "approach": "observe_target",
             "speak_public": "speak_public",
             "self_protect": "physiology_hint",
+            "short_punch": "short_punch",
             "stay_silent": "observe_target",
         }
         return mapping.get(candidate, "observe_target")

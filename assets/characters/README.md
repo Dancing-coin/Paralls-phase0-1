@@ -51,13 +51,15 @@ Godot 的 `CharacterReplica` 运行时壳。
 ## 动作资产资格化
 
 进入角色运行时注册表前，外部角色包必须通过
-`character-action-asset-manifest.v1.json` 的显式 canonical skeleton mapping，
-并保存 `character-qualification-report.v1.json` 报告。映射必须逐项声明外部
-骨骼到 `humanoid.v1` canonical bone；文件名、目录名、clip 名称和模型高度均
-不能推断映射或并发资格。
+`character-action-asset-manifest.v1.json` 的显式 deform-to-canonical skeleton
+mapping，并保存 `character-qualification-report.v1.json` 报告。源文件可以是
+带控制器、IK/FK、pole、twist 或 reference bones 的作者工程；manifest 必须
+明确哪些是实际 deform bones，并逐项声明这些骨骼到 `humanoid.v1` canonical
+bone 的映射。T-pose、固定 deform bone 数量、文件名、目录名、clip 名称和模型
+高度均不能推断映射或并发资格。
 
 报告状态仅为 `qualified`、`qualified_with_fallback` 或 `rejected`。后两者必须
 分别列出可执行的显式 fallback 或拒绝理由；可选手指与面部骨骼的缺失单独记录，
-但不会替代必需身体骨骼、root、rest pose、scale、轴约定、slot 或 locomotion
-检查。资格化只读取资产并产出报告，不写角色 Transform、velocity、damage、
+但不会替代必需身体骨骼、root、可复现的声明式 rest pose、scale、轴约定、slot
+或 locomotion 检查。资格化只读取资产并产出报告，不写角色 Transform、velocity、damage、
 inventory、status 或世界真相。

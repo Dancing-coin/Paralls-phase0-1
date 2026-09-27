@@ -1,0 +1,196 @@
+{
+  "contract": "character_action_asset_manifest.v1",
+  "package_id": "female_t_external",
+  "candidate_status": "candidate",
+  "source_model_path": "res://assets/active/female_t_external/female_t_external.glb",
+  "source": {
+    "model_path": "assets/active/female_t_external/female_t_external.glb",
+    "digest_sha256": "F53189AE2760FA7309A5CB44CAD74F27737CFE2BAEECF63EE8538FBED81FFE75",
+    "format": "glb"
+  },
+  "provenance": {
+    "source_uri": "file:///E:/下载/建模2 纹身腿黑卷发女T字版本  基础动作版.blend",
+    "authoring_contract": "external_provider_authoring_rig",
+    "source_format": "blend",
+    "working_copy": "production-assets/characters/female_t_external/source/female_t_external.glb",
+    "qualification_report_ref": "assets/characters/qualification_reports/female_t_external.json",
+    "package_digest": "F53189AE2760FA7309A5CB44CAD74F27737CFE2BAEECF63EE8538FBED81FFE75",
+    "authoring_frame_rate": 60.0,
+    "runtime_export_frame_rate": 60.0
+  },
+  "source_frame_rate": 60.0,
+  "unit_scale": 1.0,
+  "forward_axis": "-z",
+  "up_axis": "+y",
+  "rest_pose": {
+    "import_policy": "applied_transforms",
+    "pose": "declared_authoring_rest",
+    "pose_is_t_pose": false,
+    "root_translation_policy": "qualified_pending_godot_import"
+  },
+  "authoring_rig": {
+    "source_armature": "rig",
+    "total_bones": 344,
+    "deform_bones": 68,
+    "controller_bones_retained_in_source": true,
+    "runtime_boundary": "deform_skeleton_only"
+  },
+  "canonical_mapping": {
+    "profile_id": "humanoid.v1",
+    "deform_skeleton_ref": "rig:68_deform_bones",
+    "bones": {
+      "root": "root.x",
+      "pelvis": "spine_01.x",
+      "spine": "spine_02.x",
+      "chest": "spine_03.x",
+      "head": "head.x",
+      "left_upper_arm": "arm_stretch.l",
+      "left_lower_arm": "forearm_stretch.l",
+      "left_hand": "hand.l",
+      "right_upper_arm": "arm_stretch.r",
+      "right_lower_arm": "forearm_stretch.r",
+      "right_hand": "hand.r",
+      "left_upper_leg": "thigh_stretch.l",
+      "left_lower_leg": "leg_stretch.l",
+      "left_foot": "foot.l",
+      "right_upper_leg": "thigh_stretch.r",
+      "right_lower_leg": "leg_stretch.r",
+      "right_foot": "foot.r"
+    }
+  },
+  "required_slots": [
+    "weapon_hand",
+    "weapon_slot:sword",
+    "weapon_hit_volume:sword"
+  ],
+  "slots": {
+    "weapon_hand": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_hand",
+      "held_item": true
+    },
+    "weapon_slot:sword": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_slot:sword"
+    },
+    "weapon_hit_volume:sword": {
+      "canonical_bone": "right_hand",
+      "anchor_ref": "weapon_hit_volume:sword"
+    }
+  },
+  "clip_aliases": {
+    "idle": "idle",
+    "walk_forward": "walking",
+    "run_forward": "running",
+    "jump_start": "jump",
+    "jump_loop": "jump",
+    "jump_land": "jump"
+  },
+  "locomotion_map": {
+    "idle": "idle",
+    "walk_forward": "walking",
+    "run_forward": "running",
+    "jump_start": "jump",
+    "jump_loop": "jump",
+    "jump_land": "jump"
+  },
+  "root_motion_profile": {
+    "profile_id": "female_t_external.root.v1",
+    "policy": "hold",
+    "max_distance": 0.0,
+    "max_duration_ticks": 1
+  },
+  "physical_profile": {
+    "profile_id": "humanoid_kinematic.v1",
+    "collision_shape": "capsule",
+    "contact_policy": "motor_evidence_only",
+    "root_motion_owner": "CharacterMotor"
+  },
+  "fallback": {
+    "mode": "full_body_exclusive",
+    "locomotion_compatibility": "replace_locomotion",
+    "policy": "queue_until_compatible"
+  },
+  "delivery_level": "concurrent_action",
+  "locomotion_compatibility": "boxing and sword attack remain full-body exclusive",
+  "actions_qualification_status": "qualified",
+  "report_path": ".harness/verification/female_t_external-qualification-report.json",
+  "actions": [
+    {
+      "semantic_action_id": "action:melee.unarmed_punch",
+      "clip_ref": "boxing",
+      "mode": "full_body_exclusive",
+      "locomotion_compatibility": "replace_locomotion",
+      "root_motion_policy": "hold",
+      "root_motion_required": false,
+      "required_slots": [],
+      "markers": [
+        {
+          "marker_id": "punch_contact_window",
+          "time_seconds": 0.866667,
+          "window_start_seconds": 0.8,
+          "window_end_seconds": 0.933333,
+          "marker_kind": "melee_contact_candidate",
+          "emits_attempt": true,
+          "evidence_requirement": "physics_contact"
+        }
+      ],
+      "cancel_windows": [
+        {
+          "start_seconds": 0.95,
+          "end_seconds": 1.05
+        }
+      ],
+      "resource_claims": [
+        "right_arm",
+        "left_arm"
+      ],
+      "physics_claims": [],
+      "authority_route_ref": "esm",
+      "fallback_policy": "queue_until_compatible",
+      "derived_from_package": "female_jk_external",
+      "derived_from_clip_ref": "boxing"
+    },
+    {
+      "semantic_action_id": "action:melee.sword_slash",
+      "clip_ref": "sword attack",
+      "mode": "full_body_exclusive",
+      "locomotion_compatibility": "replace_locomotion",
+      "root_motion_policy": "hold",
+      "root_motion_required": false,
+      "required_slots": [
+        "weapon_hand",
+        "weapon_slot:sword",
+        "weapon_hit_volume:sword"
+      ],
+      "markers": [
+        {
+          "marker_id": "sword_contact_window",
+          "time_seconds": 0.6,
+          "window_start_seconds": 0.533333,
+          "window_end_seconds": 0.666667,
+          "marker_kind": "melee_contact_candidate",
+          "emits_attempt": true,
+          "evidence_requirement": "physics_contact"
+        }
+      ],
+      "cancel_windows": [
+        {
+          "start_seconds": 0.683333,
+          "end_seconds": 0.75
+        }
+      ],
+      "resource_claims": [
+        "right_arm",
+        "weapon_slot:sword"
+      ],
+      "physics_claims": [
+        "weapon_hit_volume:sword"
+      ],
+      "authority_route_ref": "esm",
+      "fallback_policy": "queue_until_compatible",
+      "derived_from_package": "female_jk_external",
+      "derived_from_clip_ref": "sword attack"
+    }
+  ]
+}

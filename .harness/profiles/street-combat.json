@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "name": "street-combat",
+  "order": 51,
+  "script": "scripts/verification/verify_street_combat.py",
+  "requires_godot": true,
+  "result_artifact": ".harness/verification/street-combat-runtime.json",
+  "max_attempts": 1,
+  "include_in_profile_order": false,
+  "description": "Fresh street environment, three qualified user characters, live player/agent authority combat, HUD and lineage evidence"
+}

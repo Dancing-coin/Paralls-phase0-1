@@ -81,6 +81,7 @@ def test_load_profile_registry_reads_project_profiles() -> None:
         "gameplay-ability-affordance",
         "godot-gameplay-mirror",
         "obj-archive-door-physical-embodiment",
+        "character-turn-embodied-episode",
         "gameplay-inventory",
         "gameplay-possession-equipment",
         "gameplay-ownership-authority",

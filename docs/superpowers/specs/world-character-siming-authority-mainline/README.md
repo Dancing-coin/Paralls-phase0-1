@@ -172,6 +172,8 @@ recorded in the lifecycle runtime closure. August INF A-D remain not complete.
 5. [phase-three-population-continuity/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-three-population-continuity/README.md>)
    - [2026-09-16 character-population incremental design](2026-09-16-character-population-simulation-incremental-design.md) - approved B0-B3, simple-module, universal-codebook and protocol-driven social-simulation increments on existing paths; implementation remains unplanned
    - [2026-09-16 角色与群体模拟增量设计（中文版）](2026-09-16-角色与群体模拟增量设计-中文版.md) - 在既有链路上的设计意图、数据边界、INF 分层、密码本、B0-B3 交接和农民洪灾样板
+   - [2026-09-17 constrained social model compiler design](2026-09-17-constrained-social-model-compiler-design.md) - approved design for a declarative, snapshot-bound social-model compiler under the population incremental design; no implementation authorization
+   - [2026-09-17 受约束社会模型编译器设计（中文版）](2026-09-17-受约束社会模型编译器设计-中文版.md) - 与英文主文档对应的完整中文设计；保留八类封闭模型、owner receipt 与 B0-B3 连续性边界
 6. [phase-four-dynamic-economy-institutions/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-four-dynamic-economy-institutions/README.md>)
 7. [phase-five-rpg-social-gameplay/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-five-rpg-social-gameplay/README.md>)
 8. [phase-six-creator-control-plane/README.md](</d:/Users/User/Documents/paralls-phase-0-demo/docs/superpowers/specs/world-character-siming-authority-mainline/phase-six-creator-control-plane/README.md>)

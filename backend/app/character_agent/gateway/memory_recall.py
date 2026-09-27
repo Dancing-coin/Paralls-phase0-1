@@ -79,6 +79,7 @@ class CharacterMemoryRecallPolicy:
         memory: dict[str, object],
         *,
         context: dict[str, object],
+        requirements: dict[str, int] | None = None,
     ) -> MemoryRecallResult:
         normalized = {
             key: [deepcopy(item) for item in value if isinstance(item, dict)]
@@ -98,6 +99,13 @@ class CharacterMemoryRecallPolicy:
         strong = isinstance(capability, dict) and capability.get("memory_retention") == "strong"
         pool_limit = 16 if strong and self.pool_limit == 8 else self.pool_limit
         token_budget = 2400 if strong and self.token_budget == 1200 else self.token_budget
+        requested = requirements or {}
+        requested_pool_limit = requested.get("minimum_pool_limit", pool_limit)
+        requested_token_budget = requested.get("minimum_token_budget", token_budget)
+        if isinstance(requested_pool_limit, int) and not isinstance(requested_pool_limit, bool):
+            pool_limit = min(16, max(pool_limit, requested_pool_limit))
+        if isinstance(requested_token_budget, int) and not isinstance(requested_token_budget, bool):
+            token_budget = min(2400, max(token_budget, requested_token_budget))
         subjects = self._current_subjects(context)
         required = self._required_memories(normalized, subjects) if strong else set()
         terms = self._context_terms(context)

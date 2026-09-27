@@ -1628,7 +1628,8 @@ class SimingRuntime:
             compact_turn_ref = (
                 f"siming:{event.correlation_id}:population-compact:v1"
             )
-            request = BehaviorTurnRecordRequest(
+            request = BehaviorTurnRecordRequest.from_legacy_projection(
+                legacy_reader_ref="legacy:siming-population-behavior-turn:v1",
                 turn_id=compact_turn_ref,
                 scope=scope,
                 valid_at=event.producer_ts,
@@ -1743,33 +1744,34 @@ class SimingRuntime:
         output_payload = [output.model_dump(mode="json") for output in result.outputs if output.correlation_id == event.correlation_id]
         audit_payload = [audit.model_dump(mode="json") for audit in result.audit_records if audit.correlation_id == event.correlation_id]
         prepared_payload = prepared.model_dump(mode="json") if hasattr(prepared, "model_dump") else {}
-        return BehaviorTurnRecordRequest(
-            turn_id=f"siming:{event.correlation_id}",
-            scope=scope,
-            valid_at=event.producer_ts,
-            recorded_at=event.producer_ts,
-            policy_revision="policy:siming-runtime:v1",
-            source_revision_vector=GraphRevisionVector(source_revision=event.producer_ts),
-            scope_digest="scope:siming-authority",
-            provenance=GraphProvenance(
-                source_kind="authority_event",
-                source_ref=event.event_id,
-                causation_id=event.causation_id,
-                correlation_id=event.correlation_id,
-                producer_system="siming_runtime",
-            ),
-            transaction_id=f"siming-behavior-turn:{event.correlation_id}",
-            idempotency_key=f"siming-behavior-turn:{event.correlation_id}",
-            stages=(
-                BehaviorTurnStageRecord(stage="context", source_refs=(event.event_id,), payload=event.payload),
-                BehaviorTurnStageRecord(stage="interpretation", source_refs=(event.event_id,), payload={"prepared_context": prepared_payload}),
-                BehaviorTurnStageRecord(stage="goal", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"event_family": event.event_type}),
-                BehaviorTurnStageRecord(stage="intent", source_refs=tuple(output.output_type for output in result.outputs), payload={"candidate_count": len(output_payload)}),
-                BehaviorTurnStageRecord(stage="execution", source_refs=tuple(output.output_type for output in result.outputs), payload={"outputs": output_payload}),
-                BehaviorTurnStageRecord(stage="settlement", outcome="committed" if event.event_type.endswith("result_event") else "recorded", source_refs=(event.event_id,), payload={"event_type": event.event_type}),
-                BehaviorTurnStageRecord(stage="evaluation", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"audits": audit_payload}),
-                BehaviorTurnStageRecord(stage="policy", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"policy_revision": "policy:siming-runtime:v1"}),
-            ),
+        return BehaviorTurnRecordRequest.from_legacy_projection(
+                legacy_reader_ref="legacy:siming-behavior-turn:v1",
+                turn_id=f"siming:{event.correlation_id}",
+                scope=scope,
+                valid_at=event.producer_ts,
+                recorded_at=event.producer_ts,
+                policy_revision="policy:siming-runtime:v1",
+                source_revision_vector=GraphRevisionVector(source_revision=event.producer_ts),
+                scope_digest="scope:siming-authority",
+                provenance=GraphProvenance(
+                    source_kind="authority_event",
+                    source_ref=event.event_id,
+                    causation_id=event.causation_id,
+                    correlation_id=event.correlation_id,
+                    producer_system="siming_runtime",
+                ),
+                transaction_id=f"siming-behavior-turn:{event.correlation_id}",
+                idempotency_key=f"siming-behavior-turn:{event.correlation_id}",
+                stages=(
+                    BehaviorTurnStageRecord(stage="context", source_refs=(event.event_id,), payload=event.payload),
+                    BehaviorTurnStageRecord(stage="interpretation", source_refs=(event.event_id,), payload={"prepared_context": prepared_payload}),
+                    BehaviorTurnStageRecord(stage="goal", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"event_family": event.event_type}),
+                    BehaviorTurnStageRecord(stage="intent", source_refs=tuple(output.output_type for output in result.outputs), payload={"candidate_count": len(output_payload)}),
+                    BehaviorTurnStageRecord(stage="execution", source_refs=tuple(output.output_type for output in result.outputs), payload={"outputs": output_payload}),
+                    BehaviorTurnStageRecord(stage="settlement", outcome="committed" if event.event_type.endswith("result_event") else "recorded", source_refs=(event.event_id,), payload={"event_type": event.event_type}),
+                    BehaviorTurnStageRecord(stage="evaluation", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"audits": audit_payload}),
+                    BehaviorTurnStageRecord(stage="policy", source_refs=tuple(audit.audit_id for audit in result.audit_records), payload={"policy_revision": "policy:siming-runtime:v1"}),
+                ),
         )
 
     def _narrative_summary_for(

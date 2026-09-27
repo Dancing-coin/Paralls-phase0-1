@@ -292,6 +292,7 @@ var move_y := 0.0
 var speed := 0.0
 var presentation_gait := "walk"
 var current_presentation_contract: Dictionary = {}
+var current_qualified_profile: Dictionary = {}
 var last_stage2_role_state := ""
 var last_stage2_motion_profile := ""
 func _ready() -> void:
@@ -516,6 +517,22 @@ func apply_presentation_input(next_input: Dictionary) -> void:
 	var stage2_role_state := _resolve_stage2_contract_role_state(current_presentation_contract)
 	var stage2_motion_profile := _resolve_stage2_motion_profile(presentation_gait)
 	_apply_stage2_contract_expression(stage2_role_state, stage2_motion_profile)
+
+
+func play_qualified_profile(profile: Dictionary) -> Dictionary:
+	var semantic_action_id := str(profile.get("semantic_action_id", ""))
+	var profile_id := str(profile.get("profile_id", ""))
+	if semantic_action_id.is_empty() or profile_id.is_empty() or str(profile.get("qualification_status", "rejected")) == "rejected":
+		return {"accepted": false, "reason": "qualified_profile_invalid"}
+	current_qualified_profile = profile.duplicate(true)
+	var presentation_state := "alert" if semantic_action_id.begins_with("action:melee.") else "observe"
+	set_state(presentation_state)
+	return {
+		"accepted": true,
+		"semantic_action_id": semantic_action_id,
+		"profile_id": profile_id,
+		"presentation_mode": "qualified_profile",
+	}
 
 func _resolve_stage2_presentation_gait(contract: Dictionary) -> String:
 	var presentation_gait := CharacterPresentationInputRef.get_motion_gait_actual(contract)

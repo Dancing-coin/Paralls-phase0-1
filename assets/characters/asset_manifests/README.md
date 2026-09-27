@@ -23,9 +23,11 @@
 
 动作包清单还必须符合
 `assets/validation/schemas/character-action-asset-manifest.v1.json`：它声明
-`humanoid.v1` mapping、metres/scale、`-z` forward 与 `+y` up、required slots、
-Phase 1 locomotion tags、clip/action timing、claims、root-motion policy/envelope、
-realization mode 与 fallback。资格化报告使用
+`humanoid.v1` deform-to-canonical mapping、metres/scale、`-z` forward 与 `+y` up、
+required slots、Phase 1 locomotion tags、clip/action timing、claims、root-motion
+policy/envelope、realization mode 与 fallback。源作者工程可以包含控制器、IK/FK、
+pole、twist 和 reference bones；清单必须明确 runtime deform skeleton 的映射，
+但不要求 T-pose 或固定 deform bone 数量。资格化报告使用
 `character-qualification-report.v1.json`，记录实际骨骼曲线影响、root/pelvis、
 lower-body、markers、cancel windows 和已选 fallback。不得以文件或目录名称猜测
 任何 mapping、slot 或 upper-body concurrency。

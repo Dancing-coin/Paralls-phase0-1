@@ -173,10 +173,24 @@ func _on_debug_event_logged(message: String) -> void:
 				var payload: Variant = parsed.get("payload", {})
 				if payload is Dictionary:
 					var payload_dict: Dictionary = payload as Dictionary
-					var actor_id_value := str(payload_dict.get("actor_id", ""))
+					var actor_id_value := str(payload_dict.get("actor_ref", ""))
+					if actor_id_value.begins_with("character:"):
+						actor_id_value = actor_id_value.trim_prefix("character:")
 					if not actor_id_value.is_empty():
 						_observed_execution_actor_id = actor_id_value
-					if payload_dict.has("actor_control_frames") and payload_dict.has("presentation_plan") and payload_dict.has("action_request_bundle"):
+					var allowed_hints: Variant = payload_dict.get("allowed_realization_hints", {})
+					var allowed_hints_dict: Dictionary = allowed_hints if allowed_hints is Dictionary else {}
+					if (
+						payload_dict.has("turn_id")
+						and payload_dict.has("actor_ref")
+						and payload_dict.has("source_ref")
+						and payload_dict.has("semantic_intent_id")
+						and payload_dict.has("semantic_action_id")
+						and allowed_hints is Dictionary
+						and allowed_hints_dict.has("presentation")
+						and not payload_dict.has("actor_control_frames")
+						and not payload_dict.has("action_request_bundle")
+					):
 						_execution_payload_direct = true
 	if "character_agent_execution_applied:" in message:
 		var applied_prefix := "character_agent_execution_applied:"
@@ -184,8 +198,9 @@ func _on_debug_event_logged(message: String) -> void:
 		if applied_index >= 0:
 			_execution_applied_actor_id = message.substr(applied_index + applied_prefix.length()).strip_edges()
 	if (
-		'"controller_source":"agent"' in message
-		and '"control_mode":"agent_controlled"' in message
+		'"semantic_intent_id"' in message
+		and '"semantic_action_id"' in message
+		and '"allowed_realization_hints"' in message
 		and '"focus_state":{' in message
 		and '"action_state":{' in message
 		and '"speech_state":{' in message

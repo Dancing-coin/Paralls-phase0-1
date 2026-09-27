@@ -13,6 +13,7 @@ from app.models.player_input import InteractIntent
 from app.models.world_result import ConstraintStateResult, ObjectStateResult
 from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
+from app.services.embodied_execution_ingress import TurnExecutionCorrelation
 from app.services.esm_service import ESMService
 
 
@@ -26,6 +27,7 @@ class _DoorAttempt:
     current_state: str
     machine_id: str
     connection_ref: str
+    turn_correlation: TurnExecutionCorrelation | None = None
 
 
 @dataclass(slots=True)
@@ -96,11 +98,20 @@ class DefaultSceneArchiveDoorEmbodiedService:
         actor_position: tuple[float, float, float] | None,
         connection_ref: str,
         now: int,
+        turn_correlation: TurnExecutionCorrelation | None = None,
     ) -> DoorEmbodiedPreflightResult:
         request_id = action_request.request_id
         cached = self._preflight_by_request_id.get(request_id)
         if cached is not None:
             return cached
+
+        correlation = turn_correlation or TurnExecutionCorrelation.from_action_request(action_request)
+        if not correlation.accepted:
+            return DoorEmbodiedPreflightResult(
+                accepted=False,
+                action_request=action_request,
+                error_code=correlation.error_code,
+            )
 
         if event.interaction_type == "close":
             return DoorEmbodiedPreflightResult(
@@ -202,6 +213,10 @@ class DefaultSceneArchiveDoorEmbodiedService:
                 "correlation_id": action_request.correlation_id,
                 "realization_route": "embodied_controller_v1",
                 "settlement_writer_kind": "esm_compatibility_adapter",
+                "turn_id": correlation.turn_id,
+                "execution_contract_ref": correlation.execution_contract_ref,
+                "episode_ref": correlation.episode_ref,
+                "pre_capture_ref": correlation.pre_capture_ref,
             }
         )
         grant = self._auth.issue_execution_grant(
@@ -222,6 +237,7 @@ class DefaultSceneArchiveDoorEmbodiedService:
             current_state=current_state,
             machine_id=machine_id,
             connection_ref=connection_ref,
+            turn_correlation=correlation if correlation.turn_id else None,
         )
         attempt = self._attempts_by_grant[grant.grant_id]
         if not self._record_preflight_evidence(attempt, now=now):
@@ -423,6 +439,14 @@ class DefaultSceneArchiveDoorEmbodiedService:
             interaction_attempt_id=attempt.request.interaction_attempt_id,
             grant_id=attempt.grant.grant_id,
         )
+        if attempt.turn_correlation is not None:
+            object_result = object_result.model_copy(
+                update={
+                    "turn_id": attempt.turn_correlation.turn_id,
+                    "execution_contract_ref": attempt.turn_correlation.execution_contract_ref,
+                    "episode_ref": attempt.turn_correlation.episode_ref,
+                }
+            )
         self.commit_count += 1
         return DoorEmbodiedOutcomeResult(
             accepted=True,
@@ -445,7 +469,7 @@ class DefaultSceneArchiveDoorEmbodiedService:
         error_code: str,
         settlement_id: str,
     ) -> dict[str, object]:
-        return {
+        payload: dict[str, object] = {
             "settlement_id": settlement_id,
             "interaction_attempt_id": attempt.request.interaction_attempt_id,
             "grant_id": attempt.grant.grant_id,
@@ -454,6 +478,20 @@ class DefaultSceneArchiveDoorEmbodiedService:
             "error_code": error_code,
             "idempotent": False,
         }
+        correlation = attempt.turn_correlation
+        if correlation is not None:
+            payload.update({
+                "turn_id": correlation.turn_id,
+                "execution_contract_ref": correlation.execution_contract_ref,
+                "episode_ref": correlation.episode_ref,
+                "pre_capture_ref": correlation.pre_capture_ref,
+                "replay_join": {
+                    "turn_id": correlation.turn_id,
+                    "execution_contract_ref": correlation.execution_contract_ref,
+                    "episode_ref": correlation.episode_ref,
+                },
+            })
+        return payload
 
     def record_phase_event(self, payload: dict[str, object], *, now: int) -> bool:
         grant_id = str(payload.get("grant_id", "") or "")

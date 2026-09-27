@@ -1,0 +1,50 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterReplica.tscn" id="1_replica"]
+[ext_resource type="PackedScene" path="res://assets/active/female_jk_external/female_jk_external.glb" id="2_jk"]
+[ext_resource type="PackedScene" path="res://assets/active/female_t_external/female_t_external.glb" id="3_t"]
+[ext_resource type="Script" path="res://scripts/verification/UnifiedCharacterActionFoundationProbe.gd" id="4_probe"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_floor"]
+size = Vector3(18, 0.2, 18)
+
+[sub_resource type="BoxShape3D" id="BoxShape_floor"]
+size = Vector3(18, 0.2, 18)
+
+[node name="UnifiedCharacterActionFoundation" type="Node3D"]
+
+[node name="Floor" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("BoxMesh_floor")
+
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("BoxShape_floor")
+
+[node name="FemaleJKExternal" parent="." instance=ExtResource("1_replica")]
+position = Vector3(-2, 0, 0)
+actor_id = "foundation_jk"
+patrol_enabled = false
+metadata/package_id = "female_jk_external"
+metadata/qualified = true
+
+[node name="QualifiedPackage" parent="FemaleJKExternal" instance=ExtResource("2_jk")]
+visible = true
+scale = Vector3(1, 1, 1)
+metadata/package_id = "female_jk_external"
+
+[node name="FemaleTExternal" parent="." instance=ExtResource("1_replica")]
+position = Vector3(2, 0, 0)
+actor_id = "foundation_t"
+patrol_enabled = false
+metadata/package_id = "female_t_external"
+metadata/qualified = true
+
+[node name="QualifiedPackage" parent="FemaleTExternal" instance=ExtResource("3_t")]
+visible = true
+scale = Vector3(1, 1, 1)
+metadata/package_id = "female_t_external"
+
+[node name="Probe" type="Node" parent="."]
+script = ExtResource("4_probe")
