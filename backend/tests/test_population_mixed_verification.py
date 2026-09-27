@@ -173,11 +173,19 @@ def test_process_proof_binds_raw_roles_and_counts_parent_memory_growth(tmp_path)
         verification.process_evidence(tmp_path, config, server, windows, backend_pid=100, interval=interval)
 
 
-def test_heartbeat_uses_end_of_locked_observation():
+def test_heartbeat_uses_end_of_locked_observation(monkeypatch):
     import threading
     from types import SimpleNamespace
     from time import perf_counter
     from app.services.runtime_execution import RuntimeExecution
+    from scripts.verification import population_benchmark_metrics as metrics
+
+    sampled_at = []
+    original_private = metrics.current_private_bytes
+    def sample_private():
+        sampled_at.append(perf_counter())
+        return original_private()
+    monkeypatch.setattr(metrics, 'current_private_bytes', sample_private)
     execution = RuntimeExecution()
     probe = SimpleNamespace(latest=None)
     entered, release = threading.Event(), threading.Event()
@@ -195,7 +203,10 @@ def test_heartbeat_uses_end_of_locked_observation():
     owner.join(2)
     timer.join()
     assert not owner.is_alive() and row['at'] >= probe.latest['finished_at']
+    assert row['at'] >= sampled_at[0]
     assert row['last_confirmed_tick'] == 1
+    assert row['allocated_blocks'] > 0
+    assert row['private_bytes'] is None or row['private_bytes'] > 0
 
 
 def test_heartbeat_cannot_confirm_a_window_after_observation_end():

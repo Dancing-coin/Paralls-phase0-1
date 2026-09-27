@@ -25,16 +25,19 @@ def read(path):
 
 
 def heartbeat_record(execution, providers, probe, *, expected_at):
-    from scripts.verification.population_benchmark_metrics import current_rss_bytes
+    from scripts.verification.population_benchmark_metrics import current_private_bytes, current_rss_bytes
     state = execution.snapshot()
     latest = probe.latest
     active = providers.active
     rss = current_rss_bytes()
+    private = current_private_bytes()
+    allocated = sys.getallocatedblocks()
     cpu = process_time()
     # latest先取稳定引用，时间在整次观察结束后采集，避免锁等待跨过Owner确认。
     return dict(type='heartbeat', expected_at=expected_at, at=perf_counter(), execution=state,
         provider_active=active, last_confirmed_tick=latest['sample']['confirmed_tick'] if latest else 0,
-        rss_bytes=rss, cpu_seconds=cpu)
+        rss_bytes=rss, private_bytes=private, allocated_blocks=allocated,
+        cpu_seconds=cpu)
 
 
 async def read_control(path, *, loader=None):
@@ -48,9 +51,9 @@ async def read_control(path, *, loader=None):
 
 
 def process_resource_sample(host, kind, **fields):
-    from scripts.verification.population_benchmark_metrics import current_rss_bytes
+    from scripts.verification.population_benchmark_metrics import current_private_bytes, current_rss_bytes
     return dict(type=kind, process_id=os.getpid(), at=perf_counter(), rss_bytes=current_rss_bytes(),
-        cpu_seconds=process_time(), runtime_process=host.snapshot(), **fields)
+        private_bytes=current_private_bytes(), cpu_seconds=process_time(), runtime_process=host.snapshot(), **fields)
 
 
 async def wait_process_drain(host):

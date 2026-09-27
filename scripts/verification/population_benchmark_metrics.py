@@ -375,7 +375,7 @@ def _windows_memory_api():
         _fields_ = [("cb", wintypes.DWORD), ("page_faults", wintypes.DWORD)] + [
             (name, ctypes.c_size_t) for name in (
                 "peak_working_set", "working_set", "peak_paged_pool", "paged_pool",
-                "peak_nonpaged_pool", "nonpaged_pool", "pagefile", "peak_pagefile",
+                "peak_nonpaged_pool", "nonpaged_pool", "pagefile", "peak_pagefile", "private_usage",
             )
         ]
 
@@ -402,6 +402,11 @@ def current_rss_bytes() -> int:
     if sys.platform == "linux":
         return int(Path("/proc/self/statm").read_text().split()[1]) * os.sysconf("SC_PAGE_SIZE")
     raise OSError("current_rss_sampling_unsupported_platform")
+
+
+def current_private_bytes() -> int | None:
+    # Linux 不伪装成 Windows 的进程私有提交量。
+    return _windows_memory().private_usage if sys.platform == "win32" else None
 
 
 def peak_rss_bytes() -> int:

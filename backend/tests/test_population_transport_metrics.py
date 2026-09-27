@@ -10,12 +10,13 @@ from scripts.verification.population_benchmark_metrics import LoopbackWebSocketB
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows RSS 采样器专用回归")
 def test_windows_rss_sampler_reuses_ctypes_counter_type():
-    from scripts.verification.population_benchmark_metrics import _windows_memory
+    from scripts.verification.population_benchmark_metrics import _windows_memory, current_private_bytes
 
     first = _windows_memory()
     second = _windows_memory()
 
     assert type(first) is type(second)
+    assert current_private_bytes() > 0
 
 
 @pytest.mark.skipif(sys.platform not in {"win32", "linux"}, reason="当前 RSS 的固定 runner 采样支持 Windows/Linux")
