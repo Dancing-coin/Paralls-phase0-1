@@ -1,4 +1,5 @@
 import asyncio
+from contextlib import contextmanager
 import json
 from pathlib import Path
 import subprocess
@@ -11,6 +12,33 @@ import pytest
 
 from scripts.verification import verify_population_mixed_soak as soak
 from app.services.runtime_execution import RuntimeExecution
+
+
+def test_group_commit_probe_times_exit_and_preserves_failure(monkeypatch):
+    times = iter((1.0, 1.3, 2.0, 2.3))
+    monkeypatch.setattr(soak, 'perf_counter', lambda: next(times))
+    exits = []
+
+    @contextmanager
+    def original(*, fail=False):
+        try:
+            yield 'group'
+        finally:
+            exits.append('exit')
+            if fail:
+                raise RuntimeError('group_failed')
+
+    rows = []
+    traced = soak.trace_group_commit_exit(original, rows.append, lambda: True)
+    with traced() as value:
+        assert value == 'group'
+    with pytest.raises(RuntimeError, match='group_failed'):
+        with traced(fail=True):
+            pass
+
+    assert exits == ['exit', 'exit']
+    assert [row['type'] for row in rows] == ['slow_group_exit', 'slow_group_exit']
+    assert all(row['duration_ms'] >= 250 for row in rows)
 
 
 def test_mixed_probe_records_slow_owner_command_source():
