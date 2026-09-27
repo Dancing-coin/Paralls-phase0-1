@@ -2,6 +2,8 @@
 
 当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。当前工作目录为`D:/Paralls-phase0-1`的`main`，历史隔离工作树不再作为续作入口；不要将静态测试或合成证据测试记为引擎通过。
 
+2026-09-27 远端[CI #255](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/36302919031)按job页面核对：静态契约成功（1分32秒）、`population-correctness`成功（29分21秒），`harness`失败（36分30秒）；本次push的两个专用runner job按条件跳过。`harness`的`ci-all`因首个`phase0` profile失败而退出1，公开结构化报告将对话和observatory各结果标为`missing`；后续profile未执行，不能把`all`或mainline视为通过。公开annotation仅给出失败结果，没有证明是Godot导入、资产还是其他运行时原因；Godot外机验证和导入提前退出仍按用户约定另行处理。该CI源码为`2e6a4b11`，不能为其后的本地提交改签通过。
+
 2026-09-27 原`65f9b33b`同版2／4局真实provider容量采集与离线复验完成，证据见`D:/HarnessEvidence/population-multi-game-65f9b33b-20260927/manifest.json`，采集器退出0、六局各600测量窗、最终backlog均为0、每局46次provider调用，原报告`status=passed`。但原复验器虽然报告最大推进延迟，却未把计划规定的`max_lag_windows <= 1`纳入性能判定：两局峰值4.781—4.797窗，四局6.156—6.203窗，故该报告只能证明采集与完整性，**不能按原计划认定容量性能通过**。同版soak中100人／千人30分钟及千人2小时1×的最大lag分别为4.031／5.515／6.047窗，也不能沿用旧版的`performance_passed=true`。隔离工作树已将单窗门槛补入共享复验器，先复现RED、再通过160项mixed／容量相关测试；原证据不改签为新源码通过。四局第253窗同时停顿约6秒，fixture与cadence耗时分布不同，尚不能确认SQLite、磁盘或主机级原因。下一步需定位并消除这些真实峰值和千人2小时RSS超限，再冻结新SHA重采全部正式门禁；外机Godot仍为`godot_unverified`。
 
 2026-09-27 继续定位延迟峰值（`7cb747cc`的隔离脏源码诊断，**非正式验收**）：在`RuntimeExecution`只记录超过500ms的命令来源与排队时间，证据分别见`D:/HarnessEvidence/population-owner-stall-local-7cb747cc-120s`与`D:/HarnessEvidence/population-owner-stall-live-7cb747cc-180s`。千人本地模型120秒最大lag约0.38窗；千人真实provider180秒最大lag约0.42窗，18次provider调用均实际传输且通过校验。两次日志都只有启动期慢命令，未复现运行期峰值；这不能证明长测或容量已修复。旧100人30分钟原始轨迹的第920窗结束至第921窗开始约间隔3.67秒，随后owner队列从6升至17、上一条命令`service_ms`约1875，但旧证据未记录该命令来源；四局第253窗同时出现约6秒墙钟停顿，其中一局owner CPU仅增加约0.58秒。下一次长负载需在证据中同时保留慢owner命令来源、窗间等待及共享磁盘/检查点时序，先确认阻塞层再改运行时；继续重复180秒短测不能替代归因。探针只用于诊断，未并入生产运行时，也不改原性能门槛。
