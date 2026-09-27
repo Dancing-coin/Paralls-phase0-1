@@ -13,7 +13,7 @@ import sqlite3
 import subprocess
 import sys
 from threading import Lock, get_ident
-from time import perf_counter, process_time, sleep
+from time import monotonic, perf_counter, process_time, sleep
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -75,6 +75,23 @@ def jsonl_writer(stream):
             stream.write(raw)
             stream.flush()
     return record
+
+
+def observe_owner_execute(execute, instance, fn, future, queued_at, record):
+    started = monotonic()
+    try:
+        return execute(instance, fn, future, queued_at)
+    finally:
+        finished = monotonic()
+        service_ms = (finished - started) * 1000
+        if record is not None and service_ms >= 500:
+            code = getattr(fn, '__code__', None)
+            record(dict(type='owner_slow_command', at=perf_counter(),
+                source=code.co_filename if code else type(fn).__name__,
+                source_line=code.co_firstlineno if code else None,
+                command=code.co_name if code else type(fn).__name__,
+                service_ms=service_ms, queue_wait_ms=max(0., (started - queued_at) * 1000),
+                queue_depth=instance.snapshot()['queue_depth']))
 
 
 def mixed_server_config(main):
@@ -197,11 +214,13 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
             return invoke
         boundaries = install_writer_probes(stack, writer)
         execute = RuntimeExecution._execute
-        def owner(instance, *args, **kwargs):
-            if probe.origin is not None:
+        def owner(instance, fn, future, queued_at):
+            measuring = probe.origin is not None
+            if measuring:
                 with counter_lock:
                     counters["owner_threads"].add((os.getpid(), get_ident()))
-            return execute(instance, *args, **kwargs)
+            return observe_owner_execute(execute, instance, fn, future, queued_at,
+                                         record if measuring else None)
         stack.enter_context(patch.object(RuntimeExecution, "_execute", owner))
         start_population = main.start_population_runtime
         stack.enter_context(patch.object(main, "start_population_runtime", lambda: None))

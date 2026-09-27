@@ -3,11 +3,36 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+from time import sleep
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import pytest
 
 from scripts.verification import verify_population_mixed_soak as soak
+from app.services.runtime_execution import RuntimeExecution
+
+
+def test_mixed_probe_records_slow_owner_command_source():
+    rows = []
+    execute = RuntimeExecution._execute
+
+    def observed(instance, fn, future, queued_at):
+        return soak.observe_owner_execute(execute, instance, fn, future, queued_at, rows.append)
+
+    with patch.object(RuntimeExecution, '_execute', observed):
+        owner = RuntimeExecution()
+        try:
+            owner.submit(lambda: sleep(.55)).result(timeout=2)
+            owner.submit(lambda: None).result(timeout=2)
+        finally:
+            assert owner.stop()
+
+    assert len(rows) == 1
+    assert rows[0]['type'] == 'owner_slow_command'
+    assert rows[0]['source'].endswith('test_population_mixed_soak.py')
+    assert rows[0]['service_ms'] >= 500
+    assert rows[0]['queue_wait_ms'] >= 0
 
 
 def test_mixed_backend_disables_transport_keepalive_during_controlled_slow_consumer():
