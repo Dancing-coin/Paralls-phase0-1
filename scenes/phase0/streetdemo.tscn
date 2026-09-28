@@ -1,0 +1,92 @@
+[gd_scene load_steps=13 format=3]
+
+[ext_resource type="Script" path="res://scripts/street_combat/streetdemo.gd" id="controller"]
+[ext_resource type="Script" path="res://scripts/street_combat/StreetCharacterSkin.gd" id="skin"]
+[ext_resource type="PackedScene" path="res://assets/active/citystreets_209/0.3.0/environment.glb" id="street"]
+[ext_resource type="PackedScene" path="res://assets/active/citystreets_209/0.3.0/collision.glb" id="collision"]
+[ext_resource type="PackedScene" path="res://assets/active/citystreets_209/0.3.0/navigation.glb" id="navigation"]
+[ext_resource type="PackedScene" path="res://assets/active/female_t_external/female_t_external.glb" id="t"]
+
+[sub_resource type="ProceduralSkyMaterial" id="sky_material"]
+sky_top_color = Color(0.12, 0.22, 0.38, 1)
+sky_horizon_color = Color(0.72, 0.78, 0.82, 1)
+ground_bottom_color = Color(0.08, 0.1, 0.14, 1)
+ground_horizon_color = Color(0.55, 0.58, 0.62, 1)
+sun_angle_max = 18.0
+sun_curve = 0.08
+
+[sub_resource type="Sky" id="world_sky"]
+sky_material = SubResource("sky_material")
+
+[sub_resource type="Environment" id="world_environment"]
+background_mode = 2
+sky = SubResource("world_sky")
+background_energy_multiplier = 0.8
+ambient_light_source = 2
+ambient_light_color = Color(0.58, 0.64, 0.72, 1)
+ambient_light_energy = 1.05
+
+[sub_resource type="NavigationMesh" id="street_navmesh"]
+geometry_parsed_geometry_type = 0
+geometry_source_geometry_mode = 0
+agent_radius = 0.4
+
+[sub_resource type="BoxShape3D" id="ground_shape"]
+size = Vector3(96, 0.2, 96)
+
+[sub_resource type="CapsuleShape3D" id="actor_shape"]
+height = 1.8
+radius = 0.34
+
+[node name="streetdemo" type="Node3D"]
+script = ExtResource("controller")
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("world_environment")
+
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation = Vector3(-0.65, -0.45, 0)
+light_color = Color(1, 0.84, 0.66, 1)
+light_energy = 0.9
+shadow_enabled = true
+
+[node name="StreetGround" type="StaticBody3D" parent="."]
+position = Vector3(0, -0.1, 0)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StreetGround"]
+shape = SubResource("ground_shape")
+
+[node name="CityStreetsEnvironment" type="Node3D" parent="."]
+
+[node name="EnvironmentVisual" parent="CityStreetsEnvironment" instance=ExtResource("street")]
+
+[node name="EnvironmentCollision" parent="CityStreetsEnvironment" instance=ExtResource("collision")]
+visible = false
+
+[node name="EnvironmentNavigation" type="NavigationRegion3D" parent="CityStreetsEnvironment"]
+navigation_mesh = SubResource("street_navmesh")
+
+[node name="NavigationSource" parent="CityStreetsEnvironment/EnvironmentNavigation" instance=ExtResource("navigation")]
+visible = false
+
+[node name="FemaleTExternal" type="CharacterBody3D" parent="."]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="FemaleTExternal"]
+position = Vector3(0, 0.9, 0)
+shape = SubResource("actor_shape")
+
+[node name="ImportedModel" type="Node3D" parent="FemaleTExternal"]
+
+[node name="StreetCharacterSkin" type="Node3D" parent="FemaleTExternal/ImportedModel"]
+script = ExtResource("skin")
+package_id = "female_t_external"
+
+[node name="QualifiedPackage" parent="FemaleTExternal/ImportedModel/StreetCharacterSkin" instance=ExtResource("t")]
+scale = Vector3(1.4, 1.4, 1.4)
+metadata/package_id = "female_t_external"
+
+[node name="FollowCamera" type="Camera3D" parent="."]
+position = Vector3(4.8, 3.1, -3.4)
+current = true
+fov = 55.0
+far = 500.0
