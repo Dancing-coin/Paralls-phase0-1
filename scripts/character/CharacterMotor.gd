@@ -11,6 +11,8 @@ const PhysicsContactEvidenceRef = preload("res://scripts/character/PhysicsContac
 var body_revision := 0
 var last_physics_tick := -1
 var last_command_digest := ""
+var last_physics_command: Dictionary = {}
+var last_motion_state: Dictionary = {}
 
 func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) -> Dictionary:
 	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(frame)
@@ -57,7 +59,9 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 		collision_normals.append(body.get_slide_collision(collision_index).get_normal())
 	var support_required: bool = not command.get("support_requirements", []).is_empty()
 	command["root_motion_exclusive_applied"] = root_motion_exclusive
-	return CharacterActorSchemaRef.normalize_motion_state({"position": body.global_position, "velocity_world": body.velocity, "facing_yaw": body.rotation.y, "move_local_actual": move_local_actual, "gait_actual": "run" if desired.length() > _get_body_float(body, "walk_speed", 4.0) else "walk", "grounded": body.is_on_floor(), "support_ref": "floor" if body.is_on_floor() else "", "support_loss": support_required and not body.is_on_floor(), "collision_count": body.get_slide_collision_count(), "collision_normals": collision_normals, "body_revision": body_revision, "physics_tick": last_physics_tick, "physics_command": command})
+	last_physics_command = command.duplicate(true)
+	last_motion_state = CharacterActorSchemaRef.normalize_motion_state({"position": body.global_position, "velocity_world": body.velocity, "facing_yaw": body.rotation.y, "move_local_actual": move_local_actual, "gait_actual": "run" if desired.length() > _get_body_float(body, "walk_speed", 4.0) else "walk", "grounded": body.is_on_floor(), "support_ref": "floor" if body.is_on_floor() else "", "support_loss": support_required and not body.is_on_floor(), "collision_count": body.get_slide_collision_count(), "collision_normals": collision_normals, "body_revision": body_revision, "physics_tick": last_physics_tick, "physics_command": command})
+	return last_motion_state.duplicate(true)
 
 func _get_body_float(body: CharacterBody3D, property_name: String, fallback: float) -> float:
 	if body and body.has_method("get_numeric_setting"): return float(body.get_numeric_setting(StringName(property_name), fallback))
@@ -85,3 +89,10 @@ func collect_contact_evidence(body: CharacterBody3D, command: Dictionary, action
 			if not record.is_empty():
 				evidence.append(record)
 	return evidence
+
+
+func get_last_physics_command() -> Dictionary:
+	return last_physics_command.duplicate(true)
+
+func get_last_motion_state() -> Dictionary:
+	return last_motion_state.duplicate(true)

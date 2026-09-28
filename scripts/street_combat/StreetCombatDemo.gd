@@ -1,6 +1,7 @@
 extends Node3D
 
 const CharacterActionFoundationBaselineProbeRef = preload("res://scripts/verification/CharacterActionFoundationBaselineProbe.gd")
+const RoleAnimationControllerRef = preload("res://scripts/character/RoleAnimationController.gd")
 
 
 @onready var player: CharacterBody3D = $PlayerCharacter
@@ -11,9 +12,7 @@ var camera_yaw := 0.0
 var camera_pitch := 0.18
 var camera_orbiting := false
 var jump_remaining := 0.0
-var jump_vertical_speed := 0.0
 const CAMERA_DISTANCE := 3.15
-const JUMP_SPEED := 4.5
 const MOUSE_LOOK_SENSITIVITY := 0.006
 const MOUSE_PITCH_SENSITIVITY := 0.004
 
@@ -32,6 +31,10 @@ func _ready() -> void:
 		call_deferred("_probe")
 	elif OS.get_environment("PARALLS_STREET_PROBE") == "2":
 		call_deferred("_probe_combat")
+	elif OS.get_environment("PARALLS_STREET_PROBE") == "3":
+		call_deferred("_probe_animation_ownership")
+	elif OS.get_environment("PARALLS_STREET_PROBE") == "4":
+		call_deferred("_probe_motor_ownership")
 
 
 func _physics_process(delta: float) -> void:
@@ -48,11 +51,8 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_just_pressed("phase0_jump") and player.is_on_floor() and jump_remaining <= 0.0:
 		jump_type = "single_leg" if wants_run else "two_foot"
 		jump_remaining = 0.5
-		jump_vertical_speed = JUMP_SPEED
 	if jump_remaining > 0.0:
 		jump_remaining = maxf(0.0, jump_remaining - delta)
-		jump_vertical_speed -= 9.8 * delta
-		player.velocity.y = jump_vertical_speed
 		jump_type = "single_leg" if wants_run else "two_foot"
 	# Keep the character's front aligned with the camera's horizontal forward
 	# direction. WASD moves relative to that facing without desynchronizing
@@ -185,6 +185,96 @@ func _probe_combat() -> void:
 	var hud_ok: bool = $StreetCombatHUD.get_node("SkillBar/SkillNames").text == "拳击       剑击       奔跑       锁定" and $StreetCombatHUD.get_node("StaminaBar/StaminaValue").text == "%s/100" % coordinator.actor_stamina["street_bandage"]
 	print("street_combat_probe:hud_actions_and_stamina=%s" % str(hud_ok).to_lower())
 	get_tree().quit(0 if player_ok and agent_ok and duplicate_stale_recovery and playback_ok and sword_ok and hud_ok else 1)
+
+
+func _probe_motor_ownership() -> void:
+	var motor := player.get_node_or_null("CharacterMotor")
+	if motor == null:
+		print("street_motor_ownership_probe:passed=false:reason=motor_missing")
+		get_tree().quit(1)
+		return
+	for _frame in range(12):
+		await get_tree().physics_frame
+	var initial_command: Dictionary = motor.get_last_physics_command() if motor.has_method("get_last_physics_command") else {}
+	var initial_state: Dictionary = motor.get_last_motion_state() if motor.has_method("get_last_motion_state") else {}
+	var floor_ok := bool(initial_state.get("grounded", player.is_on_floor()))
+	var command_fields := ["desired_velocity", "impulse", "facing_yaw", "root_delta", "root_motion_exclusive", "physics_tick"].all(func(field: String) -> bool: return initial_command.has(field))
+	var forward := Vector3(-sin(camera_yaw), 0.0, cos(camera_yaw)).normalized()
+	var wall := StaticBody3D.new()
+	wall.collision_layer = 1
+	wall.collision_mask = 1
+	var wall_shape := CollisionShape3D.new()
+	var wall_box := BoxShape3D.new()
+	wall_box.size = Vector3(4.0, 2.0, 0.2)
+	wall_shape.shape = wall_box
+	wall.add_child(wall_shape)
+	add_child(wall)
+	wall.global_position = player.global_position + forward * 1.15 + Vector3.UP
+	wall.look_at(wall.global_position + forward, Vector3.UP)
+	Input.action_press("phase0_move_forward")
+	var wall_hit := false
+	for _frame in range(36):
+		await get_tree().physics_frame
+		var state: Dictionary = motor.get_last_motion_state() if motor.has_method("get_last_motion_state") else {}
+		for normal_value in state.get("collision_normals", []):
+			var normal: Vector3 = normal_value if normal_value is Vector3 else Vector3.ZERO
+			if absf(normal.y) < 0.7:
+				wall_hit = true
+	Input.action_release("phase0_move_forward")
+	wall.queue_free()
+	var pre_jump_y := player.global_position.y
+	Input.action_press("phase0_jump")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var jump_command: Dictionary = motor.get_last_physics_command() if motor.has_method("get_last_physics_command") else {}
+	var jump_impulse: Variant = jump_command.get("impulse", Vector3.ZERO)
+	var jump_impulse_ok := jump_impulse is Vector3 and (jump_impulse as Vector3).y > 0.0
+	var airborne := false
+	for _frame in range(8):
+		await get_tree().physics_frame
+		var state: Dictionary = motor.get_last_motion_state() if motor.has_method("get_last_motion_state") else {}
+		var observed_velocity: Vector3 = state.get("velocity_world", Vector3.ZERO)
+		if not player.is_on_floor() or observed_velocity.y > 0.0 or player.global_position.y > pre_jump_y + 0.02:
+			airborne = true
+	Input.action_release("phase0_jump")
+	var passed := floor_ok and command_fields and wall_hit and jump_impulse_ok and airborne
+	print("street_motor_ownership_probe:floor=%s:wall=%s:jump_impulse=%s:airborne=%s:command_fields=%s:root_owner=CharacterMotor:move_and_slide_owner=CharacterMotor:passed=%s" % [str(floor_ok).to_lower(), str(wall_hit).to_lower(), str(jump_impulse_ok).to_lower(), str(airborne).to_lower(), str(command_fields).to_lower(), str(passed).to_lower()])
+	get_tree().quit(0 if passed else 1)
+
+
+func _probe_animation_ownership() -> void:
+	var actor := player
+	var skin := actor.get_node("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin")
+	var run_input := {"motion_state": {"gait_actual": "run"}, "action_state": {"requested_action": ""}}
+	var action_input := {"motion_state": {"gait_actual": "run"}, "action_state": {"requested_action": "boxing"}}
+	var run_result: Dictionary = skin.apply_presentation_input(run_input)
+	var action_result: Dictionary = skin.apply_presentation_input(action_input)
+	var interrupted_lock := bool(action_result.get("action_locked", false))
+	skin.animation_controller.cancel_action()
+	var cancel_result: Dictionary = skin.apply_presentation_input(run_input)
+	var guard_started: bool = skin.set_guard_stance(0.34)
+	skin.animation_controller.release_hold()
+	var guard_released: bool = not skin.animation_controller.is_locked()
+	var recovery_result: Dictionary = skin.apply_presentation_input({"motion_state": {"gait_actual": "run"}, "action_state": {"requested_action": "", "cancel": true}})
+	var direct_recovery: bool = skin.animation_controller.recover_to_locomotion("run")
+	var recovered_clip := str(skin.animation_controller.get_current_clip_name()).to_lower()
+	var fallback_controller: Node = RoleAnimationControllerRef.new()
+	add_child(fallback_controller)
+	var fallback: Dictionary = fallback_controller.apply_presentation_state({"locomotion_intent": "run"})
+	fallback_controller.queue_free()
+	print("street_animation_probe:run=%s:action=%s:interrupted_lock=%s:cancel=%s:guard=%s:guard_released=%s:recovery=%s:recovered_run=%s:clip=%s:fallback=%s" % [
+		str(run_result.get("accepted", false)).to_lower(),
+		str(action_result.get("accepted", false)).to_lower(),
+		str(interrupted_lock).to_lower(),
+		str(cancel_result.get("accepted", false)).to_lower(),
+		str(guard_started).to_lower(),
+		str(guard_released).to_lower(),
+		str(recovery_result.get("accepted", false)).to_lower(),
+		str(recovered_clip.ends_with("running") or recovered_clip.ends_with("run")).to_lower(),
+		recovered_clip,
+		str(fallback.get("reason", "")).to_lower(),
+	])
+	get_tree().quit(0 if run_result.get("accepted", false) and action_result.get("accepted", false) and interrupted_lock and cancel_result.get("accepted", false) and guard_started and guard_released and recovery_result.get("accepted", false) and direct_recovery and (recovered_clip.ends_with("running") or recovered_clip.ends_with("run")) and fallback.get("reason", "") == "animation_binding_missing" else 1)
 
 
 func _wait_for_result(attempt_id: String) -> Dictionary:

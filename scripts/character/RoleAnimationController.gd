@@ -15,6 +15,9 @@ var current_clip := ""
 var action_locked := false
 var action_unlock_time := 0.0
 var held_pose := false
+var locomotion_state := "idle"
+var pending_recovery_state := "idle"
+var _last_presentation_signature := ""
 var _states: Dictionary = {}
 
 const CANONICAL_CLIP_CANDIDATES := {
@@ -49,7 +52,47 @@ func _process(_delta: float) -> void:
 	if action_locked and action_unlock_time != INF and Time.get_ticks_msec() / 1000.0 >= action_unlock_time:
 		action_locked = false
 		action_unlock_time = 0.0
-		play_state("idle", "", false)
+		recover_to_locomotion(pending_recovery_state)
+
+func apply_presentation_state(state: Dictionary) -> Dictionary:
+	if animation_player == null or state_machine == null:
+		return {"accepted": false, "state": "idle", "reason": "animation_binding_missing"}
+	var gait := str(state.get("locomotion_intent", state.get("gait", "idle")))
+	if gait not in ["idle", "walk", "run", "jump"]:
+		gait = "idle"
+	var action_id := str(state.get("action_id", ""))
+	var signature := "%s|%s|%s|%s" % [gait, action_id, str(state.get("guard_hold", false)), str(state.get("cancel", false))]
+	if signature == _last_presentation_signature and not bool(state.get("cancel", false)):
+		return {"accepted": true, "state": current_state, "clip_ref": current_clip, "action_locked": action_locked, "reason": "unchanged"}
+	_last_presentation_signature = signature
+	if bool(state.get("cancel", false)):
+		cancel_action()
+		recover_to_locomotion(gait)
+		return {"accepted": true, "state": current_state, "clip_ref": current_clip, "action_locked": action_locked, "reason": "cancelled"}
+	if bool(state.get("guard_hold", false)):
+		var held := hold_state("boxing", "", float(state.get("hold_position", 0.34)))
+		return {"accepted": held, "state": current_state if held else "idle", "clip_ref": current_clip if held else "", "action_locked": action_locked, "reason": "guard_hold" if held else "guard_clip_missing"}
+	if action_id in ["boxing", "action:melee.unarmed_punch"]:
+		pending_recovery_state = gait
+		var boxed := play_action("boxing", "boxing")
+		return {"accepted": boxed, "state": current_state if boxed else "idle", "clip_ref": current_clip if boxed else "", "action_locked": action_locked, "reason": "action" if boxed else "action_clip_missing"}
+	if action_id in ["sword_attack", "action:melee.sword_slash"]:
+		pending_recovery_state = gait
+		var sword := play_action("sword_attack", "sword_attack")
+		return {"accepted": sword, "state": current_state if sword else "idle", "clip_ref": current_clip if sword else "", "action_locked": action_locked, "reason": "action" if sword else "action_clip_missing"}
+	pending_recovery_state = gait
+	var locomotion_ok := recover_to_locomotion(gait)
+	return {"accepted": locomotion_ok, "state": current_state if locomotion_ok else "idle", "clip_ref": current_clip if locomotion_ok else "", "action_locked": action_locked, "reason": "locomotion" if locomotion_ok else "locomotion_clip_missing"}
+
+func cancel_action() -> void:
+	action_locked = false
+	action_unlock_time = 0.0
+	release_hold()
+
+func recover_to_locomotion(state_name: String = "idle") -> bool:
+	var normalized := state_name if state_name in ["idle", "walk", "run", "jump"] else "idle"
+	locomotion_state = normalized
+	return play_state(normalized, "", false)
 
 func play_state(state_name: String, clip_ref: String = "", one_shot: bool = false, speed: float = 1.0) -> bool:
 	if action_locked and not one_shot:
@@ -64,6 +107,8 @@ func play_state(state_name: String, clip_ref: String = "", one_shot: bool = fals
 		return true
 	current_state = state_name
 	current_clip = clip
+	if not one_shot and state_name in ["idle", "walk", "run", "jump"]:
+		locomotion_state = state_name
 	if animation_tree != null and state_machine != null:
 		var playback := animation_tree.get("parameters/playback") as AnimationNodeStateMachinePlayback
 		if playback != null:
@@ -110,13 +155,9 @@ func release_hold() -> void:
 		animation_player.set_speed_scale(default_playback_speed)
 
 func restore() -> void:
-	release_hold()
-	if animation_tree != null and state_machine != null:
-		var playback := animation_tree.get("parameters/playback") as AnimationNodeStateMachinePlayback
-		if playback != null and _states.has("idle"):
-			playback.start("idle")
-	current_state = "idle"
-	current_clip = str(_states.get("idle", current_clip))
+	cancel_action()
+	pending_recovery_state = "idle"
+	recover_to_locomotion("idle")
 	if animation_player != null:
 		animation_player.set_speed_scale(default_playback_speed)
 

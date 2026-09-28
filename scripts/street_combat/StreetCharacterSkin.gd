@@ -2,6 +2,7 @@ extends Node3D
 
 var RoleAnimationControllerRef = load("res://scripts/character/RoleAnimationController.gd")
 var RootMotionSamplerRef = load("res://scripts/character/RootMotionSampler.gd")
+var CharacterPresentationRuntimeRef = load("res://scripts/character/CharacterPresentationRuntime.gd")
 
 @export var package_id := ""
 
@@ -11,9 +12,8 @@ var _skeleton: Skeleton3D
 var _current_clip := ""
 var _motion_profile := "default"
 var _recoil_tween: Tween
-var _action_locked := false
-var _action_unlock_time := 0.0
 var animation_controller: Node
+var presentation_runtime: RefCounted
 var root_motion_sampler: Node
 
 func _ready() -> void:
@@ -31,6 +31,8 @@ func _ready() -> void:
 		animation_controller.name = "RoleAnimationController"
 		add_child(animation_controller)
 	animation_controller.bind(self)
+	presentation_runtime = CharacterPresentationRuntimeRef.new()
+	presentation_runtime.bind(animation_controller)
 	root_motion_sampler = get_node_or_null("RootMotionSampler") as Node
 	if root_motion_sampler == null:
 		root_motion_sampler = RootMotionSamplerRef.new()
@@ -38,14 +40,6 @@ func _ready() -> void:
 		add_child(root_motion_sampler)
 	root_motion_sampler.bind(self)
 	set_state("idle")
-
-
-func _process(_delta: float) -> void:
-	if not _action_locked or Time.get_ticks_msec() / 1000.0 < _action_unlock_time:
-		return
-	_action_locked = false
-	_action_unlock_time = 0.0
-	play_locomotion_state("idle")
 
 
 func _find_descendant(node: Node, type_name: String) -> Node:
@@ -94,20 +88,13 @@ func _play(clip: String, playback_speed: float = 1.0) -> bool:
 
 func _play_action(clip: String) -> bool:
 	var resolved := _resolve_animation(clip)
-	if resolved.is_empty():
+	if resolved.is_empty() or animation_controller == null:
 		return false
-	_current_clip = resolved
-	if animation_controller != null:
-		var state_name := _state_name_for_clip(resolved)
-		if not animation_controller.play_action(resolved, state_name):
-			return false
-	else:
-		_play(clip)
-	var animation := _animation_player.get_animation(_current_clip)
-	var duration := animation.length if animation != null else 0.0
-	_action_locked = true
-	_action_unlock_time = Time.get_ticks_msec() / 1000.0 + max(duration, 0.1)
-	return true
+	var state_name := _state_name_for_clip(resolved)
+	var accepted: bool = animation_controller.play_action(resolved, state_name)
+	if accepted:
+		_current_clip = str(animation_controller.get_current_clip_name())
+	return accepted
 
 
 func configure_role(_actor_id: String) -> void:
@@ -136,10 +123,10 @@ func play_locomotion_state(state_name: String) -> bool:
 		"jump":
 			clip = str(aliases.get("jump_start", "jump"))
 		_:
-			if _action_locked:
+			if animation_controller != null and animation_controller.is_locked():
 				return false
 			return _play(str(aliases.get("idle", "idle")))
-	if _action_locked:
+	if animation_controller != null and animation_controller.is_locked():
 		return false
 	return _play(clip, playback_speed)
 
@@ -168,9 +155,6 @@ func play_source_state(state_name: String, one_shot: bool = true, playback_speed
 	if not accepted:
 		return false
 	_current_clip = resolved
-	if effective_one_shot:
-		_action_locked = true
-		_action_unlock_time = Time.get_ticks_msec() / 1000.0 + max(animation.length if animation != null else 0.1, 0.1)
 	return true
 
 
@@ -187,25 +171,17 @@ func get_source_animation_clips() -> PackedStringArray:
 
 
 func set_guard_stance(normalized_position: float = 0.34) -> bool:
-	"""Hold a readable guard frame without creating an attack or authority event."""
-	var resolved := _resolve_animation(_attack_clip())
-	if resolved.is_empty() or animation_controller == null:
+	if animation_controller == null:
 		return false
-	if not animation_controller.hold_state("boxing", resolved, normalized_position):
-		return false
-	_current_clip = resolved
-	_action_locked = true
-	_action_unlock_time = INF
-	return true
-
+	var accepted: bool = animation_controller.hold_state("boxing", "", normalized_position)
+	if accepted:
+		_current_clip = str(animation_controller.get_current_clip_name())
+	return accepted
 
 func ensure_guard_stance(normalized_position: float = 0.34) -> void:
-	if _action_locked:
-		return
-	if not _current_clip.to_lower().ends_with("idle"):
+	if animation_controller == null or animation_controller.is_locked():
 		return
 	set_guard_stance(normalized_position)
-
 
 func is_animation_tree_active() -> bool:
 	return animation_controller != null and animation_controller.has_method("is_animation_tree_active") and animation_controller.is_animation_tree_active()
@@ -240,12 +216,16 @@ func play_reviewed_action_atom(_action_tag: String, animation_clip_ref: String, 
 
 
 func restore_reviewed_action_playback() -> void:
-	_action_locked = false
-	_action_unlock_time = 0.0
 	if animation_controller != null:
 		animation_controller.restore()
-	set_state("idle")
+	_current_clip = str(animation_controller.get_current_clip_name()) if animation_controller != null else ""
 
+func apply_presentation_input(input: Dictionary) -> Dictionary:
+	if presentation_runtime == null:
+		return {"accepted": false, "state": "idle", "reason": "presentation_runtime_missing"}
+	var result: Dictionary = presentation_runtime.apply_presentation_input(input)
+	_current_clip = str(result.get("clip_ref", _current_clip))
+	return result
 
 func play_recoil() -> void:
 	if _recoil_tween != null and _recoil_tween.is_running():
