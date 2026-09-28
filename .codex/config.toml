@@ -1,5 +1,6 @@
 # Team-shared context policy. Keep the large window available, but compact
 # before the long-context pricing/quality boundary discussed in the runbook.
+model = "gpt-6-sol"
 model_context_window = 1000000
 model_auto_compact_token_limit = 240000
 
