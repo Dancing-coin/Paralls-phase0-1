@@ -1,8 +1,8 @@
 # 角色动作底座操作手册与文档索引
 
-日期：`2026-09-15`
+日期：`2026-09-28`
 
-状态：`导航与执行手册；2026-09-14 动作底座实现尚未开始`
+状态：`导航与执行手册；AnimationTree 街区试点已完成，动作底座系列补全计划待评审`
 
 ## 用途与范围
 
@@ -41,6 +41,8 @@
 ```text
 AGENTS.md
   -> 主线 authority 边界
+  -> 2026-09-28 动作底座系列补全 spec
+  -> 2026-09-28 动作底座系列补全 plan
   -> 2026-09-14 统一动作底座主 spec
   -> 四份 2026-09-14 子 spec
   -> 2026-09-14 统一主实施计划（唯一执行顺序）
@@ -62,6 +64,14 @@ AGENTS.md
 - Phase 1 的武器范围是一个 qualified held-item binding、一个 melee
   `ActionAttempt` 闭环和一个 hitscan semantic route fixture；不包含弹药、
   弹道、双持、拼刀或任意道具武器化。
+
+### 2026-09-28 当前导航结论
+
+`StreetCombatDemo` 的三个真实角色已经完成外部 controller AnimationTree
+试点。下一轮只按新的补全系列执行：先关闭 root motion、Motor ownership、
+CharacterReplica migration、descriptor/arbiter、ActionAttempt/Mode B、asset
+registry 和 documentation gates。旧的 2026-09-14 主计划和专题计划仍是
+设计依赖，但不再单独作为本轮执行顺序。
 
 ## 文档权威层级
 
@@ -245,6 +255,7 @@ AGENTS.md
 | P-03 | `docs/superpowers/plans/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 6-8。 |
 | P-04 | `docs/superpowers/plans/2026-09-14-character-esm-action-attempt-settlement-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 10。 |
 | P-05 | `docs/superpowers/plans/2026-09-14-character-connected-action-and-physical-replication-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 11。 |
+| P-06 | `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **本轮唯一补全顺序；待 spec 评审** | 覆盖试点之后的 root motion、Motor、Replica、arbiter、authority、asset registry、evidence 和文档收口。 |
 
 ### C. 当前实现、迁移和资产事实（必查，不改写设计）
 
@@ -258,6 +269,7 @@ AGENTS.md
 | F-06 | `docs/character/character-actor-architecture.md` | 改角色壳边界时 | shared actor 结构背景。 |
 | F-07 | `docs/character/character-actor-final-convergence-target.md` | 迁移 host 时 | `CharacterReplica` lineage 的目标约束。 |
 | F-08 | `docs/character/character-actor-final-convergence-gap-report.md` | 评审迁移缺口时 | 历史收敛 gap 对照。 |
+| F-09 | `docs/character/action-foundation-series-status.md` | 每轮开工和收口 | 当前门禁、剩余问题、证据和文档状态总表。 |
 | F-09 | `docs/character/character-actor-migration-status.md` | 查旧计划状态时 | actor-substrate 历史 ledger；不取代 D-01/P-00。 |
 | F-10 | `docs/character/character-agent-runtime-architecture.md` | 改 L4/Agent 边界时 | 现有 CharacterAgent runtime 事实。 |
 | F-11 | `docs/art-asset-qualification-requirements.md` | 接入资源包时 | active/candidate/qualified/approved 流转与普通绑骨底线。 |

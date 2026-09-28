@@ -351,6 +351,9 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/art-resource-swap-workflow.md`
 - `docs/character/character-action-asset-interface.md`
 - `docs/character/character-action-foundation-operator-guide-and-index.md`：动作底座相关 spec/plan 的权威层级、执行手册、依赖索引和验证梯度。
+- `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`：外部 controller 试点之后的动作底座补全总 spec，定义动画层、运行时层、Motor、根运动、资产、authority 和验收门。
+- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`：本轮动作底座补全的唯一执行顺序；当前等待 spec 评审后进入实施。
+- `docs/character/action-foundation-series-status.md`：动作底座系列的当前状态、已完成试点、遗留问题、证据和文档映射。
 - `docs/superpowers/specs/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-subspec.md`
 - `docs/character/character-action-foundation-current-state.md`
 - `docs/character/character-runtime-design-drift-audit.md`

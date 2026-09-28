@@ -1,8 +1,26 @@
 # Character Action Foundation Current State
 
-Date: `2026-09-24`
+Date: `2026-09-28`
 
-Status: `current-state ledger; implementation gap remains`
+Status: `current-state ledger; AnimationTree pilot landed; completion series remains open`
+
+## 2026-09-28 Series Reconciliation
+
+The StreetCombatDemo pilot is now a landed animation-layer result: all three
+real street packages bind to the external-controller-style AnimationTree and
+pass idle/walk/run/jump/boxing/sword state and recovery checks. This closes the
+animation pilot only. It does not claim calibrated root-motion locomotion,
+universal NPC/agent Motor routing, final ActionAttempt authority closure, or
+complete registry admission.
+
+The controlling completion documents are:
+
+- `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`
+- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`
+- `docs/character/action-foundation-series-status.md`
+
+The external controller is the animation implementation layer. It is not a
+replacement for the actor runtime, action arbiter, Motor, or authority owner.
 
 For the broader cross-document reconciliation and source-of-truth hierarchy,
 see `docs/character/character-runtime-design-drift-audit.md`.
