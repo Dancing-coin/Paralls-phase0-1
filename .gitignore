@@ -37,3 +37,6 @@ docs/architecture
 /.codegraph/codegraph.db
 /backend/.runtime/*
 .runtime
+
+# Local scratch probes and downloaded temp artifacts
+.tmp_*
