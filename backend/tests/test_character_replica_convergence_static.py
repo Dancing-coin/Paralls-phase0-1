@@ -49,3 +49,11 @@ def test_street_locomotion_loops_and_actions_are_one_shot():
     assert 'animation.loop_mode = Animation.LOOP_NONE' in controller
     assert '"boxing"' in controller
     assert '"sword_attack"' in controller
+
+
+def test_streetdemo_baseline_probe_is_bound_to_real_acceptance_scene():
+    scene = read("scenes/phase0/StreetCombatDemo.tscn")
+    controller = read("scripts/street_combat/StreetCombatDemo.gd")
+    assert 'res://scripts/street_combat/StreetCombatDemo.gd' in scene
+    assert 'CharacterActionFoundationBaselineProbeRef' in controller
+    assert 'UnifiedCharacterActionFoundation.tscn' not in scene

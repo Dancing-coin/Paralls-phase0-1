@@ -1,5 +1,8 @@
 extends Node3D
 
+const CharacterActionFoundationBaselineProbeRef = preload("res://scripts/verification/CharacterActionFoundationBaselineProbe.gd")
+
+
 @onready var player: CharacterBody3D = $PlayerCharacter
 @onready var coordinator: Node = $CombatCoordinator
 @onready var camera: Camera3D = $FollowCamera
@@ -247,6 +250,7 @@ func _build_collision() -> void:
 
 
 func _probe() -> void:
+	CharacterActionFoundationBaselineProbeRef.emit_scene(self)
 	var skeletons := 0
 	var animated := 0
 	for actor_name in ["PlayerCharacter", "AgentCharacterJK", "AgentCharacterT"]:

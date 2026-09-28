@@ -83,14 +83,11 @@ func _resolve_animation(clip: String) -> String:
 
 func _play(clip: String, playback_speed: float = 1.0) -> bool:
 	var resolved := _resolve_animation(clip)
-	if resolved.is_empty():
+	if resolved.is_empty() or animation_controller == null:
 		return false
-	if animation_controller != null:
-		var state_name := _state_name_for_clip(resolved)
-		if not animation_controller.play_state(state_name, resolved, false, playback_speed):
-			return false
-	elif _animation_player.current_animation != resolved or not _animation_player.is_playing():
-		_animation_player.play(resolved, 0.16, playback_speed, false)
+	var state_name := _state_name_for_clip(resolved)
+	if not animation_controller.play_state(state_name, resolved, false, playback_speed):
+		return false
 	_current_clip = resolved
 	return true
 
