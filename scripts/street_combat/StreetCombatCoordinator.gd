@@ -61,6 +61,11 @@ func request_attack(actor_id: String, target_id: String, request_key: String = "
 		_append_event("Attack unavailable: connection or target")
 		return ""
 	var actor := get_node(str(ACTOR_NODES[actor_id])) as CharacterBody3D
+	var action_source := StringName("player" if actor_id == "street_bandage" else "agent")
+	var action_admission: Dictionary = actor.call("submit_action_intent", StringName(semantic_action_id), StringName("character:%s" % target_id), action_source) if actor.has_method("submit_action_intent") else {"accepted": false, "reason": "action_intent_boundary_missing"}
+	if not bool(action_admission.get("accepted", false)):
+		_append_event("Attack unavailable: action arbiter rejected")
+		return ""
 	var skin := actor.get_node("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin")
 	var package_id := str(actor.get_meta("package_id", ""))
 	var adapter := RolePresentationAdapter.new(_registry, skin)

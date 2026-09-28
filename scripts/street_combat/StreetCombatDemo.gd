@@ -129,7 +129,7 @@ func _probe_combat() -> void:
 	Input.action_press("phase0_move_forward")
 	# Move into the staged combat pocket while still proving player locomotion.
 	# The probe must preserve line-of-sight evidence for the first authority attempt.
-	for _frame in range(50):
+	for _frame in range(70):
 		await get_tree().physics_frame
 	Input.action_release("phase0_move_forward")
 	print("street_combat_probe:player_position=%s:jk_position=%s:t_position=%s" % [player.global_position, $AgentCharacterJK.global_position, $AgentCharacterT.global_position])

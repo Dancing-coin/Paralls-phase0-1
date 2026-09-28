@@ -122,6 +122,7 @@ var _pending_root_delta := Vector3.ZERO
 var _pending_facing_yaw := 0.0
 var _physics_tick := 0
 var latest_control_intent: Dictionary = {}
+var latest_action_admission: Dictionary = {}
 var actor_local_perception_enabled := true
 var _fallback_role_asset_scene: Node
 var _manifest_role_asset_scene: Node
@@ -239,6 +240,29 @@ func perform_action(action_name: String) -> void:
 	if next_state.is_empty():
 		return
 	_trigger_role_state(next_state, _role_action_duration_for(action_name))
+
+
+func submit_action_intent(action_id: StringName, target_ref: StringName = &"", source_kind: StringName = &"compatibility") -> Dictionary:
+	var semantic_action_id := str(action_id)
+	if semantic_action_id.is_empty():
+		return {"accepted": false, "reason": "semantic_action_id_missing"}
+	var normalized_intent := CharacterControlIntentRef.create(Vector3.ZERO, false, &"none", action_id, source_kind, target_ref)
+	var physics_tick := _physics_tick if _physics_tick > 0 else Engine.get_physics_frames()
+	var action_instance_id := StringName("action:%s:%s:%s" % [actor_id, semantic_action_id, physics_tick])
+	var action_instance := ActionInstanceRef.create(action_instance_id, action_id, source_kind, target_ref, physics_tick)
+	var claims: Array[StringName] = [&"upper_body"]
+	if semantic_action_id.contains("sword"):
+		claims.append(&"weapon_hit_volume:sword")
+	action_instance["semantic_action_id"] = semantic_action_id
+	action_instance["source_kind"] = str(normalized_intent.get("source_kind", "compatibility"))
+	action_instance["claims"] = claims
+	action_instance["priority"] = 3
+	var frame := ActorActionArbiterRef.resolve(physics_tick, [], [action_instance], {"occupancy": {}})
+	runtime_state.record_arbitration_frame(frame)
+	latest_action_admission = {"semantic_action_id": semantic_action_id, "physics_tick": physics_tick, "frame": frame.duplicate(true)}
+	if frame.get("admitted", []).is_empty():
+		return {"accepted": false, "reason": "action_claim_rejected", "semantic_action_id": semantic_action_id, "arbitration": frame}
+	return {"accepted": true, "semantic_action_id": semantic_action_id, "action_instance_id": action_instance_id, "claims": claims, "arbitration": frame}
 
 
 func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
