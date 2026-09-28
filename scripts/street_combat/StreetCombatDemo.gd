@@ -25,18 +25,10 @@ func _ready() -> void:
 		get_node("%s/Nameplate" % actor_name).visible = false
 		get_node("%s/PerceptionConeDebug" % actor_name).visible = false
 	$CityStreetsEnvironment/EnvironmentNavigation.bake_navigation_mesh(false)
-	call_deferred("_apply_combat_stance")
 	if OS.get_environment("PARALLS_STREET_PROBE") == "1":
 		call_deferred("_probe")
 	elif OS.get_environment("PARALLS_STREET_PROBE") == "2":
 		call_deferred("_probe_combat")
-
-
-func _apply_combat_stance() -> void:
-	for actor_name in ["AgentCharacterJK", "AgentCharacterT"]:
-		var skin := get_node("%s/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" % actor_name)
-		if skin.has_method("set_guard_stance"):
-			skin.set_guard_stance(0.34)
 
 
 func _physics_process(delta: float) -> void:
@@ -65,21 +57,11 @@ func _physics_process(delta: float) -> void:
 	var look_target := player.global_position + camera_forward * 2.0
 	var control_grounded := player.is_on_floor() and jump_type == "none"
 	player.begin_embodied_control_frame(player.global_position, world_direction, look_target, control_grounded, wants_run, "run" if wants_run else "walk", "stand", jump_type)
-	if jump_type != "none":
-		player.role_asset_scene.set_state("jump")
-	elif world_direction.length() > 0.01:
-		player.role_asset_scene.set_state("run" if wants_run else "walk")
-	else:
-		player.role_asset_scene.set_state("idle")
 	# Keep both opponents in an explicit face-off stance toward the player.
 	# Their imported assets use the opposite forward axis from the player shell,
 	# so the runtime look target is authoritative instead of relying on spawn yaw.
 	$AgentCharacterJK.set_look_target(player.global_position + Vector3(0.0, 1.0, 0.0))
 	$AgentCharacterT.set_look_target(player.global_position + Vector3(0.0, 1.0, 0.0))
-	for actor_name in ["AgentCharacterJK", "AgentCharacterT"]:
-		var combat_skin := get_node("%s/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" % actor_name)
-		if combat_skin.has_method("ensure_guard_stance"):
-			combat_skin.ensure_guard_stance(0.34)
 	var orbit_offset := Vector3(sin(camera_yaw) * CAMERA_DISTANCE, 1.95 + camera_pitch * 0.55, -cos(camera_yaw) * CAMERA_DISTANCE)
 	var desired_camera := player.global_position + Vector3(0.0, 1.95, -3.15)
 	desired_camera = player.global_position + orbit_offset
@@ -220,7 +202,7 @@ func _probe_imported_attack_playback() -> bool:
 	var before: String = skin.get_current_clip_name()
 	var registry := CharacterEmbodimentAssetRegistry.new()
 	var presentation := RolePresentationAdapter.new(registry, skin)
-	var playback: Dictionary = presentation.apply_input({"package_id": "female_bandage_external", "semantic_action_id": "action:melee.unarmed_punch", "claims": []})
+	var playback: Dictionary = presentation.apply_input({"package_id": str(actor.get_meta("package_id", "")), "semantic_action_id": "action:melee.unarmed_punch", "claims": []})
 	await get_tree().create_timer(0.12).timeout
 	var during: String = skin.get_current_clip_name()
 	await get_tree().create_timer(0.55).timeout

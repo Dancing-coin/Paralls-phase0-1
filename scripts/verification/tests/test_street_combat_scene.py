@@ -13,8 +13,12 @@ def test_default_scene_uses_staged_street_and_only_user_characters() -> None:
     assert 'run/main_scene="res://scenes/phase0/StreetCombatDemo.tscn"' in project
     for name in ("environment.glb", "collision.glb", "navigation.glb"):
         assert f"res://assets/active/citystreets_209/0.3.0/{name}" in scene
-    for name in ("female_jk_external", "female_t_external", "female_bandage_external"):
+    assert 'res://assets/active/female_bandage_external/female_bandage_external.glb' in scene
+    for name in ("female_jk_external", "female_t_external"):
         assert f"res://assets/active/{name}/{name}.glb" in scene
+    player_block = scene.split('[node name="AgentCharacterJK"', 1)[0]
+    assert 'metadata/package_id = "female_bandage_external"' in player_block
+    assert 'instance=ExtResource("bandage")' in player_block
     assert scene.count('instance=ExtResource("replica")') == 3
     assert "ProceduralLowPolyCharacter" not in scene
     assert "paralls-art-assets/characters" not in scene
@@ -60,8 +64,8 @@ def test_street_combat_presents_third_person_composition() -> None:
     assert 'var desired_camera := player.global_position + Vector3(0.0, 1.95, -3.15)' in controller
     assert 'camera.look_at(player.global_position + Vector3(0.0, 1.28, 3.4), Vector3.UP)' in controller
     assert 'set_look_target(player.global_position + Vector3(0.0, 1.0, 0.0))' in controller
-    assert 'set_guard_stance(0.34)' in controller
-    assert 'ensure_guard_stance(0.34)' in controller
+    assert 'set_guard_stance(0.34)' not in controller
+    assert 'ensure_guard_stance(0.34)' not in controller
     assert 'phase0_jump' in controller
     assert 'camera_orbiting' in controller
     assert 'var camera_right := Vector3(-cos(camera_yaw), 0.0, -sin(camera_yaw))' in controller
@@ -89,8 +93,7 @@ def test_street_combat_presents_third_person_composition() -> None:
     assert 'KEY_LEFT' not in controller
     assert 'KEY_RIGHT' not in controller
     assert 'Input.get_vector("phase0_move_left", "phase0_move_right", "phase0_move_forward", "phase0_move_backward")' in controller
-    assert "const IDLE_PLAYBACK_SPEED := 0.45" in skin
-    assert '"idle")), IDLE_PLAYBACK_SPEED' in skin
-    assert "_stabilize_idle_root_height" in skin
-    assert "stable_value.y = locked_height" in skin
+    assert "const IDLE_PLAYBACK_SPEED := 0.45" not in skin
+    assert 'player_run_speed = 4.8' in scene
+    assert "_stabilize_idle_root_height" not in skin
     assert scene.count("sway_amount = 0.0") == 3
