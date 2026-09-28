@@ -5,6 +5,8 @@ class_name CharacterControllerPort
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
 const IntentProposalRef = preload("res://scripts/character/IntentProposal.gd")
 const LayerControlProposalRef = preload("res://scripts/character/LayerControlProposal.gd")
+const CharacterControlIntentRef = preload("res://scripts/character/CharacterControlIntent.gd")
+const CONTROL_SOURCE_KINDS := ["player", "agent", "program", "compatibility"]
 
 
 static func submit_intent_proposal(raw: Dictionary, source_id: StringName, control_mode: StringName) -> Dictionary:
@@ -39,6 +41,13 @@ static func normalize_intent_frame(candidate: Dictionary) -> Dictionary:
 		"gait": str(candidate.get("gait", "walk")),
 		"action": str(candidate.get("action", "idle")),
 	}
+
+
+static func normalize_control_intent(candidate: Dictionary = {}) -> Dictionary:
+	var normalized := CharacterControlIntentRef.normalize(candidate)
+	if not normalized.has("source_kind"):
+		normalized["source_kind"] = "compatibility"
+	return normalized
 
 
 static func get_move_local(normalized_frame: Dictionary) -> Vector2:

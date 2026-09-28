@@ -57,3 +57,36 @@ def test_street_skin_does_not_call_animation_playback_directly() -> None:
     skin = (ROOT / "scripts" / "street_combat" / "StreetCharacterSkin.gd").read_text(encoding="utf-8")
     assert re.search(r"\.(play|travel|seek)\s*\(", skin) is None
 
+
+
+def test_semantic_control_intent_contract_exists_with_deterministic_defaults():
+    intent = (ROOT / "scripts" / "character" / "CharacterControlIntent.gd").read_text(encoding="utf-8")
+    port = (ROOT / "scripts" / "character" / "CharacterControllerPort.gd").read_text(encoding="utf-8")
+    actor = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
+    assert "class_name CharacterControlIntent" in intent
+    assert "static func create(" in intent
+    for field in ("source_digest", "physics_tick", "intent_digest", "target_ref", "jump_type", "action_id"):
+        assert field in intent
+    assert "normalize_control_intent" in port
+    assert "submit_control_intent" in actor
+    assert "begin_embodied_control_frame" in actor
+    assert "apply_embodied_pose_sync" in actor
+
+
+def test_embodied_control_callers_only_stage_intent_and_preserve_compatibility():
+    actor = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
+    begin = actor.split("func begin_embodied_control_frame", 1)[1].split("func consume_player_root_motion_request", 1)[0]
+    sync = actor.split("func apply_embodied_pose_sync", 1)[1].split("func clear_embodied_control_frame", 1)[0]
+    for section in (begin, sync):
+        assert "submit_control_intent" in section
+        assert "_set_role_asset" not in section
+        assert "play_" not in section
+    assert 'func begin_embodied_control_frame(' in actor
+    assert 'func apply_embodied_pose_sync(' in actor
+
+
+def test_player_agent_program_share_controller_port_normalization():
+    port = (ROOT / "scripts" / "character" / "CharacterControllerPort.gd").read_text(encoding="utf-8")
+    for source_kind in ("player", "agent", "program", "compatibility"):
+        assert source_kind in port
+    assert "CharacterControlIntentRef" in port

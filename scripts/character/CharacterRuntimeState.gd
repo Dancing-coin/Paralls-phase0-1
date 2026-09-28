@@ -36,12 +36,20 @@ var status_projection: Array[StringName] = []
 var latest_authority_result: Dictionary = {}
 var presentation_cues: Array[StringName] = []
 var agent_intent_proposal: Dictionary = {}
+var latest_control_intent: Dictionary = {}
 
 
 func record_arbitration_frame(frame: Dictionary) -> void:
 	active_lease_summaries = _dictionary_array(frame.get("admitted", []), &"lease_id")
 	active_action_summaries = _dictionary_array(frame.get("admitted", []), &"action_instance_id")
 	occupancy = frame.get("occupancy", {}).duplicate(true)
+
+
+func stage_control_intent(intent: Dictionary) -> void:
+	latest_control_intent = intent.duplicate(true)
+
+func get_control_intent() -> Dictionary:
+	return latest_control_intent.duplicate(true)
 
 
 func stage_agent_intent_proposal(proposal: Dictionary) -> void:

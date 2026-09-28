@@ -8,6 +8,7 @@ const CharacterActorSchemaRef = preload("res://scripts/character/CharacterActorS
 const CharacterLocomotionExecutionModeRef = preload("res://scripts/character/CharacterLocomotionExecutionMode.gd")
 const CharacterRuntimeStateRef = preload("res://scripts/character/CharacterRuntimeState.gd")
 const CharacterControllerPortRef = preload("res://scripts/character/CharacterControllerPort.gd")
+const CharacterControlIntentRef = preload("res://scripts/character/CharacterControlIntent.gd")
 const CharacterControlModeRef = preload("res://scripts/character/CharacterControlMode.gd")
 const ContinuousControlLeaseRef = preload("res://scripts/character/ContinuousControlLease.gd")
 const ActorActionArbiterRef = preload("res://scripts/character/ActorActionArbiter.gd")
@@ -120,6 +121,7 @@ var _active_contact_target_actor_id := ""
 var _pending_root_delta := Vector3.ZERO
 var _pending_facing_yaw := 0.0
 var _physics_tick := 0
+var latest_control_intent: Dictionary = {}
 var actor_local_perception_enabled := true
 var _fallback_role_asset_scene: Node
 var _manifest_role_asset_scene: Node
@@ -283,7 +285,22 @@ func measure_right_hand_to_anchor(anchor_world_position: Vector3) -> Dictionary:
 	var result: Variant = role_asset_scene.call("measure_right_hand_to_anchor", anchor_world_position)
 	return result if result is Dictionary else {"available": false, "distance_m": INF, "error_code": "ik_chain_unavailable"}
 
+
+func submit_control_intent(intent: Dictionary) -> void:
+	var normalized := CharacterControllerPortRef.normalize_control_intent(intent)
+	latest_control_intent = normalized.duplicate(true)
+	if runtime_state != null and runtime_state.has_method("stage_control_intent"):
+		runtime_state.stage_control_intent(normalized)
+	player_control_move_direction = normalized.get("move_direction", Vector3.ZERO)
+	player_control_wants_run = bool(normalized.get("wants_run", false))
+	if normalized.has("jump_type"):
+		runtime_state.player_jump_type = str(normalized.get("jump_type", "none"))
+	if normalized.has("gait"):
+		runtime_state.player_gait = str(normalized.get("gait", "idle"))
+
 func begin_embodied_control_frame(world_position: Vector3, move_direction: Vector3, look_target: Vector3, is_grounded: bool, wants_run: bool, gait_name: String, stance_name: String, jump_type: String) -> void:
+	var control_intent := CharacterControlIntentRef.create(move_direction, wants_run, StringName(jump_type), &"", &"player", &"")
+	submit_control_intent(control_intent)
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
 	player_control_move_direction = Vector3(move_direction.x, 0.0, move_direction.z)
@@ -368,6 +385,8 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 	return requested_step
 
 func apply_embodied_pose_sync(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool, player_motion_state: Dictionary = {}) -> void:
+	var control_intent := CharacterControlIntentRef.create(planar_velocity, planar_velocity.length() > player_run_speed_threshold, StringName(runtime_state.get_player_jump_type()), StringName(runtime_state.get_requested_action()), &"player", &"")
+	submit_control_intent(control_intent)
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
 	var current_stance: String = runtime_state.get_player_stance()
@@ -384,7 +403,6 @@ func apply_embodied_pose_sync(world_position: Vector3, planar_velocity: Vector3,
 	)
 	set_look_target(look_target)
 	_push_presentation_input(player_presentation_input)
-	_update_player_shell_locomotion()
 
 func clear_embodied_control_frame() -> void:
 	player_shell_active = false
