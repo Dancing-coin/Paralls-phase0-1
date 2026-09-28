@@ -124,7 +124,7 @@ func _run_probe() -> void:
 	var consumer_node := _resolve_consumer_node(main_demo)
 	_consumer_node_is_character_replica = (
 		consumer_node != null
-		and consumer_node.name == "CharacterReplica"
+		and consumer_node is CharacterActor
 	)
 	var target_actor_id := _execution_applied_actor_id
 	if target_actor_id.is_empty():
@@ -240,7 +240,7 @@ func _resolve_consumer_node(main_demo: Node) -> Node:
 		"char_c":
 			var player_character := main_demo.get_node_or_null("PlayerCharacter")
 			if player_character != null:
-				return player_character.get_node_or_null("CharacterReplica")
+				return player_character
 	return null
 
 

@@ -2,6 +2,8 @@ extends Node3D
 
 const CharacterActionFoundationBaselineProbeRef = preload("res://scripts/verification/CharacterActionFoundationBaselineProbe.gd")
 const RoleAnimationControllerRef = preload("res://scripts/character/RoleAnimationController.gd")
+const CharacterReplicaRetirementProbeRef = preload("res://scripts/verification/CharacterReplicaRetirementProbe.gd")
+const CharacterPresentationCapabilityRef = preload("res://scripts/character/CharacterPresentationCapability.gd")
 
 
 @onready var player: CharacterBody3D = $PlayerCharacter
@@ -35,6 +37,10 @@ func _ready() -> void:
 		call_deferred("_probe_animation_ownership")
 	elif OS.get_environment("PARALLS_STREET_PROBE") == "4":
 		call_deferred("_probe_motor_ownership")
+	elif OS.get_environment("PARALLS_STREET_PROBE") == "5":
+		call_deferred("_probe_replica_retirement")
+	elif OS.get_environment("PARALLS_STREET_PROBE") == "6":
+		call_deferred("_probe_root_motion_qualification")
 
 
 func _physics_process(delta: float) -> void:
@@ -187,6 +193,43 @@ func _probe_combat() -> void:
 	get_tree().quit(0 if player_ok and agent_ok and duplicate_stale_recovery and playback_ok and sword_ok and hud_ok else 1)
 
 
+func _probe_root_motion_qualification() -> void:
+	var root_track_count := 0
+	var zero_envelope_ok := 0
+	var hold_policy_count := 0
+	var capability_boundary_ok := true
+	for actor_name in ["PlayerCharacter", "AgentCharacterJK", "AgentCharacterT"]:
+		var actor := get_node(actor_name)
+		var skin := actor.get_node("VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin")
+		var manifest_path := "res://assets/active/%s/manifest.json" % str(skin.package_id)
+		var manifest: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(manifest_path))
+		var profile: Dictionary = manifest.get("root_motion_profile", {})
+		var policy := str(profile.get("policy", ""))
+		if policy == "hold" and float(profile.get("max_distance", -1.0)) == 0.0 and int(profile.get("max_duration_ticks", -1)) == 1:
+			hold_policy_count += 1
+		var walking_track := bool(skin.has_root_motion_track("walking"))
+		var running_track := bool(skin.has_root_motion_track("running"))
+		if walking_track or running_track:
+			root_track_count += 1
+		var before: Vector3 = actor.global_position
+		skin.reset_root_motion()
+		var first_delta: Vector3 = skin.consume_root_motion_delta()
+		var second_delta: Vector3 = skin.consume_root_motion_delta()
+		if first_delta == Vector3.ZERO and second_delta == Vector3.ZERO and actor.global_position == before:
+			zero_envelope_ok += 1
+		capability_boundary_ok = capability_boundary_ok and not CharacterPresentationCapabilityRef.admits_drive_locomotion({"qualified": true, "root_motion_policy": policy})
+		print("street_root_motion_probe:actor=%s:walking_track=%s:running_track=%s:policy=%s:zero_envelope=true" % [actor_name, str(walking_track).to_lower(), str(running_track).to_lower(), policy])
+	var passed := hold_policy_count == 3 and zero_envelope_ok == 3 and capability_boundary_ok
+	print("street_root_motion_probe:hold_profiles=%s:zero_envelope=%s:root_tracks=%s:drive_boundary=%s:passed=%s" % [hold_policy_count, zero_envelope_ok, root_track_count, str(capability_boundary_ok).to_lower(), str(passed).to_lower()])
+	get_tree().quit(0 if passed else 1)
+
+
+func _probe_replica_retirement() -> void:
+	var report: Dictionary = CharacterReplicaRetirementProbeRef.inspect()
+	print("character_replica_retirement_probe:%s" % JSON.stringify(report))
+	get_tree().quit(0 if bool(report.get("passed", false)) else 1)
+
+
 func _probe_motor_ownership() -> void:
 	var motor := player.get_node_or_null("CharacterMotor")
 	if motor == null:
@@ -252,7 +295,7 @@ func _probe_animation_ownership() -> void:
 	var interrupted_lock := bool(action_result.get("action_locked", false))
 	skin.animation_controller.cancel_action()
 	var cancel_result: Dictionary = skin.apply_presentation_input(run_input)
-	var guard_started: bool = skin.set_guard_stance(0.34)
+	var guard_started: bool = bool(skin.call("set_guard_stance", 0.34))
 	skin.animation_controller.release_hold()
 	var guard_released: bool = not skin.animation_controller.is_locked()
 	var recovery_result: Dictionary = skin.apply_presentation_input({"motion_state": {"gait_actual": "run"}, "action_state": {"requested_action": "", "cancel": true}})

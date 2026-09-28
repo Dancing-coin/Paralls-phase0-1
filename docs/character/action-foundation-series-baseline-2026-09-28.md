@@ -109,3 +109,7 @@ Fresh baseline status: the direct Godot command exited `0` and emitted all three
 ## Live authority baseline result
 
 `python -m pytest -q scripts/verification/tests/test_street_combat_scene.py scripts/verification/tests/test_street_combat_live.py` returned `4 passed, 1 failed`. The live backend connected and the real scene rendered all three qualified packages, but both player and agent requests were rejected with `failed_code=action_unsupported`; duplicate, stale and recovery success markers were false. This is a baseline failure to be addressed in the later authority task, not an accepted authority gate.
+
+Task 6 migration probes registered during progressive replacement:
+- `backend/tests/test_character_scene_migration.py`
+- `scripts/verification/CharacterReplicaRetirementProbe.gd`

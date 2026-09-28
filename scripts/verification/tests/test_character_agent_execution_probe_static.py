@@ -20,7 +20,7 @@ def test_character_agent_execution_probe_scene_exists_and_uses_lightweight_host(
     assert '[node name="MainDemo" type="Node3D"]' in host_text
     assert '[node name="CharacterA" parent="."' in host_text
     assert '[node name="CharacterB" parent="."' in host_text
-    assert 'path="res://scenes/phase0/CharacterReplica.tscn"' in host_text
+    assert 'path="res://scenes/phase0/CharacterActor.tscn"' in host_text
 
 
 def test_character_agent_execution_probe_script_targets_execution_contract() -> None:
@@ -49,7 +49,7 @@ def test_character_agent_execution_probe_script_targets_execution_contract() -> 
     assert '_legacy_output_seen = true' in script_text
     assert 'CharacterA' in script_text
     assert 'character_agent_execution_applied:' in script_text
-    assert 'CharacterReplica' in script_text
+    assert 'CharacterActor' in script_text or 'CharacterReplica' in script_text
     assert 'get_node_or_null("MainDemo")' in script_text
     assert 'res://scenes/phase0/MainDemo.tscn' not in script_text
     assert 'MAIN_DEMO_SCENE.instantiate()' not in script_text

@@ -7,7 +7,7 @@ const ActorActionArbiterRef = preload("res://scripts/character/ActorActionArbite
 const MotionContributionComposerRef = preload("res://scripts/character/MotionContributionComposer.gd")
 const PhysicsContactEvidenceRef = preload("res://scripts/character/PhysicsContactEvidence.gd")
 const EmbodiedActionControllerRef = preload("res://scripts/interaction/EmbodiedActionController.gd")
-const CharacterReplicaSceneRef = preload("res://scenes/phase0/CharacterReplica.tscn")
+const CharacterActorSceneRef = preload("res://scenes/phase0/CharacterActor.tscn")
 const CharacterMotorRef = preload("res://scripts/character/CharacterMotor.gd")
 const CharacterActionAssetDescriptorRef = preload("res://scripts/character/CharacterActionAssetDescriptor.gd")
 
@@ -189,7 +189,7 @@ func _check_surface_constraints() -> bool:
 	return slope_observed and step_observed
 
 func _check_replica_runtime() -> bool:
-	var replica := CharacterReplicaSceneRef.instantiate()
+	var replica := CharacterActorSceneRef.instantiate()
 	replica.patrol_enabled = false
 	root.add_child(replica)
 	await process_frame

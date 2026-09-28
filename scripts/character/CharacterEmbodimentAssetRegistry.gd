@@ -104,7 +104,7 @@ func register_qualified_package(package_id: StringName, manifest: Dictionary, re
 
 func resolve(package_id: StringName, action_id: StringName, claims: Array[StringName]) -> Dictionary:
 	var package: Variant = _qualified_packages.get(package_id, {})
-	if not (package is Dictionary):
+	if not (package is Dictionary) or (package as Dictionary).is_empty():
 		return {"accepted": false, "reason": &"package_not_qualified"}
 	var profiles: Variant = (package as Dictionary).get("profiles", {}).get(action_id, [])
 	if not (profiles is Array) or profiles.is_empty():

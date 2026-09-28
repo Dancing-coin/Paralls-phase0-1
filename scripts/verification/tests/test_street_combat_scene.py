@@ -19,7 +19,7 @@ def test_default_scene_uses_staged_street_and_only_user_characters() -> None:
     player_block = scene.split('[node name="AgentCharacterJK"', 1)[0]
     assert 'metadata/package_id = "female_bandage_external"' in player_block
     assert 'instance=ExtResource("bandage")' in player_block
-    assert scene.count('instance=ExtResource("replica")') == 3
+    assert scene.count('instance=ExtResource("actor")') == 3
     assert "ProceduralLowPolyCharacter" not in scene
     assert "paralls-art-assets/characters" not in scene
     assert scene.count("scale = Vector3(1.4, 1.4, 1.4)") == 3

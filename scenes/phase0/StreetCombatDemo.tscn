@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://scripts/street_combat/StreetCharacterSkin.gd" id="skin"]
 [ext_resource type="Script" path="res://scripts/street_combat/StreetCombatCoordinator.gd" id="coordinator"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/StreetCombatHUD.tscn" id="hud"]
-[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterReplica.tscn" id="replica"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterActor.tscn" id="actor"]
 [ext_resource type="PackedScene" path="res://assets/active/citystreets_209/0.3.0/environment.glb" id="street"]
 [ext_resource type="PackedScene" path="res://assets/active/citystreets_209/0.3.0/collision.glb" id="collision"]
 [ext_resource type="PackedScene" path="res://assets/active/citystreets_209/0.3.0/navigation.glb" id="navigation"]
@@ -90,7 +90,7 @@ navigation_mesh = SubResource("street_navmesh")
 [node name="NavigationSource" parent="CityStreetsEnvironment/EnvironmentNavigation" instance=ExtResource("navigation")]
 visible = false
 
-[node name="PlayerCharacter" parent="." instance=ExtResource("replica")]
+[node name="PlayerCharacter" parent="." instance=ExtResource("actor")]
 position = Vector3(0, 0.2, -10)
 actor_id = "street_bandage"
 patrol_enabled = false
@@ -115,7 +115,7 @@ rotation = Vector3(0, 3.141593, 0)
 scale = Vector3(1.4, 1.4, 1.4)
 metadata/package_id = "female_bandage_external"
 
-[node name="AgentCharacterJK" parent="." instance=ExtResource("replica")]
+[node name="AgentCharacterJK" parent="." instance=ExtResource("actor")]
 position = Vector3(2.05, 0.2, -7.0)
 actor_id = "char_a"
 patrol_enabled = false
@@ -143,7 +143,7 @@ position = Vector3(0, -0.18, 0)
 mesh = SubResource("target_ring_mesh")
 material_override = SubResource("target_ring_material")
 
-[node name="AgentCharacterT" parent="." instance=ExtResource("replica")]
+[node name="AgentCharacterT" parent="." instance=ExtResource("actor")]
 position = Vector3(-2.05, 0.2, -7.0)
 actor_id = "char_b"
 patrol_enabled = false
