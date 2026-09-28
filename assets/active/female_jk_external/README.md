@@ -29,3 +29,5 @@ automatic hit results. The working export contains three explicit right-hand soc
 turn the sword clip into a qualified melee action without timing evidence. The
 action names are not treated as qualification evidence. No action is promoted
 merely because its clip is named `boxing` or `sword attack`.
+
+The runtime `running` clip is intentionally overridden with the reviewed `running` clip from `建模2 纹身腿黑卷发女T字版本  基础动作版.blend`; tracks are remapped by deform-bone name onto this model's skeleton. The model, other actions, and source blend remain unchanged.

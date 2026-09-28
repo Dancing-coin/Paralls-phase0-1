@@ -430,17 +430,27 @@
   "provenance": {
     "authoring_contract": "external_provider_authoring_rig",
     "authoring_frame_rate": 60.0,
-    "package_digest": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "package_digest": "7DE8F32FB6B5F062CA8F5DFDDF34EB6DF7F652D62BAD29ABF970B54367AF8968",
     "qualification_report_ref": "assets/characters/qualification_reports/female_jk_external.json",
     "runtime_export_frame_rate": 60.0,
     "source_format": "blend",
     "source_uri": "file:///E:/下载/建模3%20%20金色卷发jk女%20T字版%20%20多动作版.blend",
-    "working_copy": "production-assets/characters/female_jk_external/source/female_jk_external.glb"
+    "working_copy": "production-assets/characters/female_jk_external/source/female_jk_external.glb",
+    "animation_overrides": [
+      {
+        "clip_ref": "running",
+        "source_uri": "file:///E:/下载/建模2%20纹身腿黑卷发女T字版本%20%20基础动作版.blend",
+        "source_package_id": "female_t_external",
+        "source_runtime_package": "res://assets/active/female_t_external/female_t_external.glb",
+        "method": "bone_name_remap_to_target_deform_skeleton",
+        "applied_at": "2026-09-28"
+      }
+    ]
   },
   "reasons": [],
   "report_path": ".harness/verification/female_jk_external-qualification-report.json",
   "source": {
-    "digest_sha256": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "digest_sha256": "7DE8F32FB6B5F062CA8F5DFDDF34EB6DF7F652D62BAD29ABF970B54367AF8968",
     "format": "glb",
     "model_path": "assets/active/female_jk_external/female_jk_external.glb"
   },

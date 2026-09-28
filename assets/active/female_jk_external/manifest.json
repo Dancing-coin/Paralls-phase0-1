@@ -5,7 +5,7 @@
   "source_model_path": "res://assets/active/female_jk_external/female_jk_external.glb",
   "source": {
     "model_path": "assets/active/female_jk_external/female_jk_external.glb",
-    "digest_sha256": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "digest_sha256": "7DE8F32FB6B5F062CA8F5DFDDF34EB6DF7F652D62BAD29ABF970B54367AF8968",
     "format": "glb"
   },
   "provenance": {
@@ -14,9 +14,20 @@
     "source_format": "blend",
     "working_copy": "production-assets/characters/female_jk_external/source/female_jk_external.glb",
     "qualification_report_ref": "assets/characters/qualification_reports/female_jk_external.json",
-    "package_digest": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "package_digest": "7DE8F32FB6B5F062CA8F5DFDDF34EB6DF7F652D62BAD29ABF970B54367AF8968",
     "authoring_frame_rate": 60.0,
-    "runtime_export_frame_rate": 60.0
+    "runtime_export_frame_rate": 60.0,
+    "original_runtime_export_digest": "55C7F0661596FF6BDF1C5F06A03FF4AE692EA4F4A1C999A69DBC11B6810DF46F",
+    "animation_overrides": [
+      {
+        "clip_ref": "running",
+        "source_uri": "file:///E:/下载/建模2%20纹身腿黑卷发女T字版本%20%20基础动作版.blend",
+        "source_package_id": "female_t_external",
+        "source_runtime_package": "res://assets/active/female_t_external/female_t_external.glb",
+        "method": "bone_name_remap_to_target_deform_skeleton",
+        "applied_at": "2026-09-28"
+      }
+    ]
   },
   "source_frame_rate": 60.0,
   "unit_scale": 1.0,
