@@ -35,8 +35,12 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 	last_command_digest = str(command.get("source_digest", ""))
 	body.rotation.y = rotate_toward(body.rotation.y, float(command.get("facing_yaw", body.rotation.y)), _get_body_float(body, "facing_turn_speed", 8.0) * delta)
 	var desired: Vector3 = command.get("desired_velocity", Vector3.ZERO)
+	var root_delta: Vector3 = command.get("root_delta", Vector3.ZERO)
+	var root_motion_exclusive := bool(command.get("root_motion_exclusive", false))
+	if root_motion_exclusive:
+		desired = Vector3.ZERO
 	var impulse: Vector3 = command.get("impulse", Vector3.ZERO)
-	var planar: Vector3 = desired + (command.get("root_delta", Vector3.ZERO) as Vector3) / max(delta, 0.0001) + Vector3(impulse.x, 0.0, impulse.z) + command.get("runtime_correction", Vector3.ZERO)
+	var planar: Vector3 = desired + root_delta / max(delta, 0.0001) + Vector3(impulse.x, 0.0, impulse.z) + command.get("runtime_correction", Vector3.ZERO)
 	body.velocity.x = move_toward(body.velocity.x, planar.x, _get_body_float(body, "acceleration", 18.0) * delta)
 	body.velocity.z = move_toward(body.velocity.z, planar.z, _get_body_float(body, "acceleration", 18.0) * delta)
 	if not body.is_on_floor(): body.velocity.y -= _get_body_float(body, "fall_gravity", 9.8) * delta
@@ -52,6 +56,7 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 	for collision_index in body.get_slide_collision_count():
 		collision_normals.append(body.get_slide_collision(collision_index).get_normal())
 	var support_required: bool = not command.get("support_requirements", []).is_empty()
+	command["root_motion_exclusive_applied"] = root_motion_exclusive
 	return CharacterActorSchemaRef.normalize_motion_state({"position": body.global_position, "velocity_world": body.velocity, "facing_yaw": body.rotation.y, "move_local_actual": move_local_actual, "gait_actual": "run" if desired.length() > _get_body_float(body, "walk_speed", 4.0) else "walk", "grounded": body.is_on_floor(), "support_ref": "floor" if body.is_on_floor() else "", "support_loss": support_required and not body.is_on_floor(), "collision_count": body.get_slide_collision_count(), "collision_normals": collision_normals, "body_revision": body_revision, "physics_tick": last_physics_tick, "physics_command": command})
 
 func _get_body_float(body: CharacterBody3D, property_name: String, fallback: float) -> float:
