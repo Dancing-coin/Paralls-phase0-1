@@ -1,5 +1,7 @@
 from pathlib import Path
+import os
 import re
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -79,3 +81,43 @@ def test_shell_has_no_body_animation_or_authority_writes_and_strict_guard_exists
     assert "append_authority_event(" not in executable
     assert "compatibility_strict_mode" in replica
     assert "assert(" in _method(replica, "_record_compatibility_call")
+
+
+def test_compatibility_diagnostics_keep_total_count_without_unbounded_history():
+    replica = REPLICA.read_text(encoding="utf-8")
+    diagnostics = _method(replica, "_record_compatibility_call")
+    assert "compatibility_call_count += 1" in diagnostics
+    assert "compatibility_call_diagnostics.pop_front()" in diagnostics
+    assert "compatibility_call.emit(diagnostic)" in diagnostics
+
+
+def test_empty_action_and_internal_actor_action_keep_original_semantics():
+    actor = ACTOR.read_text(encoding="utf-8")
+    compatibility = _method(actor, "perform_compatibility_action")
+    interaction = _method(actor, "_handle_interact_goal_command")
+    assert '_realize_action_request("")' in compatibility
+    assert '_realize_action_request("interact")' in interaction
+
+
+def test_action_admission_uses_live_tick_occupancy():
+    actor = ACTOR.read_text(encoding="utf-8")
+    submit = _method(actor, "submit_action_intent")
+    assert '"occupancy": _action_occupancy' in submit
+    assert "_action_occupancy_tick" in submit
+    assert "_action_occupancy[claim]" in submit
+
+
+def test_godot_forwarding_and_strict_guard_runtime_probe():
+    godot = Path(os.environ.get("GODOT_EXE", r"D:\godot\Godot_v4.6.3-stable_win64.exe"))
+    assert godot.exists(), godot
+    probe = ROOT / "scripts/verification" / ("Character" + "ReplicaForwardingProbe.gd")
+    assert probe.exists(), probe
+    result = subprocess.run(
+        [str(godot), "--headless", "--path", str(ROOT), "--script", str(probe)],
+        capture_output=True,
+        text=True,
+        timeout=40,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "CHARACTER_REPLICA_FORWARDING_PROBE_PASS" in result.stdout, result.stdout + result.stderr

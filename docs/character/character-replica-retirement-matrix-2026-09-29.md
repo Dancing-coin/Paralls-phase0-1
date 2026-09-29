@@ -482,6 +482,15 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
     "evidence_command": "python scripts/verification/harness.py --profile character-replica-retirement"
   },
   {
+    "caller_path": "scripts/verification/CharacterReplicaForwardingProbe.gd",
+    "category": "migration_test",
+    "current_state": "compatibility_forwarding_probe",
+    "target_entry": "CharacterActor actor-only verification probe (retire in Task 7)",
+    "owner_lane": "Compatibility",
+    "compatibility_allowed": true,
+    "evidence_command": "python -m pytest -q backend/tests/test_character_replica_forwarding_contract.py"
+  },
+  {
     "caller_path": "scripts/verification/CharacterReplicaRetirementProbe.gd",
     "category": "migration_test",
     "current_state": "explicit_migration_guard",

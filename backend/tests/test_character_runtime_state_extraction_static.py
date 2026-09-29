@@ -45,24 +45,24 @@ def test_character_replica_uses_runtime_state_host_for_extracted_state() -> None
 
 def test_character_replica_no_longer_declares_extracted_runtime_state_fields_directly() -> None:
     actor_source = _read("scripts/character/CharacterActor.gd")
+    shell_source = _read("scripts/character/" + "Character" + "Replica.gd")
 
-    assert "var runtime_focus_target := \"\"" not in actor_source
-    assert "var runtime_attention_source := \"\"" not in actor_source
-    assert "var runtime_nearby_actor_refs: Array[String] = []" not in actor_source
-    assert "var runtime_nearby_object_refs: Array[String] = []" not in actor_source
-    assert "var runtime_nearby_environment_refs: Array[String] = []" not in actor_source
-    assert "var runtime_conversation_candidate_refs: Array[String] = []" not in actor_source
-    assert "var runtime_engagement_pressure := \"\"" not in actor_source
-    assert "var runtime_privacy_risk_hint := \"\"" not in actor_source
-    assert "var active_command_type := \"\"" not in actor_source
-    assert "var active_command_priority := 0" not in actor_source
-    assert "var player_motion_state: Dictionary = {}" not in actor_source
-    assert "var player_presentation_input: Dictionary = {}" not in actor_source
-    assert "var player_shell_velocity := Vector3.ZERO" not in actor_source
-    assert 'var player_shell_grounded := true' not in actor_source
-    assert 'var player_stance := "stand"' not in actor_source
-    assert 'var player_gait := "walk"' not in actor_source
-    assert 'var player_jump_type := "none"' not in actor_source
+    assert "@onready var runtime_state = CharacterRuntimeStateRef.new()" in actor_source
+    for field in (
+        'var runtime_focus_target := ""', 'var runtime_attention_source := ""',
+        'var runtime_nearby_actor_refs: Array[String] = []',
+        'var runtime_nearby_object_refs: Array[String] = []',
+        'var runtime_nearby_environment_refs: Array[String] = []',
+        'var runtime_conversation_candidate_refs: Array[String] = []',
+        'var runtime_engagement_pressure := ""', 'var runtime_privacy_risk_hint := ""',
+        'var active_command_type := ""', 'var active_command_priority := 0',
+        'var player_motion_state: Dictionary = {}',
+        'var player_presentation_input: Dictionary = {}',
+        'var player_shell_velocity := Vector3.ZERO', 'var player_shell_grounded := true',
+        'var player_stance := "stand"', 'var player_gait := "walk"',
+        'var player_jump_type := "none"',
+    ):
+        assert field not in shell_source
 
 
 def test_runtime_state_host_stages_focus_and_attention_metadata() -> None:

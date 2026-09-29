@@ -4,7 +4,9 @@ class_name CharacterReplica
 signal compatibility_call(diagnostic: Dictionary)
 
 var compatibility_strict_mode := false
+var compatibility_call_count := 0
 var compatibility_call_diagnostics: Array[Dictionary] = []
+const COMPATIBILITY_DIAGNOSTIC_HISTORY_LIMIT := 128
 
 
 func begin_embodied_control_frame(world_position: Vector3, move_direction: Vector3, look_target: Vector3, is_grounded: bool, wants_run: bool, gait_name: String, stance_name: String, jump_type: String) -> void:
@@ -129,14 +131,17 @@ func _record_compatibility_call(method: String, intent: Dictionary, forwarded_to
 		"intent_digest": CharacterControlIntentRef.digest(intent),
 		"forwarded_to": forwarded_to,
 	}
+	compatibility_call_count += 1
 	compatibility_call_diagnostics.append(diagnostic)
+	if compatibility_call_diagnostics.size() > COMPATIBILITY_DIAGNOSTIC_HISTORY_LIMIT:
+		compatibility_call_diagnostics.pop_front()
 	compatibility_call.emit(diagnostic)
 
 
-func _forbidden_shell_operations() -> Array[String]:
-	var source := FileAccess.get_file_as_string("res://scripts/character/CharacterReplica.gd")
+func _forbidden_shell_operations(source_override: String = "") -> Array[String]:
+	var source := source_override if not source_override.is_empty() else FileAccess.get_file_as_string("res://scripts/character/CharacterReplica.gd")
 	var forbidden := RegEx.new()
-	forbidden.compile("\\b(?:global_position|velocity)\\b\\s*[+\\-*/]?=|move_and_slide\\s*\\(|\\b(?:animation_player|playback)\\.(?:play|travel|seek)\\s*\\(|append_authority_event\\s*\\(")
+	forbidden.compile("\\b(?:global_position|global_transform|position|transform|velocity)(?:\\.[xyz])?\\s*[+\\-*/]?=|\\bset_(?:global_position|global_transform|position|transform|velocity)\\s*\\(|move_and_slide\\s*\\(|\\b(?:animation_player|animation_state_playback|animation_tree|playback)\\.(?:play|travel|seek|set)\\s*\\(|\\b(?:animation_player|animation_tree|playback)\\[[^]]+\\]\\s*=|\\b(?:role_asset_scene|role_skin)\\.(?:set_state|set_motion_profile|play_reviewed_action_atom|restore_reviewed_action_playback)\\s*\\(|\\b(?:append_authority_event|submit_action_attempt|_emit_[A-Za-z_]*fact)\\s*\\(")
 	var violations: Array[String] = []
 	for line in source.split("\n"):
 		if not line.strip_edges().begins_with("#") and forbidden.search(line) != null:

@@ -123,6 +123,8 @@ var _pending_facing_yaw := 0.0
 var _physics_tick := 0
 var latest_control_intent: Dictionary = {}
 var latest_action_admission: Dictionary = {}
+var _action_occupancy_tick := -1
+var _action_occupancy: Dictionary = {}
 var actor_local_perception_enabled := true
 var _fallback_role_asset_scene: Node
 var _manifest_role_asset_scene: Node
@@ -247,6 +249,7 @@ func _realize_action_request(action_name: String) -> void:
 func perform_compatibility_action(intent: Dictionary) -> void:
 	var action_name := str(intent.get("action_id", ""))
 	if action_name.is_empty():
+		_realize_action_request("")
 		return
 	var admission := submit_action_intent(StringName(action_name), StringName(str(intent.get("target_ref", ""))), &"compatibility")
 	if bool(admission.get("accepted", false)):
@@ -259,6 +262,17 @@ func submit_action_intent(action_id: StringName, target_ref: StringName = &"", s
 		return {"accepted": false, "reason": "semantic_action_id_missing"}
 	var normalized_intent := CharacterControlIntentRef.create(Vector3.ZERO, false, &"none", action_id, source_kind, target_ref)
 	var physics_tick := _physics_tick if _physics_tick > 0 else Engine.get_physics_frames()
+	if _action_occupancy_tick != physics_tick:
+		_action_occupancy_tick = physics_tick
+		_action_occupancy = runtime_state.occupancy.duplicate(true)
+		for lease in runtime_state.active_lease_summaries:
+			if ContinuousControlLeaseRef.is_active(lease, physics_tick):
+				for claim in lease.get("claims", []):
+					_action_occupancy[claim] = lease.get("request_id", "")
+		for active_action in runtime_state.active_action_summaries:
+			if int(active_action.get("requested_tick", -1)) == physics_tick:
+				for claim in active_action.get("claims", []):
+					_action_occupancy[claim] = active_action.get("request_id", "")
 	var action_instance_id := StringName("action:%s:%s:%s" % [actor_id, semantic_action_id, physics_tick])
 	var action_instance := ActionInstanceRef.create(action_instance_id, action_id, source_kind, target_ref, physics_tick)
 	var claims: Array[StringName] = [&"upper_body"]
@@ -268,11 +282,13 @@ func submit_action_intent(action_id: StringName, target_ref: StringName = &"", s
 	action_instance["source_kind"] = str(normalized_intent.get("source_kind", "compatibility"))
 	action_instance["claims"] = claims
 	action_instance["priority"] = 3
-	var frame := ActorActionArbiterRef.resolve(physics_tick, [], [action_instance], {"occupancy": {}})
+	var frame := ActorActionArbiterRef.resolve(physics_tick, [], [action_instance], {"occupancy": _action_occupancy})
 	runtime_state.record_arbitration_frame(frame)
 	latest_action_admission = {"semantic_action_id": semantic_action_id, "physics_tick": physics_tick, "frame": frame.duplicate(true)}
 	if frame.get("admitted", []).is_empty():
 		return {"accepted": false, "reason": "action_claim_rejected", "semantic_action_id": semantic_action_id, "arbitration": frame}
+	for claim in claims:
+		_action_occupancy[claim] = action_instance_id
 	return {"accepted": true, "semantic_action_id": semantic_action_id, "action_instance_id": action_instance_id, "claims": claims, "arbitration": frame}
 
 
@@ -616,7 +632,7 @@ func _handle_interact_goal_command(payload: Dictionary) -> void:
 		return
 	var interact_target := _command_target_position(payload)
 	set_look_target(interact_target)
-	perform_action("interact")
+	_realize_action_request("interact")
 	_emit_character_actor_status(CHARACTER_ACTOR_STATUS_SUBMITTED_TO_AUTHORITY, payload)
 	_clear_completed_command()
 
