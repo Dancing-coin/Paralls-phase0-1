@@ -1,10 +1,10 @@
 # CharacterReplica retirement report (2026-09-29)
 
-final_state: pending_verification
+final_state: retired
 
 ## Zero caller gate
 
-The following are the target zero-caller gate values; fresh runtime evidence has not yet established them. The report must not be treated as a completion claim until the retirement harness passes.
+The actor-only runtime probe recorded the following gate values after the Task 7 migration:
 
 - active_scene_instances=0
 - runtime_replica_lookups=0
