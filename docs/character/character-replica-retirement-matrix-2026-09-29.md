@@ -59,6 +59,15 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
     "evidence_command": "python -m pytest -q scripts/verification/tests/test_character_action_foundation_progressive_replacement.py backend/tests/test_character_replica_convergence_static.py"
   },
   {
+    "caller_path": "backend/tests/test_character_actor_caller_migration_static.py",
+    "category": "migration_test",
+    "current_state": "migration_assertion",
+    "target_entry": "CharacterActor assertions",
+    "owner_lane": "contract",
+    "compatibility_allowed": false,
+    "evidence_command": "python -m pytest -q backend/tests/test_character_actor_caller_migration_static.py"
+  },
+  {
     "caller_path": "backend/tests/test_character_actor_modes_static.py",
     "category": "migration_test",
     "current_state": "migration_assertion",

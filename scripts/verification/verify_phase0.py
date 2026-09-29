@@ -237,7 +237,7 @@ def main() -> int:
             esm_service_source=read_text(project_root / "backend" / "app" / "services" / "esm_service.py"),
             voice_controller_source=read_text(project_root / "scripts" / "audio" / "SpatialVoiceController.gd"),
             player_bridge_source=read_text(project_root / "scripts" / "player" / "Phase0PlayerBridge.gd"),
-            character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterReplica.gd"),
+            character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterActor.gd"),
             player_shell_source=read_text(project_root / "scripts" / "player" / "PlayerShell.gd"),
             character_motor_source=read_text(project_root / "scripts" / "character" / "CharacterMotor.gd"),
         )

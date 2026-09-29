@@ -40,6 +40,37 @@ def test_character_replica_is_compatibility_host_and_actor_owns_behavior():
     assert "func _update_movement(" in actor
 
 
+def test_active_runtime_surfaces_are_actor_only() -> None:
+    active_paths = (
+        "scenes/integration/UnifiedCharacterActionFoundation.tscn",
+        "scenes/integration/Unified3DIntegrationValidation.tscn",
+        "scenes/phase0/CharacterBase.tscn",
+        "scenes/phase0/ValidationPlayerShell.tscn",
+        "scripts/character/EmbodiedStateProvider.gd",
+        "scripts/character/EmbodiedSkeletalStateProvider.gd",
+        "scripts/interaction/ArchiveDoorEmbodiedActionHost.gd",
+        "scripts/player/PlayerShell.gd",
+        "scripts/phase0/MainDemoController.gd",
+    )
+    for path in active_paths:
+        source = read(path)
+        assert "CharacterReplica" not in source, path
+        assert "legacy_character_replica" not in source, path
+
+
+def test_retirement_report_records_zero_caller_gate() -> None:
+    report = read("docs/character/character-replica-retirement-report-2026-09-29.md")
+    for field in (
+        "active_scene_instances=0",
+        "runtime_replica_lookups=0",
+        "compatibility_call_count=0",
+        "direct_body_writers_outside_motor=0",
+        "direct_animation_writers_outside_controller=0",
+    ):
+        assert field in report
+    assert "final_state: retired" in report
+
+
 def test_external_animation_components_are_present_and_bound():
     controller = read("scripts/character/RoleAnimationController.gd")
     sampler = read("scripts/character/RootMotionSampler.gd")

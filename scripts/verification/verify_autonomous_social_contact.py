@@ -99,7 +99,7 @@ def main() -> int:
 
     runtime_log_text = read_text(runtime_log_path)
 
-    replica_source = read_text(project_root / "scripts" / "character" / "CharacterReplica.gd")
+    actor_source = read_text(project_root / "scripts" / "character" / "CharacterActor.gd")
     service_source = read_text(project_root / "backend" / "app" / "services" / "character_service.py")
     dialogue_source = read_text(project_root / "backend" / "app" / "services" / "dialogue_service.py")
 
@@ -110,7 +110,7 @@ def main() -> int:
             "autonomous_contact_static_wiring",
             "Autonomous contact markers and approach continuity are wired in actor runtime",
             all(
-                token in replica_source
+                token in actor_source
                 for token in (
                     "autonomous_contact:notice=true",
                     "autonomous_contact:approach_started=true",
@@ -121,7 +121,7 @@ def main() -> int:
                     "_emit_arrival_fact(_active_contact_target_actor_id, 0.0)",
                 )
             ),
-            ["scripts/character/CharacterReplica.gd"],
+            ["scripts/character/CharacterActor.gd"],
         ),
         _result(
             "autonomous_contact_notice",

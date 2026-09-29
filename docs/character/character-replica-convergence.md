@@ -1,6 +1,11 @@
 # CharacterReplica convergence
 
-`CharacterReplica` remains in the scene only as a compatibility host. The runtime implementation now lives in `CharacterActor.gd`, while the legacy script forwards the public methods used by Phase 0, player shell sync, embodied interaction, and probes.
+`CharacterActor` is now the sole active runtime host. All scenes, providers, bridges, player paths, interaction hosts, agents, and verifiers resolve actor capabilities directly. `CharacterReplica` remains only as a transitional compatibility shell pending Task 8 deletion review; it has zero active callers.
+
+This document records the transitional shell during the 2026-09-28 action
+foundation migration. June actor plans and pre-convergence descriptions are
+historical context; they do not authorize a second controller, animation
+owner, Motor, or authority writer.
 
 ## Runtime ownership
 
@@ -12,7 +17,12 @@
 
 ## Root-motion rule
 
-Street locomotion defaults to in-place clips and physics velocity. When a qualified clip provides a root delta, the actor marks the command `root_motion_exclusive`; `CharacterMotor` suppresses equivalent locomotion velocity and applies the sampled delta once. This prevents the old failure where the body moved after the first walk cycle while the animation stopped or where velocity and root motion doubled each other.
+StreetDemo currently uses the qualified temporary `root_motion_policy=hold` and
+zero-envelope profile. `RootMotionSampler` can discover and consume a root delta
+once, but no package is admitted to `drive_locomotion` until direction,
+distance, period, envelope, support, wall, slope, and stop/restart calibration
+is complete. `CharacterMotor` remains the only consumer, so a future enabled
+profile cannot double-apply lease velocity and root contribution.
 
 ## Compatibility and rollback
 
@@ -24,4 +34,13 @@ To roll back manually, copy the backed-up files back over the matching repositor
 
 ## Acceptance surface
 
-Use `scenes/phase0/StreetCombatDemo.tscn` with the three imported street characters. `Unified3DIntegrationValidation.tscn` and the greybox fallback are compatibility probes only; they are not the animation quality gate.
+Use `scenes/phase0/StreetCombatDemo.tscn` with the three imported street
+characters for action-foundation acceptance. `UnifiedCharacterActionFoundation.tscn`,
+`Unified3DIntegrationValidation.tscn`, and greybox fallbacks are compatibility
+or protocol probes only; they are not the animation or action-base quality gate.
+
+The fresh StreetDemo evidence records live environment/collision/navigation,
+three qualified character packages, semantic animation recovery, Motor
+ownership, Registry fail-closed admission, and Mode B authority outcomes. The
+ArchiveDoor shutdown blocker and repository-wide compatibility callers remain
+outside the StreetDemo retirement claim.

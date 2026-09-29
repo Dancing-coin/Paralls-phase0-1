@@ -262,10 +262,10 @@ def evaluate_phase0_audit(
     results.append(
         _result(
             "character_agent_execution_consumer",
-            "CharacterReplica consumes the execution contract in runtime",
+            "CharacterActor consumes the execution contract in runtime",
             "proved" if execution_consumer_ok else "missing",
-            ["CharacterA is CharacterReplica", "has_external_look_target"] if execution_consumer_ok else [],
-            "" if execution_consumer_ok else "Runtime log did not prove CharacterReplica consumed the execution contract as the active runtime consumer.",
+            ["CharacterA is CharacterActor", "has_external_look_target"] if execution_consumer_ok else [],
+            "" if execution_consumer_ok else "Runtime log did not prove CharacterActor consumed the execution contract as the active runtime consumer.",
         )
     )
 

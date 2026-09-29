@@ -7,7 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
-RealizationRoute = Literal["legacy_character_replica", "embodied_controller_v1"]
+RealizationRoute = Literal["embodied_controller_v1"]
 SettlementWriterKind = Literal["esm_compatibility_adapter", "gameplay_event_batch_writer"]
 AuthorityRoute = Literal["esm", "gameplay", "composite"]
 AuthorityOutcome = Literal["committed", "rejected", "unknown"]

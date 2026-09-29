@@ -3,7 +3,7 @@ from pathlib import Path
 
 def test_character_actor_boundary_audit() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
+    scene_source = (project_root / "scenes" / "phase0" / "CharacterActor.tscn").read_text(
         encoding="utf-8"
     )
     character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
@@ -14,6 +14,7 @@ def test_character_actor_boundary_audit() -> None:
     )
 
     assert "GreyboxHumanoidVisual" not in scene_source
+    assert 'path="res://scripts/character/CharacterActor.gd"' in scene_source
     assert "CharacterAgentRuntime" not in esm_source
     assert "output_type" not in character_source
     assert "command_type" in character_source
@@ -43,3 +44,12 @@ def test_character_replica_still_behaves_as_local_realization_host_not_semantics
 
     assert "execution_semantics" in source
     assert "selected_intent" not in source
+
+
+def test_integration_scenes_mount_character_actor_directly() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    for name in ("UnifiedCharacterActionFoundation.tscn", "Unified3DIntegrationValidation.tscn"):
+        source = (project_root / "scenes" / "integration" / name).read_text(encoding="utf-8")
+        assert "CharacterActor.tscn" in source
+        assert "CharacterReplica.tscn" not in source
+        assert "ValidationCharacterReplica.tscn" not in source

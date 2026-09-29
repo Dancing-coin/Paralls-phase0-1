@@ -2,7 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/phase0/MainDemoController.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/CharacterBase.tscn" id="2_player"]
-[ext_resource type="PackedScene" path="res://scenes/phase0/ValidationCharacterReplica.tscn" id="3_character"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterActor.tscn" id="3_actor"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/InteractiveObject.tscn" id="4_object"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/ArchiveDoorPhysical.tscn" id="5_door"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/EnvironmentStateNode.tscn" id="6_environment"]
@@ -179,13 +179,13 @@ script = ExtResource("17_thermal")
 [node name="OlfactoryFactEmitter" type="Node" parent="VisualFactEmitter"]
 script = ExtResource("18_olfactory")
 
-[node name="CharacterA" parent="." instance=ExtResource("3_character")]
+[node name="CharacterA" parent="." instance=ExtResource("3_actor")]
 position = Vector3(-4, 0.9, 0)
 actor_id = "char_a"
 patrol_enabled = false
 reacts_to_player_focus = true
 
-[node name="CharacterB" parent="." instance=ExtResource("3_character")]
+[node name="CharacterB" parent="." instance=ExtResource("3_actor")]
 position = Vector3(4, 0.9, 0)
 actor_id = "char_b"
 patrol_enabled = false

@@ -1,6 +1,6 @@
 [gd_scene load_steps=6 format=3]
 
-[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterReplica.tscn" id="1_replica"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterActor.tscn" id="1_actor"]
 [ext_resource type="PackedScene" path="res://assets/active/female_jk_external/female_jk_external.glb" id="2_jk"]
 [ext_resource type="PackedScene" path="res://assets/active/female_t_external/female_t_external.glb" id="3_t"]
 [ext_resource type="Script" path="res://scripts/verification/UnifiedCharacterActionFoundationProbe.gd" id="4_probe"]
@@ -22,7 +22,7 @@ mesh = SubResource("BoxMesh_floor")
 [node name="Collision" type="CollisionShape3D" parent="Floor"]
 shape = SubResource("BoxShape_floor")
 
-[node name="FemaleJKExternal" parent="." instance=ExtResource("1_replica")]
+[node name="FemaleJKExternal" parent="." instance=ExtResource("1_actor")]
 position = Vector3(-2, 0, 0)
 actor_id = "foundation_jk"
 patrol_enabled = false
@@ -34,7 +34,7 @@ visible = true
 scale = Vector3(1, 1, 1)
 metadata/package_id = "female_jk_external"
 
-[node name="FemaleTExternal" parent="." instance=ExtResource("1_replica")]
+[node name="FemaleTExternal" parent="." instance=ExtResource("1_actor")]
 position = Vector3(2, 0, 0)
 actor_id = "foundation_t"
 patrol_enabled = false

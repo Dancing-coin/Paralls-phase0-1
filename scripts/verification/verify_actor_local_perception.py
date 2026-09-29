@@ -77,18 +77,18 @@ def main() -> int:
 
     runtime_log_text = read_text(runtime_log_path)
 
-    replica_source = read_text(project_root / "scripts" / "character" / "CharacterReplica.gd")
+    actor_source = read_text(project_root / "scripts" / "character" / "CharacterActor.gd")
     sampler_source = read_text(project_root / "scripts" / "character" / "ActorPerceptionSampler.gd")
-    scene_source = read_text(project_root / "scenes" / "phase0" / "CharacterReplica.tscn")
+    scene_source = read_text(project_root / "scenes" / "phase0" / "CharacterActor.tscn")
 
     runtime_log_note = "" if runtime_log_text != "" else "Runtime probe did not produce a log."
 
     results = [
         _result(
             "actor_local_perception_static_wiring",
-            "CharacterReplica owns actor-local perception sampler and emitter seam",
+            "CharacterActor owns actor-local perception sampler and emitter seam",
             all(
-                token in replica_source
+                token in actor_source
                 for token in (
                     "ActorPerceptionSampler",
                     "ActorPerceptionTargetResolver",
@@ -101,9 +101,9 @@ def main() -> int:
             and "SpatialAccessFactEmitter" in scene_source
             and "sample_visible_targets" in sampler_source,
             [
-                "scripts/character/CharacterReplica.gd",
+                "scripts/character/CharacterActor.gd",
                 "scripts/character/ActorPerceptionSampler.gd",
-                "scenes/phase0/CharacterReplica.tscn",
+                "scenes/phase0/CharacterActor.tscn",
             ],
         ),
         _result(

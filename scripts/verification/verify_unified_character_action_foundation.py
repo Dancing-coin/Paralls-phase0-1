@@ -21,7 +21,7 @@ EVIDENCE_PATH = ROOT / ".harness" / "verification" / "unified-character-action-f
 RUNTIME_EVIDENCE_PATH = ROOT / ".harness" / "verification" / "unified-character-action-foundation-runtime.json"
 ACTIVE_SCENES = (
     ROOT / "scenes" / "phase0" / "PlayerShell.tscn",
-    ROOT / "scenes" / "phase0" / "CharacterReplica.tscn",
+    ROOT / "scenes" / "phase0" / "CharacterActor.tscn",
 )
 
 

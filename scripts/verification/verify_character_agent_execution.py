@@ -108,7 +108,7 @@ def main() -> int:
             esm_service_source=read_text(project_root / "backend" / "app" / "services" / "esm_service.py"),
             voice_controller_source=read_text(project_root / "scripts" / "audio" / "SpatialVoiceController.gd"),
             player_bridge_source=read_text(project_root / "scripts" / "player" / "Phase0PlayerBridge.gd"),
-            character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterReplica.gd"),
+            character_replica_source=read_text(project_root / "scripts" / "character" / "CharacterActor.gd"),
         )
         execution_entry = next(
             entry for entry in phase0_report["results"] if entry["id"] == "character_agent_execution_contract"

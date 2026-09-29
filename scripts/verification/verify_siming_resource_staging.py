@@ -188,13 +188,13 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         for relative_path in (
             "scenes/integration/Unified3DIntegrationValidation.tscn",
             "scenes/phase0/CharacterBase.tscn",
-            "scenes/phase0/CharacterReplica.tscn",
+            "scenes/phase0/CharacterActor.tscn",
             "scenes/phase0/InteractiveObject.tscn",
             "scenes/phase0/EnvironmentStateNode.tscn",
             "scripts/object/InteractiveObject.gd",
             "scripts/environment/EnvironmentStateController.gd",
             "scripts/visual/VisualFactEmitter.gd",
-            "scripts/character/CharacterReplica.gd",
+            "scripts/character/CharacterActor.gd",
             "scripts/character/CharacterEmbodimentAssetRegistry.gd",
             "backend/app/character_agent/skills/catalog.py",
             "backend/app/services/character_service.py",
@@ -211,7 +211,7 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
     )
     player_char_c_binding = bool(
         re.search(
-            r'\[node name="CharacterReplica"[^]]*instance=ExtResource\("2_character"\)[^\n]*\n(?:[^\n]*\n)*?actor_id = "char_c"',
+            r'\[node name="CharacterActor"[^]]*instance=ExtResource\("2_character"\)[^\n]*\n(?:[^\n]*\n)*?actor_id = "char_c"',
             character_base,
         )
     )
@@ -236,13 +236,13 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         "player_camera_voice_wiring": player_instance
         and player_char_c_binding
         and 'res://scenes/phase0/CharacterBase.tscn' in validation_scene
-        and 'res://scenes/phase0/CharacterReplica.tscn'
+        and 'res://scenes/phase0/CharacterActor.tscn'
         in character_base
         and 'type="Camera3D"' in character_base
         and 'res://scripts/audio/SpatialVoiceController.gd'
-        in source_text["scenes/phase0/CharacterReplica.tscn"]
+        in source_text["scenes/phase0/CharacterActor.tscn"]
         and "SpatialVoiceController"
-        in source_text["scenes/phase0/CharacterReplica.tscn"],
+        in source_text["scenes/phase0/CharacterActor.tscn"],
         "letter_object": 'res://scripts/object/InteractiveObject.gd'
         in source_text["scenes/phase0/InteractiveObject.tscn"]
         and 'object_id := "obj_letter"' in source_text["scripts/object/InteractiveObject.gd"],
@@ -258,7 +258,7 @@ def _static_resources(project_root: Path) -> dict[str, bool]:
         "dialogue_to_voice_delivery": "stream_dialogue"
         in source_text["backend/app/services/character_service.py"]
         and "voice.play_voice"
-        in source_text["scripts/character/CharacterReplica.gd"],
+        in source_text["scripts/character/CharacterActor.gd"],
     }
 
 
