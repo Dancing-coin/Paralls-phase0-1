@@ -45,17 +45,17 @@ def redact_inline_image_payloads(value: object) -> object:
 def resolve_live_proof_image(
     root: Path,
     *,
-    configured_url: str,
-    configured_path: str,
+    configured_url: str | None,
+    configured_path: str | None,
     use_godot_runtime_capture: bool,
     max_godot_capture_age_seconds: float,
     now: float | None = None,
 ) -> LiveProofImage:
     if use_godot_runtime_capture:
         return _resolve_godot_runtime_capture(root, max_age_seconds=max_godot_capture_age_seconds, now=now)
-    if configured_url.strip():
+    if configured_url and configured_url.strip():
         return LiveProofImage(source=configured_url.strip(), origin="configured_url")
-    if not configured_path.strip():
+    if not configured_path or not configured_path.strip():
         return LiveProofImage(source="", origin="missing", failure_reason="missing_live_proof_image")
     return _resolve_local_image(root, root / configured_path.strip(), origin="repo_local_file")
 
