@@ -3718,6 +3718,29 @@ def _handle_envelope(
                 },
             }
         ]
+    if envelope.message_type == "street_combat_recovery_snapshot_request":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        connection_epoch = payload.get("connection_epoch")
+        if not isinstance(connection_epoch, int) or isinstance(connection_epoch, bool) or connection_epoch < 1:
+            return [_as_envelope("street_combat_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_required"})]
+        current = unified_character_action_settlement_service.street_transport_state()
+        current_epoch = int(current.get("connection_epoch", 1))
+        if connection_epoch < current_epoch:
+            return [_as_envelope("street_combat_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_stale", "connection_epoch": current_epoch})]
+        if connection_epoch > current_epoch:
+            while int(unified_character_action_settlement_service.street_transport_state().get("connection_epoch", 1)) < connection_epoch:
+                unified_character_action_settlement_service.reconnect_street_transport()
+        snapshot = {
+            "connection_epoch": connection_epoch,
+            "actors": {
+                actor_id: unified_character_action_settlement_service.street_actor_state(actor_id)
+                for actor_id in ("street_bandage", "char_a", "char_b")
+            },
+        }
+        snapshot_digest = "sha256:" + hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+        resync_marker = f"resync:street:{connection_epoch}"
+        unified_character_action_settlement_service.accept_street_snapshot(connection_epoch, snapshot_digest=snapshot_digest, resync_marker=resync_marker)
+        return [_as_envelope("street_combat_recovery_snapshot", {"accepted": True, "connection_epoch": connection_epoch, "snapshot_digest": snapshot_digest, "resync_marker": resync_marker, "snapshot": snapshot})]
     if envelope.message_type == "street_combat_pose":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         actor_id = payload.get("actor_id")

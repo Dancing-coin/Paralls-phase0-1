@@ -7,6 +7,11 @@ var ws := WebSocketPeer.new()
 var last_ready_state := WebSocketPeer.STATE_CLOSED
 var last_requested_url := ""
 var transport_barrier_sequence := 0
+var action_connection_epoch := 0
+var action_client_sequence := 0
+var action_snapshot_ready := false
+var action_resync_marker := ""
+var action_snapshot_digest := ""
 var _embodied_controller_enrollment: Dictionary = {}
 var _embodied_controller_bind_sent := false
 
@@ -69,6 +74,27 @@ func send_envelope(envelope: Dictionary) -> int:
     else:
         _bus_log("backend_send_failed:%s" % err)
     return err
+
+func next_action_transport_context() -> Dictionary:
+    if action_connection_epoch < 1 or ws.get_ready_state() != WebSocketPeer.STATE_OPEN or not action_snapshot_ready:
+        return {"connection_epoch": 0, "client_sequence": 0, "snapshot_ready": false}
+    action_client_sequence += 1
+    return {
+        "connection_epoch": action_connection_epoch,
+        "client_sequence": action_client_sequence,
+        "snapshot_ready": action_snapshot_ready,
+        "resync_marker": action_resync_marker,
+        "snapshot_digest": action_snapshot_digest,
+    }
+
+func action_transport_state() -> Dictionary:
+    return {
+        "connection_epoch": action_connection_epoch,
+        "client_sequence": action_client_sequence,
+        "snapshot_ready": action_snapshot_ready,
+        "resync_marker": action_resync_marker,
+        "snapshot_digest": action_snapshot_digest,
+    }
 
 func send_transport_barrier() -> Dictionary:
     if ws.get_ready_state() != WebSocketPeer.STATE_OPEN:
@@ -146,14 +172,31 @@ func _handle_state_transition() -> void:
         WebSocketPeer.STATE_CONNECTING:
             _bus_log("backend_connecting")
         WebSocketPeer.STATE_OPEN:
+            action_connection_epoch += 1
+            action_client_sequence = 0
+            action_snapshot_ready = false
+            action_resync_marker = ""
+            action_snapshot_digest = ""
             _emit_pending_embodied_controller_bind()
             _bus_log("backend_connected:%s" % last_requested_url)
             _bus_emit("backend_connected", [last_requested_url])
+            call_deferred("_request_street_action_snapshot")
         WebSocketPeer.STATE_CLOSING:
             _bus_log("backend_closing")
         WebSocketPeer.STATE_CLOSED:
+            action_snapshot_ready = false
+            action_resync_marker = ""
+            action_snapshot_digest = ""
             _bus_log("backend_closed:%s" % ws.get_close_code())
             _bus_emit("backend_disconnected", [ws.get_close_code()])
+
+func _request_street_action_snapshot() -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN or action_connection_epoch < 1:
+        return
+    send_envelope({
+        "message_type": "street_combat_recovery_snapshot_request",
+        "payload": {"connection_epoch": action_connection_epoch},
+    })
 
 func _dispatch_message(raw_text: String, packet_bytes: int = -1) -> void:
     _bus_log("backend_message_raw:%s" % raw_text)
@@ -185,6 +228,12 @@ func _dispatch_message(raw_text: String, packet_bytes: int = -1) -> void:
     _bus_log("backend_message_type:%s" % message_type)
 
     match message_type:
+        "street_combat_recovery_snapshot":
+            action_snapshot_ready = bool(payload.get("accepted", false))
+            action_resync_marker = str(payload.get("resync_marker", ""))
+            action_snapshot_digest = str(payload.get("snapshot_digest", ""))
+            _bus_emit("street_combat_recovery_snapshot_received", [payload])
+            _bus_log("street_combat_recovery_snapshot:%s" % JSON.stringify(payload))
         "ack":
             _bus_emit("backend_ack_received", [payload])
             _bus_log("backend_ack")
