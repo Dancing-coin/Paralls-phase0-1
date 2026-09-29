@@ -18,7 +18,7 @@ const CUSTOM_REACH_SETTLE_PHYSICS_TICKS := 30
 const CONTACT_SETTLE_TIMEOUT_MS := 750
 
 @export_node_path("Node") var player_bridge_path := NodePath("../Phase0InputBridge")
-@export_node_path("Node") var character_replica_path := NodePath("../CharacterReplica")
+@export_node_path("Node") var character_actor_path := NodePath("../CharacterActor")
 @export_node_path("Node") var door_bridge_path := NodePath("../../DefaultSceneArchiveDoorAffordanceBridge")
 
 var _controller = ACTION_CONTROLLER.new()
@@ -51,7 +51,7 @@ var _episode_ref := ""
 
 func _ready() -> void:
 	ACTION_ATOM_CATALOG.register_into(_action_asset_registry)
-	_playback_adapter.configure_playback_host(_character_replica())
+	_playback_adapter.configure_playback_host(_character_actor())
 	var bus := _get_bus()
 	if bus == null:
 		return
@@ -266,11 +266,11 @@ func _process_align() -> void:
 		player_bridge.set_forced_facing_yaw(desired_yaw)
 	if absf(wrapf(player.rotation.y - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
 		return
-	var replica := _character_replica()
-	if replica == null or not replica.has_method("begin_right_hand_reach"):
-		_finalize_local_failure("failed_alignment", "ik_chain_unavailable")
+	var actor := _character_actor()
+	if not _has_actor_capability(actor) or not actor.has_method("begin_right_hand_reach"):
+		_finalize_local_failure("failed_alignment", "capability_unavailable")
 		return
-	var reach_started: Variant = replica.call("begin_right_hand_reach", contact.global_position, CONTACT_TOLERANCE_M)
+	var reach_started: Variant = actor.call("begin_right_hand_reach", contact.global_position, CONTACT_TOLERANCE_M)
 	if not (reach_started is Dictionary) or not bool((reach_started as Dictionary).get("available", false)):
 		var error_code := "ik_chain_unavailable"
 		if reach_started is Dictionary:
@@ -289,11 +289,11 @@ func _process_contact() -> void:
 		return
 	_contact_process_count += 1
 	var contact := _registry_binding.get("contact_anchor") as Marker3D
-	var replica := _character_replica()
-	if contact == null or replica == null or not replica.has_method("measure_right_hand_to_anchor"):
-		_finalize_local_failure("failed_alignment", "ik_chain_unavailable")
+	var actor := _character_actor()
+	if contact == null or not _has_actor_capability(actor) or not actor.has_method("measure_right_hand_to_anchor"):
+		_finalize_local_failure("failed_alignment", "capability_unavailable")
 		return
-	var measurement: Variant = replica.call("measure_right_hand_to_anchor", contact.global_position)
+	var measurement: Variant = actor.call("measure_right_hand_to_anchor", contact.global_position)
 	if measurement is Dictionary:
 		_last_contact_measurement = (measurement as Dictionary).duplicate(true)
 	else:
@@ -314,13 +314,13 @@ func _process_contact() -> void:
 		_custom_reach_settle_ticks += 1
 		return
 	if distance_m > CONTACT_TOLERANCE_M:
-		if not _fallback_reach_requested and runtime_kind == "skeleton_ik_3d" and replica.has_method("begin_right_hand_modifier_reach"):
-			var fallback_started: Variant = replica.call("begin_right_hand_modifier_reach", contact.global_position, CONTACT_TOLERANCE_M)
+		if not _fallback_reach_requested and runtime_kind == "skeleton_ik_3d" and actor.has_method("begin_right_hand_modifier_reach"):
+			var fallback_started: Variant = actor.call("begin_right_hand_modifier_reach", contact.global_position, CONTACT_TOLERANCE_M)
 			if fallback_started is Dictionary and bool((fallback_started as Dictionary).get("available", false)):
 				_fallback_reach_requested = true
 				return
-		if not _custom_reach_requested and runtime_kind == "skeleton_modifier_fallback" and replica.has_method("begin_archive_door_reach_modifier"):
-			var custom_reach_started: Variant = replica.call("begin_archive_door_reach_modifier", contact.global_position, CONTACT_TOLERANCE_M)
+		if not _custom_reach_requested and runtime_kind == "skeleton_modifier_fallback" and actor.has_method("begin_archive_door_reach_modifier"):
+			var custom_reach_started: Variant = actor.call("begin_archive_door_reach_modifier", contact.global_position, CONTACT_TOLERANCE_M)
 			if custom_reach_started is Dictionary and bool((custom_reach_started as Dictionary).get("available", false)):
 				_custom_reach_requested = true
 				_custom_reach_settle_ticks = 0
@@ -442,9 +442,9 @@ func _clear_local_ownership() -> void:
 	var player := get_parent() as CharacterBody3D
 	if bridge != null and bridge.has_method("release_stance_lease") and player != null:
 		bridge.call("release_stance_lease", player, _stance_lease_ref)
-	var replica := _character_replica()
-	if replica != null and replica.has_method("clear_right_hand_reach"):
-		replica.call("clear_right_hand_reach")
+	var actor := _character_actor()
+	if actor != null and actor.has_method("clear_right_hand_reach"):
+		actor.call("clear_right_hand_reach")
 	_stance_lease_ref = ""
 
 
@@ -483,8 +483,15 @@ func _player_bridge() -> Node:
 	return get_node_or_null(player_bridge_path)
 
 
-func _character_replica() -> Node:
-	return get_node_or_null(character_replica_path)
+func _character_actor() -> Node:
+	var actor := get_node_or_null(character_actor_path)
+	if not _has_actor_capability(actor):
+		return null
+	return actor
+
+
+func _has_actor_capability(actor: Node) -> bool:
+	return actor != null and actor.has_method("apply_control_intent") and actor.has_method("get_focus_anchor_position") and actor.has_method("get_embodied_forward_vector")
 
 
 func _door_bridge() -> Node:

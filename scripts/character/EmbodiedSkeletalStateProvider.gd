@@ -8,14 +8,15 @@ var full_bone_snapshot_to_backend_allowed := false
 var retention := "debug_replay_only"
 
 func bind_runtime(actor_node: Node, skeleton: Skeleton3D = null) -> Dictionary:
-	var replica := _find_character_replica(actor_node)
-	var bound_skeleton := skeleton if skeleton != null else _find_first_skeleton(actor_node)
+	var actor := _resolve_actor_capability(actor_node)
+	var bound_skeleton := skeleton if skeleton != null else _find_first_skeleton(actor)
 	return {
-		"actor_node_path": str(actor_node.get_path()) if actor_node != null else "",
-		"character_replica_path": str(replica.get_path()) if replica != null else "",
+		"actor_node_path": str(actor.get_path()) if actor != null else "",
 		"skeleton_path": str(bound_skeleton.get_path()) if bound_skeleton != null else "",
 		"bone_count": bound_skeleton.get_bone_count() if bound_skeleton != null else 0,
-		"runtime_binding_verified": actor_node != null and replica != null and bound_skeleton != null,
+		"actor_capability_verified": actor != null,
+		"capability_failure": "" if actor != null else "actor_capability_unavailable",
+		"runtime_binding_verified": actor != null and bound_skeleton != null,
 	}
 
 func build_high_level_state(posture: String, gait: String, balance: String, active_behavior: String = "") -> Dictionary:
@@ -138,19 +139,19 @@ func build_main_chain_payload_from_runtime(actor_id: String, actor_node: Node, t
 	payload["trace_refs"] = trace_refs
 	return payload
 
-func _find_character_replica(root: Node) -> Node:
+func _resolve_actor_capability(root: Node) -> Node:
 	if root == null:
 		return null
-	if root.name == "CharacterReplica":
+	if _has_actor_capability(root):
 		return root
-	var direct := root.get_node_or_null("CharacterReplica")
-	if direct != null:
-		return direct
 	for child: Node in root.get_children():
-		var found := _find_character_replica(child)
+		var found := _resolve_actor_capability(child)
 		if found != null:
 			return found
 	return null
+
+func _has_actor_capability(node: Node) -> bool:
+	return node != null and node.has_method("apply_control_intent") and node.has_method("get_focus_anchor_position") and node.has_method("get_embodied_forward_vector")
 
 func _find_first_skeleton(root: Node) -> Skeleton3D:
 	if root == null:
