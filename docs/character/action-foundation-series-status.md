@@ -61,8 +61,9 @@ Fresh runtime evidence:
 The aggregate `--profile all` run reached `phase0`, where the MainDemo
 autotest emitted repeated `backend_closed` markers and never emitted
 `phase0_autotest_complete` before the run was stopped. This remains an open
-runtime gate; StreetCombatDemo success is not promoted to a repository-wide
-completion claim.
+runtime gate. Diagnostic copies are retained in
+`D:\CurrentActionFoundationEvidence-all-final5`; StreetCombatDemo success is
+not promoted to a repository-wide completion claim.
 
 ## 2026-09-29 Ordered Task 1-15 Verification
 

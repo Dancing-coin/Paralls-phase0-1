@@ -36,7 +36,8 @@ The fresh full pytest run completed with `7652 passed, 56 failed, 2 skipped,
 green StreetCombatDemo, agent, and retirement profiles do not replace the
 required aggregate result. The fresh `--profile all` run reached the Phase 0
 MainDemo autotest but observed repeated `backend_closed` markers without the
-required completion marker.
+required completion marker. Diagnostic copies are retained in
+`D:\CurrentActionFoundationEvidence-all-final5`.
 
 ### Final boundary
 
