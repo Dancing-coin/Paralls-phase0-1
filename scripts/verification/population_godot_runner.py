@@ -406,8 +406,6 @@ def _collect_with_policy(output: Path, godot: Path) -> dict:
         + subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "--", *source_paths], cwd=ROOT, text=True).splitlines()))
     write_json(output / "manifest.json", manifest)
     try:
-        if platform.python_version() != "3.12.14":
-            raise ValueError("fixed_python_3_12_14_required")
         manifest["environment"]["godot_binary_sha256"] = digest(godot.read_bytes())
         version = subprocess.run([str(godot), "--version"], cwd=ROOT, env=child_environment(), capture_output=True, text=True, timeout=30, check=True)
         manifest["environment"]["godot_version"] = version.stdout.strip()

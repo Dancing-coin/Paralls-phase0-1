@@ -114,7 +114,7 @@ python -m uvicorn app.main:app --ws websockets --host 127.0.0.1 --port 8000
 
 ## 外机准备
 
-使用包含本文及 `scripts/verification/verify_population_godot_runtime.py` 最新改动的同一代码版本。保持原仓库/原 Godot project，执行 `git lfs pull`，不要另建项目。真实验证机需要 Python **3.12.14**、Godot **4.6.3 stable**、支持 Vulkan Forward+ 的 GPU，以及可见桌面。机器可保持离线模型配置：本 profile 显式使用 local fixture，不调用真实模型，真实 Character/Siming 模型验收属于另一项门禁。
+使用包含本文及 `scripts/verification/verify_population_godot_runtime.py` 最新改动的同一代码版本。保持原仓库/原 Godot project，执行 `git lfs pull`，不要另建项目。真实验证机需记录实际 Python 版本及依赖快照；Python 升级后重跑原始证据门禁，不因版本号变化直接拒收。Godot 仍需 **4.6.3 stable**、支持 Vulkan Forward+ 的 GPU，以及可见桌面。机器可保持离线模型配置：本 profile 显式使用 local fixture，不调用真实模型，真实 Character/Siming 模型验收属于另一项门禁。
 
 ```powershell
 python -m venv .runtime/godot-verification-venv
@@ -152,7 +152,7 @@ GitHub Actions 的 Harness 手动入口提供 `run_population_godot`，默认关
 .runtime/godot-verification-venv/Scripts/python.exe scripts/verification/verify_population_godot_runtime.py --verify-artifacts 'D:/verification/population-godot-external-001'
 ```
 
-返回0且总 `godot_status=runtime_verified` 才能更新 Godot 门禁；缺任一档、错误版本、缺原始文件、帧超预算、authority变化、无恢复链或进程异常均返回2，保持未验证。不要用旧成功结果补本次缺失文件，不要改 CSV 或删除慢帧。
+返回0且总 `godot_status=runtime_verified` 才能更新 Godot 门禁；缺任一档、Godot 版本不符、Python 版本元数据缺失或无效、缺原始文件、帧超预算、authority变化、无恢复链或进程异常均返回2，保持未验证。不要用旧成功结果补本次缺失文件，不要改 CSV 或删除慢帧。
 
 ## 继续执行的入口
 

@@ -81,10 +81,13 @@ def test_self_reported_capture_cannot_pass_without_raw_evidence(tmp_path):
 def test_missing_external_engine_writes_failed_manifest_without_running_godot(tmp_path, monkeypatch):
     from scripts.verification import population_godot_runner as runner
     monkeypatch.setattr(runner, "source_manifest", lambda: dict(source_sha256="sha256:test", files={}))
-    monkeypatch.setattr(runner.platform, "python_version", lambda: "3.12.14")
+    monkeypatch.setattr(runner, "_runtime_resource_paths", lambda: [])
+    monkeypatch.setattr(runner.platform, "python_version", lambda: "3.13.9")
     output = tmp_path / "capture"
     result = runner.collect(output, tmp_path / "not-installed-godot.exe")
     assert result["status"] == "failed" and result["godot_status"] == "godot_unverified"
+    assert "fixed_python" not in result["error"]
+    assert result["environment"]["python"] == "3.13.9"
     assert json.loads((output / "manifest.json").read_text())["cases"] == {}
     assert result["collector_pid"] == runner.os.getpid()
 

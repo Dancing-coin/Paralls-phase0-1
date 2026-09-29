@@ -410,7 +410,9 @@ def verify_artifacts(directory: Path) -> dict:
     if type(collector_pid) is not int or collector_pid <= 0 or collector_qos["pid"] != collector_pid:
         raise ValueError("process_qos_pid_mismatch")
     environment = manifest["environment"]
-    if environment.get("python") != "3.12.14" or not environment.get("godot_version", "").startswith("4.6.3.stable"):
+    python_version = environment.get("python")
+    if (not isinstance(python_version, str) or re.fullmatch(r"\d+\.\d+\.\d+", python_version) is None
+            or not environment.get("godot_version", "").startswith("4.6.3.stable")):
         raise ValueError("manifest_environment_invalid")
     for population in (100, 1000):
         case = directory / str(population)
