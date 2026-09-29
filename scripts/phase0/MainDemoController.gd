@@ -513,9 +513,9 @@ func _run_autotest_inputs() -> void:
 	await _begin_autotest_shutdown("phase0_autotest_complete")
 
 func _set_autotest_actor_local_perception_enabled(is_enabled: bool) -> void:
-	for replica in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]:
-		if replica != null and replica.has_method("set_actor_local_perception_enabled"):
-			replica.set_actor_local_perception_enabled(is_enabled)
+	for actor in [character_a, character_b, _get_player_actor()]:
+		if actor != null and actor.has_method("set_actor_local_perception_enabled"):
+			actor.set_actor_local_perception_enabled(is_enabled)
 
 func _emit_transport_barrier_request() -> Dictionary:
 	var bridge := _get_bridge()
@@ -661,8 +661,6 @@ func _run_npc_patrol_root_motion_probe() -> void:
 	for actor in [character_a, character_b]:
 		if actor == null:
 			continue
-		if actor.has_method("set_driver_mode"):
-			actor.call("set_driver_mode", 0) # CharacterReplica.DriverMode.AI
 		actor.set("action_override_state", "")
 		actor.set("action_override_timer", 0.0)
 		# MainDemo keeps A/B patrol disabled with the default single zero point;
@@ -1003,6 +1001,11 @@ func _get_bus() -> Node:
 
 func _get_bridge() -> Node:
 	return get_node_or_null("/root/BackendBridge")
+
+func _get_player_actor() -> Node:
+	if player != null and player.has_method("get_character_actor"):
+		return player.get_character_actor()
+	return null
 
 func _get_scene_runtime_adapter() -> Node:
 	return get_node_or_null(scene_runtime_adapter_path)
@@ -1470,13 +1473,13 @@ func _get_camera() -> Camera3D:
 		var bridge_camera: Variant = player_input_bridge.get_camera()
 		if bridge_camera is Camera3D:
 			return bridge_camera as Camera3D
-	var camera := player.find_child("Camera3D", true, false)
+	var camera := player.get_camera() if player != null and player.has_method("get_camera") else null
 	if camera is Camera3D:
 		return camera as Camera3D
 	return null
 
 func _get_camera_holder() -> Node3D:
-	var holder := player.find_child("CameraHolder", true, false)
+	var holder := player.get_node_or_null("CameraHolder") if player != null else null
 	if holder is Node3D:
 		return holder as Node3D
 	return null
@@ -1580,7 +1583,7 @@ func _apply_perception_debug_visibility() -> void:
 
 func _get_perception_debug_characters() -> Array[Node3D]:
 	var actors: Array[Node3D] = []
-	for candidate in [character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]:
+	for candidate in [character_a, character_b, _get_player_actor()]:
 		if candidate is Node3D:
 			actors.append(candidate)
 	return actors
@@ -1689,9 +1692,9 @@ func _sync_observatory_view_actor() -> void:
 
 func _get_view_origin_actor_node() -> Node3D:
 	if observatory_view_actor_id == "char_c":
-		var player_replica := get_node_or_null("PlayerCharacter/CharacterReplica")
-		if player_replica is Node3D:
-			return player_replica as Node3D
+		var player_actor := _get_player_actor()
+		if player_actor is Node3D:
+			return player_actor as Node3D
 		return player
 	var actor_node := _find_node_by_property("actor_id", observatory_view_actor_id)
 	if actor_node is Node3D:
@@ -1721,9 +1724,9 @@ func _build_focus_raycast_exclusions() -> Array:
 	var view_actor := _get_view_origin_actor_node()
 	if view_actor != null and not exclusions.has(view_actor):
 		exclusions.append(view_actor)
-	var player_replica := get_node_or_null("PlayerCharacter/CharacterReplica")
-	if player_replica != null and not exclusions.has(player_replica):
-		exclusions.append(player_replica)
+	var player_actor := _get_player_actor()
+	if player_actor != null and not exclusions.has(player_actor):
+		exclusions.append(player_actor)
 	return exclusions
 
 func _is_focus_hit_target(collider: Variant, candidate: Node3D) -> bool:

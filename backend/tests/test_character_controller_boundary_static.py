@@ -137,8 +137,8 @@ def test_view_anchor_resolver_prefers_frozen_wrapper_child_mounts_before_recursi
         encoding="utf-8"
     )
 
-    assert 'player.has_method("get_character_replica")' in helper_source
-    assert "player.get_character_replica()" in helper_source
+    assert 'player.has_method("get_character_actor")' in helper_source
+    assert "player.get_character_actor()" in helper_source
     assert 'player.get_node_or_null("CharacterReplica")' not in helper_source
     assert 'player.get_node_or_null("CameraHolder")' in helper_source
     assert 'find_child("CharacterReplica", true, false)' not in helper_source
@@ -282,5 +282,5 @@ def test_phase0_player_bridge_prefers_player_shell_character_alias_over_wrapper_
         encoding="utf-8"
     )
 
-    assert "func get_character_replica() -> Node:" in player_shell_source
+    assert "func get_character_actor() -> Node:" in player_shell_source
     assert 'player.get_node_or_null("CharacterReplica")' not in bridge_source

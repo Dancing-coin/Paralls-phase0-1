@@ -25,7 +25,7 @@ func resolve_player_look_target(
 	var camera_result: Variant = find_camera_callable.call()
 	if camera_result is Camera3D:
 		return player.global_position - (camera_result as Camera3D).global_basis.z
-	var character_c := _get_character_replica(player)
+	var character_c := _get_character_actor(player)
 	if character_c is Node:
 		if (character_c as Node).has_method("get_embodied_forward_vector"):
 			var actor_forward: Variant = (character_c as Node).get_embodied_forward_vector()
@@ -55,7 +55,7 @@ func resolve_player_forward(
 	var camera_result: Variant = find_camera_callable.call()
 	if camera_result is Camera3D:
 		return -(camera_result as Camera3D).global_basis.z.normalized()
-	var character_c := _get_character_replica(player)
+	var character_c := _get_character_actor(player)
 	if character_c is Node:
 		if (character_c as Node).has_method("get_embodied_forward_vector"):
 			var actor_forward: Variant = (character_c as Node).get_embodied_forward_vector()
@@ -99,9 +99,9 @@ func find_camera(player: CharacterBody3D) -> Camera3D:
 	return null
 
 
-func _get_character_replica(player: CharacterBody3D) -> Node:
-	if player.has_method("get_character_replica"):
-		return player.get_character_replica()
+func _get_character_actor(player: CharacterBody3D) -> Node:
+	if player.has_method("get_character_actor"):
+		return player.get_character_actor()
 	return null
 
 

@@ -40,7 +40,6 @@ const HUMAN_CONTROL_MODE := CharacterControlModeRef.HUMAN_CONTROLLED
 @onready var spring_arm: SpringArm3D = $CameraHolder/SpringArm3D
 @onready var camera: Camera3D = $CameraHolder/SpringArm3D/Camera3D
 @onready var external_motion_driver: Node = get_node_or_null("Phase0InputBridge")
-@onready var character_motor: Node = find_child("CharacterMotor", true, false)
 
 var base_jump_velocity: float = 0.0
 var base_jump_gravity: float = 0.0
@@ -112,8 +111,9 @@ func _physics_process(delta: float) -> void:
 
 	if external_motion_driver and external_motion_driver.has_method("before_player_shell_move"):
 		external_motion_driver.before_player_shell_move(delta)
-	if character_motor and character_motor.has_method("apply_intent_frame"):
-		_publish_motion_state(character_motor.apply_intent_frame(self, current_intent_frame, delta))
+	var actor := get_character_actor()
+	if actor and actor.has_method("get_locomotion_status"):
+		_publish_motion_state(actor.get_locomotion_status())
 	else:
 		_publish_motion_state({})
 
@@ -185,8 +185,8 @@ func get_body_position() -> Vector3:
 func get_vertical_velocity() -> float:
 	return velocity.y
 
-func get_character_replica() -> Node:
-	return get_node_or_null("CharacterReplica")
+func get_character_actor() -> Node:
+	return get_node_or_null("CharacterActor")
 
 func get_visual_forward() -> Vector3:
 	if visual_root:
@@ -203,8 +203,7 @@ func clear_forced_control() -> void:
 
 func stop_forced_motion() -> void:
 	clear_forced_control()
-	velocity.x = 0.0
-	velocity.z = 0.0
+	# CharacterMotor owns body velocity and collision state. The shell only clears intent.
 
 func set_forced_facing_yaw(next_yaw: float) -> void:
 	forced_desired_facing_yaw = next_yaw

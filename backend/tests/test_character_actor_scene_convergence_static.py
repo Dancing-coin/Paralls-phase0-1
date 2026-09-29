@@ -26,7 +26,7 @@ def test_current_scene_shape_matches_the_frozen_host_choice() -> None:
     validation_scene = _read("scenes/integration/Unified3DIntegrationValidation.tscn")
 
     assert '[node name="CharacterBase" type="CharacterBody3D"]' in character_base_scene
-    assert '[node name="CharacterReplica" parent="." instance=ExtResource("2_character")]' in character_base_scene
+    assert '[node name="CharacterActor" parent="." instance=ExtResource("2_character")]' in character_base_scene
     assert '[node name="CharacterMotor" type="Node" parent="."]' not in character_base_scene
     assert '[node name="CharacterMotor" type="Node" parent="."]' in character_replica_scene
     assert '[node name="CharacterReplica" type="CharacterBody3D"]' in character_replica_scene
@@ -81,8 +81,8 @@ def test_wrapper_visual_root_consumers_move_to_actor_facing_character_replica_su
     anchor_resolver_source = _read("scripts/player/Phase0ViewAnchorResolver.gd")
     replica_source = _read("scripts/character/CharacterReplica.gd")
 
-    assert '_get_character_c()' in bridge_source
-    assert 'get_character_replica()' in anchor_resolver_source
+    assert '_get_character_actor()' in bridge_source
+    assert 'get_character_actor()' in anchor_resolver_source
     assert 'get_node_or_null("CharacterReplica")' not in anchor_resolver_source
     assert 'find_child("CharacterReplica", true, false)' not in anchor_resolver_source
     assert 'has_method("get_embodied_forward_vector")' in anchor_resolver_source

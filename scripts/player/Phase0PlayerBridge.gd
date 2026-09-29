@@ -113,7 +113,7 @@ func set_forced_player_motion(world_direction: Vector3, wants_run: bool = false)
 	program_control_state.set_forced_player_motion(world_direction, wants_run)
 	if player and player.has_method("set_forced_control"):
 		var local_x: float = program_control_state.forced_move_direction.dot(player.global_basis.x)
-		var local_y: float = program_control_state.forced_move_direction.dot(player.global_basis.z)
+		var local_y: float = program_control_state.forced_move_direction.dot(-player.global_basis.z)
 		player.set_forced_control(Vector2(local_x, local_y), wants_run)
 
 func clear_forced_player_motion() -> void:
@@ -155,7 +155,7 @@ func after_player_shell_move(_delta: float) -> void:
 	_sync_character_c_from_player()
 
 func _sync_character_c_from_player() -> void:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 
 	var planar_velocity: Vector3 = player.get_planar_velocity() if player and player.has_method("get_planar_velocity") else Vector3.ZERO
 	var look_target := _resolve_player_look_target()
@@ -169,7 +169,7 @@ func _sync_character_c_from_player() -> void:
 	)
 
 func _sync_character_c_control_frame(delta: float) -> void:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 
 	var move_direction := _resolve_player_move_direction()
 	var wants_run := _should_run(move_direction)
@@ -200,15 +200,15 @@ func _sync_character_c_control_frame(delta: float) -> void:
 	)
 
 func _clear_character_c_sync() -> void:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 	character_shell_sync.clear_character_shell_frame(character_c)
 
 func get_control_anchor_position() -> Vector3:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 	return view_anchor_resolver.resolve_control_anchor_position(player, character_c)
 
 func get_control_forward() -> Vector3:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 	return view_anchor_resolver.resolve_control_forward(
 		player,
 		character_c,
@@ -238,7 +238,7 @@ func _resolve_player_forward() -> Vector3:
 	)
 
 func _set_player_visual_shell_visible(is_visible: bool) -> void:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 	if character_c and character_c.has_method("set_visual_shell_visible"):
 		character_c.set_visual_shell_visible(is_visible)
 
@@ -292,13 +292,13 @@ func _resolve_jump_type(move_direction: Vector3, wants_run: bool) -> String:
 func can_trigger_movement_jump() -> bool:
 	return _resolve_player_move_direction().length() > 0.001
 
-func _get_character_c() -> Node:
-	if player and player.has_method("get_character_replica"):
-		return player.get_character_replica()
+func _get_character_actor() -> Node:
+	if player and player.has_method("get_character_actor"):
+		return player.get_character_actor()
 	return null
 
 func _trigger_character_c_action(action_name: String) -> void:
-	var character_c := _get_character_c()
+	var character_c := _get_character_actor()
 	if character_c and character_c.has_method("perform_action"):
 		character_c.perform_action(action_name)
 

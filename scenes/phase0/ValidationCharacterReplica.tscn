@@ -1,6 +1,6 @@
 [gd_scene load_steps=13 format=3]
 
-[ext_resource type="Script" path="res://scripts/character/CharacterReplica.gd" id="1_character"]
+[ext_resource type="Script" path="res://scripts/character/CharacterActor.gd" id="1_character"]
 [ext_resource type="PackedScene" path="res://scenes/phase0/GenericRoleSkin.tscn" id="2_visual"]
 [ext_resource type="Script" path="res://scripts/audio/SpatialVoiceController.gd" id="3_voice"]
 [ext_resource type="Script" path="res://scripts/character/CharacterMotor.gd" id="4_motor"]
@@ -17,7 +17,7 @@
 height = 1.7
 radius = 0.35
 
-[node name="CharacterReplica" type="CharacterBody3D"]
+[node name="CharacterActor" type="CharacterBody3D"]
 script = ExtResource("1_character")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]

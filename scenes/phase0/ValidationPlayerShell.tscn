@@ -1,7 +1,7 @@
 [gd_scene load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://scripts/player/PlayerShell.gd" id="1_shell"]
-[ext_resource type="PackedScene" path="res://scenes/phase0/ValidationCharacterReplica.tscn" id="2_character"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterActor.tscn" id="2_character"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerBridge.gd" id="3_bridge"]
 [ext_resource type="Script" path="res://scripts/player/CameraOcclusionFader.gd" id="4_occlusion"]
 [ext_resource type="Script" path="res://scripts/player/Phase0PlayerCommandRelay.gd" id="5_relay"]
@@ -31,7 +31,7 @@ fov = 50.0
 position = Vector3(0, 0.85, 0)
 shape = SubResource("Shape_player")
 
-[node name="CharacterReplica" parent="." instance=ExtResource("2_character")]
+[node name="CharacterActor" parent="." instance=ExtResource("2_character")]
 actor_id = "char_c"
 patrol_enabled = false
 player_shell_visual_offset = Vector3(0, -0.32, 0)
