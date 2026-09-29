@@ -1,8 +1,8 @@
 # 角色动作底座操作手册与文档索引
 
-日期：`2026-09-29`
+日期：`2026-09-30`
 
-状态：`导航与执行手册；pilot 已落地，Task 10 已完成但受 Task 9 external blocker 影响，Task 9 保持 blocked`
+状态：`导航与执行手册；CharacterReplica 已按 Task 8 退役，Task 9 仍受 repository-wide gate 影响而 blocked`
 
 ## 用途与范围
 
@@ -41,8 +41,8 @@
 ```text
 AGENTS.md
   -> 主线 authority 边界
-  -> 2026-09-28 动作底座系列补全 spec（本系列入口）
-  -> 2026-09-28 动作底座系列补全 plan（剩余工作唯一执行顺序）
+  -> 2026-09-29 CharacterReplica 退役与全局动作底座收口 spec（当前入口）
+  -> 2026-09-29 CharacterReplica 退役与全局动作底座收口 plan（唯一执行顺序）
   -> 2026-09-14 统一动作底座主 spec（上游契约依赖）
   -> 四份 2026-09-14 子 spec
   -> 2026-09-14 统一主实施计划（唯一执行顺序）
@@ -88,8 +88,8 @@ docs 和 change-lifecycle profile 都有 fresh exported evidence。ArchiveDoor �
 | 优先级 | 文档层 | 发生冲突时的处理 |
 | --- | --- | --- |
 | 0 | `AGENTS.md` | 运行时 owner、范围和验证约束，必须遵守。 |
-| 1 | `2026-09-28-character-action-foundation-series-completion-design.md` | 本系列设计入口；定义 pilot、剩余 gates 和关闭条件。 |
-| 2 | `2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **本系列剩余工作的唯一执行顺序**；不得以专题计划改写顺序。 |
+| 1 | `2026-09-29-character-replica-retirement-and-global-action-foundation-closure-design.md` | 当前退役与收口设计入口；定义零调用、唯一 owner、authority 和证据门。 |
+| 2 | `2026-09-29-character-replica-retirement-and-global-action-foundation-closure-implementation-plan.md` | **当前唯一执行顺序**；不得以专题计划改写 Task 1 → Task 9。 |
 | 3 | 主线 master design 与 2026-09-14 统一动作底座 spec/子 spec | 上游设计契约；覆盖旧 actor、asset、local-damage 解释。 |
 | 4 | current-state、status、drift audit、migration status、运行时架构文档 | 当前事实、迁移证据和代码定位；不改变设计。 |
 | 5 | 六月方案、旧 root-motion、旧原子动作库和 reference 文档 | **历史或过渡背景**；不得复制为新的并行控制器或执行顺序。 |
@@ -173,7 +173,7 @@ docs 和 change-lifecycle profile 都有 fresh exported evidence。ArchiveDoor �
    生成弹道、弹药或客户端命中结果。
 
 **禁止：** runtime track surgery、按目录名猜并发、把标记当命中、资产中写伤害/
-库存/状态结果、角色模型直接替换 `CharacterReplica` runtime shell。
+库存/状态结果、恢复已删除的 `CharacterReplica` runtime shell。
 
 ### 4. 再接 CharacterAgent、INF、Siming 与 authority
 
@@ -265,7 +265,8 @@ docs 和 change-lifecycle profile 都有 fresh exported evidence。ArchiveDoor �
 | P-03 | `docs/superpowers/plans/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 6-8。 |
 | P-04 | `docs/superpowers/plans/2026-09-14-character-esm-action-attempt-settlement-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 10。 |
 | P-05 | `docs/superpowers/plans/2026-09-14-character-connected-action-and-physical-replication-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 11。 |
-| P-06 | `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **本系列唯一执行顺序；Task 9 blocked，Task 10 complete but affected by the Task 9 external blocker** | 覆盖试点之后的 root motion、Motor、Replica、arbiter、authority、asset registry、evidence 和文档收口。 |
+| P-06 | `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | 历史 pilot 实施记录 | 仅用于试点背景和已落地的 StreetCombatDemo 证据。 |
+| P-07 | `docs/superpowers/plans/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-implementation-plan.md` | **当前唯一执行顺序；Task 8 complete，Task 9 blocked** | 覆盖零调用迁移、壳体删除、authority recovery、全局验证和证据发布。 |
 
 ### C. 当前实现、迁移和资产事实（必查，不改写设计）
 
@@ -277,7 +278,7 @@ docs 和 change-lifecycle profile 都有 fresh exported evidence。ArchiveDoor �
 | F-04 | `docs/character/character-action-asset-interface.md` | 改 descriptor/registry 时 | 资产字段索引；不得扩展成第二权威契约。 |
 | F-05 | `docs/character/character-debug-and-verification.md` | 加工具、跑验证时 | 现有 observatory/debug/Harness 入口。 |
 | F-06 | `docs/character/character-actor-architecture.md` | 改角色壳边界时 | shared actor 结构背景。 |
-| F-07 | `docs/character/character-actor-final-convergence-target.md` | 迁移 host 时 | `CharacterReplica` lineage 的目标约束。 |
+| F-07 | `docs/character/character-actor-final-convergence-target.md` | 迁移 host 时 | 历史 `CharacterReplica` lineage 的目标约束；当前运行时以 `CharacterActor` 为唯一 host。 |
 | F-08 | `docs/character/character-actor-final-convergence-gap-report.md` | 评审迁移缺口时 | 历史收敛 gap 对照。 |
 | F-09 | `docs/character/action-foundation-series-status.md` | 每轮开工和收口 | 当前门禁、剩余问题、证据和文档状态总表。 |
 | F-09 | `docs/character/character-actor-migration-status.md` | 查旧计划状态时 | actor-substrate 历史 ledger；不取代 D-01/P-00。 |

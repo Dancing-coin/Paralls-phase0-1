@@ -3,10 +3,10 @@
 This document records how to verify and debug the shared `CharacterActor` stack in the Phase 0 repository.
 
 The current action-foundation entry point is
-`docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`;
-the matching implementation plan is the only execution order for its remaining
-gates. StreetCombatDemo is the acceptance scene, while unified greybox scenes
-are protocol or authority probes.
+`docs/superpowers/specs/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-design.md`;
+the matching implementation plan is the only execution order for retirement
+and closure gates. StreetCombatDemo is the acceptance scene, while unified
+greybox scenes are protocol or authority probes.
 
 ## Primary Verification Layers
 
@@ -150,7 +150,7 @@ For a “input triggered but visible result is weak” issue:
 1. confirm shell event reached `PlayerShell`
 2. confirm `Phase0PlayerCommandRelay` routed shell commands to bridge callable adapter methods
 3. confirm `Phase0PlayerBridge` translated callable adapter input into actor-facing action or sync state
-4. confirm `CharacterReplica` accepted or emitted runtime action state
+4. confirm `CharacterActor` accepted or emitted runtime action state
 5. confirm `CharacterRuntimeFeedback` owns nameplate/combat feedback when the issue is visible feedback
 6. confirm `KnightRoleSkin` built presentation or modifier input
 7. confirm `KnightCombatModifier` applied post-animation correction

@@ -196,7 +196,7 @@ fake or disabled provider.
 - `character-model-live`：explicit-only Character 大模型 live proof，分别证明 dialogue、L2 reasoning 和 L3 planning 真实 provider 路径，且不能使用 fallback。
 - `llm-integration-closure`：explicit-only 聚合证明，要求 readiness、Character 三项 live proof 和 Siming DeepSeek live proof 共享同一个 `LLM_CLOSURE_RUN_ID`；readiness 不会被升级为 live proof。
 - `godot-sampling-production-grade-providers`：Godot 运行时与后端证明，证明 visual、spatial、auditory、embodied、skeletal 和 environment provider refs 进入 PQF。
-- `embodied-skeletal-debug-replay`：Godot 运行时与后端证明，证明 `CharacterReplica` / `Skeleton3D` binding、high/mid-level skeletal refs 和 debug-only full bone replay artifacts。
+- `embodied-skeletal-debug-replay`：历史 Godot 运行时与后端证明，保留旧 `CharacterReplica` / `Skeleton3D` binding 记录；当前运行时以 `CharacterActor` 为唯一 host。
 - `vla-provider-backend`：后端证明，覆盖无直接 authority 写权限的 VLA provider request/result contracts、model registry、scheduler、cache isolation、percept bridge、运行时消费和 real-provider readiness status。
 - `actor-scene-knowledge-lifecycle`：后端证明，覆盖 actor-private ASK store isolation、revision/conflict/freshness/expiry lifecycle，以及 active perception 回到 PQF/provider refs。
 - `siming-global-situation-layer`：后端证明，覆盖 Siming global situation snapshots，来源为 public L1/world/authority/evidence/参考性 refs，并保持 `siming_mm:*` context isolation。
@@ -352,8 +352,10 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/character/character-action-asset-interface.md`
 - `docs/character/character-action-foundation-operator-guide-and-index.md`：动作底座相关 spec/plan 的权威层级、执行手册、依赖索引和验证梯度。
 - `docs/character/action-foundation-series-status.md`：StreetCombatDemo Tasks 1-9 gate matrix、fresh evidence、owner、命令和剩余 blocker。
-- `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`：外部 controller 试点之后的动作底座补全总 spec，定义动画层、运行时层、Motor、根运动、资产、authority 和验收门。
-- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`：本轮动作底座补全的唯一执行顺序；Task 9 blocked，Task 10 文档收口进行中。
+- `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`：外部 controller 试点记录；保留为历史 pilot 设计。
+- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`：历史 pilot 实施记录；不再定义当前执行顺序。
+- `docs/superpowers/specs/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-design.md`：CharacterReplica 零调用退役与全局动作底座收口 spec。
+- `docs/superpowers/plans/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-implementation-plan.md`：CharacterReplica 退役与全局动作底座收口的唯一执行顺序；Task 8 已完成，Task 9 保留未解决门禁。
 - `docs/superpowers/specs/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-subspec.md`
 - `docs/character/character-action-foundation-current-state.md`
 - `docs/character/character-runtime-design-drift-audit.md`
@@ -362,8 +364,11 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/character/character-actor-final-convergence-target.md`
 - `docs/character/character-actor-final-convergence-gap-report.md`
 - `docs/character/character-debug-and-verification.md`
+- `docs/character/character-replica-convergence.md`：CharacterReplica 零调用证明、删除记录与 actor-only 运行时边界。
+- `docs/character/character-replica-retirement-report-2026-09-29.md`：Task 7 零调用证据与 Task 8 删除前置记录。
 
-Reference docs 只是支持上下文。当前任务真相仍以 `AGENTS.md` 和活跃 specs/plans 为准。
+Reference docs 只是支持上下文。当前任务真相仍以 `AGENTS.md`、2026-09-29
+retirement spec 和对应 plan 为准。
 # Unified character action foundation release gate
 
 The action-foundation series entry point is
