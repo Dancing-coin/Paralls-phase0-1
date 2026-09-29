@@ -13,3 +13,9 @@ def test_business_action_requests_use_package_and_semantic_action_id():
     assert 'RolePresentationAdapter.new(_registry, skin)' in source
     assert 'package_id' in source and 'semantic_action_id' in source
     assert 'clip_ref' not in source
+
+
+def test_registry_exposes_typed_package_admission_and_rejects_raw_clip_lookup():
+    source=(ROOT/'scripts/character/CharacterEmbodimentAssetRegistry.gd').read_text(encoding='utf-8')
+    for token in ('admit_action_package', 'manifest_digest', 'skeleton_mapping', 'marker', 'raw_clip_lookup', 'rejection_reason', 'fallback_mode'):
+        assert token in source

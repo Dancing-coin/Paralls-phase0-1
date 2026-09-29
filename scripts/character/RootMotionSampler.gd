@@ -10,6 +10,8 @@ var animation_player: AnimationPlayer
 var _last_clip := ""
 var _last_position := 0.0
 var _pending_delta := Vector3.ZERO
+var _consumption_serial := 0
+var _last_consumption_token := ""
 
 func bind(root: Node) -> void:
 	animation_player = _find_descendant(root, "AnimationPlayer") as AnimationPlayer
@@ -44,15 +46,30 @@ func sample_from_animation_player() -> Vector3:
 	return consume_delta()
 
 func consume_delta() -> Vector3:
+	_consumption_serial += 1
+	var result := consume_delta_once(StringName("sampler:%s" % _consumption_serial))
+	return result.get("root_delta_local", Vector3.ZERO)
+
+func consume_delta_once(consumption_token: StringName = &"") -> Dictionary:
+	var token := String(consumption_token)
+	if token.is_empty():
+		return {"accepted": false, "reason": "malformed_consumption_token", "root_delta_local": Vector3.ZERO}
+	if token == _last_consumption_token:
+		return {"accepted": false, "reason": "duplicate_consumption", "consumption_token": token, "root_delta_local": Vector3.ZERO}
+	if not (_pending_delta is Vector3) or not is_finite(_pending_delta.x) or not is_finite(_pending_delta.y) or not is_finite(_pending_delta.z):
+		_pending_delta = Vector3.ZERO
+		return {"accepted": false, "reason": "malformed_root_delta", "consumption_token": token, "root_delta_local": Vector3.ZERO}
+	_last_consumption_token = token
 	var result := _pending_delta
 	_pending_delta = Vector3.ZERO
 	result.y = 0.0
-	return result
+	return {"accepted": true, "consumption_token": token, "root_delta_local": result}
 
 func reset() -> void:
 	_pending_delta = Vector3.ZERO
 	_last_clip = ""
 	_last_position = 0.0
+	_last_consumption_token = ""
 
 func has_root_track(clip_ref: String) -> bool:
 	if animation_player == null:

@@ -30,11 +30,25 @@ static func compose(frame: Dictionary, profile: Dictionary, _delta: float) -> Di
 		impulse += contribution.get("impulse", Vector3.ZERO)
 		var correction_result := filter_runtime_correction(contribution, int(profile.get("projection_revision", 0)))
 		correction += correction_result.get("runtime_correction", Vector3.ZERO)
-	var command := PhysicsMotionCommandRef.build(StringName(profile.get("actor_ref", "")), int(frame.get("physics_tick", -1)), desired, root_delta.limit_length(MAX_ROOT_DELTA), impulse, correction.limit_length(MAX_CORRECTION), facing, StringName("frame:%s" % frame.get("physics_tick", -1)))
+	var actor_id := StringName(str(profile.get("actor_id", profile.get("actor_ref", frame.get("actor_id", "")))))
+	var physics_tick := int(frame.get("physics_tick", profile.get("physics_tick", -1)))
+	var root_delta_local := root_delta.limit_length(MAX_ROOT_DELTA)
+	var source_digest := StringName("frame:%s:%s" % [physics_tick, actor_id])
+	var command := PhysicsMotionCommandRef.build(actor_id, physics_tick, desired, root_delta_local, impulse, correction.limit_length(MAX_CORRECTION), facing, source_digest)
+	# Stable aliases make the command a typed cross-controller contract.  The
+	# Motor consumes the token once per actor/tick; callers may still use the
+	# historical actor_ref/root_delta fields during migration.
+	command["actor_id"] = actor_id
+	command["move_local"] = Vector2(desired.x, desired.z)
+	command["root_delta_local"] = root_delta_local
+	command["root_policy"] = StringName("hold") if root_delta_local.length() <= 0.0001 else StringName("bounded_continue")
+	command["consumption_token"] = StringName("%s:%s:%s" % [actor_id, physics_tick, source_digest])
+	command["source_digest"] = source_digest
 	command["vertical_mode"] = StringName(profile.get("vertical_mode", "gravity"))
 	command["collision_policy"] = StringName(profile.get("collision_policy", "slide"))
 	command["support_requirements"] = profile.get("support_requirements", []).duplicate()
 	command["composition_order"] = [&"locomotion", &"root_motion", &"impulse", &"runtime_correction"]
+	command["root_delta_local"] = command.get("root_delta", Vector3.ZERO)
 	return command
 
 static func _sort_action_contributions(left: Dictionary, right: Dictionary) -> bool:

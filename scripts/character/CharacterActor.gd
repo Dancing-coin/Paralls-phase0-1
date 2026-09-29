@@ -1051,6 +1051,8 @@ func _update_movement(delta: float) -> void:
 	# A clip that contributes displacement owns that step. Do not add the same
 	# locomotion velocity on top of the sampled root delta.
 	command["root_motion_exclusive"] = (command.get("root_delta", Vector3.ZERO) as Vector3).length() > 0.0001
+	command["actor_id"] = actor_id
+	command["root_delta_local"] = command.get("root_delta", Vector3.ZERO)
 	var previous_position := global_position
 	if driver_mode == DriverMode.PLAYER and player_shell_active and runtime_state.get_player_jump_type() != "none" and is_on_floor():
 		command["impulse"] = (command.get("impulse", Vector3.ZERO) as Vector3) + Vector3.UP * 4.5
@@ -1421,6 +1423,8 @@ func _consume_role_root_motion_world_delta() -> Vector3:
 	if not use_root_motion_patrol:
 		return Vector3.ZERO
 	if role_asset_scene == null or not role_asset_scene.has_method("consume_root_motion_delta"):
+		return Vector3.ZERO
+	if role_asset_scene.has_method("get_root_motion_policy") and str(role_asset_scene.get_root_motion_policy()) == "hold":
 		return Vector3.ZERO
 	var local_delta: Variant = role_asset_scene.consume_root_motion_delta()
 	if not (local_delta is Vector3):

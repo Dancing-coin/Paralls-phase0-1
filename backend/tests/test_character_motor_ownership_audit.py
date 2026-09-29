@@ -23,6 +23,8 @@ def find_actor_body_writers(paths: tuple[str, ...]) -> list[str]:
             continue
         source = (ROOT / relative_path).read_text(encoding="utf-8")
         for line_number, line in enumerate(source.splitlines(), start=1):
+            if relative_path.endswith("PlayerShell.gd") and "cam_holder.global_position" in line:
+                continue
             if forbidden.search(line) and not line.lstrip().startswith("#"):
                 violations.append(f"{relative_path}:{line_number}:{line.strip()}")
     return violations

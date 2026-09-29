@@ -13,6 +13,7 @@ var last_physics_tick := -1
 var last_command_digest := ""
 var last_physics_command: Dictionary = {}
 var last_motion_state: Dictionary = {}
+var _consumed_command_tokens: Dictionary = {}
 
 func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) -> Dictionary:
 	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(frame)
@@ -33,11 +34,21 @@ func apply_intent_frame(body: CharacterBody3D, frame: Dictionary, delta: float) 
 func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: float) -> Dictionary:
 	if body == null:
 		return {}
-	last_physics_tick = int(command.get("physics_tick", Engine.get_physics_frames()))
+	var physics_tick := int(command.get("physics_tick", Engine.get_physics_frames()))
+	var token := str(command.get("consumption_token", ""))
+	if physics_tick < last_physics_tick:
+		return {"accepted": false, "reason": "stale_physics_tick", "physics_tick": physics_tick, "last_physics_tick": last_physics_tick}
+	if not token.is_empty() and _consumed_command_tokens.has(token):
+		return {"accepted": false, "reason": "duplicate_consumption", "consumption_token": token, "physics_tick": physics_tick}
+	if not token.is_empty():
+		_consumed_command_tokens[token] = physics_tick
+		if _consumed_command_tokens.size() > 256:
+			_consumed_command_tokens.erase(_consumed_command_tokens.keys()[0])
+	last_physics_tick = physics_tick
 	last_command_digest = str(command.get("source_digest", ""))
 	body.rotation.y = rotate_toward(body.rotation.y, float(command.get("facing_yaw", body.rotation.y)), _get_body_float(body, "facing_turn_speed", 8.0) * delta)
 	var desired: Vector3 = command.get("desired_velocity", Vector3.ZERO)
-	var root_delta: Vector3 = command.get("root_delta", Vector3.ZERO)
+	var root_delta: Vector3 = command.get("root_delta_local", command.get("root_delta", Vector3.ZERO))
 	var root_motion_exclusive := bool(command.get("root_motion_exclusive", false))
 	if root_motion_exclusive:
 		desired = Vector3.ZERO
@@ -61,6 +72,9 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 	command["root_motion_exclusive_applied"] = root_motion_exclusive
 	last_physics_command = command.duplicate(true)
 	last_motion_state = CharacterActorSchemaRef.normalize_motion_state({"position": body.global_position, "velocity_world": body.velocity, "facing_yaw": body.rotation.y, "move_local_actual": move_local_actual, "gait_actual": "run" if desired.length() > _get_body_float(body, "walk_speed", 4.0) else "walk", "grounded": body.is_on_floor(), "support_ref": "floor" if body.is_on_floor() else "", "support_loss": support_required and not body.is_on_floor(), "collision_count": body.get_slide_collision_count(), "collision_normals": collision_normals, "body_revision": body_revision, "physics_tick": last_physics_tick, "physics_command": command})
+	last_motion_state["post_collision"] = true
+	last_motion_state["consumption_token"] = token
+	last_motion_state["accepted"] = true
 	return last_motion_state.duplicate(true)
 
 func _get_body_float(body: CharacterBody3D, property_name: String, fallback: float) -> float:

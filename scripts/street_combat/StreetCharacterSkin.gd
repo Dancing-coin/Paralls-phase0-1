@@ -241,6 +241,9 @@ func consume_root_motion_delta() -> Vector3:
 		return Vector3.ZERO
 	return root_motion_sampler.consume_delta()
 
+func get_root_motion_policy() -> String:
+	return str(_manifest.get("root_motion_profile", {}).get("policy", "hold"))
+
 
 func reset_root_motion() -> void:
 	if root_motion_sampler != null:

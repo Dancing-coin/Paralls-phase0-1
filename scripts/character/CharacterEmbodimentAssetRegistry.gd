@@ -18,6 +18,7 @@ const PRIMARY_QUALIFICATION_REPORT_PATHS := {
 var _motion_assets: Dictionary = {}
 var _reviewed_action_catalog: Dictionary = {}
 var _qualified_packages: Dictionary = {}
+var _admission_log: Array[Dictionary] = []
 
 
 func _init() -> void:
@@ -121,6 +122,46 @@ func resolve(package_id: StringName, action_id: StringName, claims: Array[String
 		if fallback is Dictionary and not (fallback as Dictionary).is_empty():
 			return {"accepted": true, "status": "queued_until_compatible", "profile": (fallback as Dictionary).duplicate(true), "fallback_applied": true}
 	return {"accepted": false, "reason": &"declared_fallback_unavailable"}
+
+func admit_action_package(package_id: StringName, action_id: StringName, manifest_digest: String, skeleton_mapping: String, marker_id: String, raw_clip_lookup: String = "") -> Dictionary:
+	var result := {"accepted": false, "package_id": String(package_id), "manifest_digest": manifest_digest, "action_id": String(action_id), "root_policy": "hold", "fallback_mode": "", "rejection_reason": ""}
+	var package: Variant = _qualified_packages.get(package_id, {})
+	if not (package is Dictionary) or (package as Dictionary).is_empty():
+		result["rejection_reason"] = "unknown_package"
+		_admission_log.append(result.duplicate(true))
+		return result
+	if manifest_digest.is_empty() or manifest_digest != str((package as Dictionary).get("package_digest", "")):
+		result["rejection_reason"] = "digest_mismatch"
+		_admission_log.append(result.duplicate(true))
+		return result
+	if skeleton_mapping.is_empty() or skeleton_mapping != str((package as Dictionary).get("canonical_skeleton_mapping_ref", "")):
+		result["rejection_reason"] = "missing_skeleton_mapping"
+		_admission_log.append(result.duplicate(true))
+		return result
+	if not raw_clip_lookup.is_empty():
+		result["rejection_reason"] = "raw_clip_lookup_forbidden"
+		_admission_log.append(result.duplicate(true))
+		return result
+	var resolved := resolve(package_id, action_id, [])
+	if not bool(resolved.get("accepted", false)):
+		result["rejection_reason"] = str(resolved.get("reason", "semantic_action_unavailable"))
+		_admission_log.append(result.duplicate(true))
+		return result
+	var profile: Dictionary = resolved.get("profile", {})
+	var markers: Array = profile.get("timing_markers", []) if profile.get("timing_markers", []) is Array else []
+	if marker_id.is_empty() or not markers.any(func(marker): return marker is Dictionary and str(marker.get("marker_id", "")) == marker_id):
+		result["rejection_reason"] = "marker_missing"
+		_admission_log.append(result.duplicate(true))
+		return result
+	result["accepted"] = true
+	result["root_policy"] = str(profile.get("root_motion_policy", "hold"))
+	result["fallback_mode"] = str(profile.get("mode", ""))
+	result["profile"] = profile.duplicate(true)
+	_admission_log.append(result.duplicate(true))
+	return result
+
+func inventory_admission_log() -> Array[Dictionary]:
+	return _admission_log.duplicate(true)
 
 
 func resolve_equipment_slot(package_id: StringName, slot_id: StringName) -> Dictionary:

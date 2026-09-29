@@ -55,7 +55,7 @@ def test_phase0_fallback_locomotion_uses_the_motor_and_reports_real_directional_
     assert "world_move := body.global_basis.x * move_local.x - body.global_basis.z * move_local.y" in motor_source
     assert "forward_alignment=" in controller_source
     assert "patrol_motion_step" in replica_source
-    assert '[node name="CharacterReplica" type="CharacterBody3D"]' in validation_scene
+    assert '[node name="CharacterActor" type="CharacterBody3D"]' in validation_scene
 
 
 def test_motor_reports_collision_resolved_velocity_in_local_axes() -> None:
