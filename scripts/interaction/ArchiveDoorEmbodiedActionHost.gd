@@ -197,6 +197,7 @@ func _begin_attempt(request: Dictionary, grant: Dictionary) -> void:
 		_finalize_local_failure("failed_precondition", "local_phase_rejected")
 		return
 	var player := get_parent() as CharacterBody3D
+	var actor := _character_actor()
 	var attempt_id := str(_request.get("interaction_attempt_id", ""))
 	if player == null:
 		_set_runtime_status("player_body_unavailable", "player_body_unavailable")
@@ -220,14 +221,14 @@ func _process_navigate() -> void:
 	var player := get_parent() as CharacterBody3D
 	var player_bridge := _player_bridge()
 	var bridge := _door_bridge()
-	if stance == null or player == null or player_bridge == null:
+	if stance == null or player == null or actor == null or player_bridge == null:
 		_finalize_local_failure("failed_navigation", "approach_stance_unavailable")
 		return
 	if bridge != null and bridge.has_method("is_approach_obstructed"):
-		if bool(bridge.call("is_approach_obstructed", player.global_position, stance.global_position, [player])):
+		if bool(bridge.call("is_approach_obstructed", _actor_position(actor), stance.global_position, [player, actor])):
 			_finalize_local_failure("failed_navigation", "approach_obstructed")
 			return
-	var offset := stance.global_position - player.global_position
+	var offset := stance.global_position - _actor_position(actor)
 	offset.y = 0.0
 	if offset.length() > STANCE_TOLERANCE_M:
 		player_bridge.set_forced_player_motion(offset.normalized(), true)
@@ -251,20 +252,21 @@ func _process_navigate() -> void:
 
 func _process_align() -> void:
 	var player := get_parent() as CharacterBody3D
-	if player == null:
+	var actor := _character_actor()
+	if player == null or actor == null:
 		_finalize_local_failure("failed_alignment", "player_body_unavailable")
 		return
 	var contact := _registry_binding.get("contact_anchor") as Marker3D
 	if contact == null:
 		_finalize_local_failure("failed_alignment", "contact_anchor_unavailable")
 		return
-	var facing := contact.global_position - player.global_position
+	var facing := contact.global_position - _actor_position(actor)
 	facing.y = 0.0
 	var desired_yaw := atan2(facing.x, facing.z)
 	var player_bridge := _player_bridge()
 	if player_bridge != null:
 		player_bridge.set_forced_facing_yaw(desired_yaw)
-	if absf(wrapf(player.rotation.y - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
+	if absf(wrapf(_actor_yaw(actor) - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
 		return
 	var actor := _character_actor()
 	if not _has_actor_capability(actor) or not actor.has_method("begin_right_hand_reach"):
@@ -492,6 +494,18 @@ func _character_actor() -> Node:
 
 func _has_actor_capability(actor: Node) -> bool:
 	return actor != null and actor.has_method("apply_control_intent") and actor.has_method("get_focus_anchor_position") and actor.has_method("get_embodied_forward_vector")
+
+
+func _actor_position(actor: Node) -> Vector3:
+	if actor != null and actor.has_method("get_focus_anchor_position"):
+		var anchor: Variant = actor.call("get_focus_anchor_position")
+		if anchor is Vector3:
+			return anchor as Vector3
+	return actor.global_position if actor is Node3D else Vector3.ZERO
+
+
+func _actor_yaw(actor: Node) -> float:
+	return actor.global_rotation.y if actor is Node3D else 0.0
 
 
 func _door_bridge() -> Node:

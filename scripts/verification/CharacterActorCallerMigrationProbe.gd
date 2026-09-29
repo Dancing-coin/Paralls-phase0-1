@@ -26,6 +26,7 @@ func _run_probe() -> void:
 	var legacy_instances: Array[String] = []
 	_collect_legacy_hosts(main_demo, legacy_instances)
 	var provider_lookup_count := 0
+	var provider_invocation_count := 0
 	var provider_failures: Array[String] = []
 	var ingress_sources: Array[Dictionary] = []
 	var compatibility_call_count := 0
@@ -33,8 +34,9 @@ func _run_probe() -> void:
 	for actor in actor_nodes:
 		var actor_id := str(actor.get("actor_id"))
 		var embodied_provider = EMBODIED_PROVIDER.new()
+		provider_invocation_count += 1
 		var state: Dictionary = embodied_provider.build_from_actor_node(actor_id, actor)
-		if not str(state.get("actor_node_path", "")).is_empty():
+		if not str(state.get("actor_node_path", "")).is_empty() and str(state.get("capability_failure", "")).is_empty():
 			provider_lookup_count += 1
 		else:
 			provider_failures.append("embodied:%s" % actor_id)
@@ -60,7 +62,7 @@ func _run_probe() -> void:
 		if actor.has_method("get_compatibility_diagnostics"):
 			var diagnostics: Variant = actor.call("get_compatibility_diagnostics")
 			if diagnostics is Dictionary:
-				compatibility_call_count = int((diagnostics as Dictionary).get("compatibility_call_count", 0))
+				compatibility_call_count += int((diagnostics as Dictionary).get("compatibility_call_count", 0))
 
 	var report := {
 		"status": "pass" if provider_failures.is_empty() and legacy_instances.is_empty() else "fail",
@@ -68,6 +70,7 @@ func _run_probe() -> void:
 		"live_actor_paths": _paths(actor_nodes),
 		"concrete_replica_instances": legacy_instances,
 		"provider_lookup_count": provider_lookup_count,
+		"provider_invocation_count": provider_invocation_count,
 		"skeletal_binding_count": skeletal_binding_count,
 		"provider_failures": provider_failures,
 		"compatibility_call_count": compatibility_call_count,
@@ -91,7 +94,13 @@ func _collect_actor_nodes(root: Node, output: Array[Node]) -> void:
 
 
 func _collect_legacy_hosts(root: Node, output: Array[String]) -> void:
-	if root.name == LEGACY_HOST_NAME:
+	var script_path := ""
+	var script := root.get_script()
+	if script != null and script is GDScript:
+		script_path = str((script as GDScript).resource_path)
+	var legacy_script := "/%s.gd" % LEGACY_HOST_NAME
+	var legacy_presentation_script := "/presentation/character/%s.gd" % LEGACY_HOST_NAME
+	if root.name == LEGACY_HOST_NAME or script_path.ends_with(legacy_script) or script_path.ends_with(legacy_presentation_script):
 		output.append(str(root.get_path()))
 	for child: Node in root.get_children():
 		_collect_legacy_hosts(child, output)

@@ -48,7 +48,7 @@ def test_door_host_refreshes_forced_facing_from_the_live_contact_geometry() -> N
 
     refresh = "player_bridge.set_forced_facing_yaw(desired_yaw)"
     assert refresh in align_body
-    assert align_body.index(refresh) < align_body.index("if absf(wrapf(player.rotation.y - desired_yaw")
+    assert align_body.index(refresh) < align_body.index("if absf(wrapf(_actor_yaw(actor) - desired_yaw")
 
 
 def test_door_contact_alignment_uses_the_character_motor_forward_convention() -> None:
@@ -123,7 +123,7 @@ def test_host_tries_the_existing_modifier_reach_only_after_a_measured_ik_miss() 
 
     assert "func begin_right_hand_modifier_reach(" in replica
     assert "_fallback_reach_requested" in host
-    assert 'replica.call("begin_right_hand_modifier_reach", contact.global_position, CONTACT_TOLERANCE_M)' in contact_body
+    assert 'actor.call("begin_right_hand_modifier_reach", contact.global_position, CONTACT_TOLERANCE_M)' in contact_body
     assert contact_body.index("_fallback_reach_requested") < contact_body.index("ik_alignment_tolerance_exceeded")
 
 
@@ -159,7 +159,7 @@ def test_custom_reach_modifier_is_a_local_last_resort_after_the_existing_modifie
     assert '[node name="ArchiveDoorReachModifier" type="SkeletonModifier3D" parent="KnightScene/KnightArmature/Skeleton3D"]' in scene
     assert "func begin_archive_door_reach_modifier(" in role_skin
     assert "_custom_reach_requested" in host
-    assert 'replica.call("begin_archive_door_reach_modifier", contact.global_position, CONTACT_TOLERANCE_M)' in contact_body
+    assert 'actor.call("begin_archive_door_reach_modifier", contact.global_position, CONTACT_TOLERANCE_M)' in contact_body
     assert "global_position =" not in modifier
     assert "move_and_slide(" not in modifier
 
@@ -237,11 +237,11 @@ def test_motor_consumes_the_existing_desired_facing_field_without_a_second_owner
 
 def test_forced_world_motion_converts_z_direction_for_the_motor_composer() -> None:
     bridge = _read("scripts/player/Phase0PlayerBridge.gd")
+    motor = _read("scripts/character/CharacterMotor.gd")
 
-    # MotionContributionComposer maps local Y directly to world Z. A world
-    # direction toward negative Z must therefore use the character's +Z basis
-    # when converted into local Y.
-    assert "var local_y: float = program_control_state.forced_move_direction.dot(player.global_basis.z)" in bridge
+    # CharacterMotor maps local Y onto the body's negative Z basis.
+    assert "body.global_basis.x * move_local.x - body.global_basis.z * move_local.y" in motor
+    assert "var local_y: float = program_control_state.forced_move_direction.dot(-player.global_basis.z)" in bridge
 
 
 def test_clearing_forced_motion_stops_horizontal_shell_velocity() -> None:
