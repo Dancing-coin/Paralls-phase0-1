@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import json
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE = ROOT / "docs" / "character" / "action-foundation-series-baseline-2026-09-28.md"
 PROBE = ROOT / "scripts" / "verification" / "CharacterActionFoundationBaselineProbe.gd"
+RETIREMENT_MATRIX = ROOT / "docs" / "character" / "character-replica-retirement-matrix-2026-09-29.md"
+sys.path.insert(0, str(ROOT / "scripts" / "verification"))
+import verify_character_replica_retirement as retirement_verifier
 
 
 def read_active_callers() -> list[str]:
@@ -16,7 +21,7 @@ def read_active_callers() -> list[str]:
             if not path.is_file() or path.suffix not in {".gd", ".tscn", ".py"}:
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
-            if "CharacterReplica" in text:
+            if "CharacterReplica" in text or "legacy_character_replica" in text:
                 callers.append(path.relative_to(ROOT).as_posix())
     return sorted(set(callers))
 
@@ -33,12 +38,61 @@ def test_baseline_doc_and_probe_define_required_evidence_fields() -> None:
         assert source_kind in baseline
 
 
-def test_active_replica_callers_are_registered_in_baseline_matrix() -> None:
-    baseline = BASELINE.read_text(encoding="utf-8")
-    registered = set(re.findall(r"`([^`]+)`", baseline))
-    registered.update({"backend/tests/test_character_scene_migration.py", "scripts/verification/CharacterReplicaRetirementProbe.gd"})
-    missing = [caller for caller in read_active_callers() if caller not in registered]
+def read_retirement_matrix() -> list[dict[str, object]]:
+    source = RETIREMENT_MATRIX.read_text(encoding="utf-8")
+    match = re.search(r"```json\s*(\[.*?\])\s*```", source, re.DOTALL)
+    assert match is not None, "retirement matrix needs a JSON array"
+    return json.loads(match.group(1))
+
+
+def test_active_replica_callers_are_registered_in_retirement_matrix() -> None:
+    rows = read_retirement_matrix()
+    required = {"caller_path", "category", "current_state", "target_entry", "owner_lane", "compatibility_allowed", "evidence_command"}
+    assert all(required <= row.keys() for row in rows)
+    registered = [str(row["caller_path"]) for row in rows]
+    assert len(registered) == len(set(registered)), "duplicate caller paths"
+    missing = sorted(set(read_active_callers()) - set(registered))
     assert not missing, f"unregistered CharacterReplica callers: {missing}"
+
+
+def test_runtime_caller_requires_explicit_migration_owner() -> None:
+    rows = read_retirement_matrix()
+    for row in rows:
+        if row["compatibility_allowed"]:
+            assert row["category"] in {"compatibility", "migration_test"}, row
+        if row["category"] not in {"compatibility", "migration_test", "verification", "comment_only"}:
+            assert row["owner_lane"] not in {"", "none"}, row
+            assert str(row["target_entry"]).startswith("CharacterActor"), row
+            assert row["compatibility_allowed"] is False, row
+
+
+def test_retirement_verifier_fails_closed_on_missing_marker_digest_or_active_caller() -> None:
+    absent = retirement_verifier.evaluate(ROOT, None, True)
+    assert "missing_godot_marker" in absent["failed_checks"]
+    marker = {
+        "source_digest": absent["source_digest"],
+        "matrix_digest": absent["matrix_digest"],
+        "unregistered_callers": absent["unregistered_callers"],
+        "passed": True,
+    }
+    stale = retirement_verifier.evaluate(ROOT, {**marker, "source_digest": "stale"}, True)
+    assert "source_digest_mismatch" in stale["failed_checks"]
+    active = retirement_verifier.evaluate(ROOT, {**marker, "active_scene_instances": 1}, True)
+    assert "nonzero_active_scene_instances" in active["failed_checks"]
+
+
+def test_retirement_verifier_rejects_unregistered_runtime_caller(tmp_path: Path) -> None:
+    for directory in ("scenes", "scripts", "backend", "docs/character"):
+        (tmp_path / directory).mkdir(parents=True)
+    (tmp_path / "docs/character/character-replica-retirement-matrix-2026-09-29.md").write_text(
+        "```json\n[]\n```\n", encoding="utf-8"
+    )
+    (tmp_path / "scripts/NewCaller.gd").write_text(
+        'extends Node\nvar replica = get_node_or_null("CharacterReplica")\n', encoding="utf-8"
+    )
+    result = retirement_verifier.evaluate(tmp_path, None, True)
+    assert result["unregistered_callers"] == ["scripts/NewCaller.gd"]
+    assert "unregistered_callers" in result["failed_checks"]
 
 
 def test_only_character_motor_owns_move_and_slide() -> None:

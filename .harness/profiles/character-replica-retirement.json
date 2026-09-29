@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "name": "character-replica-retirement",
+  "order": 52,
+  "script": "scripts/verification/verify_character_replica_retirement.py",
+  "requires_godot": true,
+  "result_artifact": ".harness/verification/character-replica-retirement-report.json",
+  "success_key": "overall_character_replica_retirement_passed",
+  "max_attempts": 1,
+  "include_in_profile_order": false,
+  "description": "Matrix-bound global CharacterReplica caller and ownership gate with static tests and Godot inspect marker"
+}

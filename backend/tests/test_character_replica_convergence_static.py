@@ -1,10 +1,29 @@
 from pathlib import Path
+import json
+import re
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
 def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
+
+
+def test_retirement_matrix_accounts_for_phase0_provider_and_integration_callers():
+    path = ROOT / "docs/character/character-replica-retirement-matrix-2026-09-29.md"
+    match = re.search(r"```json\s*(\[.*?\])\s*```", path.read_text(encoding="utf-8"), re.DOTALL)
+    assert match is not None
+    rows = {row["caller_path"]: row for row in json.loads(match.group(1))}
+    for caller in (
+        "scenes/phase0/CharacterBase.tscn",
+        "scenes/phase0/ValidationPlayerShell.tscn",
+        "scenes/integration/Unified3DIntegrationValidation.tscn",
+        "scripts/character/EmbodiedStateProvider.gd",
+        "scripts/character/EmbodiedSkeletalStateProvider.gd",
+        "scripts/player/PlayerShell.gd",
+    ):
+        assert caller in rows
+        assert rows[caller]["compatibility_allowed"] is False
 
 
 def test_character_replica_is_compatibility_host_and_actor_owns_behavior():
