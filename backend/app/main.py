@@ -3728,8 +3728,9 @@ def _handle_envelope(
         if connection_epoch < current_epoch:
             return [_as_envelope("street_combat_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_stale", "connection_epoch": current_epoch})]
         if connection_epoch > current_epoch:
-            while int(unified_character_action_settlement_service.street_transport_state().get("connection_epoch", 1)) < connection_epoch:
-                unified_character_action_settlement_service.reconnect_street_transport()
+            if connection_epoch != current_epoch + 1:
+                return [_as_envelope("street_combat_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_gap", "connection_epoch": current_epoch})]
+            unified_character_action_settlement_service.reconnect_street_transport()
         snapshot = {
             "connection_epoch": connection_epoch,
             "actors": {
