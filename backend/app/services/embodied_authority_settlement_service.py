@@ -59,6 +59,12 @@ class EmbodiedAuthoritySettlementService:
         "char_b": {"position": (-2.05, 0.2, -7.0), "physics_tick": 0, "hp": 100, "stamina": 100},
         }
         self._street_results_by_key: dict[str, tuple[str, AuthorityResult]] = {}
+        self._street_transport_connected = True
+        self._street_snapshot_ready = True
+        self._street_connection_epoch = 1
+        self._street_next_client_sequence = 1
+        self._street_snapshot_digest = "sha256:street-initial-snapshot"
+        self._street_resync_marker = "resync:initial"
         self.mutation_count = 0
 
     def street_actor_state(self, actor_id: str) -> dict[str, object]:
@@ -81,6 +87,43 @@ class EmbodiedAuthoritySettlementService:
         state["physics_tick"] = physics_tick
         return True
 
+    def street_transport_state(self) -> dict[str, object]:
+        """Expose only bounded Mode B recovery metadata for probes/telemetry."""
+
+        return {
+            "connected": self._street_transport_connected,
+            "connection_epoch": self._street_connection_epoch,
+            "snapshot_ready": self._street_snapshot_ready,
+            "snapshot_digest": self._street_snapshot_digest,
+            "resync_marker": self._street_resync_marker,
+            "next_client_sequence": self._street_next_client_sequence,
+        }
+
+    def disconnect_street_transport(self) -> None:
+        self._street_transport_connected = False
+        self._street_snapshot_ready = False
+
+    def reconnect_street_transport(self) -> int:
+        """Start a new Mode B epoch; action admission stays closed until sync."""
+
+        self._street_connection_epoch += 1
+        self._street_next_client_sequence = 1
+        self._street_transport_connected = True
+        self._street_snapshot_ready = False
+        self._street_snapshot_digest = ""
+        self._street_resync_marker = ""
+        return self._street_connection_epoch
+
+    def accept_street_snapshot(self, connection_epoch: int, *, snapshot_digest: str, resync_marker: str) -> bool:
+        if connection_epoch != self._street_connection_epoch:
+            return False
+        if not self._street_transport_connected or not snapshot_digest.strip() or not resync_marker.strip():
+            return False
+        self._street_snapshot_digest = snapshot_digest
+        self._street_resync_marker = resync_marker
+        self._street_snapshot_ready = True
+        return True
+
     def settle_street_combat(self, attempt: ActionAttempt) -> AuthorityResult:
         existing = self._street_results_by_key.get(attempt.idempotency_key)
         if existing is not None:
@@ -88,6 +131,49 @@ class EmbodiedAuthoritySettlementService:
             if digest == attempt.payload_digest:
                 return result.model_copy(deep=True)
             return self._result(attempt, outcome="rejected", failed_stage="idempotency", failed_code="idempotency_key_reused", recovery_action="discard_duplicate")
+        if not self._street_transport_connected:
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="transport",
+                failed_code="transport_disconnected",
+                recovery_action="reconnect_and_resync",
+            )
+        if "connection_epoch" in attempt.model_fields_set and attempt.connection_epoch != self._street_connection_epoch:
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="transport",
+                failed_code="connection_epoch_stale",
+                recovery_action="refresh_connection_epoch",
+            )
+        if not self._street_snapshot_ready:
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="recovery",
+                failed_code="recovery_required",
+                recovery_action="await_snapshot_and_resync",
+            )
+        explicit_sequence = "client_sequence" in attempt.model_fields_set
+        if explicit_sequence:
+            if attempt.client_sequence < self._street_next_client_sequence:
+                return self._result(
+                    attempt,
+                    outcome="rejected",
+                    failed_stage="transport",
+                    failed_code="client_sequence_stale",
+                    recovery_action="refresh_and_retry",
+                )
+            if attempt.client_sequence > self._street_next_client_sequence:
+                return self._result(
+                    attempt,
+                    outcome="rejected",
+                    failed_stage="transport",
+                    failed_code="client_sequence_gap",
+                    recovery_action="resync_and_retry",
+                )
+            self._street_next_client_sequence += 1
         actor_id = attempt.actor_ref.removeprefix("character:")
         target_id = attempt.target_refs[0].removeprefix("character:") if len(attempt.target_refs) == 1 else ""
         actor = self._street_actors.get(actor_id)

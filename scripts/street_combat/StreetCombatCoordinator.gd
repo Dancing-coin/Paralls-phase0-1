@@ -76,6 +76,16 @@ func request_attack(actor_id: String, target_id: String, request_key: String = "
 	if not connected:
 		_append_event("本地动作预览  %s" % ("剑击" if semantic_action_id == "action:melee.sword_slash" else "拳击"))
 		return ""
+	var backend_bridge := get_node_or_null("/root/BackendBridge")
+	if backend_bridge == null or not backend_bridge.has_method("next_action_transport_context"):
+		_append_event("Attack unavailable: action transport unavailable")
+		return ""
+	var transport_context: Dictionary = backend_bridge.next_action_transport_context()
+	var connection_epoch := int(transport_context.get("connection_epoch", 0))
+	var client_sequence := int(transport_context.get("client_sequence", 0))
+	if connection_epoch < 1 or client_sequence < 1:
+		_append_event("Attack unavailable: action transport epoch not ready")
+		return ""
 	_sequence += 1
 	var key := request_key if not request_key.is_empty() else "%s:%s" % [actor_id, _sequence]
 	var attempt_id := "street:attempt:%s" % key
@@ -83,6 +93,7 @@ func request_attack(actor_id: String, target_id: String, request_key: String = "
 	var markers: Array = profile.get("timing_markers", [])
 	var marker: Dictionary = markers[0] if not markers.is_empty() else {}
 	var contact_time := float(marker.get("time_seconds", 0.0))
+	var action_descriptor_digest := _digest_dictionary(profile)
 	_append_event("%s → %s  %s" % [actor_id, target_id, "剑击" if semantic_action_id == "action:melee.sword_slash" else "拳击"])
 	if contact_time > 0.0:
 		await get_tree().create_timer(contact_time).timeout
@@ -100,8 +111,12 @@ func request_attack(actor_id: String, target_id: String, request_key: String = "
 		"contact_marker_id": str(marker.get("marker_id", "punch_contact_window")),
 		"contact_marker_time_seconds": contact_time,
 		"physics_tick": Engine.get_physics_frames(),
+		"connection_epoch": connection_epoch,
+		"client_sequence": client_sequence,
 		"submitted_at": Time.get_ticks_msec(),
 		"physics_evidence_refs": [contact_ref] if not contact_ref.is_empty() else [],
+		"physics_evidence_digest": _digest_text(contact_ref),
+		"action_descriptor_digest": action_descriptor_digest,
 		"authority_route": "esm",
 		"expected_revisions": expected_revisions.duplicate(true),
 		"idempotency_key": "street:idem:%s" % key,
@@ -207,3 +222,11 @@ func _append_event(message: String) -> void:
 	if event_feed.size() > 6:
 		event_feed.resize(6)
 	state_changed.emit()
+
+
+func _digest_text(value: String) -> String:
+	return "sha256:" + value.sha256_text()
+
+
+func _digest_dictionary(value: Dictionary) -> String:
+	return _digest_text(JSON.stringify(value))

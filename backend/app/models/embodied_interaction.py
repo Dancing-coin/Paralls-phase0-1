@@ -97,8 +97,15 @@ class ActionAttempt(StrictEmbodiedModel):
     action_family: str | None = None
     weapon_ref: str | None = None
     physics_tick: int = Field(ge=0)
+    # Mode B transport identity. Defaults preserve Phase 0 fixture callers that
+    # predate the connected-action envelope; real transport callers must set
+    # these explicitly and the authority admission fence observes that field
+    # presence via ``model_fields_set``.
+    connection_epoch: int = Field(default=1, ge=1)
+    client_sequence: int = Field(default=1, ge=1)
     physics_evidence_refs: list[str] = Field(default_factory=list)
     physics_evidence_digest: str | None = None
+    action_descriptor_digest: str | None = None
     authority_route: AuthorityRoute
     owner_contract_ref: str | None = None
     expected_revisions: dict[str, int] = Field(default_factory=dict)
@@ -148,6 +155,12 @@ class ActionAttempt(StrictEmbodiedModel):
     @property
     def payload_digest(self) -> str:
         return "sha256:" + sha256(self.canonical_payload_bytes()).hexdigest()
+
+    @property
+    def request_digest(self) -> str:
+        """Stable alias used by Mode B replay/evidence consumers."""
+
+        return self.payload_digest
 
 
 class AuthorityResult(StrictEmbodiedModel):
