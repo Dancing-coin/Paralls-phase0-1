@@ -925,6 +925,7 @@ func _force_focus_target(target: Node3D) -> void:
 	if current_focus_target:
 		_bus_log("phase0_focus_forced:%s" % current_focus_target.name)
 
+# PROBE_ONLY_AUTOTEST_POSE: camera/focus setup for Phase 0 evidence; never called by production flow.
 func _orient_player_toward(target_position: Vector3) -> void:
 	var camera_holder := _get_camera_holder()
 	var look_target := Vector3(target_position.x, player.global_position.y, target_position.z)
@@ -937,6 +938,7 @@ func _orient_player_toward(target_position: Vector3) -> void:
 			camera_holder.rotation.y = yaw
 	_update_focus_target()
 
+# PROBE_ONLY_AUTOTEST_POSE: teleport is restricted to PHASE0_AUTOTEST evidence runs.
 func _move_player_to_demo_vantage() -> void:
 	player.global_position = autotest_final_position
 	_orient_player_toward(interactive_object.global_position)
@@ -947,10 +949,12 @@ func _move_player_to_demo_vantage() -> void:
 		if spring_arm is SpringArm3D:
 			(spring_arm as SpringArm3D).spring_length = 7.2
 
+# PROBE_ONLY_AUTOTEST_POSE: teleport is restricted to PHASE0_AUTOTEST evidence runs.
 func _move_player_to_interact_position() -> void:
 	player.global_position = autotest_interact_position
 	_orient_player_toward(interactive_object.global_position)
 
+# PROBE_ONLY_AUTOTEST_POSE: teleport is restricted to PHASE0_FOCUS_AUTOTEST evidence runs.
 func _move_player_to_focus_vantage(target_position: Vector3) -> void:
 	player.global_position = Vector3(target_position.x, 0.5, target_position.z) + focus_autotest_vantage_offset
 	_orient_player_toward(target_position + Vector3(0.0, 1.0, 0.0))
