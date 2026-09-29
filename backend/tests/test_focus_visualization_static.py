@@ -79,7 +79,7 @@ def test_perception_toggle_restores_all_character_cones() -> None:
 
 
 def test_character_replica_has_perception_cone_debug_surface() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     scene_source = (ROOT / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
@@ -98,7 +98,7 @@ def test_character_replica_has_perception_cone_debug_surface() -> None:
 
 
 def test_character_replica_forward_vector_comes_from_replica_root_not_role_asset_scene() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

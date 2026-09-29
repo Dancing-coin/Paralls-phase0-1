@@ -56,7 +56,7 @@ def test_street_combat_presents_third_person_composition() -> None:
     hud = (ROOT / "scenes" / "phase0" / "StreetCombatHUD.tscn").read_text(encoding="utf-8")
     controller = (ROOT / "scripts" / "street_combat" / "StreetCombatDemo.gd").read_text(encoding="utf-8")
     skin = (ROOT / "scripts" / "street_combat" / "StreetCharacterSkin.gd").read_text(encoding="utf-8")
-    replica = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+    replica = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
     assert 'position = Vector3(2.05, 0.2, -7.0)' in scene
     assert 'position = Vector3(-2.05, 0.2, -7.0)' in scene
     assert 'position = Vector3(0, 1.95, -13.15)' in scene

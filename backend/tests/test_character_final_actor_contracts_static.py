@@ -6,6 +6,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_agent_execution_is_owned_by_actor_and_not_overridden_by_compatibility_shell() -> None:
+    actor = _read("scripts/character/CharacterActor.gd")
+    shell = _read("scripts/character/" + "Character" + "Replica.gd")
+    assert "func _on_character_agent_execution_received(payload: Dictionary) -> void:" in actor
+    assert "func _on_character_agent_execution_received(payload: Dictionary) -> void:" not in shell
+    assert "extends CharacterActor" in shell
+
+
 def _read(relative_path: str) -> str:
     return (ROOT / relative_path).read_text(encoding="utf-8")
 
@@ -13,19 +21,19 @@ def _read(relative_path: str) -> str:
 def test_character_intent_frame_ingress_runs_through_stage2_adapter_seams() -> None:
     player_shell_source = _read("scripts/player/PlayerShell.gd")
     player_bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
 
     assert "HumanControllerAdapterRef.build_intent_frame" in player_shell_source
     assert "ProgramControllerAdapterRef.build_intent_frame" in player_bridge_source
     assert "AgentControllerAdapterRef.build_intent_frame" in runtime_state_source
-    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in replica_source
-    assert 'const AgentControllerAdapterRef = preload("res://scripts/character/AgentControllerAdapter.gd")' not in replica_source
+    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in actor_source
+    assert 'const AgentControllerAdapterRef = preload("res://scripts/character/AgentControllerAdapter.gd")' not in actor_source
 
 
 def test_character_presentation_input_egress_runs_through_runtime_state_host() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
     contract_source = _read("scripts/character/CharacterPresentationInput.gd")
 
     assert "CharacterPresentationInput" in runtime_state_source
@@ -34,9 +42,9 @@ def test_character_presentation_input_egress_runs_through_runtime_state_host() -
     assert '\"focus_state\"' in contract_source
     assert '\"action_state\"' in contract_source
     assert '\"speech_state\"' in contract_source
-    assert "runtime_state.build_player_presentation_input" in replica_source
-    assert "runtime_state.stage_player_shell_pose" in replica_source
-    assert "_normalize_presentation_input(_build_player_presentation_input())" not in replica_source
+    assert "runtime_state.build_player_presentation_input" in actor_source
+    assert "runtime_state.stage_player_shell_pose" in actor_source
+    assert "_normalize_presentation_input(_build_player_presentation_input())" not in actor_source
 
 
 def test_character_controller_port_keeps_the_final_intent_shape_explicit() -> None:
@@ -54,17 +62,17 @@ def test_character_controller_port_keeps_the_final_intent_shape_explicit() -> No
 
 def test_character_agent_execution_path_uses_stage2_shared_actor_contracts() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
     contract_source = _read("scripts/character/CharacterPresentationInput.gd")
 
     assert "CharacterPresentationInputRef.from_player_runtime_state(" in runtime_state_source
     assert "CharacterPresentationInputRef.from_agent_execution_plan(" in runtime_state_source
     assert "func from_agent_execution_plan(" in contract_source
     assert "AgentControllerAdapterRef.build_intent_frame" in runtime_state_source
-    assert "runtime_state.stage_agent_execution" in replica_source
-    assert "runtime_state.get_agent_presentation_input" in replica_source
-    assert "const CharacterPresentationInputRef" not in replica_source
-    assert "_normalize_presentation_input(\n\t\truntime_state.stage_agent_execution" not in replica_source
+    assert "runtime_state.stage_agent_execution" in actor_source
+    assert "runtime_state.get_agent_presentation_input" in actor_source
+    assert "const CharacterPresentationInputRef" not in actor_source
+    assert "_normalize_presentation_input(\n\t\truntime_state.stage_agent_execution" not in actor_source
 
 
 def test_knight_role_skin_consumes_character_presentation_input_contract_directly() -> None:
@@ -133,9 +141,9 @@ def test_contact_phase_semantics_flow_through_runtime_state_and_role_skin() -> N
 
 def test_character_agent_execution_metadata_is_staged_through_runtime_state() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
     contract_source = _read("scripts/character/CharacterPresentationInput.gd")
-    execution_slice = replica_source.split("func _on_character_agent_execution_received(payload: Dictionary) -> void:")[1].split(
+    execution_slice = actor_source.split("func _on_character_agent_execution_received(payload: Dictionary) -> void:")[1].split(
         "func _handle_interact_goal_command(payload: Dictionary) -> void:"
     )[0]
 
@@ -167,31 +175,31 @@ def test_character_agent_execution_metadata_is_staged_through_runtime_state() ->
     assert "func get_agent_focus_target_id()" not in runtime_state_source
     assert "func get_agent_expression_hint()" not in runtime_state_source
     assert "func get_agent_physiology_hint()" not in runtime_state_source
-    assert "dialogue_role_state" in replica_source
-    assert "interaction_role_state" in replica_source
-    assert "focus_role_state" in replica_source
-    assert "attention_role_state" in replica_source
+    assert "dialogue_role_state" in actor_source
+    assert "interaction_role_state" in actor_source
+    assert "focus_role_state" in actor_source
+    assert "attention_role_state" in actor_source
     assert "CharacterPresentationInputRef.get_requested_action(agent_presentation_input)" in runtime_state_source
 
-    assert "runtime_state.stage_agent_execution" in replica_source
-    assert "runtime_state.build_agent_execution_side_effect_plan(" in replica_source
-    assert "runtime_state.get_execution_side_effect_focus_target_lookup(execution_side_effect_plan)" in replica_source
-    assert "runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)" in replica_source
-    assert "runtime_state.get_execution_side_effect_role_state_effects(execution_side_effect_plan)" in replica_source
-    assert "runtime_state.get_role_state_effect_name(effect)" in replica_source
-    assert "runtime_state.get_target_lookup_property_name(lookup)" in replica_source
-    assert "runtime_state.get_target_lookup_expected(lookup)" in replica_source
-    assert "runtime_state.execution_payload_targets_actor(payload, actor_id)" in replica_source
-    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in replica_source
-    assert "runtime_state.get_execution_payload_presentation_plan(payload)" in replica_source
-    assert "runtime_state.get_intent_frame_action_name(frame)" in replica_source
-    assert "_push_presentation_input(runtime_state.get_agent_presentation_input())" in replica_source
-    assert "dialogue_role_state," in replica_source
-    assert "interaction_role_state," in replica_source
-    assert "focus_role_state," in replica_source
-    assert "attention_role_state," in replica_source
-    assert 'presentation_plan.get("expression_hint"' not in replica_source
-    assert 'presentation_plan.get("physiology_hint"' not in replica_source
+    assert "runtime_state.stage_agent_execution" in actor_source
+    assert "runtime_state.build_agent_execution_side_effect_plan(" in actor_source
+    assert "runtime_state.get_execution_side_effect_focus_target_lookup(execution_side_effect_plan)" in actor_source
+    assert "runtime_state.get_execution_side_effect_physiology_hint(execution_side_effect_plan)" in actor_source
+    assert "runtime_state.get_execution_side_effect_role_state_effects(execution_side_effect_plan)" in actor_source
+    assert "runtime_state.get_role_state_effect_name(effect)" in actor_source
+    assert "runtime_state.get_target_lookup_property_name(lookup)" in actor_source
+    assert "runtime_state.get_target_lookup_expected(lookup)" in actor_source
+    assert "runtime_state.execution_payload_targets_actor(payload, actor_id)" in actor_source
+    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in actor_source
+    assert "runtime_state.get_execution_payload_presentation_plan(payload)" in actor_source
+    assert "runtime_state.get_intent_frame_action_name(frame)" in actor_source
+    assert "_push_presentation_input(runtime_state.get_agent_presentation_input())" in actor_source
+    assert "dialogue_role_state," in actor_source
+    assert "interaction_role_state," in actor_source
+    assert "focus_role_state," in actor_source
+    assert "attention_role_state," in actor_source
+    assert 'presentation_plan.get("expression_hint"' not in actor_source
+    assert 'presentation_plan.get("physiology_hint"' not in actor_source
     assert 'role_asset_scene.apply_presentation_input(runtime_state.get_agent_presentation_input())' not in execution_slice
     assert "var normalized_presentation_input" not in execution_slice
     assert "var execution_metadata" not in execution_slice
@@ -219,9 +227,9 @@ def test_character_agent_execution_metadata_is_staged_through_runtime_state() ->
     assert 'execution_side_effect_plan.get("focus_target_lookup", {})' not in execution_slice
     assert 'execution_side_effect_plan.get("physiology_hint", "")' not in execution_slice
     assert 'execution_side_effect_plan.get("role_state_effects", [])' not in execution_slice
-    assert "runtime_state.get_agent_focus_target_id()" not in replica_source
-    assert "runtime_state.get_agent_expression_hint()" not in replica_source
-    assert "runtime_state.get_agent_physiology_hint()" not in replica_source
+    assert "runtime_state.get_agent_focus_target_id()" not in actor_source
+    assert "runtime_state.get_agent_expression_hint()" not in actor_source
+    assert "runtime_state.get_agent_physiology_hint()" not in actor_source
     assert "build_agent_execution_metadata" not in runtime_state_source
     assert "build_agent_role_state_requests" not in runtime_state_source
 
@@ -281,11 +289,11 @@ def test_runtime_state_uses_thin_helpers_for_payload_actor_and_target_fields() -
 
 def test_runtime_state_exposes_generic_payload_string_helper() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func get_payload_string(payload: Dictionary, key: String, fallback: String = \"\") -> String:" in runtime_state_source
-    assert "runtime_state.get_payload_string(payload, \"dialogue_text\")" in replica_source
-    assert "runtime_state.get_payload_string(command_payload, \"command_type\")" in replica_source
+    assert "runtime_state.get_payload_string(payload, \"dialogue_text\")" in actor_source
+    assert "runtime_state.get_payload_string(command_payload, \"command_type\")" in actor_source
 
 
 def test_runtime_state_exposes_execution_payload_intent_frame_helpers() -> None:
@@ -338,29 +346,29 @@ def test_runtime_state_uses_thin_helpers_for_execution_side_effect_and_lookup_fi
 
 
 def test_character_replica_reuses_runtime_state_role_state_mapping() -> None:
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
-    assert "func perform_action(action_name: String) -> void:" in replica_source
-    assert "runtime_state.map_requested_action_to_role_state(" in replica_source
-    assert "dialogue_role_state," in replica_source
-    assert "interaction_role_state," in replica_source
-    assert "focus_role_state," in replica_source
-    assert "attention_role_state," in replica_source
-    assert "func _map_requested_action_to_role_state(" not in replica_source
-    assert "var next_state := _map_requested_action_to_role_state(action_name)" not in replica_source
+    assert "func perform_action(action_name: String) -> void:" in actor_source
+    assert "runtime_state.map_requested_action_to_role_state(" in actor_source
+    assert "dialogue_role_state," in actor_source
+    assert "interaction_role_state," in actor_source
+    assert "focus_role_state," in actor_source
+    assert "attention_role_state," in actor_source
+    assert "func _map_requested_action_to_role_state(" not in actor_source
+    assert "var next_state := _map_requested_action_to_role_state(action_name)" not in actor_source
 
 
 def test_actor_side_intent_frame_consumers_normalize_through_controller_port() -> None:
     motor_source = _read("scripts/character/CharacterMotor.gd")
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
     player_bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "CharacterControllerPortRef.normalize_intent_frame(frame)" in motor_source
     assert "CharacterControllerPortRef.normalize_intent_frame(intent_frame)" in runtime_state_source
     assert "CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)" in player_bridge_source
     assert "CharacterControllerPortRef.normalize_intent_frame(" in runtime_state_source
-    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in replica_source
+    assert "runtime_state.get_execution_payload_intent_frame(payload, actor_id)" in actor_source
 
 
 def test_phase0_player_bridge_reads_normalized_intent_fields_through_controller_port_helpers() -> None:
@@ -397,14 +405,14 @@ def test_character_motor_reads_normalized_intent_fields_through_controller_port_
 
 
 def test_character_replica_uses_shared_presentation_push_helper() -> None:
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
-    assert "func _push_presentation_input(presentation_input: Dictionary) -> void:" in replica_source
-    assert "_push_presentation_input(runtime_state.get_agent_presentation_input())" in replica_source
-    assert "var player_presentation_input := runtime_state.stage_player_shell_pose(" in replica_source
-    assert "_push_presentation_input(player_presentation_input)" in replica_source
-    assert "func _push_agent_presentation_input() -> void:" not in replica_source
-    assert "func _push_player_presentation_input() -> void:" not in replica_source
+    assert "func _push_presentation_input(presentation_input: Dictionary) -> void:" in actor_source
+    assert "_push_presentation_input(runtime_state.get_agent_presentation_input())" in actor_source
+    assert "var player_presentation_input := runtime_state.stage_player_shell_pose(" in actor_source
+    assert "_push_presentation_input(player_presentation_input)" in actor_source
+    assert "func _push_agent_presentation_input() -> void:" not in actor_source
+    assert "func _push_player_presentation_input() -> void:" not in actor_source
 
 
 def test_runtime_state_reads_agent_requested_action_through_shared_helpers() -> None:
@@ -421,61 +429,61 @@ def test_runtime_state_reads_agent_requested_action_through_shared_helpers() -> 
 
 def test_character_replica_reads_target_lookup_fields_through_runtime_state_helpers() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func get_target_lookup_property_name(" in runtime_state_source
     assert "func get_target_lookup_expected(" in runtime_state_source
-    assert "runtime_state.get_target_lookup_property_name(lookup)" in replica_source
-    assert "runtime_state.get_target_lookup_expected(lookup)" in replica_source
-    assert 'lookup.get("property_name", "")' not in replica_source
-    assert 'lookup.get("expected", "")' not in replica_source
+    assert "runtime_state.get_target_lookup_property_name(lookup)" in actor_source
+    assert "runtime_state.get_target_lookup_expected(lookup)" in actor_source
+    assert 'lookup.get("property_name", "")' not in actor_source
+    assert 'lookup.get("expected", "")' not in actor_source
 
 
 def test_character_replica_reads_command_target_position_through_runtime_state_helper() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func get_command_target_position(" in runtime_state_source
-    assert "runtime_state.get_command_target_position(payload)" in replica_source
-    assert 'payload.get("target_position", null)' not in replica_source
+    assert "runtime_state.get_command_target_position(payload)" in actor_source
+    assert 'payload.get("target_position", null)' not in actor_source
 
 
 def test_character_replica_uses_runtime_state_helpers_for_runtime_state_payload_targeting() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func is_runtime_state_payload_for_actor(" in runtime_state_source
-    assert "runtime_state.is_runtime_state_payload_for_actor(payload, actor_id)" in replica_source
-    assert 'payload.get("actor_id", "") != actor_id' not in replica_source
+    assert "runtime_state.is_runtime_state_payload_for_actor(payload, actor_id)" in actor_source
+    assert 'payload.get("actor_id", "") != actor_id' not in actor_source
 
 
 def test_character_replica_uses_runtime_state_helpers_for_dialogue_and_siming_payload_targeting() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func is_dialogue_payload_for_actor(" in runtime_state_source
     assert "func is_siming_output_for_actor(" in runtime_state_source
-    assert "runtime_state.is_dialogue_payload_for_actor(payload, actor_id)" in replica_source
-    assert "runtime_state.is_siming_output_for_actor(payload, actor_id)" in replica_source
-    assert 'payload.get("actor_id", "") == actor_id' not in replica_source
-    assert 'payload.get("target_actor_id", "") == actor_id' not in replica_source
+    assert "runtime_state.is_dialogue_payload_for_actor(payload, actor_id)" in actor_source
+    assert "runtime_state.is_siming_output_for_actor(payload, actor_id)" in actor_source
+    assert 'payload.get("actor_id", "") == actor_id' not in actor_source
+    assert 'payload.get("target_actor_id", "") == actor_id' not in actor_source
 
 
 def test_character_replica_uses_runtime_state_helpers_for_fact_emitter_actor_id_sync() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func should_sync_emitter_actor_id(" in runtime_state_source
-    assert "runtime_state.should_sync_emitter_actor_id(role_state_fact_emitter, actor_id)" in replica_source
-    assert "runtime_state.should_sync_emitter_actor_id(physiology_state_fact_emitter, actor_id)" in replica_source
-    assert 'role_state_fact_emitter.get("actor_id") != actor_id' not in replica_source
-    assert 'physiology_state_fact_emitter.get("actor_id") != actor_id' not in replica_source
+    assert "runtime_state.should_sync_emitter_actor_id(role_state_fact_emitter, actor_id)" in actor_source
+    assert "runtime_state.should_sync_emitter_actor_id(physiology_state_fact_emitter, actor_id)" in actor_source
+    assert 'role_state_fact_emitter.get("actor_id") != actor_id' not in actor_source
+    assert 'physiology_state_fact_emitter.get("actor_id") != actor_id' not in actor_source
 
 
 def test_character_replica_reads_line_of_sight_hit_collider_through_runtime_state_helper() -> None:
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    actor_source = _read("scripts/character/CharacterActor.gd")
 
     assert "func get_line_of_sight_hit_collider(" in runtime_state_source
-    assert "runtime_state.get_line_of_sight_hit_collider(hit)" in replica_source
-    assert 'hit.get("collider", null)' not in replica_source
+    assert "runtime_state.get_line_of_sight_hit_collider(hit)" in actor_source
+    assert 'hit.get("collider", null)' not in actor_source

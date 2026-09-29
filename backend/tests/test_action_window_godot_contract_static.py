@@ -17,7 +17,7 @@ def test_existing_embodied_controller_owns_graph_window_and_rejection_cleanup() 
 
 
 def test_character_replica_camera_switch_is_presentation_only() -> None:
-    source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+    source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
     assert 'presentation_camera_mode := "third_person"' in source
     assert "set_presentation_camera_mode" in source
     assert '"presentation_only": true' in source

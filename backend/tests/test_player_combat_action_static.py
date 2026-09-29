@@ -74,7 +74,7 @@ def test_player_shell_forwards_raw_mouse_buttons_to_combat_bridge() -> None:
 
 
 def test_character_replica_maps_combat_actions_to_role_states() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     feedback_source = (ROOT / "scripts" / "character" / "CharacterRuntimeFeedback.gd").read_text(

@@ -211,7 +211,7 @@ def test_main_demo_bounds_periodic_sampling_before_local_probes() -> None:
 
 
 def test_character_replica_exposes_default_on_actor_local_perception_gate() -> None:
-    source = (SCRIPTS_ROOT / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+    source = (SCRIPTS_ROOT / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
     sample_section = source.split("func _sample_actor_local_perception() -> void:", 1)[1].split(
         "func _first_visible_actor_target", 1
     )[0]

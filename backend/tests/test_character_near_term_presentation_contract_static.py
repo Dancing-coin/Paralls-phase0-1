@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_near_term_presentation_input_contract_is_consumed_at_actor_to_skin_boundary() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     role_skin_source = (ROOT / "scripts" / "character" / "KnightRoleSkin.gd").read_text(

@@ -43,7 +43,7 @@ def test_character_presentation_input_contract_exists() -> None:
 def test_shared_character_actor_scripts_reference_frozen_vocabulary() -> None:
     player_shell_source = _read("scripts/player/PlayerShell.gd")
     bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    replica_source = _read("scripts/character/CharacterActor.gd")
     runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
 
     assert "CharacterControlMode" in player_shell_source

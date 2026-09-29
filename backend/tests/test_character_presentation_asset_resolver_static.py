@@ -58,7 +58,7 @@ def test_main_demo_mounts_the_presentation_asset_resolver() -> None:
 
 def test_resolver_only_applies_approved_bindings_through_the_character_replica_contract() -> None:
     resolver_source = (ROOT / "scripts" / "character" / "CharacterPresentationAssetResolver.gd").read_text(encoding="utf-8")
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
 
     assert "character_presentation_bindings.v1" in resolver_source
     assert 'binding_status", "candidate"' in resolver_source

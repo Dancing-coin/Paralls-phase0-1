@@ -220,6 +220,9 @@ func get_focus_anchor_position() -> Vector3:
 	return global_position + FOCUS_ANCHOR_LOCAL_OFFSET
 
 func perform_action(action_name: String) -> void:
+	_realize_action_request(action_name)
+
+func _realize_action_request(action_name: String) -> void:
 	runtime_state.set_requested_action(action_name)
 	match action_name:
 		"sword_swing":
@@ -240,6 +243,14 @@ func perform_action(action_name: String) -> void:
 	if next_state.is_empty():
 		return
 	_trigger_role_state(next_state, _role_action_duration_for(action_name))
+
+func perform_compatibility_action(intent: Dictionary) -> void:
+	var action_name := str(intent.get("action_id", ""))
+	if action_name.is_empty():
+		return
+	var admission := submit_action_intent(StringName(action_name), StringName(str(intent.get("target_ref", ""))), &"compatibility")
+	if bool(admission.get("accepted", false)):
+		_realize_action_request(action_name)
 
 
 func submit_action_intent(action_id: StringName, target_ref: StringName = &"", source_kind: StringName = &"compatibility") -> Dictionary:
@@ -266,15 +277,27 @@ func submit_action_intent(action_id: StringName, target_ref: StringName = &"", s
 
 
 func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
+	return _play_reviewed_action_atom(action_tag, animation_clip_ref, phase)
+
+func _play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
 	if role_asset_scene == null or not role_asset_scene.has_method("play_reviewed_action_atom"):
 		return {"accepted": false, "played_clip": ""}
 	var result: Variant = role_asset_scene.call("play_reviewed_action_atom", action_tag, animation_clip_ref, phase)
 	return result if result is Dictionary else {"accepted": false, "played_clip": ""}
 
+func play_compatibility_reviewed_action_atom(request: Dictionary) -> Dictionary:
+	return _play_reviewed_action_atom(str(request.get("action_tag", "")), str(request.get("animation_clip_ref", "")), str(request.get("phase", "")))
+
 
 func restore_reviewed_action_playback() -> void:
+	_restore_reviewed_action_playback()
+
+func _restore_reviewed_action_playback() -> void:
 	if role_asset_scene != null and role_asset_scene.has_method("restore_reviewed_action_playback"):
 		role_asset_scene.call("restore_reviewed_action_playback")
+
+func restore_compatibility_reviewed_action_playback() -> void:
+	_restore_reviewed_action_playback()
 
 
 func begin_right_hand_reach(anchor_world_position: Vector3, tolerance_m: float) -> Dictionary:
@@ -322,9 +345,19 @@ func submit_control_intent(intent: Dictionary) -> void:
 	if normalized.has("gait"):
 		runtime_state.player_gait = str(normalized.get("gait", "idle"))
 
-func begin_embodied_control_frame(world_position: Vector3, move_direction: Vector3, look_target: Vector3, is_grounded: bool, wants_run: bool, gait_name: String, stance_name: String, jump_type: String) -> void:
-	var control_intent := CharacterControlIntentRef.create(move_direction, wants_run, StringName(jump_type), &"", &"player", &"")
-	submit_control_intent(control_intent)
+func apply_control_intent(intent: Dictionary, pose: Dictionary = {}) -> void:
+	submit_control_intent(intent)
+	_stage_embodied_control_frame(pose, intent)
+
+func _stage_embodied_control_frame(pose: Dictionary, intent: Dictionary) -> void:
+	var world_position: Vector3 = pose.get("world_position", global_position)
+	var move_direction: Vector3 = intent.get("move_direction", Vector3.ZERO)
+	var look_target: Vector3 = pose.get("look_target", world_position - global_basis.z)
+	var is_grounded := bool(pose.get("is_grounded", false))
+	var gait_name := str(intent.get("gait", "idle"))
+	var stance_name := str(intent.get("stance", "stand"))
+	var jump_type := str(intent.get("jump_type", "none"))
+	var wants_run := bool(intent.get("wants_run", false))
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
 	player_control_move_direction = Vector3(move_direction.x, 0.0, move_direction.z)
@@ -352,6 +385,13 @@ func begin_embodied_control_frame(world_position: Vector3, move_direction: Vecto
 	elif hold_timer <= 0.0 and focus_attention_posture_timer <= 0.0:
 		posture_target = Vector3.ZERO
 	set_look_target(look_target)
+
+func begin_embodied_control_frame(world_position: Vector3, move_direction: Vector3, look_target: Vector3, is_grounded: bool, wants_run: bool, gait_name: String, stance_name: String, jump_type: String) -> void:
+	var control_intent := CharacterControlIntentRef.create(move_direction, wants_run, StringName(jump_type), &"", &"player", &"")
+	control_intent["gait"] = gait_name
+	control_intent["stance"] = stance_name
+	submit_control_intent(control_intent)
+	_stage_embodied_control_frame({"world_position": world_position, "look_target": look_target, "is_grounded": is_grounded}, control_intent)
 
 func consume_player_root_motion_request(delta: float) -> Vector3:
 	if not player_shell_active:
@@ -411,6 +451,18 @@ func consume_player_root_motion_request(delta: float) -> Vector3:
 func apply_embodied_pose_sync(world_position: Vector3, planar_velocity: Vector3, look_target: Vector3, is_grounded: bool, player_motion_state: Dictionary = {}) -> void:
 	var control_intent := CharacterControlIntentRef.create(planar_velocity, planar_velocity.length() > player_run_speed_threshold, StringName(runtime_state.get_player_jump_type()), StringName(runtime_state.get_requested_action()), &"player", &"")
 	submit_control_intent(control_intent)
+	_stage_embodied_pose_sync({"world_position": world_position, "planar_velocity": planar_velocity, "look_target": look_target, "is_grounded": is_grounded, "player_motion_state": player_motion_state})
+
+func apply_compatibility_pose_sync(intent: Dictionary, pose: Dictionary) -> void:
+	submit_control_intent(intent)
+	_stage_embodied_pose_sync(pose)
+
+func _stage_embodied_pose_sync(pose: Dictionary) -> void:
+	var world_position: Vector3 = pose.get("world_position", global_position)
+	var planar_velocity: Vector3 = pose.get("planar_velocity", Vector3.ZERO)
+	var look_target: Vector3 = pose.get("look_target", world_position - global_basis.z)
+	var is_grounded := bool(pose.get("is_grounded", false))
+	var player_motion_state: Dictionary = pose.get("player_motion_state", {})
 	driver_mode = DriverMode.PLAYER
 	player_shell_active = true
 	var current_stance: String = runtime_state.get_player_stance()
@@ -1207,6 +1259,9 @@ func _apply_visual_config() -> void:
 	_apply_role_asset_config()
 
 func apply_presentation_asset_binding(binding: Dictionary) -> bool:
+	return _apply_presentation_asset_binding(binding)
+
+func _apply_presentation_asset_binding(binding: Dictionary) -> bool:
 	if str(binding.get("actor_id", "")) != actor_id:
 		return false
 	if str(binding.get("binding_status", "")) != "approved":
@@ -1222,6 +1277,9 @@ func apply_presentation_asset_binding(binding: Dictionary) -> bool:
 	_apply_role_asset_config()
 	_bus_log("presentation_asset_binding_applied:%s" % actor_id)
 	return true
+
+func apply_compatibility_presentation_asset_binding(binding: Dictionary) -> bool:
+	return _apply_presentation_asset_binding(binding)
 
 func _mount_manifest_role_scene(role_scene_ref: String) -> bool:
 	if not role_scene_ref.begins_with("res://") or role_asset_root == null:

@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_character_replica_remains_the_actor_runtime_shell() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

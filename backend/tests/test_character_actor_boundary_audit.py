@@ -6,7 +6,7 @@ def test_character_actor_boundary_audit() -> None:
     scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
         encoding="utf-8"
     )
-    character_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     esm_source = (project_root / "backend" / "app" / "services" / "esm_service.py").read_text(
@@ -37,7 +37,7 @@ def test_character_actor_runtime_models_do_not_keep_legacy_presentation_command(
 
 def test_character_replica_still_behaves_as_local_realization_host_not_semantics_owner() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

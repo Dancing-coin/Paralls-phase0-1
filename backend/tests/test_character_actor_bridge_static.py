@@ -9,7 +9,7 @@ def test_backend_bridge_exposes_character_agent_output_signal_chain() -> None:
     bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
@@ -45,7 +45,7 @@ def test_backend_bridge_and_replica_accept_actor_execution_ingress_payload() -> 
     bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
@@ -68,7 +68,7 @@ def test_backend_bridge_and_replica_accept_actor_execution_ingress_payload() -> 
 
 def test_character_replica_execution_handler_preserves_payload_string_values() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    replica_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

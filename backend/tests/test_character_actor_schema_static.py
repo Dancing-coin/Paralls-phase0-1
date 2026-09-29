@@ -16,7 +16,7 @@ def test_character_actor_schema_is_shared_across_motor_shell_and_presentation() 
     player_shell_source = (ROOT / "scripts" / "player" / "PlayerShell.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     knight_role_skin_source = (ROOT / "scripts" / "character" / "KnightRoleSkin.gd").read_text(
@@ -32,7 +32,7 @@ def test_character_actor_schema_is_shared_across_motor_shell_and_presentation() 
 
 
 def test_motion_state_and_presentation_input_are_normalized_through_shared_helpers() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     runtime_state_source = (ROOT / "scripts" / "character" / "CharacterRuntimeState.gd").read_text(

@@ -10,7 +10,7 @@ def test_root_motion_and_hybrid_modes_remain_motor_owned() -> None:
     motor_source = (ROOT / "scripts" / "character" / "CharacterMotor.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     skin_source = (ROOT / "scripts" / "character" / "KnightRoleSkin.gd").read_text(
@@ -41,7 +41,7 @@ def test_phase0_fallback_locomotion_uses_the_motor_and_reports_real_directional_
     motor_source = (ROOT / "scripts" / "character" / "CharacterMotor.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     controller_source = (ROOT / "scripts" / "phase0" / "MainDemoController.gd").read_text(
@@ -68,7 +68,7 @@ def test_motor_reports_collision_resolved_velocity_in_local_axes() -> None:
 
 
 def test_npc_lease_uses_world_axes_while_proposal_keeps_local_intent() -> None:
-    source = (ROOT / 'scripts/character/CharacterReplica.gd').read_text(encoding='utf-8')
+    source = (ROOT / 'scripts/character/CharacterActor.gd').read_text(encoding='utf-8')
     movement = source.split('func _update_movement(', 1)[1].split('func run_speed_for_actor', 1)[0]
     assert '"move_local": normalized_move' in movement
     assert '\n\t\tnormalized_move,' not in movement.split('var lease :=', 1)[1]

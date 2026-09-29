@@ -13,7 +13,7 @@ def _read(relative_path: str) -> str:
 def test_human_agent_and_program_paths_use_the_adapter_family() -> None:
     player_shell_source = _read("scripts/player/PlayerShell.gd")
     player_bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    replica_source = _read("scripts/character/CharacterActor.gd")
 
     assert "HumanControllerAdapter" in player_shell_source
     assert "build_intent_frame" in player_shell_source
@@ -30,7 +30,7 @@ def test_human_agent_and_program_paths_use_the_adapter_family() -> None:
 def test_shared_ingress_keeps_control_sources_on_one_actor_facing_family() -> None:
     player_shell_source = _read("scripts/player/PlayerShell.gd")
     player_bridge_source = _read("scripts/player/Phase0PlayerBridge.gd")
-    replica_source = _read("scripts/character/CharacterReplica.gd")
+    replica_source = _read("scripts/character/CharacterActor.gd")
 
     assert '"controller_source": "human"' not in player_shell_source
     assert '"controller_source": "program"' not in player_bridge_source

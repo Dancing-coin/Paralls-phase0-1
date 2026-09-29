@@ -1574,7 +1574,7 @@ def test_system_l1_contains_role_state_fact_emitter() -> None:
 
 def test_character_replica_runtime_wires_role_state_fact_emitter() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    character_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
@@ -1588,7 +1588,7 @@ def test_character_replica_runtime_wires_role_state_fact_emitter() -> None:
 
 def test_character_replica_runtime_wires_physiology_state_fact_emitter() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    character_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
@@ -1691,7 +1691,7 @@ def test_backend_bridge_exposes_character_agent_output_signal_chain() -> None:
     bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
         encoding="utf-8"
     )
-    character_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

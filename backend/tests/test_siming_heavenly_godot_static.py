@@ -63,7 +63,7 @@ def test_probe_marks_restart_only_after_staging_request_is_observed() -> None:
 
 
 def test_character_perception_forward_matches_godot_negative_z_front() -> None:
-    source = Path("scripts/character/CharacterReplica.gd").read_text(encoding="utf-8")
+    source = Path("scripts/character/CharacterActor.gd").read_text(encoding="utf-8")
 
     forward_helper = source.split("func get_embodied_forward_vector() -> Vector3:", 1)[1].split(
         "\nfunc ", 1
