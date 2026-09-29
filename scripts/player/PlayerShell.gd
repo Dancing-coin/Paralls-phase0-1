@@ -112,6 +112,7 @@ func _physics_process(delta: float) -> void:
 	if external_motion_driver and external_motion_driver.has_method("before_player_shell_move"):
 		external_motion_driver.before_player_shell_move(delta)
 	var actor := get_character_actor()
+	_sync_presentation_anchor_to_actor(actor)
 	if actor and actor.has_method("get_locomotion_status"):
 		_publish_motion_state(actor.get_locomotion_status())
 	else:
@@ -174,24 +175,46 @@ func get_numeric_setting(property_name: StringName, fallback: float) -> float:
 	return fallback
 
 func get_planar_velocity() -> Vector3:
+	var actor := get_character_actor()
+	if actor is CharacterBody3D:
+		var actor_velocity := (actor as CharacterBody3D).velocity
+		return Vector3(actor_velocity.x, 0.0, actor_velocity.z)
 	return Vector3(velocity.x, 0.0, velocity.z)
 
 func is_grounded_state() -> bool:
+	var actor := get_character_actor()
+	if actor is CharacterBody3D:
+		return (actor as CharacterBody3D).is_on_floor()
 	return is_on_floor()
 
 func get_body_position() -> Vector3:
+	var actor := get_character_actor()
+	if actor is Node3D:
+		return (actor as Node3D).global_position
 	return global_position
 
 func get_vertical_velocity() -> float:
+	var actor := get_character_actor()
+	if actor is CharacterBody3D:
+		return (actor as CharacterBody3D).velocity.y
 	return velocity.y
 
 func get_character_actor() -> Node:
 	return get_node_or_null("CharacterActor")
 
 func get_visual_forward() -> Vector3:
+	var actor := get_character_actor()
+	if actor is Node3D:
+		return -((actor as Node3D).global_basis.z).normalized()
 	if visual_root:
 		return -(visual_root.global_basis.z).normalized()
 	return -(global_basis.z).normalized()
+
+func _sync_presentation_anchor_to_actor(actor: Node) -> void:
+	if not (actor is Node3D) or cam_holder == null:
+		return
+	# Camera/UI presentation follows the actor; CharacterMotor remains the only body writer.
+	cam_holder.global_position = (actor as Node3D).global_position + Vector3(0.0, 1.0, 0.0)
 
 func set_forced_control(move_local: Vector2, wants_run: bool) -> void:
 	forced_move_local = move_local.limit_length(1.0)

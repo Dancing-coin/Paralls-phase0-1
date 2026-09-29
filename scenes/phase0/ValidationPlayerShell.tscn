@@ -44,6 +44,7 @@ script = ExtResource("5_relay")
 
 [node name="ArchiveDoorEmbodiedActionHost" type="Node" parent="."]
 script = ExtResource("6_door_host")
+character_replica_path = NodePath("../CharacterActor")
 
 [node name="CameraOcclusionFader" type="Node" parent="."]
 script = ExtResource("4_occlusion")

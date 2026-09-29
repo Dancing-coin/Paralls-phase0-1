@@ -715,9 +715,9 @@ func _probe_gait_segment(gait_name: String, wants_run: bool, crouch_enabled: boo
 	var expected_forward := _get_character_visual_forward()
 	player_input_bridge.set_forced_player_motion(expected_forward, wants_run)
 	await get_tree().create_timer(0.18).timeout
-	var start_position := player.global_position
+	var start_position := _get_player_position()
 	await get_tree().create_timer(duration).timeout
-	var end_position := player.global_position
+	var end_position := _get_player_position()
 	player_input_bridge.clear_forced_player_motion()
 	var distance := start_position.distance_to(end_position)
 	var delta_vector := end_position - start_position
@@ -752,21 +752,21 @@ func _probe_jump_variant(jump_type: String, wants_run: bool) -> void:
 	if wants_run:
 		Input.action_press(run_action)
 	await get_tree().create_timer(0.14).timeout
-	var start_position := player.global_position
+	var start_position := _get_player_position()
 	var apex_height := start_position.y
 	Input.action_press(jump_action)
 	await get_tree().physics_frame
 	Input.action_release(jump_action)
 	var deadline := Time.get_ticks_msec() + 1400
 	while Time.get_ticks_msec() < deadline:
-		apex_height = max(apex_height, player.global_position.y)
-		if player.is_on_floor() and player.global_position.y <= start_position.y + 0.02 and Time.get_ticks_msec() > deadline - 1000:
+		apex_height = max(apex_height, _get_player_position().y)
+		if player.is_grounded_state() and _get_player_position().y <= start_position.y + 0.02 and Time.get_ticks_msec() > deadline - 1000:
 			break
 		await get_tree().physics_frame
 	Input.action_release(move_forward_action)
 	if wants_run:
 		Input.action_release(run_action)
-	var end_position := player.global_position
+	var end_position := _get_player_position()
 	var horizontal_distance := Vector2(end_position.x - start_position.x, end_position.z - start_position.z).length()
 	_bus_log(
 		"jump_probe:type=%s run=%s apex=%.3f distance=%.3f" % [
@@ -928,12 +928,13 @@ func _force_focus_target(target: Node3D) -> void:
 # PROBE_ONLY_AUTOTEST_POSE: camera/focus setup for Phase 0 evidence; never called by production flow.
 func _orient_player_toward(target_position: Vector3) -> void:
 	var camera_holder := _get_camera_holder()
-	var look_target := Vector3(target_position.x, player.global_position.y, target_position.z)
-	var facing := look_target - player.global_position
+	var look_target := Vector3(target_position.x, _get_player_position().y, target_position.z)
+	var facing := look_target - _get_player_position()
 	facing.y = 0.0
 	if facing.length() > 0.001:
 		var yaw := atan2(facing.x, facing.z)
-		player.rotation.y = yaw
+		if player_input_bridge != null and player_input_bridge.has_method("set_forced_facing_yaw"):
+			player_input_bridge.set_forced_facing_yaw(yaw)
 		if camera_holder:
 			camera_holder.rotation.y = yaw
 	_update_focus_target()
@@ -1005,6 +1006,11 @@ func _get_bus() -> Node:
 
 func _get_bridge() -> Node:
 	return get_node_or_null("/root/BackendBridge")
+
+func _get_player_position() -> Vector3:
+	if player != null and player.has_method("get_body_position"):
+		return player.get_body_position()
+	return player.global_position if player != null else Vector3.ZERO
 
 func _get_player_actor() -> Node:
 	if player != null and player.has_method("get_character_actor"):
@@ -1500,7 +1506,7 @@ func _get_focus_origin() -> Vector3:
 		var anchor: Variant = player_input_bridge.get_control_anchor_position()
 		if anchor is Vector3:
 			return anchor + Vector3(0.0, 1.0, 0.0)
-	return player.global_position + Vector3(0.0, 1.0, 0.0)
+	return _get_player_position() + Vector3(0.0, 1.0, 0.0)
 
 func _get_focus_forward() -> Vector3:
 	var view_actor := _get_view_origin_actor_node()
