@@ -24,6 +24,9 @@ def test_retirement_matrix_accounts_for_phase0_provider_and_integration_callers(
     ):
         assert caller in rows
         assert rows[caller]["compatibility_allowed"] is False
+    route = rows["backend/app/models/embodied_interaction.py"]
+    assert route["compatibility_allowed"] is False
+    assert route["category"] == "authority"
 
 
 def test_character_replica_is_compatibility_host_and_actor_owns_behavior():

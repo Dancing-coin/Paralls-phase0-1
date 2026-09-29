@@ -6,11 +6,11 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
 [
   {
     "caller_path": "backend/app/models/embodied_interaction.py",
-    "category": "compatibility",
-    "current_state": "legacy_route_literal",
-    "target_entry": "CharacterActor semantic route",
-    "owner_lane": "Compatibility",
-    "compatibility_allowed": true,
+    "category": "authority",
+    "current_state": "active_legacy_route",
+    "target_entry": "embodied_controller_v1",
+    "owner_lane": "Authority/evidence",
+    "compatibility_allowed": false,
     "evidence_command": "python scripts/verification/harness.py --profile character-replica-retirement"
   },
   {

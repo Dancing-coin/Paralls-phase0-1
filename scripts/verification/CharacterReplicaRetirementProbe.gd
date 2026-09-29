@@ -26,6 +26,7 @@ static func inspect() -> Dictionary:
 	var script_references := 0
 	var provider_lookups := 0
 	var runtime_lookups := 0
+	var backend_references := 0
 	var movement_writers: Array[Dictionary] = []
 	var animation_writers: Array[Dictionary] = []
 	var compatibility_sites: Array[Dictionary] = []
@@ -39,15 +40,16 @@ static func inspect() -> Dictionary:
 		if not registered.has(path):
 			unregistered.append(path)
 		if path.ends_with(".tscn") and path != "scenes/phase0/CharacterReplica.tscn" and path != "scenes/phase0/ValidationCharacterReplica.tscn":
-			scene_instances += source.count("CharacterReplica.tscn") + source.count("ValidationCharacterReplica.tscn")
-		var category := str(registered[path].get("category", "")) if registered.has(path) else ""
-		if path.ends_with(".gd") and not category in ["compatibility", "migration_test", "verification", "comment_only"]:
-			script_references += source.count("CharacterReplica")
+			scene_instances += _count_scene_instances(source)
+		if path.begins_with("backend/app/") and path.ends_with(".py"):
+			backend_references += source.count("legacy_character_replica")
+		if path.ends_with(".gd") and not path in ["scripts/character/CharacterReplica.gd", "scripts/presentation/character/CharacterReplica.gd", "scripts/verification/CharacterReplicaRetirementProbe.gd"]:
+			script_references += _count_concrete_refs(source)
 			provider_lookups += source.count('get_node_or_null("CharacterReplica")') + source.count('get_node_or_null("PlayerCharacter/CharacterReplica")')
 			runtime_lookups += source.count('get_node_or_null("CharacterReplica")') + source.count('get_node_or_null("PlayerCharacter/CharacterReplica")') + source.count('NodePath("../CharacterReplica")')
 			_collect_compatibility_calls(path, source, compatibility_sites)
 	for path in paths:
-		if not path.ends_with(".gd") or path.begins_with("scripts/verification/"):
+		if not path.ends_with(".gd") or path == "scripts/verification/CharacterReplicaRetirementProbe.gd":
 			continue
 		var source := FileAccess.get_file_as_string("res://%s" % path)
 		_collect_forbidden_calls(path, source, movement_writers, animation_writers)
@@ -58,6 +60,7 @@ static func inspect() -> Dictionary:
 		"runtime_script_references": script_references,
 		"runtime_replica_lookups": runtime_lookups,
 		"provider_lookups": provider_lookups,
+		"backend_production_references": backend_references,
 		"direct_body_writers_outside_motor": movement_writers.size(),
 		"direct_body_writer_sites": movement_writers,
 		"direct_animation_writers_outside_controller": animation_writers.size(),
@@ -66,8 +69,38 @@ static func inspect() -> Dictionary:
 		"compatibility_call_sites": compatibility_sites,
 		"unregistered_callers": unregistered,
 		"inventory_passed": unregistered.is_empty(),
-		"passed": unregistered.is_empty() and scene_instances == 0 and script_references == 0 and runtime_lookups == 0 and compatibility_sites.is_empty() and movement_writers.is_empty() and animation_writers.is_empty(),
+		"passed": unregistered.is_empty() and scene_instances == 0 and script_references == 0 and runtime_lookups == 0 and provider_lookups == 0 and backend_references == 0 and compatibility_sites.is_empty() and movement_writers.is_empty() and animation_writers.is_empty(),
 	}
+
+
+static func _count_scene_instances(source: String) -> int:
+	var resource_ids := {}
+	var id_pattern := RegEx.new()
+	id_pattern.compile('id="([^"]+)"')
+	var instance_pattern := RegEx.new()
+	instance_pattern.compile('instance=ExtResource\\("([^"]+)"\\)')
+	for line in source.split("\n"):
+		if line.begins_with("[ext_resource") and (line.contains('path="res://scenes/phase0/CharacterReplica.tscn"') or line.contains('path="res://scenes/phase0/ValidationCharacterReplica.tscn"')):
+			var match_result := id_pattern.search(line)
+			if match_result != null:
+				resource_ids[match_result.get_string(1)] = true
+	var count := 0
+	for line in source.split("\n"):
+		if line.begins_with("[node "):
+			var match_result := instance_pattern.search(line)
+			if match_result != null and resource_ids.has(match_result.get_string(1)):
+				count += 1
+	return count
+
+
+static func _count_concrete_refs(source: String) -> int:
+	var pattern := RegEx.new()
+	pattern.compile("CharacterReplica(?!RetirementProbe)")
+	var count := 0
+	for line in source.split("\n"):
+		if not line.strip_edges().begins_with("#"):
+			count += pattern.search_all(line).size()
+	return count
 
 
 static func _matrix_rows(source: String) -> Variant:

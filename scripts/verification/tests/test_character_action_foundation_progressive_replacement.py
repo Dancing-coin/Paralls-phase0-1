@@ -5,6 +5,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[3]
 BASELINE = ROOT / "docs" / "character" / "action-foundation-series-baseline-2026-09-28.md"
 PROBE = ROOT / "scripts" / "verification" / "CharacterActionFoundationBaselineProbe.gd"
@@ -62,7 +64,10 @@ def test_runtime_caller_requires_explicit_migration_owner() -> None:
             assert row["category"] in {"compatibility", "migration_test"}, row
         if row["category"] not in {"compatibility", "migration_test", "verification", "comment_only"}:
             assert row["owner_lane"] not in {"", "none"}, row
-            assert str(row["target_entry"]).startswith("CharacterActor"), row
+            if row["category"] == "authority":
+                assert row["target_entry"] == "embodied_controller_v1", row
+            else:
+                assert str(row["target_entry"]).startswith("CharacterActor"), row
             assert row["compatibility_allowed"] is False, row
 
 
@@ -79,6 +84,10 @@ def test_retirement_verifier_fails_closed_on_missing_marker_digest_or_active_cal
     assert "source_digest_mismatch" in stale["failed_checks"]
     active = retirement_verifier.evaluate(ROOT, {**marker, "active_scene_instances": 1}, True)
     assert "nonzero_active_scene_instances" in active["failed_checks"]
+    stale_matrix = retirement_verifier.evaluate(ROOT, {**marker, "matrix_digest": "stale"}, True)
+    assert "matrix_digest_mismatch" in stale_matrix["failed_checks"]
+    backend_route = retirement_verifier.evaluate(ROOT, {**marker, "backend_production_references": 1}, True)
+    assert "nonzero_backend_production_references" in backend_route["failed_checks"]
 
 
 def test_retirement_verifier_rejects_unregistered_runtime_caller(tmp_path: Path) -> None:
@@ -93,6 +102,39 @@ def test_retirement_verifier_rejects_unregistered_runtime_caller(tmp_path: Path)
     result = retirement_verifier.evaluate(tmp_path, None, True)
     assert result["unregistered_callers"] == ["scripts/NewCaller.gd"]
     assert "unregistered_callers" in result["failed_checks"]
+
+
+def test_retirement_matrix_rejects_mislabeled_comment_and_production_route(tmp_path: Path) -> None:
+    matrix = tmp_path / "docs/character/character-replica-retirement-matrix-2026-09-29.md"
+    matrix.parent.mkdir(parents=True)
+    source = tmp_path / "scripts/character/GenericRoleSkin.gd"
+    source.parent.mkdir(parents=True)
+    source.write_text('var replica = get_node_or_null("CharacterReplica")\n', encoding="utf-8")
+    row = {
+        "caller_path": "scripts/character/GenericRoleSkin.gd",
+        "category": "comment_only", "current_state": "comment_only",
+        "target_entry": "CharacterActor", "owner_lane": "Contract",
+        "compatibility_allowed": False, "evidence_command": "pytest",
+    }
+    matrix.write_text("```json\n" + json.dumps([row]) + "\n```\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="comment_only"):
+        retirement_verifier.matrix_rows(tmp_path)
+    row.update(caller_path="backend/app/models/embodied_interaction.py", category="compatibility", compatibility_allowed=True)
+    matrix.write_text("```json\n" + json.dumps([row]) + "\n```\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="compatibility"):
+        retirement_verifier.matrix_rows(tmp_path)
+    matrix.unlink()
+    missing = retirement_verifier.evaluate(tmp_path, None, True)
+    assert missing["overall_character_replica_retirement_passed"] is False
+    assert missing["matrix_digest"] == ""
+
+
+def test_probe_tracks_verified_runtime_writers_and_scene_instance_nodes() -> None:
+    probe = (ROOT / "scripts/verification/CharacterReplicaRetirementProbe.gd").read_text(encoding="utf-8")
+    assert "_count_scene_instances" in probe
+    assert "instance=ExtResource" in probe
+    assert 'path.begins_with("scripts/verification/")' not in probe
+    assert "backend_production_references" in probe
 
 
 def test_only_character_motor_owns_move_and_slide() -> None:

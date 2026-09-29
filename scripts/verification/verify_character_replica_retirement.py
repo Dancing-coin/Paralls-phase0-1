@@ -18,6 +18,12 @@ from common import (
 
 MATRIX = "docs/character/character-replica-retirement-matrix-2026-09-29.md"
 MARKER = "character_replica_retirement_probe:"
+SHELL_PATHS = {
+    "scripts/character/CharacterReplica.gd",
+    "scripts/presentation/character/CharacterReplica.gd",
+    "scenes/phase0/CharacterReplica.tscn",
+    "scenes/phase0/ValidationCharacterReplica.tscn",
+}
 STATIC_TESTS = [
     "scripts/verification/tests/test_character_action_foundation_progressive_replacement.py",
     "backend/tests/test_character_replica_convergence_static.py",
@@ -59,6 +65,21 @@ def matrix_rows(root: Path) -> list[dict[str, object]]:
     names = [row["caller_path"] for row in rows]
     if len(names) != len(set(names)):
         raise ValueError("duplicate caller matrix row")
+    for row in rows:
+        name = str(row["caller_path"])
+        category = row["category"]
+        allowed = row["compatibility_allowed"]
+        if category == "compatibility" and name not in SHELL_PATHS:
+            raise ValueError(f"invalid compatibility classification: {name}")
+        if category == "comment_only":
+            path = root / name
+            if path.exists():
+                active_lines = [line for line in path.read_text(encoding="utf-8").splitlines()
+                                if not line.lstrip().startswith("#")]
+                if "CharacterReplica" in "\n".join(active_lines) or "legacy_character_replica" in "\n".join(active_lines):
+                    raise ValueError(f"invalid comment_only classification: {name}")
+        if allowed and category not in {"compatibility", "migration_test"}:
+            raise ValueError(f"invalid compatibility allowance: {name}")
     return rows
 
 
@@ -84,6 +105,7 @@ def evaluate(root: Path, marker: dict[str, object] | None, static_passed: bool) 
             "active_scene_instances", "runtime_script_references", "runtime_replica_lookups",
             "provider_lookups", "direct_body_writers_outside_motor",
             "direct_animation_writers_outside_controller", "compatibility_call_count",
+            "backend_production_references",
         ):
             if marker.get(key) != 0:
                 errors.append(f"nonzero_{key}")
