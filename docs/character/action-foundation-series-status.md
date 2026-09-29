@@ -53,9 +53,9 @@ also passes the Godot resource-path check.
 
 Fresh runtime evidence:
 
-- `D:\CurrentActionFoundationEvidence-street-final` — `street-combat` passed.
-- `D:\CurrentActionFoundationEvidence-agent-final` — `character-agent-execution` passed.
-- `D:\CurrentActionFoundationEvidence-retirement-final` — retirement profile passed; source digest `bfc058bb32f4ee7ae2c4794ead0c4bffe2fcd233a35f34893dc809a59be999ac`.
+- `D:\CurrentActionFoundationEvidence-street-task9-final` — `street-combat` passed.
+- `D:\CurrentActionFoundationEvidence-agent-task9-final` — `character-agent-execution` passed.
+- `D:\CurrentActionFoundationEvidence-retirement-task9-final` — retirement profile passed; source digest `330e10093158228d41213142f6933a43ef991a2a0b8bbc8f499ba34313ec2f5b`.
 - `D:\CurrentActionFoundationEvidence-pytest-final.stdout.log` — full pytest: `7652 passed, 56 failed, 2 skipped, 103 warnings`.
 
 The aggregate `--profile all` run reached `phase0`, where the MainDemo

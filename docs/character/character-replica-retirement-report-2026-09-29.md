@@ -22,14 +22,14 @@ python scripts/verification/harness.py --profile character-replica-retirement
 python -m pytest -q backend/tests/test_character_replica_convergence_static.py backend/tests/test_character_actor_boundary_audit.py
 ```
 
-source_digest: `bfc058bb32f4ee7ae2c4794ead0c4bffe2fcd233a35f34893dc809a59be999ac`
+source_digest: `330e10093158228d41213142f6933a43ef991a2a0b8bbc8f499ba34313ec2f5b`
 matrix_digest: `66c63f6f3a118a34b5e4c07a5ae729b3091132248f6bf23660a771e2d11a54a6`
 
 Fresh exported evidence:
 
-- `D:\CurrentActionFoundationEvidence-retirement-final`
-- `D:\CurrentActionFoundationEvidence-street-final`
-- `D:\CurrentActionFoundationEvidence-agent-final`
+- `D:\CurrentActionFoundationEvidence-retirement-task9-final`
+- `D:\CurrentActionFoundationEvidence-street-task9-final`
+- `D:\CurrentActionFoundationEvidence-agent-task9-final`
 
 The retired shell, presentation wrapper, forwarding probe, and validation
 scenes are absent from the active source tree. The root-motion policy remains
