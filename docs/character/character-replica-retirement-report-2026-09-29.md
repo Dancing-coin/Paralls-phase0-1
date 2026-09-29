@@ -22,8 +22,18 @@ python scripts/verification/harness.py --profile character-replica-retirement
 python -m pytest -q backend/tests/test_character_replica_convergence_static.py backend/tests/test_character_actor_boundary_audit.py
 ```
 
-source_digest: `3e0cce9e71092ceefe37b733f7fce574c2e46fcd343e124ed50fbc21bb708df9`
+source_digest: `bfc058bb32f4ee7ae2c4794ead0c4bffe2fcd233a35f34893dc809a59be999ac`
 matrix_digest: `66c63f6f3a118a34b5e4c07a5ae729b3091132248f6bf23660a771e2d11a54a6`
+
+Fresh exported evidence:
+
+- `D:\CurrentActionFoundationEvidence-retirement-final`
+- `D:\CurrentActionFoundationEvidence-street-final`
+- `D:\CurrentActionFoundationEvidence-agent-final`
+
+The retired shell, presentation wrapper, forwarding probe, and validation
+scenes are absent from the active source tree. The root-motion policy remains
+`hold` / zero-envelope until measured calibration is available.
 
 ## Caller disposition
 
@@ -81,9 +91,9 @@ matrix_digest: `66c63f6f3a118a34b5e4c07a5ae729b3091132248f6bf23660a771e2d11a54a6
 | `scripts/interaction/ArchiveDoorEmbodiedActionHost.gd` | `CharacterActor capability entry` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
 | `scripts/phase0/MainDemoController.gd` | `CharacterActor player entry` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
 | `scripts/player/PlayerShell.gd` | `CharacterActor player entry` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
-| `scripts/presentation/character/CharacterReplica.gd` | `CharacterActor scene or forwarding shell` | `python -m pytest -q scripts/verification/tests/test_character_action_foundation_progressive_replacement.py backend/tests/test_character_replica_convergence_static.py` | retired |
+| `scripts/presentation/character/CharacterReplica.gd` | `orphan presentation wrapper` | `python scripts/verification/harness.py --profile character-replica-retirement` | deleted |
 | `scripts/street_combat/StreetCombatDemo.gd` | `CharacterActor runtime probe` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
-| `scripts/verification/CharacterReplicaForwardingProbe.gd` | `CharacterActor actor-only verification probe (retire in Task 7)` | `python -m pytest -q backend/tests/test_character_replica_forwarding_contract.py` | retired |
+| `scripts/verification/CharacterReplicaForwardingProbe.gd` | `obsolete compatibility probe` | `python scripts/verification/harness.py --profile character-replica-retirement` | deleted |
 | `scripts/verification/CharacterReplicaRetirementProbe.gd` | `CharacterActor runtime probe` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
 | `scripts/verification/EmbodiedActionPlaybackProbe.gd` | `CharacterActor semantic route` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
 | `scripts/verification/EmbodiedSkeletalRuntimeProbe.gd` | `CharacterActor runtime probe` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |

@@ -1,8 +1,8 @@
 # Character Action Foundation Current State
 
-Date: `2026-09-29`
+Date: `2026-09-30`
 
-Status: `Task 10 documentation reconciliation complete but affected by the Task 9 external blocker; Task 9 remains blocked`
+Status: `CharacterReplica retired; Task 9 repository-wide closure remains blocked`
 
 The 2026-09-28 pilot is landed as a StreetCombatDemo result. This ledger keeps
 the pilot evidence separate from the remaining series gates. The 2026-09-28
@@ -31,12 +31,12 @@ The external ArchiveDoor dependency now has fresh success, distance, revision,
 and stance evidence from live backend and Godot. The focused transport timeout
 was a test fixture outside authority range; the Godot success/revision failure
 was a reversed forced-motion Z conversion, corrected with a red/green test.
-The interpreter was aligned from `websockets 12.0`
-to the declared `17.1`, so the required full pytest run now completes
-collection; it ends `7671 collected, 7621 passed, 48 failed, 2 skipped, 103
-warnings` in the previous complete run. Repository-wide failures remain a
-separate closure blocker; the repaired ArchiveDoor profile does not replace
-the required full pytest result.
+The fresh full pytest run completed with `7652 passed, 56 failed, 2 skipped,
+103 warnings`. Repository-wide failures remain a separate closure blocker; the
+green StreetCombatDemo, agent, and retirement profiles do not replace the
+required aggregate result. The fresh `--profile all` run reached the Phase 0
+MainDemo autotest but observed repeated `backend_closed` markers without the
+required completion marker.
 
 ### Final boundary
 
@@ -47,8 +47,9 @@ then owned by `RoleAnimationController` and `MotionContributionComposer`, with
 `CharacterMotor` as the only body movement, collision, root-consumption, and
 `move_and_slide()` owner. Authority results can update projection and recovery;
 local callers cannot declare hit, damage, ammo, projectile, inventory, or world
-truth. `CharacterReplica` remains a compatibility forwarding shell, with no
-active concrete caller in StreetCombatDemo.
+truth. `CharacterActor` is the sole active runtime host. The zero-caller gate passed
+and the `CharacterReplica` compatibility shell plus obsolete validation scenes
+were deleted in Task 8.
 
 ## 2026-09-28 Series Reconciliation
 
@@ -202,15 +203,12 @@ warnings`; the failures remain the Task 9 external blocker. The final Harness
 boundaries, drift, and backend-contract passed, while `godot-project` failed
 because `scene_resource_paths_exist=missing`. Harness cleanup passed.
 
-The fresh `python -m pytest -q` run completed with `5711 passed, 28 failed,
-76 warnings`. The former tuple-snapshot and legacy action-request route
-failures are now closed. Remaining failures include test doubles that predate
-the canonical `turn_context` L2 interface, the archive-door/profile chain,
-external asset qualification expectations, Siming idempotency, and several
-WebSocket/runtime integration paths. `python scripts/verification/harness.py
---profile all` now clears its first `docs` profile, but was not green as an
-aggregate because the fresh episode verifier is red. `git diff --check`
-passed.
+The fresh required `python -m pytest -v` run is recorded in
+`D:\CurrentActionFoundationEvidence-pytest-final.stdout.log` and ended with
+`7652 passed, 56 failed, 2 skipped, 103 warnings`. Remaining failures include
+obsolete CharacterReplica contract tests, Phase 0 scene expectations, and
+unrelated runtime/integration paths. `git diff --check` is rerun after the
+Task 9 documentation update below.
 
 Accordingly, the dependency gate remains conditional. It does not waive the
 recorded repository-wide failures or authorize a first-milestone completion
@@ -335,9 +333,9 @@ pipeline described by the 2026-09-14 specs.
 ## Evidence Boundaries
 
 - `scripts/character/CharacterMotor.gd` contains the current canonical `move_and_slide()` path.
-- `scripts/character/CharacterReplica.gd` is now a forwarding compatibility
-  shell on the StreetCombatDemo path; remaining concrete callers are outside
-  that acceptance scene and still need migration evidence.
+- `scripts/character/CharacterActor.gd` is the sole actor runtime host. The
+  former `CharacterReplica` shell and validation scenes are deleted after the
+  zero-caller proof; any remaining mentions in older documents are historical.
 - `character_presentation_bindings.json` is currently empty for the default
   runtime binding set.
 - `.harness/verification/character-asset-qualification-report.json` does not
@@ -400,8 +398,8 @@ writer. Current Task 1-9 status is maintained in
 | --- | --- | --- | --- | --- |
 | `scripts/character/CharacterMotor.gd` | active writer | retain | `CharacterMotor` | Existing PlayerShell velocity, gravity, facing, collision and slide owner. |
 | `scripts/player/PlayerShell.gd` | actor scene host | retain | `CharacterMotor` | Human input ingress; it must not write body motion. |
-| `scripts/character/CharacterReplica.gd` | transitional compatibility shell | migrate | `ActorActionArbiter -> MotionContributionComposer -> CharacterMotor` | Historical baseline contained direct `global_position` patrol and pose-sync writes; StreetCombatDemo now forwards through CharacterActor, while non-StreetDemo callers remain. |
+| `scripts/character/CharacterActor.gd` | active actor host | retain | `ActorActionArbiter -> MotionContributionComposer -> CharacterMotor` | Sole runtime host after the Task 8 zero-caller gate; historical CharacterReplica shell was deleted. |
 | `scenes/phase0/PlayerShell.tscn` | active scene | retain | `CharacterMotor` | One CharacterBody3D and one Motor mount. |
-| `scenes/phase0/CharacterReplica.tscn` | active scene | migrate | `CharacterMotor` | Converted to one CharacterBody3D control path in Task 4. |
+| `scenes/phase0/CharacterActor.tscn` | active scene | retain | `CharacterMotor` | Actor-only scene with one CharacterBody3D control path. |
 | `GenericRoleSkin` / `KnightRoleSkin` | presentation binding | retain | `RolePresentationAdapter` (future task) | Clip/root sampling is presentation input only. |
 | `backend/app/services/embodied_execution_ingress.py` | backend embodiment route | retain | `ESM/Gameplay/Composite` | Compatibility route remains outside local world-truth settlement. |
