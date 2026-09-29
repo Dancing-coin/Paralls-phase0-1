@@ -46,9 +46,21 @@ func _run() -> void:
 		_fail("asset binding rejection was not forwarded")
 		return
 	var before_internal: int = replica.compatibility_call_count
-	replica._realize_action_request("interact")
+	var internal_admission: Dictionary = replica._admit_and_realize_action("interact", &"", &"agent")
 	if replica.compatibility_call_count != before_internal:
 		_fail("actor internal action was counted as compatibility")
+		return
+	if bool(internal_admission.get("accepted", false)):
+		_fail("actor internal action ignored upper_body conflict")
+		return
+	replica.runtime_state.occupancy.clear()
+	replica.runtime_state.active_action_summaries.clear()
+	replica._action_occupancy.clear()
+	replica._action_occupancy_tick = -1
+	replica._physics_tick += 1
+	var recovered_admission: Dictionary = replica._admit_and_realize_action("interact", &"", &"agent")
+	if not bool(recovered_admission.get("accepted", false)):
+		_fail("actor internal action was not admitted after conflict cleared")
 		return
 	for sample in [
 		"body.global_transform = Transform3D.IDENTITY",

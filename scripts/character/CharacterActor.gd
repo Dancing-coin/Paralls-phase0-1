@@ -256,6 +256,14 @@ func perform_compatibility_action(intent: Dictionary) -> void:
 		_realize_action_request(action_name)
 
 
+func _admit_and_realize_action(action_name: String, target_ref: StringName = &"", source_kind: StringName = &"agent") -> Dictionary:
+	var admission := submit_action_intent(StringName(action_name), target_ref, source_kind)
+	if not bool(admission.get("accepted", false)):
+		return admission
+	_realize_action_request(action_name)
+	return admission
+
+
 func submit_action_intent(action_id: StringName, target_ref: StringName = &"", source_kind: StringName = &"compatibility") -> Dictionary:
 	var semantic_action_id := str(action_id)
 	if semantic_action_id.is_empty():
@@ -632,7 +640,14 @@ func _handle_interact_goal_command(payload: Dictionary) -> void:
 		return
 	var interact_target := _command_target_position(payload)
 	set_look_target(interact_target)
-	_realize_action_request("interact")
+	var interact_admission := _admit_and_realize_action(
+		"interact",
+		StringName(runtime_state.get_payload_string(payload, "target_actor_id")),
+		&"agent",
+	)
+	if not bool(interact_admission.get("accepted", false)):
+		_emit_character_actor_status(CHARACTER_ACTOR_STATUS_FAILED, payload, "action_claim_rejected")
+		return
 	_emit_character_actor_status(CHARACTER_ACTOR_STATUS_SUBMITTED_TO_AUTHORITY, payload)
 	_clear_completed_command()
 

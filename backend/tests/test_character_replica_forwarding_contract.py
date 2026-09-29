@@ -96,7 +96,18 @@ def test_empty_action_and_internal_actor_action_keep_original_semantics():
     compatibility = _method(actor, "perform_compatibility_action")
     interaction = _method(actor, "_handle_interact_goal_command")
     assert '_realize_action_request("")' in compatibility
-    assert '_realize_action_request("interact")' in interaction
+    assert '_admit_and_realize_action(' in interaction
+    assert '"interact",' in interaction
+    assert 'func _admit_and_realize_action(' in actor
+    assert 'submit_action_intent(StringName(action_name)' in _method(actor, "_admit_and_realize_action")
+
+
+def test_internal_interact_admission_reports_rejection_without_realizing_conflict():
+    actor = ACTOR.read_text(encoding="utf-8")
+    seam = _method(actor, "_admit_and_realize_action")
+    assert 'if not bool(admission.get("accepted", false))' in seam
+    assert 'return admission' in seam
+    assert '_realize_action_request(action_name)' in seam
 
 
 def test_action_admission_uses_live_tick_occupancy():
