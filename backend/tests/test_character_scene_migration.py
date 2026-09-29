@@ -9,7 +9,7 @@ def test_streetdemo_uses_character_actor_scene_and_no_replica_instance():
 
 
 def test_character_base_and_validation_player_scenes_mount_actor_host():
-    for name in ("CharacterBase.tscn", "ValidationCharacterReplica.tscn", "ValidationPlayerShell.tscn"):
+    for name in ("CharacterBase.tscn", "ValidationPlayerShell.tscn"):
         scene = (ROOT / "scenes" / "phase0" / name).read_text(encoding="utf-8")
         assert "res://scenes/phase0/CharacterActor.tscn" in scene or "res://scripts/character/CharacterActor.gd" in scene
         assert "res://scenes/phase0/CharacterReplica.tscn" not in scene

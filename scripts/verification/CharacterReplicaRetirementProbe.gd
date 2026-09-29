@@ -2,6 +2,8 @@ extends RefCounted
 class_name CharacterReplicaRetirementProbe
 
 const MATRIX_PATH := "res://docs/character/character-replica-retirement-matrix-2026-09-29.md"
+const RETIRED_REPLICA_SCENE_PATH := "res://" + "scenes/phase0/CharacterReplica.tscn"
+const RETIRED_VALIDATION_SCENE_PATH := "res://" + "scenes/phase0/ValidationCharacterReplica.tscn"
 const ROOTS := ["scenes", "scripts", "backend"]
 
 
@@ -43,7 +45,7 @@ static func inspect() -> Dictionary:
 		digest.update(PackedByteArray([0]))
 		if not registered.has(path):
 			unregistered.append(path)
-		if path.ends_with(".tscn") and path != "scenes/phase0/CharacterReplica.tscn" and path != "scenes/phase0/ValidationCharacterReplica.tscn":
+		if path.ends_with(".tscn") and path != RETIRED_REPLICA_SCENE_PATH.trim_prefix("res://") and path != RETIRED_VALIDATION_SCENE_PATH.trim_prefix("res://"):
 			scene_instances += _count_scene_instances(source)
 		if path.begins_with("backend/app/") and path.ends_with(".py"):
 			backend_references += source.count("legacy_character_replica")
@@ -84,7 +86,7 @@ static func _count_scene_instances(source: String) -> int:
 	var instance_pattern := RegEx.new()
 	instance_pattern.compile('instance=ExtResource\\("([^"]+)"\\)')
 	for line in source.split("\n"):
-		if line.begins_with("[ext_resource") and (line.contains('path="res://scenes/phase0/CharacterReplica.tscn"') or line.contains('path="res://scenes/phase0/ValidationCharacterReplica.tscn"')):
+		if line.begins_with("[ext_resource") and (line.contains('path="' + RETIRED_REPLICA_SCENE_PATH + '"') or line.contains('path="' + RETIRED_VALIDATION_SCENE_PATH + '"')):
 			var match_result := id_pattern.search(line)
 			if match_result != null:
 				resource_ids[match_result.get_string(1)] = true

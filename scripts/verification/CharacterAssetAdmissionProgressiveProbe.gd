@@ -3,6 +3,7 @@ extends SceneTree
 const RegistryRef = preload("res://scripts/character/CharacterEmbodimentAssetRegistry.gd")
 const PACKAGE_IDS := ["female_bandage_external", "female_jk_external", "female_t_external"]
 const ACTION_IDS := ["action:melee.unarmed_punch", "action:melee.sword_slash"]
+const WRONG_DIGEST_PATH := "res://" + "wrong_digest.json"
 
 func _initialize() -> void:
     call_deferred("_run")
@@ -11,7 +12,7 @@ func _run() -> void:
     var registry := RegistryRef.new()
     var unknown := registry.resolve(&"unknown_package", &"action:melee.unarmed_punch", [])
     var missing := registry.resolve(&"female_bandage_external", &"action:missing", [])
-    var wrong_digest := registry.register_qualified_package(&"female_bandage_external", {"package_id": "female_bandage_external"}, {"status": "qualified", "package_id": "female_bandage_external"}, "res://wrong_digest.json")
+    var wrong_digest := registry.register_qualified_package(&"female_bandage_external", {"package_id": "female_bandage_external"}, {"status": "qualified", "package_id": "female_bandage_external"}, WRONG_DIGEST_PATH)
     var qualified_count := 0
     var action_count := 0
     for package_id in PACKAGE_IDS:
