@@ -351,9 +351,9 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/art-resource-swap-workflow.md`
 - `docs/character/character-action-asset-interface.md`
 - `docs/character/character-action-foundation-operator-guide-and-index.md`：动作底座相关 spec/plan 的权威层级、执行手册、依赖索引和验证梯度。
+- `docs/character/action-foundation-series-status.md`：StreetCombatDemo Tasks 1-9 gate matrix、fresh evidence、owner、命令和剩余 blocker。
 - `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`：外部 controller 试点之后的动作底座补全总 spec，定义动画层、运行时层、Motor、根运动、资产、authority 和验收门。
-- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`：本轮动作底座补全的唯一执行顺序；当前等待 spec 评审后进入实施。
-- `docs/character/action-foundation-series-status.md`：动作底座系列的当前状态、已完成试点、遗留问题、证据和文档映射。
+- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`：本轮动作底座补全的唯一执行顺序；Task 9 blocked，Task 10 文档收口进行中。
 - `docs/superpowers/specs/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-subspec.md`
 - `docs/character/character-action-foundation-current-state.md`
 - `docs/character/character-runtime-design-drift-audit.md`
@@ -366,4 +366,15 @@ Harness profile 和规则 manifest 是项目输入：
 Reference docs 只是支持上下文。当前任务真相仍以 `AGENTS.md` 和活跃 specs/plans 为准。
 # Unified character action foundation release gate
 
-The single execution order is `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md` (Tasks 10-15). It defines the ControllerPort/Arbiter -> Motor boundary, semantic ActionAttempt settlement through ESM/Gameplay/composite, qualified asset admission, bounded debug/replay tools, and Mode B transport. Mode C body streaming and rollback remain explicit deferrals.
+The action-foundation series entry point is
+`docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`.
+Its remaining work is executed only through
+`docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`;
+the earlier StreetDemo plan is the historical Task 1-9 pilot record. The formal
+acceptance scene is the real `scenes/phase0/StreetCombatDemo.tscn`; the greybox
+unified scene is only a narrow protocol/authority probe. The 2026-09-14 mainline
+specs and plans remain upstream contract references. They define the
+ControllerPort/Arbiter -> Motor boundary, semantic ActionAttempt settlement
+through ESM/Gameplay/composite, qualified asset admission, bounded debug/replay
+tools, and Mode B transport. Mode C body streaming and rollback remain explicit
+deferrals.

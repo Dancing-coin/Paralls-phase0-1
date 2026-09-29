@@ -29,15 +29,54 @@ def test_retirement_matrix_accounts_for_phase0_provider_and_integration_callers(
     assert route["category"] == "authority"
 
 
-def test_character_replica_is_compatibility_host_and_actor_owns_behavior():
-    replica = read("scripts/character/CharacterReplica.gd")
+def test_character_actor_is_the_only_runtime_host() -> None:
     actor = read("scripts/character/CharacterActor.gd")
-    assert "extends CharacterActor" in replica
     assert "class_name CharacterActor" in actor
-    assert "func begin_embodied_control_frame(" in replica
-    assert "func apply_embodied_pose_sync(" in replica
-    assert "func clear_embodied_control_frame()" in replica
+    assert "func begin_embodied_control_frame(" in actor
+    assert "func apply_embodied_pose_sync(" in actor
+    assert "func clear_embodied_control_frame()" in actor
     assert "func _update_movement(" in actor
+
+
+def test_character_replica_compatibility_assets_are_deleted_after_zero_caller_gate() -> None:
+    for relative in (
+        "scripts/character/CharacterReplica.gd",
+        "scenes/phase0/CharacterReplica.tscn",
+        "scenes/phase0/ValidationCharacterReplica.tscn",
+    ):
+        assert not (ROOT / relative).exists(), relative
+
+
+def test_active_sources_do_not_import_deleted_character_replica_assets() -> None:
+    forbidden = (
+        "scripts/character/CharacterReplica.gd",
+        "scenes/phase0/CharacterReplica.tscn",
+        "scenes/phase0/ValidationCharacterReplica.tscn",
+    )
+    roots = (ROOT / "scenes", ROOT / "scripts", ROOT / "backend", ROOT / ".harness" / "profiles")
+    historical = {
+        "scripts/verification/CharacterReplicaForwardingProbe.gd",
+        "scripts/verification/CharacterReplicaRetirementProbe.gd",
+        "backend/tests/test_character_actor_scene_convergence_static.py",
+        "backend/tests/test_character_motion_composition_contract.py",
+        "backend/tests/test_character_replica_convergence_static.py",
+        "backend/tests/test_character_scene_migration.py",
+        "backend/tests/test_obj_archive_door_embodied_local_static.py",
+        "scripts/verification/verify_character_replica_retirement.py",
+        "scripts/presentation/character/CharacterReplica.gd",
+        "backend/tests/test_character_motor_ownership_audit.py",
+    }
+    offenders: list[str] = []
+    for base in roots:
+        for path in base.rglob("*"):
+            if not path.is_file() or path.suffix not in {".gd", ".tscn", ".py", ".json"}:
+                continue
+            source = path.read_text(encoding="utf-8", errors="ignore")
+            if path.relative_to(ROOT).as_posix() in historical:
+                continue
+            if any(token in source for token in forbidden):
+                offenders.append(path.relative_to(ROOT).as_posix())
+    assert offenders == [], offenders
 
 
 def test_active_runtime_surfaces_are_actor_only() -> None:

@@ -2,6 +2,12 @@
 
 This document records how to verify and debug the shared `CharacterActor` stack in the Phase 0 repository.
 
+The current action-foundation entry point is
+`docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`;
+the matching implementation plan is the only execution order for its remaining
+gates. StreetCombatDemo is the acceptance scene, while unified greybox scenes
+are protocol or authority probes.
+
 ## Primary Verification Layers
 
 ### Static Tests
@@ -163,7 +169,8 @@ That longer-term direction has now started landing: debug output is controlled t
 
 ## Current Verification Baseline
 
-After the 2026-06-15 optimization convergence pass, the minimum useful verification stack is:
+The 2026-06-15 optimization stack below is a historical baseline retained for
+legacy actor debugging. It does not close the current action-foundation gates.
 
 1. focused actor static tests
 2. `python scripts/verification/harness.py --profile docs`
@@ -171,6 +178,23 @@ After the 2026-06-15 optimization convergence pass, the minimum useful verificat
 4. `python scripts/verification/harness.py --profile phase0`
 
 Do not claim runtime completion from static tests alone.
+
+## Current action-foundation verification ladder
+
+Run the smallest applicable command from the current plan, then retain raw
+reports outside the repository and export only reviewable summaries:
+
+1. `python -m pytest -q scripts/verification/tests/test_character_action_foundation_progressive_replacement.py backend/tests/test_character_replica_convergence_static.py`
+2. `python scripts/verification/harness.py --profile docs`
+3. `python scripts/verification/harness.py --profile street-combat`
+4. `python scripts/verification/harness.py --profile change-lifecycle`
+5. `python -m pytest -v`
+6. `D:\godot\Godot_v4.6.3-stable_win64.exe --headless --path . --editor --quit --rendering-method gl_compatibility`
+
+The full pytest and aggregate Harness commands are release gates. A green
+StreetCombatDemo probe closes only the pilot and its listed migration gates;
+Task 9 remains blocked until repository-wide failures are resolved and fresh
+evidence is exported.
 
 Useful focused observatory tests include:
 

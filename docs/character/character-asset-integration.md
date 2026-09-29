@@ -2,6 +2,11 @@
 
 This document explains how to swap role models, update skeleton bindings, and attach equipment without breaking the shared `CharacterActor` substrate.
 
+For the current action-foundation series, start with
+`docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`
+and follow its implementation plan. The older `CharacterReplica` wording in
+this page is transitional guidance for legacy scenes.
+
 ## Integration Goal
 
 A new role asset should plug into the same actor stack without creating a new runtime species.
@@ -30,13 +35,14 @@ Current role presentation uses:
 
 When replacing the role model:
 
-- keep the outer `KnightRoleSkin` scene shell
+- keep the shared `CharacterActor` presentation shell (`StreetCharacterSkin`
+  for StreetCombatDemo; `KnightRoleSkin` for the legacy role path)
 - replace the imported role content under the presentation subtree
 - preserve the actor-facing scene contract
 
 Do not:
 
-- replace `CharacterReplica`
+- create a model-specific actor runtime or bypass the shared Motor
 - collapse the actor runtime into a model-only scene
 
 ## 2. Skeleton Binding
@@ -118,7 +124,8 @@ Examples of action tags:
 
 When integrating a new model, verify:
 
-1. The actor still uses the same `CharacterBase -> CharacterReplica -> presentation` stack.
+1. The actor still uses the shared `CharacterActor -> presentation` stack; any
+   `CharacterReplica` instance is a compatibility shell only.
 2. The model is visible in the shared role skin shell.
 3. Required bones resolve to valid indices.
 4. Equipment anchors resolve to valid nodes.
@@ -169,6 +176,16 @@ Its immediate responsibilities are intentionally narrow:
 This is not yet the final heavy runtime, cache, or Kimodo bridge.
 It is the first explicit contract surface those future realization backends must
 target.
+
+## Current qualification gate
+
+The three StreetCombatDemo packages are the current qualified acceptance set.
+They pass Registry admission for the temporary `hold` / zero-envelope root
+policy. Calibrated `drive_locomotion`, arbitrary package admission, and complete
+fallback coverage remain open under Task 8 of the 2026-09-28 implementation
+plan. Evidence is published in
+`docs/character/action-foundation-series-status.md` and must be refreshed by the
+asset admission probe before a package is described as qualified.
 
 ## Long-Term Direction
 

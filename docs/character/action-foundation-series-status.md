@@ -1,62 +1,116 @@
 # Action Foundation Series Status
 
-Date: 2026-09-28
+Date: 2026-09-29
 
-Status: pilot landed; completion series open
+Status: **Task 10 complete, but affected by the Task 9 external blocker; Task 9 remains blocked**
+
+The formal acceptance scene for this series is `scenes/phase0/StreetCombatDemo.tscn`
+with the three qualified packages `female_bandage_external`, `female_jk_external`,
+and `female_t_external`. `UnifiedCharacterActionFoundation.tscn` remains a narrow
+protocol/authority probe only and is not an action-foundation acceptance scene.
+
+The series entry point is the design spec
+`docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`.
+The corresponding implementation plan is the only execution order for the
+remaining series work. The 2026-09-14 plans remain upstream contract references
+and the June plans remain historical or transitional migration records.
 
 ## Controlling Documents
 
 | Layer | Document | Status |
 |---|---|---|
-| Design | docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md | awaiting user review |
-| Execution | docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md | draft for the reviewed spec |
-| Operator index | docs/character/character-action-foundation-operator-guide-and-index.md | updated |
-| Current-state ledger | docs/character/character-action-foundation-current-state.md | updated |
-| Repository index | docs/INDEX.md | updated |
+| Design | `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md` | series entry point; pilot landed, remaining gates open |
+| Execution | `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **only execution order for remaining work; Task 9 blocked, Task 10 complete but affected by the Task 9 external blocker** |
+| Pilot record | `docs/superpowers/plans/2026-09-28-streetdemo-mode-action-foundation-improvement-plan.md` | historical Task 1-9 implementation record |
+| Operator index | `docs/character/character-action-foundation-operator-guide-and-index.md` | synchronized for StreetCombatDemo acceptance |
+| Current-state ledger | `docs/character/character-action-foundation-current-state.md` | synchronized with fresh evidence |
+| Replica record | `docs/character/character-replica-convergence.md` | StreetCombatDemo concrete callers retired; repository compatibility callers remain |
+| Repository index | `docs/INDEX.md` | links and acceptance boundary updated |
 
-## Gate Matrix
+## Task 1-10 Matrix
 
-| Gate | Evidence already present | Remaining closure |
-|---|---|---|
-| Animation | StreetCombatDemo headless probe: 3 active AnimationTrees, valid bindings, full state catalog, action recovery | keep semantic interface and interruption behavior typed |
-| Motion | CharacterMotor is the movement owner in the target street path; root track discovery works | calibrate non-zero root profiles, universalize NPC/agent routing, prove single contribution consumption |
-| Replica | CharacterActor extraction and CharacterReplica compatibility shell landed | remove remaining concrete implementation dependencies and update stale source-text contracts |
-| Assets | three qualified street manifests and imported Skeleton3D/action clips | enforce registry admission and reject malformed or stale packages |
-| Arbitration | compatibility action and controller paths exist | require descriptors, claims, locomotion relation, root policy, markers, cancel windows, and deterministic arbitration |
-| Authority | street combat and compatibility authority routes exist | universal ActionAttempt closure, idempotency, revisions, zero-write failure, and Mode B reconnect evidence |
-| Documentation | new completion spec/plan and updated index/current-state/operator guide | keep status documents synchronized as implementation gates close |
+| Task | Status | Owner | Verification command | Fresh evidence | Remaining risk |
+|---|---|---|---|---|---|
+| 1 baseline/caller matrix | complete | Character runtime | `python -m pytest -q scripts/verification/tests/test_character_action_foundation_progressive_replacement.py backend/tests/test_character_replica_convergence_static.py` | focused suite: 32 passed; `docs/character/action-foundation-series-baseline-2026-09-28.md` | non-StreetDemo compatibility callers remain inventoried |
+| 2 semantic intent | complete | `CharacterControllerPort` / `CharacterActor` | focused action-foundation pytest | same focused suite, intent normalization and digest assertions | legacy callers still exist outside the migrated street path |
+| 3 animation owner | complete | `RoleAnimationController` | `PARALLS_STREET_PROBE=3` on `StreetCombatDemo.tscn` | external temp `paralls-streetdemo-task9-probes-*/probe-3.log`; run/recovery/cancel/guard/fallback all true | imported clips remain package-qualified full-body realizations |
+| 4 Motor ownership | complete | `CharacterMotor` | `PARALLS_STREET_PROBE=4` on `StreetCombatDemo.tscn` | external temp `paralls-streetdemo-task9-probes-*/probe-4.log`; floor/wall/jump/airborne/owner all true | universal non-StreetDemo caller audit is still a main-plan concern |
+| 5 action authority | complete for StreetDemo | `ActorActionArbiter` + backend authority | `python scripts/verification/harness.py --profile street-combat` | exported run `paralls-streetdemo-task9-final-c0c28c9c23464ef793fa54d2edb26bbe`; player/agent hit, duplicate, stale, recovery, sword all true | generic repository-wide ActionAttempt closure is outside this plan |
+| 6 CharacterActor migration | complete for StreetDemo | `CharacterActor` | StreetDemo probes plus `character-agent-execution` profile | `probe-5.log`; exported agent run `paralls-streetdemo-agent-task9-rerun-b7a4621492294aabb074dc093504fab4`; StreetDemo retirement counts all zero; ArchiveDoor external profile `D:\Task9Evidence-20260929-08\archive-door` passed all four scenarios | old compatibility callers remain elsewhere |
+| 7 registry admission | complete for StreetDemo | `CharacterEmbodimentAssetRegistry` | `CharacterAssetAdmissionProgressiveProbe.gd` | external temp `paralls-streetdemo-registry-task9-097fdff850e740449d93c8f0cd59e4f7`; 3 packages/6 actions, fail-closed checks true | no claim for unqualified packages outside the three street packages |
+| 8 root/capability boundary | complete as temporary policy | `RootMotionSampler` / `MotionContributionComposer` / `CharacterMotor` | `PARALLS_STREET_PROBE=6` on `StreetCombatDemo.tscn` | `probe-6.log`; 3 hold profiles, zero-envelope, drive boundary true | calibration is not complete; `drive_locomotion` remains disabled |
+| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, `street-combat`, `docs`, `change-lifecycle`, full pytest | focused suite `27 passed`; fresh StreetCombatDemo export `D:\Task9Evidence-20260929-09\street-combat`; fresh docs export `D:\Task9Evidence-20260929-11\docs`; fresh change-lifecycle export `D:\Task9Evidence-20260929-11\change-lifecycle`; full pytest `7671 collected / 7621 passed / 48 failed / 2 skipped / 103 warnings`; ArchiveDoor external profile `D:\Task9Evidence-20260929-08\archive-door` passed all four scenarios | full repository suite remains red with 48 failures |
+| 10 documentation reconciliation and publication | **complete, affected by Task 9 external blocker** | documentation owners | documentation link checks, focused tests, Godot headless probe, `git diff --check` | Task 10 checklist completed in the 2026-09-28 implementation plan; current-state, operator guide, replica convergence, index, and status surfaces synchronized | release claim remains constrained by Task 9's repository-wide pytest failures |
 
-## What Is Landed
+## 2026-09-29 Ordered Task 1-15 Verification
 
-- Three real StreetCombatDemo characters use the external-controller-style AnimationTree.
-- States idle, walk, run, jump, boxing, and sword_attack are available.
-- Punch and sword use separate state-machine states.
-- Guard pose is held through controller-owned playback.
-- CharacterMotor remains the target path's movement owner.
-- RootMotionSampler exists and is wired to the street skin.
-- CharacterReplica has a compatibility-shell migration seam.
-- A real-scene convergence probe exists and is part of focused verification.
+The 2026-09-14 master plan was rechecked in strict Task 1 → Task 15 order.
+Focused contract gates passed for Tasks 1-3 and 6-14; Task 5 retains one
+pre-existing static compatibility failure in
+`test_character_replica_camera_switch_is_presentation_only`. Task 4's focused
+tests passed, while `godot-project` reported missing scene resource paths.
+Task 13's unified profile passed with the explicit Godot executable after an
+initial environment-blocked invocation without `GODOT_EXE`.
 
-## What Is Not Yet Complete
+Task 15 release verification passed and confirmed Mode B with Mode C disabled.
+The fresh full pytest gate completed with `7671 collected, 7621 passed, 48
+failed, 2 skipped, 103 warnings`; this remains the Task 9 external blocker.
+The final `--profile all` run exported to
+`D:\Task1-15Evidence-20260929-final-all-1915` and failed only at
+`godot-project: scene_resource_paths_exist=missing`; cleanup passed.
 
-- Street manifests still describe root motion as hold with zero distance envelopes.
-- Root tracks are sampled, but calibrated root-motion locomotion is not yet enabled as a production movement policy.
-- Legacy player/NPC/agent paths still require an ownership audit before the one-Motor claim can be universal.
-- Some tests still encode pre-convergence implementation placement inside CharacterReplica.
-- Action descriptors and claims are not yet enforced at every runtime ingress.
-- The final generic ActionAttempt to authority result path is not yet universal.
-- Registry admission and fallback diagnostics are not yet the single mandatory package gate.
-- Documentation before 2026-09-28 contains historical and transitional statements that must not be treated as current design.
+## Remaining gap table
 
-## Required Evidence Before Series Completion
+| Remaining issue | Code owner | Spec section | Plan task | Verification command | Completion evidence |
+|---|---|---|---|---|---|
+| Calibrated root-motion locomotion and universal Motor ownership | `CharacterMotor`, `MotionContributionComposer`, active NPC/agent callers | spec §4 阶段 2、§4 阶段 6、§6.4 | Tasks 3-4 | `RootMotionQualificationProbe.gd`; `CharacterMotorOwnershipProbe.gd`; `python scripts/verification/harness.py --profile godot-project` | measured walking/running profiles, one body writer, and fresh StreetCombatDemo runtime logs |
+| CharacterReplica retirement outside StreetCombatDemo | `CharacterActor`, `CharacterReplica`, active scenes and bridges | spec §4 阶段 4、§5 | Task 5 | `CharacterReplicaCompatibilityProbe.gd`; active-caller inventory test | zero active scene/script callers and a migration report with explicit removal conditions |
+| Descriptor admission and deterministic arbitration | `ActorActionArbiter`, `CharacterActionAssetRegistry`, `CharacterRuntimeState` | spec §3、§4 阶段 3、§6.1-§6.2 | Task 6 | `python -m pytest backend/tests/test_character_action_descriptor_runtime.py -q` | raw clip rejection, claims/lock/cancel/death ordering evidence |
+| Generic ActionAttempt authority and Mode B recovery | Street combat coordinator, ESM/Gameplay route, `BackendBridge` | spec §4 阶段 6、§6.3、§6.5 | Task 7 | `StreetActionAttemptProbe.gd`; focused backend authority tests; `street-combat` profile | marker + Motor evidence, idempotency, stale revision zero-write, reconnect epoch/resync evidence |
+| Registry-only asset admission and fallback diagnostics | `CharacterEmbodimentAssetRegistry`, active manifests, street skin | spec §4 阶段 5、§6.4 | Task 8 | `CharacterAssetAdmissionProbe.gd`; `python -m pytest backend/tests/test_character_asset_admission_runtime.py -q` | digest/mapping/marker/root-profile admission report and fail-closed cases |
+| Deterministic replay evidence and final repository gate | verification probes, Harness metadata, documentation owners | spec §6.5、§8 | Task 9 | `CharacterActionFoundationRuntimeProbe.gd`; `python scripts/verification/harness.py --profile all`; `python -m pytest -v` | fresh replay comparison, exported summaries, and a green aggregate run |
 
-1. Focused static ownership and descriptor tests.
-2. Godot StreetCombatDemo runtime proof for all three characters.
-3. Root-motion qualification and contribution-consumption proof.
-4. Player/NPC/agent Motor ownership proof.
-5. Real backend ActionAttempt, duplicate, stale-revision, zero-write, and reconnect proof.
-6. Fresh documentation/index audit and relevant Harness profiles.
+## Runtime Boundary
 
-## Historical Document Rule
+```text
+Player / Agent / Program
+  -> CharacterControllerPort
+  -> CharacterControlIntent / CharacterActor
+  -> ActorActionArbiter
+  -> RoleAnimationController + MotionContributionComposer
+  -> CharacterMotor (唯一身体运动与 move_and_slide owner)
+```
 
-Older June designs and pre-convergence CharacterReplica descriptions explain migration history. They do not authorize a second controller, direct skin transform writes, a second Motor, or local authority settlement.
+Authority results may update projection and recovery. They do not let local
+scene code declare hit, damage, ammo, projectile, inventory, or world truth.
+`CharacterReplica` is a forwarding compatibility shell; it is not a second
+controller, Motor, animation owner, authority writer, or weapon scheduler.
+
+## Closure blockers
+
+1. **External ArchiveDoor dependency (owner: character-turn continuity plan):**
+   resolved for this gate. The live transport test placed the actor outside the
+   authority range; correcting its fixture made that regression green. The
+   Godot host then proved a reversed forced-motion Z conversion, fixed with a
+   red/green contract test. Fresh `character-turn-embodied-episode` evidence
+   proves success, distance failure, revision failure, and stance failure.
+2. **Full repository pytest (owner: repository maintainers):** after aligning the
+   declared websocket dependency, collection completes (`7671 collected`), but
+   the run ends `7621 passed, 48 failed, 2 skipped, 103 warnings`. The failures
+   are classified repository-wide regressions and are not attributed to the
+   StreetCombatDemo green runtime result.
+3. Root motion is intentionally `hold` / zero-envelope. This is a temporary
+   qualified capability boundary, not calibrated production locomotion.
+
+The StreetCombatDemo runtime profile is fresh green evidence for the StreetDemo
+pilot and migration gates; it is not a claim that the entire unified character
+action-foundation series is complete. Task 9 remains **blocked** pending the
+required repository-wide pytest gate.
+
+## Historical and transitional document rule
+
+June actor, agent, root-motion, and pre-convergence documents are retained for
+migration context only. They must be read as historical or transitional when
+they describe `CharacterReplica`, direct skin movement, or an older execution
+order. New work starts at the 2026-09-28 spec and follows its implementation
+plan.

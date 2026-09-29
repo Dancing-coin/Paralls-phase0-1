@@ -1,8 +1,8 @@
 # 角色动作底座操作手册与文档索引
 
-日期：`2026-09-28`
+日期：`2026-09-29`
 
-状态：`导航与执行手册；AnimationTree 街区试点已完成，动作底座系列补全计划待评审`
+状态：`导航与执行手册；pilot 已落地，Task 10 已完成但受 Task 9 external blocker 影响，Task 9 保持 blocked`
 
 ## 用途与范围
 
@@ -41,9 +41,9 @@
 ```text
 AGENTS.md
   -> 主线 authority 边界
-  -> 2026-09-28 动作底座系列补全 spec
-  -> 2026-09-28 动作底座系列补全 plan
-  -> 2026-09-14 统一动作底座主 spec
+  -> 2026-09-28 动作底座系列补全 spec（本系列入口）
+  -> 2026-09-28 动作底座系列补全 plan（剩余工作唯一执行顺序）
+  -> 2026-09-14 统一动作底座主 spec（上游契约依赖）
   -> 四份 2026-09-14 子 spec
   -> 2026-09-14 统一主实施计划（唯一执行顺序）
   -> 对应专题计划的细化测试与文件提示
@@ -65,24 +65,34 @@ AGENTS.md
   `ActionAttempt` 闭环和一个 hitscan semantic route fixture；不包含弹药、
   弹道、双持、拼刀或任意道具武器化。
 
-### 2026-09-28 当前导航结论
+### 2026-09-29 当前导航结论
 
-`StreetCombatDemo` 的三个真实角色已经完成外部 controller AnimationTree
-试点。下一轮只按新的补全系列执行：先关闭 root motion、Motor ownership、
-CharacterReplica migration、descriptor/arbiter、ActionAttempt/Mode B、asset
-registry 和 documentation gates。旧的 2026-09-14 主计划和专题计划仍是
-设计依赖，但不再单独作为本轮执行顺序。
+`StreetCombatDemo` 的三个真实角色现在是统一动作底座的正式验收入口。三个
+qualified packages 通过同一 Registry 路径完成 idle/walk/run/jump/boxing/
+sword；player 和 agent 的 live backend authority、duplicate/stale/recovery
+证据来自真实街区场景。`UnifiedCharacterActionFoundation.tscn` 只保留为窄
+protocol/authority probe。root motion 仍为 `hold` / zero-envelope，尚未完成
+production calibration。
+
+Task 9 的 gate 表在
+`docs/character/action-foundation-series-status.md`。StreetCombatDemo Harness、
+docs 和 change-lifecycle profile 都有 fresh exported evidence。ArchiveDoor 属于
+外部 continuity plan dependency，不是 StreetCombatDemo 的正式 acceptance scene；
+其 fresh profile 现已通过 success、distance、revision、stance 四场景的 live backend
+与 Godot 验证；focused live transport regression 也已通过。全量 pytest 已在依赖对齐后完成收集，
+但最终为 `7621 passed, 48 failed, 2 skipped`。因此 Task 9 当前明确为 **blocked**，
+不能把 StreetDemo probe 通过写成统一底座整体完成。
 
 ## 文档权威层级
 
 | 优先级 | 文档层 | 发生冲突时的处理 |
 | --- | --- | --- |
 | 0 | `AGENTS.md` | 运行时 owner、范围和验证约束，必须遵守。 |
-| 1 | 主线 master design 与 2026-09-14 统一动作底座 spec/子 spec | 设计真相；覆盖旧 actor、asset、local-damage 解释。 |
-| 2 | 2026-09-14 统一主实施计划 | 唯一任务顺序和验收门；不得以专题计划改写顺序。 |
-| 3 | 2026-09-14 五份专题计划 | 任务级实现/测试细化，只能补充主计划对应任务。 |
-| 4 | current-state、drift audit、migration status、运行时架构文档 | 当前事实、迁移证据和代码定位；不改变设计。 |
-| 5 | 六月方案、旧 root-motion、旧原子动作库和 reference 文档 | 迁移背景或已完成窄切片；不得复制为新的并行控制器。 |
+| 1 | `2026-09-28-character-action-foundation-series-completion-design.md` | 本系列设计入口；定义 pilot、剩余 gates 和关闭条件。 |
+| 2 | `2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **本系列剩余工作的唯一执行顺序**；不得以专题计划改写顺序。 |
+| 3 | 主线 master design 与 2026-09-14 统一动作底座 spec/子 spec | 上游设计契约；覆盖旧 actor、asset、local-damage 解释。 |
+| 4 | current-state、status、drift audit、migration status、运行时架构文档 | 当前事实、迁移证据和代码定位；不改变设计。 |
+| 5 | 六月方案、旧 root-motion、旧原子动作库和 reference 文档 | **历史或过渡背景**；不得复制为新的并行控制器或执行顺序。 |
 
 ## 操作手册
 
@@ -249,13 +259,13 @@ registry 和 documentation gates。旧的 2026-09-14 主计划和专题计划仍
 
 | ID | 文档 | 状态 | 使用规则 |
 | --- | --- | --- | --- |
-| P-00 | `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md` | **唯一执行顺序；未实施** | 依 Task 1-15 和 completion gate 推进。 |
+| P-00 | `docs/superpowers/plans/2026-09-14-unified-character-action-foundation-and-inf-tag-contract-implementation-plan.md` | 上游主线计划；非本系列执行顺序 | 只提供统一契约和后续主线依赖。 |
 | P-01 | `docs/superpowers/plans/2026-09-14-character-shared-contracts-arbitration-and-tools-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 2-3、12。 |
 | P-02 | `docs/superpowers/plans/2026-09-14-character-physics-motion-and-contact-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 4-5。 |
 | P-03 | `docs/superpowers/plans/2026-09-14-character-animation-asset-qualification-and-concurrent-realization-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 6-8。 |
 | P-04 | `docs/superpowers/plans/2026-09-14-character-esm-action-attempt-settlement-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 10。 |
 | P-05 | `docs/superpowers/plans/2026-09-14-character-connected-action-and-physical-replication-implementation-plan.md` | 任务级参考 | 只补充 P-00 Task 11。 |
-| P-06 | `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **本轮唯一补全顺序；待 spec 评审** | 覆盖试点之后的 root motion、Motor、Replica、arbiter、authority、asset registry、evidence 和文档收口。 |
+| P-06 | `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md` | **本系列唯一执行顺序；Task 9 blocked，Task 10 complete but affected by the Task 9 external blocker** | 覆盖试点之后的 root motion、Motor、Replica、arbiter、authority、asset registry、evidence 和文档收口。 |
 
 ### C. 当前实现、迁移和资产事实（必查，不改写设计）
 

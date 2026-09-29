@@ -1,8 +1,54 @@
 # Character Action Foundation Current State
 
-Date: `2026-09-28`
+Date: `2026-09-29`
 
-Status: `current-state ledger; AnimationTree pilot landed; completion series remains open`
+Status: `Task 10 documentation reconciliation complete but affected by the Task 9 external blocker; Task 9 remains blocked`
+
+The 2026-09-28 pilot is landed as a StreetCombatDemo result. This ledger keeps
+the pilot evidence separate from the remaining series gates. The 2026-09-28
+spec is the series entry point and its implementation plan is the only
+execution order for the open tasks; June and pre-convergence passages below are
+historical or transitional when explicitly marked.
+
+## 2026-09-29 StreetCombatDemo acceptance reconciliation
+
+The formal action-foundation acceptance scene is now the real
+`scenes/phase0/StreetCombatDemo.tscn` street environment. The accepted runtime
+packages are `female_bandage_external`, `female_jk_external`, and
+`female_t_external`, all admitted through `CharacterEmbodimentAssetRegistry`.
+`UnifiedCharacterActionFoundation.tscn` is retained only as a narrow
+protocol/authority probe and is not an acceptance basis.
+
+Tasks 1-8 have fresh focused or runtime evidence. Task 9 has a fresh gate
+matrix and Harness audit. The StreetCombatDemo profile is green with live
+backend evidence for player and agent authority, duplicate replay, stale
+revision rejection, recovery, and sword action. The StreetDemo animation,
+Motor, Replica retirement, Registry, and root capability probes are also fresh
+green. Root motion remains the temporary `hold` / zero-envelope policy; it is
+not calibrated production locomotion.
+
+The external ArchiveDoor dependency now has fresh success, distance, revision,
+and stance evidence from live backend and Godot. The focused transport timeout
+was a test fixture outside authority range; the Godot success/revision failure
+was a reversed forced-motion Z conversion, corrected with a red/green test.
+The interpreter was aligned from `websockets 12.0`
+to the declared `17.1`, so the required full pytest run now completes
+collection; it ends `7671 collected, 7621 passed, 48 failed, 2 skipped, 103
+warnings` in the previous complete run. Repository-wide failures remain a
+separate closure blocker; the repaired ArchiveDoor profile does not replace
+the required full pytest result.
+
+### Final boundary
+
+`Player`, `Agent`, and `Program` proposals enter through
+`CharacterControllerPort`, normalize into `CharacterControlIntent`, and pass
+through `CharacterActor` and `ActorActionArbiter`. Presentation and motion are
+then owned by `RoleAnimationController` and `MotionContributionComposer`, with
+`CharacterMotor` as the only body movement, collision, root-consumption, and
+`move_and_slide()` owner. Authority results can update projection and recovery;
+local callers cannot declare hit, damage, ammo, projectile, inventory, or world
+truth. `CharacterReplica` remains a compatibility forwarding shell, with no
+active concrete caller in StreetCombatDemo.
 
 ## 2026-09-28 Series Reconciliation
 
@@ -33,7 +79,10 @@ committed `ActionAttempt` results. The connected transport is Mode B only;
 Mode C body streaming, rollback, raw-pose replication, and authoritative
 multiplayer physics remain disabled.
 
-Task 14 runtime evidence is available from the fresh live run:
+### Historical mainline runtime evidence (not the current task counter)
+
+The following Task 14 evidence belongs to the earlier unified mainline record;
+it is retained for dependency context and does not close the current series:
 
 - `.harness/verification/unified-character-action-foundation-runtime.json`
 - `.harness/verification/unified-character-action-foundation-runtime-verifier.json`
@@ -139,6 +188,20 @@ two-character foundation milestone can be claimed.
 
 ### Aggregate status recorded for Task 10
 
+Task 10 documentation reconciliation is complete. Its checklist and status
+surfaces are synchronized with the landed StreetCombatDemo pilot, the 2026-09-14
+master-plan dependency map, and the remaining gap table. Task 9 remains blocked
+by the repository-wide external pytest gate; that release blocker constrains the
+overall action-foundation claim but does not reopen Task 10 documentation work.
+
+The ordered Task 1 → Task 15 verification was rerun on 2026-09-29. Release
+verification passed with Mode B and Mode C disabled. The fresh full pytest gate
+completed with `7671 collected, 7621 passed, 48 failed, 2 skipped, 103
+warnings`; the failures remain the Task 9 external blocker. The final Harness
+`--profile all` export is `D:\Task1-15Evidence-20260929-final-all-1915`; docs,
+boundaries, drift, and backend-contract passed, while `godot-project` failed
+because `scene_resource_paths_exist=missing`. Harness cleanup passed.
+
 The fresh `python -m pytest -q` run completed with `5711 passed, 28 failed,
 76 warnings`. The former tuple-snapshot and legacy action-request route
 failures are now closed. Remaining failures include test doubles that predate
@@ -241,8 +304,10 @@ pipeline described by the 2026-09-14 specs.
 
 ## Confirmed Breaks
 
-1. `CharacterReplica` still contains direct `global_position +=` movement,
-   creating a second locomotion truth beside `CharacterMotor`.
+1. Non-StreetDemo compatibility callers still require migration audit. The
+   pre-convergence baseline recorded direct `CharacterReplica` movement; the
+   current StreetCombatDemo path has moved that behavior behind `CharacterActor`
+   and `CharacterMotor`.
 2. The parallel-state concept has no single coordinator defining priority,
    occupancy, cancellation, death override, or same-frame write order.
 3. Existing actions are partly direct strings, clip names, timers, and node
@@ -270,8 +335,9 @@ pipeline described by the 2026-09-14 specs.
 ## Evidence Boundaries
 
 - `scripts/character/CharacterMotor.gd` contains the current canonical `move_and_slide()` path.
-- `scripts/character/CharacterReplica.gd` still contains direct coordinate
-  stepping that must be removed or isolated behind the Motor contract.
+- `scripts/character/CharacterReplica.gd` is now a forwarding compatibility
+  shell on the StreetCombatDemo path; remaining concrete callers are outside
+  that acceptance scene and still need migration evidence.
 - `character_presentation_bindings.json` is currently empty for the default
   runtime binding set.
 - `.harness/verification/character-asset-qualification-report.json` does not
@@ -324,15 +390,17 @@ deferred.
 
 ## Migration Ledger
 
-This ledger records the baseline before the unified action-foundation Tasks
-1-5 migration. `migrate` means the reference remains present only until its
-listed owner consumes it; it does not authorize a second world-motion writer.
+This ledger records the historical baseline before the unified action-foundation
+Tasks 1-5 migration. `migrate` means the reference remains present only until
+its listed owner consumes it; it does not authorize a second world-motion
+writer. Current Task 1-9 status is maintained in
+`docs/character/action-foundation-series-status.md`.
 
 | reference | kind | status | migration_owner | notes |
 | --- | --- | --- | --- | --- |
 | `scripts/character/CharacterMotor.gd` | active writer | retain | `CharacterMotor` | Existing PlayerShell velocity, gravity, facing, collision and slide owner. |
 | `scripts/player/PlayerShell.gd` | actor scene host | retain | `CharacterMotor` | Human input ingress; it must not write body motion. |
-| `scripts/character/CharacterReplica.gd` | legacy writer / actor host | migrate | `ActorActionArbiter -> MotionContributionComposer -> CharacterMotor` | Baseline contains direct `global_position` patrol and pose-sync writes; Task 4 removes them. |
+| `scripts/character/CharacterReplica.gd` | transitional compatibility shell | migrate | `ActorActionArbiter -> MotionContributionComposer -> CharacterMotor` | Historical baseline contained direct `global_position` patrol and pose-sync writes; StreetCombatDemo now forwards through CharacterActor, while non-StreetDemo callers remain. |
 | `scenes/phase0/PlayerShell.tscn` | active scene | retain | `CharacterMotor` | One CharacterBody3D and one Motor mount. |
 | `scenes/phase0/CharacterReplica.tscn` | active scene | migrate | `CharacterMotor` | Converted to one CharacterBody3D control path in Task 4. |
 | `GenericRoleSkin` / `KnightRoleSkin` | presentation binding | retain | `RolePresentationAdapter` (future task) | Clip/root sampling is presentation input only. |
