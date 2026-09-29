@@ -67,7 +67,7 @@ func _run_probe() -> void:
 			compatibility_observation_unavailable += 1
 
 	var report := {
-		"status": "pass" if provider_failures.is_empty() and legacy_instances.is_empty() else "fail",
+		"status": "pass" if provider_failures.is_empty() and legacy_instances.is_empty() and compatibility_observation_unavailable == 0 else "fail",
 		"live_actor_count": actor_nodes.size(),
 		"live_actor_paths": _paths(actor_nodes),
 		"concrete_replica_instances": legacy_instances,

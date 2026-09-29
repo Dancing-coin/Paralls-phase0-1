@@ -1448,6 +1448,13 @@ func get_locomotion_status() -> Dictionary:
 		"root_motion_active": last_root_motion_world_delta.length() > 0.0001,
 	}
 
+func get_compatibility_diagnostics() -> Dictionary:
+	return {
+		"compatibility_call_count": 0,
+		"compatibility_call_diagnostics": [],
+		"owner": "actor",
+	}
+
 func _emit_locomotion_status_if_changed() -> void:
 	if actor_id != "char_c":
 		return

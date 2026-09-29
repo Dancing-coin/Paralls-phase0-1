@@ -242,7 +242,7 @@ func _process_navigate() -> void:
 	if contact == null:
 		_finalize_local_failure("failed_alignment", "contact_anchor_unavailable")
 		return
-	var facing := contact.global_position - player.global_position
+	var facing := contact.global_position - _actor_position(actor)
 	facing.y = 0.0
 	if facing.length() <= 0.001:
 		_finalize_local_failure("failed_alignment", "contact_anchor_invalid")
