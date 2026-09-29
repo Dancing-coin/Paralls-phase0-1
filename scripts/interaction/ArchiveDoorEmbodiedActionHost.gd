@@ -219,6 +219,7 @@ func _begin_attempt(request: Dictionary, grant: Dictionary) -> void:
 func _process_navigate() -> void:
 	var stance := _registry_binding.get("approach_stance") as Marker3D
 	var player := get_parent() as CharacterBody3D
+	var actor := _character_actor()
 	var player_bridge := _player_bridge()
 	var bridge := _door_bridge()
 	if stance == null or player == null or actor == null or player_bridge == null:
@@ -268,7 +269,6 @@ func _process_align() -> void:
 		player_bridge.set_forced_facing_yaw(desired_yaw)
 	if absf(wrapf(_actor_yaw(actor) - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
 		return
-	var actor := _character_actor()
 	if not _has_actor_capability(actor) or not actor.has_method("begin_right_hand_reach"):
 		_finalize_local_failure("failed_alignment", "capability_unavailable")
 		return

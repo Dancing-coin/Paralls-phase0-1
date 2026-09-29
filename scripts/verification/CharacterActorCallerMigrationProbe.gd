@@ -30,6 +30,7 @@ func _run_probe() -> void:
 	var provider_failures: Array[String] = []
 	var ingress_sources: Array[Dictionary] = []
 	var compatibility_call_count := 0
+	var compatibility_observation_unavailable := 0
 	var skeletal_binding_count := 0
 	for actor in actor_nodes:
 		var actor_id := str(actor.get("actor_id"))
@@ -59,10 +60,11 @@ func _run_probe() -> void:
 			}
 			actor.call("apply_control_intent", intent)
 			ingress_sources.append({"actor_id": actor_id, "source_kind": "agent", "entry": "apply_control_intent"})
-		if actor.has_method("get_compatibility_diagnostics"):
-			var diagnostics: Variant = actor.call("get_compatibility_diagnostics")
-			if diagnostics is Dictionary:
-				compatibility_call_count += int((diagnostics as Dictionary).get("compatibility_call_count", 0))
+		var compatibility_observation := _read_compatibility_count(actor)
+		if bool(compatibility_observation.get("supported", false)):
+			compatibility_call_count += int(compatibility_observation.get("count", 0))
+		else:
+			compatibility_observation_unavailable += 1
 
 	var report := {
 		"status": "pass" if provider_failures.is_empty() and legacy_instances.is_empty() else "fail",
@@ -74,6 +76,7 @@ func _run_probe() -> void:
 		"skeletal_binding_count": skeletal_binding_count,
 		"provider_failures": provider_failures,
 		"compatibility_call_count": compatibility_call_count,
+		"compatibility_observation_unavailable": compatibility_observation_unavailable,
 		"ingress_sources": ingress_sources,
 	}
 	var report_path := _write_json(".harness/verification/character-actor-caller-migration.json", report)
@@ -108,6 +111,18 @@ func _collect_legacy_hosts(root: Node, output: Array[String]) -> void:
 
 func _has_actor_capability(node: Node) -> bool:
 	return node != null and node.has_method("apply_control_intent") and node.has_method("get_focus_anchor_position") and node.has_method("get_embodied_forward_vector")
+
+
+func _read_compatibility_count(node: Node) -> Dictionary:
+	if node == null:
+		return {"supported": false, "count": 0}
+	if node.has_method("get_compatibility_diagnostics"):
+		var diagnostics: Variant = node.call("get_compatibility_diagnostics")
+		if diagnostics is Dictionary:
+			return {"supported": true, "count": int((diagnostics as Dictionary).get("compatibility_call_count", 0))}
+	if node.get("compatibility_call_diagnostics") is Array:
+		return {"supported": true, "count": (node.get("compatibility_call_diagnostics") as Array).size()}
+	return {"supported": false, "count": 0}
 
 
 func _paths(nodes: Array[Node]) -> Array[String]:
