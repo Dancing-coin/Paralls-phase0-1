@@ -515,7 +515,12 @@ def fixture_window(main, driver, ordinal: int) -> None:
         })
         event = runtime._session_store.last_event(actor_id)
         turn = source + ":turn"
-        BehaviorTurnRecorder(main.heavenly_graph).record(BehaviorTurnRecordRequest(
+        # This fixture intentionally persists a historical compact projection
+        # without a live cognition turn.  Admit it through the explicit
+        # legacy-reader path; constructing the request directly would bypass
+        # the canonical/legacy origin contract.
+        BehaviorTurnRecorder(main.heavenly_graph).record(BehaviorTurnRecordRequest.from_legacy_projection(
+            legacy_reader_ref="verify_population_long_session_recovery:fixture_window",
             turn_id=turn, scope=main.actor_private_scope(actor_id), valid_at=timestamp, recorded_at=timestamp,
             policy_revision="policy:recovery-probe:v1",
             source_revision_vector=GraphRevisionVector(source_revision=runtime.get_memory_revision(actor_id)),

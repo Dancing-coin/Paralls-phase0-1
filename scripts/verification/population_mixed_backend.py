@@ -108,6 +108,25 @@ def validate_live_provider_settings(settings):
             or not settings.character_model_api_key or not settings.character_model_endpoint or not settings.character_model_model
             or settings.siming_llm_mode != "http"):
         raise ValueError("mixed_live_provider_configuration_required")
+    # A Character DeepSeek credential is a separate authority surface.  The
+    # provider factory intentionally supports reusing it for ordinary runtime
+    # startup, but the mixed-population gate must prove that Siming itself has
+    # an explicitly configured live route.  Otherwise a missing Siming key can
+    # silently pass through the Character fallback, and a disabled-only order
+    # can be reported as live merely because the factory returned a router.
+    if settings.siming_llm_routes:
+        configured_route = any(
+            route.enabled
+            and route.provider != "disabled"
+            and (route.api_key or settings.siming_llm_api_key)
+            for route in settings.siming_llm_routes
+        )
+    else:
+        configured_route = bool(settings.siming_llm_api_key) and any(
+            provider != "disabled" for provider in settings.siming_llm_provider_order
+        )
+    if not configured_route:
+        raise ValueError("mixed_live_provider_configuration_required")
     if not any(isinstance(provider, HttpSimingLlmCandidateProvider)
                for provider in build_siming_llm_provider(settings).providers):
         raise ValueError("mixed_live_provider_configuration_required")
