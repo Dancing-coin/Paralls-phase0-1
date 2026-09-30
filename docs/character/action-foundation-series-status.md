@@ -2,7 +2,7 @@
 
 Date: 2026-09-30
 
-Status: **CharacterReplica retirement is complete; repository-wide Task 9 remains blocked**
+Status: **CharacterReplica retirement is complete; Task 9 remains blocked by strict Phase 0 runtime evidence**
 
 The formal acceptance scene for this series is `scenes/phase0/StreetCombatDemo.tscn`
 with the three qualified packages `female_bandage_external`, `female_jk_external`,
@@ -20,7 +20,7 @@ and the June plans remain historical or transitional migration records.
 | Layer | Document | Status |
 |---|---|---|
 | Design | `docs/superpowers/specs/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-design.md` | active CharacterReplica retirement and action-foundation closure spec |
-| Execution | `docs/superpowers/plans/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-implementation-plan.md` | **Task 8 complete; Task 9 remains blocked by repository-wide and Phase 0 runtime gates** |
+| Execution | `docs/superpowers/plans/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-implementation-plan.md` | **Tasks 1-8 complete; Task 9 remains blocked only by the strict Phase 0 aggregate gate** |
 | Pilot record | `docs/superpowers/plans/2026-09-28-streetdemo-mode-action-foundation-improvement-plan.md` | historical Task 1-9 implementation record |
 | Operator index | `docs/character/character-action-foundation-operator-guide-and-index.md` | synchronized for StreetCombatDemo acceptance |
 | Current-state ledger | `docs/character/character-action-foundation-current-state.md` | synchronized with fresh evidence |
@@ -39,8 +39,8 @@ and the June plans remain historical or transitional migration records.
 | 6 CharacterActor migration | complete for StreetDemo | `CharacterActor` | StreetDemo probes plus `character-agent-execution` profile | `probe-5.log`; exported agent run `paralls-streetdemo-agent-task9-rerun-b7a4621492294aabb074dc093504fab4`; StreetDemo retirement counts all zero; ArchiveDoor external profile `D:\Task9Evidence-20260929-08\archive-door` passed all four scenarios | old compatibility callers remain elsewhere |
 | 7 registry admission | complete for StreetDemo | `CharacterEmbodimentAssetRegistry` | `CharacterAssetAdmissionProgressiveProbe.gd` | external temp `paralls-streetdemo-registry-task9-097fdff850e740449d93c8f0cd59e4f7`; 3 packages/6 actions, fail-closed checks true | no claim for unqualified packages outside the three street packages |
 | 8 root/capability boundary | complete as temporary policy | `RootMotionSampler` / `MotionContributionComposer` / `CharacterMotor` | `PARALLS_STREET_PROBE=6` on `StreetCombatDemo.tscn` | `probe-6.log`; 3 hold profiles, zero-envelope, drive boundary true | calibration is not complete; `drive_locomotion` remains disabled |
-| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, required Harness profiles, full pytest | Task 8/docs suite `35 passed`; Motor/asset/authority follow-up `46 passed`; `street-combat`, `character-agent-execution`, and `character-replica-retirement` passed with explicit Godot; full pytest `7652 passed / 56 failed / 2 skipped / 103 warnings`; `--profile all` reached `phase0` but its MainDemo autotest remained on repeated `backend_closed` markers without completion | repository-wide suite and Phase 0 aggregate gate remain red |
-| 10 documentation reconciliation and publication | **complete, affected by Task 9 external blocker** | documentation owners | documentation link checks, focused tests, Godot headless probe, `git diff --check` | Task 10 checklist completed in the 2026-09-28 implementation plan; current-state, operator guide, replica convergence, index, and status surfaces synchronized | release claim remains constrained by Task 9's repository-wide pytest failures |
+| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, required Harness profiles, full pytest | fresh full pytest `7720 passed / 2 skipped / 103 warnings`; `street-combat`, `character-agent-execution`, and `character-replica-retirement` passed with explicit Godot; `--profile all` passed every profile except strict `phase0` | Phase 0 dialogue/observatory/player root-motion evidence remains missing |
+| 10 documentation reconciliation and publication | **complete, affected by Task 9 external blocker** | documentation owners | documentation link checks, focused tests, Godot headless probe, `git diff --check` | Task 10 checklist completed in the 2026-09-28 implementation plan; current-state, operator guide, replica convergence, index, and status surfaces synchronized | release claim remains constrained by strict Phase 0 runtime evidence |
 
 ## 2026-09-30 CharacterReplica retirement closure
 
@@ -53,17 +53,18 @@ also passes the Godot resource-path check.
 
 Fresh runtime evidence:
 
-- `D:\CurrentActionFoundationEvidence-street-task9-final` — `street-combat` passed.
-- `D:\CurrentActionFoundationEvidence-agent-task9-final` — `character-agent-execution` passed.
-- `D:\CurrentActionFoundationEvidence-retirement-task9-final` — retirement profile passed; source digest `330e10093158228d41213142f6933a43ef991a2a0b8bbc8f499ba34313ec2f5b`.
-- `D:\CurrentActionFoundationEvidence-pytest-final.stdout.log` — full pytest: `7652 passed, 56 failed, 2 skipped, 103 warnings`.
+- `D:\CurrentActionFoundationEvidence-street-final5-20260930` — `street-combat` passed; run `b0ee410e51f04912830c12bde4480e05`.
+- `D:\CurrentActionFoundationEvidence-agent-final5-20260930` — `character-agent-execution` passed; run `776e00ed955546e8ac2f7f13ae4061b5`.
+- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` — retirement passed; run `7f7f917a7d0f4663a8b94c81d1c5f8a3`, source digest `c45214a72cc426c8a679f5f4776e4cdc35627e152c4c1d1b469c8a217e274bd0`.
+- `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` — full pytest: `7720 passed, 2 skipped, 103 warnings`.
 
-The aggregate `--profile all` run reached `phase0`, where the MainDemo
-autotest emitted repeated `backend_closed` markers and never emitted
-`phase0_autotest_complete` before the run was stopped. This remains an open
-runtime gate. Diagnostic copies are retained in
-`D:\CurrentActionFoundationEvidence-all-final5`; StreetCombatDemo success is
-not promoted to a repository-wide completion claim.
+The fresh aggregate run `D:\CurrentActionFoundationEvidence-all-final5-20260930`
+(run `7f8ee43213024b809ae531168fd463ba`, revision `6b5c698ba189be4281f7880953f6d93331740021`)
+passed every profile except strict `phase0`. Its report records missing
+dialogue/transport/interaction/voice markers, weak player root-motion and
+forward-direction evidence, and missing Observatory payload/panel markers.
+Cleanup passed. StreetCombatDemo success is not promoted to a repository-wide
+completion claim.
 
 ## 2026-09-29 Ordered Task 1-15 Verification
 
@@ -118,18 +119,17 @@ Motor, animation owner, authority writer, or weapon scheduler.
    Godot host then proved a reversed forced-motion Z conversion, fixed with a
    red/green contract test. Fresh `character-turn-embodied-episode` evidence
    proves success, distance failure, revision failure, and stance failure.
-2. **Full repository pytest (owner: repository maintainers):** the fresh run
-   ends `7652 passed, 56 failed, 2 skipped, 103 warnings`. The failures include
-   obsolete CharacterReplica contract tests plus unrelated runtime/integration
-   regressions; they remain open and are not masked by the green StreetCombatDemo
-   profile.
+2. **Strict Phase 0 aggregate runtime (owner: Phase 0/MainDemo maintainers):**
+   the fresh `all` run has `phase0` failed while every other all profile passed.
+   Missing dialogue, transport ordering, interaction, voice, player root-motion,
+   forward-direction, and Observatory markers remain open.
 3. Root motion is intentionally `hold` / zero-envelope. This is a temporary
    qualified capability boundary, not calibrated production locomotion.
 
 The StreetCombatDemo runtime profile is fresh green evidence for the StreetDemo
 pilot and migration gates; it is not a claim that the entire unified character
 action-foundation series is complete. Task 9 remains **blocked** pending the
-repository-wide pytest gate and the Phase 0 MainDemo runtime gate.
+strict Phase 0 MainDemo runtime gate.
 
 ## Historical and transitional document rule
 

@@ -2,7 +2,7 @@
 
 Date: `2026-09-30`
 
-Status: `CharacterReplica retired; Task 9 repository-wide closure remains blocked`
+Status: `CharacterReplica retired; Task 9 remains blocked by strict Phase 0 runtime`
 
 The 2026-09-28 pilot is landed as a StreetCombatDemo result. This ledger keeps
 the pilot evidence separate from the remaining series gates. The 2026-09-28
@@ -28,19 +28,13 @@ green. Root motion remains the temporary `hold` / zero-envelope policy; it is
 not calibrated production locomotion.
 
 The external ArchiveDoor dependency now has fresh success, distance, revision,
-and stance evidence from live backend and Godot. The focused transport timeout
-was a test fixture outside authority range; the Godot success/revision failure
-was a reversed forced-motion Z conversion, corrected with a red/green test.
-The 2026-09-30 full pytest rerun completed with `7676 passed, 33 failed, 2 skipped,
-103 warnings`. Repository-wide failures remain a separate closure blocker; the
-green StreetCombatDemo, agent, and retirement profiles do not replace the
-required aggregate result. The latest `--profile all` run loaded MainDemo and
-reached `phase0_autotest_complete`, but Phase 0 failed its backend pytest,
-positive player Motor/forward motion evidence, and observatory gates. The
-observatory probe stops at its timeline projection check: Godot string fields
-constructed with `str(value or "")` become `"true"` or `"false"`, losing the
-correlation and Siming pressure text. Diagnostic copies are retained in
-`D:\CurrentActionFoundationEvidence-all-recheck`.
+and stance evidence from live backend and Godot. The 2026-09-30 full pytest
+rerun completed with `7720 passed, 2 skipped, 103 warnings`. Fresh street,
+agent, and retirement profiles pass. The aggregate run
+`D:\CurrentActionFoundationEvidence-all-final5-20260930` passed every profile
+except strict `phase0`, which still lacks dialogue/transport/interaction/voice,
+positive player root-motion/forward evidence, and Observatory payload/panel
+markers. Cleanup passed; this remains the only Task 9 blocker.
 
 ### Final boundary
 
@@ -196,27 +190,25 @@ two-character foundation milestone can be claimed.
 Task 10 documentation reconciliation is complete. Its checklist and status
 surfaces are synchronized with the landed StreetCombatDemo pilot, the 2026-09-14
 master-plan dependency map, and the remaining gap table. Task 9 remains blocked
-by the repository-wide external pytest gate; that release blocker constrains the
-overall action-foundation claim but does not reopen Task 10 documentation work.
+by strict Phase 0 runtime evidence; that release blocker constrains the overall
+action-foundation claim but does not reopen Task 10 documentation work.
 
 The ordered Task 1 → Task 15 verification was rerun on 2026-09-29. Release
-verification passed with Mode B and Mode C disabled. The fresh full pytest gate
+verification passed with Mode B and Mode C disabled. An older 2026-09-29 full pytest gate
 completed with `7671 collected, 7621 passed, 48 failed, 2 skipped, 103
-warnings`; the failures remain the Task 9 external blocker. The final Harness
+warnings`; that result is historical. The final Harness
 `--profile all` export is `D:\Task1-15Evidence-20260929-final-all-1915`; docs,
 boundaries, drift, and backend-contract passed, while `godot-project` failed
 because `scene_resource_paths_exist=missing`. Harness cleanup passed.
 
 The fresh required `python -m pytest -v` run is recorded in
-`D:\CurrentActionFoundationEvidence-pytest-final.stdout.log` and ended with
-`7652 passed, 56 failed, 2 skipped, 103 warnings`. Remaining failures include
-obsolete CharacterReplica contract tests, Phase 0 scene expectations, and
-unrelated runtime/integration paths. `git diff --check` is rerun after the
-Task 9 documentation update below.
+`D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` and ended
+with `7720 passed, 2 skipped, 103 warnings`. `git diff --check` is rerun after
+the Task 9 documentation update below.
 
-Accordingly, the dependency gate remains conditional. It does not waive the
-recorded repository-wide failures or authorize a first-milestone completion
-claim until the fresh episode and aggregate gates are green.
+Accordingly, the dependency gate remains conditional on the strict Phase 0
+aggregate runtime. It does not authorize a first-milestone completion claim
+until that fresh runtime gate is green.
 
 ### Asset qualification clarification (2026-09-24)
 
