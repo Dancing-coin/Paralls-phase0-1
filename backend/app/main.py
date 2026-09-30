@@ -488,6 +488,10 @@ def _complete_siming_character_transport(entry, progress):
     # 发送尝试先留原回执；进程中断不得把未知文本传输重复当成新投递。
     store.save_receipt(entry.actor_id, kind='cognition_output', key=entry.child_key,
         receipt={**identity, 'status': 'handoff_started', 'reason': 'transport_outcome_pending'})
+    if not messages:
+        store.save_receipt(entry.actor_id, kind='cognition_transport', key=entry.child_key,
+            receipt={'status': 'not_sent', 'reason': 'execution_contract_missing', 'sent_frames': 0})
+        return
     posted = sink.post({'child_key': entry.child_key, 'actor_id': entry.actor_id, 'binding_pin': list(origin.binding_pin),
         'connection_ref': origin.connection_ref, 'messages': messages})
     if not posted:

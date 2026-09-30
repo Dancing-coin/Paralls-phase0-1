@@ -113,7 +113,7 @@ async def run():
                         await asyncio.sleep(.02)
                     assert rows
                 done.set();await tasks[1]
-                outputs=lambda socket:[row for row in socket.messages if row['message_type'] in {'character_agent_execution','character_agent_suggestion'} and row['payload'].get('actor_id')=='char_b']
+                outputs=lambda socket:[row for row in socket.messages if ((row['message_type']=='character_agent_execution' and row['payload'].get('actor_ref')=='character:char_b') or (row['message_type']=='character_agent_suggestion' and row['payload'].get('actor_id')=='char_b'))]
                 assert not outputs(sockets[1])
                 actual=outputs(sockets[0])
                 assert bool(actual)==(mode in {'auto','assisted','frame_revoke','raw'}),(mode,sockets[0].messages)
@@ -149,3 +149,5 @@ asyncio.run(run())
         env={**child_environment(), 'CHARACTER_MODEL_PROVIDER_KIND':'local', 'SIMING_LLM_MODE':'disabled'},
         capture_output=True,text=True,timeout=30)
     assert result.returncode==0,result.stdout+result.stderr
+
+

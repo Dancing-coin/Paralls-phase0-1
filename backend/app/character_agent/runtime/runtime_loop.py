@@ -4701,21 +4701,84 @@ class CharacterAgentRuntime:
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         return plan
 
+    def _durable_execution_turn_context(self, frame: dict[str, object]) -> CharacterTurnContext:
+        """Rebuild canonical turn identity from frozen durable cognition stages."""
+        payload = frame.get("normalized_payload", {})
+        payload = payload if isinstance(payload, dict) else {}
+        actor_id = str(frame.get("actor_id", "") or "")
+        producer_ts = int(frame.get("producer_ts", 0) or 0)
+        source_event_ref = str(payload.get("message_id", "") or payload.get("delivery_id", "") or f"siming:{producer_ts}:{actor_id}")
+        causation_id = str(payload.get("causation_id", "") or f"siming:{producer_ts}")
+        correlation_id = str(payload.get("correlation_id", "") or causation_id)
+        context = CharacterTurnContext.begin(
+            actor_id=actor_id, source_event_ref=source_event_ref, producer_ts=producer_ts,
+            causation_id=causation_id, correlation_id=correlation_id,
+            input_revision_vector={"l1_input": producer_ts}, memory_revision_vector={"memory": 0},
+            policy_revision="policy:character-runtime:v1", snapshot_revision=producer_ts,
+            branch_id="branch:main",
+        )
+        decision = CharacterIntentDecision.model_validate(frame["decision"])
+        stages = (
+            ("context", {"l1_snapshot": frame["entry_after"]["private_snapshot"]}),
+            ("interpretation", frame["interpretation"]),
+            ("goal", (decision.active_goal_frame or self._decision_goal_frame(decision)).model_dump(mode="json")),
+            ("intent", {"selected_intent": decision.selected_intent, "rationale": decision.rationale, "planning_status": decision.planning_status}),
+        )
+        for stage, raw_payload in stages:
+            canonical = self._turn_coordinator._canonical_payload(raw_payload)
+            digest = self._turn_coordinator._payload_digest(canonical)
+            context, _ = context.stage_event(
+                stage, stage_ref=f"stage:{context.turn_id}:{stage}:{digest}",
+                idempotency_key=f"{context.turn_id}:{stage}:{digest}", producer_ts=producer_ts,
+                payload=canonical,
+            )
+        execution_payload = {
+            "execution_ref": f"execution:{context.turn_id}",
+            "authority_request_ref": f"authority-request:{context.turn_id}",
+            "expected_revision": self._session_timeline_event_count(actor_id),
+        }
+        canonical = self._turn_coordinator._canonical_payload(execution_payload)
+        digest = self._turn_coordinator._payload_digest(canonical)
+        context, _ = context.stage_event(
+            "execution", stage_ref=f"stage:{context.turn_id}:execution:{digest}",
+            idempotency_key=f"{context.turn_id}:execution:{digest}", producer_ts=producer_ts,
+            payload=canonical,
+        )
+        return context
     def _plan_execution_effects(self, frame):
         actor_id, producer_ts = frame['actor_id'], frame['producer_ts']
         payload = frame['normalized_payload']
-        plan = self._build_execution_plan(actor_id,
-            CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot']),
-            CharacterInterpretation.model_validate(frame['interpretation']),
-            CharacterIntentDecision.model_validate(frame['decision']),
+        snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])
+        interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
+        decision = CharacterIntentDecision.model_validate(frame['decision'])
+        plan = self._build_execution_plan(
+            actor_id, snapshot, interpretation, decision,
             causation_id=str(payload.get('causation_id', '') or ''),
             correlation_id=str(payload.get('correlation_id', '') or ''))
+        # Durable children must use the same canonical contract egress as the
+        # direct ingest path.  Keep planning read-only; only the admission
+        # coordinator commits the resulting execution event.
+        turn_context = self._durable_execution_turn_context(frame)
+        plan['turn_id'] = turn_context.turn_id
+        plan['causation_id'] = turn_context.causation_id
+        plan['correlation_id'] = turn_context.correlation_id
+        plan['authority_request_ref'] = f"authority-request:{turn_context.turn_id}"
+        contract = self._l4_executor.build_execution_contract(
+            snapshot=snapshot, interpretation=interpretation, decision=decision,
+            turn_context=turn_context,
+        )
+        realization_metadata = self._l4.realization_metadata_from_execution_plan(plan)
+        dumped_contract = contract.model_dump(mode='json')
+        allowed_hints = dict(dumped_contract['allowed_realization_hints'])
+        allowed_hints['skill'] = realization_metadata
+        plan['execution_contract'] = CharacterExecutionContract.model_validate({
+            **dumped_contract, 'allowed_realization_hints': allowed_hints,
+        }).model_dump(mode='json')
         state = self._plan_execution_request_state(actor_id, producer_ts, plan)
         commands = self.filter_commands_for_actor(actor_id, self._l4.build_commands_from_execution_plan(deepcopy(plan)))
         return dict(state, execution_plan=plan, commands=[command.model_dump(mode='json') for command in commands],
             events=[] if state['deferred'] else [dict(event_type='character_agent_execution_request',
                 producer_ts=producer_ts, payload=plan)])
-
     def _record_execution_plan(
         self,
         actor_id: str,
@@ -6395,3 +6458,5 @@ class CharacterAgentRuntime:
             goal_sources=list(decision.goal_sources),
             urgency=decision.urgency,
         )
+
+
