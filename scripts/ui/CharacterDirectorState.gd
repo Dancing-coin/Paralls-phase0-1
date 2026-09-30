@@ -291,12 +291,24 @@ func _on_siming_debug_snapshot_received(payload: Dictionary) -> void:
 func _on_siming_debug_event_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
-	recent_siming_events.append(payload.duplicate(true))
+	var event := payload.duplicate(true)
+	latest_siming_state = event
+	recent_siming_events.append(event)
 	if recent_siming_events.size() > MAX_EVENT_HISTORY:
 		recent_siming_events = _dictionary_array(recent_siming_events.slice(recent_siming_events.size() - MAX_EVENT_HISTORY, recent_siming_events.size()))
+	var target_ref := _string_or_empty(event.get("target_ref", ""))
+	if target_ref.is_empty():
+		var perception_identity: Variant = event.get("perception_identity", {})
+		if perception_identity is Dictionary:
+			target_ref = _string_or_empty((perception_identity as Dictionary).get("target_ref", ""))
+	var siming_summary := _first_non_empty_string([event.get("reason_summary", ""), event.get("summary", "")])
+	if not target_ref.is_empty() and not siming_summary.is_empty() and latest_actor_states.has(target_ref):
+		var actor_state: Dictionary = (latest_actor_states[target_ref] as Dictionary).duplicate(true)
+		actor_state["latest_siming_summary"] = siming_summary
+		latest_actor_states[target_ref] = actor_state
 	recent_dialogue_pairs = _attach_siming_pressure_context(
 		recent_dialogue_pairs,
-		_first_non_empty_string([payload.get("reason_summary", ""), payload.get("summary", "")])
+		siming_summary
 	)
 	_queue_state_refresh()
 

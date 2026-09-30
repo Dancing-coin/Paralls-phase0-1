@@ -84,6 +84,17 @@ def test_character_director_state_selected_actor_siming_helpers_stay_presentatio
     assert "_string_array(" in recent_reasons_block
 
 
+def test_character_director_state_promotes_runtime_siming_events_to_latest_state_and_actor_feedback() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    siming_event_block = _function_block(source, "func _on_siming_debug_event_received(payload: Dictionary) -> void:")
+
+    assert "var event := payload.duplicate(true)" in siming_event_block
+    assert "latest_siming_state = event" in siming_event_block
+    assert "var target_ref := _string_or_empty(event.get(\"target_ref\", \"\"))" in siming_event_block
+    assert "latest_actor_states[target_ref]" in siming_event_block
+    assert 'latest_siming_summary' in siming_event_block
+
+
 def test_character_director_state_bottom_strip_stays_single_merged_builder() -> None:
     source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
     bottom_strip_block = _function_block(source, "func get_latest_bottom_strip_entries() -> Array[Dictionary]:")
