@@ -86,6 +86,9 @@ func _run_probe() -> void:
 	state.set_director_mode(true)
 	state.set_script_mode(true)
 	var main_controller := main_demo
+	# Keep the probe's explicit focus target stable while the normal focus sampler
+	# runs; otherwise _process() can clear it before the dialogue request.
+	main_controller.set("focus_override_active", true)
 	var actor_node := main_demo.get_node_or_null("CharacterA")
 	var object_node := main_demo.get_node_or_null("InteractiveObject")
 	print("character_director_observatory_probe:actor_node_id=%s" % str(actor_node.get("actor_id") if actor_node != null else "<missing>"))
@@ -132,16 +135,11 @@ func _run_probe() -> void:
 			if not actor_probe_ids.has(actor_id_text):
 				actor_probe_ids.append(actor_id_text)
 		for actor_id in actor_probe_ids:
-			print("character_director_observatory_probe:actor_select_begin=%s" % actor_id)
 			state.set_selected_actor(actor_id)
-			print("character_director_observatory_probe:actor_select_changed=%s" % actor_id)
 			if actor_panel.has_method("_refresh"):
 				actor_panel.call("_refresh")
-			print("character_director_observatory_probe:actor_panel_refreshed=%s" % actor_id)
 			await get_tree().process_frame
-			print("character_director_observatory_probe:actor_first_frame=%s" % actor_id)
 			await get_tree().process_frame
-			print("character_director_observatory_probe:actor_second_frame=%s" % actor_id)
 			var selected_payload: Dictionary = state.get_selected_actor_state()
 			var actor_panel_text := _string_or_empty(actor_label.text)
 			var selected_actor_siming_summary := _string_or_empty(
@@ -239,12 +237,9 @@ func _run_probe() -> void:
 		ledger_siming_pressure_populated = not resolved_context.is_empty() and resolved_context != "暂无"
 	var current_timeline_beats: Array[Dictionary] = state.call("get_recent_script_beats")
 	var current_siming_events: Array[Dictionary] = state.call("get_recent_siming_events")
-	var current_runtime_siming_summary := _find_latest_runtime_siming_summary(current_timeline_beats, current_siming_events)
 	var current_bottom_strip_entries: Array[Dictionary] = state.call("get_latest_bottom_strip_entries")
 	var state_bottom_strip_siming_populated := _bottom_strip_entries_include_siming(current_bottom_strip_entries)
 	var live_bottom_strip_siming_populated := false
-	var world_trace_has_formatter := world_trace != null and world_trace.has_method("_format_bottom_strip_row")
-	var formatter_diagnostic_row := ""
 	if world_trace != null and world_trace.has_method("_refresh"):
 		world_trace.call("_refresh")
 		await get_tree().process_frame
@@ -253,8 +248,6 @@ func _run_probe() -> void:
 			world_trace_label != null
 			and str(world_trace_label.text).find("[司命]") >= 0
 		)
-		if world_trace_has_formatter:
-			formatter_diagnostic_row = _format_latest_bottom_strip_siming_entry(world_trace, current_bottom_strip_entries)
 	var bottom_strip_populated: bool = (
 		world_trace_label != null
 		and str(world_trace_label.text).find("最近 3 条") >= 0
@@ -281,13 +274,6 @@ func _run_probe() -> void:
 		and ledger_pairwise_populated
 	)
 	print("character_director_observatory_probe:bottom_strip_populated=%s" % ("true" if bottom_strip_populated else "false"))
-	print("character_director_observatory_probe:diag_runtime_siming_summary_nonempty=%s" % ("true" if not current_runtime_siming_summary.is_empty() else "false"))
-	print("character_director_observatory_probe:diag_world_trace_exists=%s" % ("true" if world_trace != null else "false"))
-	print("character_director_observatory_probe:diag_world_trace_has_formatter=%s" % ("true" if world_trace_has_formatter else "false"))
-	print("character_director_observatory_probe:diag_formatter_row_contains_siming=%s" % ("true" if formatter_diagnostic_row.find("[司命]") >= 0 else "false"))
-	if not formatter_diagnostic_row.is_empty():
-		print("character_director_observatory_probe:diag_bottom_strip_formatter_row=%s" % formatter_diagnostic_row)
-	print("character_director_observatory_probe:diag_state_bottom_strip_siming=%s" % ("true" if state_bottom_strip_siming_populated else "false"))
 	state.set_freeze_mode(true)
 	var frozen_before: int = state.get_recent_script_beats().size()
 	await get_tree().create_timer(0.2).timeout
@@ -407,7 +393,7 @@ func _wait_for_bottom_strip_siming(state: Node, observatory_root: Node, timeout_
 		if world_trace != null and world_trace.has_method("_format_bottom_strip_row"):
 			var formatted_siming_row := _format_latest_bottom_strip_siming_entry(world_trace, bottom_strip_entries)
 			if not formatted_siming_row.is_empty():
-				print("character_director_observatory_probe:diag_bottom_strip_formatter_row=%s" % formatted_siming_row)
+				return true
 		await get_tree().create_timer(0.1).timeout
 	return false
 

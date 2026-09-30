@@ -2996,7 +2996,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     return
                 else:
                     status = "requeued" if advance.status == "zero_write" else advance.status
-                await send(_dialogue_stream_end(request_id, status, partial_chars, fallback_used))
+                await send(_dialogue_stream_end(request_id, status, partial_chars, fallback_used,
+                    reason=advance.reason if advance is not None else ""))
         except Exception as exc:
             cancelled.set()
             # owner 停止时由 on_stop 保留并完成清理；transport 仍须给出终结消息。
@@ -3288,7 +3289,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             slot.close()
                             await send(_as_envelope("ack", {"accepted": False,
                                 "source_type": envelope.message_type, "route": "character_service"}))
-                            await send(_dialogue_stream_end(request_id, "requeued", 0, False))
+                            await send(_dialogue_stream_end(request_id, "requeued", 0, False,
+                                reason=advance.reason))
                             slot.close()
                             continue
                         cancelled, wake = ThreadEvent(), asyncio.Event()
@@ -5493,6 +5495,11 @@ def _begin_dialogue_activation(event: DialogueSubmit, deadline: float):
     actor_id, decision = _player_activation_decision(event)
     if decision is None:
         return None, None
+    # Player dialogue has priority over a scheduled background lease.  End the
+    # scheduled admission through its normal stale/release path before trying
+    # the player activation; never reuse or bypass another owner's token.
+    if decision.state == "active" and _character_cognition_driver is not None:
+        _character_cognition_driver.preempt_actor(actor_id)
     return character_agent_runtime.begin_actor_activation(
         actor_id, decision, producer_ts=event.producer_ts, deadline_monotonic=deadline)
 
@@ -5662,16 +5669,17 @@ def _dialogue_stream_end(
     status: str,
     partial_chars: int,
     fallback_used: bool,
+    reason: str = "",
 ) -> dict[str, object]:
-    return _as_envelope(
-        "dialogue_stream_end",
-        {
-            "request_id": request_id,
-            "status": status,
-            "partial_chars": partial_chars,
-            "fallback_used": fallback_used,
-        },
-    )
+    payload = {
+        "request_id": request_id,
+        "status": status,
+        "partial_chars": partial_chars,
+        "fallback_used": fallback_used,
+    }
+    if reason:
+        payload["reason"] = reason
+    return _as_envelope("dialogue_stream_end", payload)
 
 
 def _handle_character_agent_speech_action(

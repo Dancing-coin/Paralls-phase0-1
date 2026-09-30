@@ -503,15 +503,15 @@ func get_payload_actor_id(payload: Dictionary) -> String:
 
 
 func get_payload_target_actor_id(payload: Dictionary) -> String:
-	return str(payload.get("target_actor_id", "") or "")
+	return get_payload_string(payload, "target_actor_id")
 
 
 func get_payload_target_object_id(payload: Dictionary) -> String:
-	return str(payload.get("target_object_id", "") or "")
+	return get_payload_string(payload, "target_object_id")
 
 
 func get_payload_target_environment_id(payload: Dictionary) -> String:
-	return str(payload.get("target_environment_id", "") or "")
+	return get_payload_string(payload, "target_environment_id")
 
 
 func is_dialogue_payload_for_actor(payload: Dictionary, current_actor_id: String) -> bool:

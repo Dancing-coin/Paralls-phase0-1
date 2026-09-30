@@ -305,8 +305,15 @@ def run_tier(directory: Path, population: int, godot: Path) -> dict:
         backend_env = child_environment()
         secret = secrets.token_urlsafe(32)
         backend_env["GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET"] = secret
-        backend_command = [sys.executable, str(ROOT / "scripts/verification/verify_population_godot_runtime.py"),
-                           "--backend-child", str(directory), "--state-directory", str(state)]
+        # On Windows a venv's ``python.exe`` is an app-launcher process.  Its
+        # ``Popen.pid`` is not the interpreter PID that writes backend-ready,
+        # QoS, and backend-observed evidence.  Use the repository's launcher
+        # helper so the process identity in the evidence is the real backend
+        # process consumed by the verifier.
+        from scripts.verification.population_python_process import python_process
+        backend_command, backend_env = python_process([
+            str(ROOT / "scripts/verification/verify_population_godot_runtime.py"),
+            "--backend-child", str(directory), "--state-directory", str(state)], backend_env)
         with (directory / "backend.log").open("w", encoding="utf-8") as backend_log, (directory / "godot.log").open("w", encoding="utf-8") as godot_log:
             backend = subprocess.Popen(backend_command, cwd=ROOT, env=backend_env, stdout=backend_log, stderr=subprocess.STDOUT)
             render = None

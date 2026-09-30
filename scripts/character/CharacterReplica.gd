@@ -465,7 +465,7 @@ func _update_autonomous_contact_target(active_command_type: String, target_node:
 	if target_node == null:
 		_active_contact_target_actor_id = ""
 		return
-	var target_actor_id := str(target_node.get("actor_id") or "")
+	var target_actor_id := _node_text(target_node, "actor_id")
 	match active_command_type:
 		"approach", "follow_target":
 			if not target_actor_id.is_empty():
@@ -667,7 +667,7 @@ func _sample_actor_local_perception() -> void:
 	var actor_target := _first_visible_actor_target(visible)
 	if actor_target == null:
 		return
-	var target_actor_id := str(actor_target.get("actor_id") or "")
+	var target_actor_id := _node_text(actor_target, "actor_id")
 	if target_actor_id.is_empty():
 		return
 	var target_position := _get_perception_target_position(actor_target)
@@ -688,7 +688,7 @@ func set_actor_local_perception_enabled(is_enabled: bool) -> void:
 
 func _first_visible_actor_target(candidates: Array[Node3D]) -> Node3D:
 	for candidate: Node3D in candidates:
-		var candidate_actor_id := str(candidate.get("actor_id") or "")
+		var candidate_actor_id := _node_text(candidate, "actor_id")
 		if candidate_actor_id.is_empty() or candidate_actor_id == actor_id:
 			continue
 		return candidate
@@ -1311,3 +1311,14 @@ func _get_current_role_profile_name() -> String:
 	if role_asset_scene and role_asset_scene.has_method("get_current_motion_profile_name"):
 		return str(role_asset_scene.get_current_motion_profile_name())
 	return "default"
+
+func _node_text(node: Node, property_name: String) -> String:
+	if node == null:
+		return ""
+	var value: Variant = node.get(property_name)
+	if value == null:
+		return ""
+	if value is bool:
+		return "true" if value else ""
+	var result := str(value)
+	return "" if result.is_empty() else result

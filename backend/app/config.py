@@ -128,9 +128,15 @@ class Settings(BaseModel):
     def require_runtime_profile_actors(cls, actor_ids: list[str]) -> list[str]:
         from app.character_agent.profile.registry import CharacterProfileRegistry
 
-        profile_directory = (
-            Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles"
-        )
+        # Character profiles live in the repository-level ``assets`` tree.
+        # The backend may be imported from an installed wheel, so also resolve
+        # the active checkout from the process working directory.
+        candidates = [
+            Path(__file__).resolve().parents[2] / "assets" / "characters" / "profiles",
+            Path.cwd() / "assets" / "characters" / "profiles",
+            Path.cwd().parent / "assets" / "characters" / "profiles",
+        ]
+        profile_directory = next((path for path in candidates if path.is_dir()), candidates[0])
         known_actor_ids = set(
             CharacterProfileRegistry.from_directory(profile_directory).actor_ids()
         )

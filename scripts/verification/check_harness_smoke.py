@@ -22,9 +22,11 @@ SMOKE_TESTS = [
 
 def main() -> int:
     with tempfile.TemporaryDirectory(prefix="harness-smoke-") as test_root:
+        repository_root = Path(__file__).resolve().parents[2]
         result = subprocess.run(
-            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--basetemp", test_root, *SMOKE_TESTS],
-            cwd=Path(__file__).resolve().parents[2],
+            [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--rootdir", str(repository_root),
+             "--ignore", "C:\\Documents and Settings", "--basetemp", test_root, *SMOKE_TESTS],
+            cwd=repository_root,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
             check=False,
             timeout=110,

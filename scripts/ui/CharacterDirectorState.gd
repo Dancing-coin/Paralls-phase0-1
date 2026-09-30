@@ -11,6 +11,7 @@ var frozen_frame := {}
 var latest_actor_states := {}
 var recent_actor_events := {}
 var latest_siming_state := {}
+var latest_siming_summaries_by_actor := {}
 var recent_siming_events: Array[Dictionary] = []
 var recent_world_outcomes: Array[Dictionary] = []
 var recent_scheduling_rounds: Array[Dictionary] = []
@@ -21,6 +22,21 @@ var _state_refresh_queued := false
 
 const MAX_EVENT_HISTORY := 24
 const DEFAULT_OBSERVATORY_ACTOR_IDS := ["char_c", "char_a", "char_b"]
+
+# GDScript's `or` returns a boolean, unlike Python's value-coalescing `or`.
+# Keep presentation payload normalization value-preserving at this boundary.
+func _text(value: Variant, fallback: String = "") -> String:
+	if value == null:
+		return fallback
+	var result := str(value)
+	return fallback if result.is_empty() else result
+
+func _first_text(values: Array) -> String:
+	for value in values:
+		var result := _text(value)
+		if not result.is_empty():
+			return result
+	return ""
 
 
 func _ready() -> void:
@@ -35,6 +51,8 @@ func _ready() -> void:
 		bus.siming_debug_snapshot_received.connect(_on_siming_debug_snapshot_received)
 	if bus.has_signal("siming_debug_event_received"):
 		bus.siming_debug_event_received.connect(_on_siming_debug_event_received)
+	if bus.has_signal("siming_output_received"):
+		bus.siming_output_received.connect(_on_siming_output_received)
 	if bus.has_signal("world_outcome_trace_received"):
 		bus.world_outcome_trace_received.connect(_on_world_outcome_trace_received)
 	if bus.has_signal("scheduling_round_trace_received"):
@@ -105,7 +123,7 @@ func get_selected_actor_events() -> Array[Dictionary]:
 
 
 func get_selected_actor_latest_siming_summary() -> String:
-	return str(get_selected_actor_state().get("latest_siming_summary", "") or "")
+	return _text(get_selected_actor_state().get("latest_siming_summary", ""))
 
 
 func get_selected_actor_recent_siming_reasons(limit: int = 2) -> Array[String]:
@@ -114,9 +132,10 @@ func get_selected_actor_recent_siming_reasons(limit: int = 2) -> Array[String]:
 	var rows: Array[String] = []
 	var events: Array[Dictionary] = get_recent_siming_events()
 	for event in events:
-		if str(event.get("target_ref", "") or "") != selected_actor_id:
+		if _text(event.get("target_ref", "")) != selected_actor_id:
 			continue
-		rows.append(str(event.get("reason_summary", "") or event.get("summary", "") or ""))
+		var reason := _text(event.get("reason_summary", ""))
+		rows.append(reason if not reason.is_empty() else _text(event.get("summary", "")))
 	if rows.size() > limit:
 		rows = _string_array(rows.slice(rows.size() - limit, rows.size()))
 	return rows
@@ -143,7 +162,7 @@ func get_latest_script_beat_summaries(limit: int = 3) -> Array[String]:
 	if start < 0:
 		start = 0
 	for beat in beats.slice(start, beats.size()):
-		rows.append(str(beat.get("dramatic_summary", "") or ""))
+		rows.append(_text(beat.get("dramatic_summary", "")))
 	return rows
 
 
@@ -161,7 +180,7 @@ func get_latest_siming_summaries(limit: int = 3) -> Array[String]:
 	if start < 0:
 		start = 0
 	for event in events.slice(start, events.size()):
-		rows.append(str(event.get("summary", "") or ""))
+		rows.append(_text(event.get("summary", "")))
 	return rows
 
 func get_latest_bottom_strip_entries() -> Array[Dictionary]:
@@ -170,7 +189,7 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 		rows.append(
 			{
 				"type": "世界",
-				"summary": str(outcome.get("dramatic_consequence_summary", "") or outcome.get("world_change_summary", "") or outcome.get("settlement_status", "") or ""),
+				"summary": _first_text([outcome.get("dramatic_consequence_summary", ""), outcome.get("world_change_summary", ""), outcome.get("settlement_status", "")]),
 				"producer_ts": int(outcome.get("producer_ts", 0)),
 			}
 		)
@@ -178,7 +197,7 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 		rows.append(
 			{
 				"type": "调度",
-				"summary": str(round.get("round_summary", "") or ""),
+				"summary": _text(round.get("round_summary", "")),
 				"producer_ts": int(round.get("round_started_at", round.get("producer_ts", 0))),
 			}
 		)
@@ -186,7 +205,7 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 		rows.append(
 			{
 				"type": "司命",
-				"summary": str(event.get("summary", "") or ""),
+				"summary": _text(event.get("summary", "")),
 				"producer_ts": int(event.get("producer_ts", 0)),
 			}
 		)
@@ -194,7 +213,7 @@ func get_latest_bottom_strip_entries() -> Array[Dictionary]:
 		rows.append(
 			{
 				"type": "节拍",
-				"summary": str(beat.get("dramatic_summary", "") or ""),
+				"summary": _text(beat.get("dramatic_summary", "")),
 				"producer_ts": int(beat.get("producer_ts", 0)),
 			}
 		)
@@ -218,7 +237,7 @@ func get_dialogue_pair_entries() -> Array[Dictionary]:
 
 func _latest_siming_pressure_context() -> String:
 	for event in get_recent_siming_events():
-		var summary := str(event.get("reason_summary", "") or event.get("summary", "") or "")
+		var summary := _first_text([event.get("reason_summary", ""), event.get("summary", "")])
 		if not summary.is_empty():
 			return summary
 	var beats := get_recent_script_beats()
@@ -227,7 +246,7 @@ func _latest_siming_pressure_context() -> String:
 		if summaries is Array:
 			for item in summaries:
 				if item is Dictionary:
-					var summary := str((item as Dictionary).get("reason_summary", "") or (item as Dictionary).get("summary", "") or "")
+					var summary := _first_text([(item as Dictionary).get("reason_summary", ""), (item as Dictionary).get("summary", "")])
 					if not summary.is_empty():
 						return summary
 	return ""
@@ -245,17 +264,23 @@ func resolve_target_node(target_ref: String) -> Node3D:
 func _on_character_agent_debug_snapshot_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
-	var actor_id := str(payload.get("actor_id", "") or "")
+	var actor_id := _text(payload.get("actor_id", ""))
 	if actor_id.is_empty():
 		return
-	latest_actor_states[actor_id] = payload.duplicate(true)
+	var snapshot := payload.duplicate(true)
+	var siming_summary := _text(latest_siming_summaries_by_actor.get(actor_id, ""))
+	if siming_summary.is_empty():
+		siming_summary = _first_text([latest_siming_state.get("prompt_summary", ""), latest_siming_state.get("reason_summary", ""), latest_siming_state.get("summary", "")])
+	if not siming_summary.is_empty():
+		snapshot["latest_siming_summary"] = siming_summary
+	latest_actor_states[actor_id] = snapshot
 	_queue_state_refresh()
 
 
 func _on_character_agent_debug_event_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
-	var actor_id := str(payload.get("actor_id", "") or "")
+	var actor_id := _text(payload.get("actor_id", ""))
 	if actor_id.is_empty():
 		return
 	var history: Array[Dictionary] = _dictionary_array(recent_actor_events.get(actor_id, []))
@@ -276,13 +301,39 @@ func _on_siming_debug_snapshot_received(payload: Dictionary) -> void:
 func _on_siming_debug_event_received(payload: Dictionary) -> void:
 	if freeze_mode:
 		return
+	latest_siming_state = payload.duplicate(true)
+	var debug_summary := _first_text([payload.get("prompt_summary", ""), payload.get("reason_summary", ""), payload.get("summary", "")])
+	var debug_target := _text(payload.get("target_actor_id", payload.get("target_ref", "")))
+	if not debug_summary.is_empty() and not debug_target.is_empty() and debug_target.begins_with("char_"):
+		latest_siming_summaries_by_actor[debug_target] = debug_summary
 	recent_siming_events.append(payload.duplicate(true))
 	if recent_siming_events.size() > MAX_EVENT_HISTORY:
 		recent_siming_events = _dictionary_array(recent_siming_events.slice(recent_siming_events.size() - MAX_EVENT_HISTORY, recent_siming_events.size()))
 	recent_dialogue_pairs = _attach_siming_pressure_context(
 		recent_dialogue_pairs,
-		str(payload.get("reason_summary", "") or payload.get("summary", "") or "")
+		_first_text([payload.get("reason_summary", ""), payload.get("summary", "")])
 	)
+	_queue_state_refresh()
+
+
+func _on_siming_output_received(payload: Dictionary) -> void:
+	if freeze_mode:
+		return
+	latest_siming_state = payload.duplicate(true)
+	var summary := _first_text([payload.get("prompt_summary", ""), payload.get("reason_summary", ""), payload.get("summary", "")])
+	var target_ref := _first_text([payload.get("target_actor_id", ""), payload.get("target_object_id", ""), payload.get("target_environment_id", "")])
+	if not summary.is_empty():
+		var target_actor_id := _text(payload.get("target_actor_id", ""))
+		if not target_actor_id.is_empty():
+			latest_siming_summaries_by_actor[target_actor_id] = summary
+		for actor_id in latest_actor_states.keys():
+			if target_actor_id.is_empty() and latest_siming_summaries_by_actor.has(actor_id):
+				continue
+			var actor_state: Dictionary = latest_actor_states[actor_id]
+			# A Siming output is a public runtime feedback signal. Keep it visible
+			# on the observed actor rail even when the prompt targets an object.
+			actor_state["latest_siming_summary"] = summary
+			latest_actor_states[actor_id] = actor_state
 	_queue_state_refresh()
 
 
@@ -321,12 +372,12 @@ func _on_script_beat_event_received(payload: Dictionary) -> void:
 func _presentation_script_beat(payload: Dictionary) -> Dictionary:
 	var siming_summaries := _presentation_siming_summaries(payload.get("siming_summaries", []))
 	return {
-		"beat_id": str(payload.get("beat_id", "") or ""),
+		"beat_id": _text(payload.get("beat_id", "")),
 		"producer_ts": int(payload.get("producer_ts", 0) or 0),
-		"causation_id": str(payload.get("causation_id", "") or ""),
-		"correlation_id": str(payload.get("correlation_id", "") or ""),
+		"causation_id": _text(payload.get("causation_id", "")),
+		"correlation_id": _text(payload.get("correlation_id", "")),
 		"participants": _string_array(payload.get("participants", [])),
-		"dramatic_summary": str(payload.get("dramatic_summary", "") or payload.get("summary", "") or ""),
+		"dramatic_summary": _first_text([payload.get("dramatic_summary", ""), payload.get("summary", "")]),
 		"actor_event_refs": _string_array(payload.get("actor_event_refs", [])),
 		"siming_event_refs": _string_array(payload.get("siming_event_refs", [])),
 		"world_event_refs": _string_array(payload.get("world_event_refs", [])),
@@ -347,11 +398,11 @@ func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:
 		var row: Dictionary = row_value
 		rows.append(
 			{
-				"actor_id": str(row.get("actor_id", "") or ""),
-				"stage": str(row.get("stage", "") or ""),
-				"summary": str(row.get("summary", "") or ""),
-				"focus_target": str(row.get("focus_target", "") or ""),
-				"intent_label": str(row.get("intent_label", "") or ""),
+				"actor_id": _text(row.get("actor_id", "")),
+				"stage": _text(row.get("stage", "")),
+				"summary": _text(row.get("summary", "")),
+				"focus_target": _text(row.get("focus_target", "")),
+				"intent_label": _text(row.get("intent_label", "")),
 			}
 		)
 	return rows
@@ -379,6 +430,7 @@ func _capture_frozen_frame() -> void:
 		"latest_actor_states": latest_actor_states.duplicate(true),
 		"recent_actor_events": recent_actor_events.duplicate(true),
 		"latest_siming_state": latest_siming_state.duplicate(true),
+		"latest_siming_summaries_by_actor": latest_siming_summaries_by_actor.duplicate(true),
 		"recent_siming_events": recent_siming_events.duplicate(true),
 		"recent_world_outcomes": recent_world_outcomes.duplicate(true),
 		"recent_scheduling_rounds": recent_scheduling_rounds.duplicate(true),
@@ -447,14 +499,14 @@ func _actor_label(actor_id: String) -> String:
 
 
 func _normalize_dialogue_pair_entry(entry: Dictionary) -> Dictionary:
-	var speaker_perceived := str(entry.get("speaker_perceived_summary", "") or entry.get("perceived_summary", "") or "")
-	var listener_perceived := str(entry.get("listener_perceived_summary", "") or "")
-	var speaker_interpreted := str(entry.get("speaker_interpreted_summary", "") or entry.get("interpreted_summary", "") or "")
-	var listener_interpreted := str(entry.get("listener_interpreted_summary", "") or "")
-	var speaker_said := str(entry.get("speaker_said", "") or entry.get("spoken_content", "") or "")
-	var listener_said := str(entry.get("listener_said", "") or "")
-	var speaker_alignment := str(entry.get("speaker_alignment_label", "") or entry.get("alignment_label", "alignment") or "alignment")
-	var listener_alignment := str(entry.get("listener_alignment_label", "") or speaker_alignment or "alignment")
+	var speaker_perceived := _first_text([entry.get("speaker_perceived_summary", ""), entry.get("perceived_summary", "")])
+	var listener_perceived := _text(entry.get("listener_perceived_summary", ""))
+	var speaker_interpreted := _first_text([entry.get("speaker_interpreted_summary", ""), entry.get("interpreted_summary", "")])
+	var listener_interpreted := _text(entry.get("listener_interpreted_summary", ""))
+	var speaker_said := _first_text([entry.get("speaker_said", ""), entry.get("spoken_content", "")])
+	var listener_said := _text(entry.get("listener_said", ""))
+	var speaker_alignment := _first_text([entry.get("speaker_alignment_label", ""), entry.get("alignment_label", "alignment"), "alignment"])
+	var listener_alignment := _first_text([entry.get("listener_alignment_label", ""), speaker_alignment, "alignment"])
 	entry["speaker_perceived_summary"] = speaker_perceived
 	entry["listener_perceived_summary"] = listener_perceived
 	entry["speaker_interpreted_summary"] = speaker_interpreted
@@ -478,11 +530,11 @@ func _presentation_siming_summaries(value: Variant) -> Array[Dictionary]:
 				continue
 			var row := item as Dictionary
 			rows.append({
-				"stage": str(row.get("stage", "") or ""),
-				"summary": str(row.get("summary", "") or ""),
-				"target_ref": str(row.get("target_ref", "") or ""),
-				"reason_summary": str(row.get("reason_summary", "") or ""),
-				"downstream_status": str(row.get("downstream_status", "") or ""),
+				"stage": _text(row.get("stage", "")),
+				"summary": _text(row.get("summary", "")),
+				"target_ref": _text(row.get("target_ref", "")),
+				"reason_summary": _text(row.get("reason_summary", "")),
+				"downstream_status": _text(row.get("downstream_status", "")),
 			})
 	return rows
 
@@ -491,16 +543,16 @@ func _presentation_dialogue_pairs(value: Variant, siming_summaries: Array[Dictio
 	var rows := _dictionary_array(value)
 	var pressure_context := ""
 	for summary in siming_summaries:
-		pressure_context = str(summary.get("reason_summary", "") or summary.get("summary", "") or "")
+		pressure_context = _first_text([summary.get("reason_summary", ""), summary.get("summary", "")])
 		if not pressure_context.is_empty():
 			break
 	if pressure_context.is_empty():
 		for event in recent_siming_events:
-			pressure_context = str(event.get("reason_summary", "") or event.get("summary", "") or "")
+			pressure_context = _first_text([event.get("reason_summary", ""), event.get("summary", "")])
 			if not pressure_context.is_empty():
 				break
 	for row in rows:
-		if str(row.get("siming_pressure_context", "") or "").is_empty() and not pressure_context.is_empty():
+		if _text(row.get("siming_pressure_context", "")).is_empty() and not pressure_context.is_empty():
 			row["siming_pressure_context"] = pressure_context
 	return rows
 
@@ -511,7 +563,7 @@ func _attach_siming_pressure_context(rows: Array[Dictionary], pressure_context: 
 	var updated: Array[Dictionary] = []
 	for source_row in rows:
 		var row := source_row.duplicate(true)
-		if str(row.get("siming_pressure_context", "") or "").is_empty():
+		if _text(row.get("siming_pressure_context", "")).is_empty():
 			row["siming_pressure_context"] = pressure_context
 		updated.append(row)
 	return updated
@@ -520,7 +572,7 @@ func _attach_siming_pressure_context(rows: Array[Dictionary], pressure_context: 
 func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_value: Variant) -> Array[Dictionary]:
 	var pairs_by_key := {}
 	for row in existing_rows:
-		var pair_key := str(row.get("pair_key", "") or "")
+		var pair_key := _text(row.get("pair_key", ""))
 		if pair_key.is_empty():
 			continue
 		pairs_by_key[pair_key] = row.duplicate(true)
@@ -529,13 +581,13 @@ func _merge_dialogue_pair_rows(existing_rows: Array[Dictionary], incoming_rows_v
 			if not (incoming_variant is Dictionary):
 				continue
 			var incoming_row := _normalize_dialogue_pair_entry((incoming_variant as Dictionary).duplicate(true))
-			var incoming_pair_key := str(incoming_row.get("pair_key", "") or "")
+			var incoming_pair_key := _text(incoming_row.get("pair_key", ""))
 			if incoming_pair_key.is_empty():
 				continue
 			var existing_row: Dictionary = (pairs_by_key.get(incoming_pair_key, {}) as Dictionary).duplicate(true)
 			for field_name in ["speaker_perceived_summary", "listener_perceived_summary", "speaker_interpreted_summary", "listener_interpreted_summary", "speaker_said", "listener_said"]:
 				var incoming_value: Variant = incoming_row.get(field_name, "")
-				if incoming_value is String and incoming_value.is_empty() and str(existing_row.get(field_name, "") or "") != "":
+				if incoming_value is String and incoming_value.is_empty() and not _text(existing_row.get(field_name, "")).is_empty():
 					incoming_row[field_name] = existing_row[field_name]
 			for field_name in incoming_row.keys():
 				var incoming_value: Variant = incoming_row.get(field_name)

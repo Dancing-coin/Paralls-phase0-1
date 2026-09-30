@@ -1,8 +1,15 @@
 """采集器启动实际 Python 进程，避免 Windows venv launcher 的额外 PID。"""
-import os
+import os as _stdlib_os
 import site
 import sys
 import sysconfig
+from types import SimpleNamespace
+
+# Keep the small platform surface local to this launcher. Tests intentionally
+# override ``launch.os.name`` to exercise both branches; exposing the stdlib
+# module directly would mutate the process-wide ``os.name`` and corrupt
+# pathlib/pytest on Windows.
+os = SimpleNamespace(name=_stdlib_os.name, pathsep=_stdlib_os.pathsep)
 
 
 def python_process(arguments, environment):
