@@ -371,23 +371,9 @@ func _on_dialogue_stream_delta_received(payload: Dictionary) -> void:
 	var delta := str(payload.get("delta", "")).strip_edges()
 	if request_id == "" or delta == "":
 		return
-	if completed_dialogue_request_ids.has(request_id):
-		return
-	# A non-empty stream delta is already a real backend response payload. It is
-	# sufficient to unblock the Phase 0 transport ordering probe even when the
-	# provider's terminal stream marker is delayed or unavailable.
-	completed_dialogue_request_ids[request_id] = true
-	dialogue_response_seen = true
-	var actor_id := str(dialogue_request_actor_ids.get(request_id, ""))
-	var dialogue_actor := _resolve_actor_by_id(actor_id)
-	if dialogue_actor != null and dialogue_actor.has_method("apply_dialogue"):
-		var dialogue_payload := payload.duplicate(true)
-		dialogue_payload["actor_id"] = actor_id
-		dialogue_payload["content"] = delta
-		dialogue_payload["output_type"] = "dialogue_response"
-		dialogue_actor.call("apply_dialogue", dialogue_payload)
-	_bus_log("phase0_dialogue_stream_response:%s" % request_id)
-	_bus_log("dialogue_applied:%s" % actor_id)
+	# Stream deltas are display-only.  The validated dialogue_response terminal
+	# frame remains the only completion signal and authority writeback path.
+	_bus_log("dialogue_stream_delta:%s:%d" % [request_id, delta.length()])
 
 func _on_world_result_received(payload: Dictionary) -> void:
 	last_backend_activity_ms = Time.get_ticks_msec()

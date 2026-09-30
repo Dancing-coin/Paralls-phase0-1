@@ -142,7 +142,7 @@ def test_phase0_autotest_submits_dialogue_to_its_explicit_actor_and_waits_for_sc
     assert 'message.contains("dialogue_applied:char_a")' in source
 
 
-def test_phase0_accepts_first_nonempty_stream_delta_as_scene_dialogue_application() -> None:
+def test_phase0_stream_delta_remains_display_only_until_validated_response() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     assert "dialogue_stream_delta_received.connect(_on_dialogue_stream_delta_received)" in source
     assert "func _on_dialogue_stream_started(payload: Dictionary) -> void:" in source
@@ -152,20 +152,21 @@ def test_phase0_accepts_first_nonempty_stream_delta_as_scene_dialogue_applicatio
     )[0]
     assert 'var delta := str(payload.get("delta", "")).strip_edges()' in delta_handler
     assert 'delta == ""' in delta_handler
-    assert "completed_dialogue_request_ids[request_id] = true" in delta_handler
-    assert '_bus_log("dialogue_applied:%s" % actor_id)' in delta_handler
+    assert "completed_dialogue_request_ids[request_id] = true" not in delta_handler
+    assert "dialogue_response_seen = true" not in delta_handler
+    assert "apply_dialogue" not in delta_handler
+    assert 'dialogue_payload["output_type"] = "dialogue_response"' not in delta_handler
+    assert '_bus_log("dialogue_stream_delta:%s:%d"' in delta_handler
 
 
-def test_phase0_stream_delta_applies_dialogue_to_target_actor_and_marks_response() -> None:
+def test_phase0_only_validated_terminal_response_completes_request() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
-    delta_handler = source.split("func _on_dialogue_stream_delta_received(payload: Dictionary) -> void:", 1)[1].split(
-        "func _on_world_result_received", 1
+    response_handler = source.split("func _on_dialogue_received(payload: Dictionary) -> void:", 1)[1].split(
+        "func _on_dialogue_stream_started", 1
     )[0]
 
-    assert "var dialogue_actor := _resolve_actor_by_id(actor_id)" in delta_handler
-    assert 'dialogue_actor.has_method("apply_dialogue")' in delta_handler
-    assert 'dialogue_actor.call("apply_dialogue", dialogue_payload)' in delta_handler
-    assert '_bus_log("phase0_dialogue_stream_response:%s" % request_id)' in delta_handler
+    assert "completed_dialogue_request_ids[request_id] = true" in response_handler
+    assert '_bus_log("phase0_dialogue_response:%s" % request_id)' in response_handler
 
 
 def test_phase0_npc_patrol_probe_assigns_a_nonzero_patrol_segment() -> None:
