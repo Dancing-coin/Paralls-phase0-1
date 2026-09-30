@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from typing import Any
 
 
@@ -169,6 +170,7 @@ CONSTRUCTION_MAINTENANCE_EVENT_SCHEMAS = (
 class EventSchemaRegistry:
     def __init__(self) -> None:
         self._registrations: dict[tuple[str, int], EventSchemaRegistration] = {}
+        self._snapshot_json_cache: tuple[int, str] | None = None
 
     def register(self, registration: EventSchemaRegistration) -> None:
         key = (registration.event_type, registration.schema_version)
@@ -180,6 +182,7 @@ class EventSchemaRegistry:
                 raise EventSchemaRegistryError("event_schema_digest_conflict")
             raise EventSchemaRegistryError("event_schema_registration_duplicate")
         self._registrations[key] = registration
+        self._snapshot_json_cache = None
 
     def require(self, event_type: str, schema_version: int) -> None:
         if (event_type, schema_version) not in self._registrations:
@@ -204,6 +207,15 @@ class EventSchemaRegistry:
                 for _, registration in sorted(self._registrations.items())
             ],
         }
+
+    def _snapshot_json(self) -> str:
+        # 身份只增不改；数量标记避免导出期间注册变化后复用旧快照。
+        count = len(self._registrations)
+        cached = self._snapshot_json_cache
+        if cached is None or cached[0] != count:
+            cached = (count, json.dumps(self.export_snapshot(), sort_keys=True))
+            self._snapshot_json_cache = cached
+        return cached[1]
 
     @classmethod
     def from_snapshot(cls, snapshot: object) -> "EventSchemaRegistry":

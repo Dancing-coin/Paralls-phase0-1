@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from collections.abc import Iterator
 import hashlib
+from heapq import nsmallest
 import json
 import math
 import re
@@ -80,8 +82,9 @@ class CharacterMemoryRecallPolicy:
         *,
         context: dict[str, object],
     ) -> MemoryRecallResult:
+        # 评分只读历史；预算筛选结束后才复制最终返回的条目。
         normalized = {
-            key: [deepcopy(item) for item in value if isinstance(item, dict)]
+            key: [item for item in value if isinstance(item, dict)]
             if isinstance(value, list)
             else []
             for key, value in memory.items()
@@ -106,29 +109,38 @@ class CharacterMemoryRecallPolicy:
         missing_required_refs: list[str] = []
         for pool in _POOL_NAMES:
             max_timestamp = self._max_timestamp(normalized[pool])
-            ranked = sorted(
-                (
-                    (
-                        self._score(entry, terms=terms, max_timestamp=max_timestamp)
-                        + (2.0 if (pool, self._memory_id(entry)) in required else 0.0),
+            required_ranked: list[tuple[float, int, str, int, dict[str, object]]] = []
+
+            def ranked_entries() -> Iterator[tuple[float, int, str, int, dict[str, object]]]:
+                for index, entry in enumerate(normalized[pool]):
+                    is_required = (pool, self._memory_id(entry)) in required
+                    item = (
+                        self._score(entry, terms=terms, max_timestamp=max_timestamp) + (2.0 if is_required else 0.0),
                         self._timestamp(entry),
                         str(entry.get("memory_id", "") or entry.get("event_id", "") or ""),
-                        entry,
+                        index, entry,
                     )
-                    for entry in normalized[pool]
-                ),
+                    if is_required:
+                        required_ranked.append(item)
+                    yield item
+
+            selected = nsmallest(
+                pool_limit, ranked_entries(),
                 key=lambda item: (-item[0], -item[1], item[2]),
             )
-            selected = ranked[:pool_limit]
+            # 序号区分重复 ID 和重复对象；只排序被截断的必需证据，保持原报告顺序。
+            selected_indexes = {item[3] for item in selected}
             missing_required_refs.extend(
-                f"{_REF_PREFIXES[pool]}:{self._memory_id(item[3])}"
-                for item in ranked[pool_limit:]
-                if (pool, self._memory_id(item[3])) in required
+                f"{_REF_PREFIXES[pool]}:{self._memory_id(item[4])}"
+                for item in sorted(
+                    (item for item in required_ranked if item[3] not in selected_indexes),
+                    key=lambda item: (-item[0], -item[1], item[2]),
+                )
             )
-            selected_by_pool[pool] = [deepcopy(item[3]) for item in selected]
+            selected_by_pool[pool] = [item[4] for item in selected]
             candidates.extend(
-                (score, pool, memory_id, deepcopy(entry))
-                for score, _timestamp, memory_id, entry in selected
+                (score, pool, memory_id, entry)
+                for score, _timestamp, memory_id, _index, entry in selected
             )
 
         candidates.sort(key=lambda item: (-item[0], -self._timestamp(item[3]), item[2]))
@@ -149,7 +161,7 @@ class CharacterMemoryRecallPolicy:
         selected_refs: list[str] = []
         for pool in _POOL_NAMES:
             entries = [
-                entry
+                deepcopy(entry)
                 for entry in selected_by_pool[pool]
                 if (pool, self._memory_id(entry)) in kept_ids
             ]
@@ -160,7 +172,7 @@ class CharacterMemoryRecallPolicy:
                 if self._memory_id(entry)
             )
 
-        # Keep compatibility aliases synchronized with the selected pools.
+        # 兼容别名保持同步，并与标准池各自持有独立副本。
         if "episodic_memories" in normalized:
             result_memory["episodic_memories"] = deepcopy(result_memory["event_memories"])
         if "relational_memories" in normalized:
@@ -352,7 +364,7 @@ class CharacterMemoryRecallPolicy:
             value = str(entry.get("value", "") or "")
             result.append(
                 {
-                    **deepcopy(entry),
+                    **entry,
                     "memory_id": str(entry.get("memory_id", "") or f"relation:{entity_id}:{belief_type}"),
                     "proposition_key": f"social:{entity_id}:{belief_type}",
                     "proposition": f"{entity_id}:{belief_type}={value}",

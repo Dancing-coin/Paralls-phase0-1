@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 import pytest
 
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
+from app.gameplay.models import AtomicEventBatch, OwnerAuthorizedFragment
 
 
 def _event(event_id: str, *, stream_id: str, tx: str = "tx:gameplay:1", command_id: str = "cmd:gameplay:1") -> dict[str, object]:
@@ -245,3 +248,109 @@ def test_reservation_terminal_state_rejection_is_fail_closed() -> None:
 
     with pytest.raises(ValueError, match="reservation_unknown_or_final"):
         SettlementPlan.from_reservation(reservation).to_atomic_event_batch()
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_append_copies_each_nested_payload_once_and_keeps_boundary_isolation(tmp_path, durable):
+    copies = []
+
+    class TrackedDict(dict):
+        def __deepcopy__(self, memo):
+            copies.append(self["kind"])
+            cloned = type(self)()
+            memo[id(self)] = cloned
+            cloned.update((key, deepcopy(value, memo)) for key, value in self.items())
+            return cloned
+
+    batch = AtomicEventBatch.model_validate(_batch())
+    batch.events[0].payload["nested"] = TrackedDict(kind="event", items=[{"ref": "original"}])
+    batch.outbox_entries[0].payload_projection["nested"] = TrackedDict(kind="outbox", items=[{"ref": "original"}])
+    store = DurableGameplayEventStore(tmp_path / "isolation.db") if durable else GameplayEventStore()
+    try:
+        result = store.append_batch(batch)
+        assert result.committed
+        assert copies == ["event", "outbox"]
+        assert [event.global_sequence for event in batch.events] == [0, 0]
+        assert [event.stream_revision for event in batch.events] == [0, 0]
+        assert [entry.global_sequence for entry in batch.outbox_entries] == [0, 0]
+        batch.events[0].payload["nested"]["items"][0]["ref"] = "changed-input"
+        batch.outbox_entries[0].payload_projection["nested"]["items"][0]["ref"] = "changed-input"
+        batch.pinned_revisions["policy"] = 99
+        result.committed_event_ids.clear()
+        result.resulting_stream_revisions.clear()
+        event = store.get_event("evt:session:reserved")
+        assert event.payload["nested"]["items"] == [{"ref": "original"}]
+        event.payload["nested"]["items"][0]["ref"] = "changed-read"
+        outbox = store.get_outbox("outbox:evt:session:reserved")
+        assert outbox.payload_projection["nested"]["items"] == [{"ref": "original"}]
+        outbox.payload_projection["nested"]["items"][0]["ref"] = "changed-read"
+        transaction = store.get_transaction("tx:gameplay:1")
+        assert transaction.pinned_revisions == {"policy": 7, "world": 3}
+        assert transaction.events[0].payload["nested"]["items"] == [{"ref": "original"}]
+        assert transaction.outbox_entries[0].payload_projection["nested"]["items"] == [{"ref": "original"}]
+        transaction.events[0].payload["nested"]["items"][0]["ref"] = "changed-transaction"
+        transaction.outbox_entries[0].payload_projection["nested"]["items"][0]["ref"] = "changed-transaction"
+        transaction.pinned_revisions["policy"] = 100
+        assert store.get_event("evt:session:reserved").payload["nested"]["items"] == [{"ref": "original"}]
+        assert store.get_outbox("outbox:evt:session:reserved").payload_projection["nested"]["items"] == [{"ref": "original"}]
+        assert store.get_transaction("tx:gameplay:1").pinned_revisions == {"policy": 7, "world": 3}
+        assert store.get_by_idempotency("player:local", "idempotency:handoff:1").committed_event_ids == [
+            "evt:session:reserved", "evt:body:reserved",
+        ]
+    finally:
+        if durable:
+            store.close()
+
+
+@pytest.mark.parametrize("durable", [False, True])
+def test_append_keeps_shared_input_payloads_separate_across_stored_fields(tmp_path, durable):
+    shared = {"items": [{"ref": "original"}]}
+    batch = AtomicEventBatch.model_validate(_batch())
+    for event in batch.events:
+        event.payload["nested"] = shared
+    for entry in batch.outbox_entries:
+        entry.payload_projection["nested"] = shared
+    batch.owner_fragments.append(OwnerAuthorizedFragment(
+        fragment_id="fragment:fixture", owner_principal_ref="owner:fixture", source_rule_ref="rule:fixture",
+        expected_revisions={"stream:fixture": 0},
+        event_specs={"stream:fixture": (("gameplay.fixture", {"nested": shared}),)},
+    ))
+    store = DurableGameplayEventStore(tmp_path / "shared.db") if durable else GameplayEventStore()
+    try:
+        assert store.append_batch(batch).committed
+        transaction = store.get_transaction("tx:gameplay:1")
+        transaction.events[0].payload["nested"]["items"][0]["ref"] = "changed-event"
+        assert transaction.events[1].payload["nested"]["items"] == [{"ref": "original"}]
+        assert [entry.payload_projection["nested"]["items"] for entry in transaction.outbox_entries] == [
+            [{"ref": "original"}], [{"ref": "original"}],
+        ]
+        assert transaction.owner_fragments[0].event_specs["stream:fixture"][0][1]["nested"]["items"] == [{"ref": "original"}]
+        transaction.outbox_entries[0].payload_projection["nested"]["items"][0]["ref"] = "changed-outbox"
+        assert transaction.outbox_entries[1].payload_projection["nested"]["items"] == [{"ref": "original"}]
+        assert transaction.owner_fragments[0].event_specs["stream:fixture"][0][1]["nested"]["items"] == [{"ref": "original"}]
+        shared["items"][0]["ref"] = "changed-input"
+        assert store.get_event("evt:session:reserved").payload["nested"]["items"] == [{"ref": "original"}]
+    finally:
+        if durable:
+            store.close()
+
+
+def test_group_rollback_retry_does_not_modify_input_payload_or_numbering(tmp_path):
+    batch = AtomicEventBatch.model_validate(_batch())
+    batch.events[0].payload["nested"] = {"items": [{"ref": "original"}]}
+    store = DurableGameplayEventStore(tmp_path / "group-copy.db")
+    try:
+        with pytest.raises(RuntimeError, match="interrupt copy group"):
+            with store.group_commit():
+                assert store.append_batch(batch).committed
+                raise RuntimeError("interrupt copy group")
+        assert store.read_events() == []
+        assert [event.global_sequence for event in batch.events] == [0, 0]
+        assert [event.stream_revision for event in batch.events] == [0, 0]
+        assert batch.events[0].payload["nested"]["items"] == [{"ref": "original"}]
+        with store.group_commit():
+            assert store.append_batch(batch).global_sequence_range == (1, 2)
+        batch.events[0].payload["nested"]["items"][0]["ref"] = "changed-input"
+        assert store.get_event("evt:session:reserved").payload["nested"]["items"] == [{"ref": "original"}]
+    finally:
+        store.close()

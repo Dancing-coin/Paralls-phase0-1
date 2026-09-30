@@ -5,7 +5,7 @@ import json
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 
-from pydantic import ValidationError
+from pydantic import ConfigDict, ValidationError
 
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStoreSnapshotError
@@ -28,6 +28,11 @@ from app.services.siming_population_capability import PopulationSimulationCapabi
 
 def _digest(value: object) -> str:
     return "sha256:" + hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+class _ReceiptCheckpoint(PopulationRecoveryCheckpoint):
+    # Python 输入中的现成 dataclass 仍须逐字段校验，保持原 JSON 路径的拒绝语义。
+    model_config = ConfigDict(revalidate_instances="always")
 
 
 class RuntimeCadencePublisher:
@@ -284,14 +289,19 @@ class RuntimeCadencePublisher:
         result = self.store.get_by_idempotency("world_runtime.cadence", f"population-runtime:{cadence.cadence_id}")
         event = self.store.get_event(result.committed_event_ids[0])
         values = dict(schema_version=1, canonical_version=1, context_digest=self.world._recovery_context_digest(),
-                      kernel_digest=self.kernel_digest, cadence=cadence.model_dump(mode="json"), event_id=event.event_id,
+                      kernel_digest=self.kernel_digest, cadence=cadence.model_dump(mode="python"), event_id=event.event_id,
                       cadence_stream_revision=event.stream_revision, global_sequence=event.global_sequence,
-                      record_digest=record["record_digest"], receipt=asdict(receipt), fingerprint=self.world._cadence_fingerprint(cadence),
+                      record_digest=record["record_digest"], receipt=receipt, fingerprint=self.world._cadence_fingerprint(cadence),
                       recovery_state=None)
 
         def checkpoint(*, full: bool) -> ProjectionCheckpoint:
             state = {**values, "recovery_state": self.world._build_recovery_state_payload() if full else None}
-            parsed = PopulationRecoveryCheckpoint.model_validate_json(json.dumps(state))
+            if full:
+                state.update(cadence=cadence.model_dump(mode="json"), receipt=asdict(receipt))
+                parsed = PopulationRecoveryCheckpoint.model_validate_json(json.dumps(state))
+            else:
+                # 新回执直接严格校验；完整恢复与持久数据读取保留原 JSON 校验。
+                parsed = _ReceiptCheckpoint.model_validate(state)
             projector = ("population-recovery:" if full else "population-receipt:") + self.world.mode.world_ref
             identity = f"{projector}:{(event.stream_revision // 16) % 2}" if full else f"{projector}:{cadence.cadence_id}"
             container = ProjectionCheckpoint(checkpoint_id=identity, projector_id=projector, projector_version="1",

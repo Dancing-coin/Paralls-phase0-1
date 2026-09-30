@@ -32,6 +32,51 @@ def _publisher(world, bus):
                                    room_id="room", scene_id="scene", zone_id="zone")
 
 
+def test_new_receipt_checkpoint_validates_without_json_roundtrip(tmp_path, monkeypatch):
+    from app.population_continuity.recovery import PopulationRecoveryCheckpoint, recovery_digest
+
+    world = _runtime(tmp_path / "gameplay.json")
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+    validate_json = PopulationRecoveryCheckpoint.model_validate_json
+
+    def unexpected_json(*args, **kwargs):
+        pytest.fail("新建普通回执应直接验证已确认的类型，不经 JSON 往返")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(PopulationRecoveryCheckpoint, "model_validate_json", unexpected_json)
+        assert publisher(cadence) is not None
+
+    checkpoint = world.store.get_projection_checkpoint(f"population-receipt:world:{cadence.cadence_id}")
+    assert checkpoint is not None
+    expected = validate_json(json.dumps(checkpoint.state)).model_dump(mode="json")
+    assert checkpoint.state == expected
+    assert checkpoint.projection_hash == recovery_digest(
+        checkpoint.model_dump(mode="json", exclude={"projection_hash"})
+    )
+    restored = _publisher(_runtime(tmp_path / "gameplay.json"), InMemoryAuthorityEventBus())
+    assert restored.confirmed_tick == 60
+
+
+@pytest.mark.parametrize("field,value", [("rejected_count", 0.0), ("rejected_count", False)])
+def test_new_receipt_checkpoint_revalidates_dataclass_field_types(tmp_path, monkeypatch, field, value):
+    from pydantic import ValidationError
+
+    world = _runtime(tmp_path / "gameplay.json")
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+    confirm = world.confirm_population_cadence
+
+    def invalid_receipt(cadence):
+        return replace(confirm(cadence), **{field: value})
+
+    monkeypatch.setattr(world, "confirm_population_cadence", invalid_receipt)
+    with pytest.raises(ValidationError):
+        publisher(cadence)
+    assert world.store.get_projection_checkpoint(f"population-receipt:world:{cadence.cadence_id}") is None
+    assert publisher.confirmed_tick == 0
+
+
 @pytest.mark.parametrize("population", [2, 1000])
 def test_publication_head_reads_do_not_scale_with_population(tmp_path, monkeypatch, population):
     from app.population_continuity.publication import publish_authorized_population_cadence

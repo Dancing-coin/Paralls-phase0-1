@@ -80,6 +80,21 @@ def jsonl_writer(stream):
     return record
 
 
+def capacity_sqlite_recorder(record, origin, duration_seconds):
+    def invoke(row):
+        start = origin()
+        if start is not None and start <= row['started_at'] < start + duration_seconds:
+            record(dict(row, phase='measurement'))
+    return invoke
+
+
+def capture_capacity_sqlite_failure(meter, errors):
+    if meter is not None and (failure := meter.snapshot().get('slow_record_failure')) is not None:
+        marker = f'sqlite_diagnostic_callback_failed:{failure}'
+        if marker not in errors:
+            errors.append(marker)
+
+
 def observe_owner_execute(execute, instance, fn, future, queued_at, record):
     started = monotonic()
     try:
@@ -211,6 +226,8 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
             record(row)
         probe = MixedWindowProbe(main, schedule, config["seconds"], window_record)
         probe.install(stack)
+        if meter is not None:
+            meter.slow_record = capacity_sqlite_recorder(record, lambda: probe.origin, config['seconds'])
         providers = MixedProviderProbe(record)
         providers.install(stack)
         counters = dict(writer_calls={}, owner_threads=set(), mutation_threads=set(), max_writers=0, active_writers={})
@@ -421,6 +438,7 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
                     if busy_task is not None:
                         await asyncio.shield(busy_task)
                 finally:
+                    capture_capacity_sqlite_failure(meter, errors)
                     write_json(directory / "owner-drained.json", dict(owner_pid=os.getpid(), errors=errors))
 
         async def startup():
@@ -441,6 +459,7 @@ def mixed_owner_child(commands, controls, results, notifications, settings_json)
                 errors.append(type(error).__name__)
                 raise
             finally:
+                capture_capacity_sqlite_failure(meter, errors)
                 with counter_lock:
                     summary = {key: sorted(value) if isinstance(value, set) else value for key, value in counters.items()}
                 write_json(directory / "owner-observed.json", dict(**summary, owner_pid=os.getpid(),

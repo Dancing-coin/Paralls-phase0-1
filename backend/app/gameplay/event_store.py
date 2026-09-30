@@ -319,7 +319,8 @@ class GameplayEventStore:
             entry.model_copy(update={"global_sequence": event_sequences[entry.event_id], "delivery_state": "pending"}, deep=True)
             for entry in batch.outbox_entries
         ]
-        committed_batch = batch.model_copy(
+        # 编号后的事件与 outbox 已各自隔离，避免再复制马上被覆盖的原列表。
+        committed_batch = batch.model_copy(update={"events": [], "outbox_entries": []}).model_copy(
             update={"events": committed_events, "outbox_entries": committed_outbox},
             deep=True,
         )
@@ -907,9 +908,9 @@ class DurableGameplayEventStore(GameplayEventStore):
                 connection.execute(f"PRAGMA wal_autocheckpoint={self._WAL_AUTOCHECKPOINT_PAGES}")
                 for statement in self._SCHEMA:
                     connection.execute(statement)
-                registry = self._event_schema_registry.export_snapshot() if self._event_schema_registry else None
+                registry_json = self._event_schema_registry._snapshot_json() if self._event_schema_registry else "null"
                 connection.executemany("INSERT INTO metadata VALUES (?, ?)",
-                    [("schema", "3"), ("registry", json.dumps(registry, sort_keys=True)), ("last_global_sequence", "0")])
+                    [("schema", "3"), ("registry", registry_json), ("last_global_sequence", "0")])
                 if restored is not None:
                     for batch in restored._transactions:
                         self._write_delta(connection=connection, batch=batch, result=restored._transaction_results[batch.transaction_id])
@@ -1146,7 +1147,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             with self._transaction(connection) as target:
                 if batch is not None and result is not None:
                     if self._event_schema_registry is not None:
-                        registry_json = json.dumps(self._event_schema_registry.export_snapshot(), sort_keys=True)
+                        registry_json = self._event_schema_registry._snapshot_json()
                         target.execute("UPDATE metadata SET value=? WHERE key='registry' AND value<>?", (registry_json, registry_json))
                     key = batch.idempotency_record
                     target.execute("INSERT INTO transactions (sequence,batch,result,transaction_id,principal_ref,idempotency_key,payload_digest,refresh_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
