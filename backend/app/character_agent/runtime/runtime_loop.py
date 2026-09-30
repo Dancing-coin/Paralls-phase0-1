@@ -1710,7 +1710,7 @@ class CharacterAgentRuntime:
     ) -> tuple[ActivationHandle | None, ActivationReceipt]:
         """Owner 获取跨阶段 lease；所有 admission 拒绝均先于锁和私有记忆写入。"""
         self._assert_cognition_owner()
-        if activation_kind not in {"foreground", "background"}:
+        if activation_kind not in {"foreground", "background", "siming"}:
             raise ValueError("unsupported activation_kind")
         profile_ref = f"character:{actor_id}"
         authority = self._activation_authority
@@ -1774,6 +1774,12 @@ class CharacterAgentRuntime:
         self._assert_cognition_owner()
         handle = self._activation_handles.get(actor_id)
         return bool(handle is not None and handle.activation_kind == "background")
+
+    def activation_is_non_player(self, actor_id: str) -> bool:
+        """Return whether the current lease is an asynchronous non-player turn."""
+        self._assert_cognition_owner()
+        handle = self._activation_handles.get(actor_id)
+        return bool(handle is not None and handle.activation_kind in {"background", "siming"})
 
     def finish_actor_activation(self, handle: ActivationHandle, *, reason: str) -> ActivationReceipt:
         """结束请求先失效 token；释放失败保留清理义务，旧 handle 不能释放新持有者。"""

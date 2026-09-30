@@ -434,9 +434,14 @@ def _build_conflict_cognition(world):
                 delivery=SimingCharacterCompatibilityInput.model_validate(entry.payload),
                 budget=int(rt.get_runtime_population_policy()['max_active_actors_per_tick']),
                 supported_actor=rt.supports_actor(entry.actor_id), stale_revision=False)
+        activation_kind = (
+            'background' if entry.source_kind == 'run_background_cognition_tick'
+            else 'siming' if entry.source_kind == 'ingest_siming_output'
+            else 'foreground'
+        )
         return rt.begin_actor_activation(entry.actor_id, decision, producer_ts=entry.producer_ts,
             deadline_monotonic=monotonic()+max(0., entry.expires_at-time()),
-            activation_kind=('background' if entry.source_kind == 'run_background_cognition_tick' else 'foreground'))[0]
+            activation_kind=activation_kind)[0]
     def completed(entry, progress):
         if entry.source_kind == 'run_background_cognition_tick':
             if progress.frame.get('commands') != []:
@@ -3306,12 +3311,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                             if (advance.status != "requeued"
                                     or advance.reason != "activation_lock_conflict"):
                                 break
-                            background = await _dialogue_owner_call(
+                            non_player = await _dialogue_owner_call(
                                 execution,
-                                lambda: character_agent_runtime.activation_is_background(activation_actor_id),
+                                lambda: character_agent_runtime.activation_is_non_player(activation_actor_id),
                             )
                             remaining = deadline - monotonic()
-                            if not background or remaining <= 0:
+                            if not non_player or remaining <= 0:
                                 break
                             await asyncio.sleep(min(0.02, remaining))
                         if advance.status != "pending":
