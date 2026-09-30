@@ -13,7 +13,7 @@ def test_two_qualified_packages_and_mode_b_boundary_are_declared() -> None:
     assert all(report.get("qualified") is True or report.get("status") == "qualified" for report in packages)
     assert (ROOT / "scripts" / "character" / "CharacterMotor.gd").exists()
     scene = (ROOT / "scenes" / "integration" / "UnifiedCharacterActionFoundation.tscn").read_text(encoding="utf-8")
-    assert 'instance=ExtResource("1_replica")' in scene
+    assert 'instance=ExtResource("1_actor")' in scene
     assert 'female_jk_external/female_jk_external.glb' in scene
     assert 'female_t_external/female_t_external.glb' in scene
     profile = json.loads((ROOT / ".harness" / "profiles" / "unified-character-action-foundation.json").read_text(encoding="utf-8"))

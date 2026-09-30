@@ -1572,12 +1572,12 @@ def test_system_l1_contains_role_state_fact_emitter() -> None:
     assert "emit_role_state_transition" in emitter_source
 
 
-def test_character_replica_runtime_wires_role_state_fact_emitter() -> None:
+def test_character_actor_runtime_wires_role_state_fact_emitter() -> None:
     project_root = Path(__file__).resolve().parents[2]
     character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
-    scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
+    scene_source = (project_root / "scenes" / "phase0" / "CharacterActor.tscn").read_text(
         encoding="utf-8"
     )
 
@@ -1586,12 +1586,12 @@ def test_character_replica_runtime_wires_role_state_fact_emitter() -> None:
     assert 'node name="RoleStateFactEmitter" type="Node" parent="."' in scene_source
 
 
-def test_character_replica_runtime_wires_physiology_state_fact_emitter() -> None:
+def test_character_actor_runtime_wires_physiology_state_fact_emitter() -> None:
     project_root = Path(__file__).resolve().parents[2]
     character_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
-    scene_source = (project_root / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
+    scene_source = (project_root / "scenes" / "phase0" / "CharacterActor.tscn").read_text(
         encoding="utf-8"
     )
 

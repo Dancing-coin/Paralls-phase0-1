@@ -1853,7 +1853,7 @@ def test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_
 
 
 def test_autonomous_approach_can_emit_arrival_fact_after_execution() -> None:
-    source = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    source = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

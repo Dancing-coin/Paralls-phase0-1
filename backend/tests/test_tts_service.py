@@ -290,7 +290,7 @@ def test_dashscope_http_missing_workspace_id_falls_back_to_stub() -> None:
 def test_godot_voice_controller_consumes_the_complete_wav_contract() -> None:
     project_root = Path(__file__).resolve().parents[2]
     controller_source = (project_root / "scripts" / "audio" / "SpatialVoiceController.gd").read_text(encoding="utf-8")
-    replica_source = (project_root / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+    actor_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
     live_probe_source = (project_root / "scripts" / "verification" / "TTSGodotLivePlaybackProbe.gd").read_text(encoding="utf-8")
     bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(encoding="utf-8")
     backend_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")
@@ -300,7 +300,7 @@ def test_godot_voice_controller_consumes_the_complete_wav_contract() -> None:
     assert "chunk_id == \"data\" and data_end > wav_bytes.size()" in controller_source
     assert "AudioStreamWAV.new()" in controller_source
     assert "voice_clip_played:" in controller_source
-    assert "voice.play_voice(payload)" in replica_source
+    assert "voice.play_voice(payload)" in actor_source
     assert "tts_godot_playback_verified" in live_probe_source
     assert "voice.play_voice(payload)" in live_probe_source
     assert "const TRANSPORT_BUFFER_SIZE := 8 * 1024 * 1024" in bridge_source
