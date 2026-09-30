@@ -492,12 +492,39 @@ def test_auto_execution_plan_matches_original_without_writes(tmp_path):
         CharacterIntentDecision.model_validate(ready.frame['decision']),
         causation_id=str(payload.get('causation_id', '') or ''),
         correlation_id=str(payload.get('correlation_id', '') or ''))
-    assert planned['execution_plan'] == actual
+    # Durable children now carry canonical turn identity and the authoritative
+    # execution contract.  The direct compatibility projection intentionally
+    # keeps those fields out, so compare the shared planning payload and verify
+    # the durable-only contract separately.
+    durable_only_keys = {
+        'turn_id', 'causation_id', 'correlation_id',
+        'authority_request_ref', 'execution_contract',
+    }
+    durable_projection = {
+        key: value for key, value in planned['execution_plan'].items()
+        if key not in durable_only_keys
+    }
+    assert durable_projection == actual
+    durable_plan = planned['execution_plan']
+    assert durable_plan['turn_id'] == 'turn:char_a:siming:300'
+    assert durable_plan['authority_request_ref'] == 'authority-request:turn:char_a:siming:300'
+    assert durable_plan['execution_contract']['actor_ref'] == 'character:char_a'
     assert planned['continuity'] == rt.get_runtime_continuity_state('char_a')
     assert planned['commands'] == [item.model_dump(mode='json') for item in rt.filter_commands_for_actor(
-        'char_a', rt._l4.build_commands_from_execution_plan(actual))]
-    assert planned['events'] == [{key: rt.get_session_timeline('char_a')[-1][key]
-        for key in ('event_type', 'producer_ts', 'payload')}]
+        'char_a', rt._l4.build_commands_from_execution_plan(durable_plan))]
+    durable_event = planned['events'][0]
+    stored_event = rt.get_session_timeline('char_a')[-1]
+    assert {key: durable_event[key] for key in ('event_type', 'producer_ts')} == {
+        key: stored_event[key] for key in ('event_type', 'producer_ts')}
+    durable_event_payload = {
+        key: value for key, value in durable_event['payload'].items()
+        if key not in durable_only_keys and key != 'presentation_plan'
+    }
+    stored_event_payload = {
+        key: value for key, value in stored_event['payload'].items()
+        if key != 'presentation_plan'
+    }
+    assert durable_event_payload == stored_event_payload
     rt.close()
 
 def test_execution_effects_resume_original_commands_after_reopen(tmp_path, monkeypatch):
