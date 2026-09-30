@@ -40,7 +40,9 @@ def test_predecessor_checklist_is_evidence_backed_before_action_work_releases() 
     assert ".harness/verification/character-turn-embodied-episode-report.json" in foundation
     assert "82 passed" in foundation
     assert re.search(r"\d+ passed, \d+ failed, \d+ skipped", foundation)
-    assert "Repository-wide failures remain a separate closure blocker" in foundation
+    assert "that result is historical" in foundation
+    assert "Task 9 remains blocked" in foundation
+    assert "strict Phase 0" in foundation
     assert "dependency gate remains conditional" in foundation
 
 
