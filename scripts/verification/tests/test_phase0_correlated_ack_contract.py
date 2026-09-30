@@ -222,7 +222,7 @@ def test_character_replica_exposes_default_on_actor_local_perception_gate() -> N
     assert sample_section.startswith("\n\tif not actor_local_perception_enabled:\n\t\treturn\n")
 
 
-def test_main_demo_disables_replica_local_perception_before_autotest_probes() -> None:
+def test_main_demo_disables_actor_local_perception_before_autotest_probes() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     helper_signature = "func _set_autotest_actor_local_perception_enabled(is_enabled: bool) -> void:"
 
@@ -235,9 +235,9 @@ def test_main_demo_disables_replica_local_perception_before_autotest_probes() ->
     disable_index = run_section.index("_set_autotest_actor_local_perception_enabled(false)")
     first_probe_index = run_section.index("await _probe_floor_coverage()")
     assert disable_index < first_probe_index
-    assert '[character_a, character_b, get_node_or_null("PlayerCharacter/CharacterReplica")]' in helper_section
+    assert "for actor in [character_a, character_b, _get_player_actor()]:" in helper_section
     assert 'has_method("set_actor_local_perception_enabled")' in helper_section
-    assert "replica.set_actor_local_perception_enabled(is_enabled)" in helper_section
+    assert "actor.set_actor_local_perception_enabled(is_enabled)" in helper_section
     assert "set_process(false)" not in helper_section
 
 
