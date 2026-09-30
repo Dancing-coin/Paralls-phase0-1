@@ -128,6 +128,7 @@ class ActivationHandle:
     token: str
     generation: str
     deadline_monotonic: float
+    activation_kind: str = "foreground"
 
 
 class CharacterAgentRuntime:
@@ -1705,10 +1706,12 @@ class CharacterAgentRuntime:
 
     def begin_actor_activation(
         self, actor_id: str, decision: ActivationDecision, *, producer_ts: int,
-        deadline_monotonic: float | None = None,
+        deadline_monotonic: float | None = None, activation_kind: str = "foreground",
     ) -> tuple[ActivationHandle | None, ActivationReceipt]:
         """Owner 获取跨阶段 lease；所有 admission 拒绝均先于锁和私有记忆写入。"""
         self._assert_cognition_owner()
+        if activation_kind not in {"foreground", "background"}:
+            raise ValueError("unsupported activation_kind")
         profile_ref = f"character:{actor_id}"
         authority = self._activation_authority
         deadline = monotonic() + 60.0 if deadline_monotonic is None else deadline_monotonic
@@ -1743,7 +1746,7 @@ class CharacterAgentRuntime:
         if not receipt.committed:
             return None, receipt.model_copy(update={"status": "requeued", "stop_reason": "activation_lock_conflict"})
         handle = ActivationHandle(actor_id, self._activation_world_ref, f"lock:{self._activation_world_ref}:{profile_ref}",
-                                  uuid4().hex, self._activation_generation, deadline)
+                                  uuid4().hex, self._activation_generation, deadline, activation_kind)
         self._activation_handles[actor_id] = handle
         self._activation_owner_thread = get_ident()
         try:
@@ -1765,6 +1768,12 @@ class CharacterAgentRuntime:
     def pending_actor_activations(self) -> tuple[ActivationHandle, ...]:
         self._assert_cognition_owner()
         return tuple(self._activation_handles.values())
+
+    def activation_is_background(self, actor_id: str) -> bool:
+        """Return whether the actor's current lease belongs to background cognition."""
+        self._assert_cognition_owner()
+        handle = self._activation_handles.get(actor_id)
+        return bool(handle is not None and handle.activation_kind == "background")
 
     def finish_actor_activation(self, handle: ActivationHandle, *, reason: str) -> ActivationReceipt:
         """结束请求先失效 token；释放失败保留清理义务，旧 handle 不能释放新持有者。"""

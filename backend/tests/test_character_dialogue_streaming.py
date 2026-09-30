@@ -1,4 +1,5 @@
 from fastapi.testclient import TestClient
+from threading import Event, Timer
 import time
 import pytest
 
@@ -7,6 +8,7 @@ from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.gateway.model_provider import CharacterModelProvider
 from app.config import settings
 from app.models.player_input import DialogueSubmit
+from test_character_agent_activation_handoff import active_dialogue_decision
 
 
 class _StreamingProvider:
@@ -138,6 +140,52 @@ def test_websocket_dialogue_stream_keeps_final_response_as_the_only_written_resu
     }
     bundle = main.character_agent_runtime.get_memory_bundle("char_a")
     assert [entry["event_type"] for entry in bundle["working_memory"]].count("character_agent_dialogue_response") == 1
+
+
+def test_websocket_dialogue_waits_for_background_activation_lease(monkeypatch) -> None:
+    """A transient background lease must not discard a player dialogue request."""
+    monkeypatch.setattr(settings, "dialogue_mode", "stub")
+    main.reset_runtime_state()
+    released = Event()
+
+    with TestClient(main.component_app) as client:
+        execution = main.runtime_execution
+        handle, receipt = execution.submit(
+            lambda: main.character_agent_runtime.begin_actor_activation(
+                "char_a", active_dialogue_decision(), producer_ts=90209,
+                activation_kind="background"
+            )
+        ).result(2)
+        assert handle is not None and receipt.committed
+
+        def release_background_activation() -> None:
+            try:
+                execution.submit(
+                    lambda: main.character_agent_runtime.finish_actor_activation(
+                        handle, reason="completed"
+                    )
+                ).result(2)
+            finally:
+                released.set()
+
+        release_timer = Timer(0.2, release_background_activation)
+        release_timer.start()
+        try:
+            with client.websocket_connect("/ws") as websocket:
+                websocket.send_json(_dialogue_envelope("dialogue-background-requeue-1"))
+                first = websocket.receive_json()
+                assert first["message_type"] == "ack"
+                assert first["payload"]["accepted"] is True
+                messages = [first]
+                while messages[-1]["message_type"] != "dialogue_stream_end":
+                    messages.append(websocket.receive_json())
+                assert messages[-1]["payload"]["status"] == "completed"
+                assert any(message["message_type"] == "dialogue_response" for message in messages)
+        finally:
+            release_timer.cancel()
+            if not released.is_set():
+                release_background_activation()
+            assert released.wait(2)
 
 
 def test_completed_dialogue_response_produces_observatory_writeback_and_dialogue_pair() -> None:

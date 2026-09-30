@@ -435,7 +435,8 @@ def _build_conflict_cognition(world):
                 budget=int(rt.get_runtime_population_policy()['max_active_actors_per_tick']),
                 supported_actor=rt.supports_actor(entry.actor_id), stale_revision=False)
         return rt.begin_actor_activation(entry.actor_id, decision, producer_ts=entry.producer_ts,
-            deadline_monotonic=monotonic()+max(0., entry.expires_at-time()))[0]
+            deadline_monotonic=monotonic()+max(0., entry.expires_at-time()),
+            activation_kind=('background' if entry.source_kind == 'run_background_cognition_tick' else 'foreground'))[0]
     def completed(entry, progress):
         if entry.source_kind == 'run_background_cognition_tick':
             if progress.frame.get('commands') != []:
@@ -3290,15 +3291,29 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                     connection_ref = connection_context.connection_ref
                     advance = None
                     try:
-                        def begin_dialogue():
-                            event_copy = DialogueSubmit.model_validate_json(event_json)
-                            route = runtime.accept_player_input(event_copy)
-                            if route["route"] != "character_service":
-                                raise ValueError("dialogue_route_invalid")
-                            deadline = monotonic() + 60.0
-                            return (coordinator.begin(event_json, connection_ref=connection_ref,
-                                                      deadline_monotonic=deadline), deadline)
-                        advance, deadline = await _dialogue_owner_call(execution, begin_dialogue)
+                        deadline = monotonic() + 60.0
+                        activation_actor_id = (stream_event.actor_id
+                            if stream_event.player_id == "character_agent" else stream_event.target_actor_id)
+                        while True:
+                            def begin_dialogue():
+                                event_copy = DialogueSubmit.model_validate_json(event_json)
+                                route = runtime.accept_player_input(event_copy)
+                                if route["route"] != "character_service":
+                                    raise ValueError("dialogue_route_invalid")
+                                return coordinator.begin(event_json, connection_ref=connection_ref,
+                                                         deadline_monotonic=deadline)
+                            advance = await _dialogue_owner_call(execution, begin_dialogue)
+                            if (advance.status != "requeued"
+                                    or advance.reason != "activation_lock_conflict"):
+                                break
+                            background = await _dialogue_owner_call(
+                                execution,
+                                lambda: character_agent_runtime.activation_is_background(activation_actor_id),
+                            )
+                            remaining = deadline - monotonic()
+                            if not background or remaining <= 0:
+                                break
+                            await asyncio.sleep(min(0.02, remaining))
                         if advance.status != "pending":
                             slot.close()
                             await send(_as_envelope("ack", {"accepted": False,
