@@ -80,6 +80,15 @@ def test_character_director_observatory_verify_script_uses_marker_driven_runtime
     assert "character_director_observatory_probe:freeze_roundtrip_ok=true" in source
 
 
+def test_observatory_verification_uses_explicit_stub_dialogue_and_boundary_logging() -> None:
+    source = (
+        Path(__file__).resolve().parents[1] / "verify_character_director_observatory.py"
+    ).read_text(encoding="utf-8")
+
+    assert '"DIALOGUE_MODE": "stub"' in source
+    assert '"PHASE0_DEBUG_LOGGING": "1"' in source
+
+
 def test_character_director_observatory_is_wall_clock_bounded_not_frame_bounded() -> None:
     source = (
         Path(__file__).resolve().parents[1] / "verify_character_director_observatory.py"
