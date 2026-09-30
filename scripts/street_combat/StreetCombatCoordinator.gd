@@ -48,12 +48,13 @@ func _physics_process(_delta: float) -> void:
 			send_pose(actor_id)
 
 
-func send_pose(actor_id: String) -> bool:
+func send_pose(actor_id: String, physics_tick_override: int = -1) -> bool:
 	var actor := get_node_or_null(str(ACTOR_NODES.get(actor_id, ""))) as Node3D
 	if actor == null or not connected:
 		return false
 	var position := actor.global_position
-	return get_node("/root/BackendBridge").send_envelope({"message_type": "street_combat_pose", "payload": {"actor_id": actor_id, "position": [position.x, position.y, position.z], "physics_tick": Engine.get_physics_frames()}}) == OK
+	var physics_tick := physics_tick_override if physics_tick_override >= 0 else Engine.get_physics_frames()
+	return get_node("/root/BackendBridge").send_envelope({"message_type": "street_combat_pose", "payload": {"actor_id": actor_id, "position": [position.x, position.y, position.z], "physics_tick": physics_tick}}) == OK
 
 
 func request_attack(actor_id: String, target_id: String, request_key: String = "", expected_revisions: Dictionary = {}, semantic_action_id: String = "action:melee.unarmed_punch") -> String:
@@ -101,21 +102,25 @@ func request_attack(actor_id: String, target_id: String, request_key: String = "
 		_append_event("Attack pending: backend disconnected")
 		return ""
 	var target := get_node(str(ACTOR_NODES[target_id])) as CharacterBody3D
-	var contact_ref := _contact_evidence(actor, target, attempt_id)
+	var attempt_physics_tick := Engine.get_physics_frames()
+	send_pose(actor_id, attempt_physics_tick)
+	send_pose(target_id, attempt_physics_tick)
+	var marker_id := str(marker.get("marker_id", "punch_contact_window"))
+	var contact_ref := _contact_evidence(actor, target, attempt_id, attempt_physics_tick, marker_id)
 	var attempt := {
 		"attempt_id": attempt_id,
 		"actor_ref": "character:%s" % actor_id,
 		"action_instance_id": "action:%s" % key,
 		"semantic_action_id": semantic_action_id,
 		"target_refs": ["character:%s" % target_id],
-		"contact_marker_id": str(marker.get("marker_id", "punch_contact_window")),
+		"contact_marker_id": marker_id,
 		"contact_marker_time_seconds": contact_time,
-		"physics_tick": Engine.get_physics_frames(),
+		"physics_tick": attempt_physics_tick,
 		"connection_epoch": connection_epoch,
 		"client_sequence": client_sequence,
 		"submitted_at": Time.get_ticks_msec(),
 		"physics_evidence_refs": [contact_ref] if not contact_ref.is_empty() else [],
-		"physics_evidence_digest": _digest_text(contact_ref),
+		"physics_evidence_digest": _digest_contact_evidence(contact_ref, attempt_id, attempt_physics_tick, marker_id, "character:%s" % actor_id, "character:%s" % target_id),
 		"action_descriptor_digest": action_descriptor_digest,
 		"authority_route": "esm",
 		"expected_revisions": expected_revisions.duplicate(true),
@@ -141,7 +146,7 @@ func replay_attempt(attempt_id: String) -> bool:
 	return get_node("/root/BackendBridge").send_envelope({"message_type": "street_combat_attempt", "payload": {"attempt": pending["attempt"]}}) == OK
 
 
-func _contact_evidence(actor: CharacterBody3D, target: CharacterBody3D, attempt_id: String) -> String:
+func _contact_evidence(actor: CharacterBody3D, target: CharacterBody3D, attempt_id: String, physics_tick: int, marker_id: String) -> String:
 	var from := actor.global_position + Vector3(0, 1.0, 0)
 	var to := target.global_position + Vector3(0, 1.0, 0)
 	if from.distance_to(to) > 2.5:
@@ -149,7 +154,7 @@ func _contact_evidence(actor: CharacterBody3D, target: CharacterBody3D, attempt_
 	var query := PhysicsRayQueryParameters3D.create(from, to)
 	query.exclude = [actor.get_rid()]
 	var hit: Dictionary = actor.get_world_3d().direct_space_state.intersect_ray(query)
-	return "contact:%s:%s" % [attempt_id, Engine.get_physics_frames()] if hit.get("collider") == target else ""
+	return "contact:%s:%s:%s" % [attempt_id, physics_tick, marker_id] if hit.get("collider") == target else ""
 
 
 func _on_backend_connected(_url: String) -> void:
@@ -230,3 +235,8 @@ func _digest_text(value: String) -> String:
 
 func _digest_dictionary(value: Dictionary) -> String:
 	return _digest_text(JSON.stringify(value))
+
+
+func _digest_contact_evidence(contact_ref: String, attempt_id: String, physics_tick: int, marker_id: String, actor_ref: String, target_ref: String) -> String:
+	var canonical := "street-contact-evidence:v1|ref=%s|attempt=%s|tick=%s|marker=%s|actor=%s|target=%s" % [contact_ref, attempt_id, physics_tick, marker_id, actor_ref, target_ref]
+	return _digest_text(canonical)

@@ -25,12 +25,12 @@ def _dispatch_many(message_type: str, payload: dict[str, object]) -> list[dict[s
 
 def test_websocket_street_combat_correlates_pose_and_settlement() -> None:
     main.reset_runtime_state()
-    pose = _dispatch("street_combat_pose", {"actor_id": "street_bandage", "position": [0.0, 0.2, -9.8], "physics_tick": 60})
+    pose = _dispatch("street_combat_pose", {"actor_id": "street_bandage", "position": [0.0, 0.2, -9.8], "physics_tick": 100})
     assert pose["message_type"] == "street_combat_pose_result"
     assert pose["payload"]["accepted"] is True
     assert pose["payload"]["actor_state"]["hp"] == 100
     assert pose["payload"]["actor_state"]["stamina"] == 100
-    _dispatch("street_combat_pose", {"actor_id": "char_a", "position": [-2.0, 0.2, -9.8], "physics_tick": 60})
+    _dispatch("street_combat_pose", {"actor_id": "char_a", "position": [-2.0, 0.2, -9.8], "physics_tick": 100})
     first = _dispatch_many("street_combat_attempt", {"attempt": attempt("transport").model_dump(mode="json")})[0]
     assert first["message_type"] == "street_combat_result"
     result = first["payload"]["authority_result"]
@@ -54,8 +54,8 @@ def test_websocket_street_combat_rejects_client_truth() -> None:
 
 def test_committed_street_hit_enters_character_agent_execution_contract() -> None:
     main.reset_runtime_state()
-    _dispatch("street_combat_pose", {"actor_id": "street_bandage", "position": [0.0, 0.2, -9.8], "physics_tick": 60})
-    _dispatch("street_combat_pose", {"actor_id": "char_a", "position": [-2.0, 0.2, -9.8], "physics_tick": 60})
+    _dispatch("street_combat_pose", {"actor_id": "street_bandage", "position": [0.0, 0.2, -9.8], "physics_tick": 100})
+    _dispatch("street_combat_pose", {"actor_id": "char_a", "position": [-2.0, 0.2, -9.8], "physics_tick": 100})
     messages = main._handle_envelope(Envelope(message_type="street_combat_attempt", payload={"attempt": attempt("agent-reaction").model_dump(mode="json")}))
     assert messages[0]["payload"]["authority_result"]["outcome"] == "committed"
     executions = [message["payload"] for message in messages if message["message_type"] == "character_agent_execution"]

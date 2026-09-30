@@ -89,7 +89,35 @@ func _drive_actor(actor: CharacterBody3D, actor_ref: String) -> void:
 		await get_tree().process_frame
 
 func _attempt(key: String, actor: String, action: String, source: String, route: String) -> Dictionary:
-	return {"attempt_id": "attempt:%s" % key, "actor_ref": "character:%s" % actor, "action_instance_id": "action:%s" % key, "semantic_action_id": action, "target_refs": ["object:foundation_target"], "contact_marker_id": "marker:contact", "physics_tick": Time.get_ticks_msec(), "physics_evidence_refs": ["contact:probe"], "authority_route": route, "expected_revisions": {}, "idempotency_key": "idempotency:%s" % key, "command_version": "v1", "causation_id": "cause:%s" % key, "correlation_id": "corr:%s" % key, "source": source, "privacy_scope": "public"}
+	var physics_tick := Time.get_ticks_msec()
+	return {
+		"attempt_id": "attempt:%s" % key,
+		"actor_ref": "character:%s" % actor,
+		"action_instance_id": "action:%s" % key,
+		"semantic_action_id": action,
+		"target_refs": ["object:foundation_target"],
+		"contact_marker_id": "marker:contact",
+		"physics_tick": physics_tick,
+		"connection_epoch": 1,
+		"client_sequence": _next_sequence(),
+		"physics_evidence_refs": ["contact:probe"],
+		"physics_evidence_digest": "sha256:" + "0".repeat(64),
+		"action_descriptor_digest": "sha256:" + "1".repeat(64),
+		"authority_route": route,
+		"expected_revisions": {},
+		"idempotency_key": "idempotency:%s" % key,
+		"command_version": "v1",
+		"causation_id": "cause:%s" % key,
+		"correlation_id": "corr:%s" % key,
+		"source": source,
+		"privacy_scope": "public",
+	}
+
+var _attempt_sequence := 0
+
+func _next_sequence() -> int:
+	_attempt_sequence += 1
+	return _attempt_sequence
 
 func _send_attempt(attempt: Dictionary) -> Dictionary:
 	return await _send_raw({"package_ids": ["female_jk_external", "female_t_external"], "attempt": attempt})

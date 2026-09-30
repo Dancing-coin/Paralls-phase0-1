@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from hashlib import sha256
 from math import dist
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -58,6 +59,12 @@ class EmbodiedAuthoritySettlementService:
         "char_a": {"position": (2.05, 0.2, -7.0), "physics_tick": 0, "hp": 100, "stamina": 100},
         "char_b": {"position": (-2.05, 0.2, -7.0), "physics_tick": 0, "hp": 100, "stamina": 100},
         }
+        # Keep bounded per-tick pose snapshots for evidence revalidation. The
+        # latest mutable actor pose is a presentation mirror only; authority
+        # settlement must join contact evidence to the exact submitted tick.
+        self._street_pose_history: dict[str, dict[int, tuple[float, float, float]]] = {
+            actor_id: {} for actor_id in self._street_actors
+        }
         self._street_results_by_key: dict[str, tuple[str, AuthorityResult]] = {}
         self._street_transport_connected = True
         self._street_snapshot_ready = True
@@ -85,6 +92,13 @@ class EmbodiedAuthoritySettlementService:
         state["stamina"] = min(100, int(state["stamina"]) + regained)
         state["position"] = position
         state["physics_tick"] = physics_tick
+        history = self._street_pose_history.setdefault(actor_id, {})
+        history[physics_tick] = position
+        # Evidence is only useful around the active transport window. Keep a
+        # small bounded tail so reconnect/replay cannot grow memory forever.
+        if len(history) > 128:
+            for old_tick in sorted(history)[:-128]:
+                history.pop(old_tick, None)
         return True
 
     def street_transport_state(self) -> dict[str, object]:
@@ -139,7 +153,7 @@ class EmbodiedAuthoritySettlementService:
                 failed_code="transport_disconnected",
                 recovery_action="reconnect_and_resync",
             )
-        if "connection_epoch" in attempt.model_fields_set and attempt.connection_epoch != self._street_connection_epoch:
+        if attempt.connection_epoch != self._street_connection_epoch:
             return self._result(
                 attempt,
                 outcome="rejected",
@@ -155,25 +169,6 @@ class EmbodiedAuthoritySettlementService:
                 failed_code="recovery_required",
                 recovery_action="await_snapshot_and_resync",
             )
-        explicit_sequence = "client_sequence" in attempt.model_fields_set
-        if explicit_sequence:
-            if attempt.client_sequence < self._street_next_client_sequence:
-                return self._result(
-                    attempt,
-                    outcome="rejected",
-                    failed_stage="transport",
-                    failed_code="client_sequence_stale",
-                    recovery_action="refresh_and_retry",
-                )
-            if attempt.client_sequence > self._street_next_client_sequence:
-                return self._result(
-                    attempt,
-                    outcome="rejected",
-                    failed_stage="transport",
-                    failed_code="client_sequence_gap",
-                    recovery_action="resync_and_retry",
-                )
-            self._street_next_client_sequence += 1
         actor_id = attempt.actor_ref.removeprefix("character:")
         target_id = attempt.target_refs[0].removeprefix("character:") if len(attempt.target_refs) == 1 else ""
         actor = self._street_actors.get(actor_id)
@@ -182,13 +177,39 @@ class EmbodiedAuthoritySettlementService:
             return self._result(attempt, outcome="rejected", failed_stage="target", failed_code="target_invalid", recovery_action="select_valid_target")
         if attempt.semantic_action_id not in {"action:melee.unarmed_punch", "action:melee.short_punch", "action:melee.sword_slash"} or attempt.authority_route != "esm" or not attempt.physics_evidence_refs:
             return self._result(attempt, outcome="rejected", failed_stage="action", failed_code="action_unsupported", recovery_action="select_qualified_action")
+        evidence_error = self._validate_street_contact_evidence(attempt, actor_id=actor_id, target_id=target_id)
+        if evidence_error is not None:
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="evidence",
+                failed_code=evidence_error,
+                recovery_action="resample_contact_at_attempt_tick",
+            )
+        if attempt.client_sequence < self._street_next_client_sequence:
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="transport",
+                failed_code="client_sequence_stale",
+                recovery_action="refresh_and_retry",
+            )
+        if attempt.client_sequence > self._street_next_client_sequence:
+            return self._result(
+                attempt,
+                outcome="rejected",
+                failed_stage="transport",
+                failed_code="client_sequence_gap",
+                recovery_action="resync_and_retry",
+            )
+        self._street_next_client_sequence += 1
         stamina_cost = 8 if attempt.semantic_action_id == "action:melee.short_punch" else 14 if attempt.semantic_action_id == "action:melee.sword_slash" else 12
         if int(actor["stamina"]) < stamina_cost:
             return self._result(attempt, outcome="rejected", failed_stage="resource", failed_code="stamina_insufficient", recovery_action="recover_stamina")
         if int(actor["hp"]) <= 0 or int(target["hp"]) <= 0:
             return self._result(attempt, outcome="rejected", failed_stage="target", failed_code="actor_incapacitated", recovery_action="select_active_target")
-        actor_position = actor["position"]
-        target_position = target["position"]
+        actor_position = self._street_pose_history[actor_id][attempt.physics_tick]
+        target_position = self._street_pose_history[target_id][attempt.physics_tick]
         if not isinstance(actor_position, tuple) or not isinstance(target_position, tuple):
             return self._result(attempt, outcome="rejected", failed_stage="position", failed_code="position_unavailable")
         planar_distance = dist((actor_position[0], actor_position[2]), (target_position[0], target_position[2]))
@@ -204,6 +225,73 @@ class EmbodiedAuthoritySettlementService:
         result = result.model_copy(update={"committed_projection": projection})
         self._street_results_by_key[attempt.idempotency_key] = (attempt.payload_digest, result.model_copy(deep=True))
         return result
+
+    def _validate_street_contact_evidence(
+        self,
+        attempt: ActionAttempt,
+        *,
+        actor_id: str,
+        target_id: str,
+    ) -> str | None:
+        """Validate the bounded provisional contact join before settlement.
+
+        The contact token is not world truth. It is a typed local observation
+        that must identify this attempt, marker, and physics tick, carry the
+        expected digest, and have exact-tick pose snapshots available for the
+        authority range check.
+        """
+
+        if len(attempt.physics_evidence_refs) != 1:
+            return "physics_evidence_invalid"
+        contact_ref = attempt.physics_evidence_refs[0]
+        parts = contact_ref.split(":")
+        if len(parts) < 4 or parts[0] != "contact":
+            return "physics_evidence_invalid"
+        evidence_attempt_id = ":".join(parts[1:-2])
+        try:
+            evidence_tick = int(parts[-2])
+        except (TypeError, ValueError):
+            return "physics_evidence_invalid"
+        evidence_marker = parts[-1]
+        if (
+            not evidence_attempt_id
+            or not evidence_marker
+            or evidence_attempt_id != attempt.attempt_id
+            or evidence_tick != attempt.physics_tick
+            or evidence_marker != attempt.contact_marker_id
+        ):
+            return "physics_evidence_invalid"
+
+        expected_digest = self._street_contact_evidence_digest(
+            contact_ref,
+            attempt_id=attempt.attempt_id,
+            physics_tick=attempt.physics_tick,
+            marker_id=attempt.contact_marker_id,
+            actor_ref=attempt.actor_ref,
+            target_ref=attempt.target_refs[0],
+        )
+        if attempt.physics_evidence_digest != expected_digest:
+            return "physics_evidence_digest_mismatch"
+        if attempt.physics_tick not in self._street_pose_history.get(actor_id, {}) or attempt.physics_tick not in self._street_pose_history.get(target_id, {}):
+            return "physics_evidence_stale"
+        return None
+
+    @staticmethod
+    def _street_contact_evidence_digest(
+        contact_ref: str,
+        *,
+        attempt_id: str,
+        physics_tick: int,
+        marker_id: str,
+        actor_ref: str,
+        target_ref: str,
+    ) -> str:
+        canonical = (
+            "street-contact-evidence:v1"
+            f"|ref={contact_ref}|attempt={attempt_id}|tick={physics_tick}"
+            f"|marker={marker_id}|actor={actor_ref}|target={target_ref}"
+        )
+        return "sha256:" + sha256(canonical.encode("utf-8")).hexdigest()
 
     def settle(self, attempt: ActionAttempt) -> AuthorityResult:
         """Atomically settle one semantic attempt in the local authority seam.

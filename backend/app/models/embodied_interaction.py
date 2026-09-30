@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import re
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -97,15 +98,14 @@ class ActionAttempt(StrictEmbodiedModel):
     action_family: str | None = None
     weapon_ref: str | None = None
     physics_tick: int = Field(ge=0)
-    # Mode B transport identity. Defaults preserve Phase 0 fixture callers that
-    # predate the connected-action envelope; real transport callers must set
-    # these explicitly and the authority admission fence observes that field
-    # presence via ``model_fields_set``.
-    connection_epoch: int = Field(default=1, ge=1)
-    client_sequence: int = Field(default=1, ge=1)
+    # Mode B transport identity is part of the authority-bound envelope. These
+    # fields are deliberately required so an omitted epoch/sequence cannot be
+    # interpreted as a fresh transport frame by a downstream service.
+    connection_epoch: int = Field(ge=1)
+    client_sequence: int = Field(ge=1)
     physics_evidence_refs: list[str] = Field(default_factory=list)
-    physics_evidence_digest: str | None = None
-    action_descriptor_digest: str | None = None
+    physics_evidence_digest: str = Field(min_length=1)
+    action_descriptor_digest: str = Field(min_length=1)
     authority_route: AuthorityRoute
     owner_contract_ref: str | None = None
     expected_revisions: dict[str, int] = Field(default_factory=dict)
@@ -144,6 +144,20 @@ class ActionAttempt(StrictEmbodiedModel):
         if len(self.canonical_payload_bytes()) > 32 * 1024:
             raise ValueError("payload_limit_exceeded")
         return self
+
+    @field_validator("physics_evidence_refs")
+    @classmethod
+    def validate_evidence_refs(cls, value: list[str]) -> list[str]:
+        if any(not isinstance(ref, str) or not ref.strip() for ref in value):
+            raise ValueError("physics_evidence_ref_required")
+        return value
+
+    @field_validator("physics_evidence_digest", "action_descriptor_digest")
+    @classmethod
+    def validate_attestation_digest(cls, value: str) -> str:
+        if re.fullmatch(r"sha256:[0-9a-fA-F]{64}", value.strip()) is None:
+            raise ValueError("digest_must_be_sha256")
+        return value
 
     def canonical_payload(self) -> dict[str, object]:
         payload = self.model_dump(mode="json", exclude={"submitted_at"})
