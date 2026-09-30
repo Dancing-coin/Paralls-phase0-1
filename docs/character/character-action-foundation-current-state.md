@@ -31,13 +31,16 @@ The external ArchiveDoor dependency now has fresh success, distance, revision,
 and stance evidence from live backend and Godot. The focused transport timeout
 was a test fixture outside authority range; the Godot success/revision failure
 was a reversed forced-motion Z conversion, corrected with a red/green test.
-The fresh full pytest run completed with `7652 passed, 56 failed, 2 skipped,
+The 2026-09-30 full pytest rerun completed with `7676 passed, 33 failed, 2 skipped,
 103 warnings`. Repository-wide failures remain a separate closure blocker; the
 green StreetCombatDemo, agent, and retirement profiles do not replace the
-required aggregate result. The fresh `--profile all` run reached the Phase 0
-MainDemo autotest but observed repeated `backend_closed` markers without the
-required completion marker. Diagnostic copies are retained in
-`D:\CurrentActionFoundationEvidence-all-final5`.
+required aggregate result. The latest `--profile all` run loaded MainDemo and
+reached `phase0_autotest_complete`, but Phase 0 failed its backend pytest,
+positive player Motor/forward motion evidence, and observatory gates. The
+observatory probe stops at its timeline projection check: Godot string fields
+constructed with `str(value or "")` become `"true"` or `"false"`, losing the
+correlation and Siming pressure text. Diagnostic copies are retained in
+`D:\CurrentActionFoundationEvidence-all-recheck`.
 
 ### Final boundary
 
