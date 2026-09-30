@@ -32,6 +32,7 @@ from scripts.verification.population_benchmark_metrics import (
     LoopbackWebSocketByteProxy, TransportMetrics, measure_population_transport, peak_rss_bytes, percentile,
 )
 from scripts.verification.population_godot_runner import (
+    asgi_lifecycle_snapshot,
     authority_boundary, child_environment, object_digest, source_manifest, write_json,
 )
 from scripts.verification.verify_population_godot_runtime import digest, read_json
@@ -657,9 +658,7 @@ async def run_child(directory: Path, *, variant: str, windows: int, roster: Path
                 parent["errors"].append(type(error).__name__)
                 raise
             finally:
-                lifecycle = getattr(server, "lifespan", None)
-                parent["asgi_lifecycle"] = {name: getattr(lifecycle, name, None) for name in
-                    ("startup_failed", "shutdown_failed", "error_occurred")}
+                parent["asgi_lifecycle"] = asgi_lifecycle_snapshot(server)
                 parent["child_exit_code"] = host.process.exitcode if host is not None else None
                 parent["peak_rss_bytes"] = peak_rss_bytes()
                 write_json(directory / 'parent-qos.json', main.app.state.process_qos)

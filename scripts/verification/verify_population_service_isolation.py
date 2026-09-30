@@ -21,7 +21,12 @@ sys.path[:0] = [str(ROOT), str(ROOT / "backend")]
 from scripts.verification.population_process_qos import recorded_high_qos
 from scripts.verification.common import collection_output_path, collection_report_path
 from scripts.verification.population_benchmark_metrics import percentile
-from scripts.verification.population_godot_runner import child_environment, source_manifest, write_json
+from scripts.verification.population_godot_runner import (
+    asgi_lifecycle_snapshot,
+    child_environment,
+    source_manifest,
+    write_json,
+)
 from scripts.verification.verify_population_transport_cost import _configure
 from scripts.verification.verify_population_godot_runtime import digest, json_lines, read_json
 from scripts.verification.verify_population_mixed_soak import read_control
@@ -446,9 +451,7 @@ async def backend(directory: Path) -> None:
                 observed['errors'].append(type(error).__name__)
                 raise
             finally:
-                lifecycle = getattr(server, 'lifespan', None)
-                observed['asgi_lifecycle'] = {name: getattr(lifecycle, name, None) for name in
-                    ('startup_failed', 'shutdown_failed', 'error_occurred')}
+                observed['asgi_lifecycle'] = asgi_lifecycle_snapshot(server)
                 if any(value is not False for value in observed['asgi_lifecycle'].values()):
                     observed['errors'].append('service_asgi_lifecycle_failed')
                 write_json(directory / 'parent-qos.json', main.app.state.process_qos)
