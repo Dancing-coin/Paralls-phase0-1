@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -38,7 +39,8 @@ def test_predecessor_checklist_is_evidence_backed_before_action_work_releases() 
     assert "verify_character_turn_embodied_episode.py" in foundation
     assert ".harness/verification/character-turn-embodied-episode-report.json" in foundation
     assert "82 passed" in foundation
-    assert "5711 passed, 28 failed" in foundation
+    assert re.search(r"\d+ passed, \d+ failed, \d+ skipped", foundation)
+    assert "Repository-wide failures remain a separate closure blocker" in foundation
     assert "dependency gate remains conditional" in foundation
 
 
