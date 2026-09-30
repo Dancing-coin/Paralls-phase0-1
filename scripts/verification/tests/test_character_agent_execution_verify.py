@@ -86,6 +86,7 @@ def test_observatory_verification_uses_explicit_stub_dialogue() -> None:
     ).read_text(encoding="utf-8")
 
     assert '"DIALOGUE_MODE": "stub"' in source
+    assert '"TTS_MODE": "stub"' in source
 
 
 def test_character_director_observatory_is_wall_clock_bounded_not_frame_bounded() -> None:

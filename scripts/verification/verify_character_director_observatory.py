@@ -40,6 +40,7 @@ OBSERVATORY_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
     "DIALOGUE_MODE": "stub",
+    "TTS_MODE": "stub",
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
 }
