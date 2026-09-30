@@ -642,6 +642,16 @@ func _sample_floor_point(position: Vector3) -> Dictionary:
 func _run_locomotion_probe() -> void:
 	if player_input_bridge == null or not player_input_bridge.has_method("set_forced_player_motion"):
 		return
+	# The live autotest may receive an attention/Siming presentation event while
+	# the scene is bootstrapping.  That event legitimately holds the actor still
+	# for a short window, but it must not mask the independent Motor locomotion
+	# probe.  Release only this probe's transient presentation hold; production
+	# input continues to respect the actor's normal hold/arbiter path.
+	var player_actor: Node = player.get_character_actor() if player != null and player.has_method("get_character_actor") else null
+	if player_actor != null:
+		player_actor.set("hold_timer", 0.0)
+		player_actor.set("action_override_state", "")
+		player_actor.set("action_override_timer", 0.0)
 	await _probe_gait_segment("amble", false, false, 0.35)
 	await _probe_gait_segment("walk", false, false, 0.35)
 	await _probe_gait_segment("brisk_walk", false, false, 0.35)
@@ -912,6 +922,10 @@ func _set_focus_visual(target: Node3D, is_focused: bool) -> void:
 		target.set_focus_highlight(is_focused)
 
 func _force_focus_target(target: Node3D) -> void:
+	# Forced targets are used by bounded validation/probe flows.  Pin the
+	# requested target until the owning flow releases the override; otherwise
+	# the normal per-frame picker can replace it before the request is emitted.
+	focus_override_active = true
 	_set_focus_visual(current_precise_focus_target, false)
 	_sync_observatory_view_actor()
 	visible_focus_targets = _collect_visible_focus_targets()
