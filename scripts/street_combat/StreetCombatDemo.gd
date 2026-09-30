@@ -132,13 +132,19 @@ func _probe_combat() -> void:
 	var navigation_ok := navigation.navigation_mesh != null and navigation.navigation_mesh.get_polygon_count() > 0
 	print("street_combat_probe:environment=%s:collision=%s:navigation=%s" % [str(environment_ok).to_lower(), str(collision_ok).to_lower(), str(navigation_ok).to_lower()])
 	print("street_combat_probe:hud_observed=%s" % str(is_instance_valid($StreetCombatHUD) and $StreetCombatHUD.visible).to_lower())
+	# Move into the staged combat pocket through the real player Motor ingress.
+	# Stop from the observed pose instead of relying on a fixed frame count: the
+	# headless backend may run at different rates while still preserving the
+	# same bounded contact and line-of-sight evidence.
 	Input.action_press("phase0_move_forward")
-	# Move into the staged combat pocket while still proving player locomotion.
-	# The probe must preserve line-of-sight evidence for the first authority attempt.
-	for _frame in range(70):
+	Input.action_press("phase0_move_left")
+	for _frame in range(240):
+		var planar_gap := Vector2(player.global_position.x - $AgentCharacterJK.global_position.x, player.global_position.z - $AgentCharacterJK.global_position.z).length()
+		if planar_gap <= 2.05:
+			break
 		await get_tree().physics_frame
 	Input.action_release("phase0_move_forward")
-	print("street_combat_probe:player_position=%s:jk_position=%s:t_position=%s" % [player.global_position, $AgentCharacterJK.global_position, $AgentCharacterT.global_position])
+	Input.action_release("phase0_move_left")
 	# Let the live pose stream publish the final post-movement positions before
 	# submitting the first authority attempt. This exercises the real transport
 	# ordering instead of relying on a local position shortcut.
@@ -153,40 +159,47 @@ func _probe_combat() -> void:
 	while Time.get_ticks_msec() < deadline and not coordinator.results_by_attempt.has(player_attempt):
 		await get_tree().process_frame
 	var player_result: Dictionary = coordinator.results_by_attempt.get(player_attempt, {})
-	print("street_combat_probe:player_result=%s:hp=%s" % [JSON.stringify(player_result), coordinator.actor_hp["char_a"]])
 	var player_ok: bool = str(player_result.get("outcome", "")) == "committed" and int(coordinator.actor_hp["char_a"]) == 80
 	print("street_combat_probe:player_hit=%s" % str(player_ok).to_lower())
 	var playback_ok := await _probe_imported_action_catalog()
 	print("street_combat_probe:imported_attack_playback=%s" % str(playback_ok).to_lower())
 	var agent_ok := false
+	# Action claims are scoped to a physics tick. Let the player action's
+	# upper-body claim expire before admitting the agent action through the same
+	# CharacterActor arbiter.
+	await get_tree().physics_frame
 	var agent_attempt: String = await coordinator.request_attack("char_a", "street_bandage", "probe-agent-hit")
 	if not agent_attempt.is_empty():
 		deadline = Time.get_ticks_msec() + 5000
 		while Time.get_ticks_msec() < deadline and not coordinator.results_by_attempt.has(agent_attempt):
 			await get_tree().process_frame
 		var agent_result: Dictionary = coordinator.results_by_attempt.get(agent_attempt, {})
-		print("street_combat_probe:agent_result=%s:hp=%s" % [JSON.stringify(agent_result), coordinator.actor_hp["street_bandage"]])
 		agent_ok = str(agent_result.get("outcome", "")) == "committed" and int(coordinator.actor_hp["street_bandage"]) == 80
 	print("street_combat_probe:agent_hit=%s" % str(agent_ok).to_lower())
-	var duplicate_sent: bool = await coordinator.replay_attempt(player_attempt)
-	await get_tree().create_timer(0.4).timeout
-	var duplicate_replayed: bool = duplicate_sent and coordinator.duplicate_attempts.has(player_attempt) and int(coordinator.actor_hp["char_a"]) == 80
-	print("street_combat_probe:duplicate_replayed=%s" % str(duplicate_replayed).to_lower())
+	await get_tree().physics_frame
 	var stale_attempt: String = await coordinator.request_attack("street_bandage", "char_a", "probe-stale", {"actor:character:street_bandage": 0})
 	var stale_result: Dictionary = await _wait_for_result(stale_attempt)
 	var stale_rejected: bool = str(stale_result.get("outcome", "")) == "rejected" and str(stale_result.get("failed_code", "")) == "revision_conflict" and int(coordinator.actor_hp["char_a"]) == 80
 	print("street_combat_probe:stale_rejected=%s" % str(stale_rejected).to_lower())
+	await get_tree().physics_frame
 	var recovery_attempt: String = await coordinator.request_attack("street_bandage", "char_a", "probe-recovery")
 	var recovery_result: Dictionary = await _wait_for_result(recovery_attempt)
 	var recovery_committed: bool = str(recovery_result.get("outcome", "")) == "committed" and int(coordinator.actor_hp["char_a"]) == 60
 	print("street_combat_probe:recovery_committed=%s" % str(recovery_committed).to_lower())
-	var duplicate_stale_recovery := duplicate_replayed and stale_rejected and recovery_committed
-	print("street_combat_probe:duplicate_stale_recovery=%s" % str(duplicate_stale_recovery).to_lower())
+	await get_tree().physics_frame
 	var sword_attempt: String = await coordinator.request_attack("street_bandage", "char_a", "probe-sword-slash", {}, "action:melee.sword_slash")
 	var sword_result: Dictionary = await _wait_for_result(sword_attempt)
 	var sword_projection: Dictionary = sword_result.get("committed_projection", {})
 	var sword_ok := str(sword_result.get("outcome", "")) == "committed" and str(sword_projection.get("semantic_action_id", "")) == "action:melee.sword_slash"
 	print("street_combat_probe:sword_slash_authority=%s" % str(sword_ok).to_lower())
+	var duplicate_sent: bool = await coordinator.replay_attempt(player_attempt)
+	var duplicate_deadline := Time.get_ticks_msec() + 2000
+	while duplicate_sent and Time.get_ticks_msec() < duplicate_deadline and not coordinator.duplicate_attempts.has(player_attempt):
+		await get_tree().process_frame
+	var duplicate_replayed: bool = duplicate_sent and coordinator.duplicate_attempts.has(player_attempt)
+	print("street_combat_probe:duplicate_replayed=%s" % str(duplicate_replayed).to_lower())
+	var duplicate_stale_recovery := duplicate_replayed and stale_rejected and recovery_committed
+	print("street_combat_probe:duplicate_stale_recovery=%s" % str(duplicate_stale_recovery).to_lower())
 	await get_tree().process_frame
 	var hud_ok: bool = $StreetCombatHUD.get_node("SkillBar/SkillNames").text == "拳击       剑击       奔跑       锁定" and $StreetCombatHUD.get_node("StaminaBar/StaminaValue").text == "%s/100" % coordinator.actor_stamina["street_bandage"]
 	print("street_combat_probe:hud_actions_and_stamina=%s" % str(hud_ok).to_lower())

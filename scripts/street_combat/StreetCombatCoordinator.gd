@@ -143,7 +143,9 @@ func replay_attempt(attempt_id: String) -> bool:
 	var pending: Dictionary = pending_attempts.get(attempt_id, {})
 	if pending.is_empty() or not connected:
 		return false
-	return get_node("/root/BackendBridge").send_envelope({"message_type": "street_combat_attempt", "payload": {"attempt": pending["attempt"]}}) == OK
+	var replay_attempt_payload: Dictionary = (pending["attempt"] as Dictionary).duplicate(true)
+	var err: int = get_node("/root/BackendBridge").send_envelope({"message_type": "street_combat_attempt", "payload": {"attempt": replay_attempt_payload, "request_id": "replay:%s" % attempt_id}})
+	return err == OK
 
 
 func _contact_evidence(actor: CharacterBody3D, target: CharacterBody3D, attempt_id: String, physics_tick: int, marker_id: String) -> String:

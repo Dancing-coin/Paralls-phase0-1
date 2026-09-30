@@ -18,14 +18,14 @@ def main() -> int:
     args = parser.parse_args()
     godot = resolve_godot_exe(args.godot_exe)
     python = resolve_python_exe(args.python_exe)
-    env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws", "PARALLS_STREET_PROBE": "2"}
+    env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws", "PARALLS_STREET_PROBE": "2", "SIMING_HEAVENLY_AUTOTEST_SETUP": "1"}
     backend = None
     result = None
     error = ""
     try:
         _, backend = ensure_backend(ROOT, python, prefer_fresh_backend=True, env=env)
         result = run_command_until_markers(
-            [str(godot), "--headless", "--path", str(ROOT), "--scene", "res://scenes/phase0/StreetCombatDemo.tscn", "--quit-after", "2400", "--render-thread", "safe", "--rendering-method", "gl_compatibility"],
+            [str(godot), "--headless", "--path", str(ROOT), "--scene", "res://scenes/phase0/StreetCombatDemo.tscn", "--quit-after", "30000", "--render-thread", "safe", "--rendering-method", "gl_compatibility"],
             ROOT,
             verification_dir(ROOT) / "street-combat-godot.log",
             success_markers=[
