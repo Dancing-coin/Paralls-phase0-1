@@ -38,6 +38,9 @@ PHASE0_VERIFY_ENV = {
     "CHARACTER_MODEL_PROVIDER_KIND": "local",
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
     "DIALOGUE_MODE": "stub",
+    # Phase0 proves the structured dialogue and scene voice path locally. Keep
+    # online TTS defaults from delaying the terminal dialogue_response frame.
+    "TTS_MODE": "stub",
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
 }
