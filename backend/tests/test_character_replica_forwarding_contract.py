@@ -1,62 +1,26 @@
-from pathlib import Path
-import os
-import re
-import subprocess
+from __future__ import annotations
 
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-REPLICA = ROOT / "scripts/character" / ("Character" + "Replica.gd")
-ACTOR = ROOT / "scripts/character/CharacterActor.gd"
 
 
-def _method(source: str, name: str) -> str:
-    match = re.search(rf"^func {name}\([^\n]*", source, re.MULTILINE)
-    assert match, name
-    next_method = re.search(r"^func |^static func ", source[match.end():], re.MULTILINE)
-    end = match.end() + next_method.start() if next_method else len(source)
-    return source[match.start():end]
+def _read(relative_path: str) -> str:
+    return (ROOT / relative_path).read_text(encoding="utf-8")
 
 
-def test_legacy_pose_and_control_forward_normalized_intent_to_actor():
-    replica = REPLICA.read_text(encoding="utf-8")
-    actor = ACTOR.read_text(encoding="utf-8")
-    begin = _method(replica, "begin_embodied_control_frame")
-    sync = _method(replica, "apply_embodied_pose_sync")
-    assert "CharacterControlIntentRef.normalize" in begin
-    assert '"source_kind": "compatibility"' in begin
-    assert "apply_control_intent(intent" in begin
-    assert "CharacterControlIntentRef.normalize" in sync
-    assert "apply_compatibility_pose_sync(intent" in sync
-    assert "func apply_control_intent(" in actor
-    assert "func apply_compatibility_pose_sync(" in actor
-
-
-def test_action_and_reviewed_playback_forward_through_actor_owned_seams():
-    replica = REPLICA.read_text(encoding="utf-8")
-    actor = ACTOR.read_text(encoding="utf-8")
-    action = _method(replica, "perform_action")
-    play = _method(replica, "play_reviewed_action_atom")
-    restore = _method(replica, "restore_reviewed_action_playback")
-    assert "perform_compatibility_action(intent)" in action
-    assert "return play_compatibility_reviewed_action_atom(" in play
-    assert "restore_compatibility_reviewed_action_playback()" in restore
-    for seam in (
-        "perform_compatibility_action",
-        "play_compatibility_reviewed_action_atom",
-        "restore_compatibility_reviewed_action_playback",
+def test_character_replica_compatibility_assets_and_forwarding_probe_are_retired() -> None:
+    for relative_path in (
+        "scripts/character/CharacterReplica.gd",
+        "scenes/phase0/CharacterReplica.tscn",
+        "scenes/phase0/ValidationCharacterReplica.tscn",
+        "scripts/verification/CharacterReplicaForwardingProbe.gd",
     ):
-        assert f"func {seam}(" in actor
-    assert "submit_action_intent" in _method(actor, "perform_compatibility_action")
-    assert "return _play_reviewed_action_atom(" in _method(actor, "play_compatibility_reviewed_action_atom")
+        assert not (ROOT / relative_path).exists(), relative_path
 
 
-def test_asset_binding_returns_actor_result_and_all_compat_calls_have_diagnostics():
-    replica = REPLICA.read_text(encoding="utf-8")
-    actor = ACTOR.read_text(encoding="utf-8")
-    binding = _method(replica, "apply_presentation_asset_binding")
-    assert "return apply_compatibility_presentation_asset_binding(binding)" in binding
-    assert "func apply_compatibility_presentation_asset_binding(" in actor
-    assert "return _apply_presentation_asset_binding(binding)" in _method(actor, "apply_compatibility_presentation_asset_binding")
+def test_actor_owns_control_pose_action_and_asset_seams() -> None:
+    actor = _read("scripts/character/CharacterActor.gd")
     for method in (
         "begin_embodied_control_frame",
         "apply_embodied_pose_sync",
@@ -65,70 +29,55 @@ def test_asset_binding_returns_actor_result_and_all_compat_calls_have_diagnostic
         "restore_reviewed_action_playback",
         "apply_presentation_asset_binding",
     ):
-        assert "_record_compatibility_call(" in _method(replica, method), method
-    diagnostics = _method(replica, "_record_compatibility_call")
-    for field in ("caller_path", "method", "actor_id", "source_kind", "intent_digest", "forwarded_to"):
-        assert f'"{field}"' in diagnostics
-    assert "compatibility_call.emit(" in diagnostics
+        assert f"func {method}(" in actor
+    assert "func apply_compatibility_pose_sync(" in actor
+    assert "func perform_compatibility_action(" in actor
+    assert "func apply_compatibility_presentation_asset_binding(" in actor
 
 
-def test_shell_has_no_body_animation_or_authority_writes_and_strict_guard_exists():
-    replica = REPLICA.read_text(encoding="utf-8")
-    executable = "\n".join(line for line in replica.splitlines() if not line.lstrip().startswith("#"))
-    assert re.search(r"\b(?:global_position|velocity)\b\s*(?:[+\-*/]?=)", executable) is None
-    assert "move_and_slide(" not in executable
-    assert re.search(r"\b(?:animation_player|animation_state_playback|playback)\.(?:play|travel|seek)\(", executable) is None
-    assert "append_authority_event(" not in executable
-    assert "compatibility_strict_mode" in replica
-    assert "assert(" in _method(replica, "_record_compatibility_call")
+def test_actor_compatibility_seams_do_not_reference_deleted_shell() -> None:
+    actor = _read("scripts/character/CharacterActor.gd")
+    for method in (
+        "apply_compatibility_pose_sync",
+        "perform_compatibility_action",
+        "play_compatibility_reviewed_action_atom",
+        "restore_compatibility_reviewed_action_playback",
+        "apply_compatibility_presentation_asset_binding",
+    ):
+        start = actor.index(f"func {method}(")
+        end = actor.find("\nfunc ", start + 5)
+        body = actor[start:] if end < 0 else actor[start:end]
+        assert "CharacterReplica" not in body
 
 
-def test_compatibility_diagnostics_keep_total_count_without_unbounded_history():
-    replica = REPLICA.read_text(encoding="utf-8")
-    diagnostics = _method(replica, "_record_compatibility_call")
-    assert "compatibility_call_count += 1" in diagnostics
-    assert "compatibility_call_diagnostics.pop_front()" in diagnostics
-    assert "compatibility_call.emit(diagnostic)" in diagnostics
+def _method(source: str, name: str) -> str:
+    start = source.index(f"func {name}(")
+    end = source.find("\nfunc ", start + 5)
+    return source[start:] if end < 0 else source[start:end]
 
 
-def test_empty_action_and_internal_actor_action_keep_original_semantics():
-    actor = ACTOR.read_text(encoding="utf-8")
-    compatibility = _method(actor, "perform_compatibility_action")
-    interaction = _method(actor, "_handle_interact_goal_command")
-    assert '_realize_action_request("")' in compatibility
-    assert '_admit_and_realize_action(' in interaction
-    assert '"interact",' in interaction
-    assert 'func _admit_and_realize_action(' in actor
-    assert 'submit_action_intent(StringName(action_name)' in _method(actor, "_admit_and_realize_action")
-
-
-def test_internal_interact_admission_reports_rejection_without_realizing_conflict():
-    actor = ACTOR.read_text(encoding="utf-8")
-    seam = _method(actor, "_admit_and_realize_action")
-    assert 'if not bool(admission.get("accepted", false))' in seam
-    assert 'return admission' in seam
-    assert '_realize_action_request(action_name)' in seam
-
-
-def test_action_admission_uses_live_tick_occupancy():
-    actor = ACTOR.read_text(encoding="utf-8")
+def test_action_admission_preserves_backend_request_and_live_tick_occupancy() -> None:
+    actor = _read("scripts/character/CharacterActor.gd")
     submit = _method(actor, "submit_action_intent")
+    admit = _method(actor, "_admit_and_realize_action")
+    interact = _method(actor, "_handle_interact_goal_command")
     assert '"occupancy": _action_occupancy' in submit
     assert "_action_occupancy_tick" in submit
     assert "_action_occupancy[claim]" in submit
+    assert "submit_action_intent(StringName(action_name)" in admit
+    assert 'if not bool(admission.get("accepted", false))' in admit
+    assert "return admission" in admit
+    assert "_realize_action_request(action_name)" in admit
+    assert '_admit_and_realize_action(' in interact
+    assert '"interact",' in interact
 
 
-def test_godot_forwarding_and_strict_guard_runtime_probe():
-    godot = Path(os.environ.get("GODOT_EXE", r"D:\godot\Godot_v4.6.3-stable_win64.exe"))
-    assert godot.exists(), godot
-    probe = ROOT / "scripts/verification" / ("Character" + "ReplicaForwardingProbe.gd")
-    assert probe.exists(), probe
-    result = subprocess.run(
-        [str(godot), "--headless", "--path", str(ROOT), "--script", str(probe)],
-        capture_output=True,
-        text=True,
-        timeout=40,
-        check=False,
+def test_actor_has_no_local_body_or_authority_writes_outside_motor_and_backend() -> None:
+    actor = "\n".join(
+        line
+        for line in _read("scripts/character/CharacterActor.gd").splitlines()
+        if not line.lstrip().startswith("#")
     )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "CHARACTER_REPLICA_FORWARDING_PROBE_PASS" in result.stdout, result.stdout + result.stderr
+    assert "move_and_slide(" not in actor
+    assert "append_authority_event(" not in actor
+    assert "global_position +=" not in actor

@@ -6,12 +6,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_agent_execution_is_owned_by_actor_and_not_overridden_by_compatibility_shell() -> None:
+def test_agent_execution_is_owned_by_actor_after_compatibility_shell_retirement() -> None:
     actor = _read("scripts/character/CharacterActor.gd")
-    shell = _read("scripts/character/" + "Character" + "Replica.gd")
     assert "func _on_character_agent_execution_received(payload: Dictionary) -> void:" in actor
-    assert "func _on_character_agent_execution_received(payload: Dictionary) -> void:" not in shell
-    assert "extends CharacterActor" in shell
+    assert not (ROOT / "scripts/character/CharacterReplica.gd").exists()
+    assert not (ROOT / "scripts/verification/CharacterReplicaForwardingProbe.gd").exists()
 
 
 def _read(relative_path: str) -> str:

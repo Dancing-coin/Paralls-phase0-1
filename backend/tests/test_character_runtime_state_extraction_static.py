@@ -7,13 +7,12 @@ import re
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def test_runtime_state_is_actor_owned_and_shell_forwards_pose_intent() -> None:
+def test_runtime_state_is_actor_owned_after_replica_retirement() -> None:
     actor = _read("scripts/character/CharacterActor.gd")
-    shell = _read("scripts/character/" + "Character" + "Replica.gd")
     assert "@onready var runtime_state = CharacterRuntimeStateRef.new()" in actor
-    assert "@onready var runtime_state = CharacterRuntimeStateRef.new()" not in shell
-    assert "apply_control_intent(intent" in shell
-    assert "apply_compatibility_pose_sync(intent" in shell
+    assert not (ROOT / "scripts/character/CharacterReplica.gd").exists()
+    assert "func apply_control_intent(" in actor
+    assert "func apply_compatibility_pose_sync(" in actor
 
 
 def _read(relative_path: str) -> str:
@@ -43,11 +42,12 @@ def test_character_replica_uses_runtime_state_host_for_extracted_state() -> None
     assert "runtime_state.clear_active_command" in actor_source
 
 
-def test_character_replica_no_longer_declares_extracted_runtime_state_fields_directly() -> None:
+def test_character_actor_does_not_redeclare_runtime_state_owned_fields() -> None:
     actor_source = _read("scripts/character/CharacterActor.gd")
-    shell_source = _read("scripts/character/" + "Character" + "Replica.gd")
+    runtime_state_source = _read("scripts/character/CharacterRuntimeState.gd")
 
     assert "@onready var runtime_state = CharacterRuntimeStateRef.new()" in actor_source
+    assert "class_name CharacterRuntimeState" in runtime_state_source
     for field in (
         'var runtime_focus_target := ""', 'var runtime_attention_source := ""',
         'var runtime_nearby_actor_refs: Array[String] = []',
@@ -57,12 +57,13 @@ def test_character_replica_no_longer_declares_extracted_runtime_state_fields_dir
         'var runtime_engagement_pressure := ""', 'var runtime_privacy_risk_hint := ""',
         'var active_command_type := ""', 'var active_command_priority := 0',
         'var player_motion_state: Dictionary = {}',
-        'var player_presentation_input: Dictionary = {}',
         'var player_shell_velocity := Vector3.ZERO', 'var player_shell_grounded := true',
         'var player_stance := "stand"', 'var player_gait := "walk"',
         'var player_jump_type := "none"',
     ):
-        assert field not in shell_source
+        assert field not in actor_source
+    assert "var player_presentation_input: Dictionary = {}" not in actor_source
+    assert "var player_presentation_input: Dictionary = {}" not in runtime_state_source
 
 
 def test_runtime_state_host_stages_focus_and_attention_metadata() -> None:
