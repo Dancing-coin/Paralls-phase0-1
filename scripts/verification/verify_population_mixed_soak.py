@@ -19,6 +19,8 @@ from unittest.mock import patch
 ROOT = Path(__file__).resolve().parents[2]
 sys.path[:0] = [str(ROOT), str(ROOT / "backend")]
 
+from scripts.verification.population_godot_runner import asgi_lifecycle_snapshot
+
 
 def read(path):
     return json.loads(path.read_text(encoding="utf-8"))
@@ -532,9 +534,7 @@ async def backend(directory):
                 raise
             finally:
                 parent["child_exit_code"] = host.process.exitcode if host is not None else None
-                lifecycle = getattr(server, "lifespan", None)
-                parent["asgi_lifecycle"] = {key: getattr(lifecycle, key, None) for key in
-                    ("startup_failed", "shutdown_failed", "error_occurred")}
+                parent["asgi_lifecycle"] = asgi_lifecycle_snapshot(server)
                 write_json(directory / 'parent-qos.json', main.app.state.process_qos)
                 write_json(directory / "parent-observed.json", parent)
     owner = read(directory / "owner-observed.json")

@@ -44,6 +44,18 @@ def test_mixed_backend_disables_transport_keepalive_during_controlled_slow_consu
     assert config.ws_per_message_deflate is False
 
 
+@pytest.mark.parametrize("attribute", ["error_occurred", "error_occured"])
+def test_mixed_soak_normalizes_uvicorn_lifespan_error_flag(attribute):
+    lifecycle = SimpleNamespace(startup_failed=False, shutdown_failed=False)
+    setattr(lifecycle, attribute, True)
+
+    assert soak.asgi_lifecycle_snapshot(SimpleNamespace(lifespan=lifecycle)) == {
+        "startup_failed": False,
+        "shutdown_failed": False,
+        "error_occurred": True,
+    }
+
+
 def test_live_child_environment_preserves_only_explicit_model_configuration():
     values = {key: 'private-value' for key in ('DIALOGUE_MODE', 'CHARACTER_MODEL_PROVIDER_KIND', 'CHARACTER_MODEL_ENDPOINT',
         'CHARACTER_MODEL_API_KEY', 'CHARACTER_MODEL_MODEL', 'SIMING_LLM_MODE', 'SIMING_LLM_API_KEY',

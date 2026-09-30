@@ -26,6 +26,23 @@ def write_json(path: Path, value: dict) -> None:
     temporary.replace(path)
 
 
+def asgi_lifecycle_snapshot(server) -> dict[str, object]:
+    """Return the stable lifecycle schema across supported Uvicorn versions.
+
+    Uvicorn 0.34 exposes the error flag as ``error_occured`` (sic), while
+    project evidence uses the correctly spelled ``error_occurred`` key.
+    """
+    lifecycle = getattr(server, "lifespan", None)
+    error = getattr(lifecycle, "error_occurred", None)
+    if error is None:
+        error = getattr(lifecycle, "error_occured", None)
+    return {
+        "startup_failed": getattr(lifecycle, "startup_failed", None),
+        "shutdown_failed": getattr(lifecycle, "shutdown_failed", None),
+        "error_occurred": error,
+    }
+
+
 def object_digest(value) -> str:
     return digest(json.dumps(value, sort_keys=True, ensure_ascii=True, separators=(",", ":"), allow_nan=False).encode())
 
@@ -258,9 +275,7 @@ async def backend_child(directory: Path, state_directory: Path) -> None:
                 observed['errors'].append(type(error).__name__)
                 raise
             finally:
-                lifecycle = getattr(server, 'lifespan', None)
-                observed['asgi_lifecycle'] = {name: getattr(lifecycle, name, None) for name in
-                    ('startup_failed', 'shutdown_failed', 'error_occurred')}
+                observed['asgi_lifecycle'] = asgi_lifecycle_snapshot(server)
                 if any(value is not False for value in observed['asgi_lifecycle'].values()):
                     observed['errors'].append('render_asgi_lifecycle_failed')
                 observed['child_exit_code'] = host.process.exitcode if host is not None else None

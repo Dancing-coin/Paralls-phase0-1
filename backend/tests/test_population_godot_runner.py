@@ -4,6 +4,7 @@ import struct
 import subprocess
 import sys
 import zlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -70,6 +71,17 @@ def test_source_manifest_covers_godot_python_scene_and_ignores_dotenv(tmp_path):
     assert source_manifest(tmp_path) == before
     (tmp_path / "scripts/phase0/PopulationProbe.gd").write_text("changed\n")
     assert source_manifest(tmp_path)["source_sha256"] != before["source_sha256"]
+
+
+@pytest.mark.parametrize("attribute", ["error_occurred", "error_occured"])
+def test_asgi_lifecycle_snapshot_normalizes_uvicorn_error_flag(attribute):
+    from scripts.verification import population_godot_runner as runner
+
+    lifecycle = SimpleNamespace(startup_failed=False, shutdown_failed=False)
+    setattr(lifecycle, attribute, True)
+    snapshot = runner.asgi_lifecycle_snapshot(SimpleNamespace(lifespan=lifecycle))
+
+    assert snapshot == dict(startup_failed=False, shutdown_failed=False, error_occurred=True)
 
 
 def test_self_reported_capture_cannot_pass_without_raw_evidence(tmp_path):
