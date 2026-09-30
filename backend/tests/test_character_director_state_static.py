@@ -95,6 +95,17 @@ def test_character_director_state_promotes_runtime_siming_events_to_latest_state
     assert 'latest_siming_summary' in siming_event_block
 
 
+def test_character_director_state_projects_global_beat_siming_summary_to_real_participants() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    script_beat_block = _function_block(source, "func _on_script_beat_event_received(payload: Dictionary) -> void:")
+
+    assert "_project_beat_siming_summary_to_participants(presentation_beat)" in script_beat_block
+    helper_block = _function_block(source, "func _project_beat_siming_summary_to_participants(beat: Dictionary) -> void:")
+    assert 'beat.get("participants", [])' in helper_block
+    assert 'beat.get("siming_summaries", [])' in helper_block
+    assert 'actor_state["latest_siming_summary"]' in helper_block
+
+
 def test_character_director_state_bottom_strip_stays_single_merged_builder() -> None:
     source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
     bottom_strip_block = _function_block(source, "func get_latest_bottom_strip_entries() -> Array[Dictionary]:")

@@ -336,6 +336,7 @@ func _on_script_beat_event_received(payload: Dictionary) -> void:
 		return
 	var presentation_beat := _presentation_script_beat(payload)
 	recent_script_beats.append(presentation_beat)
+	_project_beat_siming_summary_to_participants(presentation_beat)
 	if recent_script_beats.size() > MAX_EVENT_HISTORY:
 		recent_script_beats = _dictionary_array(recent_script_beats.slice(recent_script_beats.size() - MAX_EVENT_HISTORY, recent_script_beats.size()))
 	recent_dialogue_pairs = _merge_dialogue_pair_rows(
@@ -343,6 +344,31 @@ func _on_script_beat_event_received(payload: Dictionary) -> void:
 		presentation_beat.get("dialogue_pairs", [])
 	)
 	_request_observatory_refresh()
+
+
+func _project_beat_siming_summary_to_participants(beat: Dictionary) -> void:
+	var siming_summary := ""
+	var siming_rows: Variant = beat.get("siming_summaries", [])
+	if siming_rows is Array:
+		for row_value in siming_rows:
+			if not row_value is Dictionary:
+				continue
+			var row := row_value as Dictionary
+			siming_summary = _first_non_empty_string([row.get("reason_summary", ""), row.get("summary", "")])
+			if not siming_summary.is_empty():
+				break
+	if siming_summary.is_empty():
+		return
+	var participants: Variant = beat.get("participants", [])
+	if not participants is Array:
+		return
+	for participant_value in participants:
+		var actor_id := _string_or_empty(participant_value)
+		if actor_id.is_empty() or not latest_actor_states.has(actor_id):
+			continue
+		var actor_state: Dictionary = (latest_actor_states[actor_id] as Dictionary).duplicate(true)
+		actor_state["latest_siming_summary"] = siming_summary
+		latest_actor_states[actor_id] = actor_state
 
 
 func _presentation_script_beat(payload: Dictionary) -> Dictionary:
