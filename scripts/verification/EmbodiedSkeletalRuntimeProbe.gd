@@ -21,12 +21,12 @@ func _run_probe() -> void:
 	await get_tree().process_frame
 
 	var actor_node := main_demo.get_node_or_null("PlayerCharacter")
-	var replica := actor_node.get_node_or_null("CharacterReplica") if actor_node != null else null
-	if replica != null:
+	var actor := _resolve_actor(actor_node)
+	if actor != null:
 		var skeletal_asset := SKELETAL_DEBUG_ASSET.instantiate()
-		replica.add_child(skeletal_asset)
+		actor.add_child(skeletal_asset)
 		await get_tree().process_frame
-	var skeleton := _find_first_skeleton(actor_node)
+	var skeleton := _find_first_skeleton(actor)
 	var provider = SKELETAL_PROVIDER.new()
 	var trace_refs: Array[String] = [
 		"pqf:char_b:embodied-skeletal-runtime-probe",
@@ -48,6 +48,18 @@ func _run_probe() -> void:
 	print("embodied_skeletal_runtime_probe:runtime_binding=%s" % str(report.get("status") == "godot-runtime-binding-verified"))
 	print("embodied_skeletal_runtime_probe:full_bone_main_chain_excluded=%s" % str(report.get("full_bone_main_chain_excluded", false)))
 	get_tree().quit(0)
+
+
+func _resolve_actor(root: Node) -> Node:
+	if root == null:
+		return null
+	if root.has_method("apply_control_intent") and root.has_method("get_focus_anchor_position") and root.has_method("get_embodied_forward_vector"):
+		return root
+	for child: Node in root.get_children():
+		var found := _resolve_actor(child)
+		if found != null:
+			return found
+	return null
 
 
 func _find_first_skeleton(root: Node) -> Skeleton3D:

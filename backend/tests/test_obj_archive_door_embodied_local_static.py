@@ -12,7 +12,7 @@ def test_door_host_uses_the_existing_motor_owner_and_reviewed_atom_contract() ->
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
     scene = _read("scenes/phase0/CharacterBase.tscn")
     main_demo = _read("scenes/integration/Unified3DIntegrationValidation.tscn")
-    replica = _read("scripts/character/CharacterReplica.gd")
+    replica = _read("scripts/character/CharacterActor.gd")
 
     assert "class_name ArchiveDoorEmbodiedActionHost" in host
     assert "Phase0PlayerBridge" in host
@@ -116,7 +116,7 @@ def test_host_ticks_contact_on_the_character_motor_physics_clock() -> None:
 
 def test_host_tries_the_existing_modifier_reach_only_after_a_measured_ik_miss() -> None:
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
-    replica = _read("scripts/character/CharacterReplica.gd")
+    replica = _read("scripts/character/CharacterActor.gd")
     contact_body = host.split("func _process_contact() -> void:", maxsplit=1)[1].split(
         "func _advance_phase", maxsplit=1
     )[0]
@@ -328,7 +328,7 @@ def test_main_demo_registers_archive_door_requests_for_preflight_recovery() -> N
 
 def test_door_host_recovers_on_preflight_constraint_settlement_cancel_and_resync() -> None:
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
-    replica = _read("scripts/character/CharacterReplica.gd")
+    replica = _read("scripts/character/CharacterActor.gd")
 
     assert "func recover_without_grant(" in host
     assert "_on_embodied_settlement_result_received" in host
@@ -355,7 +355,7 @@ def test_door_host_enforces_local_stance_and_approach_obstacle_guards_without_a_
 
 
 def test_character_reach_path_prefers_skeleton_ik_and_falls_back_closed_when_unavailable() -> None:
-    replica = _read("scripts/character/CharacterReplica.gd")
+    replica = _read("scripts/character/CharacterActor.gd")
     role_skin = _read("scripts/character/KnightRoleSkin.gd")
 
     assert "func begin_right_hand_reach(" in replica

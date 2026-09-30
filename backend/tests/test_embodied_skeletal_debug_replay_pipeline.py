@@ -93,19 +93,19 @@ def test_godot_provider_script_has_runtime_binding_and_debug_replay_hooks() -> N
     probe_text = (ROOT / "scripts/verification/EmbodiedSkeletalRuntimeProbe.gd").read_text(encoding="utf-8")
 
     assert "bind_runtime" in text
-    assert "_find_character_replica" in text
+    assert "_resolve_actor_capability" in text
     assert "_find_first_skeleton" in text
     assert "write_debug_snapshot_artifact" in text
     assert "debug_replay_only" in text
     assert "full_bone_snapshot_to_backend_allowed := false" in text
-    assert "CharacterReplica" in text
+    assert "actor_capability_verified" in text
     assert "Skeleton3D" in text
     assert "full_bone_main_chain_excluded" in probe_text
 
 
-def test_godot_probe_mounts_the_staged_skeletal_asset_under_character_replica() -> None:
+def test_godot_probe_mounts_the_staged_skeletal_asset_under_character_actor() -> None:
     probe_text = (ROOT / "scripts/verification/EmbodiedSkeletalRuntimeProbe.gd").read_text(encoding="utf-8")
 
     assert 'preload("res://assets/active/external_character_b/npc_animated.glb")' in probe_text
-    assert 'var replica := actor_node.get_node_or_null("CharacterReplica")' in probe_text
-    assert "replica.add_child(skeletal_asset)" in probe_text
+    assert "var actor := _resolve_actor(actor_node)" in probe_text
+    assert "actor.add_child(skeletal_asset)" in probe_text

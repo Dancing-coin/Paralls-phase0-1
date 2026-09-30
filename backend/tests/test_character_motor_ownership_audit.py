@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 ACTIVE_ACTOR_SCRIPTS = (
     "scripts/character/CharacterMotor.gd",
     "scripts/character/CharacterActor.gd",
-    "scripts/character/CharacterReplica.gd",
+    "scripts/character/CharacterActor.gd",
     "scripts/player/PlayerShell.gd",
 )
 

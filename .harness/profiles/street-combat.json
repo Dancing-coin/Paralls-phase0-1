@@ -7,5 +7,23 @@
   "result_artifact": ".harness/verification/street-combat-runtime.json",
   "max_attempts": 1,
   "include_in_profile_order": false,
-  "description": "Fresh street environment, three qualified user characters, live player/agent authority combat, HUD and lineage evidence"
+  "description": "Formal StreetCombatDemo acceptance: fresh real street environment, three Registry-qualified character packages, live player/agent authority combat, animation/Motor/recovery/HUD evidence; UnifiedCharacterActionFoundation is not used as the action-base gate",
+  "acceptance_scene": "scenes/phase0/StreetCombatDemo.tscn",
+  "qualified_packages": [
+    "female_bandage_external",
+    "female_jk_external",
+    "female_t_external"
+  ],
+  "evidence_contract": [
+    "environment_loaded",
+    "collision_loaded",
+    "navigation_loaded",
+    "skeleton_bindings",
+    "player_authority_hit",
+    "agent_authority_hit",
+    "duplicate_replayed",
+    "stale_rejected",
+    "recovery_committed",
+    "hud_observed"
+  ]
 }

@@ -58,11 +58,11 @@ func _process(_delta: float) -> void:
 		return
 	if not _phase_names.has("execute_contact"):
 		return
-	var replica := _character_replica()
+	var actor := _character_actor()
 	var contact_anchor := _contact_anchor()
-	if replica == null or contact_anchor == null or not replica.has_method("measure_right_hand_to_anchor"):
+	if actor == null or contact_anchor == null or not actor.has_method("measure_right_hand_to_anchor"):
 		return
-	var measurement: Variant = replica.call("measure_right_hand_to_anchor", contact_anchor.global_position)
+	var measurement: Variant = actor.call("measure_right_hand_to_anchor", contact_anchor.global_position)
 	if measurement is Dictionary and bool((measurement as Dictionary).get("available", false)):
 		_contact_measurement = (measurement as Dictionary).duplicate(true)
 		_contact_measurement_captured = true
@@ -99,8 +99,8 @@ func _run_probe() -> void:
 
 
 func _ensure_embodied_role_asset() -> bool:
-	var replica := main_demo.get_node_or_null("PlayerCharacter/CharacterReplica") if main_demo != null else null
-	if replica == null or not replica.has_method("apply_presentation_asset_binding"):
+	var actor := _character_actor()
+	if actor == null or not actor.has_method("apply_presentation_asset_binding"):
 		return false
 	var binding := {
 		"actor_id": "char_c",
@@ -109,9 +109,9 @@ func _ensure_embodied_role_asset() -> bool:
 			"role_scene_ref": "res://scenes/active/crusader_knight/KnightRoleSkin.tscn",
 		},
 	}
-	var applied: Variant = replica.call("apply_presentation_asset_binding", binding)
+	var applied: Variant = actor.call("apply_presentation_asset_binding", binding)
 	await get_tree().process_frame
-	return bool(applied) and replica.has_method("begin_right_hand_reach")
+	return bool(applied) and actor.has_method("begin_right_hand_reach")
 
 
 func _connect_bus() -> void:
@@ -277,7 +277,11 @@ func _emit_door_interaction() -> bool:
 
 func _wait_for_settlement_applied() -> bool:
 	var deadline := Time.get_ticks_msec() + SCENARIO_TIMEOUT_MS
+	var next_diagnostic_ms := 0
 	while Time.get_ticks_msec() < deadline:
+		if Time.get_ticks_msec() >= next_diagnostic_ms:
+			_write_stage("success_waiting_for_settlement", {"host_runtime_state": _host_runtime_state(), "player_position": _vec3_to_dict(_player().global_position), "phases": _phase_names, "local_outcome": _local_outcome_payload, "settlement": _settlement_payload})
+			next_diagnostic_ms = Time.get_ticks_msec() + 1000
 		if str(_settlement_payload.get("settlement_status", "")) == "applied" and str(_received_world_result.get("current_state", "")) == "open":
 			return true
 		if str(_settlement_payload.get("settlement_status", "")) == "rejected":
@@ -303,7 +307,11 @@ func _wait_for_distance_constraint() -> bool:
 
 func _wait_for_rejected_settlement(accepted_error_codes: Array[String]) -> bool:
 	var deadline := Time.get_ticks_msec() + SCENARIO_TIMEOUT_MS
+	var next_diagnostic_ms := 0
 	while Time.get_ticks_msec() < deadline:
+		if Time.get_ticks_msec() >= next_diagnostic_ms:
+			_write_stage("revision_waiting_for_settlement", {"host_runtime_state": _host_runtime_state(), "player_position": _vec3_to_dict(_player().global_position), "phases": _phase_names, "local_outcome": _local_outcome_payload, "settlement": _settlement_payload})
+			next_diagnostic_ms = Time.get_ticks_msec() + 1000
 		if accepted_error_codes.has(str(_settlement_payload.get("error_code", ""))):
 			return true
 		await get_tree().process_frame
@@ -596,8 +604,21 @@ func _contact_anchor() -> Marker3D:
 	return main_demo.get_node_or_null("ArchiveDoorPhysical/ContactAnchor") as Marker3D if main_demo != null else null
 
 
-func _character_replica() -> Node:
-	return main_demo.get_node_or_null("PlayerCharacter/CharacterReplica") if main_demo != null else null
+func _character_actor() -> Node:
+	var player := main_demo.get_node_or_null("PlayerCharacter") if main_demo != null else null
+	return _resolve_actor(player)
+
+
+func _resolve_actor(root: Node) -> Node:
+	if root == null:
+		return null
+	if root.has_method("apply_control_intent") and root.has_method("get_focus_anchor_position") and root.has_method("get_embodied_forward_vector"):
+		return root
+	for child: Node in root.get_children():
+		var found := _resolve_actor(child)
+		if found != null:
+			return found
+	return null
 
 
 func _host_runtime_state() -> Dictionary:

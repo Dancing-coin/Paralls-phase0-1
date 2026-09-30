@@ -10,6 +10,38 @@
 
 **Spec:** docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md
 
+## 2026-09-29 Execution Status
+
+Tasks 1-8 are implemented and have focused or fresh StreetCombatDemo evidence.
+Task 9 has a fresh gate audit, but remains **blocked** rather than `closed`.
+The formal acceptance scene is the real
+`scenes/phase0/StreetCombatDemo.tscn` with the three qualified packages; the
+UnifiedCharacterActionFoundation greybox remains a narrow protocol/authority
+probe only. Root motion is still the temporary `hold` / zero-envelope policy.
+
+Fresh closure evidence on 2026-09-29:
+
+- `street-combat`: passed from the real StreetCombatDemo scene with environment,
+  collision/navigation, three Registry-qualified packages, player/agent
+  authority, duplicate/stale/recovery, and HUD markers.
+- `docs` and `change-lifecycle`: passed and exported outside the repository.
+- focused action-foundation suite: `27 passed`.
+- full `python -m pytest -v`: collection completed (`7671 collected`), then
+  `7621 passed, 48 failed, 2 skipped, 103 warnings`; this is a repository-wide
+  red result, not a collection blocker.
+- declared dependency repair: the interpreter was running `websockets 12.0`
+  while `backend/pyproject.toml` requires `>=13.0` and
+  `backend/ci-constraints.txt` pins `17.1`; the environment was aligned to
+  `17.1`, after which `websockets.asyncio` collected successfully.
+- ArchiveDoor is an **external-plan dependency**, not a StreetCombatDemo
+  acceptance scene. The earlier live transport timeout came from a test fixture
+  placing the actor outside the authority range; its focused regression now
+  passes. A separate reversed forced-motion Z conversion prevented the real
+  Godot host from reaching the door. After the one-line correction, fresh
+  `character-turn-embodied-episode` evidence proves success, distance failure,
+  revision failure, and stance failure through the live backend and Godot.
+  Export: `D:\Task9Evidence-20260929-08\archive-door`.
+
 ## Global Constraints
 
 - CharacterMotor 是唯一的身体位移、重力、朝向、root contribution 消费和 move_and_slide owner。

@@ -22,7 +22,7 @@ def test_motion_composition_has_one_command_boundary() -> None:
 
 def test_motor_consumes_commands_and_replica_has_no_direct_body_write() -> None:
     motor = _read("scripts/character/CharacterMotor.gd")
-    replica = _read("scripts/character/CharacterReplica.gd")
+    replica = _read("scripts/character/CharacterActor.gd")
     assert "func apply_physics_command" in motor
     assert "MotionContributionComposer" in motor
     assert "global_position +=" not in replica

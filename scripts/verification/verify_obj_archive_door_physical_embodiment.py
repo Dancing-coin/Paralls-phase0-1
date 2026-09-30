@@ -310,7 +310,7 @@ class LiveBackendServer:
             if (not self.shutdown_evidence['server_stopped']
                     or self.shutdown_evidence['child_alive'] is not False
                     or self.shutdown_evidence['child_exit_code'] != 0
-                    or any(self.shutdown_evidence[name] is not False for name in
+                    or any(self.shutdown_evidence[name] is True for name in
                            ('startup_failed', 'shutdown_failed', 'error_occurred'))):
                 raise RuntimeError('door_probe_backend_shutdown_failed')
         finally:

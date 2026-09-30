@@ -42,7 +42,7 @@ def test_live_door_probe_uses_original_spawn_owner_without_godot(monkeypatch):
             assert receive('embodied_controller_bound')['payload']['state'] == 'bound'
             common = dict(player_id='p1', room_id='room_demo', scene_id='scene_demo', zone_id='zone_focus', actor_id='char_c')
             ws.send(json.dumps(dict(message_type='player_input', payload=dict(common, intent_type='move_intent',
-                move_mode='walk', producer_ts=90, target_point=[0.0, 1.2, -3.1]))))
+                move_mode='walk', producer_ts=90, target_point=[0.0, 0.5, -7.55]))))
             ws.send(json.dumps(dict(message_type='player_input', payload=dict(common, intent_type='interact_intent',
                 producer_ts=110, target_object_id='obj_archive_door', interaction_type='open'))))
             action = receive('embodied_action_request')['payload']
@@ -430,3 +430,23 @@ def test_backend_stop_rejects_failed_child_or_lifespan_and_releases_probe_handle
         assert server.shutdown_evidence['child_exit_code'] == code
         for handle in (server._probe, server._child_probe, server._patches):
             handle.close.assert_called_once()
+
+
+def test_backend_stop_accepts_clean_lifespan_with_no_error_object():
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    server = object.__new__(verifier.LiveBackendServer)
+    server._server = SimpleNamespace(should_exit=False, lifespan=SimpleNamespace(
+        startup_failed=False, shutdown_failed=False, error_occurred=None))
+    server._thread = Mock(ident=1)
+    server._thread.is_alive.return_value = False
+    process = Mock(pid=123, exitcode=0)
+    process.is_alive.return_value = False
+    server._runtime_process = SimpleNamespace(process=process)
+    server._probe, server._child_probe, server._patches = Mock(), Mock(), Mock()
+
+    server.stop()
+
+    assert server.shutdown_evidence["server_stopped"] is True
+    assert server.shutdown_evidence["child_exit_code"] == 0

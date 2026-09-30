@@ -1,6 +1,6 @@
 # CharacterReplica convergence
 
-`CharacterActor` is now the sole active runtime host. All scenes, providers, bridges, player paths, interaction hosts, agents, and verifiers resolve actor capabilities directly. `CharacterReplica` remains only as a transitional compatibility shell pending Task 8 deletion review; it has zero active callers.
+`CharacterActor` is the sole active runtime host. All scenes, providers, bridges, player paths, interaction hosts, agents, and verifiers resolve actor capabilities directly. The zero-caller gate passed and the `CharacterReplica` compatibility shell and obsolete validation scenes were deleted in Task 8.
 
 This document records the transitional shell during the 2026-09-28 action
 foundation migration. June actor plans and pre-convergence descriptions are
@@ -24,13 +24,13 @@ distance, period, envelope, support, wall, slope, and stop/restart calibration
 is complete. `CharacterMotor` remains the only consumer, so a future enabled
 profile cannot double-apply lease velocity and root contribution.
 
-## Compatibility and rollback
+## Historical rollback record
 
-The old files are backed up outside the repository at:
+The former compatibility files were backed up outside the repository at:
 
 `C:\Users\User\AppData\Local\Temp\paralls-character-replica-backup-20260927`
 
-To roll back manually, copy the backed-up files back over the matching repository paths. The backup includes the original actor script, scene, motor, street skin, demo scene, manifests/descriptors, generic skin, and motion composer.
+That backup is historical evidence only. It is not a supported runtime path and must not be restored as a second actor host.
 
 ## Acceptance surface
 
@@ -42,5 +42,6 @@ or protocol probes only; they are not the animation or action-base quality gate.
 The fresh StreetDemo evidence records live environment/collision/navigation,
 three qualified character packages, semantic animation recovery, Motor
 ownership, Registry fail-closed admission, and Mode B authority outcomes. The
-ArchiveDoor shutdown blocker and repository-wide compatibility callers remain
-outside the StreetDemo retirement claim.
+ArchiveDoor evidence and repository-wide retirement report now consume the
+same actor-only path; StreetCombatDemo remains a pilot evidence surface and does
+not by itself close the full repository release gate.

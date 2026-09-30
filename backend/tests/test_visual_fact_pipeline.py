@@ -1028,7 +1028,7 @@ def test_raw_fact_followup_filter_drops_duplicate_fast_authority_ack_only() -> N
 
 
 def test_actor_local_sampling_emits_standard_visual_fact_shape() -> None:
-    text = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    text = (Path(__file__).resolve().parents[2] / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 

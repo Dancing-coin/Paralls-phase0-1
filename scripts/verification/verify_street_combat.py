@@ -9,7 +9,6 @@ from common import ensure_backend, repo_root, resolve_godot_exe, resolve_python_
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EVIDENCE = ROOT / ".harness" / "verification" / "street-combat-runtime.json"
 
 
 def main() -> int:
@@ -80,8 +79,9 @@ def main() -> int:
         and runtime["recovery_committed"]
         and runtime["hud_observed"]
     )
-    EVIDENCE.parent.mkdir(parents=True, exist_ok=True)
-    EVIDENCE.write_text(json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    evidence = verification_dir(ROOT) / "street-combat-runtime.json"
+    evidence.parent.mkdir(parents=True, exist_ok=True)
+    evidence.write_text(json.dumps(runtime, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     print(json.dumps(runtime, sort_keys=True))
     return 0 if runtime["valid"] else 1
 

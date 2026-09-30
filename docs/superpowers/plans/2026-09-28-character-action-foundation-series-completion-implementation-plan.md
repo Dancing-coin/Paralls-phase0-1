@@ -166,6 +166,10 @@
 
 ### Task 10: Reconcile and publish the documentation set
 
+**Status:** **complete, but affected by the Task 9 external blocker**. Task 9
+remains **blocked** by the repository-wide pytest gate; that blocker limits the
+release claim but does not leave the documentation reconciliation incomplete.
+
 **Files:**
 - Modify: docs/character/character-action-foundation-current-state.md
 - Modify: docs/character/character-action-foundation-operator-guide-and-index.md
@@ -175,12 +179,16 @@
 - Modify: docs/INDEX.md
 - Create: docs/character/action-foundation-series-status.md
 
-- [ ] Mark the 2026-09-28 pilot as landed and separate it from remaining gates.
-- [ ] Make the new spec the action-foundation series entry point.
-- [ ] Make this plan the only execution order for the remaining work.
-- [ ] Label old June plans and pre-convergence statements historical or transitional where needed.
-- [ ] Add a gap table mapping each remaining issue to code owner, spec section, plan task, verification command, and completion evidence.
-- [ ] Run documentation link checks, focused tests, Godot headless probe, and git diff --check.
+- [x] Mark the 2026-09-28 pilot as landed and separate it from remaining gates.
+- [x] Make the new spec the action-foundation series entry point.
+- [x] Make this plan the only execution order for the remaining work.
+- [x] Label old June plans and pre-convergence statements historical or transitional where needed.
+- [x] Add a gap table mapping each remaining issue to code owner, spec section, plan task, verification command, and completion evidence.
+- [x] Run documentation link checks, focused tests, Godot headless probe, and git diff --check.
+
+The Task 10 documentation result is complete. The remaining repository-wide
+pytest failures belong to Task 9's external release blocker and must not be
+reclassified as a Task 10 documentation failure.
 
 ## Verification Ladder
 

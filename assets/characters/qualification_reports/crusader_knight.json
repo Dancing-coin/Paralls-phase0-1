@@ -266,14 +266,6 @@
 			"classification": "root_motion",
 			"clip_ref": "run_charge"
 		},
-		"turn_left": {
-			"classification": "root_motion",
-			"clip_ref": "walk_guard"
-		},
-		"turn_right": {
-			"classification": "root_motion",
-			"clip_ref": "walk_guard"
-		},
 		"walk_forward": {
 			"classification": "root_motion",
 			"clip_ref": "walk_guard"

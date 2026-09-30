@@ -215,14 +215,6 @@
 			"classification": "root_motion",
 			"clip_ref": "anim_drink"
 		},
-		"turn_left": {
-			"classification": "root_motion",
-			"clip_ref": "anim_drink"
-		},
-		"turn_right": {
-			"classification": "root_motion",
-			"clip_ref": "anim_drink"
-		},
 		"walk_forward": {
 			"classification": "root_motion",
 			"clip_ref": "anim_drink"
