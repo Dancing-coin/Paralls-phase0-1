@@ -7,7 +7,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "backend/app/models/embodied_interaction.py",
     "category": "authority",
-    "current_state": "active_legacy_route",
+    "current_state": "retired",
     "target_entry": "embodied_controller_v1",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -16,7 +16,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "backend/app/verification_audit.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor verification audit",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -358,7 +358,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scenes/integration/Unified3DIntegrationValidation.tscn",
     "category": "scene",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor scene",
     "owner_lane": "Scene/player",
     "compatibility_allowed": false,
@@ -367,7 +367,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scenes/integration/UnifiedCharacterActionFoundation.tscn",
     "category": "scene",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor scene",
     "owner_lane": "Scene/player",
     "compatibility_allowed": false,
@@ -376,7 +376,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scenes/phase0/CharacterBase.tscn",
     "category": "scene",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor scene",
     "owner_lane": "Scene/player",
     "compatibility_allowed": false,
@@ -385,7 +385,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scenes/phase0/CharacterReplica.tscn",
     "category": "compatibility",
-    "current_state": "compatibility_shell",
+    "current_state": "deleted",
     "target_entry": "CharacterActor scene or forwarding shell",
     "owner_lane": "Compatibility",
     "compatibility_allowed": true,
@@ -394,7 +394,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scenes/phase0/ValidationCharacterReplica.tscn",
     "category": "compatibility",
-    "current_state": "compatibility_shell",
+    "current_state": "deleted",
     "target_entry": "CharacterActor scene or forwarding shell",
     "owner_lane": "Compatibility",
     "compatibility_allowed": true,
@@ -403,7 +403,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scenes/phase0/ValidationPlayerShell.tscn",
     "category": "scene",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor scene",
     "owner_lane": "Scene/player",
     "compatibility_allowed": false,
@@ -412,7 +412,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/character/CharacterReplica.gd",
     "category": "compatibility",
-    "current_state": "compatibility_shell",
+    "current_state": "deleted",
     "target_entry": "CharacterActor scene or forwarding shell",
     "owner_lane": "Compatibility",
     "compatibility_allowed": true,
@@ -421,7 +421,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/character/EmbodiedSkeletalStateProvider.gd",
     "category": "embodied",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor embodied entry",
     "owner_lane": "Embodied/agent",
     "compatibility_allowed": false,
@@ -430,7 +430,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/character/EmbodiedStateProvider.gd",
     "category": "embodied",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor embodied entry",
     "owner_lane": "Embodied/agent",
     "compatibility_allowed": false,
@@ -448,7 +448,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/interaction/ArchiveDoorEmbodiedActionHost.gd",
     "category": "interaction",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor capability entry",
     "owner_lane": "Embodied/agent",
     "compatibility_allowed": false,
@@ -457,7 +457,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/phase0/MainDemoController.gd",
     "category": "player",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor player entry",
     "owner_lane": "Scene/player",
     "compatibility_allowed": false,
@@ -466,7 +466,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/player/PlayerShell.gd",
     "category": "player",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor player entry",
     "owner_lane": "Scene/player",
     "compatibility_allowed": false,
@@ -475,7 +475,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/presentation/character/CharacterReplica.gd",
     "category": "compatibility",
-    "current_state": "compatibility_shell",
+    "current_state": "deleted",
     "target_entry": "CharacterActor scene or forwarding shell",
     "owner_lane": "Compatibility",
     "compatibility_allowed": true,
@@ -484,7 +484,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/street_combat/StreetCombatDemo.gd",
     "category": "verification",
-    "current_state": "probe_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -493,7 +493,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/CharacterReplicaForwardingProbe.gd",
     "category": "migration_test",
-    "current_state": "compatibility_forwarding_probe",
+    "current_state": "deleted",
     "target_entry": "CharacterActor actor-only verification probe (retire in Task 7)",
     "owner_lane": "Compatibility",
     "compatibility_allowed": true,
@@ -502,7 +502,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/CharacterReplicaRetirementProbe.gd",
     "category": "migration_test",
-    "current_state": "explicit_migration_guard",
+    "current_state": "migration_assertion",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Contract",
     "compatibility_allowed": true,
@@ -511,7 +511,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/EmbodiedActionPlaybackProbe.gd",
     "category": "migration_test",
-    "current_state": "explicit_migration_guard",
+    "current_state": "migration_assertion",
     "target_entry": "CharacterActor semantic route",
     "owner_lane": "Contract",
     "compatibility_allowed": true,
@@ -520,7 +520,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/EmbodiedSkeletalRuntimeProbe.gd",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -529,7 +529,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/ObjArchiveDoorPhysicalEmbodimentProbe.gd",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -592,7 +592,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_actor_local_perception.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -601,7 +601,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_autonomous_social_contact.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -610,7 +610,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_character_agent_execution.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -619,7 +619,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_character_replica_retirement.py",
     "category": "migration_test",
-    "current_state": "explicit_migration_guard",
+    "current_state": "migration_assertion",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Contract",
     "compatibility_allowed": true,
@@ -628,7 +628,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_embodied_skeletal_debug_replay_pipeline.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -637,7 +637,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_phase0.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -646,7 +646,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_siming_resource_staging.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,
@@ -655,7 +655,7 @@ This is the Task 1 source inventory. `active_reference` means migration remains 
   {
     "caller_path": "scripts/verification/verify_unified_character_action_foundation.py",
     "category": "verification",
-    "current_state": "active_reference",
+    "current_state": "retired",
     "target_entry": "CharacterActor runtime probe",
     "owner_lane": "Authority/evidence",
     "compatibility_allowed": false,

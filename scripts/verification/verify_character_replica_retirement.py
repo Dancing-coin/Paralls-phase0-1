@@ -28,6 +28,11 @@ STATIC_TESTS = [
     "scripts/verification/tests/test_character_action_foundation_progressive_replacement.py",
     "backend/tests/test_character_replica_convergence_static.py",
 ]
+FINAL_FORBIDDEN_MATRIX_STATES = {
+    "active_reference",
+    "active_legacy_route",
+    "compatibility_shell",
+}
 
 
 def inventory(root: Path) -> tuple[list[str], str]:
@@ -87,15 +92,26 @@ def evaluate(root: Path, marker: dict[str, object] | None, static_passed: bool) 
     callers, source_digest = inventory(root)
     matrix_digest = hashlib.sha256((root / MATRIX).read_bytes()).hexdigest() if (root / MATRIX).exists() else ""
     errors = []
+    matrix_state_errors: list[dict[str, str]] = []
     try:
         rows = matrix_rows(root)
         registered = {str(row["caller_path"]) for row in rows}
+        matrix_state_errors = [
+            {
+                "caller_path": str(row["caller_path"]),
+                "current_state": str(row["current_state"]),
+            }
+            for row in rows
+            if str(row["current_state"]) in FINAL_FORBIDDEN_MATRIX_STATES
+        ]
     except (OSError, ValueError, TypeError) as exc:
         registered = set()
         errors.append(str(exc))
     unregistered = sorted(set(callers) - registered)
     if unregistered:
         errors.append("unregistered_callers")
+    if matrix_state_errors:
+        errors.append("matrix_active_states")
     if not static_passed:
         errors.append("static_tests_failed")
     if marker is None:
@@ -121,6 +137,7 @@ def evaluate(root: Path, marker: dict[str, object] | None, static_passed: bool) 
         "source_digest": source_digest,
         "matrix_digest": matrix_digest,
         "registered_callers": len(registered),
+        "matrix_state_errors": matrix_state_errors,
         "active_reference_files": len(callers),
         "unregistered_callers": unregistered,
         "godot_marker": marker,

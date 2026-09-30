@@ -22,8 +22,8 @@ python scripts/verification/harness.py --profile character-replica-retirement
 python -m pytest -q backend/tests/test_character_replica_convergence_static.py backend/tests/test_character_actor_boundary_audit.py
 ```
 
-source_digest: `330e10093158228d41213142f6933a43ef991a2a0b8bbc8f499ba34313ec2f5b`
-matrix_digest: `66c63f6f3a118a34b5e4c07a5ae729b3091132248f6bf23660a771e2d11a54a6`
+source_digest: `ebd87e40834f7e4cd520c32e806c6b66d75589250b850cb39892a804e78ef564`
+matrix_digest: `af3388fef8ac058a26f13fc270b3dd5cfedf73c32d19adba6597ccbaf5e759f5`
 
 Fresh exported evidence:
 
@@ -113,4 +113,4 @@ scenes are absent from the active source tree. The root-motion policy remains
 | `scripts/verification/verify_siming_resource_staging.py` | `CharacterActor runtime probe` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
 | `scripts/verification/verify_unified_character_action_foundation.py` | `CharacterActor runtime probe` | `python scripts/verification/harness.py --profile character-replica-retirement` | retired |
 
-Compatibility shell files remain in the repository for Task 8 deletion review. They are not active runtime callers and are excluded from this report’s zero-caller counters.
+The compatibility shell files and obsolete validation scenes are deleted. Historical and migration-only references remain explicitly classified in the matrix and do not represent runtime callers.

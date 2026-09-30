@@ -57,6 +57,21 @@ def test_active_replica_callers_are_registered_in_retirement_matrix() -> None:
     assert not missing, f"unregistered CharacterReplica callers: {missing}"
 
 
+def test_final_retirement_matrix_has_no_active_or_compatibility_states() -> None:
+    rows = read_retirement_matrix()
+    forbidden_states = {
+        "active_reference",
+        "active_legacy_route",
+        "compatibility_shell",
+    }
+    offenders = [
+        (str(row["caller_path"]), str(row["current_state"]))
+        for row in rows
+        if str(row["current_state"]) in forbidden_states
+    ]
+    assert offenders == [], f"final retirement matrix still has active states: {offenders}"
+
+
 def test_runtime_caller_requires_explicit_migration_owner() -> None:
     rows = read_retirement_matrix()
     for row in rows:
@@ -102,6 +117,28 @@ def test_retirement_verifier_rejects_unregistered_runtime_caller(tmp_path: Path)
     result = retirement_verifier.evaluate(tmp_path, None, True)
     assert result["unregistered_callers"] == ["scripts/NewCaller.gd"]
     assert "unregistered_callers" in result["failed_checks"]
+
+
+def test_retirement_verifier_rejects_active_matrix_state(tmp_path: Path) -> None:
+    for directory in ("scenes", "scripts", "backend", "docs/character"):
+        (tmp_path / directory).mkdir(parents=True)
+    row = {
+        "caller_path": "scripts/legacy.gd",
+        "category": "scene",
+        "current_state": "active_reference",
+        "target_entry": "CharacterActor",
+        "owner_lane": "Contract",
+        "compatibility_allowed": False,
+        "evidence_command": "pytest",
+    }
+    (tmp_path / "docs/character/character-replica-retirement-matrix-2026-09-29.md").write_text(
+        "```json\n" + json.dumps([row]) + "\n```\n", encoding="utf-8"
+    )
+    result = retirement_verifier.evaluate(tmp_path, None, True)
+    assert result["matrix_state_errors"] == [
+        {"caller_path": "scripts/legacy.gd", "current_state": "active_reference"}
+    ]
+    assert "matrix_active_states" in result["failed_checks"]
 
 
 def test_retirement_matrix_rejects_mislabeled_comment_and_production_route(tmp_path: Path) -> None:
