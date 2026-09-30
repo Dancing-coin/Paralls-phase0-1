@@ -107,40 +107,48 @@ def _trace(log_dir: Path) -> Path:
 
 
 def _websocket_trace(log_dir: Path) -> Path:
-    reset_runtime_state()
-    client = TestClient(app)
-    with client.websocket_connect("/ws") as websocket:
-        websocket.send_json(
-            {
-                "message_type": "embodied_interaction_session_probe",
-                "payload": {
-                    "session_id": "session:handshake:websocket-verify",
-                    "semantic_action": "handshake",
-                    "initiator_ref": "character:siming",
-                    "participant_refs": ["character:siming", "character:maya"],
-                    "target_refs": ["character:maya"],
-                    "participant_private_terms": {
-                        "character:siming": {"relationship_note": "private initiator memory"},
-                        "character:maya": {"consent_note": "private target context"},
-                    },
-                },
-            }
-        )
-        messages = [websocket.receive_json()]
-        cursor = 0
-        for _ in range(4):
+    # This trace exercises the in-process FastAPI adapter after the real external
+    # backend probe.  Keep it on a fresh in-memory character store so repeated
+    # profiles cannot load a stale durable actor sidecar from a prior run.
+    previous_graph_path = backend_main.settings.heavenly_graph_path
+    backend_main.settings.heavenly_graph_path = ":memory:"
+    try:
+        reset_runtime_state()
+        client = TestClient(app)
+        with client.websocket_connect("/ws") as websocket:
             websocket.send_json(
                 {
-                    "message_type": "embodied_interaction_session_projection_pull",
+                    "message_type": "embodied_interaction_session_probe",
                     "payload": {
                         "session_id": "session:handshake:websocket-verify",
-                        "after_global_sequence": cursor,
+                        "semantic_action": "handshake",
+                        "initiator_ref": "character:siming",
+                        "participant_refs": ["character:siming", "character:maya"],
+                        "target_refs": ["character:maya"],
+                        "participant_private_terms": {
+                            "character:siming": {"relationship_note": "private initiator memory"},
+                            "character:maya": {"consent_note": "private target context"},
+                        },
                     },
                 }
             )
-            message = websocket.receive_json()
-            messages.append(message)
-            cursor = int(message["payload"]["global_sequence"])
+            messages = [websocket.receive_json()]
+            cursor = 0
+            for _ in range(4):
+                websocket.send_json(
+                    {
+                        "message_type": "embodied_interaction_session_projection_pull",
+                        "payload": {
+                            "session_id": "session:handshake:websocket-verify",
+                            "after_global_sequence": cursor,
+                        },
+                    }
+                )
+                message = websocket.receive_json()
+                messages.append(message)
+                cursor = int(message["payload"]["global_sequence"])
+    finally:
+        backend_main.settings.heavenly_graph_path = previous_graph_path
 
     session_messages = [message for message in messages if message.get("message_type") == "embodied_interaction_session_event"]
     session_payloads = [message.get("payload", {}) for message in session_messages]

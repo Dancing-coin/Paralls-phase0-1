@@ -27,14 +27,24 @@ async def _receive_session_events() -> list[dict]:
                 "target_refs": ["character:maya"],
             },
         }))
-        messages = []
-        try:
-            async with asyncio.timeout(3):
-                while len(messages) < 5:
-                    messages.append(json.loads(await socket.recv()))
-        except TimeoutError:
-            pass
-        return messages
+        async with asyncio.timeout(3):
+            admission = json.loads(await socket.recv())
+            if admission.get("message_type") != "ack" or admission.get("payload", {}).get("accepted") is not True:
+                return [admission]
+            messages = [admission]
+            cursor = 0
+            for _ in range(4):
+                await socket.send(json.dumps({
+                    "message_type": "embodied_interaction_session_projection_pull",
+                    "payload": {
+                        "session_id": "session:handshake:godot-websocket",
+                        "after_global_sequence": cursor,
+                    },
+                }))
+                event = json.loads(await socket.recv())
+                messages.append(event)
+                cursor = int(event.get("payload", {}).get("global_sequence", cursor))
+            return messages
 
 
 @pytest.mark.parametrize("enforce_wall_clock", [False, True], ids=["isolated-storage", "wall-clock"])
