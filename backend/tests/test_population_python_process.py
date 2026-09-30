@@ -25,7 +25,7 @@ def test_python_process_pid_is_actual_interpreter_and_preserves_dependencies():
 
 def test_non_windows_preserves_venv_symlink_executable(monkeypatch):
     from scripts.verification import population_python_process as launch
-    monkeypatch.setattr(launch.os, 'name', 'posix')
+    monkeypatch.setattr(launch, 'os', SimpleNamespace(name='posix', pathsep=os.pathsep))
     monkeypatch.setattr(launch.sys, 'executable', '/workspace/venv/bin/python')
     command, environment = launch.python_process(['script.py'], {'PYTHONPATH': 'backend'})
     assert command[0] == '/workspace/venv/bin/python'
