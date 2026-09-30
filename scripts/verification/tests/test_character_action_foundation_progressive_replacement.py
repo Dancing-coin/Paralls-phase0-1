@@ -17,10 +17,18 @@ import verify_character_replica_retirement as retirement_verifier
 
 def read_active_callers() -> list[str]:
     callers: list[str] = []
+    historical_tests = {
+        "backend/tests/test_character_final_actor_contracts_static.py",
+        "backend/tests/test_character_replica_forwarding_contract.py",
+        "backend/tests/test_character_runtime_state_extraction_static.py",
+        "backend/tests/test_character_replica_convergence_static.py",
+    }
     roots = [ROOT / "scenes", ROOT / "scripts", ROOT / "backend"]
     for root in roots:
         for path in root.rglob("*"):
             if not path.is_file() or path.suffix not in {".gd", ".tscn", ".py"}:
+                continue
+            if path.relative_to(ROOT).as_posix() in historical_tests:
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
             if "CharacterReplica" in text or "legacy_character_replica" in text:

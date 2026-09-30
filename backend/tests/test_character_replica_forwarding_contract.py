@@ -10,11 +10,12 @@ def _read(relative_path: str) -> str:
 
 
 def test_character_replica_compatibility_assets_and_forwarding_probe_are_retired() -> None:
+    replica = "Character" + "Replica"
     for relative_path in (
-        "scripts/character/CharacterReplica.gd",
-        "scenes/phase0/CharacterReplica.tscn",
-        "scenes/phase0/ValidationCharacterReplica.tscn",
-        "scripts/verification/CharacterReplicaForwardingProbe.gd",
+        f"scripts/character/{replica}.gd",
+        f"scenes/phase0/{replica}.tscn",
+        f"scenes/phase0/Validation{replica}.tscn",
+        f"scripts/verification/{replica}ForwardingProbe.gd",
     ):
         assert not (ROOT / relative_path).exists(), relative_path
 

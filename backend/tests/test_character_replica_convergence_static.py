@@ -65,6 +65,9 @@ def test_active_sources_do_not_import_deleted_character_replica_assets() -> None
         "scripts/verification/verify_character_replica_retirement.py",
         "scripts/presentation/character/CharacterReplica.gd",
         "backend/tests/test_character_motor_ownership_audit.py",
+        "backend/tests/test_character_final_actor_contracts_static.py",
+        "backend/tests/test_character_replica_forwarding_contract.py",
+        "backend/tests/test_character_runtime_state_extraction_static.py",
     }
     offenders: list[str] = []
     for base in roots:

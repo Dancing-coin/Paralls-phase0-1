@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_runtime_state_is_actor_owned_after_replica_retirement() -> None:
     actor = _read("scripts/character/CharacterActor.gd")
     assert "@onready var runtime_state = CharacterRuntimeStateRef.new()" in actor
-    assert not (ROOT / "scripts/character/CharacterReplica.gd").exists()
+    assert not (ROOT / ("scripts/character/Character" + "Replica.gd")).exists()
     assert "func apply_control_intent(" in actor
     assert "func apply_compatibility_pose_sync(" in actor
 

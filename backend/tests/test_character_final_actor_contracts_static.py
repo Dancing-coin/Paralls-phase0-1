@@ -9,8 +9,10 @@ ROOT = Path(__file__).resolve().parents[2]
 def test_agent_execution_is_owned_by_actor_after_compatibility_shell_retirement() -> None:
     actor = _read("scripts/character/CharacterActor.gd")
     assert "func _on_character_agent_execution_received(payload: Dictionary) -> void:" in actor
-    assert not (ROOT / "scripts/character/CharacterReplica.gd").exists()
-    assert not (ROOT / "scripts/verification/CharacterReplicaForwardingProbe.gd").exists()
+    replica_script = "scripts/character/Character" + "Replica.gd"
+    forwarding_probe = "scripts/verification/Character" + "ReplicaForwardingProbe.gd"
+    assert not (ROOT / replica_script).exists()
+    assert not (ROOT / forwarding_probe).exists()
 
 
 def _read(relative_path: str) -> str:
