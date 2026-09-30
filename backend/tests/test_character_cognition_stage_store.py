@@ -99,6 +99,7 @@ store.commit_cognition_stage(**json.loads(sys.argv[2]))
 os._exit(0)
 '''
     result = subprocess.run([sys.executable, '-c', script, str(path), json.dumps(plan)],
+        cwd=__import__('pathlib').Path(__file__).resolve().parents[1],
         env=os.environ.copy(), timeout=20, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     store = _store(path)
