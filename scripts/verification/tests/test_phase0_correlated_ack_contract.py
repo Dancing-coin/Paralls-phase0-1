@@ -156,6 +156,18 @@ def test_phase0_accepts_first_nonempty_stream_delta_as_scene_dialogue_applicatio
     assert '_bus_log("dialogue_applied:%s" % actor_id)' in delta_handler
 
 
+def test_phase0_stream_delta_applies_dialogue_to_target_actor_and_marks_response() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    delta_handler = source.split("func _on_dialogue_stream_delta_received(payload: Dictionary) -> void:", 1)[1].split(
+        "func _on_world_result_received", 1
+    )[0]
+
+    assert "var dialogue_actor := _resolve_actor_by_id(actor_id)" in delta_handler
+    assert 'dialogue_actor.has_method("apply_dialogue")' in delta_handler
+    assert 'dialogue_actor.call("apply_dialogue", dialogue_payload)' in delta_handler
+    assert '_bus_log("phase0_dialogue_stream_response:%s" % request_id)' in delta_handler
+
+
 def test_phase0_npc_patrol_probe_assigns_a_nonzero_patrol_segment() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     probe_section = source.split("func _run_npc_patrol_root_motion_probe() -> void:", 1)[1].split(
