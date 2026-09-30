@@ -1264,7 +1264,14 @@ class DurableGameplayEventStore(GameplayEventStore):
         if through_sequence is not None:
             conditions.append("global_sequence<=?")
             parameters += (through_sequence,)
-        sql = "SELECT value FROM outbox" + (" WHERE " + " AND ".join(conditions) if conditions else "")
+        index_hint = ""
+        if not include_delivered:
+            # SQLite may prefer the complete topic index because the partial
+            # predicate is not inferred from ``delivery_state <>`` during
+            # planning.  Force the pending index for topic-scoped reads so
+            # bounded projection consumers retain the intended plan.
+            index_hint = " INDEXED BY outbox_pending_topic_sequence" if topic is not None else " INDEXED BY outbox_pending_sequence"
+        sql = "SELECT value FROM outbox" + index_hint + (" WHERE " + " AND ".join(conditions) if conditions else "")
         return self._models(GameplayOutboxEntry, sql + " ORDER BY global_sequence, id", parameters, limit=limit)
 
     def list_pending_projection_refresh(self, *, after_sequence: int = 0,
