@@ -18,7 +18,7 @@ def main() -> int:
     args = parser.parse_args()
     godot = resolve_godot_exe(args.godot_exe)
     python = resolve_python_exe(args.python_exe)
-    env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws", "PARALLS_STREET_PROBE": "2", "SIMING_HEAVENLY_AUTOTEST_SETUP": "1"}
+    env = {"PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws?stream_mode=runtime_only", "PARALLS_STREET_PROBE": "2", "SIMING_HEAVENLY_AUTOTEST_SETUP": "1"}
     backend = None
     result = None
     error = ""

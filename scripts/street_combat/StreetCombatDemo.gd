@@ -138,13 +138,20 @@ func _probe_combat() -> void:
 	# same bounded contact and line-of-sight evidence.
 	Input.action_press("phase0_move_forward")
 	Input.action_press("phase0_move_left")
+	var reached_contact_range := false
 	for _frame in range(240):
 		var planar_gap := Vector2(player.global_position.x - $AgentCharacterJK.global_position.x, player.global_position.z - $AgentCharacterJK.global_position.z).length()
-		if planar_gap <= 2.05:
+		if planar_gap <= 2.4:
+			reached_contact_range = true
 			break
 		await get_tree().physics_frame
 	Input.action_release("phase0_move_forward")
 	Input.action_release("phase0_move_left")
+	print("street_combat_probe:movement_contact_range=%s" % str(reached_contact_range).to_lower())
+	if not reached_contact_range:
+		print("street_combat_probe:contact_preflight=false:reason=movement_timeout")
+		get_tree().quit(1)
+		return
 	# Let the live pose stream publish the final post-movement positions before
 	# submitting the first authority attempt. This exercises the real transport
 	# ordering instead of relying on a local position shortcut.

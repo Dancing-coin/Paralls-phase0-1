@@ -35,7 +35,7 @@ def test_three_user_models_bind_real_skeleton_and_animations() -> None:
 
 def test_player_and_agent_combat_cross_live_websocket() -> None:
     env = os.environ.copy()
-    env.update({"PARALLS_STREET_PROBE": "2", "PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws", "SIMING_HEAVENLY_AUTOTEST_SETUP": "1"})
+    env.update({"PARALLS_STREET_PROBE": "2", "PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws?stream_mode=runtime_only", "SIMING_HEAVENLY_AUTOTEST_SETUP": "1"})
     backend = None
     try:
         _, backend = ensure_backend(ROOT, r"C:\Anaconda3\python.exe", prefer_fresh_backend=True, env=env)
