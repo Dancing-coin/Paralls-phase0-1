@@ -52,7 +52,8 @@ func _measure_package(package_id: String) -> Dictionary:
 	return package
 
 func _measure_clip(animation: Animation, requested_ref: String, tag: String, package: Dictionary) -> Dictionary:
-	var result := {"requested_clip": requested_ref, "tag": tag, "duration_seconds": 0.0, "cadence": {"sample_count": 0, "min_interval_seconds": 0.0, "max_interval_seconds": 0.0, "mean_interval_seconds": 0.0}, "envelope": {"start_local": Vector3.ZERO, "end_local": Vector3.ZERO, "net_displacement": Vector3.ZERO, "net_displacement_magnitude": 0.0, "max_abs_vertical_displacement": 0.0, "max_distance_from_start": 0.0}, "root_track_path": "", "root_track_present": false, "support": {"imported_space": true, "finite_values": false, "skeleton_present": bool(package.get("skeleton_present", false))}, "classification": "in_place", "policy": "hold", "qualified": false, "rejection_reason": "zero_displacement_in_place"}
+	var zero := {"x": 0.0, "y": 0.0, "z": 0.0}
+	var result := {"requested_clip": requested_ref, "tag": tag, "duration_seconds": 0.0, "cadence": {"sample_count": 0, "min_interval_seconds": 0.0, "max_interval_seconds": 0.0, "mean_interval_seconds": 0.0}, "envelope": {"start_local": zero.duplicate(), "end_local": zero.duplicate(), "net_displacement": zero.duplicate(), "net_displacement_magnitude": 0.0, "max_abs_vertical_displacement": 0.0, "max_distance_from_start": 0.0}, "root_track_path": "", "root_track_present": false, "support": {"imported_space": true, "finite_values": false, "skeleton_present": bool(package.get("skeleton_present", false))}, "classification": "in_place", "policy": "hold", "qualified": false, "rejection_reason": "zero_displacement_in_place"}
 	if animation == null:
 		result["rejection_reason"] = "clip_missing_from_imported_animation_player"
 		return result

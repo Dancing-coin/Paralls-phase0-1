@@ -47,6 +47,8 @@ def test_root_motion_probe_reports_imported_measurements_for_primary_packages() 
             assert clip["duration_seconds"] > 0.0
             assert clip["cadence"]["sample_count"] >= 1
             assert "envelope" in clip
+            assert set(clip["envelope"]["start_local"]) == {"x", "y", "z"}
+            assert set(clip["envelope"]["end_local"]) == {"x", "y", "z"}
             assert clip["policy"] == "hold"
             assert clip["qualified"] is False
     jk_walk = packages["female_jk_external"]["clips"]["walk_forward"]
