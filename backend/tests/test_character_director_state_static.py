@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -140,6 +141,27 @@ def test_character_director_state_caches_a_bounded_script_beat_presentation_proj
     assert 'row.get("focus_target", "")' in presentation_rows_block
     assert 'row.get("intent_label", "")' in presentation_rows_block
     assert 'row.get("detail", "")' not in presentation_rows_block
+
+
+def test_character_director_state_projection_preserves_text_values() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+    projection_blocks = [
+        _function_block(source, "func _presentation_script_beat(payload: Dictionary) -> Dictionary:"),
+        _function_block(source, "func _presentation_actor_summaries(value: Variant) -> Array[Dictionary]:"),
+        _function_block(source, "func _presentation_siming_summaries(value: Variant) -> Array[Dictionary]:"),
+        _function_block(source, "func _presentation_dialogue_pairs(value: Variant, siming_summaries: Array[Dictionary]) -> Array[Dictionary]:"),
+    ]
+
+    for block in projection_blocks:
+        assert " or " not in block
+    assert '"correlation_id": _string_or_empty(payload.get("correlation_id", ""))' in projection_blocks[0]
+    assert '_first_non_empty_string([summary.get("reason_summary", ""), summary.get("summary", "")])' in projection_blocks[3]
+
+
+def test_character_director_state_never_boolean_coerces_received_text() -> None:
+    source = (ROOT / "scripts" / "ui" / "CharacterDirectorState.gd").read_text(encoding="utf-8")
+
+    assert re.search(r"str\([^\n]*\bor\b", source) is None
 
 
 def test_character_director_state_pair_merge_preserves_non_empty_context() -> None:

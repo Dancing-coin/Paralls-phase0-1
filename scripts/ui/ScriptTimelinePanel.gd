@@ -35,13 +35,19 @@ func _refresh() -> void:
 	var lines: Array[String] = []
 	for beat in beats:
 		lines.append(_build_beat_summary_line(beat))
-		if expanded_beat_id == str(beat.get("beat_id", "") or ""):
+		if expanded_beat_id == _string_or_empty(beat.get("beat_id", "")):
 			lines.append_array(_build_expanded_payload_lines(beat))
 	label.text = "\n".join(lines)
 
 
 func _get_state() -> Node:
 	return get_node_or_null("../CharacterDirectorState")
+
+
+func _string_or_empty(value: Variant) -> String:
+	if value == null:
+		return ""
+	return str(value)
 
 
 func _build_filtered_beats(beats: Array[Dictionary]) -> Array[Dictionary]:
@@ -60,15 +66,15 @@ func _build_filtered_beats(beats: Array[Dictionary]) -> Array[Dictionary]:
 
 func _build_beat_summary_line(beat: Dictionary) -> String:
 	return "线索链=%s | 参与者=%s | 这一拍发生了：%s" % [
-		str(beat.get("correlation_id", "") or ""),
+		_string_or_empty(beat.get("correlation_id", "")),
 		JSON.stringify(beat.get("participants", [])),
-		str(beat.get("dramatic_summary", "") or ""),
+		_string_or_empty(beat.get("dramatic_summary", "")),
 	]
 
 
 func _build_expanded_payload_lines(beat: Dictionary) -> Array[String]:
 	return [
-		"节拍编号=%s" % str(beat.get("beat_id", "") or ""),
+		"节拍编号=%s" % _string_or_empty(beat.get("beat_id", "")),
 		"角色侧摘要=%s" % JSON.stringify(beat.get("actor_summaries", [])),
 		"司命侧摘要=%s" % JSON.stringify(beat.get("siming_summaries", [])),
 		"世界侧摘要=%s" % JSON.stringify(beat.get("world_summaries", [])),
@@ -79,15 +85,15 @@ func _build_expanded_payload_lines(beat: Dictionary) -> Array[String]:
 func _pick_default_expanded_beat_id(beats: Array[Dictionary]) -> String:
 	for beat in beats:
 		if _beat_is_rich(beat):
-			return str(beat.get("beat_id", "") or "")
+			return _string_or_empty(beat.get("beat_id", ""))
 	if not beats.is_empty():
-		return str(beats[-1].get("beat_id", "") or "")
+		return _string_or_empty(beats[-1].get("beat_id", ""))
 	return ""
 
 
 func _find_beat_by_id(beats: Array[Dictionary], beat_id: String) -> Dictionary:
 	for beat in beats:
-		if str(beat.get("beat_id", "") or "") == beat_id:
+		if _string_or_empty(beat.get("beat_id", "")) == beat_id:
 			return beat
 	return {}
 
