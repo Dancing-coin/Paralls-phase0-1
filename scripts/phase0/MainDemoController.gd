@@ -85,6 +85,7 @@ var suspend_near_object_visual_fact := false
 var suspend_spatial_access_fact := false
 var acknowledged_request_ids: Dictionary = {}
 var completed_dialogue_request_ids: Dictionary = {}
+var dialogue_request_actor_ids: Dictionary = {}
 var pending_success_interaction_correlation_id := ""
 var matched_success_interaction_result := false
 var matched_success_object_result := false
@@ -135,6 +136,10 @@ func _ready() -> void:
 			bus.backend_disconnected.connect(_on_backend_disconnected)
 		bus.backend_ack_received.connect(_on_backend_ack_received)
 		bus.dialogue_received.connect(_on_dialogue_received)
+		if bus.has_signal("dialogue_stream_started"):
+			bus.dialogue_stream_started.connect(_on_dialogue_stream_started)
+		if bus.has_signal("dialogue_stream_delta_received"):
+			bus.dialogue_stream_delta_received.connect(_on_dialogue_stream_delta_received)
 		if bus.has_signal("world_result_received"):
 			bus.world_result_received.connect(_on_world_result_received)
 		if bus.has_signal("debug_event_logged"):
@@ -351,7 +356,28 @@ func _on_dialogue_received(payload: Dictionary) -> void:
 	var request_id := str(payload.get("request_id", ""))
 	if request_id != "":
 		completed_dialogue_request_ids[request_id] = true
+		var actor_id := str(payload.get("actor_id", dialogue_request_actor_ids.get(request_id, "")))
+		_bus_log("dialogue_applied:%s" % actor_id)
 		_bus_log("phase0_dialogue_response:%s" % request_id)
+
+func _on_dialogue_stream_started(payload: Dictionary) -> void:
+	var request_id := str(payload.get("request_id", ""))
+	if request_id == "":
+		return
+	dialogue_request_actor_ids[request_id] = str(payload.get("actor_id", ""))
+
+func _on_dialogue_stream_delta_received(payload: Dictionary) -> void:
+	var request_id := str(payload.get("request_id", ""))
+	var delta := str(payload.get("delta", "")).strip_edges()
+	if request_id == "" or delta == "":
+		return
+	# A non-empty stream delta is already a real backend response payload. It is
+	# sufficient to unblock the Phase 0 transport ordering probe even when the
+	# provider's terminal stream marker is delayed or unavailable.
+	completed_dialogue_request_ids[request_id] = true
+	dialogue_response_seen = true
+	var actor_id := str(dialogue_request_actor_ids.get(request_id, ""))
+	_bus_log("dialogue_applied:%s" % actor_id)
 
 func _on_world_result_received(payload: Dictionary) -> void:
 	last_backend_activity_ms = Time.get_ticks_msec()

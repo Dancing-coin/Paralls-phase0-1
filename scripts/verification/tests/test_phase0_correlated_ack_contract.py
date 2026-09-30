@@ -142,6 +142,20 @@ def test_phase0_autotest_submits_dialogue_to_its_explicit_actor_and_waits_for_sc
     assert 'message.contains("dialogue_applied:char_a")' in source
 
 
+def test_phase0_accepts_first_nonempty_stream_delta_as_scene_dialogue_application() -> None:
+    source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
+    assert "dialogue_stream_delta_received.connect(_on_dialogue_stream_delta_received)" in source
+    assert "func _on_dialogue_stream_started(payload: Dictionary) -> void:" in source
+    assert "func _on_dialogue_stream_delta_received(payload: Dictionary) -> void:" in source
+    delta_handler = source.split("func _on_dialogue_stream_delta_received(payload: Dictionary) -> void:", 1)[1].split(
+        "func _on_world_result_received", 1
+    )[0]
+    assert 'var delta := str(payload.get("delta", "")).strip_edges()' in delta_handler
+    assert 'delta == ""' in delta_handler
+    assert "completed_dialogue_request_ids[request_id] = true" in delta_handler
+    assert '_bus_log("dialogue_applied:%s" % actor_id)' in delta_handler
+
+
 def test_phase0_npc_patrol_probe_assigns_a_nonzero_patrol_segment() -> None:
     source = (SCRIPTS_ROOT / "phase0" / "MainDemoController.gd").read_text(encoding="utf-8")
     probe_section = source.split("func _run_npc_patrol_root_motion_probe() -> void:", 1)[1].split(
