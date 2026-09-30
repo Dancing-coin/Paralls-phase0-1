@@ -123,7 +123,7 @@ func resolve(package_id: StringName, action_id: StringName, claims: Array[String
 			return {"accepted": true, "status": "queued_until_compatible", "profile": (fallback as Dictionary).duplicate(true), "fallback_applied": true}
 	return {"accepted": false, "reason": &"declared_fallback_unavailable"}
 
-func admit_action_package(package_id: StringName, action_id: StringName, manifest_digest: String, skeleton_mapping: String, marker_id: String, raw_clip_lookup: String = "") -> Dictionary:
+func admit_action_package(package_id: StringName, action_id: StringName, manifest_digest: String, skeleton_mapping: String, marker_id: String, raw_clip_lookup: String = "", claims: Array[StringName] = []) -> Dictionary:
 	var result := {"accepted": false, "package_id": String(package_id), "manifest_digest": manifest_digest, "action_id": String(action_id), "root_policy": "hold", "fallback_mode": "", "rejection_reason": ""}
 	var package: Variant = _qualified_packages.get(package_id, {})
 	if not (package is Dictionary) or (package as Dictionary).is_empty():
@@ -142,7 +142,7 @@ func admit_action_package(package_id: StringName, action_id: StringName, manifes
 		result["rejection_reason"] = "raw_clip_lookup_forbidden"
 		_admission_log.append(result.duplicate(true))
 		return result
-	var resolved := resolve(package_id, action_id, [])
+	var resolved := resolve(package_id, action_id, claims)
 	if not bool(resolved.get("accepted", false)):
 		result["rejection_reason"] = str(resolved.get("reason", "semantic_action_unavailable"))
 		_admission_log.append(result.duplicate(true))
