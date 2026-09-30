@@ -11,6 +11,17 @@ from websockets.asyncio.client import connect
 from websockets.exceptions import ConnectionClosed
 
 
+def _assert_clean_lifespan(server) -> None:
+    lifecycle = getattr(server, "lifespan", None)
+    assert lifecycle is not None
+    assert getattr(lifecycle, "startup_failed", None) is False
+    assert getattr(lifecycle, "shutdown_failed", None) is False
+    error = getattr(lifecycle, "error_occurred", None)
+    if error is None:
+        error = getattr(lifecycle, "error_occured", None)
+    assert error is False
+
+
 def test_real_socket_owner_restart_fences_old_pending_completion(monkeypatch, tmp_path):
     from app import main
     from app.config import Settings, GameplayMirrorTrustedLocalLaunchProfileSettings
@@ -69,8 +80,7 @@ def test_real_socket_owner_restart_fences_old_pending_completion(monkeypatch, tm
                     release.set()
                     instance.should_exit = True
                     await asyncio.wait_for(task, 20)
-                    assert not instance.lifespan.startup_failed and not instance.lifespan.shutdown_failed
-                    assert not instance.lifespan.error_occurred
+                    _assert_clean_lifespan(instance)
 
         async def bound(port, ws, http):
             enrollment = await http.post(f'http://127.0.0.1:{port}/internal/trusted-local-gameplay-mirror-enrollment',

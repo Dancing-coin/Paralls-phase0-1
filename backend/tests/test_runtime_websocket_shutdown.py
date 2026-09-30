@@ -5,6 +5,18 @@ from app.services.runtime_asgi import RUNTIME_WEBSOCKET_PROTOCOL
 import uvicorn
 from websockets.asyncio.client import connect
 
+
+def _assert_clean_lifespan(server) -> None:
+    lifecycle = getattr(server, "lifespan", None)
+    assert lifecycle is not None
+    assert getattr(lifecycle, "startup_failed", None) is False
+    assert getattr(lifecycle, "shutdown_failed", None) is False
+    error = getattr(lifecycle, "error_occurred", None)
+    if error is None:
+        error = getattr(lifecycle, "error_occured", None)
+    assert error is False
+
+
 async def app(scope, receive, send):
     if scope['type'] == 'lifespan':
         while True:
@@ -51,8 +63,7 @@ async def _run():
             await asyncio.wait_for(entered.wait(), 3)
             server.should_exit = True
             await asyncio.wait_for(task, 5)
-            assert not server.lifespan.startup_failed
-            assert not server.lifespan.shutdown_failed and (not server.lifespan.error_occurred)
+            _assert_clean_lifespan(server)
         finally:
             p.connection_lost = original
             transport.close()
