@@ -147,7 +147,10 @@ func before_player_shell_move(delta: float) -> void:
 	_sync_character_c_control_frame(delta)
 
 func after_player_shell_move(_delta: float) -> void:
-	if not player_root_motion_enabled:
+	# The actor's control frame is staged before its CharacterMotor tick.  Do
+	# not feed the previous zero velocity back into the actor here: that would
+	# replace the just submitted locomotion intent before the motor consumes it.
+	if player_root_motion_enabled:
 		return
 	if not character_c_sync_enabled:
 		_clear_character_c_sync()

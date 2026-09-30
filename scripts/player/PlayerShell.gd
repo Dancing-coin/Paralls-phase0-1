@@ -113,8 +113,9 @@ func _physics_process(delta: float) -> void:
 		external_motion_driver.before_player_shell_move(delta)
 	var actor := get_character_actor()
 	_sync_presentation_anchor_to_actor(actor)
-	if actor and actor.has_method("get_locomotion_status"):
-		_publish_motion_state(actor.get_locomotion_status())
+	var motor := actor.get_node_or_null("CharacterMotor") if actor != null else null
+	if motor and motor.has_method("get_last_motion_state"):
+		_publish_motion_state(motor.get_last_motion_state())
 	else:
 		_publish_motion_state({})
 
