@@ -5,12 +5,16 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[3]
 GODOT = os.environ.get("GODOT_EXE", r"D:\godot\Godot_v4.6.3-stable_win64.exe")
 
 
 def test_root_motion_probe_reports_imported_measurements_for_primary_packages() -> None:
+    if not Path(GODOT).is_file():
+        pytest.skip(f"Godot executable unavailable: {GODOT}")
     completed = subprocess.run(
         [
             GODOT,
