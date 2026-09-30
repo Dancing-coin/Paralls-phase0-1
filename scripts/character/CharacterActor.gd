@@ -610,7 +610,8 @@ func _update_autonomous_contact_target(active_command_type: String, target_node:
 	if target_node == null:
 		_active_contact_target_actor_id = ""
 		return
-	var target_actor_id := str(target_node.get("actor_id") or "")
+	var target_actor_value: Variant = target_node.get("actor_id")
+	var target_actor_id := "" if target_actor_value == null else str(target_actor_value)
 	match active_command_type:
 		"approach", "follow_target":
 			if not target_actor_id.is_empty():
@@ -819,7 +820,8 @@ func _sample_actor_local_perception() -> void:
 	var actor_target := _first_visible_actor_target(visible)
 	if actor_target == null:
 		return
-	var target_actor_id := str(actor_target.get("actor_id") or "")
+	var target_actor_value: Variant = actor_target.get("actor_id")
+	var target_actor_id := "" if target_actor_value == null else str(target_actor_value)
 	if target_actor_id.is_empty():
 		return
 	var target_position := _get_perception_target_position(actor_target)
@@ -840,7 +842,8 @@ func set_actor_local_perception_enabled(is_enabled: bool) -> void:
 
 func _first_visible_actor_target(candidates: Array[Node3D]) -> Node3D:
 	for candidate: Node3D in candidates:
-		var candidate_actor_id := str(candidate.get("actor_id") or "")
+		var candidate_actor_value: Variant = candidate.get("actor_id")
+		var candidate_actor_id := "" if candidate_actor_value == null else str(candidate_actor_value)
 		if candidate_actor_id.is_empty() or candidate_actor_id == actor_id:
 			continue
 		return candidate

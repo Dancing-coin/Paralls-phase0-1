@@ -106,3 +106,21 @@ def test_main_execution_envelope_builder_does_not_inline_legacy_reconstruction()
     assert "CharacterPrivateWorldSnapshot(" not in builder_slice
     assert "CharacterInterpretation(" not in builder_slice
     assert "CharacterIntentDecision(" not in builder_slice
+
+
+def test_character_target_id_reads_preserve_non_empty_string_values() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    runtime_state_source = (project_root / "scripts" / "character" / "CharacterRuntimeState.gd").read_text(
+        encoding="utf-8"
+    )
+    actor_source = (project_root / "scripts" / "character" / "CharacterActor.gd").read_text(
+        encoding="utf-8"
+    )
+
+    for key in ("target_actor_id", "target_object_id", "target_environment_id"):
+        assert f'str(payload.get("{key}", "") or "")' not in runtime_state_source
+    assert 'str(target_node.get("actor_id") or "")' not in actor_source
+    assert 'str(actor_target.get("actor_id") or "")' not in actor_source
+    assert 'str(candidate.get("actor_id") or "")' not in actor_source
+    assert 'var value: Variant = payload.get(key, fallback)' in runtime_state_source
+    assert 'if value == null:' in runtime_state_source
