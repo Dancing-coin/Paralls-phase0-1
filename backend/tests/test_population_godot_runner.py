@@ -98,6 +98,11 @@ def test_harness_cli_uses_unique_external_capture_and_preserves_status(tmp_path,
     from scripts.verification import population_godot_runner as runner
     from scripts.verification import verify_population_godot_runtime as verify
 
+    # 此用例验证直接 CLI；由 monkeypatch 在结束后恢复外层 profile 的上下文。
+    for key in ('HARNESS_RUN_ID', 'HARNESS_PROJECT_ROOT', 'HARNESS_EVIDENCE_ROOT',
+                'HARNESS_ATTEMPT_ROOT', 'HARNESS_ATTEMPT_ID'):
+        monkeypatch.delenv(key, raising=False)
+
     called = []
     def capture(output, godot):
         output.mkdir(parents=True, exist_ok=False)
