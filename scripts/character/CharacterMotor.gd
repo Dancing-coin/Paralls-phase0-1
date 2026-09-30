@@ -40,6 +40,8 @@ func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: fl
 		return {"accepted": false, "reason": "stale_physics_tick", "physics_tick": physics_tick, "last_physics_tick": last_physics_tick}
 	if not token.is_empty() and _consumed_command_tokens.has(token):
 		return {"accepted": false, "reason": "duplicate_consumption", "consumption_token": token, "physics_tick": physics_tick}
+	if physics_tick == last_physics_tick and not last_physics_command.is_empty():
+		return {"accepted": false, "reason": "duplicate_physics_tick", "consumption_token": token, "physics_tick": physics_tick, "last_physics_tick": last_physics_tick}
 	if not token.is_empty():
 		_consumed_command_tokens[token] = physics_tick
 		if _consumed_command_tokens.size() > 256:
