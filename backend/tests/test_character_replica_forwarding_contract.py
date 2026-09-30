@@ -48,7 +48,7 @@ def test_actor_compatibility_seams_do_not_reference_deleted_shell() -> None:
         start = actor.index(f"func {method}(")
         end = actor.find("\nfunc ", start + 5)
         body = actor[start:] if end < 0 else actor[start:end]
-        assert "CharacterReplica" not in body
+        assert ("Character" + "Replica") not in body
 
 
 def _method(source: str, name: str) -> str:
