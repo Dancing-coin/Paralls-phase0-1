@@ -42,7 +42,6 @@ OBSERVATORY_VERIFY_ENV = {
     "DIALOGUE_MODE": "stub",
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
-    "PHASE0_DEBUG_LOGGING": "1",
 }
 OBSERVATORY_GODOT_RENDER_ARGS = ("--rendering-driver", "opengl3")
 
@@ -94,7 +93,6 @@ def main() -> int:
             env={
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
                 "PHASE0_OBSERVATORY_STREAM": "1",
-                "PHASE0_DEBUG_LOGGING": "1",
                 "DIALOGUE_MODE": "stub",
                 "CHARACTER_MODEL_PROVIDER_KIND": "local",
                 "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
