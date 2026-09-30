@@ -21,10 +21,12 @@ SMOKE_TESTS = [
 
 
 def main() -> int:
+    first_test = Path(SMOKE_TESTS[0].partition("::")[0])
+    test_cwd = first_test.parent if first_test.is_absolute() else Path(__file__).resolve().parents[2]
     with tempfile.TemporaryDirectory(prefix="harness-smoke-") as test_root:
         result = subprocess.run(
             [sys.executable, "-m", "pytest", "-q", "-p", "no:cacheprovider", "--basetemp", test_root, *SMOKE_TESTS],
-            cwd=Path(__file__).resolve().parents[2],
+            cwd=test_cwd,
             env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
             check=False,
             timeout=110,

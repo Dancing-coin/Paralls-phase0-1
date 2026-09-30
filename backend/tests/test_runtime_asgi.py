@@ -1,5 +1,6 @@
 """生产 ASGI 必须只持 spawn host，原业务在 child 实际执行。"""
 import os
+from pathlib import Path
 import subprocess
 import sys
 import pytest
@@ -7,11 +8,14 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-def test_production_main_import_does_not_construct_runtime_or_provider_pool():
+@pytest.mark.parametrize("outside_backend", [False, True])
+def test_production_main_import_does_not_construct_runtime_or_provider_pool(monkeypatch, tmp_path, outside_backend):
+    if outside_backend:
+        monkeypatch.chdir(tmp_path)
     result = subprocess.run([sys.executable, '-c',
         'import app.main as m; assert m.runtime_execution is None; assert getattr(m,"runtime",None) is None; '
         'assert m._dialogue_provider_slots is None; assert m.app is not m.component_app'],
-        capture_output=True, text=True, timeout=15)
+        cwd=Path(__file__).resolve().parents[1], capture_output=True, text=True, timeout=15)
     assert result.returncode == 0, result.stdout + result.stderr
 
 
