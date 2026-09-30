@@ -1483,7 +1483,7 @@ func _get_camera() -> Camera3D:
 		var bridge_camera: Variant = player_input_bridge.get_camera()
 		if bridge_camera is Camera3D:
 			return bridge_camera as Camera3D
-	var camera := player.get_camera() if player != null and player.has_method("get_camera") else null
+	var camera: Variant = player.get_camera() if player != null and player.has_method("get_camera") else null
 	if camera is Camera3D:
 		return camera as Camera3D
 	return null
