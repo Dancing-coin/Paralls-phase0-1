@@ -6,12 +6,13 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def test_character_base_scene_exists_with_body_and_camera_shell() -> None:
+def test_character_base_scene_exists_with_actor_body_and_camera_shell() -> None:
     scene_text = (ROOT / "scenes" / "phase0" / "CharacterBase.tscn").read_text(encoding="utf-8")
 
     assert 'type="CharacterBody3D"' in scene_text
     assert 'node name="CameraHolder" type="Node3D" parent="."' in scene_text
-    assert 'node name="CharacterReplica"' in scene_text
+    assert 'res://scenes/phase0/CharacterActor.tscn' in scene_text
+    assert 'node name="CharacterActor" parent="." instance=' in scene_text
 
 
 def test_main_demo_uses_single_player_character_instance() -> None:

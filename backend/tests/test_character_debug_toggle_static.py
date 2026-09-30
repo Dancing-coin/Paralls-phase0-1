@@ -42,7 +42,7 @@ def test_main_demo_does_not_keep_unused_autotest_capture_delay_export() -> None:
 
 
 def test_actor_runtime_scripts_trim_unused_default_migration_diagnostics() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
     role_skin_source = (ROOT / "scripts" / "character" / "KnightRoleSkin.gd").read_text(
@@ -61,9 +61,9 @@ def test_actor_runtime_scripts_trim_unused_default_migration_diagnostics() -> No
         encoding="utf-8"
     )
 
-    assert "attention_target_environment:" not in replica_source
-    assert "character_actor_status:" not in replica_source
-    assert "runtime_state_applied:" not in replica_source
+    assert "attention_target_environment:" not in actor_source
+    assert "character_actor_status:" not in actor_source
+    assert "runtime_state_applied:" not in actor_source
     assert "player_shell_mouse_button:button=%s pressed=%s device=%s" not in player_shell_source
     assert "mouse_button_state:left=%s right=%s" not in player_shell_source
     assert "phase0_input_bridge_ready:combat_mouse_v3" not in bridge_source

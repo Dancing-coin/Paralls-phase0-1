@@ -58,13 +58,13 @@ def test_main_demo_visible_focus_targets_require_line_of_sight() -> None:
     assert "intersect_ray" in controller_source
 
 
-def test_main_demo_focus_candidates_include_player_replica_for_other_actors() -> None:
+def test_main_demo_focus_candidates_include_player_actor_for_other_actors() -> None:
     controller_source = (ROOT / "scripts" / "phase0" / "MainDemoController.gd").read_text(
         encoding="utf-8"
     )
 
     assert "_get_focus_candidates()" in controller_source
-    assert 'get_node_or_null("PlayerCharacter/CharacterReplica")' in controller_source
+    assert "_get_player_actor()" in controller_source
     assert "_perception_target_resolver.resolve_targets(scene, view_actor)" in controller_source
     assert "if candidate == current_view_actor:" not in controller_source
 
@@ -78,33 +78,33 @@ def test_perception_toggle_restores_all_character_cones() -> None:
     assert "actor == current_focus_target" not in controller_source
 
 
-def test_character_replica_has_perception_cone_debug_surface() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
+def test_character_actor_has_perception_cone_debug_surface() -> None:
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
-    scene_source = (ROOT / "scenes" / "phase0" / "CharacterReplica.tscn").read_text(
+    scene_source = (ROOT / "scenes" / "phase0" / "CharacterActor.tscn").read_text(
         encoding="utf-8"
     )
     debug_source = (ROOT / "scripts" / "character" / "PerceptionConeDebug.gd").read_text(
         encoding="utf-8"
     )
 
-    assert "func set_perception_debug_visible(" in replica_source
-    assert "func configure_perception_debug(" in replica_source
-    assert "func get_focus_anchor_position() -> Vector3:" in replica_source
+    assert "func set_perception_debug_visible(" in actor_source
+    assert "func configure_perception_debug(" in actor_source
+    assert "func get_focus_anchor_position() -> Vector3:" in actor_source
     assert '[node name="PerceptionConeDebug"' in scene_source
     assert "set_debug_visible" in debug_source
     assert "set_parameters" in debug_source
 
 
-def test_character_replica_forward_vector_comes_from_replica_root_not_role_asset_scene() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
+def test_character_actor_forward_vector_comes_from_actor_root_not_role_asset_scene() -> None:
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
-    assert "func get_embodied_forward_vector() -> Vector3:" in replica_source
-    assert "return -global_basis.z.normalized()" in replica_source
-    assert "role_asset_scene as Node3D" not in replica_source.split("func get_embodied_forward_vector() -> Vector3:")[1].split("func ", 1)[0]
+    assert "func get_embodied_forward_vector() -> Vector3:" in actor_source
+    assert "return -global_basis.z.normalized()" in actor_source
+    assert "role_asset_scene as Node3D" not in actor_source.split("func get_embodied_forward_vector() -> Vector3:")[1].split("func ", 1)[0]
 
 
 def test_main_demo_non_player_focus_forward_uses_actor_visual_front_instead_of_negative_z() -> None:

@@ -66,7 +66,7 @@ def test_direct_entry_cleans_output_without_creating_repo_harness(tmp_path):
     ledger.write_text("## Migration Ledger\n", encoding="utf-8")
     scene_dir = project / "scenes" / "phase0"
     scene_dir.mkdir(parents=True)
-    for name in ("PlayerShell.tscn", "CharacterReplica.tscn"):
+    for name in ("PlayerShell.tscn", "CharacterActor.tscn"):
         (scene_dir / name).write_text('type="CharacterBody3D"\nname="CharacterMotor" type="Node" parent="."\n', encoding="utf-8")
 
     result = subprocess.run(

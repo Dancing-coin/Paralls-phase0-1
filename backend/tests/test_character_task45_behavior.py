@@ -42,12 +42,12 @@ def test_task45_headless_probe_observes_shared_path_and_contact_contract() -> No
     assert payload["surface_constraints"] is True
 
 
-def test_task45_static_guard_removes_replica_motion_and_facing_writers() -> None:
-    replica = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(encoding="utf-8")
+def test_task45_static_guard_removes_actor_motion_and_facing_writers_from_non_owners() -> None:
+    actor = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(encoding="utf-8")
     player = (ROOT / "scripts" / "player" / "PlayerShell.gd").read_text(encoding="utf-8")
-    process_body = replica.split("func _process(", 1)[1].split("func _physics_process(", 1)[0]
+    process_body = actor.split("func _process(", 1)[1].split("func _physics_process(", 1)[0]
     assert "_update_movement" not in process_body
     assert "_update_rotation" not in process_body
     assert "rotation.y -=" not in player
-    assert "MotionContributionComposer" in replica
-    assert "CharacterControllerPort" in replica
+    assert "MotionContributionComposer" in actor
+    assert "CharacterControllerPort" in actor

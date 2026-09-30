@@ -41,11 +41,11 @@ def test_away_conservative_takeover_has_low_risk_command_permissions() -> None:
 
 
 def test_speak_is_embodied_not_generated_by_character_actor() -> None:
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
-    assert "func _apply_embodied_speak(payload: Dictionary) -> void:" in replica_source
-    assert "CharacterAgent / DialogueService owns text" in replica_source
-    assert "SpatialVoiceController" in replica_source
-    assert "dialogue_text" in replica_source
+    assert "func _apply_embodied_speak(payload: Dictionary) -> void:" in actor_source
+    assert "CharacterAgent / DialogueService owns text" in actor_source
+    assert "SpatialVoiceController" in actor_source
+    assert "dialogue_text" in actor_source

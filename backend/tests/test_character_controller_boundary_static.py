@@ -97,7 +97,7 @@ def test_phase0_character_shell_sync_prefers_actor_facing_aliases_over_wrapper_n
     helper_source = (ROOT / "scripts" / "player" / "Phase0CharacterShellSync.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
@@ -107,12 +107,12 @@ def test_phase0_character_shell_sync_prefers_actor_facing_aliases_over_wrapper_n
     assert 'has_method("apply_player_shell_pose")' not in helper_source
     assert 'has_method("begin_player_control_frame")' not in helper_source
     assert 'has_method("clear_player_shell_frame")' not in helper_source
-    assert "func apply_embodied_pose_sync(" in replica_source
-    assert "func begin_embodied_control_frame(" in replica_source
-    assert "func clear_embodied_control_frame() -> void:" in replica_source
-    assert "func apply_player_shell_pose(" not in replica_source
-    assert "func begin_player_control_frame(" not in replica_source
-    assert "func clear_player_shell_frame() -> void:" not in replica_source
+    assert "func apply_embodied_pose_sync(" in actor_source
+    assert "func begin_embodied_control_frame(" in actor_source
+    assert "func clear_embodied_control_frame() -> void:" in actor_source
+    assert "func apply_player_shell_pose(" not in actor_source
+    assert "func begin_player_control_frame(" not in actor_source
+    assert "func clear_player_shell_frame() -> void:" not in actor_source
 
 
 def test_phase0_player_bridge_delegates_view_and_anchor_queries_to_helper() -> None:
@@ -205,7 +205,7 @@ def test_view_anchor_resolver_prefers_actor_facing_anchor_aliases() -> None:
     helper_source = (ROOT / "scripts" / "player" / "Phase0ViewAnchorResolver.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
@@ -213,10 +213,10 @@ def test_view_anchor_resolver_prefers_actor_facing_anchor_aliases() -> None:
     assert 'has_method("get_embodied_anchor_position")' in helper_source
     assert 'has_method("is_player_shell_active")' not in helper_source
     assert 'has_method("get_role_anchor_position")' not in helper_source
-    assert "func is_embodied_control_active() -> bool:" in replica_source
-    assert "func get_embodied_anchor_position() -> Vector3:" in replica_source
-    assert "func is_player_shell_active() -> bool:" not in replica_source
-    assert "func get_role_anchor_position() -> Vector3:" not in replica_source
+    assert "func is_embodied_control_active() -> bool:" in actor_source
+    assert "func get_embodied_anchor_position() -> Vector3:" in actor_source
+    assert "func is_player_shell_active() -> bool:" not in actor_source
+    assert "func get_role_anchor_position() -> Vector3:" not in actor_source
 
 
 def test_phase0_player_bridge_prefers_player_shell_aliases_over_dynamic_property_reads() -> None:
@@ -266,11 +266,11 @@ def test_phase0_player_bridge_prefers_actor_visibility_alias_over_visual_root_tr
     bridge_source = (ROOT / "scripts" / "player" / "Phase0PlayerBridge.gd").read_text(
         encoding="utf-8"
     )
-    replica_source = (ROOT / "scripts" / "character" / "CharacterReplica.gd").read_text(
+    actor_source = (ROOT / "scripts" / "character" / "CharacterActor.gd").read_text(
         encoding="utf-8"
     )
 
-    assert "func set_visual_shell_visible(" in replica_source
+    assert "func set_visual_shell_visible(" in actor_source
     assert "get_node_or_null(\"VisualRoot\")" not in bridge_source
 
 
