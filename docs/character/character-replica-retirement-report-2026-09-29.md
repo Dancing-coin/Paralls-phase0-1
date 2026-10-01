@@ -22,12 +22,12 @@ python scripts/verification/harness.py --profile character-replica-retirement
 python -m pytest -q backend/tests/test_character_replica_convergence_static.py backend/tests/test_character_actor_boundary_audit.py
 ```
 
-source_digest: `c45214a72cc426c8a679f5f4776e4cdc35627e152c4c1d1b469c8a217e274bd0`
+source_digest: `494c27be2091012a89c7f92c418a6568c7a127e093c32a2e7ec7729caaa598b0`
 matrix_digest: `af3388fef8ac058a26f13fc270b3dd5cfedf73c32d19adba6597ccbaf5e759f5`
 
 Fresh exported evidence:
 
-- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` (clean baseline run `7f7f917a7d0f4663a8b94c81d1c5f8a3`)
+- `D:\CurrentActionFoundationEvidence-retirement-clean-20261001` (clean HEAD `a780a119e4ace0e52814ff12c668f8b618f436b9`, run `e48082aced6442b29d52079343298fb8`)
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` (run `b0ee410e51f04912830c12bde4480e05`)
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` (run `776e00ed955546e8ac2f7f13ae4061b5`)
 - `D:\CurrentActionFoundationEvidence-all-final5-20260930` (all passed except strict `phase0`; cleanup passed)

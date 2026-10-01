@@ -55,7 +55,7 @@ Fresh runtime evidence:
 
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` — `street-combat` passed; run `b0ee410e51f04912830c12bde4480e05`.
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` — `character-agent-execution` passed; run `776e00ed955546e8ac2f7f13ae4061b5`.
-- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` — clean retirement baseline; run `7f7f917a7d0f4663a8b94c81d1c5f8a3`, source digest `c45214a72cc426c8a679f5f4776e4cdc35627e152c4c1d1b469c8a217e274bd0`.
+- `D:\CurrentActionFoundationEvidence-retirement-clean-20261001` — clean retirement run at HEAD `a780a119e4ace0e52814ff12c668f8b618f436b9`; run `e48082aced6442b29d52079343298fb8`, source digest `494c27be2091012a89c7f92c418a6568c7a127e093c32a2e7ec7729caaa598b0`, matrix digest `af3388fef8ac058a26f13fc270b3dd5cfedf73c32d19adba6597ccbaf5e759f5`.
 - `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` — prior full pytest baseline: `7720 passed, 2 skipped, 103 warnings`.
 - `D:\CurrentActionFoundationEvidence-phase0-latest3-20260930` — latest standalone strict Phase 0 run; revision `320a03a769925939e6f7fcbbf0412790c23fe3ac`, cleanup passed, strict gate failed.
 
