@@ -3720,6 +3720,7 @@ def _handle_envelope(
     *,
     connection_context: WebSocketConnectionContext | None = None,
 ) -> list[dict[str, object]]:
+    global unified_character_action_settlement_service
     connection_context = connection_context or WebSocketConnectionContext.direct_handler_compatibility()
     if envelope.message_type == "stormnight_player_intent":
         try:
