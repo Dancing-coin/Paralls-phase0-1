@@ -102,4 +102,3 @@ func _fallback_reason(skins: Array[Node]) -> String:
 			if not reason.is_empty():
 				return reason
 	return ""
-
