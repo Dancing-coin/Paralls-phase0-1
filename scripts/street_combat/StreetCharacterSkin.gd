@@ -3,14 +3,18 @@ extends Node3D
 var RoleAnimationControllerRef = load("res://scripts/character/RoleAnimationController.gd")
 var RootMotionSamplerRef = load("res://scripts/character/RootMotionSampler.gd")
 var CharacterPresentationRuntimeRef = load("res://scripts/character/CharacterPresentationRuntime.gd")
+const CharacterEmbodimentAssetRegistryRef = preload("res://scripts/character/CharacterEmbodimentAssetRegistry.gd")
 
 @export var package_id := ""
+@export var motion_library_id := ""
 
 var _manifest: Dictionary = {}
 var _animation_player: AnimationPlayer
 var _skeleton: Skeleton3D
 var _current_clip := ""
 var _motion_profile := "default"
+var _mounted_motion_library_id := ""
+var _uses_shared_motion_library := false
 var _recoil_tween: Tween
 var animation_controller: Node
 var presentation_runtime: RefCounted
@@ -25,6 +29,7 @@ func _ready() -> void:
 			_manifest = parsed
 	_animation_player = _find_descendant(self, "AnimationPlayer") as AnimationPlayer
 	_skeleton = _find_descendant(self, "Skeleton3D") as Skeleton3D
+	_mount_declared_motion_library()
 	animation_controller = get_node_or_null("RoleAnimationController") as Node
 	if animation_controller == null:
 		animation_controller = RoleAnimationControllerRef.new()
@@ -40,6 +45,41 @@ func _ready() -> void:
 		add_child(root_motion_sampler)
 	root_motion_sampler.bind(self)
 	set_state("idle")
+
+
+func mount_motion_library(library: AnimationLibrary, library_id: StringName) -> bool:
+	if _animation_player == null or library == null or String(library_id).is_empty():
+		return false
+	if _animation_player.has_animation_library(&"central"):
+		_animation_player.remove_animation_library(&"central")
+	_animation_player.add_animation_library(&"central", library)
+	if not _animation_player.has_animation_library(&"central"):
+		return false
+	_mounted_motion_library_id = String(library_id)
+	_uses_shared_motion_library = true
+	return true
+
+
+func get_mounted_motion_library_id() -> String:
+	return _mounted_motion_library_id
+
+
+func uses_shared_motion_library() -> bool:
+	return _uses_shared_motion_library
+
+
+func _mount_declared_motion_library() -> void:
+	var declared_id := str(_manifest.get("motion_library_id", motion_library_id))
+	if declared_id.is_empty():
+		return
+	var registry = CharacterEmbodimentAssetRegistryRef.new()
+	var inventory: Array[Dictionary] = registry.inventory_motion_libraries()
+	for entry: Dictionary in inventory:
+		if str(entry.get("motion_library_id", "")) != declared_id:
+			continue
+		var library: AnimationLibrary = entry.get("animation_library", null) as AnimationLibrary
+		if mount_motion_library(library, StringName(declared_id)):
+			return
 
 
 func _find_descendant(node: Node, type_name: String) -> Node:
@@ -63,15 +103,43 @@ func has_qualified_skeleton() -> bool:
 
 
 func has_clip(clip: String) -> bool:
-	return not _resolve_animation(clip).is_empty()
+	if not _resolve_animation(clip).is_empty():
+		return true
+	var aliases: Dictionary = _manifest.get("clip_aliases", {})
+	var alias_key: String = str({
+		"idle": "idle",
+		"walk": "walk_forward",
+		"run": "run_forward",
+		"jump": "jump_start",
+		"boxing": "boxing",
+		"sword_attack": "sword_attack",
+	}.get(clip, ""))
+	if not alias_key.is_empty():
+		return not _resolve_animation(str(aliases.get(alias_key, clip))).is_empty()
+	return false
 
 
 func _resolve_animation(clip: String) -> String:
 	if _animation_player == null:
 		return ""
-	for candidate in _animation_player.get_animation_list():
-		if str(candidate).to_lower() == clip.to_lower() or str(candidate).to_lower().ends_with("/" + clip.to_lower()):
-			return str(candidate)
+	var candidates: Array[String] = [clip]
+	if clip.contains(" "):
+		candidates.append(clip.replace(" ", "_"))
+		candidates.append(clip.replace(" ", "_").to_lower())
+	elif clip.contains("_"):
+		candidates.append(clip.replace("_", " "))
+		candidates.append(clip.replace("_", " ").to_lower())
+	var normalized_clip := clip.to_lower()
+	if not candidates.has(normalized_clip):
+		candidates.append(normalized_clip)
+	for candidate_name in candidates:
+		var central_clip := candidate_name if candidate_name.begins_with("central/") else "central/%s" % candidate_name
+		if _animation_player.has_animation(StringName(central_clip)):
+			return central_clip
+	for candidate_name in candidates:
+		for candidate in _animation_player.get_animation_list():
+			if str(candidate).to_lower() == candidate_name.to_lower() or str(candidate).to_lower().ends_with("/" + candidate_name.to_lower()):
+				return str(candidate)
 	return ""
 
 

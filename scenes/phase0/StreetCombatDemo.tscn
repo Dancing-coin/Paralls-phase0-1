@@ -109,6 +109,7 @@ visible = false
 [node name="StreetCharacterSkin" type="Node3D" parent="PlayerCharacter/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot"]
 script = ExtResource("skin")
 package_id = "female_bandage_external"
+motion_library_id = "motionlib:humanoid.v1.core@1"
 rotation = Vector3(0, 3.141593, 0)
 
 [node name="QualifiedPackage" parent="PlayerCharacter/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" instance=ExtResource("bandage")]
@@ -131,6 +132,7 @@ visible = false
 [node name="StreetCharacterSkin" type="Node3D" parent="AgentCharacterJK/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot"]
 script = ExtResource("skin")
 package_id = "female_jk_external"
+motion_library_id = "motionlib:humanoid.v1.core@1"
 rotation = Vector3(0, 3.141593, 0)
 
 [node name="QualifiedPackage" parent="AgentCharacterJK/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" instance=ExtResource("jk")]
@@ -159,6 +161,7 @@ visible = false
 [node name="StreetCharacterSkin" type="Node3D" parent="AgentCharacterT/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot"]
 script = ExtResource("skin")
 package_id = "female_t_external"
+motion_library_id = "motionlib:humanoid.v1.core@1"
 rotation = Vector3(0, 3.141593, 0)
 
 [node name="QualifiedPackage" parent="AgentCharacterT/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" instance=ExtResource("t")]

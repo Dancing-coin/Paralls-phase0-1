@@ -22,7 +22,7 @@ var _states: Dictionary = {}
 
 const CANONICAL_CLIP_CANDIDATES := {
 	"idle": ["idle"],
-	"walk": ["walking", "walk"],
+	"walk": ["walking2", "walking", "walk"],
 	"run": ["running", "run"],
 	"jump": ["jump", "air_jump"],
 	"boxing": ["boxing", "fight_punch", "fight_kick"],
@@ -202,6 +202,11 @@ func state_name_for_clip(clip_ref: String) -> String:
 	for state_name in _states.keys():
 		if str(_states[state_name]).to_lower() == resolved.to_lower():
 			return str(state_name)
+	var clip_name := resolved.get_file().to_lower()
+	for state_name in CANONICAL_CLIP_CANDIDATES:
+		for candidate in CANONICAL_CLIP_CANDIDATES[state_name]:
+			if clip_name == str(candidate).to_lower():
+				return state_name
 	return _normalize_state_name(resolved)
 
 func _configure_loops() -> void:
@@ -212,7 +217,7 @@ func _configure_loops() -> void:
 			if animation == null:
 				continue
 			var lower := str(animation_name).to_lower()
-			if lower in ["idle", "walking", "running", "walk", "run"]:
+			if lower in ["idle", "walking2", "walking", "running", "walk", "run"]:
 				animation.loop_mode = Animation.LOOP_LINEAR
 			else:
 				animation.loop_mode = Animation.LOOP_NONE
@@ -248,9 +253,37 @@ func _resolve_clip_from_candidates(candidates: Array) -> String:
 	if animation_player == null:
 		return ""
 	for candidate in candidates:
-		for clip in animation_player.get_animation_list():
-			if str(clip).to_lower() == str(candidate).to_lower() or str(clip).to_lower().ends_with("/" + str(candidate).to_lower()):
-				return str(clip)
+		var central_name := str(candidate)
+		var central_names: Array[String] = [central_name]
+		if central_name.contains(" "):
+			central_names.append(central_name.replace(" ", "_"))
+			central_names.append(central_name.replace(" ", "_").to_lower())
+		elif central_name.contains("_"):
+			central_names.append(central_name.replace("_", " "))
+			central_names.append(central_name.replace("_", " ").to_lower())
+		var normalized_central_name := central_name.to_lower()
+		if not central_names.has(normalized_central_name):
+			central_names.append(normalized_central_name)
+		for candidate_variant in central_names:
+			var central_candidate := candidate_variant if candidate_variant.begins_with("central/") else "central/%s" % candidate_variant
+			if animation_player.has_animation(StringName(central_candidate)):
+				return central_candidate
+	for candidate in candidates:
+		var candidate_name := str(candidate)
+		var candidate_names: Array[String] = [candidate_name]
+		if candidate_name.contains(" "):
+			candidate_names.append(candidate_name.replace(" ", "_"))
+			candidate_names.append(candidate_name.replace(" ", "_").to_lower())
+		elif candidate_name.contains("_"):
+			candidate_names.append(candidate_name.replace("_", " "))
+			candidate_names.append(candidate_name.replace("_", " ").to_lower())
+		var normalized_candidate_name := candidate_name.to_lower()
+		if not candidate_names.has(normalized_candidate_name):
+			candidate_names.append(normalized_candidate_name)
+		for candidate_variant in candidate_names:
+			for clip in animation_player.get_animation_list():
+				if str(clip).to_lower() == candidate_variant.to_lower() or str(clip).to_lower().ends_with("/" + candidate_variant.to_lower()):
+					return str(clip)
 	return ""
 
 func _normalize_state_name(clip_ref: String) -> String:
