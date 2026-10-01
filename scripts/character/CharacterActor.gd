@@ -31,6 +31,12 @@ enum DriverMode {
 @export var patrol_points: Array[Vector3] = [Vector3.ZERO]
 @export var move_speed := 0.55
 @export var player_run_speed := 0.0
+## Player-only tuning overrides used by compatibility scenes such as sademo.
+## Defaults preserve the current CharacterMotor behavior for existing scenes.
+@export var player_acceleration := 18.0
+@export var player_fall_gravity := 9.8
+@export var player_jump_impulse := 4.5
+@export var player_turn_speed := 0.0
 @export var move_accel := 2.8
 @export var move_decel := 3.2
 @export var hold_duration := 1.1
@@ -1058,7 +1064,7 @@ func _update_movement(delta: float) -> void:
 	command["root_delta_local"] = command.get("root_delta", Vector3.ZERO)
 	var previous_position := global_position
 	if driver_mode == DriverMode.PLAYER and player_shell_active and runtime_state.get_player_jump_type() != "none" and is_on_floor():
-		command["impulse"] = (command.get("impulse", Vector3.ZERO) as Vector3) + Vector3.UP * 4.5
+		command["impulse"] = (command.get("impulse", Vector3.ZERO) as Vector3) + Vector3.UP * get_numeric_setting(&"jump_impulse", 4.5)
 	var result: Dictionary = character_motor.apply_physics_command(self, command, delta) if character_motor != null and character_motor.has_method("apply_physics_command") else {}
 	current_velocity = result.get("velocity_world", Vector3.ZERO)
 	last_root_motion_world_delta = command.get("root_delta", Vector3.ZERO)
@@ -1080,8 +1086,14 @@ func get_numeric_setting(property_name: StringName, fallback: float) -> float:
 	# actor's configured turn speed to the shared Motor so camera yaw changes
 	# converge through the same physical facing path as every other actor.
 	match property_name:
+		&"acceleration":
+			return player_acceleration if driver_mode == DriverMode.PLAYER else fallback
+		&"fall_gravity":
+			return player_fall_gravity if driver_mode == DriverMode.PLAYER else fallback
+		&"jump_impulse":
+			return player_jump_impulse if driver_mode == DriverMode.PLAYER else fallback
 		&"facing_turn_speed":
-			return turn_speed
+			return player_turn_speed if driver_mode == DriverMode.PLAYER and player_turn_speed > 0.0 else turn_speed
 		_:
 			return fallback
 
@@ -1356,14 +1368,52 @@ func _apply_role_asset_config() -> void:
 	_flush_role_root_motion()
 
 func _set_role_asset_state(state_name: String) -> void:
+	var semantic_action_id := _semantic_action_id_for_state(state_name)
+	if role_asset_scene and not semantic_action_id.is_empty() and role_asset_scene.has_method("play_semantic_action"):
+		var realization := _resolve_motion_realization(semantic_action_id)
+		var playback: Variant = role_asset_scene.call("play_semantic_action", semantic_action_id, state_name, "default", 1.0, realization)
+		var realization_result: Variant = playback
+		if realization_result is Dictionary and bool((realization_result as Dictionary).get("playback_accepted", false)):
+			return
 	if role_asset_scene and role_asset_scene.has_method("set_state"):
 		role_asset_scene.set_state(state_name)
 
 func _set_role_asset_motion_profile(state_name: String, profile_name: String) -> void:
+	var semantic_action_id := _semantic_action_id_for_state(state_name)
+	if role_asset_scene and not semantic_action_id.is_empty() and role_asset_scene.has_method("play_semantic_action"):
+		var realization := _resolve_motion_realization(semantic_action_id)
+		var playback: Variant = role_asset_scene.call("play_semantic_action", semantic_action_id, state_name, profile_name, 1.0, realization)
+		if playback is Dictionary and bool((playback as Dictionary).get("playback_accepted", false)):
+			return
 	if role_asset_scene and role_asset_scene.has_method("set_motion_profile"):
 		role_asset_scene.set_motion_profile(state_name, profile_name)
 		return
 	_set_role_asset_state(state_name)
+
+
+func _semantic_action_id_for_state(state_name: String) -> String:
+	match state_name:
+		"idle":
+			return "action:locomotion.idle"
+		"walk":
+			return "action:locomotion.walk"
+		"run":
+			return "action:locomotion.run"
+		"jump":
+			return "action:locomotion.jump"
+		"boxing", "attack":
+			return "action:melee.boxing"
+		"sword_attack":
+			return "action:melee.sword_attack"
+		_:
+			return ""
+
+
+func _resolve_motion_realization(semantic_action_id: String) -> Dictionary:
+	if role_asset_scene != null and role_asset_scene.has_method("resolve_motion_realization"):
+		var result: Variant = role_asset_scene.call("resolve_motion_realization", semantic_action_id)
+		return result if result is Dictionary else {"accepted": false, "reason": "motion_realization_unavailable"}
+	return {"accepted": false, "reason": "motion_realization_unavailable"}
 
 func _set_role_asset_focus(is_focused: bool) -> void:
 	if role_asset_scene and role_asset_scene.has_method("set_focus_highlight"):

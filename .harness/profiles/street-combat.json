@@ -7,7 +7,7 @@
   "result_artifact": ".harness/verification/street-combat-runtime.json",
   "max_attempts": 1,
   "include_in_profile_order": false,
-  "description": "Formal StreetCombatDemo acceptance: fresh real street environment, three Registry-qualified character packages, live player/agent authority combat, animation/Motor/recovery/HUD evidence; UnifiedCharacterActionFoundation is not used as the action-base gate",
+  "description": "Formal StreetCombatDemo acceptance plus a fresh shared motion library probe: three Registry-qualified character packages, semantic animation realization, Motor-owned root motion, live player/agent authority combat, and HUD evidence; UnifiedCharacterActionFoundation is not used as the action-base gate",
   "acceptance_scene": "scenes/phase0/StreetCombatDemo.tscn",
   "qualified_packages": [
     "female_bandage_external",
@@ -24,6 +24,26 @@
     "duplicate_replayed",
     "stale_rejected",
     "recovery_committed",
-    "hud_observed"
-  ]
+    "hud_observed",
+    "shared_library_identity",
+    "six_states",
+    "animation_tree_active",
+    "motor_motion_owner",
+    "root_motion_single_consume",
+    "fallback_reason"
+  ],
+  "fresh_probe": {
+    "script": "scripts/verification/street_shared_motion_library_probe.gd",
+    "result_artifact": ".harness/verification/street-combat-motion-library-probe.json",
+    "command": "D:\\godot\\Godot_v4.6.3-stable_win64_console.exe --headless --path . --script res://scripts/verification/street_shared_motion_library_probe.gd",
+    "fields": [
+      "shared_library_identity",
+      "six_states",
+      "animation_tree_active",
+      "motor_motion_owner",
+      "root_motion_single_consume",
+      "fallback_reason"
+    ],
+    "fresh_only": true
+  }
 }

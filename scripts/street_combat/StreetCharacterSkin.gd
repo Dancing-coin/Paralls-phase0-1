@@ -15,6 +15,10 @@ var _current_clip := ""
 var _motion_profile := "default"
 var _mounted_motion_library_id := ""
 var _uses_shared_motion_library := false
+var _fallback_applied := false
+var _fallback_reason := ""
+var _root_motion_consumed_tick := -1
+var _root_motion_consume_count := 0
 var _recoil_tween: Tween
 var animation_controller: Node
 var presentation_runtime: RefCounted
@@ -49,11 +53,15 @@ func _ready() -> void:
 
 func mount_motion_library(library: AnimationLibrary, library_id: StringName) -> bool:
 	if _animation_player == null or library == null or String(library_id).is_empty():
+		_fallback_applied = true
+		_fallback_reason = "shared_library_unavailable"
 		return false
 	if _animation_player.has_animation_library(&"central"):
 		_animation_player.remove_animation_library(&"central")
 	_animation_player.add_animation_library(&"central", library)
 	if not _animation_player.has_animation_library(&"central"):
+		_fallback_applied = true
+		_fallback_reason = "shared_library_mount_failed"
 		return false
 	_mounted_motion_library_id = String(library_id)
 	_uses_shared_motion_library = true
@@ -68,9 +76,43 @@ func uses_shared_motion_library() -> bool:
 	return _uses_shared_motion_library
 
 
+func is_fallback_applied() -> bool:
+	return _fallback_applied
+
+
+func get_fallback_reason() -> String:
+	return _fallback_reason
+
+
+func resolve_motion_realization(semantic_action_id: String, claims: Array[StringName] = []) -> Dictionary:
+	var registry := CharacterEmbodimentAssetRegistryRef.new()
+	return registry.resolve_motion_realization(StringName(package_id), StringName(semantic_action_id), claims)
+
+
+func play_semantic_action(semantic_action_id: String, state_name: String, profile_name: String = "default", playback_speed: float = 1.0, provided_realization: Dictionary = {}) -> Dictionary:
+	var realization := provided_realization.duplicate(true) if not provided_realization.is_empty() else resolve_motion_realization(semantic_action_id)
+	if not bool(realization.get("accepted", false)):
+		_fallback_applied = true
+		_fallback_reason = str(realization.get("reason", "semantic_action_unavailable"))
+		return realization
+	if bool(realization.get("fallback_applied", false)):
+		_fallback_applied = true
+		_fallback_reason = str(realization.get("reason", "shared_library_unavailable"))
+	_motion_profile = profile_name
+	var clip_ref := str(realization.get("clip_ref", ""))
+	var is_one_shot := state_name in ["boxing", "attack", "sword_attack"]
+	var played := _play_action(clip_ref) if is_one_shot else _play(clip_ref, playback_speed)
+	realization["playback_accepted"] = played
+	if played:
+		realization["played_clip"] = _current_clip
+	return realization
+
+
 func _mount_declared_motion_library() -> void:
 	var declared_id := str(_manifest.get("motion_library_id", motion_library_id))
 	if declared_id.is_empty():
+		_fallback_applied = true
+		_fallback_reason = "motion_library_id_missing"
 		return
 	var registry = CharacterEmbodimentAssetRegistryRef.new()
 	var inventory: Array[Dictionary] = registry.inventory_motion_libraries()
@@ -80,6 +122,8 @@ func _mount_declared_motion_library() -> void:
 		var library: AnimationLibrary = entry.get("animation_library", null) as AnimationLibrary
 		if mount_motion_library(library, StringName(declared_id)):
 			return
+	_fallback_applied = true
+	_fallback_reason = "shared_library_unavailable"
 
 
 func _find_descendant(node: Node, type_name: String) -> Node:
@@ -307,7 +351,16 @@ func play_recoil() -> void:
 func consume_root_motion_delta() -> Vector3:
 	if root_motion_sampler == null:
 		return Vector3.ZERO
+	var physics_tick := Engine.get_physics_frames()
+	if _root_motion_consumed_tick == physics_tick:
+		return Vector3.ZERO
+	_root_motion_consumed_tick = physics_tick
+	_root_motion_consume_count += 1
 	return root_motion_sampler.consume_delta()
+
+
+func get_root_motion_consume_count() -> int:
+	return _root_motion_consume_count
 
 func get_root_motion_policy() -> String:
 	return str(_manifest.get("root_motion_profile", {}).get("policy", "hold"))
@@ -316,6 +369,8 @@ func get_root_motion_policy() -> String:
 func reset_root_motion() -> void:
 	if root_motion_sampler != null:
 		root_motion_sampler.reset()
+	_root_motion_consumed_tick = -1
+	_root_motion_consume_count = 0
 
 func has_root_motion_track(clip_ref: String) -> bool:
 	return root_motion_sampler != null and root_motion_sampler.has_method("has_root_track") and bool(root_motion_sampler.has_root_track(_resolve_animation(clip_ref)))
