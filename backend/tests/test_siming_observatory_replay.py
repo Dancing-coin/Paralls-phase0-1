@@ -34,3 +34,17 @@ def test_durable_observatory_bundle_is_restored_once_after_apply():
 
     coordinator._apply_audits(payload)
     assert coordinator.runtime.drain_observatory_messages() == []
+
+
+def test_generated_observatory_message_can_repeat_after_previous_delivery():
+    runtime = SimingRuntime()
+    message = {
+        "message_type": "siming_debug_event",
+        "payload": {"stage": "intervention_decision", "summary": "generated"},
+    }
+
+    runtime._queue_observatory_message(message)
+    assert runtime.drain_observatory_messages() == [message]
+
+    runtime._queue_observatory_message(message)
+    assert runtime.drain_observatory_messages() == [message]

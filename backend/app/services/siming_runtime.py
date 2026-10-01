@@ -142,7 +142,7 @@ class SimingRuntime:
         self._heavenly_story_projection = SimingStoryProjection()
         self._observatory_projection = SimingDebugProjection()
         self._pending_observatory_messages: list[dict[str, object]] = []
-        self._observatory_message_digests: set[str] = set()
+        self._restored_observatory_message_digests: set[str] = set()
         self._actor_pin_reader = actor_pin_reader
         self._source_pin_reader = source_pin_reader
         self._siming_owner_thread = None
@@ -1297,17 +1297,16 @@ class SimingRuntime:
         self._assert_siming_owner()
         for message in messages:
             message_digest = digest(message)
-            if (message_digest in self._observatory_message_digests
+            if (message_digest in self._restored_observatory_message_digests
                     or any(digest(existing) == message_digest for existing in self._pending_observatory_messages)):
                 continue
-            self._observatory_message_digests.add(message_digest)
+            self._restored_observatory_message_digests.add(message_digest)
             self._pending_observatory_messages.append(message)
 
     def _queue_observatory_message(self, message: dict[str, object]) -> None:
         message_digest = digest(message)
-        if message_digest in self._observatory_message_digests:
+        if any(digest(existing) == message_digest for existing in self._pending_observatory_messages):
             return
-        self._observatory_message_digests.add(message_digest)
         self._pending_observatory_messages.append(message)
 
     def _fairness_snapshot(self, event: AuthorityEvent) -> SimingOutput:
