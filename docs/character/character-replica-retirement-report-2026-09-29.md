@@ -27,7 +27,7 @@ matrix_digest: `af3388fef8ac058a26f13fc270b3dd5cfedf73c32d19adba6597ccbaf5e759f5
 
 Fresh exported evidence:
 
-- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` (run `7f7f917a7d0f4663a8b94c81d1c5f8a3`)
+- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` (clean baseline run `7f7f917a7d0f4663a8b94c81d1c5f8a3`)
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` (run `b0ee410e51f04912830c12bde4480e05`)
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` (run `776e00ed955546e8ac2f7f13ae4061b5`)
 - `D:\CurrentActionFoundationEvidence-all-final5-20260930` (all passed except strict `phase0`; cleanup passed)

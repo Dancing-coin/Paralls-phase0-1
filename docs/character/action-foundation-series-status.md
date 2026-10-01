@@ -1,6 +1,6 @@
 # Action Foundation Series Status
 
-Date: 2026-09-30
+Date: 2026-10-01
 
 Status: **CharacterReplica retirement is complete; Task 9 remains blocked by strict Phase 0 runtime evidence**
 
@@ -10,7 +10,7 @@ and `female_t_external`. `UnifiedCharacterActionFoundation.tscn` remains a narro
 protocol/authority probe only and is not an action-foundation acceptance scene.
 
 The series entry point is the design spec
-`docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`.
+`docs/superpowers/specs/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-design.md`.
 The corresponding implementation plan is the only execution order for the
 remaining series work. The 2026-09-14 plans remain upstream contract references
 and the June plans remain historical or transitional migration records.
@@ -39,7 +39,7 @@ and the June plans remain historical or transitional migration records.
 | 6 CharacterActor migration | complete for StreetDemo | `CharacterActor` | StreetDemo probes plus `character-agent-execution` profile | `probe-5.log`; exported agent run `paralls-streetdemo-agent-task9-rerun-b7a4621492294aabb074dc093504fab4`; StreetDemo retirement counts all zero; ArchiveDoor external profile `D:\Task9Evidence-20260929-08\archive-door` passed all four scenarios | old compatibility callers remain elsewhere |
 | 7 registry admission | complete for StreetDemo | `CharacterEmbodimentAssetRegistry` | `CharacterAssetAdmissionProgressiveProbe.gd` | external temp `paralls-streetdemo-registry-task9-097fdff850e740449d93c8f0cd59e4f7`; 3 packages/6 actions, fail-closed checks true | no claim for unqualified packages outside the three street packages |
 | 8 root/capability boundary | complete as temporary policy | `RootMotionSampler` / `MotionContributionComposer` / `CharacterMotor` | `PARALLS_STREET_PROBE=6` on `StreetCombatDemo.tscn` | `probe-6.log`; 3 hold profiles, zero-envelope, drive boundary true | calibration is not complete; `drive_locomotion` remains disabled |
-| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, required Harness profiles, full pytest | fresh full pytest `7720 passed / 2 skipped / 103 warnings`; `street-combat`, `character-agent-execution`, and `character-replica-retirement` passed with explicit Godot; `--profile all` passed every profile except strict `phase0` | Phase 0 dialogue/observatory/player root-motion evidence remains missing |
+| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, required Harness profiles, full pytest | current full pytest `7736 passed / 2 skipped / 104 warnings`; `street-combat`, `character-agent-execution`, and `character-replica-retirement` passed; the latest standalone `phase0` run failed its strict aggregate gate | Phase 0 dialogue/transport/interaction/voice, repeatable-run, and Observatory Siming evidence remain missing; root-motion/forward probes are now proved in the latest standalone run |
 | 10 documentation reconciliation and publication | **complete, affected by Task 9 external blocker** | documentation owners | documentation link checks, focused tests, Godot headless probe, `git diff --check` | Task 10 checklist completed in the 2026-09-28 implementation plan; current-state, operator guide, replica convergence, index, and status surfaces synchronized | release claim remains constrained by strict Phase 0 runtime evidence |
 
 ## 2026-09-30 CharacterReplica retirement closure
@@ -55,16 +55,18 @@ Fresh runtime evidence:
 
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` — `street-combat` passed; run `b0ee410e51f04912830c12bde4480e05`.
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` — `character-agent-execution` passed; run `776e00ed955546e8ac2f7f13ae4061b5`.
-- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` — retirement passed; run `7f7f917a7d0f4663a8b94c81d1c5f8a3`, source digest `c45214a72cc426c8a679f5f4776e4cdc35627e152c4c1d1b469c8a217e274bd0`.
-- `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` — full pytest: `7720 passed, 2 skipped, 103 warnings`.
+- `D:\CurrentActionFoundationEvidence-retirement-final5-20260930` — clean retirement baseline; run `7f7f917a7d0f4663a8b94c81d1c5f8a3`, source digest `c45214a72cc426c8a679f5f4776e4cdc35627e152c4c1d1b469c8a217e274bd0`.
+- `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` — prior full pytest baseline: `7720 passed, 2 skipped, 103 warnings`.
+- `D:\CurrentActionFoundationEvidence-phase0-latest3-20260930` — latest standalone strict Phase 0 run; revision `320a03a769925939e6f7fcbbf0412790c23fe3ac`, cleanup passed, strict gate failed.
 
-The fresh aggregate run `D:\CurrentActionFoundationEvidence-all-final5-20260930`
+The aggregate run `D:\CurrentActionFoundationEvidence-all-final5-20260930`
 (run `7f8ee43213024b809ae531168fd463ba`, revision `6b5c698ba189be4281f7880953f6d93331740021`)
-passed every profile except strict `phase0`. Its report records missing
-dialogue/transport/interaction/voice markers, weak player root-motion and
-forward-direction evidence, and missing Observatory payload/panel markers.
-Cleanup passed. StreetCombatDemo success is not promoted to a repository-wide
-completion claim.
+remains the latest exported `all` run and passed every executed profile except
+strict `phase0`. The newer standalone Phase 0 run supersedes its Phase 0
+diagnostics: player root-motion and forward-direction are proved there, while
+dialogue/transport/interaction/voice, repeatable-run, and Observatory payload,
+panel, timeline, and ledger markers remain missing. Cleanup passed. StreetCombatDemo
+success is not promoted to a repository-wide completion claim.
 
 ## 2026-09-29 Ordered Task 1-15 Verification
 
@@ -121,9 +123,14 @@ Motor, animation owner, authority writer, or weapon scheduler.
    proves success, distance failure, revision failure, and stance failure.
 2. **Strict Phase 0 aggregate runtime (owner: Phase 0/MainDemo maintainers):**
    the fresh `all` run has `phase0` failed while every other all profile passed.
-   Missing dialogue, transport ordering, interaction, voice, player root-motion,
-   forward-direction, and Observatory markers remain open.
-3. Root motion is intentionally `hold` / zero-envelope. This is a temporary
+   Missing dialogue, transport ordering, interaction, voice, repeatable-run, and
+   Observatory markers remain open; the latest standalone Phase 0 run proves
+   player root-motion and forward-direction evidence.
+3. **Generic ActionAttempt authority (owner: backend authority lane):**
+   remains bounded/open outside the StreetCombatDemo pilot. The pilot's live
+   ActionAttempt and Mode B recovery evidence must not be promoted to a global
+   authority closure claim.
+4. Root motion is intentionally `hold` / zero-envelope. This is a temporary
    qualified capability boundary, not calibrated production locomotion.
 
 The StreetCombatDemo runtime profile is fresh green evidence for the StreetDemo

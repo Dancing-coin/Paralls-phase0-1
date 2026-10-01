@@ -1,12 +1,12 @@
 # Character Action Foundation Current State
 
-Date: `2026-09-30`
+Date: `2026-10-01`
 
 Status: `CharacterReplica retired; Task 9 remains blocked by strict Phase 0 runtime`
 
 The 2026-09-28 pilot is landed as a StreetCombatDemo result. This ledger keeps
-the pilot evidence separate from the remaining series gates. The 2026-09-28
-spec is the series entry point and its implementation plan is the only
+the pilot evidence separate from the remaining series gates. The 2026-09-29
+retirement/closure spec is the series entry point and its implementation plan is the only
 execution order for the open tasks; June and pre-convergence passages below are
 historical or transitional when explicitly marked.
 
@@ -28,12 +28,15 @@ green. Root motion remains the temporary `hold` / zero-envelope policy; it is
 not calibrated production locomotion.
 
 The external ArchiveDoor dependency now has fresh success, distance, revision,
-and stance evidence from live backend and Godot. The 2026-09-30 full pytest
-rerun completed with `7720 passed, 2 skipped, 103 warnings`. Fresh street,
+and stance evidence from live backend and Godot. The prior 2026-09-30 full pytest
+rerun completed with `7720 passed, 2 skipped, 103 warnings`; the current full
+verification is `7736 passed, 2 skipped, 104 warnings`. Fresh street,
 agent, and retirement profiles pass. The aggregate run
 `D:\CurrentActionFoundationEvidence-all-final5-20260930` passed every profile
-except strict `phase0`, which still lacks dialogue/transport/interaction/voice,
-positive player root-motion/forward evidence, and Observatory payload/panel
+except strict `phase0`. The newer standalone run
+`D:\CurrentActionFoundationEvidence-phase0-latest3-20260930` proves the player
+root-motion and forward-direction checks, but still lacks dialogue/transport/
+interaction/voice, repeatable-run, and Observatory payload/panel/timeline/ledger
 markers. Cleanup passed; this remains the only Task 9 blocker.
 
 ### Final boundary
@@ -49,6 +52,10 @@ truth. `CharacterActor` is the sole active runtime host. The zero-caller gate pa
 and the `CharacterReplica` compatibility shell plus obsolete validation scenes
 were deleted in Task 8.
 
+The generic ActionAttempt authority route and Mode B recovery remain bounded/open
+outside the StreetCombatDemo pilot. Pilot evidence is retained as an acceptance
+slice and does not establish repository-wide authority closure.
+
 ## 2026-09-28 Series Reconciliation
 
 The StreetCombatDemo pilot is now a landed animation-layer result: all three
@@ -60,8 +67,8 @@ complete registry admission.
 
 The controlling completion documents are:
 
-- `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`
-- `docs/superpowers/plans/2026-09-28-character-action-foundation-series-completion-implementation-plan.md`
+- `docs/superpowers/specs/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-design.md`
+- `docs/superpowers/plans/2026-09-29-character-replica-retirement-and-global-action-foundation-closure-implementation-plan.md`
 - `docs/character/action-foundation-series-status.md`
 
 The external controller is the animation implementation layer. It is not a
@@ -203,7 +210,8 @@ because `scene_resource_paths_exist=missing`. Harness cleanup passed.
 
 The fresh required `python -m pytest -v` run is recorded in
 `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` and ended
-with `7720 passed, 2 skipped, 103 warnings`. `git diff --check` is rerun after
+with the prior baseline `7720 passed, 2 skipped, 103 warnings`; the current full
+pytest verification is `7736 passed, 2 skipped, 104 warnings`. `git diff --check` is rerun after
 the Task 9 documentation update below.
 
 Accordingly, the dependency gate remains conditional on the strict Phase 0
