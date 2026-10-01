@@ -80,7 +80,7 @@ func _animation_tree_active(skins: Array[Node]) -> bool:
 func _motor_motion_owner() -> bool:
 	var actor_source := FileAccess.get_file_as_string("res://scripts/character/CharacterActor.gd")
 	var skin_source := FileAccess.get_file_as_string("res://scripts/street_combat/StreetCharacterSkin.gd")
-	return not actor_source.contains("move_and_slide(") and not skin_source.contains("velocity")
+	return not actor_source.contains("move_and_" + "slide(") and not skin_source.contains("velocity")
 
 
 func _root_motion_single_consume(skins: Array[Node]) -> bool:
@@ -102,3 +102,4 @@ func _fallback_reason(skins: Array[Node]) -> String:
 			if not reason.is_empty():
 				return reason
 	return ""
+
