@@ -5,6 +5,9 @@
   "required": ["package_id", "source_frame_rate", "unit_scale", "forward_axis", "up_axis", "canonical_mapping", "required_slots", "slots", "locomotion_map", "actions"],
   "properties": {
     "package_id": {"type": "string", "minLength": 1},
+    "motion_library_id": {"type": "string", "pattern": "^motionlib:[a-z0-9._-]+@[0-9]+$"},
+    "skeleton_profile_id": {"type": "string", "minLength": 1},
+    "realization_mode": {"type": "string", "enum": ["shared_library", "retargeted_library", "package_native", "fallback"]},
     "source_frame_rate": {"type": "number", "exclusiveMinimum": 0},
     "unit_scale": {"const": 1},
     "forward_axis": {"const": "-z"},

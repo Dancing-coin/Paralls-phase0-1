@@ -1,0 +1,14 @@
+{
+  "skeleton_profile_id": "humanoid.v1",
+  "version": 1,
+  "canonical_bones": {
+    "root": "root", "pelvis": "pelvis", "spine_lower": "spine_01", "spine_mid": "spine_02", "spine_upper": "spine_03", "neck": "neck", "head": "head",
+    "jaw": "jaw", "eye_l": "eye_l", "eye_r": "eye_r", "clavicle_l": "clavicle_l", "upper_arm_l": "upper_arm_l", "lower_arm_l": "lower_arm_l", "hand_l": "hand_l", "thumb_01_l": "thumb_01_l", "thumb_02_l": "thumb_02_l", "thumb_03_l": "thumb_03_l", "index_01_l": "index_01_l", "index_02_l": "index_02_l", "index_03_l": "index_03_l", "middle_01_l": "middle_01_l", "middle_02_l": "middle_02_l", "middle_03_l": "middle_03_l", "ring_01_l": "ring_01_l", "ring_02_l": "ring_02_l", "ring_03_l": "ring_03_l", "pinky_01_l": "pinky_01_l", "pinky_02_l": "pinky_02_l", "pinky_03_l": "pinky_03_l", "clavicle_r": "clavicle_r", "upper_arm_r": "upper_arm_r", "lower_arm_r": "lower_arm_r", "hand_r": "hand_r", "thumb_01_r": "thumb_01_r", "thumb_02_r": "thumb_02_r", "thumb_03_r": "thumb_03_r", "index_01_r": "index_01_r", "index_02_r": "index_02_r", "index_03_r": "index_03_r", "middle_01_r": "middle_01_r", "middle_02_r": "middle_02_r", "middle_03_r": "middle_03_r", "ring_01_r": "ring_01_r", "ring_02_r": "ring_02_r", "ring_03_r": "ring_03_r", "pinky_01_r": "pinky_01_r", "pinky_02_r": "pinky_02_r", "pinky_03_r": "pinky_03_r", "thigh_l": "thigh_l", "calf_l": "calf_l", "foot_l": "foot_l", "toe_l": "toe_l", "thigh_r": "thigh_r", "calf_r": "calf_r", "foot_r": "foot_r", "toe_r": "toe_r", "heel_l": "heel_l", "heel_r": "heel_r", "shoulder_l": "shoulder_l", "shoulder_r": "shoulder_r", "forearm_twist_l": "forearm_twist_l", "forearm_twist_r": "forearm_twist_r", "upperarm_twist_l": "upperarm_twist_l", "upperarm_twist_r": "upperarm_twist_r", "thigh_twist_l": "thigh_twist_l", "thigh_twist_r": "thigh_twist_r", "calf_twist_l": "calf_twist_l", "calf_twist_r": "calf_twist_r"
+  },
+  "hierarchy_digest": "sha256:4f9f6e2a7c5d9a9c0d6db5a7d6e7c9f5b7e6d3c1a2f0e9d8c7b6a5f4e3d2c1b0",
+  "rest_pose": "humanoid_v1_rest",
+  "unit_scale": 1.0,
+  "forward_axis": "+Z",
+  "root_motion_policy": "motor_owned",
+  "socket_profile": "humanoid.v1.sockets@1"
+}

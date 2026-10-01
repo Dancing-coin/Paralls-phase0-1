@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paralls.dev/schemas/skeleton-profile.v1.json",
+  "title": "Skeleton Profile v1",
+  "type": "object",
+  "required": ["skeleton_profile_id", "version", "canonical_bones", "hierarchy_digest", "rest_pose", "unit_scale", "forward_axis", "root_motion_policy", "socket_profile"],
+  "properties": {
+    "skeleton_profile_id": {"type": "string", "const": "humanoid.v1"},
+    "version": {"type": "integer", "const": 1},
+    "canonical_bones": {"type": "object", "minProperties": 1, "additionalProperties": {"type": "string"}},
+    "hierarchy_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "rest_pose": {"type": "string", "minLength": 1},
+    "unit_scale": {"type": "number", "exclusiveMinimum": 0},
+    "forward_axis": {"type": "string", "enum": ["+Z", "-Z"]},
+    "root_motion_policy": {"type": "string", "enum": ["motor_owned", "hold", "bounded_continue"]},
+    "socket_profile": {"type": "string", "minLength": 1}
+  },
+  "additionalProperties": false
+}
