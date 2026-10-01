@@ -96,6 +96,32 @@ def test_local_presentation_bus_exposes_explicit_debug_logging_toggle() -> None:
     assert "set_process_unhandled_input(debug_logging_enabled)" in bus_source
 
 
+def test_generic_action_transport_recovery_is_exposed_to_godot_probe() -> None:
+    project_root = Path(__file__).resolve().parents[2]
+    bus_source = (project_root / "scripts" / "autoload" / "LocalPresentationBus.gd").read_text(
+        encoding="utf-8"
+    )
+    bridge_source = (project_root / "scripts" / "autoload" / "BackendBridge.gd").read_text(
+        encoding="utf-8"
+    )
+    probe_source = (project_root / "scripts" / "verification" / "UnifiedCharacterActionFoundationProbe.gd").read_text(
+        encoding="utf-8"
+    )
+    verifier_source = (project_root / "scripts" / "verification" / "verify_unified_character_action_foundation.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "signal unified_character_action_recovery_snapshot_received(payload)" in bus_source
+    assert '"unified_character_action_recovery_snapshot_request"' in bridge_source
+    assert '"unified_character_action_recovery_snapshot"' in bridge_source
+    assert '_bus_emit("unified_character_action_recovery_snapshot_received", [payload])' in bridge_source
+    assert "action_snapshot_ready" in bridge_source
+    assert "next_action_transport_context()" in probe_source
+    assert "recovery_snapshot_ready" in probe_source
+    assert "reconnect_resnapshot" in probe_source
+    assert '"recovery_snapshot_ready"' in verifier_source
+
+
 def test_main_execution_envelope_builder_does_not_inline_legacy_reconstruction() -> None:
     project_root = Path(__file__).resolve().parents[2]
     main_source = (project_root / "backend" / "app" / "main.py").read_text(encoding="utf-8")

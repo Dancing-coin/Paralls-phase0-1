@@ -102,7 +102,7 @@ def verify_runtime(*, godot_exe: str | None, python_exe: str | None) -> dict[str
     finally:
         stop_backend(backend)
     report = _read_runtime_report()
-    required = ("backend_connected", "shared_motor_owner", "agent_inf_intent_seen", "melee_authority_committed", "hitscan_authority_seen", "duplicate_replayed", "stale_rejected", "rejection_recovered")
+    required = ("backend_connected", "shared_motor_owner", "agent_inf_intent_seen", "melee_authority_committed", "hitscan_authority_seen", "duplicate_replayed", "duplicate_identity_match", "stale_rejected", "rejection_recovered", "recovery_snapshot_ready", "reconnect_resnapshot")
     valid = bool(godot_result and godot_result.marker_found and all(bool(report.get(key)) for key in required) and report.get("mode") == "B" and report.get("body_stream_seen") is False)
     result = {"stage": "runtime", "valid": valid, "godot_exit_code": getattr(godot_result, "returncode", None), "godot_marker_found": bool(godot_result and godot_result.marker_found), "runtime_report": report, "error": error}
     (log_dir / "unified-character-action-foundation-runtime-verifier.json").write_text(json.dumps(result, indent=2, ensure_ascii=False), encoding="utf-8")

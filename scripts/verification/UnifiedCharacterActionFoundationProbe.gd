@@ -8,6 +8,7 @@ var _results: Array[Dictionary] = []
 var _authority_results: Array[Dictionary] = []
 var _acks: Array[Dictionary] = []
 var _backend_url := ""
+var _recovery_snapshots: Array[Dictionary] = []
 
 func _ready() -> void:
 	_backend_url = OS.get_environment("PARALLS_BACKEND_WS_URL").strip_edges()
@@ -18,10 +19,11 @@ func _ready() -> void:
 func _run_probe() -> void:
 	var bus := get_node_or_null("/root/LocalPresentationBus")
 	var bridge := get_node_or_null("/root/BackendBridge")
-	if bus == null or bridge == null or not bus.has_signal("unified_character_action_foundation_result_received"):
+	if bus == null or bridge == null or not bus.has_signal("unified_character_action_foundation_result_received") or not bus.has_signal("unified_character_action_recovery_snapshot_received"):
 		_fail("missing_backend_bridge_or_signal")
 		return
 	bus.unified_character_action_foundation_result_received.connect(_on_result)
+	bus.unified_character_action_recovery_snapshot_received.connect(_on_recovery_snapshot)
 	bus.backend_ack_received.connect(_on_ack)
 	var connect_err: int = bridge.connect_to_backend(_backend_url)
 	if connect_err != OK:
@@ -32,6 +34,10 @@ func _run_probe() -> void:
 		await get_tree().process_frame
 	if not bridge.is_backend_open():
 		_fail("connect_timeout")
+		return
+	var recovery_snapshot_ready := await _wait_for_recovery_snapshot(bridge)
+	if not recovery_snapshot_ready:
+		_fail("recovery_snapshot_timeout")
 		return
 
 	var jk := get_node_or_null("../FemaleJKExternal") as CharacterBody3D
@@ -49,13 +55,24 @@ func _run_probe() -> void:
 	var melee := _attempt("player:melee", "foundation_jk", "melee:slash", "player", "esm")
 	var melee_result := await _send_attempt(melee)
 	var duplicate_result := await _send_attempt(melee)
-	var stale_attempt := _attempt("stale:melee", "foundation_jk", "melee:slash", "player", "esm")
-	stale_attempt["expected_revisions"] = {"actor:character:foundation_jk": 0}
-	var stale_result := await _send_attempt(stale_attempt)
 	var hitscan := _attempt("player:hitscan", "foundation_t", "hitscan:fire", "player", "gameplay")
 	hitscan["weapon_ref"] = "weapon:semantic_rifle"
 	var hitscan_result := await _send_attempt(hitscan)
+	var stale_attempt := _attempt("stale:melee", "foundation_jk", "melee:slash", "player", "esm")
+	stale_attempt["expected_revisions"] = {"actor:character:foundation_jk": 0}
+	var stale_result := await _send_attempt(stale_attempt)
 	var invalid := await _send_raw({"package_ids": package_ids, "attempt": {"attempt_id": "invalid:client-truth", "actor_ref": "character:foundation_t", "action_instance_id": "invalid:1", "semantic_action_id": "hitscan:fire", "contact_marker_id": "marker:contact", "physics_tick": 1, "authority_route": "gameplay", "idempotency_key": "invalid:1", "command_version": "v1", "causation_id": "cause:invalid", "correlation_id": "corr:invalid", "source": "player", "privacy_scope": "public", "damage": 99}})
+
+	var prior_epoch := int(bridge.action_transport_state().get("connection_epoch", 0))
+	bridge.close_backend_connection()
+	var disconnected: bool = await _wait_for_backend_closed(bridge)
+	var reconnect_requested: bool = bridge.connect_to_backend(_backend_url) == OK
+	var reconnected: bool = await _wait_for_backend_open(bridge)
+	var reconnect_snapshot_ready: bool = await _wait_for_recovery_snapshot(bridge)
+	var fresh_recovery_attempt := {}
+	if reconnect_snapshot_ready:
+		fresh_recovery_attempt = await _send_attempt(_attempt("recovery:melee", "foundation_jk", "melee:slash", "player", "esm"))
+	var reconnect_epoch := int(bridge.action_transport_state().get("connection_epoch", 0))
 
 	var screenshot_path := _capture_screenshot()
 	var report := {
@@ -66,15 +83,16 @@ func _run_probe() -> void:
 		"actor_motion_paths": {"foundation_jk": [before["foundation_jk"], after["foundation_jk"]], "foundation_t": [before["foundation_t"], after["foundation_t"]]},
 		"agent_inf_intent_seen": _outcome(agent_intent) == "committed", "melee_attempt_seen": not melee_result.is_empty(),
 		"melee_authority_committed": _outcome(melee_result) == "committed", "hitscan_authority_seen": _outcome(hitscan_result) == "committed",
-		"duplicate_replayed": _transaction(duplicate_result) == _transaction(melee_result), "stale_rejected": _outcome(stale_result) == "rejected",
+		"duplicate_replayed": _identity(duplicate_result) == _identity(melee_result), "duplicate_identity_match": _identity(duplicate_result) == _identity(melee_result), "stale_rejected": _outcome(stale_result) == "rejected",
 		"rejection_recovered": _outcome(invalid) == "rejected" or invalid.get("accepted") == false or str(invalid.get("error_code", "")).begins_with("invalid_action_attempt"),
-		"attempts": [agent_intent, melee_result, duplicate_result, stale_result, hitscan_result, invalid], "authority_results": _authority_results,
+		"recovery_snapshot_ready": recovery_snapshot_ready, "reconnect_resnapshot": disconnected and reconnect_requested and reconnected and reconnect_snapshot_ready and reconnect_epoch > prior_epoch, "fresh_recovery_attempt": fresh_recovery_attempt,
+		"attempts": [agent_intent, melee_result, duplicate_result, stale_result, hitscan_result, invalid, fresh_recovery_attempt], "authority_results": _authority_results,
 		"mode": "B", "body_stream_seen": false, "runtime_capture_paths": [screenshot_path] if not screenshot_path.is_empty() else [],
 	}
-	var ok := bool(report["backend_connected"]) and bool(report["shared_motor_owner"]) and bool(report["agent_inf_intent_seen"]) and bool(report["melee_authority_committed"]) and bool(report["hitscan_authority_seen"]) and bool(report["duplicate_replayed"]) and bool(report["stale_rejected"]) and bool(report["rejection_recovered"])
+	var ok := bool(report["backend_connected"]) and bool(report["shared_motor_owner"]) and bool(report["agent_inf_intent_seen"]) and bool(report["melee_authority_committed"]) and bool(report["hitscan_authority_seen"]) and bool(report["duplicate_replayed"]) and bool(report["stale_rejected"]) and bool(report["rejection_recovered"]) and bool(report["recovery_snapshot_ready"]) and bool(report["reconnect_resnapshot"]) and _outcome(fresh_recovery_attempt) == "committed"
 	report["status"] = "godot-runtime-unified-character-action-foundation-verified" if ok else "godot-runtime-unified-character-action-foundation-failed"
 	_write_report(report)
-	for key in ["backend_connected", "melee_authority_committed", "hitscan_authority_seen", "duplicate_replayed", "stale_rejected"]:
+	for key in ["backend_connected", "melee_authority_committed", "hitscan_authority_seen", "duplicate_replayed", "stale_rejected", "recovery_snapshot_ready", "reconnect_resnapshot"]:
 		print("unified_character_action_foundation_probe:%s=%s" % [key, str(report[key]).to_lower()])
 	print("unified_character_action_foundation_probe:package_ids=%s" % JSON.stringify(package_ids))
 	print("unified_character_action_foundation_probe:verified=%s" % str(ok).to_lower())
@@ -98,8 +116,8 @@ func _attempt(key: String, actor: String, action: String, source: String, route:
 		"target_refs": ["object:foundation_target"],
 		"contact_marker_id": "marker:contact",
 		"physics_tick": physics_tick,
-		"connection_epoch": 1,
-		"client_sequence": _next_sequence(),
+		"connection_epoch": 0,
+		"client_sequence": 0,
 		"physics_evidence_refs": ["contact:probe"],
 		"physics_evidence_digest": "sha256:" + "0".repeat(64),
 		"action_descriptor_digest": "sha256:" + "1".repeat(64),
@@ -120,6 +138,15 @@ func _next_sequence() -> int:
 	return _attempt_sequence
 
 func _send_attempt(attempt: Dictionary) -> Dictionary:
+	var bridge := get_node_or_null("/root/BackendBridge")
+	if bridge == null or not bridge.has_method("next_action_transport_context"):
+		return {"outcome": "rejected", "error_code": "missing_transport_context"}
+	if int(attempt.get("connection_epoch", 0)) < 1 or int(attempt.get("client_sequence", 0)) < 1:
+		var context: Dictionary = bridge.next_action_transport_context()
+		if not bool(context.get("snapshot_ready", false)):
+			return {"outcome": "rejected", "error_code": "recovery_required"}
+		attempt["connection_epoch"] = int(context.get("connection_epoch", 0))
+		attempt["client_sequence"] = int(context.get("client_sequence", 0))
 	return await _send_raw({"package_ids": ["female_jk_external", "female_t_external"], "attempt": attempt})
 
 func _send_raw(payload: Dictionary) -> Dictionary:
@@ -140,6 +167,29 @@ func _on_result(payload: Dictionary) -> void:
 func _on_ack(payload: Dictionary) -> void:
 	_acks.append(payload)
 
+func _on_recovery_snapshot(payload: Dictionary) -> void:
+	_recovery_snapshots.append(payload)
+
+func _wait_for_recovery_snapshot(bridge: Node) -> bool:
+	var deadline := Time.get_ticks_msec() + 5000
+	while Time.get_ticks_msec() < deadline:
+		if bool(bridge.action_transport_state().get("snapshot_ready", false)):
+			return true
+		await get_tree().process_frame
+	return false
+
+func _wait_for_backend_open(bridge: Node) -> bool:
+	var deadline := Time.get_ticks_msec() + 8000
+	while Time.get_ticks_msec() < deadline and not bridge.is_backend_open():
+		await get_tree().process_frame
+	return bridge.is_backend_open()
+
+func _wait_for_backend_closed(bridge: Node) -> bool:
+	var deadline := Time.get_ticks_msec() + 3000
+	while Time.get_ticks_msec() < deadline and bridge.is_backend_open():
+		await get_tree().process_frame
+	return not bridge.is_backend_open()
+
 func _outcome(payload: Dictionary) -> String:
 	var result: Variant = payload.get("authority_result", payload) if payload is Dictionary else {}
 	return str(result.get("outcome", "")) if result is Dictionary else ""
@@ -147,6 +197,16 @@ func _outcome(payload: Dictionary) -> String:
 func _transaction(payload: Dictionary) -> String:
 	var result: Variant = payload.get("authority_result", payload) if payload is Dictionary else {}
 	return str(result.get("transaction_id", "")) if result is Dictionary else ""
+
+func _identity(payload: Dictionary) -> Dictionary:
+	var result: Variant = payload.get("authority_result", payload) if payload is Dictionary else {}
+	if not result is Dictionary:
+		return {}
+	return {
+		"transaction_id": str(result.get("transaction_id", "")),
+		"committed_event_ids": result.get("committed_event_ids", []),
+		"committed_projection": result.get("committed_projection", {}),
+	}
 
 func _write_report(report: Dictionary) -> void:
 	var path := ProjectSettings.globalize_path("res://" + REPORT_PATH)

@@ -181,6 +181,7 @@ func _handle_state_transition() -> void:
             _bus_log("backend_connected:%s" % last_requested_url)
             _bus_emit("backend_connected", [last_requested_url])
             call_deferred("_request_street_action_snapshot")
+            call_deferred("_request_generic_action_snapshot")
         WebSocketPeer.STATE_CLOSING:
             _bus_log("backend_closing")
         WebSocketPeer.STATE_CLOSED:
@@ -195,6 +196,14 @@ func _request_street_action_snapshot() -> void:
         return
     send_envelope({
         "message_type": "street_combat_recovery_snapshot_request",
+        "payload": {"connection_epoch": action_connection_epoch},
+    })
+
+func _request_generic_action_snapshot() -> void:
+    if ws.get_ready_state() != WebSocketPeer.STATE_OPEN or action_connection_epoch < 1:
+        return
+    send_envelope({
+        "message_type": "unified_character_action_recovery_snapshot_request",
         "payload": {"connection_epoch": action_connection_epoch},
     })
 
@@ -229,11 +238,14 @@ func _dispatch_message(raw_text: String, packet_bytes: int = -1) -> void:
 
     match message_type:
         "street_combat_recovery_snapshot":
+            _bus_emit("street_combat_recovery_snapshot_received", [payload])
+            _bus_log("street_combat_recovery_snapshot:%s" % JSON.stringify(payload))
+        "unified_character_action_recovery_snapshot":
             action_snapshot_ready = bool(payload.get("accepted", false))
             action_resync_marker = str(payload.get("resync_marker", ""))
             action_snapshot_digest = str(payload.get("snapshot_digest", ""))
-            _bus_emit("street_combat_recovery_snapshot_received", [payload])
-            _bus_log("street_combat_recovery_snapshot:%s" % JSON.stringify(payload))
+            _bus_emit("unified_character_action_recovery_snapshot_received", [payload])
+            _bus_log("unified_character_action_recovery_snapshot:%s" % JSON.stringify(payload))
         "ack":
             _bus_emit("backend_ack_received", [payload])
             _bus_log("backend_ack")
