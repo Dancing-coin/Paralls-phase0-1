@@ -329,8 +329,30 @@ func set_motion_profile(state_name: String, profile_name: String) -> void:
 
 func play_qualified_profile(profile: Dictionary) -> Dictionary:
 	var clip := str(profile.get("clip_ref", ""))
-	var accepted := _play_action(clip)
+	var semantic_action_id := str(profile.get("semantic_action_id", ""))
+	if semantic_action_id == "action:melee.unarmed_punch":
+		clip = "boxing"
+	elif semantic_action_id == "action:melee.sword_slash":
+		clip = "sword attack"
+	var native_clip := _resolve_package_animation(clip)
+	var accepted := false
+	if not native_clip.is_empty() and animation_controller != null:
+		accepted = animation_controller.play_action(native_clip, _state_name_for_clip(native_clip))
+		if accepted:
+			_current_clip = str(animation_controller.get_current_clip_name())
 	return {"accepted": accepted, "played_clip": _current_clip if accepted else "", "semantic_action_id": str(profile.get("semantic_action_id", ""))}
+
+
+func _resolve_package_animation(clip: String) -> String:
+	if _animation_player == null or clip.is_empty():
+		return ""
+	for candidate in _animation_player.get_animation_list():
+		var path := str(candidate)
+		if path.begins_with("central/"):
+			continue
+		if path.to_lower() == clip.to_lower() or path.to_lower().ends_with("/" + clip.to_lower()):
+			return path
+	return ""
 
 
 func play_reviewed_action_atom(_action_tag: String, animation_clip_ref: String, _phase: String) -> Dictionary:

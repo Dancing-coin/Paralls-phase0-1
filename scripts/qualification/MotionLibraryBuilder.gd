@@ -67,6 +67,11 @@ func build_from_scene(
 		if output_library.add_animation(clip_name, copied_animation) != OK:
 			source_instance.free()
 			return _reject(result, "clip could not be added to output library: %s" % clip_name)
+		if clip_name == &"sword_attack":
+			var legacy_alias := copied_animation.duplicate(true) as Animation
+			if legacy_alias == null or output_library.add_animation("sword attack", legacy_alias) != OK:
+				source_instance.free()
+				return _reject(result, "clip legacy alias could not be added to output library: sword attack")
 		refs.append(clip_name)
 		var bone_count := _unique_bone_count(copied_animation)
 		track_counts[clip_name] = bone_count * 3
