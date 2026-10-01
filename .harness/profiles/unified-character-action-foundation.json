@@ -6,5 +6,18 @@
   "requires_godot": true,
   "result_artifact": ".harness/verification/unified-character-action-foundation-baseline.json",
   "include_in_profile_order": false,
-  "description": "Narrow Mode B semantic/authority protocol probe only; not the StreetCombatDemo action-foundation acceptance scene; Mode C is not enabled"
+  "description": "Narrow Mode B semantic/authority protocol probe plus the approved retargeted-library qualification contract; not the StreetCombatDemo action-foundation acceptance scene; Mode C is not enabled",
+  "retarget_probe": {
+    "script": "scripts/verification/motion_retarget_runtime_probe.gd",
+    "profile": "motion-library-qualification",
+    "required_fields": [
+      "cache_key_stable",
+      "target_tracks_valid",
+      "six_states_valid",
+      "foot_contact_valid",
+      "hand_socket_valid",
+      "root_motion_single_consume",
+      "rejected_output_blocked"
+    ]
+  }
 }

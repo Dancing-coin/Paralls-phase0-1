@@ -51,11 +51,14 @@ func register_motion_library(library_id: StringName, manifest: Dictionary, libra
 	var library_ref := str(manifest.get("animation_library_ref", ""))
 	var qualification_report_ref := str(manifest.get("qualification_report_ref", ""))
 	var source_digest := str(manifest.get("source_digest", ""))
-	if library_ref.is_empty() or _is_unreviewed_ref(library_ref) or not ResourceLoader.exists(library_ref):
+	if library_ref.is_empty() or _is_blocked_ref(library_ref) or _is_unreviewed_ref(library_ref) or not ResourceLoader.exists(library_ref):
 		return false
-	if qualification_report_ref.is_empty() or _is_unreviewed_ref(qualification_report_ref):
+	if qualification_report_ref.is_empty() or _is_blocked_ref(qualification_report_ref) or _is_unreviewed_ref(qualification_report_ref):
 		return false
 	if not source_digest.begins_with("sha256:") or source_digest.length() != 71:
+		return false
+	var realization_mode := str(manifest.get("realization_mode", "shared_library"))
+	if realization_mode == "retargeted_library" and not _valid_retarget_manifest(manifest, qualification_report_ref):
 		return false
 	var semantic_actions: Variant = manifest.get("semantic_actions", {})
 	var clips: Variant = manifest.get("clips", {})
@@ -79,6 +82,8 @@ func register_motion_library(library_id: StringName, manifest: Dictionary, libra
 		"motion_library_id": library_id,
 		"skeleton_profile_id": skeleton_profile_id,
 		"animation_library_ref": library_ref,
+		"realization_mode": realization_mode,
+		"cache_key": str(manifest.get("cache_key", "")),
 		"manifest": manifest.duplicate(true),
 		"animation_library": library,
 	}
@@ -93,6 +98,8 @@ func inventory_motion_libraries() -> Array[Dictionary]:
 			"motion_library_id": entry.get("motion_library_id", library_id),
 			"skeleton_profile_id": entry.get("skeleton_profile_id", ""),
 			"animation_library_ref": entry.get("animation_library_ref", ""),
+			"realization_mode": entry.get("realization_mode", "shared_library"),
+			"cache_key": entry.get("cache_key", ""),
 			"animation_library": entry.get("animation_library", null),
 		})
 	return inventory
@@ -222,8 +229,14 @@ func resolve_motion_realization(package_id: StringName, action_id: StringName, c
 			var candidate_id := str(raw_id)
 			if not candidate_id.is_empty() and not candidate_library_ids.has(candidate_id):
 				candidate_library_ids.append(candidate_id)
-	for desired_mode in ["shared_library", "retargeted_library"]:
-		for library_id in candidate_library_ids:
+	var realization_candidates := _manifest_realization_candidates(manifest, action_id_text, candidate_library_ids)
+	for candidate: Dictionary in realization_candidates:
+		var desired_mode := str(candidate.get("realization_mode", ""))
+		var requested_library_id := str(candidate.get("motion_library_id", ""))
+		var candidate_ids: Array[String] = candidate_library_ids
+		if not requested_library_id.is_empty():
+			candidate_ids = [requested_library_id]
+		for library_id in candidate_ids:
 			var library_entry: Variant = _motion_libraries.get(StringName(library_id), {})
 			if not (library_entry is Dictionary) or (library_entry as Dictionary).is_empty():
 				continue
@@ -238,18 +251,18 @@ func resolve_motion_realization(package_id: StringName, action_id: StringName, c
 			if not (semantic_action is Dictionary):
 				continue
 			var action: Dictionary = semantic_action
-			var realization_mode := str(action.get("realization_mode", desired_mode))
-			if realization_mode != desired_mode:
+			var action_realization_mode := str(action.get("realization_mode", desired_mode))
+			if action_realization_mode != desired_mode:
 				continue
 			var clip_ref := str(action.get("clip_ref", ""))
 			if clip_ref.is_empty() or _is_unreviewed_ref(clip_ref):
 				continue
 			result["accepted"] = true
 			result["motion_library_id"] = library_id
-			result["realization_mode"] = realization_mode
+			result["realization_mode"] = action_realization_mode
 			result["clip_ref"] = clip_ref
 			result["animation_library"] = entry.get("animation_library", null)
-			result["source"] = realization_mode
+			result["source"] = action_realization_mode
 			result["reason"] = ""
 			_admission_log.append(result.duplicate(true))
 			return result
@@ -498,6 +511,96 @@ func _read_json(path: String) -> Dictionary:
 func _is_unreviewed_ref(value: String) -> bool:
 	var normalized := value.to_lower()
 	return normalized.contains("incoming") or normalized.contains("review")
+
+
+func _is_blocked_ref(value: String) -> bool:
+	var normalized := value.to_lower().replace("\\", "/")
+	return normalized.contains("/rejected/") or normalized.contains("/quarantined/") or normalized.begins_with("rejected/") or normalized.begins_with("quarantined/")
+
+
+func _valid_retarget_manifest(manifest: Dictionary, qualification_report_ref: String) -> bool:
+	if str(manifest.get("qualification_status", STATUS_REJECTED)) != "approved":
+		return false
+	if str(manifest.get("realization_mode", "")) != "retargeted_library":
+		return false
+	var required_fields := [
+		"cache_key", "source_library_id", "source_library_digest", "target_profile_id",
+		"target_profile_digest", "body_profile_id", "calibration_profile_id",
+		"ik_profile_id", "solver_version", "output_digest",
+	]
+	for field in required_fields:
+		if str(manifest.get(field, "")).is_empty():
+			return false
+	var cache_key := str(manifest.get("cache_key", ""))
+	if not cache_key.begins_with("retarget-cache-") or cache_key.length() != 79:
+		return false
+	for digest_field in ["source_digest", "source_library_digest", "output_digest"]:
+		var digest := str(manifest.get(digest_field, ""))
+		if not digest.begins_with("sha256:") or digest.length() != 71:
+			return false
+	if str(manifest.get("source_library_digest", "")) != str(manifest.get("source_digest", "")):
+		return false
+	if not FileAccess.file_exists(qualification_report_ref):
+		return false
+	var report := _read_json(qualification_report_ref)
+	if not bool(report.get("accepted", false)) or str(report.get("realization_mode", "")) != "retargeted_library":
+		return false
+	if str(report.get("cache_key", "")) != cache_key:
+		return false
+	var clip_reports: Variant = report.get("clip_reports", [])
+	if not (clip_reports is Array) or (clip_reports as Array).is_empty():
+		return false
+	for raw_report in clip_reports:
+		if not (raw_report is Dictionary):
+			return false
+		var clip_report: Dictionary = raw_report
+		if str(clip_report.get("clip_ref", "")).is_empty():
+			return false
+		for gate in ["foot", "hand", "weapon_slot", "root_motion", "markers"]:
+			var gate_value: Variant = clip_report.get(gate, {})
+			if not (gate_value is Dictionary) or not bool((gate_value as Dictionary).get("accepted", false)):
+				return false
+	var clips: Variant = manifest.get("clips", {})
+	if not (clips is Dictionary) or (clips as Dictionary).is_empty():
+		return false
+	for raw_clip in (clips as Dictionary).values():
+		if not (raw_clip is Dictionary):
+			return false
+		var canonical_bone_ids: Variant = (raw_clip as Dictionary).get("canonical_bone_ids", [])
+		if not (canonical_bone_ids is Array) or (canonical_bone_ids as Array).is_empty():
+			return false
+	var semantic_actions: Variant = manifest.get("semantic_actions", {})
+	if not (semantic_actions is Dictionary) or (semantic_actions as Dictionary).is_empty():
+		return false
+	for raw_action in (semantic_actions as Dictionary).values():
+		if not (raw_action is Dictionary) or str((raw_action as Dictionary).get("realization_mode", "")) != "retargeted_library":
+			return false
+	return true
+
+
+func _manifest_realization_candidates(manifest: Dictionary, action_id: String, candidate_library_ids: Array[String]) -> Array[Dictionary]:
+	var candidates: Array[Dictionary] = []
+	var declared: Variant = manifest.get("motion_realizations", {})
+	if declared is Dictionary:
+		var raw_candidates: Variant = (declared as Dictionary).get(action_id, [])
+		if raw_candidates is Dictionary:
+			raw_candidates = [raw_candidates]
+		if raw_candidates is Array:
+			for raw_candidate in raw_candidates:
+				if not (raw_candidate is Dictionary):
+					continue
+				var candidate: Dictionary = raw_candidate
+				var mode := str(candidate.get("realization_mode", ""))
+				if mode in ["retargeted_library", "shared_library"]:
+					candidates.append({"realization_mode": mode, "motion_library_id": str(candidate.get("motion_library_id", ""))})
+	if candidates.is_empty():
+		var declared_mode := str(manifest.get("realization_mode", "shared_library"))
+		var modes := ["shared_library", "retargeted_library"]
+		if declared_mode == "retargeted_library":
+			modes = ["retargeted_library", "shared_library"]
+		for mode in modes:
+			candidates.append({"realization_mode": mode, "motion_library_id": ""})
+	return candidates
 
 
 func _claims_include_raw_clip_lookup(claims: Array[StringName]) -> bool:

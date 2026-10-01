@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "motion-library-qualification",
+  "order": 52,
+  "script": "scripts/verification/tests/test_motion_retarget_runtime_probe.py",
+  "requires_godot": true,
+  "result_artifact": ".harness/verification/motion-library-qualification.json",
+  "success_key": "valid",
+  "max_attempts": 1,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "description": "Fresh Godot headless retargeted-library admission and runtime qualification gates"
+}

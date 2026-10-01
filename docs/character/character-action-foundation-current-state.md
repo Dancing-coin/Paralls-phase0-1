@@ -65,7 +65,33 @@ real street packages bind to the external-controller-style AnimationTree and
 pass idle/walk/run/jump/boxing/sword state and recovery checks. This closes the
 animation pilot only. It does not claim calibrated root-motion locomotion,
 universal NPC/agent Motor routing, final ActionAttempt authority closure, or
-complete registry admission.
+complete package-wide registry admission.
+
+### Unified motion library stages 1–3 evidence
+
+The central approved library remains `motionlib:humanoid.v1.core@1`. The three
+Street package manifests currently declare `shared_library` realization:
+`female_jk_external=shared_library`, `female_t_external=shared_library`, and
+`female_bandage_external=shared_library`. The Stage 3 runtime probe exercises a
+qualified `retargeted_library` target variant for the `female_t_external` body
+profile using `retargeter.v1`; it is a fresh qualification probe, not a claim
+that every package has a committed generated target library.
+
+Registry admission is fail-closed: a retarget manifest must be approved and
+carry source/target digests, Body/Calibration/IK profile references, solver
+version, stable cache key, clip reports, output digest, and a loadable target
+resource. Rejected or quarantined outputs cannot enter the Registry. Skin
+resolution follows manifest order and falls back only to an audited shared,
+package-native, or explicit fallback realization.
+
+Fresh evidence is produced by `motion_retarget_runtime_probe.gd`, its Python
+test, and the `motion-library-qualification` Harness profile. The probe checks
+cache stability, target tracks, six states, foot contact, hand/weapon sockets,
+single Motor root-motion consumption, and rejected-output blocking. Current
+remap is build-time/cached canonical track remap; it is not described as perfect
+fast retargeting or general runtime IK. Open capabilities remain calibrated
+root-motion locomotion, universal runtime IK, and a committed target library for
+each package.
 
 The controlling completion documents are:
 

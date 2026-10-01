@@ -7,7 +7,7 @@
   "result_artifact": ".harness/verification/street-combat-runtime.json",
   "max_attempts": 1,
   "include_in_profile_order": false,
-  "description": "Formal StreetCombatDemo acceptance plus a fresh shared motion library probe: three Registry-qualified character packages, semantic animation realization, Motor-owned root motion, live player/agent authority combat, and HUD evidence; UnifiedCharacterActionFoundation is not used as the action-base gate",
+  "description": "Formal StreetCombatDemo acceptance plus fresh shared and retargeted motion-library probes: three Registry-qualified character packages, semantic animation realization, Motor-owned root motion, live player/agent authority combat, and HUD evidence; UnifiedCharacterActionFoundation is not used as the action-base gate",
   "acceptance_scene": "scenes/phase0/StreetCombatDemo.tscn",
   "qualified_packages": [
     "female_bandage_external",
@@ -30,7 +30,9 @@
     "animation_tree_active",
     "motor_motion_owner",
     "root_motion_single_consume",
-    "fallback_reason"
+    "fallback_reason",
+    "retargeted_library_admission",
+    "retarget_runtime_gates"
   ],
   "fresh_probe": {
     "script": "scripts/verification/street_shared_motion_library_probe.gd",
@@ -43,6 +45,20 @@
       "motor_motion_owner",
       "root_motion_single_consume",
       "fallback_reason"
+    ],
+    "fresh_only": true
+  },
+  "retarget_probe": {
+    "script": "scripts/verification/motion_retarget_runtime_probe.gd",
+    "result_artifact": ".harness/verification/motion-library-qualification.json",
+    "fields": [
+      "cache_key_stable",
+      "target_tracks_valid",
+      "six_states_valid",
+      "foot_contact_valid",
+      "hand_socket_valid",
+      "root_motion_single_consume",
+      "rejected_output_blocked"
     ],
     "fresh_only": true
   }

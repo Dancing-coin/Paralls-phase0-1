@@ -14,6 +14,7 @@ var _skeleton: Skeleton3D
 var _current_clip := ""
 var _motion_profile := "default"
 var _mounted_motion_library_id := ""
+var _mounted_realization_mode := ""
 var _uses_shared_motion_library := false
 var _fallback_applied := false
 var _fallback_reason := ""
@@ -51,7 +52,7 @@ func _ready() -> void:
 	set_state("idle")
 
 
-func mount_motion_library(library: AnimationLibrary, library_id: StringName) -> bool:
+func mount_motion_library(library: AnimationLibrary, library_id: StringName, realization_mode: String = "shared_library") -> bool:
 	if _animation_player == null or library == null or String(library_id).is_empty():
 		_fallback_applied = true
 		_fallback_reason = "shared_library_unavailable"
@@ -64,7 +65,8 @@ func mount_motion_library(library: AnimationLibrary, library_id: StringName) -> 
 		_fallback_reason = "shared_library_mount_failed"
 		return false
 	_mounted_motion_library_id = String(library_id)
-	_uses_shared_motion_library = true
+	_mounted_realization_mode = realization_mode
+	_uses_shared_motion_library = realization_mode == "shared_library"
 	return true
 
 
@@ -74,6 +76,10 @@ func get_mounted_motion_library_id() -> String:
 
 func uses_shared_motion_library() -> bool:
 	return _uses_shared_motion_library
+
+
+func get_mounted_realization_mode() -> String:
+	return _mounted_realization_mode
 
 
 func is_fallback_applied() -> bool:
@@ -115,12 +121,17 @@ func _mount_declared_motion_library() -> void:
 		_fallback_reason = "motion_library_id_missing"
 		return
 	var registry = CharacterEmbodimentAssetRegistryRef.new()
+	var realization := registry.resolve_motion_realization(StringName(package_id), &"action:locomotion.idle", [])
+	if bool(realization.get("accepted", false)):
+		var resolved_library: AnimationLibrary = realization.get("animation_library", null) as AnimationLibrary
+		if resolved_library != null and mount_motion_library(resolved_library, StringName(str(realization.get("motion_library_id", declared_id))), str(realization.get("realization_mode", "shared_library"))):
+			return
 	var inventory: Array[Dictionary] = registry.inventory_motion_libraries()
 	for entry: Dictionary in inventory:
 		if str(entry.get("motion_library_id", "")) != declared_id:
 			continue
 		var library: AnimationLibrary = entry.get("animation_library", null) as AnimationLibrary
-		if mount_motion_library(library, StringName(declared_id)):
+		if mount_motion_library(library, StringName(declared_id), str(entry.get("realization_mode", "shared_library"))):
 			return
 	_fallback_applied = true
 	_fallback_reason = "shared_library_unavailable"

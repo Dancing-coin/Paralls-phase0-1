@@ -46,3 +46,27 @@ Godot 4.6.3 运行两个 StreetCombat 场景时，三个角色的 AnimationTree 
   ```
 
   预期输出包含 `shared_library_identity=true`、`six_states=true`、`animation_tree_active=true`、`motor_motion_owner=true`、`root_motion_single_consume=true` 和 `fallback_reason=`。
+
+## 阶段 3 retargeted library 运行时资格化（2026-10-02）
+
+`CharacterEmbodimentAssetRegistry` 只接纳同时满足
+`qualification_status=approved` 与 `realization_mode=retargeted_library` 的生成库。
+manifest 还必须绑定 source/target digest、Body/Calibration/IK profile、solver
+版本、cache key、clip report、输出 digest 和可加载的 `.tres`；`rejected` 或
+`quarantined` 路径在注册前即被阻止。`StreetCharacterSkin` 按角色 manifest 的
+realization 顺序选择目标库，资源缺失时才回退到已审核的 shared library、package
+native 或显式 fallback，不读取未审核文件。
+
+本轮探针覆盖 `idle`、`walk`、`run`、`jump`、`boxing`、`sword_attack`，并检查脚接触、
+手/武器 socket、marker/root policy 和 Motor 单次 root-motion 消费。证据入口：
+
+```powershell
+D:\godot\Godot_v4.6.3-stable_win64_console.exe --headless --path . --script res://scripts/verification/motion_retarget_runtime_probe.gd
+pytest scripts/verification/tests/test_motion_retarget_runtime_probe.py -v
+python scripts/verification/harness.py --profile motion-library-qualification
+```
+
+探针会输出 `cache_key_stable`、`target_tracks_valid`、`six_states_valid`、
+`foot_contact_valid`、`hand_socket_valid`、`root_motion_single_consume` 和
+`rejected_output_blocked`。当前实现是构建时/缓存式 canonical track remap；它不宣称
+完美快速重定向、通用运行时 IK 或关键帧内动态生成轨道。
