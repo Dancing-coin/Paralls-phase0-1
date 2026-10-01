@@ -569,6 +569,12 @@ class SimingCoordinator:
             writer.record_checkpoint(SimingCheckpoint.model_validate(item))
         if payload["read_model"] is not None:
             writer.record_read_model(NarrativeReadModel.model_validate(payload["read_model"]))
+        observatory = payload.get("observatory") or []
+        if observatory:
+            restore = getattr(self.runtime, "restore_observatory_messages", None)
+            if restore is None:
+                raise ValueError("siming_observatory_restore_unavailable")
+            restore(observatory)
 
     @staticmethod
     def _graph_receipt(batch, payload):

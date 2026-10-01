@@ -142,6 +142,7 @@ class SimingRuntime:
         self._heavenly_story_projection = SimingStoryProjection()
         self._observatory_projection = SimingDebugProjection()
         self._pending_observatory_messages: list[dict[str, object]] = []
+        self._observatory_message_digests: set[str] = set()
         self._actor_pin_reader = actor_pin_reader
         self._source_pin_reader = source_pin_reader
         self._siming_owner_thread = None
@@ -1015,7 +1016,7 @@ class SimingRuntime:
         result.read_model = self._read_model_builder.build_bundle_read_model(
             bundle, producer_ts=producer_ts + 2
         )
-        self._pending_observatory_messages.append(
+        self._queue_observatory_message(
             {
                 "message_type": "siming_debug_event",
                 "payload": {
@@ -1286,6 +1287,28 @@ class SimingRuntime:
         messages = self._pending_observatory_messages
         self._pending_observatory_messages = []
         return messages
+
+    def restore_observatory_messages(self, messages: list[dict[str, object]]) -> None:
+        """Restore durable observability output exactly once after a replay.
+
+        The message payload is already privacy-filtered by the observatory projection;
+        this method only requeues the frozen payload and fences duplicate recovery.
+        """
+        self._assert_siming_owner()
+        for message in messages:
+            message_digest = digest(message)
+            if (message_digest in self._observatory_message_digests
+                    or any(digest(existing) == message_digest for existing in self._pending_observatory_messages)):
+                continue
+            self._observatory_message_digests.add(message_digest)
+            self._pending_observatory_messages.append(message)
+
+    def _queue_observatory_message(self, message: dict[str, object]) -> None:
+        message_digest = digest(message)
+        if message_digest in self._observatory_message_digests:
+            return
+        self._observatory_message_digests.add(message_digest)
+        self._pending_observatory_messages.append(message)
 
     def _fairness_snapshot(self, event: AuthorityEvent) -> SimingOutput:
         return SimingOutput(
@@ -1939,12 +1962,14 @@ class SimingRuntime:
             downstream_status=downstream_status,
             no_action_reason=no_action_reason,
         )
-        (self._pending_observatory_messages if messages is None else messages).append(
-            {
-                "message_type": "siming_debug_snapshot",
-                "payload": snapshot.model_dump(exclude_none=True),
-            }
-        )
+        message = {
+            "message_type": "siming_debug_snapshot",
+            "payload": snapshot.model_dump(exclude_none=True),
+        }
+        if messages is None:
+            self._queue_observatory_message(message)
+        else:
+            messages.append(message)
 
     def _queue_event(
         self,
@@ -1971,12 +1996,14 @@ class SimingRuntime:
             downstream_status=downstream_status,
             no_action_reason=no_action_reason,
         )
-        (self._pending_observatory_messages if messages is None else messages).append(
-            {
-                "message_type": "siming_debug_event",
-                "payload": event.model_dump(exclude_none=True),
-            }
-        )
+        message = {
+            "message_type": "siming_debug_event",
+            "payload": event.model_dump(exclude_none=True),
+        }
+        if messages is None:
+            self._queue_observatory_message(message)
+        else:
+            messages.append(message)
 
     @property
     def pending_count(self) -> int:
