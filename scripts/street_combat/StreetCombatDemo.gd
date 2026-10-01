@@ -385,8 +385,8 @@ func _probe_imported_action_catalog() -> bool:
 			var current := str(skin.get_current_clip_name()).to_lower()
 			var central_action_clip := "sword_attack" if action_id == "action:melee.sword_slash" else "boxing"
 			var matches_profile := not clip.is_empty() and current.ends_with(clip.to_lower())
-			var matches_central := skin.uses_shared_motion_library() and current == "central/%s" % central_action_clip
-			var accepted := bool(playback.get("accepted", false)) and (matches_profile or matches_central)
+			var matches_central: bool = skin.uses_shared_motion_library() and current == "central/%s" % central_action_clip
+			var accepted: bool = bool(playback.get("accepted", false)) and (matches_profile or matches_central)
 			print("street_combat_probe:action=%s:%s:%s" % [actor_name, action_id, str(accepted).to_lower()])
 			all_accepted = all_accepted and accepted
 		for clip in ["idle", "walking", "running", "jump", "boxing"]:
