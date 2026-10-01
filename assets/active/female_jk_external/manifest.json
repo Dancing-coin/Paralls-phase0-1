@@ -1,6 +1,10 @@
 {
   "contract": "character_action_asset_manifest.v1",
   "package_id": "female_jk_external",
+  "skeleton_profile_id": "humanoid.v1",
+  "motion_library_id": "motionlib:humanoid.v1.core@1",
+  "realization_mode": "shared_library",
+  "supported_motion_libraries": ["motionlib:humanoid.v1.core@1"],
   "candidate_status": "candidate",
   "source_model_path": "res://assets/active/female_jk_external/female_jk_external.glb",
   "source": {
@@ -92,7 +96,7 @@
   },
   "clip_aliases": {
     "idle": "idle",
-    "walk_forward": "walking",
+    "walk_forward": "walking2",
     "run_forward": "running",
     "jump_start": "jump",
     "jump_loop": "jump",
@@ -100,7 +104,7 @@
   },
   "locomotion_map": {
     "idle": "idle",
-    "walk_forward": "walking",
+    "walk_forward": "walking2",
     "run_forward": "running",
     "jump_start": "jump",
     "jump_loop": "jump",

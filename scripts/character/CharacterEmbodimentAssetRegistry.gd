@@ -14,15 +14,88 @@ const PRIMARY_QUALIFICATION_REPORT_PATHS := {
 	&"female_t_external": "res://assets/characters/qualification_reports/female_t_external.json",
 	&"female_bandage_external": "res://assets/characters/qualification_reports/female_bandage_external.json",
 }
+const MOTION_LIBRARY_MANIFEST_PATH := "res://assets/motion_library/approved/humanoid.v1/street_locomotion.manifest.json"
+const MOTION_LIBRARY_RESOURCE_PATH := "res://assets/motion_library/approved/humanoid.v1/street_locomotion.tres"
+const CANONICAL_SKELETON_PROFILE := "humanoid.v1"
 
 var _motion_assets: Dictionary = {}
 var _reviewed_action_catalog: Dictionary = {}
 var _qualified_packages: Dictionary = {}
+var _motion_libraries: Dictionary = {}
 var _admission_log: Array[Dictionary] = []
 
 
 func _init() -> void:
 	register_primary_packages()
+	register_primary_motion_library()
+
+
+func register_primary_motion_library() -> bool:
+	var manifest := _read_json(MOTION_LIBRARY_MANIFEST_PATH)
+	var library := ResourceLoader.load(MOTION_LIBRARY_RESOURCE_PATH) as AnimationLibrary
+	if library == null:
+		return false
+	return register_motion_library(StringName(str(manifest.get("motion_library_id", ""))), manifest, library)
+
+
+func register_motion_library(library_id: StringName, manifest: Dictionary, library: AnimationLibrary) -> bool:
+	if String(library_id).is_empty() or library == null:
+		return false
+	if str(manifest.get("motion_library_id", "")) != String(library_id):
+		return false
+	var skeleton_profile_id := str(manifest.get("skeleton_profile_id", ""))
+	if skeleton_profile_id.is_empty() or skeleton_profile_id != CANONICAL_SKELETON_PROFILE:
+		return false
+	if str(manifest.get("qualification_status", STATUS_REJECTED)) != "approved":
+		return false
+	var library_ref := str(manifest.get("animation_library_ref", ""))
+	var qualification_report_ref := str(manifest.get("qualification_report_ref", ""))
+	var source_digest := str(manifest.get("source_digest", ""))
+	if library_ref.is_empty() or _is_unreviewed_ref(library_ref) or not ResourceLoader.exists(library_ref):
+		return false
+	if qualification_report_ref.is_empty() or _is_unreviewed_ref(qualification_report_ref):
+		return false
+	if not source_digest.begins_with("sha256:") or source_digest.length() != 71:
+		return false
+	var semantic_actions: Variant = manifest.get("semantic_actions", {})
+	var clips: Variant = manifest.get("clips", {})
+	if not (semantic_actions is Dictionary) or (semantic_actions as Dictionary).is_empty():
+		return false
+	if not (clips is Dictionary) or (clips as Dictionary).is_empty():
+		return false
+	for raw_clip in (clips as Dictionary).values():
+		if not (raw_clip is Dictionary):
+			return false
+		var clip_ref := str((raw_clip as Dictionary).get("clip_ref", ""))
+		if clip_ref.is_empty() or _is_unreviewed_ref(clip_ref) or not library.has_animation(StringName(clip_ref)):
+			return false
+	for raw_action in (semantic_actions as Dictionary).values():
+		if not (raw_action is Dictionary):
+			return false
+		var clip_ref := str((raw_action as Dictionary).get("clip_ref", ""))
+		if clip_ref.is_empty() or _is_unreviewed_ref(clip_ref) or not library.has_animation(StringName(clip_ref)):
+			return false
+	_motion_libraries[library_id] = {
+		"motion_library_id": library_id,
+		"skeleton_profile_id": skeleton_profile_id,
+		"animation_library_ref": library_ref,
+		"manifest": manifest.duplicate(true),
+		"animation_library": library,
+	}
+	return true
+
+
+func inventory_motion_libraries() -> Array[Dictionary]:
+	var inventory: Array[Dictionary] = []
+	for library_id: StringName in _motion_libraries:
+		var entry: Dictionary = _motion_libraries[library_id]
+		inventory.append({
+			"motion_library_id": entry.get("motion_library_id", library_id),
+			"skeleton_profile_id": entry.get("skeleton_profile_id", ""),
+			"animation_library_ref": entry.get("animation_library_ref", ""),
+			"animation_library": entry.get("animation_library", null),
+		})
+	return inventory
 
 
 func register_primary_packages() -> Dictionary:
@@ -96,11 +169,115 @@ func register_qualified_package(package_id: StringName, manifest: Dictionary, re
 		"package_digest": package_digest,
 		"qualification_report_ref": qualification_report_ref,
 		"qualification_status": status,
+		"manifest": manifest.duplicate(true),
+		"skeleton_profile_id": str(manifest.get("skeleton_profile_id", manifest.get("canonical_mapping", {}).get("profile_id", ""))),
+		"motion_library_id": str(manifest.get("motion_library_id", "")),
+		"supported_motion_libraries": manifest.get("supported_motion_libraries", []).duplicate(true) if manifest.get("supported_motion_libraries", []) is Array else [],
 		"canonical_skeleton_mapping_ref": _canonical_mapping_ref(package_id),
 		"equipment": equipment,
 		"profiles": profiles,
 	}
 	return true
+
+
+func resolve_motion_realization(package_id: StringName, action_id: StringName, claims: Array[StringName], raw_clip_lookup: String = "") -> Dictionary:
+	var result := {
+		"accepted": false,
+		"motion_library_id": "",
+		"realization_mode": "",
+		"clip_ref": "",
+		"animation_library": null,
+		"fallback_applied": false,
+		"source": "",
+		"reason": "",
+	}
+	if not raw_clip_lookup.is_empty() or _claims_include_raw_clip_lookup(claims):
+		result["reason"] = "raw_clip_lookup_forbidden"
+		_admission_log.append(result.duplicate(true))
+		return result
+	var package: Variant = _qualified_packages.get(package_id, {})
+	if not (package is Dictionary) or (package as Dictionary).is_empty():
+		result["reason"] = "package_not_qualified"
+		_admission_log.append(result.duplicate(true))
+		return result
+	var package_dict: Dictionary = package
+	if str(package_dict.get("qualification_status", STATUS_REJECTED)) == STATUS_REJECTED:
+		result["reason"] = "package_not_qualified"
+		_admission_log.append(result.duplicate(true))
+		return result
+	var manifest: Dictionary = package_dict.get("manifest", {})
+	var package_skeleton := str(package_dict.get("skeleton_profile_id", ""))
+	if package_skeleton.is_empty() or package_skeleton != CANONICAL_SKELETON_PROFILE:
+		result["reason"] = "skeleton_profile_mismatch"
+		_admission_log.append(result.duplicate(true))
+		return result
+	var action_id_text := String(action_id)
+	var supported: Variant = package_dict.get("supported_motion_libraries", [])
+	var package_library_id := str(package_dict.get("motion_library_id", ""))
+	var candidate_library_ids: Array[String] = []
+	if not package_library_id.is_empty():
+		candidate_library_ids.append(package_library_id)
+	if supported is Array:
+		for raw_id in supported:
+			var candidate_id := str(raw_id)
+			if not candidate_id.is_empty() and not candidate_library_ids.has(candidate_id):
+				candidate_library_ids.append(candidate_id)
+	for desired_mode in ["shared_library", "retargeted_library"]:
+		for library_id in candidate_library_ids:
+			var library_entry: Variant = _motion_libraries.get(StringName(library_id), {})
+			if not (library_entry is Dictionary) or (library_entry as Dictionary).is_empty():
+				continue
+			var entry: Dictionary = library_entry
+			if str(entry.get("skeleton_profile_id", "")) != package_skeleton:
+				continue
+			var library_manifest: Dictionary = entry.get("manifest", {})
+			var semantic_actions: Variant = library_manifest.get("semantic_actions", {})
+			if not (semantic_actions is Dictionary) or not (semantic_actions as Dictionary).has(action_id_text):
+				continue
+			var semantic_action: Variant = (semantic_actions as Dictionary).get(action_id_text, {})
+			if not (semantic_action is Dictionary):
+				continue
+			var action: Dictionary = semantic_action
+			var realization_mode := str(action.get("realization_mode", desired_mode))
+			if realization_mode != desired_mode:
+				continue
+			var clip_ref := str(action.get("clip_ref", ""))
+			if clip_ref.is_empty() or _is_unreviewed_ref(clip_ref):
+				continue
+			result["accepted"] = true
+			result["motion_library_id"] = library_id
+			result["realization_mode"] = realization_mode
+			result["clip_ref"] = clip_ref
+			result["animation_library"] = entry.get("animation_library", null)
+			result["source"] = realization_mode
+			result["reason"] = ""
+			_admission_log.append(result.duplicate(true))
+			return result
+	var native_clip := _package_native_clip(manifest, action_id_text)
+	if not native_clip.is_empty():
+		result["accepted"] = true
+		result["motion_library_id"] = package_library_id
+		result["realization_mode"] = "package_native"
+		result["clip_ref"] = native_clip
+		result["fallback_applied"] = true
+		result["source"] = "package_native"
+		result["reason"] = "shared_library_unavailable"
+		_admission_log.append(result.duplicate(true))
+		return result
+	var declared_fallback := _declared_fallback(manifest, action_id_text)
+	if not declared_fallback.is_empty():
+		result["accepted"] = true
+		result["motion_library_id"] = str(declared_fallback.get("motion_library_id", package_library_id))
+		result["realization_mode"] = "fallback"
+		result["clip_ref"] = str(declared_fallback.get("clip_ref", ""))
+		result["fallback_applied"] = true
+		result["source"] = "declared_fallback"
+		result["reason"] = "shared_library_unavailable"
+		_admission_log.append(result.duplicate(true))
+		return result
+	result["reason"] = "semantic_action_unavailable"
+	_admission_log.append(result.duplicate(true))
+	return result
 
 
 func resolve(package_id: StringName, action_id: StringName, claims: Array[StringName]) -> Dictionary:
@@ -316,6 +493,51 @@ func _read_json(path: String) -> Dictionary:
 		return {}
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
 	return parsed if parsed is Dictionary else {}
+
+
+func _is_unreviewed_ref(value: String) -> bool:
+	var normalized := value.to_lower()
+	return normalized.contains("incoming") or normalized.contains("review")
+
+
+func _claims_include_raw_clip_lookup(claims: Array[StringName]) -> bool:
+	for claim in claims:
+		if str(claim).to_lower().begins_with("raw_clip_lookup"):
+			return true
+	return false
+
+
+func _package_native_clip(manifest: Dictionary, action_id: String) -> String:
+	var actions: Variant = manifest.get("actions", [])
+	if not (actions is Array):
+		return ""
+	for raw_action in actions:
+		if not (raw_action is Dictionary):
+			continue
+		if str((raw_action as Dictionary).get("semantic_action_id", "")) != action_id:
+			continue
+		var clip_ref := str((raw_action as Dictionary).get("clip_ref", ""))
+		if not clip_ref.is_empty() and not _is_unreviewed_ref(clip_ref):
+			return clip_ref
+	return ""
+
+
+func _declared_fallback(manifest: Dictionary, action_id: String) -> Dictionary:
+	var realizations: Variant = manifest.get("motion_realizations", {})
+	if not (realizations is Dictionary):
+		return {}
+	var candidate: Variant = (realizations as Dictionary).get(action_id, {})
+	if candidate is Array:
+		for raw_candidate in candidate:
+			if raw_candidate is Dictionary and str((raw_candidate as Dictionary).get("realization_mode", "")) == "fallback":
+				var clip_ref := str((raw_candidate as Dictionary).get("clip_ref", ""))
+				if not clip_ref.is_empty() and not _is_unreviewed_ref(clip_ref):
+					return (raw_candidate as Dictionary).duplicate(true)
+	elif candidate is Dictionary and str((candidate as Dictionary).get("realization_mode", "")) == "fallback":
+		var clip_ref := str((candidate as Dictionary).get("clip_ref", ""))
+		if not clip_ref.is_empty() and not _is_unreviewed_ref(clip_ref):
+			return (candidate as Dictionary).duplicate(true)
+	return {}
 
 
 func _canonical_mapping_ref(package_id: StringName) -> String:

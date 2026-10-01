@@ -1,13 +1,17 @@
 {
   "contract": "character_action_asset_manifest.v1",
   "package_id": "female_bandage_external",
+  "skeleton_profile_id": "humanoid.v1",
+  "motion_library_id": "motionlib:humanoid.v1.core@1",
+  "realization_mode": "shared_library",
+  "supported_motion_libraries": ["motionlib:humanoid.v1.core@1"],
   "candidate_status": "candidate",
   "task8_primary": true,
   "runtime_admission": "qualified",
   "source_model_path": "res://assets/active/female_bandage_external/female_bandage_external.glb",
   "source": {
     "model_path": "assets/active/female_bandage_external/female_bandage_external.glb",
-    "digest_sha256": "EE0E846E0B2BC239CC2E91B1C5F3B5789CEE339C977AD40ED8C01E3A41335EDB",
+    "digest_sha256": "74D0F166382F078D7A20E897AC5195D629CEA3C302CAA5348A2FA7A2E054852E",
     "format": "glb"
   },
   "provenance": {
@@ -16,7 +20,7 @@
     "source_format": "blend",
     "working_copy": "production-assets/characters/female_bandage_external/source/female_bandage_external_source.blend",
     "qualification_report_ref": "assets/characters/qualification_reports/female_bandage_external.json",
-    "package_digest": "EE0E846E0B2BC239CC2E91B1C5F3B5789CEE339C977AD40ED8C01E3A41335EDB",
+    "package_digest": "74D0F166382F078D7A20E897AC5195D629CEA3C302CAA5348A2FA7A2E054852E",
     "authoring_frame_rate": 30.0,
     "runtime_export_frame_rate": 60.0,
     "original_source_digest_sha256": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
@@ -89,7 +93,7 @@
   },
   "clip_aliases": {
     "idle": "idle",
-    "walk_forward": "walking",
+    "walk_forward": "walking2",
     "run_forward": "running",
     "jump_start": "jump",
     "jump_loop": "jump",
@@ -97,7 +101,7 @@
   },
   "locomotion_map": {
     "idle": "idle",
-    "walk_forward": "walking",
+    "walk_forward": "walking2",
     "run_forward": "running",
     "jump_start": "jump",
     "jump_loop": "jump",
