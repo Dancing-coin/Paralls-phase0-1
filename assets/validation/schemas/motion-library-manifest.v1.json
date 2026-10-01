@@ -12,7 +12,18 @@
     "semantic_actions": {"type": "object", "minProperties": 1, "additionalProperties": {"$ref": "#/$defs/semanticAction"}},
     "source_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
     "qualification_report_ref": {"type": "string", "minLength": 1},
-    "qualification_status": {"type": "string", "enum": ["candidate", "approved", "rejected"]}
+    "qualification_status": {"type": "string", "enum": ["candidate", "approved", "rejected"]},
+    "realization_mode": {"type": "string", "enum": ["shared_library", "retargeted_library", "package_native", "fallback"]},
+    "cache_key": {"type": "string", "pattern": "^retarget-cache-[0-9a-f]{64}$"},
+    "source_library_id": {"type": "string", "minLength": 1},
+    "source_library_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "target_profile_id": {"type": "string", "minLength": 1},
+    "target_profile_digest": {"type": "string", "minLength": 1},
+    "body_profile_id": {"type": "string", "minLength": 1},
+    "calibration_profile_id": {"type": "string", "minLength": 1},
+    "ik_profile_id": {"type": "string", "minLength": 1},
+    "solver_version": {"type": "string", "minLength": 1},
+    "output_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
   },
   "$defs": {
     "clip": {
