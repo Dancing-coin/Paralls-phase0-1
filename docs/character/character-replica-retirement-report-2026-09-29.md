@@ -30,7 +30,7 @@ Fresh exported evidence:
 - `D:\HarnessEvidence\paralls-20261001-7dda443-retirement` (clean HEAD `7dda443808a19c81e8f1cadaa46cedb9d0f19ac3`, run `6bb83b565ca849aeb66460b051c8dbe1`)
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` (run `b0ee410e51f04912830c12bde4480e05`)
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` (run `776e00ed955546e8ac2f7f13ae4061b5`)
-- `D:\HarnessEvidence\paralls-20261001-8c5631-all` (all passed except strict `phase0`; cleanup passed)
+- `D:\HarnessEvidence\paralls-20261001-673526d2-all-1` (report revision `534a2b0e`, run `a0b66adfc34043d590d8149f44171894`; preceding executed profiles passed, strict `phase0` failed on five Observatory Siming markers, subsequent profiles not executed; cleanup passed)
 
 The retired shell, presentation wrapper, forwarding probe, and validation
 scenes are absent from the active source tree. The root-motion policy remains

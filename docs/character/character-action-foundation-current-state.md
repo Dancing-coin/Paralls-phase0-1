@@ -19,8 +19,9 @@ packages are `female_bandage_external`, `female_jk_external`, and
 `UnifiedCharacterActionFoundation.tscn` is retained only as a narrow
 protocol/authority probe and is not an acceptance basis.
 
-Tasks 1-8 have fresh focused or runtime evidence. Task 9 has a fresh gate
-matrix and Harness audit. The StreetCombatDemo profile is green with live
+Caller migration and shell deletion have focused and runtime evidence. Task 5
+production root calibration and Task 6 generic runtime recovery/replay remain
+open. Task 9 has a gate matrix and Harness audit. The StreetCombatDemo profile is green with live
 backend evidence for player and agent authority, duplicate replay, stale
 revision rejection, recovery, and sword action. The StreetDemo animation,
 Motor, Replica retirement, Registry, and root capability probes are also fresh
@@ -28,15 +29,17 @@ green. Root motion remains the temporary `hold` / zero-envelope policy; it is
 not calibrated production locomotion.
 
 The external ArchiveDoor dependency now has fresh success, distance, revision,
-and stance evidence from live backend and Godot. The current full verification
-is `7741 passed, 2 skipped, 104 warnings`. Fresh street, agent, and retirement
-profiles pass. The latest aggregate run
-`D:\HarnessEvidence\paralls-20261001-8c5631-all` passed every profile except
-strict `phase0`; cleanup passed. The strict Phase 0 gate still lacks dialogue,
-transport, interaction, voice, repeatable-run, and five Observatory Siming
-markers: state payloads, selected-actor summary, bottom strip, timeline, and
-ledger pressure. Player root-motion and forward-direction probes are proved,
-but root motion remains hold/zero-envelope pending real calibration.
+and stance evidence from live backend and Godot. The preceding session reported
+`7741 passed, 2 skipped, 104 warnings`; its full log is not retained at the
+inspected evidence paths. Street, agent, and retirement profiles have passed
+reports. The latest located aggregate export
+`D:\HarnessEvidence\paralls-20261001-673526d2-all-1` records revision `534a2b0e`,
+run `a0b66adfc34043d590d8149f44171894`: preceding executed profiles passed, strict
+`phase0` failed, cleanup passed, and subsequent profiles were not executed.
+Only five Observatory Siming markers are missing: state payloads, selected-actor
+summary, bottom strip, timeline, and ledger pressure. Dialogue, transport,
+interactions, voice stub, repeatable-run, and Motor movement checks are proved
+in that report. Root motion remains hold/zero-envelope pending real calibration.
 
 ### Final boundary
 
@@ -210,7 +213,10 @@ because `scene_resource_paths_exist=missing`. Harness cleanup passed.
 The fresh required `python -m pytest -v` run is recorded in
 `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` and ended
 with the prior baseline `7720 passed, 2 skipped, 103 warnings`; the current full
-pytest verification is `7736 passed, 2 skipped, 104 warnings`. `git diff --check` is rerun after
+retained pytest log is `D:\HarnessEvidence\paralls-20261001-534a2b0e-pytest-v.log`
+with `7736 passed, 2 skipped, 104 warnings`; the preceding session reported a
+later `7741 passed, 2 skipped, 104 warnings` run without a located full log.
+`git diff --check` is rerun after
 the Task 9 documentation update below.
 
 Accordingly, the dependency gate remains conditional on the strict Phase 0
