@@ -52,6 +52,8 @@
 - [计划 A：运行时连续性与共享基础](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-population-continuity-runtime-implementation-plan.md)：人员甲负责共享合同、账本、锁、Core 接纳、授权读取及计算器 shadow/advisory 接线；尚未实施。
 - [计划 B：角色模块、洪灾样板与领域纵切](superpowers/plans/world-character-siming-authority-mainline/2026-09-18-character-simulation-domain-vertical-implementation-plan.md)：人员乙负责角色规则、洪灾、领域回流、日供给输入/纯计算与 Godot 样板；尚未实施。
 - [Harness 编程工作流改进方案](superpowers/plans/2026-09-18-harness-programming-workflow-improvement-plan.md)：已实施的验证产物清理、结果可信度、分层门禁及编程经验试点方案。
+- [统一动作库与角色骨架适配阶段 1–3 设计](superpowers/specs/2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-design.md)：当前 `humanoid.v1` 中央动作库、三个 realization mode、共享库运行时和构建时/缓存式重定向边界。
+- [统一动作库与角色骨架适配阶段 1–3 计划](superpowers/plans/2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-implementation-plan.md)：阶段 1–3 的唯一执行顺序和 fresh evidence 入口；不修改后端 authority 合同。
 - `docs/superpowers/specs/world-character-siming-authority-mainline/README.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/2026-06-29-world-character-siming-authority-mainline-master-design.md`
 - `docs/superpowers/specs/world-character-siming-authority-mainline/character-gameplay-foundation/README.md`
@@ -350,6 +352,7 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/character/character-asset-integration.md`
 - `docs/art-resource-swap-workflow.md`
 - `docs/character/character-action-asset-interface.md`
+- `docs/9月分析/2026-09-28-统一动作库与角色骨架适配讨论.md`：中央动作库与角色骨架适配的阶段状态、realization 选择和证据入口。
 - `docs/character/character-action-foundation-operator-guide-and-index.md`：动作底座相关 spec/plan 的权威层级、执行手册、依赖索引和验证梯度。
 - `docs/character/action-foundation-series-status.md`：StreetCombatDemo Tasks 1-9 gate matrix、fresh evidence、owner、命令和剩余 blocker。
 - `docs/superpowers/specs/2026-09-28-character-action-foundation-series-completion-design.md`：外部 controller 试点记录；保留为历史 pilot 设计。
@@ -367,8 +370,27 @@ Harness profile 和规则 manifest 是项目输入：
 - `docs/character/character-replica-convergence.md`：CharacterReplica 零调用证明、删除记录与 actor-only 运行时边界。
 - `docs/character/character-replica-retirement-report-2026-09-29.md`：Task 7 零调用证据与 Task 8 删除前置记录。
 
-Reference docs 只是支持上下文。当前任务真相仍以 `AGENTS.md`、2026-09-29
-retirement spec 和对应 plan 为准。
+Reference docs 只是支持上下文。动作库阶段 1–3 的任务真相以
+`AGENTS.md`、2026-10-02 motion-library spec 和对应 plan 为准；CharacterReplica
+退役仍以 2026-09-29 retirement spec 和对应 plan 为准。
+
+## Unified motion-library stages 1–3
+
+当前中央库 ID 为 `motionlib:humanoid.v1.core@1`，资源位于
+`assets/motion_library/approved/humanoid.v1/street_locomotion.tres`，manifest 与资源
+同目录。三个主要 realization mode 是 `shared_library`、`retargeted_library` 和
+`package_native`；`fallback` 是 manifest 中显式声明的降级路径，解析顺序为
+`shared_library -> retargeted_library -> package_native -> declared fallback`。
+
+阶段证据入口：
+
+- 阶段 1：`pytest scripts/verification/tests/test_motion_library_contract.py -q`，以及中央 manifest/schema 的静态资格化证据。
+- 阶段 2：`res://scripts/verification/street_shared_motion_library_probe.gd`、`res://scripts/verification/tests/test_shared_animation_library_runtime.gd`，和 Harness `street-combat` fresh probe。
+- 阶段 3：`pytest scripts/verification/tests/test_motion_retarget_runtime_probe.py -v`、`res://scripts/verification/motion_retarget_runtime_probe.gd`，和 Harness `motion-library-qualification`。
+
+这些阶段只覆盖本地表现、候选 marker、构建时或缓存式重定向及其资格化；不宣称完美快速重定向、通用运行时 IK、raw-pose 网络复制，也不改变后端 authority 合同。完整回归使用
+`python scripts/verification/harness.py --profile all`；Godot 不可用时必须保留
+`static-only` 结果，不能把静态证据写成运行时完成。
 # Unified character action foundation release gate
 
 The action-foundation series entry point is

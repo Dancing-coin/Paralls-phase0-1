@@ -2,6 +2,13 @@
 
 This document defines the future-facing interface between the shared `CharacterActor` runtime and an action / expression / equipment asset library.
 
+For the current unified motion-library slice, the governing documents are
+[`2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-design.md`](../superpowers/specs/2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-design.md)
+and its
+[`implementation plan`](../superpowers/plans/2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-implementation-plan.md).
+This page remains an asset interface index; it does not create a second
+authority contract.
+
 ## Why This Exists
 
 The repository should not keep hardcoding every new action directly into model-specific scripts forever.
@@ -22,6 +29,30 @@ Today, the repository still uses:
 - direct equipment node paths
 
 That is acceptable for the current demo, but it is not the long-term generalized interface.
+
+The approved central motion library now has the immutable ID
+`motionlib:humanoid.v1.core@1` and is stored at
+`assets/motion_library/approved/humanoid.v1/street_locomotion.tres` with its
+manifest beside it. The three principal realization modes are
+`shared_library`, `retargeted_library`, and `package_native`. A manifest may also
+declare `fallback`; this is an explicit downgrade path, not an implicit asset
+guess. Current action resources remain presentation-only and may emit candidate
+markers; they do not write authority state, damage, inventory, final transforms,
+or final velocity.
+
+### Unified motion-library stage evidence
+
+The current evidence entry points are:
+
+| Stage | Acceptance boundary | Evidence entry |
+| --- | --- | --- |
+| 1 | `humanoid.v1` manifest, six canonical states, source digest, and static qualification | `pytest scripts/verification/tests/test_motion_library_contract.py -q` and the central manifest/schema |
+| 2 | Three Street skins mount the same central `AnimationLibrary`; GLB clips remain explicit fallback | `res://scripts/verification/street_shared_motion_library_probe.gd`, `res://scripts/verification/tests/test_shared_animation_library_runtime.gd`, and the fresh `street-combat` probe |
+| 3 | Build/cache `retargeted_library` output passes deterministic cache, track/contact/root-motion gates and rejected-output admission | `pytest scripts/verification/tests/test_motion_retarget_runtime_probe.py -v`, `res://scripts/verification/motion_retarget_runtime_probe.gd`, and the `motion-library-qualification` profile |
+
+These stages cover build-time or cached remap only. They do not claim perfect
+fast retargeting, a general runtime IK system, raw-pose replication, or a new
+backend authority route.
 
 ## Required Future Asset Types
 

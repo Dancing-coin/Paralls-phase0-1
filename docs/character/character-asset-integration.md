@@ -7,6 +7,13 @@ For the current action-foundation series, start with
 and follow its implementation plan. The older `CharacterReplica` wording in
 this page is transitional guidance for legacy scenes.
 
+For the unified motion-library stages 1–3, use the current
+[`design spec`](../superpowers/specs/2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-design.md)
+and
+[`implementation plan`](../superpowers/plans/2026-10-02-unified-motion-library-skeleton-adaptation-stages-1-3-implementation-plan.md).
+They govern the central `AnimationLibrary` and realization evidence described
+below; they do not change backend authority ownership.
+
 ## Integration Goal
 
 A new role asset should plug into the same actor stack without creating a new runtime species.
@@ -177,9 +184,39 @@ This is not yet the final heavy runtime, cache, or Kimodo bridge.
 It is the first explicit contract surface those future realization backends must
 target.
 
+## Unified motion-library status
+
+The current approved central library is
+`motionlib:humanoid.v1.core@1`, backed by
+`assets/motion_library/approved/humanoid.v1/street_locomotion.tres` and its
+manifest. The three principal realization modes are:
+
+- `shared_library`: direct use of the central library for a compatible
+  `humanoid.v1` package;
+- `retargeted_library`: a qualified build-time or cached target library;
+- `package_native`: a qualified package-owned action library.
+
+`fallback` remains a manifest-declared downgrade path with a recorded reason and
+priority. It is not an implicit read from incoming or review assets. The
+Registry order is `shared_library -> retargeted_library -> package_native ->
+declared fallback`.
+
+Stage evidence enters through the following commands and probes:
+
+| Stage | Boundary | Evidence entry |
+| --- | --- | --- |
+| 1 | Central `humanoid.v1` contract, six states, `walking2`, digest and static qualification | `pytest scripts/verification/tests/test_motion_library_contract.py -q`; central manifest/schema |
+| 2 | Three Street skins mount one central library while retaining explicit GLB fallback | `res://scripts/verification/street_shared_motion_library_probe.gd`; `res://scripts/verification/tests/test_shared_animation_library_runtime.gd`; fresh `street-combat` probe |
+| 3 | Deterministic cached remap, target/contact/root-motion gates and rejected-output Registry admission | `pytest scripts/verification/tests/test_motion_retarget_runtime_probe.py -v`; `res://scripts/verification/motion_retarget_runtime_probe.gd`; `motion-library-qualification` |
+
+This slice is presentation and candidate-marker infrastructure. It does not
+claim perfect fast retargeting, complete runtime IK, raw-pose networking, or a
+new authority contract. `CharacterMotor` remains the sole body-motion writer.
+
 ## Current qualification gate
 
-The three StreetCombatDemo packages are the current qualified acceptance set.
+The three StreetCombatDemo packages are the current qualified acceptance set
+for the existing Registry path.
 They pass Registry admission for the temporary `hold` / zero-envelope root
 policy. Calibrated `drive_locomotion`, arbitrary package admission, and complete
 fallback coverage remain open under Task 8 of the 2026-09-28 implementation
