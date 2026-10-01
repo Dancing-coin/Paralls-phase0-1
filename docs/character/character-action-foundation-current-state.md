@@ -28,16 +28,15 @@ green. Root motion remains the temporary `hold` / zero-envelope policy; it is
 not calibrated production locomotion.
 
 The external ArchiveDoor dependency now has fresh success, distance, revision,
-and stance evidence from live backend and Godot. The prior 2026-09-30 full pytest
-rerun completed with `7720 passed, 2 skipped, 103 warnings`; the current full
-verification is `7736 passed, 2 skipped, 104 warnings`. Fresh street,
-agent, and retirement profiles pass. The aggregate run
-`D:\CurrentActionFoundationEvidence-all-final5-20260930` passed every profile
-except strict `phase0`. The newer standalone run
-`D:\CurrentActionFoundationEvidence-phase0-latest3-20260930` proves the player
-root-motion and forward-direction checks, but still lacks dialogue/transport/
-interaction/voice, repeatable-run, and Observatory payload/panel/timeline/ledger
-markers. Cleanup passed; this remains the only Task 9 blocker.
+and stance evidence from live backend and Godot. The current full verification
+is `7741 passed, 2 skipped, 104 warnings`. Fresh street, agent, and retirement
+profiles pass. The latest aggregate run
+`D:\HarnessEvidence\paralls-20261001-8c5631-all` passed every profile except
+strict `phase0`; cleanup passed. The strict Phase 0 gate still lacks dialogue,
+transport, interaction, voice, repeatable-run, and five Observatory Siming
+markers: state payloads, selected-actor summary, bottom strip, timeline, and
+ledger pressure. Player root-motion and forward-direction probes are proved,
+but root motion remains hold/zero-envelope pending real calibration.
 
 ### Final boundary
 

@@ -27,10 +27,10 @@ matrix_digest: `af3388fef8ac058a26f13fc270b3dd5cfedf73c32d19adba6597ccbaf5e759f5
 
 Fresh exported evidence:
 
-- `D:\CurrentActionFoundationEvidence-retirement-clean-20261001` (clean HEAD `a780a119e4ace0e52814ff12c668f8b618f436b9`, run `e48082aced6442b29d52079343298fb8`)
+- `D:\HarnessEvidence\paralls-20261001-7dda443-retirement` (clean HEAD `7dda443808a19c81e8f1cadaa46cedb9d0f19ac3`, run `6bb83b565ca849aeb66460b051c8dbe1`)
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` (run `b0ee410e51f04912830c12bde4480e05`)
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` (run `776e00ed955546e8ac2f7f13ae4061b5`)
-- `D:\CurrentActionFoundationEvidence-all-final5-20260930` (all passed except strict `phase0`; cleanup passed)
+- `D:\HarnessEvidence\paralls-20261001-8c5631-all` (all passed except strict `phase0`; cleanup passed)
 
 The retired shell, presentation wrapper, forwarding probe, and validation
 scenes are absent from the active source tree. The root-motion policy remains

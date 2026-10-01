@@ -39,7 +39,7 @@ and the June plans remain historical or transitional migration records.
 | 6 CharacterActor migration | complete for StreetDemo | `CharacterActor` | StreetDemo probes plus `character-agent-execution` profile | `probe-5.log`; exported agent run `paralls-streetdemo-agent-task9-rerun-b7a4621492294aabb074dc093504fab4`; StreetDemo retirement counts all zero; ArchiveDoor external profile `D:\Task9Evidence-20260929-08\archive-door` passed all four scenarios | old compatibility callers remain elsewhere |
 | 7 registry admission | complete for StreetDemo | `CharacterEmbodimentAssetRegistry` | `CharacterAssetAdmissionProgressiveProbe.gd` | external temp `paralls-streetdemo-registry-task9-097fdff850e740449d93c8f0cd59e4f7`; 3 packages/6 actions, fail-closed checks true | no claim for unqualified packages outside the three street packages |
 | 8 root/capability boundary | complete as temporary policy | `RootMotionSampler` / `MotionContributionComposer` / `CharacterMotor` | `PARALLS_STREET_PROBE=6` on `StreetCombatDemo.tscn` | `probe-6.log`; 3 hold profiles, zero-envelope, drive boundary true | calibration is not complete; `drive_locomotion` remains disabled |
-| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, required Harness profiles, full pytest | current full pytest `7736 passed / 2 skipped / 104 warnings`; `street-combat`, `character-agent-execution`, and `character-replica-retirement` passed; the latest standalone `phase0` run failed its strict aggregate gate | Phase 0 dialogue/transport/interaction/voice, repeatable-run, and Observatory Siming evidence remain missing; root-motion/forward probes are now proved in the latest standalone run |
+| 9 publish/close gates | **blocked** | runtime owner + Harness | focused pytest, required Harness profiles, full pytest | current full pytest `7741 passed / 2 skipped / 104 warnings`; `street-combat`, `character-agent-execution`, and `character-replica-retirement` passed; the latest aggregate `all` run failed only its strict Phase 0 gate | Phase 0 dialogue/transport/interaction/voice, repeatable-run, and five Observatory Siming markers remain missing; root-motion/forward probes are proved, while root motion remains hold/zero-envelope |
 | 10 documentation reconciliation and publication | **complete, affected by Task 9 external blocker** | documentation owners | documentation link checks, focused tests, Godot headless probe, `git diff --check` | Task 10 checklist completed in the 2026-09-28 implementation plan; current-state, operator guide, replica convergence, index, and status surfaces synchronized | release claim remains constrained by strict Phase 0 runtime evidence |
 
 ## 2026-09-30 CharacterReplica retirement closure
@@ -55,18 +55,19 @@ Fresh runtime evidence:
 
 - `D:\CurrentActionFoundationEvidence-street-final5-20260930` — `street-combat` passed; run `b0ee410e51f04912830c12bde4480e05`.
 - `D:\CurrentActionFoundationEvidence-agent-final5-20260930` — `character-agent-execution` passed; run `776e00ed955546e8ac2f7f13ae4061b5`.
-- `D:\CurrentActionFoundationEvidence-retirement-clean-20261001` — clean retirement run at HEAD `a780a119e4ace0e52814ff12c668f8b618f436b9`; run `e48082aced6442b29d52079343298fb8`, source digest `494c27be2091012a89c7f92c418a6568c7a127e093c32a2e7ec7729caaa598b0`, matrix digest `af3388fef8ac058a26f13fc270b3dd5cfedf73c32d19adba6597ccbaf5e759f5`.
-- `D:\CurrentActionFoundationEvidence-pytest-final2-20260930.stdout.log` — prior full pytest baseline: `7720 passed, 2 skipped, 103 warnings`.
-- `D:\CurrentActionFoundationEvidence-phase0-latest3-20260930` — latest standalone strict Phase 0 run; revision `320a03a769925939e6f7fcbbf0412790c23fe3ac`, cleanup passed, strict gate failed.
+- `D:\HarnessEvidence\paralls-20261001-7dda443-retirement` — clean retirement run at HEAD `7dda443808a19c81e8f1cadaa46cedb9d0f19ac3`; run `6bb83b565ca849aeb66460b051c8dbe1`, source digest `494c27be2091012a89c7f92c418a6568c7a127e093c32a2e7ec7729caaa598b0`.
+- Current full pytest baseline: `7741 passed, 2 skipped, 104 warnings`.
+- `D:\HarnessEvidence\paralls-20261001-8c5631-all` — latest aggregate `all` run; run `8c5631ae896445328e8a4451ebde3a5f`, every executed profile passed except strict `phase0`, cleanup passed.
 
-The aggregate run `D:\CurrentActionFoundationEvidence-all-final5-20260930`
-(run `7f8ee43213024b809ae531168fd463ba`, revision `6b5c698ba189be4281f7880953f6d93331740021`)
-remains the latest exported `all` run and passed every executed profile except
-strict `phase0`. The newer standalone Phase 0 run supersedes its Phase 0
-diagnostics: player root-motion and forward-direction are proved there, while
-dialogue/transport/interaction/voice, repeatable-run, and Observatory payload,
-panel, timeline, and ledger markers remain missing. Cleanup passed. StreetCombatDemo
-success is not promoted to a repository-wide completion claim.
+The latest aggregate `all` run is `D:\HarnessEvidence\paralls-20261001-8c5631-all`
+(run `8c5631ae896445328e8a4451ebde3a5f`, revision `7dda443808a19c81e8f1cadaa46cedb9d0f19ac3`)
+and passed every executed profile except strict `phase0`. Its remaining strict
+Phase 0 Observatory markers are `observatory_state_payloads`,
+`observatory_selected_actor_siming_summary`, `observatory_bottom_strip_siming`,
+`observatory_timeline_siming`, and `observatory_ledger_siming_pressure`; the
+dialogue/transport/interaction/voice and repeatable-run checks also remain open.
+Cleanup passed. StreetCombatDemo success is not promoted to a repository-wide
+completion claim.
 
 ## 2026-09-29 Ordered Task 1-15 Verification
 
