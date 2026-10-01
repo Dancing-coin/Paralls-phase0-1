@@ -37,6 +37,22 @@ class MixedMirrorFaultClient:
         if context is not None:
             await context.__aexit__(None, None, None)
 
+    def _raise_controlled_close(self, error):
+        close = error.rcvd
+        if close is None or close.code != 4403 or close.reason != "mirror_delivery_unrecoverable":
+            raise error
+        payload = dict(reason_code=close.reason, route="gameplay_mirror_transport")
+        self.transport.record(dict(key=self.key, type="fault_controlled_close", at=perf_counter(),
+            epoch=self.receiver.wire.epoch, **payload))
+        raise MirrorControlledClose() from error
+
+    async def _send(self, message):
+        try:
+            await self.socket.send(json.dumps(message))
+        except ConnectionClosed as error:
+            # 发送也可能先观察到同一受控关闭，恢复仍须重建新 epoch 的公开基线。
+            self._raise_controlled_close(error)
+
     async def _send_resync_batch(self, actor_refs):
         known = set(self._pending_resync_actor_refs) | self._resync_in_flight
         for actor in actor_refs:
@@ -51,22 +67,16 @@ class MixedMirrorFaultClient:
         self._resync_in_flight.update(batch)
         for actor in batch:
             self.transport.record(dict(key=self.key, type="fault_resync_request", at=perf_counter(), actor_ref=actor))
-            await self.socket.send(json.dumps(dict(
+            await self._send(dict(
                 message_type="gameplay_mirror_resync_request",
                 payload=dict(actor_ref=actor),
-            )))
+            ))
 
     async def _read(self):
         try:
             raw = await self.socket.recv()
         except ConnectionClosed as error:
-            close = error.rcvd
-            if close is None or close.code != 4403 or close.reason != "mirror_delivery_unrecoverable":
-                raise
-            payload = dict(reason_code=close.reason, route="gameplay_mirror_transport")
-            self.transport.record(dict(key=self.key, type="fault_controlled_close", at=perf_counter(),
-                epoch=self.receiver.wire.epoch, **payload))
-            raise MirrorControlledClose() from error
+            self._raise_controlled_close(error)
         message = json.loads(raw)
         if message["message_type"] == "websocket_session_revoked":
             payload = message["payload"]
@@ -120,10 +130,10 @@ class MixedMirrorFaultClient:
                     for start in range(0, len(actors), _BASELINE_SUBSCRIPTION_BATCH):
                         batch = actors[start:start + _BASELINE_SUBSCRIPTION_BATCH]
                         for actor in batch:
-                            await self.socket.send(json.dumps(dict(
+                            await self._send(dict(
                                 message_type="gameplay_mirror_subscribe",
                                 payload=dict(actor_ref=actor),
-                            )))
+                            ))
                             self._subscribed_actor_refs.add(actor)
                             self.transport.record(dict(key=self.key, type="fault_subscribe_request",
                                 at=perf_counter(), actor_ref=actor))

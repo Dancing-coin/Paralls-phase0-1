@@ -862,7 +862,7 @@ class DurableGameplayEventStore(GameplayEventStore):
     )
     _SCHEMA = (
         "CREATE TABLE IF NOT EXISTS metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
-        "CREATE TABLE IF NOT EXISTS transactions (sequence INTEGER PRIMARY KEY, batch TEXT NOT NULL, result TEXT NOT NULL, transaction_id TEXT NOT NULL UNIQUE, principal_ref TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_digest TEXT NOT NULL, refresh_state TEXT)",
+        "CREATE TABLE IF NOT EXISTS transactions (sequence INTEGER PRIMARY KEY, batch TEXT NOT NULL, result TEXT NOT NULL, transaction_id TEXT NOT NULL, principal_ref TEXT NOT NULL, idempotency_key TEXT NOT NULL, payload_digest TEXT NOT NULL, refresh_state TEXT)",
         "CREATE TABLE IF NOT EXISTS events (global_sequence INTEGER PRIMARY KEY, event_id TEXT NOT NULL UNIQUE, stream_id TEXT NOT NULL, stream_revision INTEGER NOT NULL, transaction_id TEXT NOT NULL, value TEXT NOT NULL, full_value BLOB)",
         "CREATE TABLE IF NOT EXISTS stream_heads (stream_id TEXT PRIMARY KEY, revision INTEGER NOT NULL)",
         "CREATE TABLE IF NOT EXISTS outbox (id TEXT PRIMARY KEY, value TEXT NOT NULL, delivery_state TEXT NOT NULL, topic TEXT NOT NULL, global_sequence INTEGER NOT NULL, transaction_id TEXT NOT NULL, event_id TEXT NOT NULL)",

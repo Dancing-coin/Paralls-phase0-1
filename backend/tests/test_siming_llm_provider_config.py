@@ -1,5 +1,6 @@
 import importlib
 import json as json_module
+import ssl
 
 import httpx
 import pytest
@@ -271,7 +272,11 @@ def test_route_level_openai_response_config_is_used_for_http_request(monkeypatch
     assert isinstance(provider, HttpSimingLlmCandidateProvider)
     captured: dict[str, object] = {}
 
-    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float,
+                  verify: ssl.SSLContext) -> FakeResponse:
+        assert isinstance(verify, ssl.SSLContext)
+        assert verify.verify_mode == ssl.CERT_REQUIRED
+        assert verify.check_hostname is True
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
@@ -312,7 +317,11 @@ def test_route_level_deepseek_config_is_used_for_http_request(monkeypatch: pytes
     assert isinstance(provider, HttpSimingLlmCandidateProvider)
     captured: dict[str, object] = {}
 
-    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float,
+                  verify: ssl.SSLContext) -> FakeResponse:
+        assert isinstance(verify, ssl.SSLContext)
+        assert verify.verify_mode == ssl.CERT_REQUIRED
+        assert verify.check_hostname is True
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
@@ -427,7 +436,11 @@ def test_http_provider_returns_validated_candidates(monkeypatch: pytest.MonkeyPa
     provider = make_http_provider()
     captured: dict[str, object] = {}
 
-    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float,
+                  verify: ssl.SSLContext) -> FakeResponse:
+        assert isinstance(verify, ssl.SSLContext)
+        assert verify.verify_mode == ssl.CERT_REQUIRED
+        assert verify.check_hostname is True
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json
@@ -490,7 +503,11 @@ def test_http_provider_parses_deepseek_chat_completion_candidates(monkeypatch: p
     )
     captured: dict[str, object] = {}
 
-    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float) -> FakeResponse:
+    def fake_post(url: str, *, headers: dict[str, str], json: dict[str, object], timeout: float,
+                  verify: ssl.SSLContext) -> FakeResponse:
+        assert isinstance(verify, ssl.SSLContext)
+        assert verify.verify_mode == ssl.CERT_REQUIRED
+        assert verify.check_hostname is True
         captured["url"] = url
         captured["headers"] = headers
         captured["json"] = json

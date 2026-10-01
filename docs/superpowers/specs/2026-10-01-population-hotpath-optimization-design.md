@@ -17,6 +17,14 @@ Status: execution-active
 3. 用等价模型验证减少 JSON 往返；JSON/Python 验证差异通过实际 schema 检查。保留正式 canonical hash、损坏拒绝、checkpoint 原子性和恢复等价。
 4. 分别定位 fixture、append、commit、checkpoint、发布/确认与 owner 等待的耗时。四局同步停顿尚未归因，不能预先改变 checkpoint 周期、并发或 writer 所有权。
 
+## 完整复验后的局部修正
+
+第一轮候选 e26d0e19 的正式窗口已完整结束：两局容量通过，四局同步提交长尾、10× 累计落后及两小时 RSS 增长仍失败。物理盘排队与四局提交等待相交，但没有唯一底层根因证据；微基准收益不保证正式门槛通过。
+
+继续删除两处可直接证明的重复工作：新建 transactions 表只保留命名唯一索引，已有库不重建或删除索引；每个 Siming provider 惰性持有锁保护的 SSLContext，沿用 HTTPX 原信任环境规则，保留每请求临时 Client 的关闭和隔离。首次成功构造后 CA 环境变更在 provider 重建后生效，不引入跨实例 context 或长寿命连接池。
+
+验收 WS 客户端在 resync/subscription send 阶段遗漏既有受控关闭恢复。发送阶段沿用 recv 的精确关闭码 4403 和原因 mirror_delivery_unrecoverable；其余关闭继续失败。重绑仍需新 epoch、实际基线与最新 tick 证明，原预算和暂停合同保持。第一轮失败请求没有关闭码证据，不能宣称已确定其原因。
+
 ## 验收
 
 每项具有同输入的前后微基准与必要语义回归；新增回归先确认旧实现失败，性能数字不作为易抖动单元测试阈值。集成后冻结源码，执行全量 pytest、相关人口 correctness/recovery profiles、change-lifecycle 和 all；all 的 Godot 阻塞单列。

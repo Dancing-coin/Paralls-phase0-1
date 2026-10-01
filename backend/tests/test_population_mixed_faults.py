@@ -326,6 +326,119 @@ def test_direct_socket_close_only_recovers_the_declared_mirror_revocation(code, 
         assert records == []
 
 
+def _fault_snapshot(epoch, tick, sequence):
+    from dataclasses import replace
+    from app.gameplay.godot_mirror_delivery import GameplayGodotMirrorSyncAdapter, GameplayMirrorDeltaEncoder
+    from test_gameplay_mirror_session_access_service import _projection_source
+    from test_mirror_delta_transport import _message, _send
+
+    actor = "character:char_a"
+    view = _projection_source(actor)
+    sync = GameplayGodotMirrorSyncAdapter()
+    target = sync.snapshot(replace(view, source_facade_revision=f"facade:{sequence}",
+        source_revision_vector={actor: sequence}, groups={
+            "population_public": replace(view.groups["resources"], group_id="population_public",
+                projection_revision=f"population:{tick}", payload={"confirmed_tick": tick}),
+        }))
+    packet = _message(sequence, actor=actor)
+    packet["payload"].update(connection_epoch=epoch, facade_revision=target.facade_revision,
+        source_revision_vector=dict(target.source_revision_vector), payload=sync.snapshot_payload(target))
+    return json.dumps(_send(GameplayMirrorDeltaEncoder(), packet, force_snapshot=True))
+
+
+@pytest.mark.parametrize("send_stage", ["resync", "subscribe"])
+@pytest.mark.parametrize("code,reason,controlled", [
+    (4403, "mirror_delivery_unrecoverable", True),
+    (4403, "authorization_revoked", False),
+    (1011, "mirror_delivery_unrecoverable", False),
+    (None, None, False),
+])
+def test_resume_send_close_requires_declared_frame_and_fresh_epoch(send_stage, code, reason, controlled):
+    from websockets.exceptions import ConnectionClosedError
+    from websockets.frames import Close
+    from scripts.verification.population_mixed_load import MixedLoadEvent
+    from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
+
+    actor = "character:char_a"
+    frame = Close(code, reason) if code is not None else None
+    send_error = ConnectionClosedError(frame, frame, True if frame is not None else None)
+    allowed_frame = Close(4403, "mirror_delivery_unrecoverable")
+    records, closed, opened = [], [], []
+
+    class Socket:
+        def __init__(self, epoch):
+            self.epoch = epoch
+            self.responses = iter([_fault_snapshot(epoch, 7, 1), _fault_snapshot(epoch, 8, 2)])
+
+        async def send(self, raw):
+            message = json.loads(raw)
+            if self.epoch == 1:
+                assert message == dict(message_type="gameplay_mirror_resync_request", payload=dict(actor_ref=actor))
+                raise send_error
+            assert message == dict(message_type="gameplay_mirror_subscribe", payload=dict(actor_ref=actor))
+            if send_stage == "subscribe" and self.epoch == 2:
+                raise send_error
+
+        async def recv(self):
+            if self.epoch == 1:
+                if send_stage == "subscribe":
+                    raise ConnectionClosedError(allowed_frame, allowed_frame, True)
+                return json.dumps(dict(message_type="gameplay_mirror_resync_required",
+                    payload=dict(actor_ref=actor, reason_code="mirror_backpressure")))
+            return next(self.responses)
+
+    @asynccontextmanager
+    async def context(**kwargs):
+        assert kwargs == {"max_queue": 1}
+        epoch = len(opened) + 2
+        opened.append(epoch)
+        try:
+            yield Socket(epoch), dict(allowed_actor_refs=[actor], connection_epoch=epoch)
+        finally:
+            closed.append(epoch)
+
+    class PausedContext:
+        async def __aexit__(self, *args):
+            closed.append(1)
+
+    async def snapshot(event):
+        assert event.transaction_id == "fault:resume-send:healthy"
+        return dict(confirmed_tick=8)
+
+    client = MixedMirrorFaultClient(SimpleNamespace(
+        bound_session=context, timeout=1., snapshot=snapshot, record=records.append), {actor})
+    client.context, client.socket = PausedContext(), Socket(1)
+    client.receiver = MixedMirrorReceiver({actor}, epoch=1)
+    client.receiver.receive(_fault_snapshot(1, 7, 1))
+    client._subscribed_actor_refs.add(actor)
+    client.key = "fault:paused-send"
+    client.pause_started = perf_counter() - 6
+    client.pause_ready.set()
+    event = MixedLoadEvent(0, "resume_consumer", 1, "fault:resume-send")
+
+    if controlled:
+        result = asyncio.run(client.resume_consumer(event))
+        final_epoch = 2 if send_stage == "resync" else 3
+        assert result["previous_epoch"] == 1 and result["epoch"] == final_epoch
+        assert result["healthy_cutoff"] == 8 and result["confirmed_ticks"] == {actor: 8}
+        assert result["sequence"] == 2
+        assert opened == ([2] if send_stage == "resync" else [2, 3])
+        recovered_packets = [row for row in records if row["type"] == "fault_mirror_packet" and row["epoch"] == final_epoch]
+        assert len(recovered_packets) == 2 and all(row["decision"]["applied"] for row in recovered_packets)
+    else:
+        with pytest.raises(ConnectionClosedError) as raised:
+            asyncio.run(client.resume_consumer(event))
+        assert raised.value is send_error
+        assert opened == ([] if send_stage == "resync" else [2])
+
+    controls = [row for row in records if row["type"] == "fault_controlled_close"]
+    expected_controls = ([1] if controlled else []) if send_stage == "resync" else ([1, 2] if controlled else [1])
+    assert [row["epoch"] for row in controls] == expected_controls
+    assert all(row["reason_code"] == "mirror_delivery_unrecoverable" and row["route"] == "gameplay_mirror_transport" for row in controls)
+    assert closed == [1, *opened]
+    assert client.context is None and client.socket is None
+
+
 def test_controlled_close_recovery_rebinds_again_when_baseline_is_revoked():
     from scripts.verification.population_mixed_load import MixedLoadEvent
     from scripts.verification.population_mixed_mirror import MixedMirrorReceiver
