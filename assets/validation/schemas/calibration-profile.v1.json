@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paralls.dev/schemas/calibration-profile.v1.json",
+  "title": "CalibrationProfile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile_id", "pelvis_offset", "foot_contact_tolerance", "root_motion_scale", "socket_offsets", "collision_scale"],
+  "properties": {
+    "profile_id": {"type": "string", "pattern": "^calibration:[a-z0-9_.-]+$"},
+    "pelvis_offset": {"$ref": "#/$defs/vector3"},
+    "foot_contact_tolerance": {"type": "number", "exclusiveMinimum": 0},
+    "root_motion_scale": {"type": "number", "exclusiveMinimum": 0},
+    "socket_offsets": {"type": "object", "additionalProperties": {"$ref": "#/$defs/vector3"}},
+    "collision_scale": {"type": "number", "exclusiveMinimum": 0}
+  },
+  "$defs": {
+    "vector3": {"type": "array", "prefixItems": [{"type": "number"}, {"type": "number"}, {"type": "number"}], "items": false, "minItems": 3, "maxItems": 3}
+  }
+}

@@ -1,0 +1,1 @@
+{"profile_id":"calibration:humanoid.v1.street.default","pelvis_offset":[0.0,0.0,0.0],"foot_contact_tolerance":0.025,"root_motion_scale":1.0,"socket_offsets":{"weapon_hand":[0.0,0.0,0.0],"weapon_slot:sword":[0.0,0.0,0.0],"weapon_hit_volume:sword":[0.0,0.0,0.0]},"collision_scale":1.0}

@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paralls.dev/schemas/body-profile.v1.json",
+  "title": "BodyProfile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile_id", "height_scale", "leg_length_ratio", "arm_length_ratio", "mass_class", "gait_scale", "reach_scale"],
+  "properties": {
+    "profile_id": {"type": "string", "pattern": "^body:[a-z0-9_.-]+$"},
+    "height_scale": {"type": "number", "exclusiveMinimum": 0},
+    "leg_length_ratio": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "arm_length_ratio": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+    "mass_class": {"type": "string", "enum": ["light", "medium", "heavy"]},
+    "gait_scale": {"type": "number", "exclusiveMinimum": 0},
+    "reach_scale": {"type": "number", "exclusiveMinimum": 0}
+  }
+}

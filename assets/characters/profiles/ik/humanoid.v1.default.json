@@ -1,0 +1,1 @@
+{"profile_id":"ik:humanoid.v1.default","foot_ik_enabled":true,"hand_ik_enabled":true,"weapon_anchor_policy":"canonical_socket","contact_tolerance":0.03}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://paralls.dev/schemas/ik-profile.v1.json",
+  "title": "IKProfile v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["profile_id", "foot_ik_enabled", "hand_ik_enabled", "weapon_anchor_policy", "contact_tolerance"],
+  "properties": {
+    "profile_id": {"type": "string", "pattern": "^ik:[a-z0-9_.-]+$"},
+    "foot_ik_enabled": {"type": "boolean"},
+    "hand_ik_enabled": {"type": "boolean"},
+    "weapon_anchor_policy": {"type": "string", "enum": ["canonical_socket", "retargeted_socket", "disabled"]},
+    "contact_tolerance": {"type": "number", "exclusiveMinimum": 0}
+  }
+}
