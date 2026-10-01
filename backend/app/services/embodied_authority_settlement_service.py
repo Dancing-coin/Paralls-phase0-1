@@ -72,7 +72,46 @@ class EmbodiedAuthoritySettlementService:
         self._street_next_client_sequence = 1
         self._street_snapshot_digest = "sha256:street-initial-snapshot"
         self._street_resync_marker = "resync:initial"
+        self._transport_connected = True
+        self._transport_snapshot_ready = True
+        self._connection_epoch = 1
+        self._next_client_sequence = 1
+        self._snapshot_digest = "sha256:generic-initial-snapshot"
+        self._resync_marker = "resync:generic-initial"
         self.mutation_count = 0
+
+    def disconnect_transport(self) -> None:
+        self._transport_connected = False
+        self._transport_snapshot_ready = False
+
+    def reconnect_transport(self) -> int:
+        self._connection_epoch += 1
+        self._next_client_sequence = 1
+        self._transport_connected = True
+        self._transport_snapshot_ready = False
+        self._snapshot_digest = ""
+        self._resync_marker = ""
+        return self._connection_epoch
+
+    def accept_transport_snapshot(self, connection_epoch: int, *, snapshot_digest: str, resync_marker: str) -> bool:
+        if connection_epoch != self._connection_epoch:
+            return False
+        if not self._transport_connected or not snapshot_digest.strip() or not resync_marker.strip():
+            return False
+        self._snapshot_digest = snapshot_digest
+        self._resync_marker = resync_marker
+        self._transport_snapshot_ready = True
+        return True
+
+    def transport_state(self) -> dict[str, object]:
+        return {
+            "connected": self._transport_connected,
+            "connection_epoch": self._connection_epoch,
+            "snapshot_ready": self._transport_snapshot_ready,
+            "snapshot_digest": self._snapshot_digest,
+            "resync_marker": self._resync_marker,
+            "next_client_sequence": self._next_client_sequence,
+        }
 
     def street_actor_state(self, actor_id: str) -> dict[str, object]:
         state = self._street_actors.get(actor_id)
@@ -215,7 +254,7 @@ class EmbodiedAuthoritySettlementService:
         planar_distance = dist((actor_position[0], actor_position[2]), (target_position[0], target_position[2]))
         if planar_distance > 2.4:
             return self._result(attempt, outcome="rejected", failed_stage="range", failed_code="target_out_of_range", recovery_action="approach_target")
-        result = self.settle(attempt)
+        result = self.settle(attempt, _transport_admitted=True)
         if result.outcome != "committed":
             return result
         target["hp"] = max(0, int(target["hp"]) - 20)
@@ -293,7 +332,7 @@ class EmbodiedAuthoritySettlementService:
         )
         return "sha256:" + sha256(canonical.encode("utf-8")).hexdigest()
 
-    def settle(self, attempt: ActionAttempt) -> AuthorityResult:
+    def settle(self, attempt: ActionAttempt, *, _transport_admitted: bool = False) -> AuthorityResult:
         """Atomically settle one semantic attempt in the local authority seam.
 
         This bounded Phase-1 implementation keeps ESM/Gameplay effects in one
@@ -312,6 +351,20 @@ class EmbodiedAuthoritySettlementService:
                 failed_code="idempotency_key_reused",
                 recovery_action="discard_duplicate",
             )
+
+        if not _transport_admitted:
+            if not self._transport_connected:
+                return self._result(attempt, outcome="rejected", failed_stage="transport", failed_code="transport_disconnected", recovery_action="reconnect_and_resync")
+            if attempt.connection_epoch != self._connection_epoch:
+                return self._result(attempt, outcome="rejected", failed_stage="transport", failed_code="connection_epoch_stale" if attempt.connection_epoch < self._connection_epoch else "connection_epoch_gap", recovery_action="refresh_connection_epoch")
+            if not self._transport_snapshot_ready:
+                return self._result(attempt, outcome="rejected", failed_stage="recovery", failed_code="recovery_required", recovery_action="await_snapshot_and_resync")
+            if not attempt.physics_evidence_refs:
+                return self._result(attempt, outcome="rejected", failed_stage="evidence", failed_code="physics_evidence_required", recovery_action="resample_evidence")
+            if attempt.client_sequence < self._next_client_sequence:
+                return self._result(attempt, outcome="rejected", failed_stage="transport", failed_code="client_sequence_stale", recovery_action="refresh_and_retry")
+            if attempt.client_sequence > self._next_client_sequence:
+                return self._result(attempt, outcome="rejected", failed_stage="transport", failed_code="client_sequence_gap", recovery_action="resync_and_retry")
 
         for stream_ref, expected in attempt.expected_revisions.items():
             current = self._aggregate_revisions.get(stream_ref, 0)
@@ -364,6 +417,8 @@ class EmbodiedAuthoritySettlementService:
         )
         self._aggregate_revisions = next_revisions
         self._attempt_results[attempt.idempotency_key] = (digest, transaction_id, result)
+        if not _transport_admitted:
+            self._next_client_sequence += 1
         self.mutation_count += 1
         return result.model_copy(deep=True)
 

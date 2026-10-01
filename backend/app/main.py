@@ -3814,6 +3814,25 @@ def _handle_envelope(
                 commands = character_agent_runtime.ingest_character_perceived_event(perceived)
                 messages.extend(_as_character_agent_execution_envelopes(commands))
         return messages
+    if envelope.message_type == "unified_character_action_recovery_snapshot_request":
+        if "unified_character_action_settlement_service" not in globals():
+            unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        connection_epoch = payload.get("connection_epoch")
+        if not isinstance(connection_epoch, int) or isinstance(connection_epoch, bool) or connection_epoch < 1:
+            return [_as_envelope("unified_character_action_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_required"})]
+        current_epoch = int(unified_character_action_settlement_service.transport_state()["connection_epoch"])
+        if connection_epoch < current_epoch:
+            return [_as_envelope("unified_character_action_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_stale", "connection_epoch": current_epoch})]
+        if connection_epoch > current_epoch:
+            if connection_epoch != current_epoch + 1:
+                return [_as_envelope("unified_character_action_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_gap", "connection_epoch": current_epoch})]
+            unified_character_action_settlement_service.reconnect_transport()
+        snapshot = {"connection_epoch": connection_epoch, "transport": "unified_character_action_foundation"}
+        snapshot_digest = "sha256:" + hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        resync_marker = f"resync:unified:{connection_epoch}"
+        accepted = unified_character_action_settlement_service.accept_transport_snapshot(connection_epoch, snapshot_digest=snapshot_digest, resync_marker=resync_marker)
+        return [_as_envelope("unified_character_action_recovery_snapshot", {"accepted": accepted, "connection_epoch": connection_epoch, "snapshot_digest": snapshot_digest, "resync_marker": resync_marker, "snapshot": snapshot})]
     if envelope.message_type == "siming_staging_ack":
         payload = envelope.payload
         required_text = ("room_id", "scene_id", "zone_id", "correlation_id")

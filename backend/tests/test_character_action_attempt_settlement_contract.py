@@ -63,7 +63,7 @@ def test_duplicate_key_with_changed_payload_is_rejected_without_write() -> None:
 def test_stale_revision_is_typed_rejection() -> None:
     service = EmbodiedAuthoritySettlementService()
     service.settle(valid_attempt())
-    stale = service.settle(valid_attempt(attempt_id="attempt:2", action_instance_id="action:2", idempotency_key="idem:2"))
+    stale = service.settle(valid_attempt(attempt_id="attempt:2", action_instance_id="action:2", idempotency_key="idem:2", client_sequence=2))
     assert stale.outcome == "rejected"
     assert stale.failed_code in {"revision_conflict", "precondition_failed"}
 
@@ -110,8 +110,56 @@ def test_melee_and_hitscan_are_semantic_authority_routes() -> None:
             authority_route="gameplay",
             weapon_ref="weapon:rifle",
             expected_revisions={},
+            client_sequence=2,
         )
     )
     assert melee.outcome == "committed"
     assert hitscan.outcome == "committed"
     assert hitscan.committed_projection.get("client_damage_truth") is None
+
+
+def test_generic_transport_identity_rejects_stale_epoch_before_write():
+    service = EmbodiedAuthoritySettlementService()
+    service.reconnect_transport()
+    stale = service.settle(valid_attempt(connection_epoch=1))
+    assert stale.outcome == "rejected"
+    assert stale.failed_code == "connection_epoch_stale"
+    assert service.mutation_count == 0
+
+
+def test_generic_transport_identity_rejects_sequence_gap():
+    service = EmbodiedAuthoritySettlementService()
+    service.accept_transport_snapshot(1, snapshot_digest="sha256:" + "a" * 64, resync_marker="resync:1")
+    gap = service.settle(valid_attempt(client_sequence=2))
+    assert gap.outcome == "rejected"
+    assert gap.failed_code == "client_sequence_gap"
+    assert service.mutation_count == 0
+
+
+def test_generic_transport_requires_recovery_after_reconnect():
+    service = EmbodiedAuthoritySettlementService()
+    service.disconnect_transport()
+    assert service.settle(valid_attempt()).failed_code == "transport_disconnected"
+    epoch = service.reconnect_transport()
+    blocked = service.settle(valid_attempt(connection_epoch=epoch))
+    assert blocked.failed_code == "recovery_required"
+    assert service.accept_transport_snapshot(epoch, snapshot_digest="sha256:" + "b" * 64, resync_marker="resync:2")
+    assert service.settle(valid_attempt(connection_epoch=epoch)).outcome == "committed"
+
+
+def test_generic_duplicate_replay_is_zero_write_and_changed_duplicate_rejected():
+    service = EmbodiedAuthoritySettlementService()
+    first = service.settle(valid_attempt())
+    duplicate = service.settle(valid_attempt(submitted_at=999))
+    changed = service.settle(valid_attempt(target_refs=["object:other"]))
+    assert duplicate.transaction_id == first.transaction_id
+    assert changed.failed_code == "idempotency_key_reused"
+    assert service.mutation_count == 1
+
+
+def test_generic_missing_evidence_rejected_before_write():
+    service = EmbodiedAuthoritySettlementService()
+    result = service.settle(valid_attempt(physics_evidence_refs=[]))
+    assert result.outcome == "rejected"
+    assert result.failed_code == "physics_evidence_required"
+    assert service.mutation_count == 0
