@@ -5,8 +5,8 @@
   "clips": {
     "idle": {
       "clip_ref": "idle",
-      "duration_seconds": 2.0,
-      "track_count": 68,
+      "duration_seconds": 1.6666666666666667,
+      "track_count": 204,
       "canonical_bone_ids": [
         "root",
         "pelvis",
@@ -81,8 +81,8 @@
     },
     "walking2": {
       "clip_ref": "walking2",
-      "duration_seconds": 1.0,
-      "track_count": 68,
+      "duration_seconds": 0.5666666666666667,
+      "track_count": 204,
       "canonical_bone_ids": [
         "root",
         "pelvis",
@@ -157,8 +157,8 @@
     },
     "running": {
       "clip_ref": "running",
-      "duration_seconds": 0.8,
-      "track_count": 68,
+      "duration_seconds": 0.7166666666666667,
+      "track_count": 204,
       "canonical_bone_ids": [
         "root",
         "pelvis",
@@ -233,8 +233,8 @@
     },
     "jump": {
       "clip_ref": "jump",
-      "duration_seconds": 1.2,
-      "track_count": 68,
+      "duration_seconds": 1.6833333333333333,
+      "track_count": 204,
       "canonical_bone_ids": [
         "root",
         "pelvis",
@@ -309,8 +309,8 @@
     },
     "boxing": {
       "clip_ref": "boxing",
-      "duration_seconds": 1.1,
-      "track_count": 68,
+      "duration_seconds": 1.0666666666666667,
+      "track_count": 204,
       "canonical_bone_ids": [
         "root",
         "pelvis",
@@ -385,8 +385,8 @@
     },
     "sword_attack": {
       "clip_ref": "sword_attack",
-      "duration_seconds": 1.0,
-      "track_count": 68,
+      "duration_seconds": 0.7666666666666667,
+      "track_count": 204,
       "canonical_bone_ids": [
         "root",
         "pelvis",
@@ -492,7 +492,7 @@
       "loop_mode": "once"
     }
   },
-  "source_digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-  "qualification_report_ref": "assets/characters/qualification_reports/female_trio_opt_in.json",
-  "qualification_status": "candidate"
+  "source_digest": "sha256:7de8f32fb6b5f062ca8f5dfddf34eb6df7f652d62bad29abf970b54367af8968",
+  "qualification_report_ref": "assets/characters/qualification_reports/female_jk_external.json",
+  "qualification_status": "approved"
 }
