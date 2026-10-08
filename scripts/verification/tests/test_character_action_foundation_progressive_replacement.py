@@ -237,13 +237,16 @@ def test_player_agent_program_share_controller_port_normalization():
 def test_role_animation_controller_owns_lock_hold_cancel_and_recovery():
     controller = (ROOT / "scripts" / "character" / "RoleAnimationController.gd").read_text(encoding="utf-8")
     skin = (ROOT / "scripts" / "street_combat" / "StreetCharacterSkin.gd").read_text(encoding="utf-8")
+    assert 'extends "res://scripts/character/CharacterPackagePresentationAdapter.gd"' in skin
+    presenter = (ROOT / "scripts" / "character" / "CharacterPackagePresentationAdapter.gd").read_text(encoding="utf-8")
     for name in ("apply_presentation_state", "hold_state", "release_hold", "cancel_action", "recover_to_locomotion", "action_locked"):
         assert name in controller
     for name in ("_action_locked", "_action_unlock_time"):
         assert name not in skin
-    assert "func set_guard_stance" in skin
-    assert "animation_controller.hold_state" in skin
-    assert "RoleAnimationControllerRef" in skin
+        assert name not in presenter
+    assert "func set_guard_stance" in presenter
+    assert "animation_controller.hold_state" in presenter
+    assert "RoleAnimationControllerRef" in presenter
 
 
 def test_presentation_runtime_is_semantic_adapter_only():

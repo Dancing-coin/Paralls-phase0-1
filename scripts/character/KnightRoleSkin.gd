@@ -1,4 +1,4 @@
-extends Node3D
+extends "res://scripts/character/CharacterPackagePresentationAdapter.gd"
 
 const CharacterPresentationInputRef = preload("res://scripts/character/CharacterPresentationInput.gd")
 
@@ -353,6 +353,56 @@ func set_motion_profile(state_name: String, profile_name: String) -> void:
 	_apply_motion_profile(profile_name)
 
 
+func resolve_motion_realization(semantic_action_id: String) -> Dictionary:
+	var clip_name := ""
+	match semantic_action_id:
+		"action:melee.sword_slash":
+			clip_name = "inspect_relic"
+		"action:aim.upper_body", "action:hitscan.aim_fire":
+			clip_name = "observe_watch"
+		"action:locomotion.idle":
+			clip_name = "idle_guard"
+		_:
+			clip_name = str(CLIP_MAP.get(semantic_action_id, ""))
+	if clip_name.is_empty() or animation_player == null or not animation_player.has_animation(clip_name):
+		return {"accepted": false, "reason": "knight_clip_unavailable", "clip_ref": clip_name}
+	return {
+		"accepted": true,
+		"package_id": "crusader_knight",
+		"motion_library_id": "motionlib:crusader_knight.native@1",
+		"realization_mode": "package_native",
+		"clip_ref": clip_name,
+		"source": "crusader_knight.manifest",
+	}
+
+
+func play_semantic_action(semantic_action_id: String, state_name: String, profile_name: String = "default", playback_speed: float = 1.0, provided_realization: Dictionary = {}) -> Dictionary:
+	var realization := provided_realization.duplicate(true) if not provided_realization.is_empty() else resolve_motion_realization(semantic_action_id)
+	if not bool(realization.get("accepted", false)):
+		return realization
+	var clip_name := str(realization.get("clip_ref", ""))
+	var playback_state := state_name
+	match clip_name:
+		"idle_guard": playback_state = "idle"
+		"walk_guard": playback_state = "walk"
+		"run_charge": playback_state = "run"
+		"jump_command": playback_state = "jump"
+		"observe_watch": playback_state = "observe"
+		"inspect_relic": playback_state = "inspect"
+		"speak_order": playback_state = "speak"
+		"alert_recoil": playback_state = "alert"
+	set_motion_profile(playback_state, profile_name)
+	if animation_player != null:
+		animation_player.speed_scale = playback_speed * float(MOTION_PROFILE.get(profile_name, MOTION_PROFILE["default"]).get("playback_speed", 1.0))
+	var played := current_clip == clip_name
+	if not played:
+		set_state(playback_state)
+		played = current_clip == clip_name
+	realization["playback_accepted"] = played
+	realization["played_clip"] = current_clip
+	return realization
+
+
 func play_reviewed_action_atom(action_tag: String, animation_clip_ref: String, phase: String) -> Dictionary:
 	var mapping: Variant = REVIEWED_ACTION_ATOM_STATES.get(action_tag, {})
 	if not (mapping is Dictionary):
@@ -642,6 +692,10 @@ func consume_root_motion_delta() -> Vector3:
 	var delta := pending_root_motion * current_distance_scale
 	pending_root_motion = Vector3.ZERO
 	return delta
+
+
+func get_root_motion_policy() -> String:
+	return "bounded_continue"
 
 func reset_root_motion() -> void:
 	pending_root_motion = Vector3.ZERO

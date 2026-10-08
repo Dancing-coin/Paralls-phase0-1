@@ -12,8 +12,8 @@ func build_from_scene(
 	result["library_id"] = String(library_id)
 	if String(library_id).is_empty():
 		return _reject(result, "library_id is required")
-	if skeleton_profile_id != &"humanoid.v1":
-		return _reject(result, "unsupported skeleton profile: %s" % String(skeleton_profile_id))
+	if String(skeleton_profile_id).is_empty():
+		return _reject(result, "skeleton profile is required")
 	if clip_names.is_empty():
 		return _reject(result, "clip_names is empty")
 	var seen := {}
@@ -59,7 +59,7 @@ func build_from_scene(
 			return _reject(result, "clip has no tracks: %s" % clip_name)
 		if not _validate_animation_tracks(source_animation, allowed_bones):
 			source_instance.free()
-			return _reject(result, "clip has non humanoid.v1 canonical bone path: %s" % clip_name)
+			return _reject(result, "clip has bone path outside declared skeleton profile: %s" % clip_name)
 		var copied_animation := source_animation.duplicate(true) as Animation
 		if copied_animation == null:
 			source_instance.free()
@@ -137,10 +137,15 @@ func _validate_animation_tracks(animation: Animation, allowed_bones: Dictionary)
 		if animation.track_get_key_count(index) == 0:
 			return false
 		var path_text := String(animation.track_get_path(index))
+		if not path_text.contains("Skeleton3D:"):
+			continue
 		var separator := path_text.rfind(":")
 		if separator < 0:
 			return false
 		var bone_name := path_text.substr(separator + 1)
+		var target_path := path_text.substr(0, separator)
+		if not target_path.contains("Skeleton3D"):
+			continue
 		if bone_name.is_empty() or not allowed_bones.has(bone_name):
 			return false
 		seen_bones[bone_name] = true

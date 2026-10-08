@@ -1,6 +1,6 @@
 # 第七阶段推进：文明级世界、推演与世界模型研究
 
-状态：`phase-seven workbench; long-term guidance; research/product lanes, non-authorizing`
+状态：`[research] phase-seven workbench; long-term guidance; research/product lanes, non-authorizing`
 
 第七阶段不是当前商业玩法的必要前置，而是八月分析中面向持久世界、文明演进、反事实
 推演、世界模型和机器人沙盒的长期阶段。它必须建立在 P1-P6 的事实、权限、发布和回放

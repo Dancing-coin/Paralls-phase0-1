@@ -1,6 +1,6 @@
 # Econ-1 跨域垂直闭环
 
-状态：`planned complete reference game; not a generic infrastructure definition`
+状态：`[current-verified] bounded Econ-1 reference-game vertical is implemented and verified; it is not a generic infrastructure definition`
 
 Econ-1 是第一款需要真正“从开始玩到结束”的小型完整参考游戏，也是领域组合验证。
 它使用现有技能、背包、装备、资源、状态、产权和固定经济原语，新增面包店所需的

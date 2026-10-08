@@ -1,0 +1,542 @@
+[gd_scene load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://scripts/street_combat/StreetCombatActorHUD.gd" id="1_hud"]
+[ext_resource type="Texture2D" path="res://assets/concepts/street-combat-minimap.png" id="2_map"]
+[ext_resource type="Texture2D" path="res://assets/concepts/street-combat-bandage-portrait.png" id="3_portrait"]
+
+[sub_resource type="StyleBoxFlat" id="skill_button"]
+bg_color = Color(0.05, 0.12, 0.18, 0.95)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.22, 0.65, 0.78, 0.8)
+corner_radius_top_left = 6
+corner_radius_top_right = 6
+corner_radius_bottom_right = 6
+corner_radius_bottom_left = 6
+
+[sub_resource type="StyleBoxFlat" id="hud_panel"]
+bg_color = Color(0.015, 0.055, 0.085, 0.9)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.08, 0.62, 0.78, 0.9)
+corner_radius_top_left = 10
+corner_radius_top_right = 10
+corner_radius_bottom_right = 10
+corner_radius_bottom_left = 10
+shadow_color = Color(0, 0, 0, 0.35)
+shadow_size = 8
+
+[sub_resource type="StyleBoxFlat" id="top_panel"]
+bg_color = Color(0.01, 0.09, 0.14, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.1, 0.75, 0.95, 0.95)
+corner_radius_top_left = 16
+corner_radius_top_right = 16
+corner_radius_bottom_right = 16
+corner_radius_bottom_left = 16
+shadow_color = Color(0.02, 0.65, 0.95, 0.22)
+shadow_size = 10
+
+[sub_resource type="StyleBoxFlat" id="marker_ring"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.18, 0.85, 1, 0.8)
+corner_radius_top_left = 22
+corner_radius_top_right = 22
+corner_radius_bottom_right = 22
+corner_radius_bottom_left = 22
+
+[sub_resource type="StyleBoxFlat" id="minimap_panel"]
+bg_color = Color(0.015, 0.07, 0.11, 0.94)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.12, 0.72, 0.9, 0.88)
+corner_radius_top_left = 90
+corner_radius_top_right = 90
+corner_radius_bottom_right = 90
+corner_radius_bottom_left = 90
+shadow_color = Color(0.02, 0.6, 0.9, 0.2)
+shadow_size = 10
+
+[sub_resource type="Shader" id="minimap_shader"]
+code = "shader_type canvas_item;\nvoid fragment() {\n    vec2 centered = UV - vec2(0.5);\n    vec4 tex = texture(TEXTURE, UV);\n    if (length(centered) > 0.5) { tex.a = 0.0; }\n    COLOR = tex;\n}"
+
+[sub_resource type="ShaderMaterial" id="minimap_material"]
+shader = SubResource("minimap_shader")
+
+[node name="StreetCombatHUD" type="CanvasLayer"]
+script = ExtResource("1_hud")
+
+[node name="ScoreStrip" type="ColorRect" parent="."]
+offset_right = 960.0
+offset_bottom = 74.0
+color = Color(0.02, 0.035, 0.065, 0)
+
+[node name="Accent" type="ColorRect" parent="ScoreStrip"]
+visible = false
+offset_right = 960.0
+offset_bottom = 3.0
+color = Color(0.18, 0.72, 0.92, 0.9)
+
+[node name="TopPill" type="Panel" parent="ScoreStrip"]
+offset_left = 344.0
+offset_top = 5.0
+offset_right = 616.0
+offset_bottom = 72.0
+theme_override_styles/panel = SubResource("top_panel")
+
+[node name="TeamBlue" type="Label" parent="ScoreStrip"]
+visible = false
+offset_left = 28.0
+offset_top = 16.0
+offset_right = 310.0
+offset_bottom = 50.0
+theme_override_colors/font_color = Color(0.35, 0.86, 1, 1)
+theme_override_font_sizes/font_size = 19
+text = "我方  ·  BANDAGE     3"
+
+[node name="Center" type="Label" parent="ScoreStrip"]
+offset_left = 360.0
+offset_top = 35.0
+offset_right = 600.0
+offset_bottom = 62.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.94, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 24
+text = "00:00"
+
+[node name="Round" type="Label" parent="ScoreStrip"]
+offset_left = 360.0
+offset_top = 10.0
+offset_right = 600.0
+offset_bottom = 66.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.68, 0.76, 0.86, 1)
+theme_override_font_sizes/font_size = 16
+text = "街区 · 十字路口"
+
+[node name="TeamRed" type="Label" parent="ScoreStrip"]
+visible = false
+offset_left = 650.0
+offset_top = 16.0
+offset_right = 930.0
+offset_bottom = 50.0
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(1, 0.48, 0.46, 1)
+theme_override_font_sizes/font_size = 19
+text = "对手  ·  目标锁定     2"
+
+[node name="Status" type="Label" parent="ScoreStrip"]
+offset_left = 20.0
+offset_top = 19.0
+offset_right = 310.0
+offset_bottom = 49.0
+theme_override_colors/font_color = Color(0.45, 0.92, 0.79, 1)
+theme_override_font_sizes/font_size = 12
+text = "● 后端未连接"
+
+[node name="StatusBadge" type="Panel" parent="ScoreStrip"]
+offset_left = 14.0
+offset_top = 11.0
+offset_right = 186.0
+offset_bottom = 52.0
+mouse_filter = 2
+z_index = -1
+theme_override_styles/panel = SubResource("hud_panel")
+
+[node name="StatusRule" type="ColorRect" parent="ScoreStrip"]
+offset_left = 18.0
+offset_top = 48.0
+offset_right = 188.0
+offset_bottom = 50.0
+color = Color(0.1, 0.72, 0.88, 0.55)
+
+[node name="MiniMap" type="Panel" parent="."]
+offset_left = 770.0
+offset_top = 92.0
+offset_right = 950.0
+offset_bottom = 272.0
+clip_contents = true
+theme_override_styles/panel = SubResource("minimap_panel")
+
+[node name="MapImage" type="TextureRect" parent="MiniMap"]
+offset_left = 5.0
+offset_top = 5.0
+offset_right = 165.0
+offset_bottom = 165.0
+texture = ExtResource("2_map")
+expand_mode = 1
+stretch_mode = 6
+material = SubResource("minimap_material")
+
+[node name="Grid" type="Label" parent="MiniMap"]
+offset_left = 70.0
+offset_top = 62.0
+offset_right = 110.0
+offset_bottom = 105.0
+theme_override_colors/font_color = Color(0.26, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 25
+text = "▲"
+
+[node name="Caption" type="Label" parent="MiniMap"]
+visible = false
+offset_left = 12.0
+offset_top = 168.0
+offset_right = 158.0
+offset_bottom = 188.0
+theme_override_colors/font_color = Color(0.68, 0.82, 0.9, 1)
+theme_override_font_sizes/font_size = 12
+text = "街区 · 十字路口"
+
+[node name="CombatFeed" type="Panel" parent="."]
+offset_left = 24.0
+offset_top = 93.0
+offset_right = 286.0
+offset_bottom = 204.0
+theme_override_styles/panel = SubResource("hud_panel")
+
+[node name="FeedTitle" type="Label" parent="CombatFeed"]
+offset_left = 16.0
+offset_top = 13.0
+offset_right = 286.0
+offset_bottom = 38.0
+theme_override_colors/font_color = Color(0.98, 0.82, 0.38, 1)
+theme_override_font_sizes/font_size = 16
+text = "战斗记录"
+
+[node name="Feed" type="Label" parent="CombatFeed"]
+offset_left = 16.0
+offset_top = 39.0
+offset_right = 290.0
+offset_bottom = 176.0
+theme_override_colors/font_color = Color(0.78, 0.86, 0.95, 1)
+theme_override_font_sizes/font_size = 11
+text = "等待战斗事件…"
+
+[node name="TargetCard" type="Panel" parent="."]
+offset_left = 666.0
+offset_top = 274.0
+offset_right = 936.0
+offset_bottom = 382.0
+theme_override_styles/panel = SubResource("hud_panel")
+
+[node name="TargetTitle" type="Label" parent="TargetCard"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 250.0
+offset_bottom = 36.0
+theme_override_colors/font_color = Color(1, 0.76, 0.38, 1)
+theme_override_font_sizes/font_size = 16
+text = "目标"
+
+[node name="Target" type="Label" parent="TargetCard"]
+offset_left = 16.0
+offset_top = 38.0
+offset_right = 250.0
+offset_bottom = 68.0
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 19
+text = "JK  ·  HP 100"
+
+[node name="Distance" type="Label" parent="TargetCard"]
+offset_left = 16.0
+offset_top = 76.0
+offset_right = 250.0
+offset_bottom = 102.0
+theme_override_colors/font_color = Color(0.67, 0.78, 0.88, 1)
+theme_override_font_sizes/font_size = 13
+text = "距离  --  ·  TAB 切换"
+
+[node name="PlayerCard" type="Panel" parent="."]
+offset_left = 24.0
+offset_top = 486.0
+offset_right = 332.0
+offset_bottom = 632.0
+theme_override_styles/panel = SubResource("hud_panel")
+
+[node name="Portrait" type="TextureRect" parent="PlayerCard"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 96.0
+offset_bottom = 136.0
+texture = ExtResource("3_portrait")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="PlayerName" type="Label" parent="PlayerCard"]
+offset_left = 105.0
+offset_top = 12.0
+offset_right = 292.0
+offset_bottom = 39.0
+theme_override_colors/font_color = Color(0.95, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 20
+text = "绷带  ·  玩家"
+
+[node name="Action" type="Label" parent="PlayerCard"]
+offset_left = 105.0
+offset_top = 40.0
+offset_right = 292.0
+offset_bottom = 62.0
+theme_override_colors/font_color = Color(0.4, 0.85, 0.95, 1)
+theme_override_font_sizes/font_size = 12
+text = "动作  idle"
+
+[node name="HealthLabel" type="Label" parent="PlayerCard"]
+offset_left = 105.0
+offset_top = 72.0
+offset_right = 72.0
+offset_bottom = 91.0
+theme_override_colors/font_color = Color(0.95, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "生命"
+
+[node name="HealthTrack" type="ColorRect" parent="PlayerCard"]
+offset_left = 105.0
+offset_top = 104.0
+offset_right = 285.0
+offset_bottom = 118.0
+color = Color(0.12, 0.17, 0.24, 1)
+
+[node name="HealthFill" type="ColorRect" parent="PlayerCard/HealthTrack"]
+offset_right = 180.0
+offset_bottom = 14.0
+color = Color(0.15, 0.75, 0.9, 1)
+
+[node name="HealthValue" type="Label" parent="PlayerCard"]
+offset_left = 215.0
+offset_top = 72.0
+offset_right = 292.0
+offset_bottom = 92.0
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(0.82, 0.92, 1, 1)
+theme_override_font_sizes/font_size = 12
+text = "100/100"
+
+[node name="StaminaBar" type="Panel" parent="."]
+offset_left = 365.0
+offset_top = 559.0
+offset_right = 624.0
+offset_bottom = 624.0
+theme_override_styles/panel = SubResource("hud_panel")
+
+[node name="StaminaLabel" type="Label" parent="StaminaBar"]
+offset_left = 11.0
+offset_top = 10.0
+offset_right = 62.0
+offset_bottom = 31.0
+theme_override_colors/font_color = Color(0.95, 0.96, 1, 1)
+theme_override_font_sizes/font_size = 13
+text = "体力"
+
+[node name="StaminaValue" type="Label" parent="StaminaBar"]
+offset_left = 170.0
+offset_top = 10.0
+offset_right = 246.0
+offset_bottom = 31.0
+horizontal_alignment = 2
+theme_override_colors/font_color = Color(0.97, 0.83, 0.48, 1)
+theme_override_font_sizes/font_size = 13
+text = "100/100"
+
+[node name="StaminaTrack" type="ColorRect" parent="StaminaBar"]
+offset_left = 11.0
+offset_top = 37.0
+offset_right = 248.0
+offset_bottom = 49.0
+color = Color(0.12, 0.17, 0.24, 1)
+
+[node name="StaminaFill" type="ColorRect" parent="StaminaBar/StaminaTrack"]
+offset_right = 237.0
+offset_bottom = 12.0
+color = Color(0.95, 0.66, 0.2, 1)
+
+[node name="SkillBar" type="Panel" parent="."]
+offset_left = 634.0
+offset_top = 513.0
+offset_right = 936.0
+offset_bottom = 632.0
+theme_override_styles/panel = SubResource("hud_panel")
+
+[node name="Skills" type="Label" parent="SkillBar"]
+visible = false
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 272.0
+offset_bottom = 47.0
+theme_override_colors/font_color = Color(0.8, 0.88, 0.96, 1)
+theme_override_font_sizes/font_size = 16
+text = "LMB         Q         Shift         Tab"
+
+[node name="SkillNames" type="Label" parent="SkillBar"]
+visible = false
+offset_left = 16.0
+offset_top = 52.0
+offset_right = 272.0
+offset_bottom = 96.0
+theme_override_colors/font_color = Color(0.56, 0.7, 0.8, 1)
+theme_override_font_sizes/font_size = 12
+text = "拳击       剑击       奔跑       切换角色"
+
+[node name="PunchButton" type="Panel" parent="SkillBar"]
+offset_left = 10.0
+offset_top = 8.0
+offset_right = 100.0
+offset_bottom = 58.0
+theme_override_styles/panel = SubResource("skill_button")
+
+[node name="Text" type="Label" parent="SkillBar/PunchButton"]
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 130.0
+offset_bottom = 42.0
+theme_override_colors/font_color = Color(0.91, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "LMB   拳击"
+
+[node name="SwordButton" type="Panel" parent="SkillBar"]
+offset_left = 202.0
+offset_top = 8.0
+offset_right = 292.0
+offset_bottom = 113.0
+theme_override_styles/panel = SubResource("skill_button")
+
+[node name="Text" type="Label" parent="SkillBar/SwordButton"]
+offset_left = 10.0
+offset_top = 9.0
+offset_right = 130.0
+offset_bottom = 42.0
+theme_override_colors/font_color = Color(0.91, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "Q   剑击"
+
+[node name="RunButton" type="Panel" parent="SkillBar"]
+offset_left = 10.0
+offset_top = 66.0
+offset_right = 100.0
+offset_bottom = 113.0
+theme_override_styles/panel = SubResource("skill_button")
+
+[node name="Text" type="Label" parent="SkillBar/RunButton"]
+offset_left = 10.0
+offset_top = 9.0
+offset_right = 130.0
+offset_bottom = 42.0
+theme_override_colors/font_color = Color(0.91, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "Shift 奔跑"
+
+[node name="LockButton" type="Panel" parent="SkillBar"]
+offset_left = 106.0
+offset_top = 66.0
+offset_right = 196.0
+offset_bottom = 113.0
+theme_override_styles/panel = SubResource("skill_button")
+
+[node name="Text" type="Label" parent="SkillBar/LockButton"]
+offset_left = 10.0
+offset_top = 9.0
+offset_right = 128.0
+offset_bottom = 42.0
+theme_override_colors/font_color = Color(0.91, 0.97, 1, 1)
+theme_override_font_sizes/font_size = 16
+text = "Tab 切换"
+
+[node name="Agents" type="Label" parent="."]
+visible = false
+offset_left = 362.0
+offset_top = 495.0
+offset_right = 632.0
+offset_bottom = 526.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.72, 0.84, 0.92, 1)
+theme_override_font_sizes/font_size = 13
+text = "JK  AGENT  ·  idle      T  AGENT  ·  idle"
+
+[node name="Controls" type="Label" parent="."]
+visible = false
+offset_left = 362.0
+offset_top = 532.0
+offset_right = 632.0
+offset_bottom = 556.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.68, 0.78, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "WASD 移动   Tab 切换角色   LMB 拳击   Q 剑击   Space 跳跃"
+
+[node name="JKMarker" type="Control" parent="."]
+offset_right = 180.0
+offset_bottom = 42.0
+mouse_filter = 2
+
+[node name="Ring" type="Panel" parent="JKMarker"]
+offset_left = 68.0
+offset_top = 0.0
+offset_right = 112.0
+offset_bottom = 44.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("marker_ring")
+
+[node name="Name" type="Label" parent="JKMarker"]
+offset_right = 180.0
+offset_bottom = 22.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.9, 0.98, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "JK"
+
+[node name="HealthTrack" type="ColorRect" parent="JKMarker"]
+offset_left = 10.0
+offset_top = 26.0
+offset_right = 170.0
+offset_bottom = 32.0
+color = Color(0.04, 0.09, 0.13, 0.9)
+
+[node name="HealthFill" type="ColorRect" parent="JKMarker/HealthTrack"]
+offset_right = 160.0
+offset_bottom = 6.0
+color = Color(0.18, 0.81, 0.93, 1)
+
+[node name="TMarker" type="Control" parent="."]
+offset_right = 180.0
+offset_bottom = 42.0
+mouse_filter = 2
+
+[node name="Ring" type="Panel" parent="TMarker"]
+offset_left = 68.0
+offset_top = 0.0
+offset_right = 112.0
+offset_bottom = 44.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("marker_ring")
+
+[node name="Name" type="Label" parent="TMarker"]
+offset_right = 180.0
+offset_bottom = 22.0
+horizontal_alignment = 1
+theme_override_colors/font_color = Color(0.9, 0.98, 1, 1)
+theme_override_font_sizes/font_size = 14
+text = "T"
+
+[node name="HealthTrack" type="ColorRect" parent="TMarker"]
+offset_left = 10.0
+offset_top = 26.0
+offset_right = 170.0
+offset_bottom = 32.0
+color = Color(0.04, 0.09, 0.13, 0.9)
+
+[node name="HealthFill" type="ColorRect" parent="TMarker/HealthTrack"]
+offset_right = 160.0
+offset_bottom = 6.0
+color = Color(0.18, 0.81, 0.93, 1)

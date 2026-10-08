@@ -19,6 +19,7 @@ var locomotion_state := "idle"
 var pending_recovery_state := "idle"
 var _last_presentation_signature := ""
 var _states: Dictionary = {}
+var state_clip_candidates: Dictionary = {}
 
 const CANONICAL_CLIP_CANDIDATES := {
 	"idle": ["idle"],
@@ -210,6 +211,8 @@ func state_name_for_clip(clip_ref: String) -> String:
 	return _normalize_state_name(resolved)
 
 func _configure_loops() -> void:
+	if not state_clip_candidates.is_empty():
+		return
 	for library_name in animation_player.get_animation_library_list():
 		var library := animation_player.get_animation_library(library_name)
 		for animation_name in library.get_animation_list():
@@ -225,8 +228,9 @@ func _configure_loops() -> void:
 func _build_state_machine() -> void:
 	state_machine = AnimationNodeStateMachine.new()
 	_states.clear()
-	for state_name in CANONICAL_CLIP_CANDIDATES:
-		var clip := _resolve_clip_from_candidates(CANONICAL_CLIP_CANDIDATES[state_name])
+	var candidates := CANONICAL_CLIP_CANDIDATES if state_clip_candidates.is_empty() else state_clip_candidates
+	for state_name in candidates:
+		var clip := _resolve_clip_from_candidates(candidates[state_name])
 		if clip.is_empty():
 			continue
 		var node := AnimationNodeAnimation.new()

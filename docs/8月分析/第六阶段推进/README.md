@@ -1,6 +1,6 @@
 # 第六阶段推进：创作者控制面与内容发布
 
-状态：`phase-six workbench; incremental guidance; control plane remains planned`
+状态：`[planned] phase-six workbench; incremental guidance; control plane remains planned`
 
 第六阶段把八月分析中的创作者 UI、CLI/MCP、玩法包、版本激活、发布和远程运营收口为
 产品控制面。它不是玩法 authority，也不是把闭源核心代码加入创作者 SDK。所有写入仍通过

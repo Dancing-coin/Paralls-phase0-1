@@ -36,3 +36,21 @@ This repository implements the `world-character-Siming-authority` mainline runti
 ## Reporting
 
 Separate completed and verified work from static-only work, blockers, and next steps. Do not claim a runtime milestone without its corresponding verification evidence.
+
+## Architecture Documentation Contract
+
+Every new or substantially revised architecture documentation area must include, at the same level or through explicitly linked companion files:
+
+- an architecture diagram showing ownership and module boundaries;
+- a sequence diagram showing the principal interaction order;
+- a data-flow diagram showing inputs, transformations, outputs, and authority boundaries.
+
+Use Mermaid in Markdown unless a repository-specific diagram format is required. The diagrams must distinguish current implementation, planned work, and deferred work. A design document without all three diagrams is incomplete. Each architecture folder must contain its own `AGENTS.md` when it adds stricter naming, diagram, or implementation-mapping rules; folder rules supplement this file and do not weaken it.
+
+Character additions must preserve existing scene actors and append an independently identified actor by default. Asset package, skeleton profile and motion-library registration are separate from scene actor creation and backend identity binding. Replacement requires an explicit replacement request and named target; asset registration or active-control selection must not implicitly replace an actor. Document implemented admission and discovery behavior separately from planned capabilities.
+
+## Gameplay Tag Guidance
+
+For gameplay and character design, tags are registered, versioned semantic carriers. A tag may describe an object, component, relation, state, event or capability and may participate in a registered effect binding, but it must not directly write resources, effects, inventory, status lifecycle or world truth. Meta-tags describe tag governance such as attachability, lifecycle, visibility, edit policy, merge/conflict policy and authority requirements; they do not create an unbounded second rule engine. Creator editing and in-world character/Siming changes must produce proposals or authority events through the owning domain.
+
+Use `docs/10月分析/战斗系统与角色技能，状态和资源/08-对象标签、编辑与版本治理设计.md` for the proposed object/meta-tag design and its INF references. Reuse the semantic registry, resource/ability runtimes, status lifecycle and effective stats. Keep lifecycle, semantic category, effect binding and activation as separate axes; meta-tag fields never grant new owners or bypass capability/privacy gates. Analysis documents are not implementation authorization.

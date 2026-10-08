@@ -1,6 +1,6 @@
 # F0 Owner Map
 
-状态：`reviewed baseline; no new owner introduced`
+状态：`[governance] reviewed baseline; no new owner introduced`
 
 | 能力面 | 现有 owner | 现有写入/投影路径 | 证据入口 | 不能推导出的能力 |
 | --- | --- | --- | --- | --- |

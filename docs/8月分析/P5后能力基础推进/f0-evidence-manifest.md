@@ -1,6 +1,6 @@
 # F0 Evidence Manifest
 
-状态：`fresh baseline; generated predecessor evidence`
+状态：`[governance] fresh baseline; generated predecessor evidence`
 
 基线提交：`7b6866293e16ed6d7053666ebf4d7bf80f4f2873`（2026-08-11）
 

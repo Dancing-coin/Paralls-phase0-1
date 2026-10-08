@@ -1,0 +1,22 @@
+{
+  "contract": "character_native_motion_library.v1",
+  "motion_library_id": "motionlib:crusader_knight.native@1",
+  "native_skeleton_profile_id": "crusader_knight.skeleton.v1",
+  "skeleton_profile_ref": "res://assets/active/crusader_knight/skeleton_profile.json",
+  "canonical_profile_id": "humanoid.v1",
+  "source_digest_sha256": "54DF93C9529C8F7ABBA10361B34FED411980146B3E579C3D4825F4587B85C908",
+  "animation_library_ref": "res://assets/active/crusader_knight/native_motion_library.tres",
+  "realization_mode": "package_native",
+  "usage_scope": "local_presentation_preview",
+  "semantic_actions": {
+    "action:locomotion.idle": {"clip_ref": "idle_guard", "loop": true},
+    "action:locomotion.walk": {"clip_ref": "walk_guard", "loop": true},
+    "action:locomotion.run": {"clip_ref": "run_charge", "loop": true},
+    "action:locomotion.jump": {"clip_ref": "jump_command", "loop": false},
+    "action:presentation.observe": {"clip_ref": "observe_watch", "loop": true},
+    "action:presentation.speak": {"clip_ref": "speak_order", "loop": false},
+    "action:presentation.alert": {"clip_ref": "alert_recoil", "loop": false},
+    "action:presentation.inspect": {"clip_ref": "inspect_relic", "loop": false},
+    "action:presentation.ambient": {"clip_ref": "ambient_patrol", "loop": true}
+  }
+}

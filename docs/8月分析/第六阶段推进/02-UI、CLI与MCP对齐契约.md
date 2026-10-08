@@ -1,6 +1,6 @@
 # UI、CLI 与 MCP 对齐契约
 
-状态：`incremental design; P6B formal spec required before implementation`
+状态：`[planned] incremental design; P6B formal spec required before implementation`
 
 创作者 UI 的 list 勾选/选择和编程智能体的 CLI/MCP 调整必须是同一控制面 API 的不同
 transport。不能各自解析 YAML、各自写数据库或各自定义权限。

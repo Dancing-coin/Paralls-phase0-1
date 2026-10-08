@@ -1,6 +1,6 @@
 # 分层玩法系统
 
-状态：`incremental gameplay guidance; gameplay hierarchy is separate from canonical-owner classification`
+状态：`[governance] incremental gameplay guidance; gameplay hierarchy is separate from canonical-owner classification`
 
 当前实现映射：见 [../12-实现收口与证据映射.md](../12-实现收口与证据映射.md#玩法系统)。P1-P5 已形成多个可回放的限定玩法切片，不代表所有 L1-L5 玩法域都已产品化。
 

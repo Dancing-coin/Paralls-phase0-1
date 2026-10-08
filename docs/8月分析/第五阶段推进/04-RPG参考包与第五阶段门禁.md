@@ -1,6 +1,6 @@
 # RPG 参考包与第五阶段门禁
 
-状态：`incremental design; P5D formal spec and Harness profile required before implementation`
+状态：`[current-verified] bounded RPG reference vertical and phase gate are implemented and verified; full RPG remains planned`
 
 建议参考包为“面包店失窃调查”：玩家和两个已有角色在 P4 商业街中调查一批缺失材料，
 通过物品 provenance、角色知识、关系、潜行观察和合同证据定位责任方，并以可回放结果

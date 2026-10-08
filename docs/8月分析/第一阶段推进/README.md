@@ -1,6 +1,6 @@
 # 第一阶段推进：通用基础契约收口
 
-状态：`phase-one bounded scope implemented-and-verified; this directory remains non-authorizing guidance`
+状态：`[current-verified] phase-one bounded scope implemented-and-verified; this directory remains non-authorizing guidance`
 
 本目录用于推进第一阶段，不建立新的 runtime、event store、scheduler 或 authority。
 它把当前 Gameplay Foundation 的实现基础收口为可跨玩法复用的稳定契约，并用少量

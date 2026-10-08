@@ -1,12 +1,13 @@
 # 线程主题分析索引
 
-状态：`incremental guidance index; does not authorize implementation independently of formal spec/plan`
+状态：`[governance] incremental guidance index; does not authorize implementation independently of formal spec/plan`
 
-- 整理日期：2026-08-12
+- 状态复核：2026-10-08；初始整理日期：2026-08-12
 - 性质：基于现有实现的增量设计指导、架构判断与后续决策材料
 - 事实约束：本文档不替代正式 spec、plan、代码和 Harness 报告；“当前实现”以仓库代码和 `.harness/verification/` 为准
 - 体系分离：分析材料从 [分析与设计指导](分析与设计指导/README.md) 进入；阶段安排从 [阶段推进](阶段推进/README.md) 进入
-- 实现收口：完整的逐文件实现映射见 [12-实现收口与证据映射.md](12-实现收口与证据映射.md)，该页记录了 2026-08-12 的验证基线和未完成边界
+- 实现收口：逐文件范围映射见 [12-实现收口与证据映射.md](12-实现收口与证据映射.md)；其中历史测试数字保留为历史记录，不能当作本日新鲜验证
+- 状态标签：`[current-verified]` 表示有限范围有实现与对应证据；`[current-partial]` 表示只有基础/窄切片完成；`[planned]` 表示尚无完整实现闭环；`[deferred]` 表示后置；`[research]` 表示研究材料；`[governance]` 表示索引、状态或证据治理文件。混合范围会在状态句中同时写出已实现与剩余工作
 - 适用范围：本线程从通用智能体游戏底座、RPG 玩法、VLA/世界模型、呈现形态、创作者工具、算力复用、经济系统和闭源核心保护展开的全部讨论
 
 ## 权威边界
@@ -19,6 +20,8 @@
 4. 代码、测试和 `.harness/verification/` 证据；
 
 为准。本目录应持续把已有 owner、事件模型和验证证据带入后续设计；新增 owner、数据模型、优先级或控制面需要与正式 spec/plan 同步后，才能成为实现授权或执行顺序。
+
+本轮逐文件复核了目录内 117 份 Markdown 的状态字段。状态标签描述该文档覆盖主题的实际范围，不代表整份目标系统完成；特别是 P1-P5 的已验证垂直切片不能推导出完整 RPG、完整战斗、通用人口模拟、创作者控制面或 P6/P7 已实现。
 
 本目录提到的 `World Record Authority`、`Semantic Registry Authority`、`Settlement/Scheduler Authority`、
 `ActiveWorldRevision`、`CreatorControlPlane` 等，如仓库尚无同名正式模块，一律视为 `planned`

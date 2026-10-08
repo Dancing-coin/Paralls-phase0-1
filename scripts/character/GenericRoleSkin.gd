@@ -1,4 +1,4 @@
-extends Node3D
+extends "res://scripts/character/CharacterPresentationAdapter.gd"
 
 class_name GenericRoleSkin
 
@@ -67,12 +67,13 @@ func set_focus_highlight(is_focused: bool) -> void:
 		visual.set_focus_highlight(is_focused)
 
 
-func apply_presentation_input(next_input: Dictionary) -> void:
+func apply_presentation_input(next_input: Dictionary) -> Dictionary:
 	presentation_input = next_input.duplicate(true)
 	var requested_action := str(next_input.get("requested_action", ""))
 	if not requested_action.is_empty():
 		current_action = requested_action
 		set_state(_state_for_action(requested_action))
+	return {"accepted": true, "presentation_mode": "generic_fallback"}
 
 
 func play_qualified_profile(profile: Dictionary) -> Dictionary:

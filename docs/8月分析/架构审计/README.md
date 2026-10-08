@@ -1,6 +1,6 @@
 # 架构审计
 
-状态：`incremental audit guidance index; findings do not override formal spec/plan or Harness evidence`
+状态：`[governance] incremental audit guidance index; findings do not override formal spec/plan or Harness evidence`
 
 本目录保存阶段性缺漏审计、边界检查和路线收敛文档。审计文档不定义运行时
 truth；冻结后的 owner、权限和发布规则以全域架构与顶层控制面方案为准。

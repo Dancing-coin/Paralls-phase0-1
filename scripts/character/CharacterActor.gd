@@ -169,6 +169,9 @@ func _resolve_role_asset_scene() -> Node:
 		return configured
 	if role_asset_root == null:
 		return null
+	for child in role_asset_root.get_children():
+		if child.is_in_group("character_presentation_adapter"):
+			return child as Node
 	var legacy_skin := role_asset_root.get_node_or_null("KnightRoleSkin")
 	if legacy_skin != null:
 		return legacy_skin
@@ -1419,11 +1422,6 @@ func _set_role_asset_focus(is_focused: bool) -> void:
 	if role_asset_scene and role_asset_scene.has_method("set_focus_highlight"):
 		role_asset_scene.set_focus_highlight(is_focused)
 		return
-	var plush_mesh := role_asset_scene.get_node_or_null("KnightScene/KnightArmature/Skeleton3D/head") if role_asset_scene else null
-	if plush_mesh is MeshInstance3D:
-		var mat := StandardMaterial3D.new()
-		mat.albedo_color = Color(0.95, 0.85, 0.35, 1.0) if is_focused else Color(1.0, 1.0, 1.0, 1.0)
-		(plush_mesh as MeshInstance3D).material_overlay = mat
 
 func _update_action_override(delta: float) -> void:
 	if action_override_timer <= 0.0:

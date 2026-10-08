@@ -1,6 +1,6 @@
 # 第二阶段推进：已有角色的多智能体组织协作
 
-状态：`incremental guidance; P2A-P2C verified; historical P2D invalidated; P2D-R bounded owner re-closure verified; this directory remains non-authorizing`
+状态：`[current-partial] incremental guidance; P2A-P2C verified; historical P2D invalidated; P2D-R bounded owner re-closure verified; this directory remains non-authorizing`
 
 ## 1. 阶段定位
 

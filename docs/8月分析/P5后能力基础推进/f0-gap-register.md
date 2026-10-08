@@ -1,6 +1,6 @@
 # F0 Gap Register
 
-状态：`reviewed baseline; implementation follow-up required`
+状态：`[governance] reviewed baseline; implementation follow-up required`
 
 | 缺口 | 当前状态 | 依赖 | 进入轨道 | 阻塞条件 |
 | --- | --- | --- | --- | --- |

@@ -1,6 +1,6 @@
 # 创作者工具、Codex 控制与生态商业化
 
-状态：`discussion and planned creator-platform guidance; not a current external control-plane contract`
+状态：`[planned] discussion and planned creator-platform guidance; not a current external control-plane contract`
 
 ## 1. 创作者真正需要的不是裸引擎
 

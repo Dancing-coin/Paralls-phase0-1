@@ -33,8 +33,10 @@
 - `docs/架构/运行时/模块/VLA运行时通道.md`：已实现的 VLA 视觉/空间运行时慢路径和无直接 authority 写权限边界。
 - `docs/架构/运行时/模块/模型服务通道.md`：模型 provider readiness、adapter 和真实调用证明边界。
 - `docs/架构/运行时/模块/Harness验证证据.md`：Harness profile 与证据产物模块文档。
+- `docs/架构/通用基础设施/前端/README.md`：前端通用基础设施入口，包含角色控制设计、说明、架构图、时序图和数据流转图。
 - `docs/8月分析/README.md`：基于当前实现、正式 spec/plan 与 Harness 证据的增量设计指导；其中第二阶段推进目录定义已有角色的多智能体协作边界。
 - `docs/9月分析/README.md`：初代产品初稿入口，记录小镇、个人区域、锚点朋友、朋友圈桌游和剧本角色增量方向；该目录是提议性分析材料，不授权实现。
+- `docs/10月分析/README.md`：模型驱动的角色心智、Laya 快慢循环、协同作战、语音表达和玩法思考模式分析；该目录是提议性架构材料，不授权实现。
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/art-asset-production-repository.md`：独立 `paralls-art-assets` 美术生产仓库的职责、交接流程、旧资源参考和资格门禁。

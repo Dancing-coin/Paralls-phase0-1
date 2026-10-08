@@ -1,6 +1,6 @@
 # VLA、世界模型与机器人沙盒方向
 
-状态：`discussion and incremental advisory guidance; VLA/world-model outputs do not own world truth`
+状态：`[planned] discussion and incremental advisory guidance; VLA/world-model outputs do not own world truth`
 
 ## 1. 当前项目与 VLA 的真实关系
 

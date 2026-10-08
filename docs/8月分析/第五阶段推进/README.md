@@ -1,6 +1,6 @@
 # 第五阶段推进：RPG 与社会玩法域扩展
 
-状态：`phase-five bounded scope implemented; aggregate focused/predecessor evidence green; this directory remains non-authorizing guidance`
+状态：`[current-verified] phase-five bounded scope implemented; aggregate focused/predecessor evidence green; this directory remains non-authorizing guidance`
 
 第五阶段把前四阶段的角色、社会投影、经济和世界运行能力扩展为可玩的 RPG/剧本杀闭环。
 它不是重新实现 Character Core、ESM 或 Gameplay Foundation，而是补齐任务、证据、关系、

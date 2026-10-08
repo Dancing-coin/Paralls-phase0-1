@@ -36,6 +36,7 @@
   "source_frame_rate": 60.0,
   "unit_scale": 1.0,
   "forward_axis": "-z",
+  "presentation_alignment": {"visual_yaw_degrees": 180.0},
   "up_axis": "+y",
   "rest_pose": {
     "import_policy": "applied_transforms",

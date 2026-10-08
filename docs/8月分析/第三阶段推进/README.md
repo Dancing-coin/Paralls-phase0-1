@@ -1,6 +1,6 @@
 # 第三阶段推进：Population Simulation 与持续世界运行
 
-状态：`phase-three bounded population-continuity slice implemented-and-verified; this directory remains non-authorizing guidance`
+状态：`[current-verified] phase-three bounded population-continuity slice implemented-and-verified; this directory remains non-authorizing guidance`
 
 第三阶段承接 `bakery-authored-agents`。目标是让员工、顾客、供应商、竞争对手和监管
 角色可以由人口/世界模式机制激活，并以同一 `CharacterRecord` 和 Gameplay authority

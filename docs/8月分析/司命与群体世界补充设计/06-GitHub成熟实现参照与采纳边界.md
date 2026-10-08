@@ -1,6 +1,6 @@
 # GitHub 成熟实现参照与采纳边界
 
-状态：`research baseline; representative open-source survey completed 2026-08-17; not an adoption decision`
+状态：`[research] research baseline; representative open-source survey completed 2026-08-17; not an adoption decision`
 
 对应母规格：[Character Simulation Memory Seed And Continuity Design](../../superpowers/specs/world-character-siming-authority-mainline/2026-08-22-character-simulation-memory-seed-continuity-design.md)，映射范围：外部模式的适用边界；本文件不提供 owner admission。
 

@@ -1,0 +1,14 @@
+{
+  "contract": "character_skeleton_profile.v1",
+  "profile_id": "crusader_knight.skeleton.v1",
+  "canonical_profile_id": "humanoid.v1",
+  "source_model_path": "res://assets/active/crusader_knight/crusader_knight.glb",
+  "source_digest_sha256": "54DF93C9529C8F7ABBA10361B34FED411980146B3E579C3D4825F4587B85C908",
+  "bones": {
+    "root": "Bip001 Pelvis", "pelvis": "Bip001 Spine", "spine": "Bip001 Spine1", "chest": "Bip001 Spine2", "head": "Bip001 Head",
+    "left_upper_arm": "Bip001 L UpperArm", "left_lower_arm": "Bip001 L Forearm", "left_hand": "Bip001 L Hand",
+    "right_upper_arm": "Bip001 R UpperArm", "right_lower_arm": "Bip001 R Forearm", "right_hand": "Bip001 R Hand",
+    "left_upper_leg": "Bip001 L Thigh", "left_lower_leg": "Bip001 L Calf", "left_foot": "Bip001 L Foot",
+    "right_upper_leg": "Bip001 R Thigh", "right_lower_leg": "Bip001 R Calf", "right_foot": "Bip001 R Foot"
+  }
+}

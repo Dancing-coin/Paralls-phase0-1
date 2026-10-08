@@ -1,6 +1,6 @@
 # P5后续能力基础推进：共享前置与 P6/P7 衔接
 
-状态：`F0 基线完成；F1A-F2 全量实现待执行；不授权 P6/P7`
+状态：`[current-partial] F0/F2 evidence and zero-write gates are implemented; F1A/F1B/F1C remain partial generic foundations; P6/P7 remain gated`
 
 这不是第八阶段，而是第五阶段做完以后必须补齐的一组共享前置。它把八月分析里还没有进入 P1-P5 推进文档的内容，整理成可以交给 formal spec、plan 和 Harness 的工作包。
 

@@ -1,6 +1,6 @@
 # 八月分析：分析与设计指导
 
-状态：`analysis and design guidance; does not authorize implementation`
+状态：`[governance] analysis and design guidance; does not authorize implementation`
 
 这套体系回答“为什么这样设计、能力边界是什么、哪些设计还没有实现”。
 它不安排阶段施工顺序，也不把分析中的 planned 概念当成实现授权。

@@ -1,6 +1,6 @@
 # 八月分析：阶段推进
 
-状态：`phase roadmap and execution guidance; does not authorize implementation alone`
+状态：`[governance] phase roadmap and execution guidance; does not authorize implementation alone`
 
 这套体系只回答四件事：阶段做什么、依赖什么、什么时候能进入下一步、如何验收。
 领域设计细节和长期方向回到[分析与设计指导](../分析与设计指导/README.md)。

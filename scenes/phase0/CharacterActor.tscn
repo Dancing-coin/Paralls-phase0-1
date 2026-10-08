@@ -16,7 +16,7 @@
 height = 1.7
 radius = 0.35
 
-[node name="CharacterActor" type="CharacterBody3D"]
+[node name="CharacterActor" type="CharacterBody3D" groups=["character_control_actor"]]
 script = ExtResource("1_character")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="."]
@@ -35,7 +35,7 @@ shape = SubResource("CapsuleShape3D_replica")
 
 [node name="RoleAssetRoot" type="Node3D" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel"]
 
-[node name="GenericRoleSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" instance=ExtResource("4_generic")]
+[node name="GenericRoleSkin" parent="VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" groups=["character_presentation_adapter"] instance=ExtResource("4_generic")]
 
 [node name="SpatialVoiceController" type="AudioStreamPlayer3D" parent="."]
 script = ExtResource("2_voice")

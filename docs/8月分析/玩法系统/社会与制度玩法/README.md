@@ -1,6 +1,6 @@
 # 社会与制度玩法
 
-状态：`bounded economy/organization/governance slices implemented; long-cycle social simulation remains planned`
+状态：`[current-partial] bounded economy/organization/governance slices implemented; long-cycle social simulation remains planned`
 
 当前实现映射：见 [../../12-实现收口与证据映射.md](../../12-实现收口与证据映射.md#社会与制度玩法)。经济、组织、监管和信用已有 P1/P2/P4 限定闭环；投资、政治军事和文明能力仍未实现。
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 
@@ -83,7 +84,10 @@ def test_street_combat_presents_third_person_composition() -> None:
     assert 'text = "WASD 移动' in hud
     assert "↑↓←→" not in hud
     assert 'RMB 视角' in hud
-    assert scene.count('rotation = Vector3(0, 3.141593, 0)') == 3
+    assert 'rotation = Vector3(0, 3.141593, 0)' not in scene
+    for package in ("female_bandage_external", "female_jk_external", "female_t_external"):
+        manifest = json.loads((ROOT / "assets" / "active" / package / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["presentation_alignment"]["visual_yaw_degrees"] == 180.0
     assert 'name="TargetRing"' in scene
     assert 'name="Ring"' in hud
     assert 'minimap_shader' in hud

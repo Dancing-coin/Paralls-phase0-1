@@ -1,6 +1,6 @@
 # Econ-1 面包店商业生态与多角色经营实现方案
 
-状态：`phase-one implementation guidance; population-simulation integration is post-foundation`
+状态：`[current-partial] bounded bakery/organization slices are implemented; population-scale commercial ecology remains planned`
 
 本文在 [模拟经营完整玩法与多智能体协作](../玩法系统/社会与制度玩法/03-模拟经营完整玩法与多智能体协作.md) 的
 完整经营闭环之上，进一步定义一个相对完整的面包店商业生态：多个员工、顾客、供应商、

@@ -387,6 +387,52 @@
       },
       "source_step_seconds": 0.0333333350718021,
       "valid": true
+    },
+    "walking2": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 0.566666667,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.016666667,
+      "valid": true
     }
   },
   "contract": "character_qualification_report.v1",
@@ -420,7 +466,7 @@
     },
     "walk_forward": {
       "classification": "root_motion",
-      "clip_ref": "walking"
+      "clip_ref": "walking2"
     }
   },
   "locomotion_compatibility": "boxing and sword attack remain full-body exclusive",

@@ -1,6 +1,6 @@
 # 创作与运营
 
-状态：`incremental creator/operations guidance index; product control-plane and publishing remain planned`
+状态：`[governance] incremental creator/operations guidance index; product control-plane and publishing remain planned`
 
 本目录承载玩法包契约、内容验证与交付资料。权限、数据分类、发布和闭源边界
 以 [../10-创作者权限与闭源控制面方案.md](../10-创作者权限与闭源控制面方案.md)

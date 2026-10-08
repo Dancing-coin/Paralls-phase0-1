@@ -1,6 +1,6 @@
 # Generative Agents 对群体模拟的参考评估
 
-状态：`research note; primary-source review 2026-08-28; analysis only; no runtime authorization`
+状态：`[research] research note; primary-source review 2026-08-28; analysis only; no runtime authorization`
 
 本笔记评估 Stanford/Smallville 项目 [Generative Agents: Interactive Simulacra of Human Behavior](https://github.com/joonspk-research/generative_agents) 对本仓库“司命受控群体模拟”的参考价值。结论先行：**有参考意义，但主要是角色认知与小规模社会涌现的实验参照，不是 PopulationPlanner、世界真相结算或生产调度器的可移植实现。**
 

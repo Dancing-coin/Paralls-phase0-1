@@ -1,6 +1,6 @@
 # 世界基础设施增量指导
 
-状态：`已批准的 INF 窄纵切完成并验证；八月 INF 主线仍未完成；extends existing world_runtime/ESM/event-replay paths; no new runtime is authorized`
+状态：`[governance] 已批准的 INF 窄纵切完成并验证；八月 INF 主线仍未完成；extends existing world_runtime/ESM/event-replay paths; no new runtime is authorized`
 
 命名与执行坐标：[`INF mainline and substrate mapping guide`](../../superpowers/specs/world-character-siming-authority-mainline/2026-08-17-inf-mainline-substrate-mapping-guide.md) 规定 `INF-1..4` 为领域主线、`INF-C1..5` 为跨领域可复用合同层；二者不是重复任务。
 

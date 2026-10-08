@@ -1,6 +1,6 @@
 # 司命与群体世界补充设计
 
-状态：`proposed future-mainline amendment; analysis/design only; no runtime authorization`
+状态：`[planned] proposed future-mainline amendment; analysis/design only; no runtime authorization`
 
 本工作区把“司命知识图谱、角色记忆、群体模拟、近场演出和场景表现”拆成可审核的未来主线修订包。它不创建新 truth owner、store、bus、clock、scheduler、generic writer 或 generic router。
 

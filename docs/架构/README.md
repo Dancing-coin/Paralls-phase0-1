@@ -8,8 +8,18 @@
 
 ```text
 docs/架构/
+  AGENTS.md
   README.md
   整体架构.md
+  通用基础设施/
+    README.md
+    前端/
+      README.md
+      角色控制基础设施设计.md
+      角色控制基础设施说明.md
+      角色控制基础设施架构图.md
+      角色控制基础设施时序图.md
+      角色控制基础设施数据流转图.md
   感知输入对齐层.md
   事实上抛链路与多模态链路.md
   VLA与多模态链.md
@@ -49,6 +59,7 @@ docs/架构/
 11. `docs/架构/运行时/模块/SystemL6事件总线.md`
 12. `docs/架构/运行时/模块/Siming.md`
 13. `docs/架构/运行时/模块/*.md`
+14. `docs/架构/通用基础设施/前端/README.md`
 
 ## 分层原则
 

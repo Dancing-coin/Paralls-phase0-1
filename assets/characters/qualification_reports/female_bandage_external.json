@@ -386,6 +386,51 @@
       },
       "source_step_seconds": 0.0333333350718021,
       "valid": true
+    },
+    "walking2": {
+      "bone_impact": [
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 0.566666667,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": false
+      },
+      "root_motion": {
+        "rotation": false,
+        "translation": false
+      },
+      "source_step_seconds": 0.016666667,
+      "valid": true
     }
   },
   "contract": "character_qualification_report.v1",
@@ -419,7 +464,7 @@
     },
     "walk_forward": {
       "classification": "in_place",
-      "clip_ref": "walking"
+      "clip_ref": "walking2"
     }
   },
   "locomotion_compatibility": "boxing and SWORD ATTACK remain full-body exclusive",
@@ -432,7 +477,7 @@
     "export_cleanup": "pruned_non_deform_controller_nodes_and_tracks",
     "export_tool": "Blender 5.1.2",
     "original_source_digest_sha256": "F3A87DE6B57D9B9BF0528C5735F2CD422C8E69531AE3B737E986B691411E28ED",
-    "package_digest": "EE0E846E0B2BC239CC2E91B1C5F3B5789CEE339C977AD40ED8C01E3A41335EDB",
+    "package_digest": "74D0F166382F078D7A20E897AC5195D629CEA3C302CAA5348A2FA7A2E054852E",
     "qualification_report_ref": "assets/characters/qualification_reports/female_bandage_external.json",
     "runtime_export_frame_rate": 60.0,
     "source_claims": {
@@ -445,7 +490,7 @@
   "reasons": [],
   "report_path": ".harness/verification/female_bandage_external-qualification-report.json",
   "source": {
-    "digest_sha256": "EE0E846E0B2BC239CC2E91B1C5F3B5789CEE339C977AD40ED8C01E3A41335EDB",
+    "digest_sha256": "74D0F166382F078D7A20E897AC5195D629CEA3C302CAA5348A2FA7A2E054852E",
     "format": "glb",
     "model_path": "assets/active/female_bandage_external/female_bandage_external.glb"
   },

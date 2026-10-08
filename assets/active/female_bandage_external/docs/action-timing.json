@@ -20,14 +20,14 @@
     },
     {
       "action_id": "Walk",
-      "clip": "walking",
+      "clip": "walking2",
       "atomic_sequence": [],
       "status": "locomotion",
       "timing": {
-        "duration_seconds": 2.833333,
+        "duration_seconds": 0.566666667,
         "source_frames": [
           1,
-          170
+          34
         ]
       }
     },

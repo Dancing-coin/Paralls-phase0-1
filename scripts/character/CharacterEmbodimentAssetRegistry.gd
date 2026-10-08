@@ -21,6 +21,8 @@ const CANONICAL_SKELETON_PROFILE := "humanoid.v1"
 var _motion_assets: Dictionary = {}
 var _reviewed_action_catalog: Dictionary = {}
 var _qualified_packages: Dictionary = {}
+var _presentation_packages: Dictionary = {}
+var _skeleton_profiles: Dictionary = {}
 var _motion_libraries: Dictionary = {}
 var _admission_log: Array[Dictionary] = []
 
@@ -28,6 +30,89 @@ var _admission_log: Array[Dictionary] = []
 func _init() -> void:
 	register_primary_packages()
 	register_primary_motion_library()
+
+
+func register_project_package(package_id: StringName, manifest_path: String, qualification_report_path: String) -> bool:
+	var manifest := _read_json(manifest_path)
+	var report := _read_json(qualification_report_path)
+	return register_qualified_package(package_id, manifest, report, qualification_report_path)
+
+
+func register_project_presentation_package(package_id: StringName, manifest_path: String, qualification_report_path: String, player: AnimationPlayer, skeleton: Skeleton3D) -> Dictionary:
+	var manifest := _read_json(manifest_path)
+	var report := _read_json(qualification_report_path)
+	if String(package_id).is_empty() or manifest.is_empty() or report.is_empty() or player == null or skeleton == null:
+		return {"accepted": false, "reason": "package_resources_missing"}
+	if str(manifest.get("package_id", "")) != String(package_id) or str(report.get("package_id", "")) != String(package_id):
+		return {"accepted": false, "reason": "package_identity_mismatch"}
+	if str(report.get("status", STATUS_REJECTED)) not in ["qualified", "qualified_with_fallback"]:
+		return {"accepted": false, "reason": "package_report_rejected"}
+	var source_model_path := str(manifest.get("source_model_path", ""))
+	var source_digest := str(manifest.get("source", {}).get("digest_sha256", ""))
+	if source_digest.is_empty() or FileAccess.get_sha256(source_model_path).to_upper() != source_digest.to_upper() or str(report.get("source", {}).get("digest_sha256", "")) != source_digest:
+		return {"accepted": false, "reason": "source_digest_mismatch"}
+	var profile := _read_json(str(manifest.get("skeleton_profile_ref", "")))
+	if not register_skeleton_profile(profile, skeleton, source_model_path, source_digest):
+		return {"accepted": false, "reason": "skeleton_profile_rejected"}
+	var library_manifest := _read_json(str(manifest.get("native_motion_library_manifest_ref", "")))
+	var library := ResourceLoader.load(str(library_manifest.get("animation_library_ref", ""))) as AnimationLibrary
+	var library_id := StringName(str(library_manifest.get("motion_library_id", "")))
+	if library_manifest.get("native_skeleton_profile_id", "") != profile.get("profile_id", "") or not register_native_motion_library(library_id, library_manifest, library, source_digest):
+		return {"accepted": false, "reason": "native_motion_library_rejected"}
+	_presentation_packages[package_id] = {
+		"package_id": package_id,
+		"manifest": manifest.duplicate(true),
+		"qualification_report_ref": qualification_report_path,
+		"qualification_status": "presentation_preview",
+		"skeleton_profile_id": str(profile.get("canonical_profile_id", "")),
+		"native_skeleton_profile_id": str(profile.get("profile_id", "")),
+		"motion_library_id": String(library_id),
+	}
+	return {"accepted": true, "package_id": String(package_id), "skeleton_profile_id": profile.get("profile_id", ""), "motion_library_id": String(library_id), "scope": "local_presentation_preview"}
+
+
+func register_skeleton_profile(profile: Dictionary, skeleton: Skeleton3D, source_path: String, source_digest: String) -> bool:
+	var profile_id := str(profile.get("profile_id", ""))
+	if profile_id.is_empty() or skeleton == null or str(profile.get("source_model_path", "")) != source_path or str(profile.get("source_digest_sha256", "")) != source_digest:
+		return false
+	if str(profile.get("canonical_profile_id", "")) != CANONICAL_SKELETON_PROFILE:
+		return false
+	var bones: Dictionary = profile.get("bones", {})
+	for bone: String in ["root", "pelvis", "spine", "chest", "head", "left_upper_arm", "left_lower_arm", "left_hand", "right_upper_arm", "right_lower_arm", "right_hand", "left_upper_leg", "left_lower_leg", "left_foot", "right_upper_leg", "right_lower_leg", "right_foot"]:
+		if skeleton.find_bone(str(bones.get(bone, ""))) < 0:
+			return false
+	_skeleton_profiles[StringName(profile_id)] = profile.duplicate(true)
+	return true
+
+
+func register_native_motion_library(library_id: StringName, manifest: Dictionary, library: AnimationLibrary, source_digest: String) -> bool:
+	if library == null or String(library_id).is_empty() or str(manifest.get("motion_library_id", "")) != String(library_id):
+		return false
+	var profile_id := StringName(str(manifest.get("native_skeleton_profile_id", "")))
+	if not _skeleton_profiles.has(profile_id) or str(manifest.get("source_digest_sha256", "")) != source_digest:
+		return false
+	if str(manifest.get("realization_mode", "")) != "package_native" or str(manifest.get("usage_scope", "")) != "local_presentation_preview":
+		return false
+	var semantic_actions: Dictionary = manifest.get("semantic_actions", {})
+	if semantic_actions.is_empty():
+		return false
+	for action_id: String in semantic_actions:
+		if not action_id.begins_with("action:locomotion.") and not action_id.begins_with("action:presentation."):
+			return false
+		if not library.has_animation(StringName(str(semantic_actions[action_id].get("clip_ref", "")))):
+			return false
+	if not manifest.has("animation_library_ref") or str(manifest.get("animation_library_ref", "")) != str(manifest.get("animation_library_ref", "")):
+		return false
+	_motion_libraries[library_id] = {"motion_library_id": library_id, "skeleton_profile_id": CANONICAL_SKELETON_PROFILE, "native_skeleton_profile_id": profile_id, "animation_library_ref": manifest.get("animation_library_ref", ""), "realization_mode": "package_native", "manifest": manifest.duplicate(true), "animation_library": library}
+	return true
+
+
+func register_project_motion_library(manifest_path: String, resource_path: String) -> bool:
+	var manifest := _read_json(manifest_path)
+	var library := ResourceLoader.load(resource_path) as AnimationLibrary
+	if library == null:
+		return false
+	return register_motion_library(StringName(str(manifest.get("motion_library_id", ""))), manifest, library)
 
 
 func register_primary_motion_library() -> bool:
@@ -120,7 +205,7 @@ func register_primary_packages() -> Dictionary:
 
 
 func register_qualified_package(package_id: StringName, manifest: Dictionary, report: Dictionary, qualification_report_ref: String) -> bool:
-	if String(package_id).is_empty() or not PRIMARY_PACKAGE_IDS.has(package_id):
+	if String(package_id).is_empty():
 		return false
 	var status := str(report.get("status", STATUS_REJECTED))
 	if status == STATUS_REJECTED or status not in ["qualified", "qualified_with_fallback"]:
@@ -202,7 +287,7 @@ func resolve_motion_realization(package_id: StringName, action_id: StringName, c
 		result["reason"] = "raw_clip_lookup_forbidden"
 		_admission_log.append(result.duplicate(true))
 		return result
-	var package: Variant = _qualified_packages.get(package_id, {})
+	var package: Variant = _qualified_packages.get(package_id, _presentation_packages.get(package_id, {}))
 	if not (package is Dictionary) or (package as Dictionary).is_empty():
 		result["reason"] = "package_not_qualified"
 		_admission_log.append(result.duplicate(true))
@@ -219,6 +304,14 @@ func resolve_motion_realization(package_id: StringName, action_id: StringName, c
 		_admission_log.append(result.duplicate(true))
 		return result
 	var action_id_text := String(action_id)
+	if str(package_dict.get("qualification_status", "")) == "presentation_preview":
+		var entry: Dictionary = _motion_libraries.get(StringName(str(package_dict.get("motion_library_id", ""))), {})
+		var action: Dictionary = entry.get("manifest", {}).get("semantic_actions", {}).get(action_id_text, {})
+		if action.is_empty() or str(entry.get("native_skeleton_profile_id", "")) != str(package_dict.get("native_skeleton_profile_id", "")):
+			result["reason"] = "preview_semantic_action_unavailable"
+			return result
+		result.merge({"accepted": true, "motion_library_id": str(entry.get("motion_library_id", "")), "realization_mode": "package_native", "clip_ref": str(action.get("clip_ref", "")), "animation_library": entry.get("animation_library"), "source": "registered_native_library", "reason": ""}, true)
+		return result
 	var supported: Variant = package_dict.get("supported_motion_libraries", [])
 	var package_library_id := str(package_dict.get("motion_library_id", ""))
 	var candidate_library_ids: Array[String] = []
@@ -644,6 +737,13 @@ func _declared_fallback(manifest: Dictionary, action_id: String) -> Dictionary:
 
 
 func _canonical_mapping_ref(package_id: StringName) -> String:
+	var package: Variant = _qualified_packages.get(package_id, {})
+	if package is Dictionary:
+		var manifest: Variant = (package as Dictionary).get("manifest", {})
+		if manifest is Dictionary:
+			var manifest_ref := str((manifest as Dictionary).get("source_model_path", ""))
+			if not manifest_ref.is_empty():
+				return "%s#canonical_mapping" % manifest_ref
 	return "%s#canonical_mapping" % str(PRIMARY_PACKAGE_MANIFEST_PATHS.get(package_id, ""))
 
 

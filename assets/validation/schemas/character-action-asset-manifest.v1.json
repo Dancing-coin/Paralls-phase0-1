@@ -12,6 +12,12 @@
     "unit_scale": {"const": 1},
     "forward_axis": {"const": "-z"},
     "up_axis": {"const": "+y"},
+    "presentation_alignment": {
+      "type": "object",
+      "required": ["visual_yaw_degrees"],
+      "properties": {"visual_yaw_degrees": {"type": "number"}},
+      "additionalProperties": false
+    },
     "canonical_mapping": {
       "type": "object",
       "required": ["profile_id", "bones"],

@@ -1,6 +1,6 @@
 # 第四阶段推进：动态经济与社会制度扩展
 
-状态：`phase-four bounded scope implemented-and-verified; this directory remains non-authorizing guidance`
+状态：`[current-verified] phase-four bounded scope implemented-and-verified; this directory remains non-authorizing guidance`
 
 第四阶段建立在 P3 的持续角色与组织生态之上，把第一阶段的固定 quote、聚合需求和单店
 经营扩展为受约束的动态商业生态。它仍然复用既有 Economy、Organization、Government、

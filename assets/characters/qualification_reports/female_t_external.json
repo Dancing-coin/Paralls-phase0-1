@@ -387,6 +387,52 @@
       },
       "source_step_seconds": 0.0333333350718021,
       "valid": true
+    },
+    "walking2": {
+      "bone_impact": [
+        "root",
+        "left_foot",
+        "right_foot",
+        "pelvis",
+        "spine",
+        "chest",
+        "head",
+        "left_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "left_upper_arm",
+        "right_upper_arm",
+        "left_lower_arm",
+        "right_lower_arm",
+        "left_hand",
+        "right_hand"
+      ],
+      "duration_seconds": 0.566666667,
+      "lower_body_impact": [
+        "left_foot",
+        "left_foot",
+        "right_foot",
+        "right_foot",
+        "left_lower_leg",
+        "left_lower_leg",
+        "right_lower_leg",
+        "right_lower_leg",
+        "left_upper_leg",
+        "left_upper_leg",
+        "right_upper_leg",
+        "right_upper_leg"
+      ],
+      "pelvis_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "root_motion": {
+        "rotation": true,
+        "translation": true
+      },
+      "source_step_seconds": 0.016666667,
+      "valid": true
     }
   },
   "contract": "character_qualification_report.v1",
@@ -420,7 +466,7 @@
     },
     "walk_forward": {
       "classification": "root_motion",
-      "clip_ref": "walking"
+      "clip_ref": "walking2"
     }
   },
   "locomotion_compatibility": "boxing and sword attack remain full-body exclusive",
@@ -430,7 +476,7 @@
   "provenance": {
     "authoring_contract": "external_provider_authoring_rig",
     "authoring_frame_rate": 60.0,
-    "package_digest": "F53189AE2760FA7309A5CB44CAD74F27737CFE2BAEECF63EE8538FBED81FFE75",
+    "package_digest": "346290D7BB50DC5B224897817AD5686B9267A1B619E7505A356E31BA975D0580",
     "qualification_report_ref": "assets/characters/qualification_reports/female_t_external.json",
     "runtime_export_frame_rate": 60.0,
     "source_format": "blend",
@@ -440,7 +486,7 @@
   "reasons": [],
   "report_path": ".harness/verification/female_t_external-qualification-report.json",
   "source": {
-    "digest_sha256": "F53189AE2760FA7309A5CB44CAD74F27737CFE2BAEECF63EE8538FBED81FFE75",
+    "digest_sha256": "346290D7BB50DC5B224897817AD5686B9267A1B619E7505A356E31BA975D0580",
     "format": "glb",
     "model_path": "assets/active/female_t_external/female_t_external.glb"
   },

@@ -1,6 +1,6 @@
 # F0 Claim Ledger
 
-状态：`reviewed; conservative claim vocabulary`
+状态：`[governance] reviewed; conservative claim vocabulary`
 
 | 可以说 | 不可以说 | 证据 |
 | --- | --- | --- |

@@ -1,6 +1,6 @@
 # 全域架构导航
 
-状态：`incremental architecture guidance; canonical navigation for August analysis`
+状态：`[governance] incremental architecture guidance; canonical navigation for August analysis`
 
 本目录不是新的运行时模块。它为 `docs/8月分析` 提供唯一的系统分层、责任和
 文档导航，避免把世界本体、角色心智、创作控制面与具体玩法混在一个“玩法系统”

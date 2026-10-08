@@ -1,6 +1,6 @@
 # 角色与社会投影增量指导
 
-状态：`guidance-only; extends Character Core, actor-local perception and existing social paths; no new runtime is authorized`
+状态：`[governance] guidance-only; extends Character Core, actor-local perception and existing social paths; no new runtime is authorized`
 
 本目录不是新的“角色社会运行时”，也不授权创建第二套角色真相、social loop、
 knowledge store、household authority 或独立时钟。它只记录如何在现有角色档案、
