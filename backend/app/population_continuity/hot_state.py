@@ -213,7 +213,8 @@ class PopulationHotState:
                 current = self._revision.get(actor_id, 0)
                 if current != expected_revision or revision != expected_revision + 1:
                     raise ValueError("hot_state_revision_conflict")
-                if len(copied_values) == len(HOT_FIELDS):
+                # 只有完整的基础字段表可替换整行；注册模块字段后仍须保留未更新列。
+                if fields == HOT_FIELDS and self._allowed_fields == HOT_FIELDS:
                     row = copied_values
                 else:
                     row = dict(self._rows[slot] or self._default_row())
@@ -386,6 +387,7 @@ class PopulationDueIndex:
         *,
         limit: int | None = None,
         obligation_id: str | None = None,
+        actor_ids: frozenset[str] | None = None,
     ) -> tuple[tuple[str, str, int], ...]:
         if limit is not None and limit < 0:
             raise ValueError("population_due_limit_invalid")
@@ -396,7 +398,8 @@ class PopulationDueIndex:
             current = self._entries.get((actor_id, current_obligation_id))
             if current is None or current[2] != generation:
                 continue
-            if obligation_id is not None and current_obligation_id != obligation_id:
+            if ((obligation_id is not None and current_obligation_id != obligation_id)
+                    or (actor_ids is not None and actor_id not in actor_ids)):
                 preserved.append((due_tick, actor_id, current_obligation_id, generation))
                 continue
             self._entries.pop((actor_id, current_obligation_id), None)

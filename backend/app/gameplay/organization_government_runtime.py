@@ -5082,7 +5082,6 @@ class OrganizationAuthority:
                     )
                 ]
             },
-            deep=True,
         )
         return self._store.append_batch(batch)
 
@@ -5194,7 +5193,6 @@ class OrganizationAuthority:
                     )
                 ]
             },
-            deep=True,
         )
         return self._store.append_batch(batch)
 
@@ -5509,9 +5507,7 @@ class OrganizationAuthority:
             )
             for event in batch.events
         ]
-        batch = batch.model_copy(
-            update={"outbox_entries": outbox_entries}, deep=True
-        )
+        batch = batch.model_copy(update={"outbox_entries": outbox_entries})
         committed = self._store.append_batch(batch)
         for request, _ in valid:
             results[request.command_id] = result_for_stream(committed, request)
@@ -5599,7 +5595,6 @@ class OrganizationAuthority:
                     for event in batch.events
                 ]
             },
-            deep=True,
         )
         return self._store.append_batch(batch)
 
@@ -5625,6 +5620,8 @@ class OrganizationAuthority:
         }
         revision = 0
         for event in self._store.read_stream(stream_id):
+            # 冻结的是本次完整读到的流前缀；非班表事件也推进读依赖边界。
+            revision = max(revision, event.stream_revision)
             key = event_row.get(event.event_type)
             if key is None:
                 continue

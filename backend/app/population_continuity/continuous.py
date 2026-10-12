@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 from types import MappingProxyType
 from typing import Mapping
 
@@ -50,6 +51,10 @@ def _fatigue_after(value: float, from_tick: int, to_tick: int) -> float:
     return round(min(1.0, max(0.0, result)), 9)
 
 
+# 相同数字输入共享纯积分结果，缓存不保留角色行或版本。
+_cached_fatigue_after = lru_cache(maxsize=1024)(_fatigue_after)
+
+
 def advance_b0_row(
     *,
     actor_id: str,
@@ -66,7 +71,9 @@ def advance_b0_row(
         raise ValueError("population_b0_cursor_conflict")
     from_tick = stored_tick
     elapsed = window_end - from_tick
-    fatigue = _fatigue_after(float(row.get("fatigue", 0.2)), from_tick, window_end)
+    # int 子类可能不可哈希或自定义运算，继续执行原路径。
+    fatigue_calculator = _cached_fatigue_after if type(window_end) is int else _fatigue_after
+    fatigue = fatigue_calculator(float(row.get("fatigue", 0.2)), from_tick, window_end)
     need_pressure = round(
         min(1.0, max(0.0, float(row.get("need_pressure", 0.1)) + elapsed / SECONDS_PER_HOUR * 0.01)),
         9,

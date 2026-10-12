@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from copy import deepcopy
 from threading import RLock
+import zlib
 
 from app.character_agent.models.event_memory import CharacterEventMemoryRecord
 from app.character_agent.models.higher_order_memory import (
@@ -51,6 +52,7 @@ class CharacterGraphMemoryStore:
         ("higher_order", "higher_order_memories", CharacterHigherOrderMemoryRecord),
     )
     _MAX_TIME = 2**63 - 1
+    _MAX_RECORD_CACHE_BYTES = 256 * 1024
 
     def __init__(
         self,
@@ -67,6 +69,7 @@ class CharacterGraphMemoryStore:
         self._lock = RLock()
         self._normalizer = CharacterAgentMemoryStore()
         self._session_reader = None
+        self._record_cache: tuple[tuple[object, ...], bytes] | None = None
         self._source_batches: dict[
             tuple[str, str, str], tuple[dict[str, object], HeavenlyGraphWriteBatch]
         ] = {}
@@ -79,10 +82,27 @@ class CharacterGraphMemoryStore:
         self._session_reader = reader
         self._normalizer.bind_session_reader(reader, working_reader=working_reader)
 
+    def bind_record_reader(self, reader) -> None:
+        self._normalizer.bind_record_reader(reader)
+
+    def bind_working_archive_reader(self, reader) -> None:
+        self._normalizer.bind_archive_reader(reader)
+
     def debug_memory_summary(self, actor_id: str) -> str:
         # 重量角色仍经图谱的私有 scope、分支与有效时间过滤，不能用 session 摘要绕过。
         from .memory_summary import bundle_summary
         return bundle_summary(self.retrieval_record_bundle(actor_id))
+
+    def read_cache_token(self, actor_id: str):
+        reader = getattr(self._graph, 'read_cache_token', None)
+        token = reader() if callable(reader) else None
+        cached = self._record_cache
+        scope = self._scope_for_actor(actor_id).model_dump_json()
+        if (token is None or cached is None or cached[0][0] != actor_id
+                or cached[0][1] != scope or cached[0][-1] != token):
+            return None
+        # 仅已完整读取并缓存的读集可派生摘要，临时查询失败不能被稳定版本掩盖。
+        return self._graph, cached[0]
 
     def write_event(self, event: dict[str, object]) -> None:
         with self._lock:
@@ -162,6 +182,16 @@ class CharacterGraphMemoryStore:
         recall_time = (
             valid_at if valid_at is not None else self._latest_valid_time(scope)
         )
+        read_token = getattr(self._graph, 'read_cache_token', None)
+        token = read_token() if callable(read_token) else None
+        cache_key = (actor_id, scope.model_dump_json(), recall_time, token)
+        cached = self._record_cache
+        if token is not None and cached is not None and cached[0] == cache_key:
+            bundle = CharacterMemoryRecordBundle.model_validate_json(zlib.decompress(cached[1]))
+            if read_token() == token:
+                return bundle
+        self._record_cache = None
+        complete = True
         values: dict[str, list[MemoryRecord]] = {}
         for pool, field, model in self.POOLS:
             result = self._graph.query_semantic(
@@ -172,6 +202,7 @@ class CharacterGraphMemoryStore:
                     limit=1000,
                 )
             )
+            complete = complete and result.incomplete_reason is None
             records = [
                 model.model_validate(node.attributes["record"])
                 for node in result.nodes
@@ -184,7 +215,13 @@ class CharacterGraphMemoryStore:
                     record.memory_id,
                 ),
             )
-        return CharacterMemoryRecordBundle(**values)
+        bundle = CharacterMemoryRecordBundle(**values)
+        if token is not None and complete:
+            # 只保留一次已验证读集，JSON 重建隔离调用方修改；末尾再次核对版本。
+            encoded = zlib.compress(bundle.model_dump_json().encode(), level=1)
+            if len(encoded) <= self._MAX_RECORD_CACHE_BYTES and read_token() == token:
+                self._record_cache = (cache_key, encoded)
+        return bundle
 
     def retrieval_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
         records = self.retrieval_record_bundle(actor_id)

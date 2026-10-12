@@ -77,6 +77,30 @@ from app.population_continuity.decision_surface import (
     PopulationDecisionPolicy,
 )
 from app.services.siming_population_capability import PopulationSimulationCapability, ReadSetBuilder, default_population_read_set_builder
+from app.population_continuity.prepared_frame import discard_frame_for_changed_parser
+
+
+def _behavior_correlation_key(correlation_id: str) -> bytes:
+    encoded = str.encode(correlation_id, 'utf-8', 'surrogatepass')
+    prefix = b'population-runtime:cadence:'
+    # 两种标记保证压缩前缀、普通 ID 与包含 NUL 的 ID 不会互相碰撞。
+    return b'\x00' + encoded[len(prefix):] if encoded.startswith(prefix) else b'\x01' + encoded
+
+
+def _behavior_correlation_parts(key: bytes) -> tuple[tuple[bytes, bytes], int] | None:
+    prefix, separator, number = key.rpartition(b':')
+    suffix = b''
+    if not number.isdigit():
+        suffix = separator + number
+        prefix, separator, number = prefix.rpartition(b':')
+    if not separator or not number.isdigit() or (len(number) > 1 and number.startswith(b'0')):
+        return None
+    try:
+        tick = int(number)
+    except ValueError:
+        # 超过解释器十进制转换上限的合法 ID 仍按原字节保存。
+        return None
+    return (prefix + separator, suffix), tick
 
 
 class SimingRuntime:
@@ -107,6 +131,7 @@ class SimingRuntime:
         behavior_turn_scope_resolver: object | None = None,
         population_capability: PopulationSimulationCapability | None = None,
         population_read_set_builder: ReadSetBuilder | None = None,
+        population_model_observer=None,
         actor_pin_reader=None,
         source_pin_reader=None,
     ) -> None:
@@ -149,10 +174,13 @@ class SimingRuntime:
         self._siming_pending = {}
         self._siming_receipts = OrderedDict()
         self._sync_tick_lock = RLock()
-        self._recorded_behavior_turn_correlations: set[str] = set()
+        # 共享完整前缀，保存精确整数；其他 ID 保留原字节，不淘汰历史审计键。
+        self._recorded_behavior_turn_correlations: set[bytes | int] = set()
+        self._behavior_correlation_prefixes: dict[tuple[bytes, bytes], int] = {}
         self._behavior_turn_lock = RLock()
         self._population_capability = population_capability
         self._population_read_set_builder = population_read_set_builder or default_population_read_set_builder
+        self._population_model_observer = population_model_observer
 
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
@@ -183,8 +211,15 @@ class SimingRuntime:
         event = siming_input.source_event
         if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
             try:
-                cadence = PopulationCadenceInput.from_authority_event(event)
+                parser = PopulationCadenceInput.from_authority_event
+                discard_frame_for_changed_parser(event, parser)
+                cadence = parser(event)
                 read_set = self._population_read_set_builder(event, cadence)
+                if self._population_model_observer is not None:
+                    observed = self._population_model_observer(read_set)
+                    result.model_execution_receipts.append(observed.receipt)
+                    if observed.report is not None:
+                        result.model_reports.append(observed.report)
                 if cadence.selector_revision not in {
                     self._POPULATION_GENERIC_SELECTOR,
                     self._POPULATION_FIXTURE_SELECTOR,
@@ -1593,6 +1628,20 @@ class SimingRuntime:
         with self._behavior_turn_lock:
             self._record_behavior_turn_locked(event, prepared, result)
 
+    def _behavior_cache_key(self, key: bytes, *, remember: bool = False) -> bytes | int:
+        parts = _behavior_correlation_parts(key)
+        if parts is None:
+            return key
+        prefix, tick = parts
+        index = self._behavior_correlation_prefixes.get(prefix)
+        if index is None:
+            if not remember or len(self._behavior_correlation_prefixes) >= 64:
+                return key
+            index = len(self._behavior_correlation_prefixes)
+            self._behavior_correlation_prefixes[prefix] = index
+        # 六位前缀索引与任意精度序号拼接，无哈希截断或数值范围损失。
+        return (tick << 6) | index
+
     def _record_population_behavior_turn(
         self,
         event: AuthorityEvent,
@@ -1605,7 +1654,8 @@ class SimingRuntime:
         if self._behavior_turn_recorder is None:
             return
         with self._behavior_turn_lock:
-            if event.correlation_id in self._recorded_behavior_turn_correlations:
+            correlation_key = _behavior_correlation_key(event.correlation_id)
+            if self._behavior_cache_key(correlation_key) in self._recorded_behavior_turn_correlations:
                 return
             resolver = self._behavior_turn_scope_resolver
             scope = (
@@ -1713,15 +1763,16 @@ class SimingRuntime:
             )
             if not self._behavior_turn_recorder.has_recorded_turn(request):
                 self._behavior_turn_recorder.record(request)
-            self._recorded_behavior_turn_correlations.add(event.correlation_id)
+            self._recorded_behavior_turn_correlations.add(self._behavior_cache_key(correlation_key, remember=True))
 
     def _record_behavior_turn_locked(self, event: AuthorityEvent, prepared: object | None, result: SimingTickResult) -> None:
-        if event.correlation_id in self._recorded_behavior_turn_correlations:
+        correlation_key = _behavior_correlation_key(event.correlation_id)
+        if self._behavior_cache_key(correlation_key) in self._recorded_behavior_turn_correlations:
             return
         request = self.plan_behavior_turn(event, prepared, result)
         if not self._behavior_turn_recorder.has_recorded_turn(request):
             self._behavior_turn_recorder.record(request)
-        self._recorded_behavior_turn_correlations.add(event.correlation_id)
+        self._recorded_behavior_turn_correlations.add(self._behavior_cache_key(correlation_key, remember=True))
 
     def _plan_behavior_audit(self, event, prepared, result, effects):
         request = self.plan_behavior_turn(event, prepared, result)

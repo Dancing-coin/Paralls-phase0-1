@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "character-population-integrated-loop",
+  "order": 2101,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_character_population_integrated_loop.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/character-population-integrated-loop-report.json",
+  "description": "计划A/B洪灾纵切真实World、Siming、Owner、Core及成员交接后端验收",
+  "success_key": "overall_passed"
+}

@@ -1467,6 +1467,42 @@ class CharacterAgentRuntime:
             raise ValueError(f"unsupported actor_id: {actor_id}")
         return int(self._continuity_revisions.get(actor_id, 0))
 
+    def get_character_continuity_receipt(self, actor_id: str, *, idempotency_key: str) -> CharacterContinuityReceipt | None:
+        """从原提交事件核验消费凭据；恢复游标不能接受调用者自签 receipt。"""
+        if not self.supports_continuity_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        raw = self._session_store.read_receipt(actor_id, kind="continuity", key=idempotency_key)
+        if raw is None:
+            return None
+        receipt = CharacterContinuityReceipt.model_validate(raw)
+        event = self._session_store.read_committed_event_for_receipt(actor_id, kind="continuity", key=idempotency_key)
+        commit = event.get("payload", {}).get("continuity_commit", {}) if event is not None else {}
+        if (event is None or event.get("event_type") != "character_simulation_seed_event"
+                or receipt.actor_ref != f"character:{actor_id}" or receipt.status != "committed"
+                or commit.get("idempotency_key") != idempotency_key
+                or self._cognition_digest(commit.get("receipt")) != self._cognition_digest(raw)):
+            raise ValueError("character_continuity_receipt_invalid")
+        return receipt
+
+    def get_character_activation_lock(self, actor_id: str):
+        """读取 Core 当前绑定的原 authority 凭据，交接不能借用其他 world 的锁。"""
+        if not self.supports_continuity_actor(actor_id):
+            raise ValueError(f"unsupported actor_id: {actor_id}")
+        return self._activation_authority.active_lock(world_ref=self._activation_world_ref,
+            profile_ref=f"character:{actor_id}") if self._activation_authority is not None else None
+
+    def get_character_simulation_cursor(self, actor_id: str) -> int:
+        """读取原 Core 最近的实际连续性回执，不把世界事件序号当仿真 tick。"""
+        revision = self.get_continuity_revision(actor_id)
+        if revision == 0:
+            return 0
+        event = self._session_store.last_event(actor_id, event_type="character_simulation_seed_event")
+        key = event.get("payload", {}).get("continuity_commit", {}).get("idempotency_key") if event else None
+        receipt = self.get_character_continuity_receipt(actor_id, idempotency_key=key) if key else None
+        if receipt is None or receipt.character_revision_after != revision:
+            raise ValueError("character_continuity_cursor_unavailable")
+        return receipt.simulation_tick_cursor
+
     def get_shared_module_state(self, actor_id: str) -> dict[str, dict[str, object]]:
         """Return Character Core's replayable shared modules, never private cognition."""
         if not self.supports_continuity_actor(actor_id):
@@ -2089,6 +2125,19 @@ class CharacterAgentRuntime:
                 character_revision_after=current_revision,
                 refusal_reason="character_revision_conflict",
             )
+        authority = self._activation_authority
+        lock = authority.active_lock(
+            world_ref=self._activation_world_ref, profile_ref=f"character:{actor_id}",
+        ) if authority is not None else None
+        if command.activation_lock_ref is not None or command.activation_lock_revision is not None or lock is not None:
+            if (
+                type(command.activation_lock_ref) is not str
+                or type(command.activation_lock_revision) is not int
+                or lock is None
+                or command.activation_lock_ref != lock.lock_ref
+                or command.activation_lock_revision != lock.held_revision
+            ):
+                return self._continuity_refusal(command, current_revision, "handoff_lock_stale")
         if command.policy_revision != "policy:character-continuity:v1":
             return self._continuity_refusal(command, current_revision, "schema_revision_unsupported")
         if not command.source_revision_vector or any(int(v) < 0 for v in command.source_revision_vector.values()):
@@ -2164,6 +2213,10 @@ class CharacterAgentRuntime:
                 current_revision,
                 str(exc) or "module_delta_invalid",
             )
+        # 保留原授权/隐私/载荷拒绝顺序；新提交仍不能覆盖较新的个人确认态。
+        if command.simulation_tick_cursor < self.get_character_simulation_cursor(actor_id):
+            return self._continuity_refusal(command, current_revision, "simulation_cursor_stale").model_copy(
+                update={"status": "requeued", "receipt_ref": f"requeued:{command.command_id}"})
         projection = {
             "actor_ref": command.actor_ref,
             "state_deltas": deepcopy(state_delta),
@@ -2318,6 +2371,11 @@ class CharacterAgentRuntime:
                     records.update({record.memory_id: record for record in getattr(focused, field)})
                     setattr(bundle, field, list(records.values()))
         return bundle
+
+    def memory_record_read_token(self, actor_id: str):
+        """显式分支和时间的记忆读取可复用原图谱版本，轻投影沿原读取。"""
+        reader = getattr(self._memory_store, 'read_cache_token', None)
+        return reader(actor_id) if callable(reader) else None
 
     def get_working_memory_state(self, actor_id: str, private_snapshot: dict[str, object] | None = None) -> dict[str, object]:
         return self.get_working_memory_state_record(
@@ -2797,6 +2855,9 @@ class CharacterAgentRuntime:
 
     def _update_memory_scene_knowledge(self, event: dict[str, object]) -> None:
         actor_id, index = str(event['actor_id']), int(event['event_index'])
+        # 已完成投影的重复调用只需读取；避免无业务更新仍竞争 SQLite 写锁。
+        if self._session_store.projection_cursor(actor_id, 'ask') >= index:
+            return
         with self._session_store.transaction():
             if self._session_store.projection_cursor(actor_id, 'ask') >= index:
                 return
@@ -4935,6 +4996,13 @@ class CharacterAgentRuntime:
             self._session_store.list_events, working_reader=self._working_memory_events,
             summary_reader=self._session_store.read_memory_summary,
         )
+        bind_records = getattr(self._memory_store, "bind_record_reader", None)
+        if callable(bind_records):
+            bind_records(lambda actor_id: self._memory_history_events(
+                actor_id, event_types=tuple(sorted(CharacterAgentMemoryStore.RECORD_EVENT_TYPES))))
+        bind_archive = getattr(self._memory_store, "bind_working_archive_reader", None)
+        if callable(bind_archive):
+            bind_archive(self._memory_history_events)
         self._l1.get_actor_scene_knowledge_store().bind_persistence(self._session_store)
         self._session_migrated = self._session_store.initialize_recovery(
             import_legacy=self._import_legacy_graph_continuity,
@@ -4942,6 +5010,33 @@ class CharacterAgentRuntime:
         )
         if self._continuity_store is not None and hasattr(self._continuity_store, 'bind_snapshot_reader'):
             self._continuity_store.bind_snapshot_reader(self._export_continuity_snapshot)
+
+    def _memory_history_events(self, actor_id: str, *, event_types: tuple[str, ...] | None = None):
+        # 固定原读取的历史前缀；类型化投影过滤事件，完整归档保持连续全量。
+        through_index = self._session_store.event_count(actor_id)
+        after_index = 0
+        while after_index < through_index:
+            page = self._session_store.read_events_page(
+                actor_id, after_index=after_index, through_index=through_index,
+                event_types=event_types, limit=128,
+            )
+            if not page:
+                if event_types is None:
+                    raise ValueError("character_session_event_index_mismatch")
+                break
+            next_index = after_index
+            for event in page:
+                index = event.get("event_index")
+                if (type(index) is not int or not next_index < index <= through_index
+                        or event.get("actor_id") != actor_id
+                        or (event_types is None and index != next_index + 1)
+                        or (event_types is not None and event.get("event_type") not in event_types)):
+                    raise ValueError("character_session_event_index_mismatch")
+                next_index = index
+            yield from page
+            after_index = next_index
+            # 下一页查询前释放上页，避免两个大正文页同时存活。
+            del page
 
     def _working_memory_events(self, actor_id: str, max_entries: int | None = None):
         through_index = self._session_store.event_count(actor_id)

@@ -21,9 +21,24 @@ class CharacterMemoryStoreRouter:
     def _store_for(self, actor_id: str) -> CharacterMemoryStorePort:
         return self._graph if actor_id in self._heavy_actor_ids else self._light
 
+    def read_cache_token(self, actor_id: str):
+        reader = getattr(self._store_for(actor_id), 'read_cache_token', None)
+        return reader(actor_id) if callable(reader) else None
+
     def bind_session_reader(self, reader, *, working_reader=None, summary_reader=None) -> None:
         self._light.bind_session_reader(reader, working_reader=working_reader, summary_reader=summary_reader)
         self._graph.bind_session_reader(reader, working_reader=working_reader, summary_reader=summary_reader)
+
+    def bind_record_reader(self, reader) -> None:
+        for store in (self._light, self._graph):
+            bind = getattr(store, "bind_record_reader", None)
+            if callable(bind):
+                bind(reader)
+
+    def bind_working_archive_reader(self, reader) -> None:
+        bind = getattr(self._graph, "bind_working_archive_reader", None)
+        if callable(bind):
+            bind(reader)
 
     def debug_memory_summary(self, actor_id: str) -> str:
         return self._store_for(actor_id).debug_memory_summary(actor_id)

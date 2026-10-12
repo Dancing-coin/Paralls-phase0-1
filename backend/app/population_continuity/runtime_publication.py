@@ -4,11 +4,13 @@ import hashlib
 import json
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
+from types import MethodType
 
 from pydantic import ConfigDict, ValidationError
 
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStoreSnapshotError
+from app.gameplay.event_store import GameplayEventStore, DurableGameplayEventStore
 from app.gameplay.models import GameplayOutboxEntry, ProjectionCheckpoint
 from app.gameplay.organization_government_runtime import OrganizationAuthority, OperatingWindowDueRequest
 from app.gameplay.settlement_plan import build_atomic_event_batch
@@ -23,6 +25,11 @@ from app.population_continuity.recovery import (
     recovery_digest,
 )
 from app.services.authority_event_bus import AuthorityEventBusPort
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.population_continuity.prepared_frame import capture_publication, encode_captured_projections, native_method
+from app.population_continuity.continuous import advance_b0_row
+from app.population_continuity.member_ledger import MemberReentryRecord, parse_member_record
+from app.population_continuity.simulation_contracts import simulation_digest
 from app.services.siming_population_capability import PopulationSimulationCapability
 
 
@@ -54,9 +61,11 @@ class RuntimeCadencePublisher:
         self._records: dict[str, dict] = {}
         self._last_event: AuthorityEvent | None = None
         self._prepared_event: tuple[str, AuthorityEvent] | None = None
+        self._prepared_frame = None
         self._conflict_pump = conflict_pump
         self.last_conflict_error: str | None = None
-        self.dispatcher = GameplayOutboxDispatcher(store=self.store, bus=self.bus, event_transform=self._hydrate)
+        self.dispatcher = GameplayOutboxDispatcher(store=self.store, bus=self.bus, event_transform=self._hydrate,
+            event_publisher=self._publish_prepared_population)
         self._restore()
         self._domain_source = OrganizationWindowDueSource(store=self.store, world_ref=self.world.mode.world_ref,
                                                          roster=self.world.roster)
@@ -209,10 +218,32 @@ class RuntimeCadencePublisher:
         revision = 0
         tail_limit = 16
         for index, checkpoint in enumerate(checkpoints):
+            previous_cohort = self.world._character_cohort_ref
             try:
                 data = parse_population_checkpoint(self.world, checkpoint)
                 if data.recovery_state is None or durable_population_receipt(self.world, data.cadence) != data.receipt:
                     raise ValueError("population_recovery_checkpoint_receipt")
+                if self.world._character_participation is not None:
+                    state = data.recovery_state
+                    if state.schema_version != 2:
+                        raise ValueError("population_recovery_participation_mismatch")
+                    candidate = state.cohort_ref
+                    # checkpoint 只选择已提交的成员锚点，不授予新策略或新角色权限。
+                    if simulation_digest(dict(cohort_ref=candidate, resolutions={actor: value.model_dump(mode="json")
+                            for actor, value in self.world._character_participation.items()})) != state.participation_digest:
+                        raise ValueError("population_recovery_participation_mismatch")
+                    ancestor = candidate
+                    while ancestor != previous_cohort:
+                        roots = self.store.read_stream(self.world.member_ledger_stream(ancestor))
+                        if len(roots) != 1:
+                            raise ValueError("population_recovery_participation_mismatch")
+                        root = parse_member_record(self.store, roots[0])
+                        if not isinstance(root, MemberReentryRecord):
+                            raise ValueError("population_recovery_participation_mismatch")
+                        self.world.read_member_ledger(ancestor)
+                        ancestor = root.source_cohort_ref
+                    self.world.configure_character_participation(resolutions=self.world._character_participation,
+                        activation_authority=self.world._character_activation_authority, cohort_ref=candidate)
                 self.world.restore_recovery_state(data.recovery_state.model_dump(mode="json"))
             except GameplayEventStoreSnapshotError as error:
                 if not isinstance(error.__cause__, ValidationError):
@@ -220,6 +251,9 @@ class RuntimeCadencePublisher:
                 failure = error
                 continue
             except (ValueError, KeyError) as error:
+                if self.world._character_participation is not None:
+                    self.world.configure_character_participation(resolutions=self.world._character_participation,
+                        activation_authority=self.world._character_activation_authority, cohort_ref=previous_cohort)
                 failure = error
                 continue
             self.confirmed_tick = data.cadence.window_end
@@ -311,7 +345,7 @@ class RuntimeCadencePublisher:
             return container.model_copy(update={"projection_hash": recovery_digest(container.model_dump(mode="json", exclude={"projection_hash"}))})
 
         checkpoints = [checkpoint(full=False)]
-        if event.stream_revision % 16 == 0:
+        if event.stream_revision % 16 == 0 or self.world._character_participation is not None:
             checkpoints.append(checkpoint(full=True))
         self.store.save_projection_checkpoints_atomic(checkpoints)
         # 本事务没有其他投影订阅时，热表与检查点就是它的刷新工作，不能积压到下次全局启动。
@@ -319,6 +353,82 @@ class RuntimeCadencePublisher:
         if transaction is not None and not transaction.projection_refresh_hints:
             self.store.mark_projection_refreshed(event.transaction_id)
         self.confirmed_tick = cadence.window_end
+
+    def replace_character_participation(self, *, resolutions, cohort_ref, continuity_runtime) -> None:
+        """新成员 Owner 锚点到位后刷新同一确认窗的恢复投影，不推进时钟。"""
+        previous_cohort = self.world._character_cohort_ref
+        latest = self.world.latest_confirmation
+        if previous_cohort is None or latest is None or cohort_ref == previous_cohort:
+            raise ValueError("character_readmission_context_invalid")
+        if self.store.list_outbox(include_delivered=False, topic="population_cadence_event", limit=1):
+            raise ValueError("character_readmission_pending_window")
+        record = self._record_for(latest.cadence_id)
+        cadence = self._validate_record(record)
+        if durable_population_receipt(self.world, cadence) != latest:
+            raise ValueError("character_readmission_confirmation_missing")
+        old = self.world.read_member_ledger(previous_cohort)
+        new = self.world.read_member_ledger(cohort_ref)
+        updates = []
+        for entry in new.member_entries:
+            actor_id = entry.actor_ref.removeprefix("character:")
+            prior = next(item for item in old.member_entries if item.actor_ref == entry.actor_ref)
+            returning = prior.lifecycle == "handoff" and entry.lifecycle == "active"
+            if (dict(entry.participation_policy_pins) != dict(resolutions[entry.actor_ref].source_policy_pins)
+                    or (returning and entry.entry_character_revision != continuity_runtime.get_continuity_revision(actor_id))
+                    or (not returning and entry != prior)):
+                raise ValueError("character_readmission_anchor_stale")
+            if returning:
+                resolution = resolutions[entry.actor_ref]
+                if (self.world._character_activation_authority.active_lock(
+                        world_ref=self.world.mode.world_ref, profile_ref=entry.actor_ref) is not None
+                        or resolution.status != "resolved" or "B0" not in resolution.allowed_tiers
+                        or self.confirmed_tick >= min(resolution.b0_expiry_tick, resolution.review_tick)
+                        or continuity_runtime.get_character_simulation_cursor(actor_id) != self.confirmed_tick
+                        or any(result.actor_ref == entry.actor_ref and result.consumed_core_receipt_ref is None
+                            for result in old.confirmed_results)):
+                    raise ValueError("character_readmission_pending_personal_work")
+                # 只允许当前自身确认态；不把群体统计分配给个体。
+                row = self.world.population_hot_state.read(actor_id)
+                projection = continuity_runtime.get_seed_projection(actor_id).get("state_deltas", {})
+                if (row["last_update_tick"] > self.confirmed_tick or any(
+                        type(projection.get(field)) not in {int, float} or not 0 <= projection[field] <= 1
+                        for field in ("fatigue", "need_pressure"))):
+                    raise ValueError("character_readmission_personal_state_unsynchronized")
+                values = dict(row)
+                if row["last_update_tick"] < self.confirmed_tick:
+                    values.update(advance_b0_row(actor_id=actor_id, row=row,
+                        window_start=row["last_update_tick"], window_end=self.confirmed_tick).values)
+                # 只同步该角色自身的已确认 needs，其他热字段沿用原客观推进规则。
+                values.update({field: projection[field] for field in ("fatigue", "need_pressure")})
+                values.pop("revision")
+                updates.append((actor_id, values, row["revision"], row["revision"] + 1))
+        previous = self.world._character_participation
+        previous_state = self.world.export_recovery_state()
+        try:
+            self.world.population_hot_state.commit_batch_atomic(updates)
+            for actor_id, values, _, revision in updates:
+                self.world.requeue_due_population_work(actor_id, "b0:presentation-threshold",
+                    values["next_due_tick"], revision=revision)
+            self.world.configure_character_participation(resolutions=resolutions,
+                activation_authority=self.world._character_activation_authority, cohort_ref=cohort_ref)
+            event = self.store.get_event(self.store.get_by_idempotency("world_runtime.cadence",
+                f"population-runtime:{cadence.cadence_id}").committed_event_ids[0])
+            identity = f"population-recovery:{self.world.mode.world_ref}:{(event.stream_revision // 16) % 2}"
+            checkpoint = self.store.get_projection_checkpoint(identity)
+            if checkpoint is None:
+                raise ValueError("character_readmission_checkpoint_missing")
+            data = parse_population_checkpoint(self.world, checkpoint)
+            state = {**data.model_dump(mode="json"), "recovery_state": self.world._build_recovery_state_payload()}
+            updated = checkpoint.model_copy(update={"state": PopulationRecoveryCheckpoint.model_validate_json(
+                json.dumps(state)).model_dump(mode="json")})
+            updated = updated.model_copy(update={"projection_hash": recovery_digest(
+                updated.model_dump(mode="json", exclude={"projection_hash"}))})
+            self.store.save_projection_checkpoints_atomic([updated])
+        except Exception:
+            self.world.configure_character_participation(resolutions=previous,
+                activation_authority=self.world._character_activation_authority, cohort_ref=previous_cohort)
+            self.world.restore_recovery_state(previous_state)
+            raise
 
     def _validate_record(self, record: dict) -> PopulationCadenceInput:
         if record.get("roster_digest") != self.roster_digest:
@@ -344,6 +454,35 @@ class RuntimeCadencePublisher:
         self._last_event = event
         return event
 
+    def _publish_prepared_population(self, event: AuthorityEvent) -> None:
+        prepared = self._prepared_event
+        dispatcher = self.dispatcher
+        callbacks = getattr(dispatcher, "_delivery_callbacks", None)
+        store_bindings = _NATIVE_DELIVERY_STORE_BINDINGS.get(type(self.store), ())
+        if (self._prepared_frame is not None and prepared is not None and prepared[1] is event
+                and type(self) is RuntimeCadencePublisher and type(self.bus) is InMemoryAuthorityEventBus
+                and native_method(self, "__call__", _NATIVE_PUBLISHER_CALL)
+                and native_method(self, "_hydrate", _NATIVE_HYDRATE)
+                and native_method(self, "_validate_record", _NATIVE_VALIDATE_RECORD)
+                and type(dispatcher) is GameplayOutboxDispatcher
+                and native_method(dispatcher, "dispatch_pending", _NATIVE_DISPATCH)
+                and dispatcher._authority_event_for is _NATIVE_OUTGOING_EVENT
+                and type(dispatcher._event_publisher) is MethodType
+                and dispatcher._event_publisher.__self__ is self
+                and dispatcher._event_publisher.__func__ is _NATIVE_PREPARED_SENDER
+                and type(dispatcher._event_transform) is MethodType
+                and dispatcher._event_transform.__self__ is self
+                and dispatcher._event_transform.__func__ is _NATIVE_HYDRATE
+                and callbacks is not None
+                and type(callbacks[0]) is MethodType and callbacks[0].__self__ is self
+                and callbacks[0].__func__ is _NATIVE_HYDRATE
+                and type(callbacks[1]) is MethodType and callbacks[1].__self__ is self
+                and callbacks[1].__func__ is _NATIVE_PREPARED_SENDER
+                and store_bindings and all(native_method(self.store, name, function) for name, function in store_bindings)
+                and native_method(self.bus, "_publish_prepared_population", _NATIVE_BUS_PREPARED)):
+            return self.bus._publish_prepared_population(event, self._prepared_frame)
+        return self.bus.publish(event)
+
     def _event_from_record(self, record: dict) -> tuple[PopulationCadenceInput, AuthorityEvent]:
         """重建 compact record 的完整事件，并在任何热表确认前校验规则输出。"""
         cadence = self._validate_record(record)
@@ -359,7 +498,7 @@ class RuntimeCadencePublisher:
         event = AuthorityEvent.model_validate({**template, "payload": {**template["payload"], "population_projections": projections}})
         return cadence, event
 
-    def __call__(self, cadence: PopulationCadenceInput) -> AuthorityEvent | None:
+    def __call__(self, cadence: PopulationCadenceInput, *, population_projections=()) -> AuthorityEvent | None:
         existing = self._record_for(cadence.cadence_id)
         if existing is not None:
             committed = self._validate_record(existing)
@@ -403,18 +542,26 @@ class RuntimeCadencePublisher:
             if cadence.window_start != self.confirmed_tick:
                 raise ValueError("population_cadence_history_gap")
             domain_ready = self._dispatch_domains()
-            prepared = publish_authorized_population_cadence(
-                cadence=cadence, store=self.store, organization_projection={},
-                population_projections=self.world.build_population_projections(cadence),
-                event_bus=self.bus, publish_event=False, **self.location,
-                causation_id=f"population-runtime:{cadence.cadence_id}",
-                correlation_id=f"population-runtime:{cadence.cadence_id}",
-            )
+            with capture_publication() as capture:
+                prepared = publish_authorized_population_cadence(
+                    cadence=cadence, store=self.store, organization_projection={},
+                    population_projections=(*self.world.build_population_projections(cadence), *population_projections),
+                    event_bus=self.bus, publish_event=False, **self.location,
+                    causation_id=f"population-runtime:{cadence.cadence_id}",
+                    correlation_id=f"population-runtime:{cadence.cadence_id}",
+                )
             if prepared is None:
                 return None
+            if population_projections:
+                # 稀疏个人输入只在原后端总线投递给 Siming，不广播个人上下文。
+                prepared.routing.audience_mode = "targeted"
+                prepared.routing.target_ids = ["siming"]
             all_projections = prepared.payload["population_projections"]
             template = prepared.model_dump(mode="json", exclude={"payload": {"population_projections"}})
-            projection_digest = _digest(all_projections)
+            if publish_authorized_population_cadence is _NATIVE_PUBLICATION and _digest is _NATIVE_DIGEST:
+                projection_digest, prepared_frame = encode_captured_projections(prepared, capture)
+            else:
+                projection_digest, prepared_frame = _digest(all_projections), None
             template["payload"]["population_projections"] = [
                 item for item in all_projections if item["payload"].get("fidelity_tier") != "B0"
             ]
@@ -445,7 +592,7 @@ class RuntimeCadencePublisher:
             batch.outbox_entries.append(GameplayOutboxEntry(
                 outbox_id=f"outbox:{command}", transaction_id=batch.transaction_id,
                 event_id=batch.events[0].event_id, global_sequence=0,
-                topic="population_cadence_event", audience="broadcast",
+                topic="population_cadence_event", audience="siming" if population_projections else "broadcast",
                 payload_projection={"projection_kind": "population-runtime"},
             ))
             if domain is not None:
@@ -457,11 +604,13 @@ class RuntimeCadencePublisher:
                 return None
             self._remember_record(record)
             self._prepared_event = (record["record_digest"], prepared)
+            self._prepared_frame = prepared_frame
         self._last_event = None
         try:
             result = self.dispatcher.dispatch_pending(topic="population_cadence_event", limit=1)
         finally:
             self._prepared_event = None
+            self._prepared_frame = None
             published_event = self._last_event
             self._last_event = None
         if result.failed_count or result.published_count != 1:
@@ -471,3 +620,17 @@ class RuntimeCadencePublisher:
             self._dispatch_domains()
         self._admit_conflicts(cadence)
         return published_event
+
+
+_NATIVE_PUBLICATION = publish_authorized_population_cadence
+_NATIVE_DIGEST = _digest
+_NATIVE_PUBLISHER_CALL = RuntimeCadencePublisher.__call__
+_NATIVE_HYDRATE = RuntimeCadencePublisher._hydrate
+_NATIVE_VALIDATE_RECORD = RuntimeCadencePublisher._validate_record
+_NATIVE_DISPATCH = GameplayOutboxDispatcher.dispatch_pending
+_NATIVE_OUTGOING_EVENT = GameplayOutboxDispatcher._authority_event_for
+_NATIVE_PREPARED_SENDER = RuntimeCadencePublisher._publish_prepared_population
+_NATIVE_BUS_PREPARED = InMemoryAuthorityEventBus._publish_prepared_population
+_NATIVE_DELIVERY_STORE_BINDINGS = {kind: tuple((name, getattr(kind, name))
+    for name in ("get_last_global_sequence", "list_outbox", "get_event"))
+    for kind in (GameplayEventStore, DurableGameplayEventStore)}

@@ -596,6 +596,7 @@ async def _run_child(commands, controls, results, notifications, settings_json):
     stopped = asyncio.Event()
     shutdown_target = None
     parent_gone = asyncio.Event()
+    startup_completed = False
     sequence = 0
     tasks = []
     receiver = None
@@ -762,6 +763,9 @@ async def _run_child(commands, controls, results, notifications, settings_json):
             if parent is not None and not parent.is_alive():
                 parent_gone.set()
                 stopped.set()
+                if not startup_completed:
+                    # 取消协程不能终止初始化中的 owner；父进程已死时由 OS 回收锁并保留 WAL 原子前缀。
+                    os._exit(1)
                 return
             await asyncio.sleep(.02)
 
@@ -773,6 +777,7 @@ async def _run_child(commands, controls, results, notifications, settings_json):
     parent_watch = asyncio.create_task(watch_parent())
     try:
         await main._start_population_runtime_on_startup()
+        startup_completed = True
         await emit("ready", health=main.health(), child_pid=os.getpid())
         receiver = asyncio.create_task(receive())
         tasks = [asyncio.create_task(control()), receiver, asyncio.create_task(heartbeat())]

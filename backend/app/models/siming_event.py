@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.authority_event import AuthorityEvent
+from app.models.social_model import DailySupplyReport, ModelRunReceipt
 from app.models.siming_runtime_state import (
     FairnessDimensionSnapshot,
     NarrativeReadModel,
@@ -187,6 +188,8 @@ class SimingAuditRecord(BaseModel):
 
 
 class SimingTickResult(BaseModel):
+    model_execution_receipts: list[ModelRunReceipt] = Field(default_factory=list)
+    model_reports: list[DailySupplyReport] = Field(default_factory=list)
     outputs: list[SimingOutput] = Field(default_factory=list)
     audit_records: list[SimingAuditRecord] = Field(default_factory=list)
     checkpoints: list[SimingCheckpoint] = Field(default_factory=list)

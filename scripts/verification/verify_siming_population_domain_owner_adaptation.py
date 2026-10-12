@@ -25,12 +25,12 @@ from app.population_continuity.vertical import (
 from verify_phase3_common import write_report
 
 
-RUNTIME_OWNER_CAPABILITIES = {
+DOMAIN_ADAPTER_CAPABILITIES = {
     "population:organization-production-work-contribution:v1",
     "population:inventory-output-custody:v1",
     "population:social-population-signal:v1",
 }
-DOMAIN_ADAPTER_CAPABILITIES = RUNTIME_OWNER_CAPABILITIES
+RUNTIME_OWNER_CAPABILITIES = DOMAIN_ADAPTER_CAPABILITIES | {"population:organization-window-due:v1"}
 TAX_CAPABILITY = "population:tax-pressure:v1"
 
 

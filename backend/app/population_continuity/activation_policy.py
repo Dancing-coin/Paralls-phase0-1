@@ -1,6 +1,37 @@
 from __future__ import annotations
 
 from .models import ActivationDecision
+from .simulation_contracts import ParticipationPolicy, ParticipationResolution, simulation_digest
+
+
+def resolve_participation(*, policies: tuple[ParticipationPolicy, ...], tick: int) -> ParticipationResolution:
+    if type(tick) is not int or tick < 0:
+        raise ValueError("participation_tick_invalid")
+    ordered = tuple(sorted(policies, key=lambda policy: policy.policy_ref))
+    if len({policy.policy_ref for policy in ordered}) != len(ordered):
+        raise ValueError("participation_policy_duplicate")
+    allowed = set(ordered[0].allowed_tiers) if ordered else set()
+    modules = set(ordered[0].allowed_modules) if ordered else set()
+    for policy in ordered[1:]:
+        allowed.intersection_update(policy.allowed_tiers)
+        modules.intersection_update(policy.allowed_modules)
+    expiry = min((policy.b0_expiry_tick for policy in ordered), default=tick)
+    review = min((policy.review_tick for policy in ordered), default=tick)
+    if tick >= expiry:
+        allowed.discard("B0")
+    if tick >= review:
+        allowed.clear()
+    tiers = tuple(tier for tier in ("B0", "B1", "B2", "B3") if tier in allowed)
+    return ParticipationResolution(
+        allowed_tiers=tiers, recommended_tier=tiers[0] if tiers else None,
+        allowed_modules=tuple(sorted(modules)),
+        forbidden_dimensions=tuple(sorted({dimension for policy in ordered for dimension in policy.forbidden_dimensions})),
+        upgrade_triggers=tuple(sorted({trigger for policy in ordered for trigger in policy.upgrade_triggers})),
+        b0_expiry_tick=expiry, review_tick=review,
+        policy_revision=simulation_digest([policy.model_dump(mode="json") for policy in ordered]),
+        source_policy_pins={policy.policy_ref: policy.revision for policy in ordered},
+        status="resolved" if tiers else "defer",
+    )
 
 
 class ActivationPolicy:

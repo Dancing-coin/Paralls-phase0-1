@@ -15,6 +15,10 @@ from . import ask_storage, memory_summary
 
 class CharacterAgentSessionStore:
     _RUNTIME_CACHE_KIB = 256
+    _EVENT_TYPE_MISMATCH = (
+        "event_type IS NOT (CASE WHEN json_valid(payload_json) "
+        "THEN json_extract(payload_json,'$.event_type') END)"
+    )
 
     def __init__(
         self,
@@ -59,6 +63,11 @@ class CharacterAgentSessionStore:
                 self._connection.execute("PRAGMA journal_mode=WAL")
                 self._connection.execute(f"PRAGMA cache_size=-{self._RUNTIME_CACHE_KIB}")
                 self._initialize_database()
+                # 正常行不进入此索引；类型过滤前仍能发现被索引列遮蔽的坏正文。
+                self._connection.execute(
+                    "CREATE INDEX IF NOT EXISTS character_session_event_type_mismatch "
+                    "ON character_session_events(actor_id,event_index) WHERE " + self._EVENT_TYPE_MISMATCH
+                )
                 marker = self._connection.execute("SELECT value FROM character_session_metadata WHERE key='recovery_version'").fetchone()
                 if marker is not None:
                     if marker[0] not in {'1', '2', '3'}:
@@ -770,13 +779,14 @@ class CharacterAgentSessionStore:
         return self._connection.execute("SELECT 1 FROM character_session_candidates WHERE actor_id=? AND dedup_key=? AND candidate_id<>? LIMIT 1",(actor_id,dedup_key,candidate_id)).fetchone() is not None
 
     def projection_cursor(self, actor_id: str, kind: str) -> int:
-        self._check_open()
-        if self._connection is None:
-            return self._projection_cursors.get((actor_id,kind),0)
-        row = self._connection.execute("SELECT event_index FROM character_session_projection_cursors WHERE actor_id=? AND kind=?",(actor_id,kind)).fetchone()
-        if row is None and self._recovery_enabled and self.event_count(actor_id):
-            raise ValueError('character_session_projection_missing')
-        return row[0] if row else 0
+        with self._lock:
+            self._check_open()
+            if self._connection is None:
+                return self._projection_cursors.get((actor_id,kind),0)
+            row = self._connection.execute("SELECT event_index FROM character_session_projection_cursors WHERE actor_id=? AND kind=?",(actor_id,kind)).fetchone()
+            if row is None and self._recovery_enabled and self.event_count(actor_id):
+                raise ValueError('character_session_projection_missing')
+            return row[0] if row else 0
 
     def set_projection_cursor(self, actor_id: str, kind: str, index: int) -> None:
         with self.transaction():
@@ -976,13 +986,26 @@ class CharacterAgentSessionStore:
                 clauses.append("event_index<=?")
                 parameters.append(through_index)
             if event_types is not None:
+                mismatch = self._connection.execute(
+                    "SELECT 1 FROM character_session_events INDEXED BY character_session_event_type_mismatch "
+                    "WHERE " + " AND ".join((*clauses, self._EVENT_TYPE_MISMATCH)) + " LIMIT 1",
+                    parameters,
+                ).fetchone()
+                if mismatch is not None:
+                    raise ValueError("character_session_event_index_mismatch")
                 clauses.append("event_type IN (" + ",".join("?" for _ in event_types) + ")")
                 parameters.extend(event_types)
             parameters.append(limit)
             # 大 LIMIT 会使 SQLite 为了排序选择扫描全 actor，类型索引避免读取无关历史。
             index = " INDEXED BY character_session_event_types" if event_types is not None else ""
-            return [json.loads(row[0]) for row in self._connection.execute(
-                "SELECT payload_json FROM character_session_events" + index + " WHERE " + " AND ".join(clauses) + " ORDER BY event_index LIMIT ?", parameters)]
+            events = []
+            for row in self._connection.execute(
+                "SELECT actor_id,event_index,event_id,event_type,payload_json FROM character_session_events" + index + " WHERE " + " AND ".join(clauses) + " ORDER BY event_index LIMIT ?", parameters):
+                event = self._validate_event(json.loads(row[4]))
+                if tuple(event[key] for key in ("actor_id", "event_index", "event_id", "event_type")) != row[:4]:
+                    raise ValueError("character_session_event_index_mismatch")
+                events.append(event)
+            return events
 
     def read_recent_events_page(
         self, actor_id: str, *, through_index: int | None = None,

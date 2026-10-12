@@ -98,6 +98,76 @@ def test_source_owner_check_does_not_decode_full_transactions(tmp_path, monkeypa
     assert len(read(source(store)).projections) == 1
 
 
+def test_same_org_schedule_heads_are_read_once_without_stale_revisions(tmp_path, monkeypatch):
+    store = DurableGameplayEventStore(tmp_path / "gameplay.sqlite3")
+    owner = OrganizationAuthority(store=store)
+    actors = tuple(f"worker_{index}" for index in range(4))
+    try:
+        for index, actor in enumerate(actors):
+            schedule(owner, actor, actor=actor,
+                until="2026-09-16T00:00:00Z" if index == 3 else None)
+            window(owner, actor)
+        projector = source(store, actors)
+        expected = read(projector)
+        checkpoint = store.get_projection_checkpoint(projector.checkpoint_id).model_dump(mode="json")
+        assert len(expected.projections) == 3
+        assert expected.diagnostics == (("window:worker_3", "schedule_inactive"),)
+        calls = []
+        get_head = store.get_stream_head
+
+        def counted(stream_id):
+            calls.append(stream_id)
+            return get_head(stream_id)
+
+        with monkeypatch.context() as guard:
+            guard.setattr(store, "get_stream_head", counted)
+            actual = read(projector)
+        initial_reads = calls.count("gameplay:organization:org:one")
+        assert actual == expected
+        assert store.get_projection_checkpoint(projector.checkpoint_id).model_dump(mode="json") == checkpoint
+
+        schedule(owner, "future", actor=actors[0])
+        calls.clear()
+        with monkeypatch.context() as guard:
+            guard.setattr(store, "get_stream_head", counted)
+            updated = read(projector)
+        updated_reads = calls.count("gameplay:organization:org:one")
+        assert {row.ref for row in updated.projections} == {row.ref for row in expected.projections}
+        assert all(row.revision_vector["gameplay:organization:org:one"] == 20 for row in updated.projections)
+        assert updated.diagnostics == (("window:future", "closed_source_unavailable"),) + expected.diagnostics
+        updated_checkpoint = store.get_projection_checkpoint(projector.checkpoint_id).model_dump(mode="json")
+        assert updated_checkpoint != checkpoint
+        assert updated_checkpoint["last_global_sequence"] == store.get_last_global_sequence()
+        assert updated_checkpoint["source_revision_vector"]["gameplay:organization:org:one"] == 20
+        assert read(source(store, actors)) == updated
+        assert store.get_projection_checkpoint(projector.checkpoint_id).model_dump(mode="json") == updated_checkpoint
+        assert (initial_reads, updated_reads) == (1, 1)
+    finally:
+        store.close()
+
+
+def test_schedule_head_dedup_preserves_first_seen_organization_order(tmp_path, monkeypatch):
+    store = DurableGameplayEventStore(tmp_path / "gameplay.sqlite3")
+    owner = OrganizationAuthority(store=store)
+    try:
+        for suffix, organization in (("first", "org:two"), ("second", "org:one"), ("third", "org:two")):
+            schedule(owner, suffix, organization=organization)
+            window(owner, suffix, organization=organization)
+        calls = []
+        get_head = store.get_stream_head
+
+        def counted(stream_id):
+            if not stream_id.startswith("gameplay:organization:window:"):
+                calls.append(stream_id)
+            return get_head(stream_id)
+
+        monkeypatch.setattr(store, "get_stream_head", counted)
+        assert len(read(source(store)).projections) == 3
+        assert calls == ["gameplay:organization:org:two", "gameplay:organization:org:one"]
+    finally:
+        store.close()
+
+
 def test_incremental_scan_hashes_only_final_anchor_and_reopens(tmp_path, monkeypatch):
     from app.population_continuity import organization_due_source as module
 

@@ -106,7 +106,7 @@ from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
 from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
-from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.authority_event_bus import InMemoryAuthorityEventBus, _prepared_delivery_scope, _prepared_delivery_snapshot
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
 from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService, EmbodiedControllerEnrollment
@@ -178,6 +178,7 @@ from app.world_runtime.l1_runtime_perception_bridge import (
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
+from app.population_continuity.prepared_frame import native_method
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import build_siming_llm_provider
 from app.services.siming_actor_memory_gateway import ActorMemoryReadGateway
@@ -330,6 +331,28 @@ def _handle_siming_authority_event(event):
             and _get_dialogue_coordinator()._connection_current(origin.connection_ref, origin.binding_pin)):
         _cognition_output_routes.remember(event.event_id, origin, receipt.entry.expires_at)
     return receipt
+
+
+_NATIVE_SIMING_AUTHORITY_HANDLER = _handle_siming_authority_event
+_NATIVE_SIMING_AUTHORITY_HANDLER_CODE = _handle_siming_authority_event.__code__
+_NATIVE_PREPARED_PIPELINE_HANDLER = SimingEventPipeline._handle_prepared_population
+
+
+def _handle_prepared_siming_population(event, frame):
+    pipeline = siming_event_pipeline
+    if (_NATIVE_SIMING_AUTHORITY_HANDLER.__code__ is _NATIVE_SIMING_AUTHORITY_HANDLER_CODE
+            and type(pipeline) is SimingEventPipeline
+            and native_method(pipeline, "_handle_prepared_population", _NATIVE_PREPARED_PIPELINE_HANDLER)):
+        snapshot = _prepared_delivery_snapshot(event, _handle_prepared_siming_population,
+            _NATIVE_PREPARED_SIMING_HANDLER_CODE)
+        if snapshot is not None:
+            with _prepared_delivery_scope(event, snapshot, pipeline._handle_prepared_population):
+                return pipeline._handle_prepared_population(event, frame)
+        return pipeline._handle_prepared_population(event, frame)
+    return _NATIVE_SIMING_AUTHORITY_HANDLER(event)
+
+
+_NATIVE_PREPARED_SIMING_HANDLER_CODE = _handle_prepared_siming_population.__code__
 
 
 async def _run_siming_cognition():
@@ -629,6 +652,26 @@ async def _shutdown_population_runtime() -> None:
             pass
 
 
+def _release_interrupted_character_activations() -> None:
+    """独占存档启动后正式释放旧进程凭据，不改 Core 时间线或原认知入站。"""
+    if _runtime_storage_lease is None or not _runtime_storage_lease.is_held:
+        raise RuntimeError("runtime_storage_lease_required")
+    core = character_agent_runtime
+    if core.pending_actor_activations() or core.pending_cognition_jobs():
+        raise RuntimeError("activation_recovery_not_idle")
+    authority = core._activation_authority
+    if authority is None:
+        raise RuntimeError("activation_authority_unavailable")
+    for actor_id in authority.registry.actor_ids():
+        lock = core.get_character_activation_lock(actor_id)
+        if lock is None:
+            continue
+        receipt = authority.release_lock(lock_ref=lock.lock_ref,
+            expected_revision=authority.store.get_stream_head(f"population:{lock.world_ref}"))
+        if not receipt.committed:
+            raise RuntimeError(f"activation_recovery_failed:{receipt.stop_reason}")
+
+
 @app.on_event("startup")
 async def _start_population_runtime_on_startup() -> None:
     global runtime_execution, _population_runtime_driver, _population_runtime_failure, gameplay_mirror_connection_registry
@@ -653,6 +696,8 @@ async def _start_population_runtime_on_startup() -> None:
                 if Path(settings.heavenly_graph_path).name != ":memory:":
                     _runtime_storage_lease = RuntimeStorageLease(settings.heavenly_graph_path)
                 _reset_runtime_state(restore_gameplay=True)
+                if _runtime_storage_lease is not None:
+                    _release_interrupted_character_activations()
 
             await asyncio.wrap_future(runtime_execution.submit(initialize))
         _population_runtime_driver = await asyncio.wrap_future(runtime_execution.submit(_build_population_driver))
@@ -1488,7 +1533,12 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     )
     _build_siming_cognition(siming_event_pipeline)
     for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, _handle_siming_authority_event)
+        if (event_type == "population_cadence_event" and type(authority_event_bus) is InMemoryAuthorityEventBus
+                and _handle_siming_authority_event is _NATIVE_SIMING_AUTHORITY_HANDLER):
+            authority_event_bus._subscribe_prepared_population(
+                _handle_siming_authority_event, _handle_prepared_siming_population)
+        else:
+            authority_event_bus.subscribe(event_type, _handle_siming_authority_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     authority_graph_projector = HeavenlyAuthorityEventProjector(

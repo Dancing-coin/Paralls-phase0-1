@@ -193,6 +193,7 @@ def verify_gameplay(path: Path, *, mode, actors, expected_confirmed_tick, window
             checkpoint = ProjectionCheckpoint.model_validate(row["checkpoint"])
             # 原函数直接核验事件、outbox、checkpoint/context/kernel摘要，无需重建全人口热表。
             world = SimpleNamespace(mode=mode, roster=SimpleNamespace(actor_ids=actors),
+                _character_participation=None,
                 _recovery_context_digest=lambda:context,
                 store=SimpleNamespace(get_event={event.event_id:event}.__getitem__, get_outbox=outbox.__getitem__))
             data = parse_population_checkpoint(world, checkpoint)

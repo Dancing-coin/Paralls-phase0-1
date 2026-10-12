@@ -57,6 +57,12 @@ class CharacterMemoryStorePort(Protocol):
 
 class CharacterAgentMemoryStore:
     _SUMMARY_VALUE_CHARS = 240
+    RECORD_EVENT_TYPES = frozenset({
+        "character_perceived_event", "character_memory_correction",
+        "character_agent_settlement_result", "character_agent_dialogue_response",
+        "relational_belief_event", "knowledge_belief_event", "social_cognition_event",
+        "higher_order_belief_event",
+    })
     _SOCIAL_BELIEF_TRUST_BASELINES = {
         "guarded": 0.25,
         "neutral": 0.5,
@@ -66,6 +72,8 @@ class CharacterAgentMemoryStore:
 
     def __init__(self, storage_root: str | Path | None = None) -> None:
         self._session_reader = None
+        self._record_reader = None
+        self._archive_reader = None
         self._working_reader = None
         self._summary_reader = None
         self._working = CharacterWorkingMemory()
@@ -328,8 +336,16 @@ class CharacterAgentMemoryStore:
 
     def bind_session_reader(self, reader, *, working_reader=None, summary_reader=None) -> None:
         self._session_reader = reader
+        self._record_reader = None
+        self._archive_reader = None
         self._working_reader = working_reader
         self._summary_reader = summary_reader
+
+    def bind_record_reader(self, reader) -> None:
+        self._record_reader = reader
+
+    def bind_archive_reader(self, reader) -> None:
+        self._archive_reader = reader
 
     def debug_memory_summary(self, actor_id: str) -> str:
         if self._summary_reader is not None:
@@ -339,7 +355,9 @@ class CharacterAgentMemoryStore:
 
     def _history_projection(self, actor_id: str, *, include_working: bool = True):
         projection = CharacterAgentMemoryStore()
-        for event in self._session_reader(actor_id):
+        reader = self._archive_reader if include_working else self._record_reader
+        reader = reader if reader is not None else self._session_reader
+        for event in reader(actor_id):
             projection._ingest_event(event, include_working=include_working)
         return projection
 

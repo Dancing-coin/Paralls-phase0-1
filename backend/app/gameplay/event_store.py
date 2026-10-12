@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from bisect import bisect_left
-from collections import defaultdict
+from collections import OrderedDict, defaultdict
 from itertools import islice
 import json
 import os
 import sqlite3
+from sys import getsizeof
 from contextlib import closing, contextmanager
 from pathlib import Path
 import tempfile
@@ -14,6 +15,7 @@ from typing import Any
 import zlib
 
 from pydantic import ValidationError
+from zlib_ng import zlib_ng
 
 from app.gameplay.models import (
     AppendBatchResult,
@@ -38,7 +40,9 @@ def encode_durable_json(value: str) -> bytes:
     """压缩不参与 SQL JSON 查询的正文；版本前缀允许后续 codec 演进。"""
     if not isinstance(value, str):
         raise TypeError("durable_json_text_required")
-    return _DURABLE_JSON_PREFIX + zlib.compress(value.encode("utf-8"), level=1)
+    # 普通正文用兼容 zlib 流的原生编码器；自定义 encode 钩子保留原路径。
+    codec = zlib_ng if type(value) is str else zlib
+    return _DURABLE_JSON_PREFIX + codec.compress(value.encode("utf-8"), level=1)
 
 
 def decode_durable_json(value: str | bytes | memoryview) -> str:
@@ -213,7 +217,7 @@ class GameplayEventStore:
         batch: AtomicEventBatch, *, existing_record: IdempotencyRecord | None,
         existing_result: AppendBatchResult | None, stream_heads: dict[str, int],
         transaction_exists: bool, existing_event_ids: set[str], existing_outbox_ids: set[str],
-        last_global_sequence: int,
+        last_global_sequence: int, isolate_stored_fields: bool = True,
     ) -> tuple[AtomicEventBatch, AppendBatchResult] | AppendBatchResult:
         """两种存储共用的纯准备阶段，只接收当前批次涉及的已有值。"""
         if existing_record is not None:
@@ -298,6 +302,9 @@ class GameplayEventStore:
                 failed_stage="batch_validation",
             )
 
+        if not isolate_stored_fields:
+            # 持久账本只序列化快照；JSON 读取会拆散字段别名，无需逐字段重复复制。
+            batch = batch.model_copy(deep=True)
         stream_heads = dict(stream_heads)
         next_global_sequence = last_global_sequence + 1
         committed_events: list[GameplayEvent] = []
@@ -310,19 +317,19 @@ class GameplayEventStore:
                         "stream_revision": stream_revision,
                         "global_sequence": next_global_sequence + offset,
                     },
-                    deep=True,
+                    deep=isolate_stored_fields,
                 )
             )
 
         event_sequences = {event.event_id: event.global_sequence for event in committed_events}
         committed_outbox = [
-            entry.model_copy(update={"global_sequence": event_sequences[entry.event_id], "delivery_state": "pending"}, deep=True)
+            entry.model_copy(update={"global_sequence": event_sequences[entry.event_id], "delivery_state": "pending"}, deep=isolate_stored_fields)
             for entry in batch.outbox_entries
         ]
-        # 编号后的事件与 outbox 已各自隔离，避免再复制马上被覆盖的原列表。
+        # 保留快照头部，避免复制随后被覆盖的原事件和 outbox 列表。
         committed_batch = batch.model_copy(update={"events": [], "outbox_entries": []}).model_copy(
             update={"events": committed_events, "outbox_entries": committed_outbox},
-            deep=True,
+            deep=isolate_stored_fields,
         )
         result = AppendBatchResult(
             committed=True,
@@ -853,9 +860,13 @@ class DurableGameplayEventStore(GameplayEventStore):
     """SQLite 是持久账本；正常启动和定向查询不创建全历史内存副本。"""
 
     _WAL_AUTOCHECKPOINT_PAGES = 1000
-    _RUNTIME_CACHE_KIB = 256
+    _RUNTIME_CACHE_KIB = 2048
+    _JSON_TEXT_CACHE_BYTES = 2 * 1024 * 1024
+    _JSON_TEXT_CACHE_ENTRIES = 512
     _QUERY_INDEXES = (
         "CREATE INDEX IF NOT EXISTS outbox_topic_sequence ON outbox(topic, global_sequence, id)",
+        "CREATE INDEX IF NOT EXISTS outbox_pending_sequence ON outbox(global_sequence, id) WHERE delivery_state <> 'delivered'",
+        "CREATE INDEX IF NOT EXISTS outbox_pending_topic_sequence ON outbox(topic, global_sequence, id) WHERE delivery_state <> 'delivered'",
         "CREATE INDEX IF NOT EXISTS checkpoints_sequence ON checkpoints(global_sequence DESC, id DESC)",
         "CREATE INDEX IF NOT EXISTS events_stream_type_revision ON events(stream_id, json_extract(value,'$.event_type'), stream_revision)",
         "CREATE INDEX IF NOT EXISTS events_type_sequence ON events(json_extract(value,'$.event_type'), global_sequence)",
@@ -874,8 +885,6 @@ class DurableGameplayEventStore(GameplayEventStore):
         "CREATE INDEX IF NOT EXISTS outbox_sequence ON outbox(global_sequence, id)",
         "CREATE INDEX IF NOT EXISTS outbox_transaction_sequence ON outbox(transaction_id, global_sequence, id)",
         "CREATE INDEX IF NOT EXISTS outbox_event ON outbox(event_id)",
-        "CREATE INDEX IF NOT EXISTS outbox_pending_sequence ON outbox(global_sequence, id) WHERE delivery_state <> 'delivered'",
-        "CREATE INDEX IF NOT EXISTS outbox_pending_topic_sequence ON outbox(topic, global_sequence, id) WHERE delivery_state <> 'delivered'",
         "CREATE INDEX IF NOT EXISTS checkpoints_projector_sequence ON checkpoints(projector_id, global_sequence DESC, id DESC)",
         "CREATE INDEX IF NOT EXISTS transactions_pending_refresh ON transactions(sequence) WHERE refresh_state='pending'",
     ) + _QUERY_INDEXES
@@ -888,6 +897,8 @@ class DurableGameplayEventStore(GameplayEventStore):
         self._group_connection: sqlite3.Connection | None = None
         self._group_failed = False
         self._closed = False
+        self._json_text_cache: OrderedDict[bytes, tuple[str, int]] = OrderedDict()
+        self._json_text_cache_bytes = 0
         restored = None
         if self._snapshot_path.exists():
             with self._snapshot_path.open("rb") as stream:
@@ -953,7 +964,47 @@ class DurableGameplayEventStore(GameplayEventStore):
     def close(self) -> None:
         with self._lock:
             self._closed = True
+            self._json_text_cache.clear()
+            self._json_text_cache_bytes = 0
             self._discard_connection()
+
+    def _remember_json_text(self, body: bytes, text: str) -> None:
+        # 只复用不可变正文；保守计入 LRU 节点开销，事实仍由每次 SQL 查询取得。
+        cost = getsizeof(body) + getsizeof(text) + 256
+        if cost > self._JSON_TEXT_CACHE_BYTES:
+            return
+        with self._lock:
+            if self._closed:
+                return
+            previous = self._json_text_cache.pop(body, None)
+            if previous is not None:
+                self._json_text_cache_bytes -= previous[1]
+            while self._json_text_cache and (
+                self._json_text_cache_bytes + cost > self._JSON_TEXT_CACHE_BYTES
+                or len(self._json_text_cache) >= self._JSON_TEXT_CACHE_ENTRIES
+            ):
+                _, (_, removed_cost) = self._json_text_cache.popitem(last=False)
+                self._json_text_cache_bytes -= removed_cost
+            self._json_text_cache[body] = (text, cost)
+            self._json_text_cache_bytes += cost
+
+    def _encode_json(self, text: str) -> bytes:
+        body = encode_durable_json(text)
+        if type(text) is str and type(body) is bytes:
+            self._remember_json_text(body, text)
+        return body
+
+    def _decode_json(self, body: str | bytes | memoryview) -> str:
+        if type(body) is bytes:
+            with self._lock:
+                cached = self._json_text_cache.get(body)
+                if cached is not None:
+                    self._json_text_cache.move_to_end(body)
+                    return cached[0]
+        text = decode_durable_json(body)
+        if type(body) is bytes and type(text) is str:
+            self._remember_json_text(body, text)
+        return text
 
     def _snapshot_connection(self) -> sqlite3.Connection:
         if self._closed:
@@ -1086,13 +1137,12 @@ class DurableGameplayEventStore(GameplayEventStore):
                 connection.execute("ALTER TABLE events ADD COLUMN full_value BLOB")
             connection.execute("UPDATE metadata SET value='3' WHERE key='schema'")
 
-    @staticmethod
-    def _index_events(connection: sqlite3.Connection, batch: AtomicEventBatch) -> None:
+    def _index_events(self, connection: sqlite3.Connection, batch: AtomicEventBatch) -> None:
         connection.executemany(
             "INSERT INTO events (global_sequence,event_id,stream_id,stream_revision,transaction_id,value,full_value) VALUES (?, ?, ?, ?, ?, ?, ?)",
             ((event.global_sequence, event.event_id, event.stream_id, event.stream_revision,
               event.transaction_id, json.dumps({"event_type": event.event_type}, separators=(",", ":")),
-              encode_durable_json(event.model_dump_json())) for event in batch.events),
+              self._encode_json(event.model_dump_json())) for event in batch.events),
         )
         heads = {event.stream_id: event.stream_revision for event in batch.events}
         connection.executemany("INSERT INTO stream_heads VALUES (?, ?) ON CONFLICT(stream_id) DO UPDATE SET revision=excluded.revision", heads.items())
@@ -1120,13 +1170,14 @@ class DurableGameplayEventStore(GameplayEventStore):
                     prepared = self._prepare_append(batch,
                         existing_record=IdempotencyRecord(principal_ref=key.principal_ref, idempotency_key=key.idempotency_key, payload_digest=previous[0]) if previous else None,
                         existing_result=AppendBatchResult.model_validate_json(
-                            decode_durable_json(previous[1])
+                            self._decode_json(previous[1])
                         ) if previous else None,
                         stream_heads=dict(self._matching_rows(connection, "stream_heads", "stream_id", streams, "stream_id, revision")),
                         transaction_exists=connection.execute("SELECT 1 FROM transactions WHERE transaction_id=?", (batch.transaction_id,)).fetchone() is not None,
                         existing_event_ids={row[0] for row in self._matching_rows(connection, "events", "event_id", [event.event_id for event in batch.events], "event_id")},
                         existing_outbox_ids={row[0] for row in self._matching_rows(connection, "outbox", "id", [entry.outbox_id for entry in batch.outbox_entries], "id")},
                         last_global_sequence=int(connection.execute("SELECT value FROM metadata WHERE key='last_global_sequence'").fetchone()[0]),
+                        isolate_stored_fields=False,
                     )
                     if isinstance(prepared, AppendBatchResult):
                         return prepared
@@ -1151,23 +1202,23 @@ class DurableGameplayEventStore(GameplayEventStore):
                         target.execute("UPDATE metadata SET value=? WHERE key='registry' AND value<>?", (registry_json, registry_json))
                     key = batch.idempotency_record
                     target.execute("INSERT INTO transactions (sequence,batch,result,transaction_id,principal_ref,idempotency_key,payload_digest,refresh_state) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                        (batch.events[-1].global_sequence, encode_durable_json(batch.model_dump_json()),
-                         encode_durable_json(result.model_dump_json()), batch.transaction_id,
+                        (batch.events[-1].global_sequence, self._encode_json(batch.model_dump_json()),
+                         self._encode_json(result.model_dump_json()), batch.transaction_id,
                          key.principal_ref, key.idempotency_key, key.payload_digest, "pending" if batch.outbox_entries or batch.projection_refresh_hints else None))
                     self._index_events(target, batch)
                     target.executemany("INSERT INTO outbox (id,value,delivery_state,topic,global_sequence,transaction_id,event_id) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                        ((entry.outbox_id, encode_durable_json(entry.model_dump_json()), entry.delivery_state,
+                        ((entry.outbox_id, self._encode_json(entry.model_dump_json()), entry.delivery_state,
                           entry.topic, entry.global_sequence, entry.transaction_id, entry.event_id)
                          for entry in batch.outbox_entries))
                     target.execute("UPDATE metadata SET value=? WHERE key='last_global_sequence'", (str(batch.events[-1].global_sequence),))
                 if outbox is not None:
                     target.execute("UPDATE outbox SET value=?, delivery_state=?, topic=?, global_sequence=?, transaction_id=?, event_id=? WHERE id=?",
-                        (encode_durable_json(outbox.model_dump_json()), outbox.delivery_state,
+                        (self._encode_json(outbox.model_dump_json()), outbox.delivery_state,
                          outbox.topic, outbox.global_sequence, outbox.transaction_id,
                          outbox.event_id, outbox.outbox_id))
                 for item in ([checkpoint] if checkpoint is not None else checkpoints):
                     target.execute("INSERT INTO checkpoints (id,value,projector_id,global_sequence) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET value=excluded.value, projector_id=excluded.projector_id, global_sequence=excluded.global_sequence",
-                        (item.checkpoint_id, encode_durable_json(item.model_dump_json()),
+                        (item.checkpoint_id, self._encode_json(item.model_dump_json()),
                          item.projector_id, item.last_global_sequence))
         except (OSError, sqlite3.Error) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_write_failed") from exc
@@ -1185,7 +1236,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             sql += " LIMIT ?"
             parameters += (_limit(limit),)
         try:
-            return [model.model_validate_json(decode_durable_json(row[0]))
+            return [model.model_validate_json(self._decode_json(row[0]))
                     for row in self._rows(sql, parameters)]
         except (ValueError, TypeError) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
@@ -1265,7 +1316,12 @@ class DurableGameplayEventStore(GameplayEventStore):
         if through_sequence is not None:
             conditions.append("global_sequence<=?")
             parameters += (through_sequence,)
-        sql = "SELECT value FROM outbox" + (" WHERE " + " AND ".join(conditions) if conditions else "")
+        source = "outbox"
+        if not include_delivered and transaction_id is None:
+            # 待办查询不应扫描已投递历史；transaction 定向读取仍由原选择器选索引。
+            index = "outbox_pending_sequence" if topic is None else "outbox_pending_topic_sequence"
+            source += f" INDEXED BY {index}"
+        sql = f"SELECT value FROM {source}" + (" WHERE " + " AND ".join(conditions) if conditions else "")
         return self._models(GameplayOutboxEntry, sql + " ORDER BY global_sequence, id", parameters, limit=limit)
 
     def list_pending_projection_refresh(self, *, after_sequence: int = 0,
@@ -1331,7 +1387,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                     row = connection.execute("SELECT value FROM outbox WHERE id=?", (outbox_id,)).fetchone()
                     if row is None:
                         raise KeyError(outbox_id)
-                    entry = GameplayOutboxEntry.model_validate_json(decode_durable_json(row[0]))
+                    entry = GameplayOutboxEntry.model_validate_json(self._decode_json(row[0]))
                     changes = {"delivery_state": "delivered", "last_error": None} if delivered else {
                         "delivery_state": "retryable", "attempt_count": entry.attempt_count + 1, "last_error": error}
                     self._write_delta(connection=connection, outbox=entry.model_copy(update=changes, deep=True))

@@ -118,14 +118,28 @@ from unittest.mock import patch
 from scripts.verification.population_mixed_backend import configure, MixedWindowProbe
 from scripts.verification.population_mixed_fixture import RECIPE
 from scripts.verification.population_mixed_load import MixedLoadSchedule
+from app.population_continuity.runtime_publication import RuntimeCadencePublisher
+from app.population_continuity.prepared_frame import PreparedPopulationFrame
+from app.population_continuity.siming_contracts import PopulationReadSet
 async def probe():
     with ExitStack() as stack:
         main, actors, secret = configure(Path(sys.argv[1]), stack, mode='one_x', provider_mode='local_probe')
         start = main.start_population_runtime
         stack.enter_context(patch.object(main, 'start_population_runtime', lambda: None))
         rows = []
+        fragments = []
+        original_read_set = PreparedPopulationFrame.read_set
+        def read_set(fragment, cadence, projections):
+            actual = original_read_set(fragment, cadence, projections)
+            expected = PopulationReadSet.from_inputs(cadence, projections)
+            assert actual.read_set_digest == expected.read_set_digest
+            fragments.append(actual.read_set_digest)
+            return actual
+        stack.enter_context(patch.object(PreparedPopulationFrame, 'read_set', read_set))
+        original_publish = RuntimeCadencePublisher.__call__
         probe = MixedWindowProbe(main, MixedLoadSchedule(100, 7, 'one_x'), 1, rows.append)
         probe.install(stack)
+        assert RuntimeCadencePublisher.__call__ is original_publish, 'observer_must_preserve_production_publish_binding'
         async with main.component_app.router.lifespan_context(main.component_app):
             def verify():
                 driver = main._population_runtime_driver
@@ -156,6 +170,7 @@ async def probe():
             assert first['sample']['rss_bytes'] > 0
             assert first['sample']['caches']['publisher_records'] <= 2
             assert sum(row['type'] == 'driver_clock_origin' for row in rows) == 1
+            assert len(fragments) == 1, 'observer_must_measure_actual_native_frame'
 asyncio.run(probe())
 '''
     root = Path(__file__).resolve().parents[2]

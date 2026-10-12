@@ -23,6 +23,7 @@ def test_game_start_to_player_activation_closes_the_seed_vertical() -> None:
     assert result["replay"]["independent_character_rebuilds"] is True
     assert result["rejections"]["stale_read_set_zero_write"] is True
     assert result["rejections"]["private_memory_without_exposure_zero_write"] is True
+    assert fixture.character_runtime.get_character_simulation_cursor("char_a") >= fixture.continuity_port.commands[0].simulation_tick_cursor
     assert result["rejections"]["duplicate_status"] == "accepted"
     assert result["rejections"]["duplicate_owner_idempotency_status"] == "duplicate_replayed"
     assert result["rejections"]["duplicate_continuity_status"] == "idempotent_replay"

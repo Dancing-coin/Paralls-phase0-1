@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import re
+from collections.abc import Mapping
+from functools import lru_cache
+from types import MappingProxyType
 from typing import Literal
 
 from pydantic import ConfigDict, Field, model_validator
@@ -1501,7 +1504,17 @@ class GovernedAuthorityContractCatalog:
     def require(
         cls, *, contract_ref: str, contract_kind: str | None = None
     ) -> GovernedAuthorityContract:
-        for contract in cls.contracts():
+        if (
+            type(contract_ref) is str
+            and cls.contracts is _STATIC_CONTRACTS_FACTORY
+            and GovernedAuthorityContract is _STATIC_CONTRACT_MODEL
+        ):
+            # 缓存只保存不可变字段；公开查找仍重新校验并返回独立模型。
+            fields = _static_contract_fields().get(contract_ref)
+            contracts = () if fields is None else (GovernedAuthorityContract(**dict(fields)),)
+        else:
+            contracts = cls.contracts()
+        for contract in contracts:
             if contract.contract_ref != contract_ref:
                 continue
             if contract_kind is not None and contract.contract_kind != contract_kind:
@@ -1944,6 +1957,18 @@ class GovernedAuthorityContractCatalog:
             if re.fullmatch(expression, stream_id):
                 return True
         return False
+
+
+_STATIC_CONTRACTS_FACTORY = GovernedAuthorityContractCatalog.contracts
+_STATIC_CONTRACT_MODEL = GovernedAuthorityContract
+
+
+@lru_cache(maxsize=1)
+def _static_contract_fields() -> Mapping[str, tuple[tuple[str, str | tuple[str, ...]], ...]]:
+    rows = {}
+    for contract in _STATIC_CONTRACTS_FACTORY():
+        rows.setdefault(contract.contract_ref, tuple(contract.model_dump(mode="python").items()))
+    return MappingProxyType(rows)
 
 
 __all__ = [

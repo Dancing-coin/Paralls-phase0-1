@@ -5,7 +5,7 @@ from copy import deepcopy
 import pytest
 
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
-from app.gameplay.models import AtomicEventBatch, OwnerAuthorizedFragment
+from app.gameplay.models import AtomicEventBatch, OwnerAuthorizedFragment, ProjectionRefreshHint
 
 
 def _event(event_id: str, *, stream_id: str, tx: str = "tx:gameplay:1", command_id: str = "cmd:gameplay:1") -> dict[str, object]:
@@ -352,5 +352,50 @@ def test_group_rollback_retry_does_not_modify_input_payload_or_numbering(tmp_pat
             assert store.append_batch(batch).global_sequence_range == (1, 2)
         batch.events[0].payload["nested"]["items"][0]["ref"] = "changed-input"
         assert store.get_event("evt:session:reserved").payload["nested"]["items"] == [{"ref": "original"}]
+    finally:
+        store.close()
+
+
+def test_durable_append_snapshot_isolated_before_sql_serialization(tmp_path, monkeypatch):
+    batch = AtomicEventBatch.model_validate(_batch())
+    batch.read_stream_revisions['stream:read'] = 0
+    batch.projection_refresh_hints.append(ProjectionRefreshHint(
+        projection_id='projection:fixture', stream_id='session:handoff:1',
+        reason='original', actor_refs=('character:char_a',),
+    ))
+    batch.owner_fragments.append(OwnerAuthorizedFragment(
+        fragment_id='fragment:fixture', owner_principal_ref='owner:fixture', source_rule_ref='rule:fixture',
+        expected_revisions={'stream:fixture': 0}, read_set_revisions={'stream:read': 0},
+        event_specs={'stream:fixture': (('gameplay.fixture', {'nested': [1]}),)},
+        pinned_revisions={'policy': 7},
+    ))
+    expected = batch.model_dump(mode='json')
+    store = DurableGameplayEventStore(tmp_path / 'snapshot.db')
+    original_write = store._write_delta
+
+    def mutate_input_then_write(**kwargs):
+        batch.command_id = 'cmd:mutated'
+        batch.expected_stream_revisions.clear()
+        batch.read_stream_revisions.clear()
+        batch.pinned_revisions.clear()
+        batch.idempotency_record.payload_digest = 'digest:mutated'
+        batch.events[0].payload.clear()
+        batch.outbox_entries[0].payload_projection.clear()
+        batch.owner_fragments[0].event_specs['stream:fixture'][0][1]['nested'].append(2)
+        batch.projection_refresh_hints[0].reason = 'mutated'
+        return original_write(**kwargs)
+
+    monkeypatch.setattr(store, '_write_delta', mutate_input_then_write)
+    try:
+        result = store.append_batch(batch)
+        assert result.committed
+        assert [hint.model_dump(mode='json') for hint in result.projection_refresh_hints] == expected['projection_refresh_hints']
+        stored = store.get_transaction(expected['transaction_id']).model_dump(mode='json')
+        for key in ('command_id', 'expected_stream_revisions', 'read_stream_revisions', 'pinned_revisions',
+                    'idempotency_record', 'owner_fragments', 'projection_refresh_hints'):
+            assert stored[key] == expected[key]
+        assert stored['events'][0]['payload'] == expected['events'][0]['payload']
+        assert stored['outbox_entries'][0]['payload_projection'] == expected['outbox_entries'][0]['payload_projection']
+        assert store.get_by_idempotency('player:local', 'idempotency:handoff:1') == result
     finally:
         store.close()

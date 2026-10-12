@@ -173,6 +173,66 @@ class ProfileActivationAuthority:
         self.grants = grants
         self._locks: dict[str, ActivationLock] = {}
         self._pending: dict[str, list[PendingChange]] = {}
+        self._lock_projection_revisions: dict[str, int] = {}
+
+    def _sync_world_locks(self, world_ref: str) -> None:
+        """锁和待处理义务从原事件流增量恢复，不在重启时重新授予权限。"""
+        stream = f"population:{world_ref}"
+        head = self.store.get_stream_head(stream)
+        previous = self._lock_projection_revisions.get(world_ref, 0)
+        if head > previous:
+            self._apply_lock_events(world_ref,
+                self.store.read_stream(stream, from_revision=previous + 1, to_revision=head))
+        self._lock_projection_revisions[world_ref] = head
+
+    def _apply_own_lock_commit(self, world_ref: str, result) -> None:
+        if not result.committed:
+            return
+        events = [self.store.get_event(ref) for ref in result.committed_event_ids]
+        if events[0].stream_revision != self._lock_projection_revisions.get(world_ref, 0) + 1:
+            self._sync_world_locks(world_ref)
+            return
+        # 常规 lease 只折叠自己的实际提交，不扫描历史；跨实例/重启才补原流尾部。
+        self._apply_lock_events(world_ref, events)
+        self._lock_projection_revisions[world_ref] = events[-1].stream_revision
+
+    def _apply_lock_events(self, world_ref: str, events) -> None:
+        for event in events:
+            if event.event_type not in {"population.activation.locked", "population.activation.pending_recorded", "population.activation.released"}:
+                continue
+            transaction = self.store.get_transaction(event.transaction_id)
+            if transaction is None or transaction.idempotency_record.principal_ref != self._PRINCIPAL:
+                raise ValueError("activation_lock_source_invalid")
+            payload = event.payload
+            profile_ref = payload["profile_ref"]
+            lock_ref = f"lock:{world_ref}:{profile_ref}"
+            if event.event_type == "population.activation.locked":
+                self._locks[lock_ref] = ActivationLock(lock_ref=lock_ref, profile_ref=profile_ref,
+                    world_ref=world_ref, held_revision=event.stream_revision - 1)
+            elif event.event_type == "population.activation.pending_recorded":
+                change = PendingChange(change_ref=payload["change_ref"], lock_ref=lock_ref,
+                    profile_ref=profile_ref, expected_revision=self._locks[lock_ref].held_revision,
+                    payload={name: payload[name] for name in ("kind", "plan_digest", "obligation_id",
+                        "policy_revision", "expected_survival_revision", "binding_ref") if name in payload},
+                    privacy_scope=payload["privacy_scope"])
+                self._pending.setdefault(lock_ref, []).append(change)
+            else:
+                lock = self._locks.get(lock_ref)
+                if lock is not None:
+                    self._locks[lock_ref] = lock.model_copy(update={"status": "released"})
+                self._pending.pop(lock_ref, None)
+
+    def _sync_lock(self, lock_ref: str) -> None:
+        lock = self._locks.get(lock_ref)
+        if lock is not None:
+            self._sync_world_locks(lock.world_ref)
+            return
+        # 只在缺少已知锁的恢复入口查找其原流，常规读取按 world 直接增量读取。
+        for stream in self.store.get_stream_heads():
+            if stream.startswith("population:"):
+                world_ref = stream.removeprefix("population:")
+                if lock_ref.startswith(f"lock:{world_ref}:"):
+                    self._sync_world_locks(world_ref)
 
     def resolve(self, profile_ref: str):
         """Resolve an existing authored profile without materializing state."""
@@ -266,24 +326,38 @@ class ProfileActivationAuthority:
 
     def lock(self, *, world_ref: str, profile_ref: str, expected_revision: int) -> ActivationReceipt:
         stream = f"population:{world_ref}"
+        if type(expected_revision) is not int or expected_revision < 0:
+            return ActivationReceipt(committed=False, status="rejected", profile_ref=profile_ref, zero_write=True, stop_reason="revision_conflict")
+        previous = self.store.get_by_idempotency(self._PRINCIPAL, f"lock:{world_ref}:{profile_ref}:{expected_revision}")
+        if previous is not None:
+            return self._receipt_from_result(previous.model_copy(update={"idempotency_status": "duplicate_replayed"}),
+                profile_ref, self.registry.authored_identity_digest(profile_ref), "locked")
+        if self.is_lock_active(world_ref=world_ref, profile_ref=profile_ref):
+            return ActivationReceipt(committed=False, status="rejected", profile_ref=profile_ref, zero_write=True, stop_reason="activation_lock_active")
         if self.store.get_stream_head(stream) != expected_revision:
             return ActivationReceipt(committed=False, status="rejected", profile_ref=profile_ref, zero_write=True, stop_reason="revision_conflict")
-        lock_ref = f"lock:{world_ref}:{profile_ref}"
-        lock = ActivationLock(lock_ref=lock_ref, profile_ref=profile_ref, world_ref=world_ref, held_revision=expected_revision)
         result = self._lifecycle(world_ref, profile_ref, expected_revision, "locked", f"lock:{world_ref}:{profile_ref}:{expected_revision}")
-        if result.committed:
-            self._locks[lock_ref] = lock
+        self._apply_own_lock_commit(world_ref, result)
         return result
 
     def is_lock_active(self, *, world_ref: str, profile_ref: str) -> bool:
+        self._sync_world_locks(world_ref)
         lock = self._locks.get(f"lock:{world_ref}:{profile_ref}")
         return lock is not None and lock.status == "active"
 
+    def active_lock(self, *, world_ref: str, profile_ref: str) -> ActivationLock | None:
+        self._sync_world_locks(world_ref)
+        lock = self._locks.get(f"lock:{world_ref}:{profile_ref}")
+        if lock is None or lock.status != "active":
+            return None
+        return lock.model_copy(deep=True)
+
     def record_pending(self, change: PendingChange) -> ActivationReceipt:
+        self._sync_lock(change.lock_ref)
         lock = self._locks.get(change.lock_ref)
         if lock is None or lock.status != "active" or lock.profile_ref != change.profile_ref:
             return ActivationReceipt(committed=False, status="rejected", profile_ref=change.profile_ref, zero_write=True, stop_reason="activation_lock_missing")
-        if change.expected_revision != lock.held_revision:
+        if type(change.expected_revision) is not int or change.expected_revision != lock.held_revision:
             return ActivationReceipt(committed=False, status="rejected", profile_ref=change.profile_ref, zero_write=True, stop_reason="revision_conflict")
         binding = ActivationObligationBindingContract.resolve(change)
         legacy_unbound = (
@@ -354,12 +428,20 @@ class ProfileActivationAuthority:
         result = self.store.append_batch(batch)
         if not result.committed:
             return ActivationReceipt(committed=False, status="rejected", profile_ref=change.profile_ref, zero_write=True, stop_reason=result.failure.error_code if result.failure else "append_rejected")
-        self._pending.setdefault(change.lock_ref, []).append(change)
+        self._apply_own_lock_commit(lock.world_ref, result)
         return self._receipt_from_result(result, change.profile_ref, digest, "locked")
 
     def release_lock(self, *, lock_ref: str, expected_revision: int) -> ActivationReceipt:
+        if type(expected_revision) is not int or expected_revision < 0:
+            return ActivationReceipt(committed=False, status="rejected", profile_ref="unknown", zero_write=True, stop_reason="revision_conflict")
+        previous = self.store.get_by_idempotency(self._PRINCIPAL, f"release:{lock_ref}:{expected_revision}")
+        if previous is not None:
+            event = self.store.get_event(previous.committed_event_ids[0])
+            return self._receipt_from_result(previous.model_copy(update={"idempotency_status": "duplicate_replayed"}),
+                event.payload["profile_ref"], event.payload["identity_digest"], "requeued")
+        self._sync_lock(lock_ref)
         lock = self._locks.get(lock_ref)
-        if lock is None:
+        if lock is None or lock.status != "active":
             return ActivationReceipt(committed=False, status="rejected", profile_ref="unknown", zero_write=True, stop_reason="activation_lock_missing")
         stream = f"population:{lock.world_ref}"
         if self.store.get_stream_head(stream) != expected_revision:
@@ -374,8 +456,7 @@ class ProfileActivationAuthority:
         result = self.store.append_batch(batch)
         if not result.committed:
             return ActivationReceipt(committed=False, status="rejected", profile_ref=lock.profile_ref, zero_write=True, stop_reason=result.failure.error_code if result.failure else "append_rejected")
-        self._locks[lock_ref] = lock.model_copy(update={"status": "released"})
-        self._pending.pop(lock_ref, None)
+        self._apply_own_lock_commit(lock.world_ref, result)
         return self._receipt_from_result(result, lock.profile_ref, digest, "requeued")
 
     def pending_projection(self, world_ref: str) -> dict[str, dict[str, object]]:
@@ -658,6 +739,7 @@ class ProfileActivationAuthority:
             "population.activation.suspended": "suspended",
             "population.activation.requeued": "requeued",
             "population.activation.locked": "locked",
+            "population.activation.released": "requeued",
         }
         for event in self.store.read_stream(f"population:{world_ref}"):
             status = lifecycle_events.get(event.event_type)

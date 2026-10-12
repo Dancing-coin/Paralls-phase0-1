@@ -18,6 +18,7 @@ from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.seed_planner import CharacterSeedPlanner
 from app.population_continuity.siming_contracts import PopulationB0BatchStats, PopulationB0ContinuousDelta, PopulationBatchReport, PopulationCadenceInput, PopulationCognitionStats, PopulationCycleResult, PopulationOwnerBatchResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
 from app.population_continuity.decision_surface import PopulationCapabilityCatalog, PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionPlanner, PopulationDecisionPolicy
+from app.population_continuity.prepared_frame import native_method, take_population_frame, unadjusted_population_event
 
 
 class PopulationOwnerExecutor(Protocol):
@@ -33,16 +34,25 @@ class CharacterContinuityPort(Protocol):
 ReadSetBuilder = Callable[[AuthorityEvent, PopulationCadenceInput], PopulationReadSet]
 _CHARACTER_REF_PATTERN = re.compile(r"character:[a-z0-9_.@-]+")
 _POPULATION_PROJECTIONS_ADAPTER = TypeAdapter(tuple[PopulationProjection, ...])
+_NATIVE_PROJECTION_ADAPTER = _POPULATION_PROJECTIONS_ADAPTER
+_NATIVE_PROJECTION_VALIDATOR = _POPULATION_PROJECTIONS_ADAPTER.validator
+_NATIVE_VALIDATE_PROJECTIONS = TypeAdapter.validate_python
 
 
 def default_population_read_set_builder(event: AuthorityEvent, cadence: PopulationCadenceInput) -> PopulationReadSet:
     """Build the scoped projection envelope and the fixed bakery owner context."""
     projections = tuple()
+    native_validation = False
     raw = event.payload.get("population_projections")
     if raw is None:
         raw = [event.payload[key] for key in ("world_mode_projection", "organization_projection", "household_projection", "social_projection", "public_projection") if isinstance(event.payload.get(key), dict)]
     if isinstance(raw, (list, tuple)):
-        projections = _POPULATION_PROJECTIONS_ADAPTER.validate_python(
+        adapter = _POPULATION_PROJECTIONS_ADAPTER
+        validate = adapter.validate_python
+        native_validation = (adapter is _NATIVE_PROJECTION_ADAPTER
+            and native_method(adapter, "validate_python", _NATIVE_VALIDATE_PROJECTIONS)
+            and adapter.validator is _NATIVE_PROJECTION_VALIDATOR)
+        projections = validate(
             tuple(item for item in raw if isinstance(item, dict))
         )
     owner_receipt_value = event.payload.get("population_owner_receipt")
@@ -132,6 +142,9 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
                     break
         except (KeyError, TypeError, ValueError):
             pass
+    frame = take_population_frame(event)
+    if frame is not None and native_validation and unadjusted_population_event(event):
+        return frame.read_set(cadence, projections)
     return PopulationReadSet.from_inputs(cadence, projections)
 
 
@@ -429,6 +442,13 @@ class PopulationSimulationCapability:
         payload = projection.payload
         explicit_fidelity = payload.get("fidelity_tier")
         fidelity = explicit_fidelity or default_fidelity_tier
+        if fidelity == "B3":
+            # 仅个人连续性通道可携带锁凭据；真实锁在调用 Core 前再次核验。
+            return (payload.get("candidate_kind") == "routine_work" and payload.get("due") is True
+                    and type(payload.get("activation_lock_ref")) is str
+                    and bool(payload["activation_lock_ref"])
+                    and type(payload.get("activation_lock_revision")) is int
+                    and payload["activation_lock_revision"] >= 0)
         if fidelity not in {"B1", "B2"}:
             return False
         # 旧 read-set 未声明 tier 时仅沿用既有 B1/B2 policy；新生产投影必须显式授权。
@@ -913,6 +933,8 @@ class PopulationSimulationCapability:
                     actor_ref: self._current_revision(actor_ref)
                     for actor_ref in self._planned_actor_refs(read_set)
                 }
+                for actor_ref in actor_revisions:
+                    self._continuity_lock_credentials(actor_ref, read_set)
             except Exception:
                 return self._requeue(
                     report.batch_ref,
@@ -931,16 +953,21 @@ class PopulationSimulationCapability:
                     for value in report.presentation_seeds.values():
                         if isinstance(value, dict) and value.get("actor_ref"):
                             write_actor_refs.add(str(value["actor_ref"]))
-                    if any(
-                        lock_reader(actor_ref)
-                        for actor_ref in sorted(write_actor_refs)
-                        if actor_ref.startswith("character:")
-                    ):
-                        return self._requeue(
-                            report.batch_ref,
-                            read_set,
-                            "activation_lock_pending",
-                        )
+                    for actor_ref in sorted(write_actor_refs):
+                        if not actor_ref.startswith("character:") or not lock_reader(actor_ref):
+                            continue
+                        credential_reader = getattr(self._continuity_port, "active_lock", None)
+                        lock = credential_reader(actor_ref) if callable(credential_reader) else None
+                        own_projections = tuple(projection for projection in read_set.projections
+                            if projection.payload.get("actor_ref") == actor_ref)
+                        if lock is None or not own_projections or any(
+                            projection.payload.get("fidelity_tier") == "B0"
+                            or projection.payload.get("activation_lock_ref") != lock.lock_ref
+                            or type(projection.payload.get("activation_lock_revision")) is not int
+                            or projection.payload.get("activation_lock_revision") != lock.held_revision
+                            for projection in own_projections
+                        ):
+                            return self._requeue(report.batch_ref, read_set, "activation_lock_pending")
                 except Exception:
                     return self._requeue(
                         report.batch_ref,
@@ -1060,6 +1087,7 @@ class PopulationSimulationCapability:
                     },
                     policy_revision="policy:character-continuity:v1",
                     idempotency_key=seed.idempotency_key, world_effect_required=seed.owner_effect_status == "settled",
+                    **self._continuity_lock_credentials(seed.actor_ref, read_set),
                 )
                 receipt = self._continuity_port.apply_command(command)
                 continuity_receipts.append(receipt)
@@ -1104,6 +1132,22 @@ class PopulationSimulationCapability:
         else:
             audits = ()
         return PopulationCycleResult(status=status, batch_ref=report.batch_ref, report=report, seed_candidates=seeds, owner_receipts=tuple(owner_receipts), continuity_receipts=tuple(continuity_receipts), audits=audits, reason=continuity_failure_reason, production_append_count=sum(1 for item in owner_receipts if item.committed and not item.zero_write))
+
+    @staticmethod
+    def _continuity_lock_credentials(actor_ref: str, read_set: PopulationReadSet) -> dict[str, object]:
+        # 只传递当前角色投影的成对凭据；原 Core 在实际接纳点再次核验。
+        own = tuple(projection for projection in read_set.projections
+            if projection.payload.get("actor_ref") == actor_ref)
+        pairs = tuple((projection.payload.get("activation_lock_ref"),
+                       projection.payload.get("activation_lock_revision")) for projection in own)
+        if not pairs or all(pair == (None, None) for pair in pairs):
+            return {}
+        if any(pair != pairs[0] for pair in pairs):
+            raise ValueError("continuity_lock_credentials_conflict")
+        lock_ref, revision = pairs[0]
+        if not isinstance(lock_ref, str) or not lock_ref or type(revision) is not int or revision < 0:
+            raise ValueError("continuity_lock_credentials_invalid")
+        return {"activation_lock_ref": lock_ref, "activation_lock_revision": revision}
 
     @staticmethod
     def _is_v1_cohort(read_set: PopulationReadSet) -> bool:

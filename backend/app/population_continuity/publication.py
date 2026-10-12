@@ -7,6 +7,7 @@ from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, Au
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationProjection, PopulationOwnerReceipt, dump_population_projections
 from app.population_continuity.store_projection_assembler import assemble_committed_population_projections
 from app.services.authority_event_bus import AuthorityEventBusPort
+from app.population_continuity.prepared_frame import construct_publication_event, dump_publication_projections, record_projection_origin
 
 
 def _population_owner_receipt_is_authorized(
@@ -201,7 +202,8 @@ def publish_authorized_population_cadence(
     if any(store.get_stream_head(ref) != revision for ref, revision in cadence.base_revision_vector.items()):
         return None
 
-    event = AuthorityEvent(
+    event = construct_publication_event(
+        event_factory=AuthorityEvent,
         event_id=f"event:population-cadence:{cadence.cadence_id}",
         event_type="population_cadence_event",
         producer_ts=cadence.window_start,
@@ -222,7 +224,8 @@ def publish_authorized_population_cadence(
             "social_projection": social_projection,
             "household_projection": household_projection,
             "organization_projection": metadata,
-            "population_projections": dump_population_projections(tuple(accepted[ref] for ref in sorted(accepted))),
+            "population_projections": dump_publication_projections(
+                tuple(accepted[ref] for ref in sorted(accepted)), dump_function=dump_population_projections),
             **(
                 {"population_owner_receipt": population_owner_receipt.model_dump(mode="json")}
                 if population_owner_receipt is not None
@@ -230,6 +233,7 @@ def publish_authorized_population_cadence(
             ),
         },
     )
+    record_projection_origin(event)
     if publish_event:
         event_bus.publish(event)
     return event

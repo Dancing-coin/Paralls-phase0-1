@@ -57,6 +57,18 @@ class SQLiteHeavenlyGraphAdapter(InMemoryHeavenlyGraphAdapter):
         with self._lock:
             self._connection.close()
 
+    def read_cache_token(self) -> tuple[int, int, int] | None:
+        """本连接和外部提交均使 token 失效；未提交及历史内存状态不缓存。"""
+        with self._lock:
+            try:
+                if self._materialized or self._connection.in_transaction:
+                    return None
+                version = self._connection.execute('PRAGMA data_version').fetchone()[0]
+                schema = self._connection.execute('PRAGMA schema_version').fetchone()[0]
+                return self._connection.total_changes, version, schema
+            except sqlite3.Error:
+                return None
+
     @contextmanager
     def historical_read(self):
         with self._lock, self._full_state():

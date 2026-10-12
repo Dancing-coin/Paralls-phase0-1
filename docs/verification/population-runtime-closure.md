@@ -320,3 +320,38 @@ ASK 恢复格式从 `recovery_version=1` 升为 `2`。首次打开旧库在同�
 该提交的本地 change-lifecycle、correctness（focused 1704项）、真实模型short两档通过。100人30分钟混合场景也通过独立复验，p95约119.6ms、max lag约0.735、最终backlog0，SQLite锁释放后约0.96秒恢复；长测矩阵其余case为诊断CI而未启动，不计矩阵通过，千人2小时内存门禁仍待验证。
 
 CI #207失败定位到两项scheduled cognition的子进程断言；本地原场景双核通过，但10秒合法模型延迟确定触发原固定次数等待提前失败。仅测试改为有界条件等待，保留所有最终正确性与owner响应断言，四参数回归通过。新增CI诊断只提供内置异常类型、真实仓库路径行号及内嵌子进程数值行号；Phase0缺报告的实际原因和远端修复效果仍待新CI。Godot继续标记未验证。
+
+## 6a03a0fd 本机容量验收
+
+最新本机四局各 600 秒已完成并通过原 verifier，标记该项处理完成：cadence p95 169.831--172.163ms，max lag 0.872--0.877，最终 backlog 0。证据为 `D:/ParallsEvidence/paralls-hotpath-goal-20260930T164708Z/live-capacity-round2-artifacts/matrix/4-games`，绑定提交 `6a03a0fdcbba66096b2756a1a500442209af48eb`。后续源码改动的覆盖须单独判断，不能把此结果改写为新提交验收。
+
+该结果仅适用于当前机器。原机器 `D:/ParallsEvidence/paralls-six-closure-20260929T020900Z` 的失败记录保留，未证明原机器性能问题解决。千人完整两小时的 RSS/lag 与两档各 30 窗 10× 仍未通过；Godot 按用户要求暂停，Archive Door 与 VLA 保持各自真实阻塞，六项闭环尚未完成。
+
+## 2026-10-10 计划 A 候选的完整 soak 与帧生命周期修复
+
+候选 HEAD `bc016b8ea1c7d6c5e52fd426f34f6b88506457d7` 的 dirty 源码摘要 `sha256:7b6ead4096f66d015472f4fddb81f0c43f8ff9d50f5fada3c6d9c62ee8640a52` 完成真实 provider 千人、1×、7200 个测量窗口及 9 个 drain 窗口。采集退出 0，486 次合格真实调用，原 verifier 的完整性和性能均未通过：cadence p95 149.286 ms 低于 800 ms 预算，但稳态最大 lag 1.215131 超过 1 窗；6236、6237 两窗超限，6238 窗追平。owner RSS 首末 30 分钟中位数增长 34,017,280 字节，超过 33,554,432 上限；父进程与 owner 配对合计增长 33,964,032 字节，同样超限。恢复、单 writer、provider 隔离和 drain 检查通过，不能替代 RSS/lag 门。
+
+证据 `D:/ParallsEvidence/paralls-plan-a-soak-20261010T131122Z` 已封存，seal SHA-256 `dad74780b9268410449ceb4c37bb0958c763391bad6a00edf1e8ba8a7a0ce067`；187 个绑定、14 个命令、14 个拥有 TEMP 已清理、无拥有进程残留。正式 clean-source 门独立 blocked；旧报告和原机器失败保留。
+
+随后修复 `population_frame_scope` 退出时的借用撤销：复制 context 共享的记录现在标记已消费并释放 event/frame，保留入口快照撤销和外层 token 恢复。正常/异常、已消费/未消费四种真实回归先全部失败，修复后通过；原 prepared delivery、ingress snapshot、durable cadence recovery 合计 62 项通过。证据 `D:/ParallsEvidence/paralls-frame-lifetime-20261010T152828Z`。这是可复现的生命周期缺陷，尚未证明其在默认 soak 实际触发或造成 RSS 增长；修复后的源码须形成新身份并完成必要全套验证，不能继承上述旧源码的性能结论。两档 10× 和 FULL 写入长尾仍未闭合。
+
+
+## 2026-10-11 未投递队列历史扫描修复
+
+候选source `sha256:38d6e64fe36ac5e7ec04035c40b6dabf9ccdfbf4cc9196729e1656e61b4f5890` 在既有持久账本中将无transaction定向过滤的pending列表约束到已有pending索引，并在旧库装配清单补齐这两项索引。保留原delivery_state筛选、topic/transaction/keyset/high-water/limit、返回隔离、FULL、单Owner、幂等/CAS和恢复；不改投递/ACK批次或增添异步writer。
+
+实际晚期组件探针原64次pending topic查询误选完整topic索引，累计1880.378ms（58.762ms/窗）。四个有界SQLite VM步骤回归：正确复现为旧版3failed/1passed，修复4passed；首次测试夹具command_id不一致的失败独立保留，不能算根因RED。原outbox/持久账本/人口进程恢复等106项通过。晚期恢复组件SQL边界65.553→9.379ms/窗、cadence中位147.628→90.325ms，只是显式省略startup全历史补发后的组件诊断，不证明完整生产恢复、474ms FULL提交长尾或两小时RSS已解决。
+
+本源原10×两档各3秒/30测量窗完整性均通过、性能均失败：百人cadence p95 45.601ms，lag1.033422>1/最终积压1；千人p95 89.7479ms>80，lag7.914538/最终积压7。实际provider调用0，formal仍被dirty源码门拒绝。首次千人verifier于wrapper最终manifest时间前约51ms启动，原采集终态后另复验得到完全相同失败结果，记录保留。
+
+完整回归/后端profile及进一步真实provider结果以仓库外本轮报告为准：`D:/ParallsEvidence/paralls-pending-outbox-index-20261010T170540Z/reports/report.md`。前轮定位证据已封存 `D:/ParallsEvidence/paralls-late-path-diagnosis-20261010T161443Z`，seal93ddde0ebb90fe6ebbe84d6150a9381247a62bf72dc5ad9b3deb123ed02a7c56；15所属TEMP已清，旧证据保留。
+
+原CG完整7200秒失败、CH生命周期修复和原机器限制不改写。本机main6a四局各600秒completed只绑定其原证据；本候选整体Goal未完成，当前源长窗未签。计划A公共后端/最小B/BM1与HM1/HM2真实来源门分别处理，Godot/all用户暂停，ArchiveDoor/VLA独立blocked；不提前打开active/E/F。
+
+## 2026-10-12 合入与换机验收
+
+用户明确要求先合入 main，暂不在本机继续验证；按此授权提交当前候选，完整交接见 [计划 A 换机验收](plan-a-machine-handoff.md)。这不是全部验收通过声明，旧 dirty 证据不能因后来提交而改签。
+
+最近候选生产源码 `sha256:bc9c12b6caf9f67709a76f0d7e69f220ad8ab50d2b73ba36e2bd21418c121081` 的既有全量为 8086 passed/2 skipped；14 后端 profile 执行通过，但 scale 性能字段 false。百人原 10× 30 窗完整性/性能通过；千人 10× p95 80.6232ms、lag 7.081314、最终积压 7，仍失败。完整千人 7200 秒原离线复验完整性/性能子门通过，481 次合格真实调用；p95 110.8878ms、lag 0.6180254、最终/最大积压 0，RSS 增长 32,626,688 B（上限 33,554,432 B）。正式 clean-source 门保持其采集时的 blocked，单次通过不抹除历史 RSS/刷盘长尾失败。
+
+证据为 `D:/ParallsEvidence/paralls-correlation-prefix-qualification-20261011T020530Z`。本次合并不再运行测试；新机器须对合入后的固定干净提交重做正式矩阵、2/4 局容量、Godot/all 与真实来源门验收，原机器限制、Archive Door/VLA、HM1/HM2 和 C3/active/E/F 的状态分别保留。

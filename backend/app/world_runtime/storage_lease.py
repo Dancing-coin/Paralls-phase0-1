@@ -26,6 +26,10 @@ class RuntimeStorageLease:
             self._stream.close()
             raise RuntimeError(f"runtime_storage_in_use:{self.path}") from error
 
+    @property
+    def is_held(self) -> bool:
+        return not self._stream.closed
+
     def close(self) -> None:
         # 不删除锁文件：删除会让另一进程锁住不同inode，从而产生双writer。
         if not self._stream.closed:

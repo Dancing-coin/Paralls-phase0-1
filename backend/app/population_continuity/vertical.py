@@ -1091,6 +1091,10 @@ class SimingLedPopulationFixture:
             actor_ref="character:char_a",
             source_owner_receipt_refs=(cycle.owner_receipts[0].receipt_ref,),
             expected_character_revision=1,
+            # 记忆实体化反例不推进仿真时间，也不能倒退已确认的个人游标。
+            from_tick=self.character_runtime.get_character_simulation_cursor(actor_id),
+            to_tick=self.character_runtime.get_character_simulation_cursor(actor_id),
+            simulation_tick_cursor=self.character_runtime.get_character_simulation_cursor(actor_id),
             source_revision_vector={"world:bakery": 102},
             memory_candidate_refs=(private_candidate.candidate_id,),
             exposure_evidence={

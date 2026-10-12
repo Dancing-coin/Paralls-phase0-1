@@ -6,7 +6,7 @@ from pathlib import Path
 
 def test_hot_state_equivalence_probe_covers_real_world_and_capability_surfaces() -> None:
     path = Path(__file__).parents[2] / "scripts" / "verification" / "verify_population_hot_state_equivalence.py"
-    spec = importlib.util.spec_from_file_location("population_hot_state_equivalence", path)
+    spec = importlib.util.spec_from_file_location("scripts.verification.population_hot_state_equivalence", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

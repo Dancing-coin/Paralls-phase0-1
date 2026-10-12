@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from .common import verification_dir
+    from .common import artifact_path
 except ImportError:
-    from common import verification_dir
+    from common import artifact_path
 
 import json
 
@@ -11,21 +11,15 @@ from verify_phase3_common import root, write_report
 
 
 def main() -> int:
-    directory = verification_dir(root())
     names = (
         "phase3a-profile-activation",
         "phase3b-world-mode-continuity",
         "phase3c-batch-intent-merge",
         "phase3d-bakery-district-population",
     )
-    reports = {
-        name: json.loads(
-            (directory / f"{name}-report.json").read_text(encoding="utf-8")
-        )
-        if (directory / f"{name}-report.json").exists()
-        else {}
-        for name in names
-    }
+    paths = {name: artifact_path(root(), f".harness/verification/{name}-report.json") for name in names}
+    reports = {name: json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+               for name, path in paths.items()}
     passed = all(report.get("overall_passed") is True for report in reports.values())
     report = {
         "overall_passed": passed,

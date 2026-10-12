@@ -1250,6 +1250,8 @@ class ContinuityMergeAuthority:
             correlation_id=plan.batch_ref,
             fragments=(fragment,),
         )
+        # 只读来源在原 append 事务再次核验，不能让预检与提交之间的变化漏过。
+        batch = batch.model_copy(update={"read_stream_revisions": dict(plan.source_revision_vector)})
         if candidate.intent_kind == "inspection":
             inspection_event = next(
                 event
@@ -1325,6 +1327,10 @@ class ContinuityMergeAuthority:
         work_order_ref = candidate.payload.get("schedule_work_order_ref")
         if not isinstance(work_order_ref, str) or not any(row.get("work_order_ref") == work_order_ref for row in organization_input.work_orders):
             return self._failed(plan, "schedule_work_order_missing")
+        previous = self.store.get_by_idempotency(OrganizationAuthority._PRINCIPAL, f"merge:{plan.batch_ref}")
+        if previous is not None and owner_request_digest is not None:
+            # 完整原请求摘要在原 Owner 事件中核对；已提交重放不要求旧 head 再次成为当前。
+            return self.merge_world_plan(plan, owner_request_digest=owner_request_digest)
         for source in (social_input, household_input, organization_input):
             validation = source.validate_against(store=self.store)
             if not validation.accepted:
