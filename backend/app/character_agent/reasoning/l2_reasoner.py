@@ -455,8 +455,8 @@ class CharacterAgentL2Service:
             return deepcopy(cached_profile)
 
         if self._profile_registry is not None:
-            profile = self._profile_registry.get(actor_id).model_dump()
+            profile = self._profile_registry.get(actor_id).model_dump(mode="json")
         else:
-            profile = self._profile_loader.load(actor_id).model_dump()
+            profile = self._profile_loader.load(actor_id).model_dump(mode="json")
         self._profile_cache[actor_id] = deepcopy(profile)
         return deepcopy(profile)
