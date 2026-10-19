@@ -4553,9 +4553,9 @@ def _handle_envelope(
             action_request = ActionRequest.model_validate(action_requests[0]["payload"])
             interact_event = InteractIntent(
                 player_id="character_agent",
-                room_id="room_demo",
-                scene_id="scene_demo",
-                zone_id="zone_focus",
+                room_id=action_request.room_id,
+                scene_id=action_request.scene_id,
+                zone_id=action_request.zone_id,
                 actor_id=str(action.get("actor_id", "") or actor_id),
                 intent_type="interact_intent",
                 producer_ts=action_request.producer_ts,
@@ -6339,13 +6339,19 @@ def _semantic_action_from_execution_contract(
     )
     if not content:
         content = str(expected_observation.get("summary", "") or "")
+    interaction_type = contract.semantic_action_id
+    if (contract.semantic_intent_id == "inspect_object"
+        and requested_action in {"inspect_object", "interact"}
+        and contract.semantic_action_id == "action:inspect"):
+        requested_action = "interact"
+        interaction_type = "inspect"
     return {
         "request_type": requested_action,
         "actor_id": contract.actor_id,
         "target_actor_id": target_actor_id,
         "target_object_id": target_object_id,
         "target_environment_id": target_environment_id,
-        "interaction_type": contract.semantic_action_id,
+        "interaction_type": interaction_type,
         "content": content,
     }
 
@@ -6389,12 +6395,13 @@ def _as_character_agent_contract_action_request_envelopes(
         "interact", "approach", "seek_private_distance", "withdraw", "follow_target", "break_contact",
     }:
         return []
+    scope = contract.expected_observation.get("execution_scope", {})
     payload: dict[str, object] = {
         "request_id": request_identity,
         "request_type": request_type,
-        "room_id": "room_demo",
-        "scene_id": "scene_demo",
-        "zone_id": "zone_focus",
+        "room_id": str(scope.get("room_id", "room_demo")),
+        "scene_id": str(scope.get("scene_id", "scene_demo")),
+        "zone_id": str(scope.get("zone_id", "zone_focus")),
         "actor_id": actor_id,
         "action_type": "character_agent_execution",
         "source": {"layer": "L4", "system": "character_agent_l4", "actor_id": actor_id},

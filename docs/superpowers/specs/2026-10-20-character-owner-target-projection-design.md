@@ -58,6 +58,8 @@ flowchart TD
 
 ## Acceptance and rollback
 
+The next bounded execution projection preserves `target_admission_digest` and the received room/scene/zone in the canonical contract's expected observation. Only the registered `inspect_object` + `action:inspect` pair maps to ESM's `interact` / `inspect` vocabulary. ActionRequest uses that frozen scope rather than relocating the actor to the demo. This is transport preparation; it does not satisfy R08 owner admission, range, durable commit or feedback. Existing contracts without scope retain their historical demo compatibility pending their own migration.
+
 RED/GREEN tests must prove actual L1→ESM→typed snapshot→L3→compiler flow, action isolation, explicit-empty visibility denial, unknown target denial, actor privacy, scope change, and changed owner/state digest. A real production composition test verifies constructor injection. No provider or Godot is needed to verify this input slice, and none is claimed.
 
 Remove only the optional injection/fields and action-specific expansion to disable the slice; never remove committed ESM events or historical evidence. Implementation plan: [target projection plan](../../superpowers/plans/2026-10-20-character-owner-target-projection-implementation-plan.md).

@@ -39,9 +39,13 @@ class CharacterAgentL4Executor:
             raise ValueError("intent proposal requires an active canonical turn")
 
         selected_intent = str(decision.selected_intent or "observe")
-        target_ref = interpretation.attention_target or (
-            snapshot.attention_targets[0] if snapshot.attention_targets else None
-        )
+        frozen_targets = [
+            str(ref).strip() for ref in getattr(decision, "target_refs", [])
+            if str(ref).strip()
+        ]
+        # A choice without a frozen target is intentionally targetless. L2
+        # attention and the local snapshot are evidence, never target ingress.
+        target_ref = frozen_targets[0] if frozen_targets else None
         claims, locomotion_relation = self._semantic_claims(selected_intent)
         context_tags = self._context_tags(
             snapshot=snapshot,
@@ -54,7 +58,10 @@ class CharacterAgentL4Executor:
             source_id="character_agent_l4",
             intent_tags=intent_tags,
             context_tags=context_tags,
-            semantic_action_id=self._semantic_action_id(selected_intent),
+            semantic_action_id=(
+                str(getattr(decision, "semantic_action_id", "") or "")
+                or self._semantic_action_id(selected_intent)
+            ),
             target_ref=target_ref,
             claims=claims,
             locomotion_relation=locomotion_relation,
@@ -208,16 +215,17 @@ class CharacterAgentL4Executor:
             decision=decision,
             turn_context=turn_context,
         )
-        target_refs: list[str] = []
-        for key in ("target_actor_id", "target_object_id", "target_environment_id"):
-            target = str(action.get(key, "") or "")
-            if target and target not in target_refs:
-                target_refs.append(target)
-        if not target_refs:
-            spatial = plan.get("social_spatial_channel", {})
-            target = str(spatial.get("target_ref", "") or "") if isinstance(spatial, dict) else ""
-            if target:
-                target_refs.append(target)
+        frozen_target_refs = [
+            str(ref).strip() for ref in getattr(decision, "target_refs", [])
+            if str(ref).strip()
+        ]
+        target_refs: list[str] = list(dict.fromkeys(frozen_target_refs))
+        if decision.selected_intent in {
+            "inspect_object", "share_info", "speak_private", "follow_target",
+            "seek_private_distance", "break_contact", "withdraw", "approach",
+            "withhold", "short_punch", "unarmed_punch", "sword_slash",
+        } and not target_refs:
+            raise ValueError("execution target_ref required")
 
         metadata = plan.get("skill_realization_metadata", {})
         metadata = metadata if isinstance(metadata, dict) else {}
@@ -248,6 +256,10 @@ class CharacterAgentL4Executor:
                 "primitive_realization_keys": primitive_keys,
             },
         }
+        candidate_pins = dict(getattr(decision, "candidate_revision_pins", {}) or {})
+        target_revision_vector = candidate_pins.get("target_revision_vector", {})
+        if not isinstance(target_revision_vector, dict):
+            target_revision_vector = {}
         expected_observation: dict[str, object] = {
             "semantic_intent_id": decision.selected_intent,
             "semantic_action_id": str(
@@ -257,6 +269,15 @@ class CharacterAgentL4Executor:
             ),
             "target_refs": target_refs,
             "requested_action": str(action.get("request_type", "") or decision.selected_intent),
+            "candidate_id": str(getattr(decision, "candidate_id", "") or ""),
+            "candidate_digest": str(getattr(decision, "candidate_digest", "") or ""),
+            "owner_route": str(getattr(decision, "owner_route", "") or ""),
+            "target_admission_digest": str(candidate_pins.get("target_admission_digest", "") or ""),
+            "execution_scope": {
+                "room_id": snapshot.room_id,
+                "scene_id": snapshot.scene_id,
+                "zone_id": snapshot.zone_id,
+            },
         }
         if interpretation.interpreted_summary:
             expected_observation["summary"] = interpretation.interpreted_summary
@@ -279,6 +300,7 @@ class CharacterAgentL4Executor:
             expected_revision_vector=dict(turn_context.input_revision_vector),
             expected_memory_revision_vector=dict(turn_context.memory_revision_vector),
             expected_snapshot_revision=turn_context.snapshot_revision,
+            expected_target_revision_vector={str(key): int(value) for key, value in target_revision_vector.items()},
             idempotency_key=f"execution:{turn_context.turn_id}",
             causation_id=turn_context.causation_id,
             correlation_id=turn_context.correlation_id,

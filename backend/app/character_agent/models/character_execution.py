@@ -150,6 +150,12 @@ class CharacterExecutionContract(BaseModel):
         validation_alias=AliasChoices("semantic_action_id", "action_id", "action"),
     )
     source_id: str = Field(default="character_agent_l4", min_length=1)
+    expected_target_revision_vector: Mapping[str, int] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices(
+            "expected_target_revision_vector", "target_revision_vector", "target_revisions"
+        ),
+    )
     intent_tags: tuple[str, ...] = Field(default_factory=tuple)
     context_tags: tuple[str, ...] = Field(default_factory=tuple)
     claims: tuple[str, ...] = Field(default_factory=tuple)
@@ -231,11 +237,19 @@ class CharacterExecutionContract(BaseModel):
             raise ValueError("execution memory revision vector entries must be non-negative")
         return MappingProxyType({str(key): int(revision) for key, revision in value.items()})
 
+    @field_validator("expected_target_revision_vector", mode="after")
+    @classmethod
+    def freeze_target_revision_map(cls, value: Mapping[str, int]) -> Mapping[str, int]:
+        if any(int(revision) < 0 for revision in value.values()):
+            raise ValueError("execution target revision entries must be non-negative")
+        return MappingProxyType({str(key): int(revision) for key, revision in value.items()})
+
     @field_serializer(
         "allowed_realization_hints",
         "expected_observation",
         "expected_revision_vector",
         "expected_memory_revision_vector",
+        "expected_target_revision_vector",
         when_used="always",
     )
     def serialize_frozen_maps(self, value: object) -> object:

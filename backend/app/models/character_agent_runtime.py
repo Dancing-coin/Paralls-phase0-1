@@ -119,6 +119,14 @@ class CharacterIntentDecision(BaseModel):
     active_goal_frame: CharacterActiveGoalFrame | None = None
     planning_status: Literal["model", "continuity_floor"] = "model"
     fallback_mode: str | None = None
+    # Optional frozen choice from the canonical L3 choice stage.  Legacy
+    # decisions omit these fields and continue through the derived bridge.
+    semantic_action_id: str | None = None
+    target_refs: list[str] = Field(default_factory=list)
+    candidate_id: str | None = None
+    candidate_digest: str | None = None
+    candidate_revision_pins: dict[str, object] = Field(default_factory=dict)
+    owner_route: str = ""
 
 
 class CharacterSuggestionPacket(BaseModel):
