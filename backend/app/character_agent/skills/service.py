@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import json
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from app.character_agent.skills.models import (
@@ -9,6 +12,8 @@ from app.character_agent.skills.models import (
     SkillAffordanceSummary,
     SkillEvaluationResult,
     SkillLearningPolicy,
+    StableAbilitySkill,
+    StableAbilitySnapshot,
 )
 from app.character_agent.skills.registry import CharacterSkillRegistry
 
@@ -44,10 +49,14 @@ class CharacterSkillService:
             capability_layer = {}
         skill_ids = capability_layer.get("skills")
         skill_id_list = skill_ids if isinstance(skill_ids, list) else []
-        authored_skill_names = {
-            str(skill_id)
-            for skill_id in skill_id_list
-        }
+        authored_skill_names: set[str] = set()
+        for skill_id in skill_id_list:
+            try:
+                authored_skill_names.add(self._registry.canonical_skill_id(str(skill_id)))
+            except ValueError:
+                # Legacy authoring projection remains permissive; strict runtime
+                # compilation is provided by compile_stable_snapshot.
+                continue
         states: list[CharacterSkillState] = []
 
         for skill in self._registry.skills():
@@ -66,6 +75,127 @@ class CharacterSkillService:
             )
 
         return states
+
+    def compile_stable_snapshot(
+        self,
+        *,
+        actor_id: str,
+        skill_states: list[CharacterSkillState],
+        capability_revision: str | None = None,
+        source_refs: list[str] | None = None,
+        revoked_grants: set[str] | Mapping[str, object] | None = None,
+        grants: Mapping[str, object] | None = None,
+    ) -> StableAbilitySnapshot:
+        """Compile stable skill facts without equipment or current resources.
+
+        This is deliberately a pure projection. Unknown ids are authoring
+        diagnostics only and fail closed at runtime; revoked grants are
+        represented as blocked families and omitted from active skills.
+        """
+        revoked: set[str] = set()
+        diagnostics: list[str] = []
+        raw_revoked: set[str] = set()
+        if isinstance(revoked_grants, Mapping):
+            raw_revoked.update(str(key) for key in revoked_grants)
+            for grant_id, value in revoked_grants.items():
+                if isinstance(value, Mapping):
+                    value = value.get("skill_ids", [])
+                if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+                    raw_revoked.update(str(item) for item in value)
+        else:
+            raw_revoked.update(str(item) for item in (revoked_grants or set()))
+        if grants:
+            for grant_id, value in grants.items():
+                if not isinstance(value, Mapping):
+                    continue
+                status = str(value.get("status", "active"))
+                if status != "revoked":
+                    continue
+                raw_revoked.update(str(grant_id) for _ in [0])
+                skill_ids = value.get("skill_ids", [])
+                if isinstance(skill_ids, Sequence) and not isinstance(skill_ids, (str, bytes)):
+                    raw_revoked.update(str(item) for item in skill_ids)
+        for item in raw_revoked:
+            try:
+                revoked.add(self._registry.canonical_skill_id(item))
+            except ValueError:
+                # Grant ids are not skill ids; they become useful diagnostics
+                # when no skill mapping was supplied and do not widen access.
+                diagnostics.append(f"revoked_grant:{item}")
+        projected: dict[str, StableAbilitySkill] = {}
+        refs = tuple(sorted(set(str(item) for item in (source_refs or []) if str(item))))
+        for state in self._skill_states_for_actor(actor_id=actor_id, skill_states=skill_states):
+            try:
+                canonical_id = self._registry.canonical_skill_id(state.skill_id)
+            except ValueError as exc:
+                diagnostics.append(f"unknown_skill:{state.skill_id}")
+                raise ValueError("unknown_skill") from exc
+            skill = self._registry.skill(canonical_id)
+            if canonical_id in revoked:
+                diagnostics.append(f"revoked_grant:{canonical_id}")
+                continue
+            candidate = StableAbilitySkill(
+                skill_id=canonical_id,
+                source=state.source,
+                rank=state.rank,
+                proficiency=state.proficiency,
+                confidence=state.confidence,
+                domains=sorted(set(skill.domains)),
+                source_refs=sorted(set((*refs, *state.evidence_refs))),
+            )
+            previous = projected.get(canonical_id)
+            if previous is None or self._stable_priority(candidate) > self._stable_priority(previous):
+                projected[canonical_id] = candidate
+
+        skills = [projected[key] for key in sorted(projected)]
+        active_ids = set(projected)
+        allowed: set[str] = set()
+        blocked: set[str] = set()
+        for skill in self._registry.skills():
+            families = set(skill.domains or {skill.skill_id})
+            bindings = [binding for binding in self._registry.bindings() if binding.skill_id == skill.skill_id]
+            if not bindings:
+                continue
+            if skill.skill_id in active_ids:
+                allowed.update(families)
+            else:
+                blocked.update(families)
+        blocked -= allowed
+        capability_pin = capability_revision or f"capability:{actor_id}:{self._state_revision(skills)}"
+        registry_revision = self._registry.revision()
+        payload = {
+            "actor_id": actor_id,
+            "capability_revision": capability_pin,
+            "registry_revision": registry_revision,
+            "skills": [item.model_dump(mode="json") for item in skills],
+            "allowed_action_families": sorted(allowed),
+            "blocked_action_families": sorted(blocked),
+            "source_refs": list(refs),
+            "diagnostics": sorted(diagnostics),
+        }
+        digest = "sha256:" + hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        ).hexdigest()
+        return StableAbilitySnapshot(
+            actor_id=actor_id,
+            capability_revision=capability_pin,
+            registry_revision=registry_revision,
+            skills=skills,
+            allowed_action_families=sorted(allowed),
+            blocked_action_families=sorted(blocked),
+            source_refs=list(refs),
+            diagnostics=sorted(diagnostics),
+            digest=digest,
+        )
+
+    @staticmethod
+    def _stable_priority(skill: StableAbilitySkill) -> tuple[int, float, float, str]:
+        return (_RANK_ORDER.get(skill.rank, -1), skill.proficiency, skill.confidence, skill.source)
+
+    @staticmethod
+    def _state_revision(skills: list[StableAbilitySkill]) -> str:
+        payload = [item.model_dump(mode="json") for item in skills]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()[:16]
 
     def build_affordance_summary(
         self,

@@ -1,5 +1,7 @@
+import pytest
+
 from app.character_agent.skills.catalog import create_core_skill_registry, create_runtime_skill_registry
-from app.character_agent.skills.models import SkillActionBinding, SkillDefinition
+from app.character_agent.skills.models import ActionDefinition, CharacterSkillState, SkillActionBinding, SkillDefinition
 from app.character_agent.skills.registry import CharacterSkillRegistry
 from app.character_agent.skills.service import CharacterSkillService
 
@@ -118,3 +120,79 @@ def test_runtime_catalog_accepts_injected_overlays_and_replaces_duplicates_deter
     assert registry.skill("mediation").role_tags == ["overlay"]
     assert binding.skill_path_tags == ["social", "overlay"]
     assert binding.eligibility["required_rank"] == "trained"
+
+
+def test_stable_snapshot_resolves_aliases_and_has_stable_digest() -> None:
+    registry = CharacterSkillRegistry(
+        skills=[
+            SkillDefinition(
+                skill_id="skill:survey",
+                aliases=["survey", "scene survey"],
+                domains=["observation"],
+            )
+        ],
+        actions=[ActionDefinition(action_id="survey", kind="composite")],
+        bindings=[
+            SkillActionBinding(
+                binding_id="survey_path",
+                skill_id="skill:survey",
+                action_id="survey",
+                skill_path_tags=["observation"],
+            )
+        ],
+    )
+    service = CharacterSkillService(registry=registry)
+    states = service.initial_skill_states(
+        actor_id="char_a",
+        profile={"capability_constraint_layer": {"skills": ["scene survey"]}},
+    )
+
+    snapshot = service.compile_stable_snapshot(actor_id="char_a", skill_states=states)
+    reordered = service.compile_stable_snapshot(
+        actor_id="char_a", skill_states=list(reversed(states))
+    )
+
+    assert snapshot.skills[0].skill_id == "skill:survey"
+    assert snapshot.registry_revision == registry.revision()
+    assert snapshot.digest == reordered.digest
+    assert "observation" in snapshot.allowed_action_families
+    assert "equipment" not in snapshot.model_dump()
+
+
+def test_stable_snapshot_fails_closed_for_unknown_skill_and_revoked_grant() -> None:
+    registry = CharacterSkillRegistry(
+        skills=[SkillDefinition(skill_id="skill:survey", domains=["observation"])],
+        actions=[ActionDefinition(action_id="survey", kind="composite")],
+        bindings=[
+            SkillActionBinding(
+                binding_id="survey_path",
+                skill_id="skill:survey",
+                action_id="survey",
+                skill_path_tags=["observation"],
+            )
+        ],
+    )
+    service = CharacterSkillService(registry=registry)
+
+    with pytest.raises(ValueError, match="unknown_skill"):
+        service.compile_stable_snapshot(
+            actor_id="char_a",
+            skill_states=[
+                CharacterSkillState(
+                    actor_id="char_a", skill_id="missing", source="authored", rank="basic"
+                )
+            ],
+        )
+
+    snapshot = service.compile_stable_snapshot(
+        actor_id="char_a",
+        skill_states=[
+            CharacterSkillState(
+                actor_id="char_a", skill_id="skill:survey", source="authority", rank="basic"
+            )
+        ],
+        revoked_grants={"skill:survey"},
+    )
+    assert snapshot.skills == []
+    assert "observation" in snapshot.blocked_action_families
+    assert any("revoked" in reason for reason in snapshot.diagnostics)

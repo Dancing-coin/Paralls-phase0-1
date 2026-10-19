@@ -3,6 +3,9 @@ import json
 
 import pytest
 
+from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+from app.character_agent.cognition.cognition_policy import CognitionPolicy
+
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from test_character_agent_cognition_writeback import _PositiveAffectStubL2
 
@@ -114,3 +117,92 @@ def test_cognition_stage_projection_requires_exact_receipt_and_original_events(t
     assert store.projection_cursor('char_a', 'memory') == 0
     assert store.projection_cursor('char_a', 'ask') == 0
     runtime.close()
+
+
+def _ability_snapshot():
+    return {
+        "actor_id": "char_a",
+        "capability_revision": "capability:char_a:7",
+        "registry_revision": "skills:9",
+        "skills": [{
+            "skill_id": "skill:observe",
+            "proficiency": 0.8,
+            "confidence": 0.7,
+            "domains": ["observation"],
+        }],
+        "allowed_action_families": ["observation"],
+        "blocked_action_families": ["authority"],
+        "source_refs": ["skill-snapshot:7"],
+    }
+
+
+def test_capability_envelope_fails_closed_for_domain_mismatch_and_clamps_hard_limits():
+    envelope = CapabilityEnvelope.compile(
+        actor_id="char_a", turn_id="turn:char_a:1", stable_snapshot=_ability_snapshot(),
+        event_domain="authority", memory_modifier=0.5,
+    )
+    assert "domain_mismatch" in envelope.degradation_reasons
+    assert envelope.cognitive_limits.max_reasoning_hops == 2
+    assert envelope.active_domains["observation"].match == "weak"
+    with pytest.raises(ValueError, match="cognition_domain_not_allowed"):
+        envelope.validate_domain("authority")
+
+
+def test_cognition_policy_clamps_effort_budgets_and_preserves_revision_pins():
+    profile = {"cognitive_capability_layer": {
+        "hard_limits": {
+            "max_context_items": 2,
+            "max_active_hypotheses": 1,
+            "max_reasoning_hops": 1,
+            "max_candidate_intents": 2,
+            "planning_horizon": "immediate",
+        },
+        "compute_defaults": {
+            "preferred_effort": "fast",
+            "maximum_effort": "medium",
+            "l2_max_tokens": 9999,
+            "l3_max_tokens": 9999,
+            "dialogue_max_tokens": 9999,
+        },
+    }}
+    envelope = CapabilityEnvelope.compile(
+        actor_id="char_a", turn_id="turn:char_a:2", profile=profile,
+        stable_snapshot=_ability_snapshot(),
+        envelope_revision="envelope:char_a:2",
+    )
+    policy = CognitionPolicy.resolve(
+        envelope=envelope, profile=profile, requested_tier="deep", requested_effort="deep",
+        event_complexity={"risk": 1.0},
+    )
+    assert policy.provider_thinking_effort == "medium"
+    assert "tier_effort_clamped_by_profile" in policy.reasons
+    assert policy.memory.recall_limit == 2
+    assert policy.reasoning.max_active_hypotheses == 1
+    assert policy.reasoning.max_reasoning_hops == 1
+    assert policy.reasoning.max_candidate_intents == 2
+    assert policy.reasoning.planning_horizon == "immediate"
+    assert policy.envelope_digest == envelope.envelope_digest
+    assert policy.revision_pins["envelope_revision"] == "envelope:char_a:2"
+    clamped = policy.clamp_request({
+        "memory": {"recall_limit": 99, "token_budget": 99999},
+        "reasoning": {"max_reasoning_hops": 99, "max_candidate_intents": 99},
+        "dialogue": {"max_tokens": 99999},
+    })
+    assert clamped["memory"]["recall_limit"] == 2
+    assert clamped["reasoning"]["max_reasoning_hops"] == 1
+    assert clamped["reasoning"]["max_candidate_intents"] == 2
+
+
+def test_envelope_and_policy_digests_reject_changed_revision_payloads():
+    envelope = CapabilityEnvelope.compile(
+        actor_id="char_a", turn_id="turn:char_a:3", stable_snapshot=_ability_snapshot(),
+    )
+    changed_envelope = envelope.model_dump(mode="json")
+    changed_envelope["envelope_digest"] = "changed"
+    with pytest.raises(ValueError, match="capability_envelope_digest_mismatch"):
+        CapabilityEnvelope.model_validate(changed_envelope)
+    policy = CognitionPolicy.resolve(envelope=envelope)
+    changed_policy = policy.model_dump(mode="json")
+    changed_policy["policy_digest"] = "changed"
+    with pytest.raises(ValueError, match="cognition_policy_digest_mismatch"):
+        CognitionPolicy.model_validate(changed_policy)

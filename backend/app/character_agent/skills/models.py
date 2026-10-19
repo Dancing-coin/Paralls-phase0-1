@@ -33,6 +33,7 @@ class StrictSkillModel(BaseModel):
 
 class SkillDefinition(StrictSkillModel):
     skill_id: str
+    aliases: list[str] = Field(default_factory=list)
     display_name: str = ""
     settlement_categories: list[SettlementCategory] = Field(default_factory=list)
     domains: list[str] = Field(default_factory=list)
@@ -230,3 +231,42 @@ class PlayerFacingCapabilityHint(StrictSkillModel):
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
     source: Literal["actual", "belief"] = "actual"
     evidence_refs: list[str] = Field(default_factory=list)
+
+
+class StableAbilitySkill(StrictSkillModel):
+    """The durable, actor-scoped part of a skill projection.
+
+    Equipment, resources, dynamic body state and world effects intentionally do
+    not have fields here. Those are current-turn influence inputs owned by
+    their respective domains.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    skill_id: str
+    source: SkillSource
+    rank: SkillRank = "none"
+    proficiency: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, strict=True)
+    domains: list[str] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+
+
+class StableAbilitySnapshot(StrictSkillModel):
+    """Frozen projection of registered, stable character abilities."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    actor_id: str
+    capability_revision: str
+    registry_revision: str
+    skills: list[StableAbilitySkill] = Field(default_factory=list)
+    allowed_action_families: list[str] = Field(default_factory=list)
+    blocked_action_families: list[str] = Field(default_factory=list)
+    source_refs: list[str] = Field(default_factory=list)
+    diagnostics: list[str] = Field(default_factory=list)
+    digest: str
+
+    @property
+    def snapshot_digest(self) -> str:
+        return self.digest
