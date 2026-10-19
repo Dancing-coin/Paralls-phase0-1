@@ -33,14 +33,101 @@ class CharacterStructuredOutputValidator:
     ]
     _LEVELS = {"low", "medium", "high"}
 
-    def validate(self, *, task_kind: str, output: dict[str, object]) -> dict[str, object]:
+    def validate(
+        self,
+        *,
+        task_kind: str,
+        output: dict[str, object],
+        cognition_policy: dict[str, object] | None = None,
+        expected_candidate_labels: list[str] | None = None,
+        expected_candidate_digest: str | None = None,
+    ) -> dict[str, object]:
         if not isinstance(output, dict):
             raise ValueError("structured model output must be a dictionary")
         if task_kind == "dialogue_generation":
-            return self._validate_dialogue_output(output)
+            normalized = self._validate_dialogue_output(output)
+            return self._apply_policy_gate(task_kind=task_kind, output=normalized, policy=cognition_policy)
         if task_kind == "l3_planning":
-            return self._validate_l3_output(output)
-        return self._validate_l2_output(output)
+            normalized = self._validate_l3_output(output)
+            if expected_candidate_labels is not None:
+                actual = list(normalized["candidate_intents"])
+                expected = [str(item) for item in expected_candidate_labels]
+                positions = {label: index for index, label in enumerate(expected)}
+                if any(label not in positions for label in actual) or any(
+                    positions[left] >= positions[right]
+                    for left, right in zip(actual, actual[1:])
+                ):
+                    raise ValueError("l3_planning candidate labels do not match frozen mapping")
+                if len(actual) != len(set(actual)):
+                    raise ValueError("l3_planning candidate labels must be unique")
+                normalized["candidate_digest"] = str(expected_candidate_digest or "")
+            return self._apply_policy_gate(task_kind=task_kind, output=normalized, policy=cognition_policy)
+        normalized = self._validate_l2_output(output)
+        return self._apply_policy_gate(task_kind=task_kind, output=normalized, policy=cognition_policy)
+
+    def _apply_policy_gate(
+        self,
+        *,
+        task_kind: str,
+        output: dict[str, object],
+        policy: dict[str, object] | None,
+    ) -> dict[str, object]:
+        if not policy:
+            return output
+        normalized = dict(output)
+        capped_fields: list[str] = []
+        pruned_items: list[str] = []
+        reasons: list[str] = []
+        if task_kind == "l3_planning":
+            raw_limit = policy.get("max_candidate_intents")
+            if raw_limit is None and isinstance(policy.get("reasoning"), dict):
+                raw_limit = policy["reasoning"].get("max_candidate_intents")
+            if isinstance(raw_limit, int) and raw_limit >= 0:
+                candidates = list(normalized["candidate_intents"])
+                if len(candidates) > raw_limit:
+                    selected = str(normalized["selected_intent"])
+                    normalized["candidate_intents"] = candidates[:raw_limit]
+                    normalized["recommended_intents"] = [
+                        item for item in normalized["recommended_intents"] if item in normalized["candidate_intents"]
+                    ]
+                    pruned_items.extend(candidates[raw_limit:])
+                    capped_fields.append("candidate_intents")
+                    reasons.append("candidate_budget_clamped")
+                    if selected not in normalized["candidate_intents"]:
+                        raise ValueError("l3_planning selected_intent was pruned by cognition policy")
+            raw_horizon = policy.get("max_planning_horizon")
+            if raw_horizon is None and isinstance(policy.get("reasoning"), dict):
+                horizon_name = policy["reasoning"].get("planning_horizon")
+                raw_horizon = horizon_name if isinstance(horizon_name, int) else None
+            if isinstance(raw_horizon, int) and raw_horizon >= 0 and "planning_horizon" in normalized:
+                horizon = self._coerce_float(normalized["planning_horizon"], default=0.0)
+                if horizon > raw_horizon:
+                    normalized["planning_horizon"] = raw_horizon
+                    capped_fields.append("planning_horizon")
+                    reasons.append("planning_horizon_clamped")
+            ceiling = policy.get("confidence_ceiling")
+            if isinstance(ceiling, (int, float)) and "confidence" in normalized:
+                confidence = self._coerce_float(normalized["confidence"], default=0.0)
+                if confidence > float(ceiling):
+                    normalized["confidence"] = float(ceiling)
+                    capped_fields.append("confidence")
+                    reasons.append("confidence_ceiling_clamped")
+        supported = policy.get("supported_domains")
+        requested = policy.get("requested_domain")
+        if isinstance(supported, list) and requested and str(requested) not in {str(item) for item in supported}:
+            reasons.append("unsupported_domain")
+        status = "accepted_with_degradation" if capped_fields or reasons else "accepted"
+        normalized["gate_result"] = {
+            "gate": "cognition_output",
+            "stage": task_kind,
+            "status": status,
+            "checks": {"policy_present": True},
+            "capped_fields": capped_fields,
+            "pruned_items": pruned_items,
+            "reasons": reasons,
+            "source_refs": [str(item) for item in policy.get("source_refs", []) or []],
+        }
+        return normalized
 
     def _validate_dialogue_output(self, output: dict[str, object]) -> dict[str, object]:
         required = [

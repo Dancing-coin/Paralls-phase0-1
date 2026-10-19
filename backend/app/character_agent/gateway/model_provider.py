@@ -8,6 +8,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from app.config import settings
+from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
 
 
 _DEFAULT_ENDPOINTS = {
@@ -15,6 +16,7 @@ _DEFAULT_ENDPOINTS = {
     "qwen": "https://dashscope.aliyuncs.com/compatible-mode/v1",
     "seed_doubao": "",
     "openai_compatible": "",
+    "laya": "",
 }
 _DEFAULT_MODELS = {
     "deepseek": "deepseek-chat",
@@ -79,6 +81,39 @@ class CharacterModelProvider:
             return output
         if provider_kind == "deepseek":
             return self._complete_strict(task_kind=task_kind, provider_kind=provider_kind, request=request)
+        if provider_kind == "laya":
+            if task_kind != "l3_planning":
+                raise ValueError("laya provider only supports l3_planning")
+            endpoint = os.getenv("CHARACTER_LAYA_ENDPOINT", "").strip() or self._endpoint_url
+            if not endpoint:
+                raise ValueError("laya provider endpoint is required")
+            adapter = LayaSystemOneProvider(
+                endpoint=endpoint,
+                timeout_seconds=self._timeout_seconds,
+                api_key=self._api_key or os.getenv("CHARACTER_LAYA_API_KEY", "").strip(),
+                tokenizer_path=os.getenv("CHARACTER_LAYA_TOKENIZER_PATH", "").strip() or None,
+                tokenizer_sha256=os.getenv("CHARACTER_LAYA_TOKENIZER_SHA256", "").strip(),
+            )
+            try:
+                output = adapter.complete(request)
+            except Exception as exc:
+                self._record_evidence(
+                    task_kind=task_kind,
+                    provider_kind=provider_kind,
+                    transport_attempted=True,
+                    transport_succeeded=False,
+                    fallback_used=False,
+                    error_type=exc.__class__.__name__,
+                )
+                raise
+            self._record_evidence(
+                task_kind=task_kind,
+                provider_kind=provider_kind,
+                transport_attempted=True,
+                transport_succeeded=True,
+                fallback_used=False,
+            )
+            return output
         if provider_kind in {"qwen", "seed_doubao", "openai_compatible"}:
             if (not self._endpoint_url or not self._api_key) and not self._requires_model_semantic_ownership(task_kind):
                 if require_online:
@@ -258,6 +293,8 @@ class CharacterModelProvider:
     def _default_endpoint(self, endpoint_url: str | None, *, use_settings: bool = True) -> str:
         if endpoint_url:
             return endpoint_url.strip()
+        if self._provider_kind == "laya":
+            return os.getenv("CHARACTER_LAYA_ENDPOINT", "").strip()
         if use_settings and settings.character_model_endpoint:
             return settings.character_model_endpoint.strip()
         return _DEFAULT_ENDPOINTS.get(self._provider_kind, "").strip()
@@ -265,6 +302,8 @@ class CharacterModelProvider:
     def _default_api_key(self, api_key: str | None, *, use_settings: bool = True) -> str:
         if api_key:
             return api_key.strip()
+        if self._provider_kind == "laya":
+            return os.getenv("CHARACTER_LAYA_API_KEY", "").strip()
         if use_settings and settings.character_model_api_key:
             return settings.character_model_api_key.strip()
         return ""
@@ -536,19 +575,26 @@ class CharacterModelProvider:
         vigilance_level = str(snapshot.get("vigilance_level", "") or "")
         distraction_level = str(snapshot.get("distraction_level", "") or "")
         salience_score = float(interpretation.get("salience_score", 0.0) or 0.0)
-        candidate_intents = ["observe", "self_protect"]
+        frozen_candidates = context.get("candidate_intents", [])
+        candidate_intents = [str(item) for item in frozen_candidates if str(item).strip()] if isinstance(frozen_candidates, list) else []
+        if candidate_intents:
+            candidate_intents = candidate_intents[:2]
+        if not candidate_intents:
+            candidate_intents = ["observe", "self_protect"]
         combat_threat = str(interpretation.get("interpretation_type", "")) == "combat_threat" and bool(attention_target)
-        if combat_threat:
+        if combat_threat and "short_punch" not in candidate_intents and not frozen_candidates:
             candidate_intents.append("short_punch")
-        if control_mode == "player_priority_assisted":
+        if control_mode == "player_priority_assisted" and "stay_silent" not in candidate_intents and not frozen_candidates:
             candidate_intents.append("stay_silent")
         selected_intent = "observe"
-        if combat_threat:
+        if combat_threat and "short_punch" in candidate_intents:
             selected_intent = "short_punch"
-        elif recent_constraint_results or str(interpretation.get("risk_level", "") or "low") in {"medium", "high"}:
+        elif (recent_constraint_results or str(interpretation.get("risk_level", "") or "low") in {"medium", "high"}) and "self_protect" in candidate_intents:
             selected_intent = "self_protect"
-        elif control_mode == "player_priority_assisted":
+        elif control_mode == "player_priority_assisted" and "stay_silent" in candidate_intents:
             selected_intent = "stay_silent"
+        elif selected_intent not in candidate_intents:
+            selected_intent = candidate_intents[0] if candidate_intents else "observe"
         recommended_intents = [selected_intent]
         risk_notes = [str(item) for item in recent_constraint_results if str(item)]
         if guarded_relation_note:

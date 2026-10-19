@@ -1320,8 +1320,9 @@ class CharacterAgentRuntime:
             self._l2._profile_cache[actor_id] = deepcopy(plan['after']['l2_profile'])
 
     def _prepare_siming_l2_request(self, snapshot, payload, context, *, memory_override=None):
+        request_context = {key: value for key, value in context.items() if key != 'stable_ability_snapshot'}
         return self._l2.prepare_siming_output(snapshot, payload,
-            **dict(context, memory_bundle=context['memory_bundle'] if memory_override is None else memory_override))
+            **dict(request_context, memory_bundle=context['memory_bundle'] if memory_override is None else memory_override))
 
     def _freeze_siming_l2_request(self, actor_id: str, frame: dict) -> tuple[bytes, dict]:
         snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])
@@ -1332,6 +1333,31 @@ class CharacterAgentRuntime:
             current_goal_state=self.get_goal_state(actor_id), goal_state_history=self.get_goal_state_history(actor_id),
             supervision_state=self.get_supervision_state(actor_id), unresolved_tensions=self.get_unresolved_tensions(actor_id),
             background_agenda_state=self.get_background_agenda_state(actor_id))
+        if frame['source_kind'] == 'ingest_siming_output':
+            from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+            from app.character_agent.cognition.cognition_policy import CognitionPolicy
+            turn = self._durable_cognition_turn_context(frame)
+            effective_profile = self._effective_profile_payload(actor_id)
+            stable = self._skill_service.compile_stable_snapshot(
+                actor_id=actor_id,
+                skill_states=self._skill_service.initial_skill_states(actor_id=actor_id, profile=effective_profile),
+                source_refs=[turn.source_event_ref, *snapshot.recent_perception_source_lineage],
+            )
+            envelope = CapabilityEnvelope.compile(
+                actor_id=actor_id, turn_id=turn.turn_id, profile=effective_profile,
+                stable_snapshot=stable, dynamic_state=self.get_dynamic_state(actor_id),
+                source_refs=tuple(stable.source_refs),
+                revision_pins={'policy_revision': turn.policy_revision},
+            )
+            policy = CognitionPolicy.resolve(
+                envelope=envelope, profile=effective_profile,
+                event_complexity={'ambiguity': 1.0 - snapshot.certainty_score},
+                source_refs=tuple(stable.source_refs),
+            )
+            context.update(turn_context=turn, effective_profile=effective_profile,
+                stable_ability_snapshot=stable.model_dump(mode='json'),
+                capability_envelope=envelope.model_dump(mode='json'),
+                cognition_policy=policy.model_dump(mode='json'))
         if frame['source_kind'] == 'run_background_cognition_tick':
             background = self._background_reappraisal_payload(actor_id=actor_id, producer_ts=frame['producer_ts'],
                 snapshot=snapshot, current_goal_state=context['current_goal_state'],
@@ -1344,7 +1370,8 @@ class CharacterAgentRuntime:
             request = self._run_with_memory_recall(actor_id, snapshot,
                 lambda memory_override=None: self._prepare_siming_l2_request(snapshot, frame['normalized_payload'], context,
                     memory_override=memory_override))
-        frozen = json.loads(json.dumps(context, default=lambda value: value.model_dump(mode='json'), allow_nan=False))
+        from app.character_agent.gateway.model_gateway import CharacterModelGateway
+        frozen = json.loads(CharacterModelGateway.freeze_prepared_request(context))
         return request, frozen
 
     def _prepare_siming_l3_request(self, actor_id, snapshot, interpretation, context, *, memory_override=None):
@@ -1354,7 +1381,12 @@ class CharacterAgentRuntime:
             control_mode=self.get_control_mode(actor_id), working_memory_state=context['working_memory_state'],
             current_goal_state=context['current_goal_state'], goal_state_history=context['goal_state_history'],
             supervision_state=context['supervision_state'], unresolved_tensions=context['unresolved_tensions'],
-            background_agenda_state=self.get_background_agenda_state(actor_id))
+            background_agenda_state=context['background_agenda_state'],
+            effective_profile=context.get('effective_profile'),
+            turn_context=(CharacterTurnContext.model_validate(context['turn_context'])
+                          if context.get('turn_context') else None),
+            capability_envelope=context.get('capability_envelope'),
+            cognition_policy=context.get('cognition_policy'))
 
     def _freeze_siming_l3_request(self, actor_id: str, frame: dict):
         snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])
@@ -4720,8 +4752,8 @@ class CharacterAgentRuntime:
         self._attach_skill_behavior_guardrail(actor_id=actor_id, plan=plan)
         return plan
 
-    def _durable_execution_turn_context(self, frame: dict[str, object]) -> CharacterTurnContext:
-        """Rebuild canonical turn identity from frozen durable cognition stages."""
+    def _durable_cognition_turn_context(self, frame: dict[str, object]) -> CharacterTurnContext:
+        """Prepare canonical identity before durable model work."""
         payload = frame.get("normalized_payload", {})
         payload = payload if isinstance(payload, dict) else {}
         actor_id = str(frame.get("actor_id", "") or "")
@@ -4736,6 +4768,14 @@ class CharacterAgentRuntime:
             policy_revision="policy:character-runtime:v1", snapshot_revision=producer_ts,
             branch_id="branch:main",
         )
+        return context
+
+    def _durable_execution_turn_context(self, frame: dict[str, object]) -> CharacterTurnContext:
+        frozen = self._cognition_frame_value(frame, "context")
+        context = (CharacterTurnContext.model_validate(frozen["turn_context"])
+                   if frozen.get("turn_context") else self._durable_cognition_turn_context(frame))
+        actor_id = str(frame["actor_id"])
+        producer_ts = int(frame["producer_ts"])
         decision = CharacterIntentDecision.model_validate(frame["decision"])
         stages = (
             ("context", {"l1_snapshot": frame["entry_after"]["private_snapshot"]}),

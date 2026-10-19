@@ -12,5 +12,7 @@ class CharacterModelRouter:
             return {"route_mode": "local_only", "provider_kind": "local"}
         if route_override == "hybrid_ready":
             return {"route_mode": "hybrid_ready", "provider_kind": "hybrid"}
+        if route_override == "laya" or str(route_override or "").strip() == "laya":
+            return {"route_mode": "laya_systemone", "provider_kind": "laya"}
         provider_kind = str(settings.character_model_provider_kind or "").strip() or "qwen"
         return {"route_mode": "online_default", "provider_kind": provider_kind}

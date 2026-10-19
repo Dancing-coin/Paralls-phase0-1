@@ -1,5 +1,5 @@
 import json
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 
 from pydantic import BaseModel
 
@@ -79,8 +79,19 @@ class CharacterModelGateway:
         """只冻结请求数据；Pydantic 值使用既有 JSON 合同。"""
         def model_json(value: object) -> object:
             if isinstance(value, BaseModel):
-                return value.model_dump(mode="json")
+                return jsonable(value.model_dump(mode="python", warnings=False))
+            if isinstance(value, Mapping):
+                return jsonable(dict(value))
+            if isinstance(value, (list, tuple)):
+                return jsonable(value)
             raise TypeError("character request contains a non-JSON value")
+
+        def jsonable(value: object) -> object:
+            if isinstance(value, dict):
+                return {str(key): jsonable(item) for key, item in value.items()}
+            if isinstance(value, (list, tuple)):
+                return [jsonable(item) for item in value]
+            return value
 
         try:
             return json.dumps(request, ensure_ascii=False, allow_nan=False, default=model_json).encode("utf-8")
@@ -113,7 +124,24 @@ class CharacterModelGateway:
         request = self._restore_prepared_request(request_json)
         task_kind = request["task_kind"]
         output = self._provider.complete(request)
-        return self._validator.validate(task_kind=task_kind, output=output)
+        context = request.get("context", {})
+        cognition_policy = context.get("cognition_policy") if isinstance(context, dict) else None
+        frozen_candidates = context.get("frozen_candidates", []) if isinstance(context, dict) else []
+        frozen_labels = [
+            str(item.get("wire_label", "") or "")
+            for item in frozen_candidates
+            if isinstance(item, dict) and str(item.get("wire_label", "") or "")
+        ] if isinstance(frozen_candidates, list) and frozen_candidates else None
+        return self._validator.validate(
+            task_kind=task_kind,
+            output=output,
+            cognition_policy=cognition_policy if isinstance(cognition_policy, dict) else None,
+            expected_candidate_labels=frozen_labels,
+            expected_candidate_digest=(
+                str(context.get("candidate_digest", "") or "")
+                if isinstance(context, dict) else None
+            ),
+        )
 
     def run_task(
         self,
@@ -172,7 +200,16 @@ class CharacterModelGateway:
                 raise ValueError("character dialogue stream completed without an output object")
             yield {
                 "event": "completed",
-                "output": self._validator.validate(task_kind="dialogue_generation", output=output),
+                "output": self._validator.validate(
+                    task_kind="dialogue_generation",
+                    output=output,
+                    cognition_policy=(
+                        request.get("context", {}).get("cognition_policy")
+                        if isinstance(request.get("context", {}), dict)
+                        and isinstance(request.get("context", {}).get("cognition_policy"), dict)
+                        else None
+                    ),
+                ),
                 "fallback_used": bool(provider_event.get("fallback_used", False)),
             }
             return

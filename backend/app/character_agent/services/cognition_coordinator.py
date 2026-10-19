@@ -101,6 +101,11 @@ class CharacterCognitionCoordinator:
         pins['timeline'] = self.runtime._cognition_digest(revision + 1)
         frame = dict(progress.frame, stage='l2', actor_pin=[list(pair) for pair in sorted(pins.items())],
             l2_profile=self.runtime._l2._profile_cache[entry.actor_id])
+        if 'capability_envelope' in context:
+            frame.update(turn_id=context['turn_context']['turn_id'],
+                capability_envelope=context['capability_envelope'], cognition_policy=context['cognition_policy'],
+                envelope_digest=context['capability_envelope']['envelope_digest'],
+                policy_digest=context['cognition_policy']['policy_digest'])
         text = request.decode('utf-8')
         with self.admissions.store.transaction():
             frame = freeze_fields(self.admissions.store, frame, actor_id=entry.actor_id,

@@ -20,6 +20,8 @@ from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
+from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+from app.character_agent.cognition.cognition_policy import CognitionPolicy
 
 
 class CharacterAgentL2Service:
@@ -53,6 +55,8 @@ class CharacterAgentL2Service:
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         turn_context: CharacterTurnContext | None = None,
+        capability_envelope: dict[str, object] | None = None,
+        cognition_policy: dict[str, object] | None = None,
     ) -> dict[str, object]:
         context = self._reasoning_context(
             actor_id=snapshot.actor_id,
@@ -69,6 +73,19 @@ class CharacterAgentL2Service:
             effective_profile=effective_profile,
             need_tension_state=need_tension_state,
         )
+        if capability_envelope is not None or cognition_policy is not None:
+            if capability_envelope is None or cognition_policy is None or turn_context is None:
+                raise ValueError("cognition_contract_pair_required")
+            envelope = CapabilityEnvelope.model_validate(capability_envelope)
+            policy = CognitionPolicy.model_validate(cognition_policy)
+            policy.validate_envelope(
+                envelope, actor_id=snapshot.actor_id, turn_id=turn_context.turn_id,
+                turn_actor_id=turn_context.actor_id, policy_revision=turn_context.policy_revision,
+                source_event_ref=turn_context.source_event_ref,
+            )
+            context["capability_envelope"] = envelope.model_dump(mode="json")
+            context["cognition_policy"] = policy.model_dump(mode="json")
+            context["turn_id"] = turn_context.turn_id
         if self._semantic_recall_service is not None and turn_context is not None:
             semantic = self._semantic_recall_service.select(snapshot.actor_id, context, turn_context=turn_context)
             context["memory"] = semantic.memory
@@ -306,6 +323,9 @@ class CharacterAgentL2Service:
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
         turn_context: CharacterTurnContext | None = None,
+        effective_profile: dict[str, object] | None = None,
+        capability_envelope: dict[str, object] | None = None,
+        cognition_policy: dict[str, object] | None = None,
     ) -> bytes:
         request = self.prepare_reasoning_request(
             snapshot=snapshot,
@@ -319,6 +339,9 @@ class CharacterAgentL2Service:
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
             turn_context=turn_context,
+            effective_profile=effective_profile,
+            capability_envelope=capability_envelope,
+            cognition_policy=cognition_policy,
         )
         return CharacterModelGateway.freeze_prepared_request(request)
 

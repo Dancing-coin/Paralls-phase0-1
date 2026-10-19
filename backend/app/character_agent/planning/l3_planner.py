@@ -1,14 +1,19 @@
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+import hashlib
 import json
+import os
+import re
 
 from pydantic import TypeAdapter
 
 from app.character_agent.gateway.context_builder import CharacterContextBuilder
 from app.character_agent.models.cognition_delta import CharacterHigherOrderDelta
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
+from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
 from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MissingRequiredMemoryEvidence
 from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.mind_frame import CharacterMindFrame
 from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 from app.character_agent.models.cognition_delta import CharacterBeliefDelta
 from app.character_agent.models.cognition_delta import CharacterSocialDelta
@@ -21,10 +26,264 @@ from app.character_agent.models.observation_memory import CharacterObservationMe
 from app.character_agent.models.social_memory import CharacterSocialMemoryRecord
 from app.character_agent.models.working_memory_state import CharacterWorkingMemoryState
 from app.character_agent.models.behavior_policy import BehaviorPolicyRecord
+from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+from app.character_agent.cognition.cognition_policy import CognitionPolicy
 from app.character_agent.planning.triple_filter import CharacterTripleFilter
 from app.character_agent.profile.personality_projection import PersonalityProjectionResolver
 from app.models.character_agent_runtime import CharacterActiveGoalFrame
 from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation, CharacterSuggestionPacket
+
+
+@dataclass(frozen=True)
+class CandidateCompilation:
+    """Auditable complete candidate universe and provider-presented subset.
+
+    This is a pure compiler record. It never scores candidates or chooses a
+    preferred action; selection remains the provider/L3 responsibility.
+    """
+
+    universe: list[dict[str, object]]
+    presented: list[dict[str, object]]
+    pruned: list[dict[str, object]]
+    diagnostics: list[dict[str, object]]
+    coverage: dict[str, object]
+    digest: str
+
+    @property
+    def wire_labels(self) -> list[str]:
+        return [str(item.get("wire_label", "") or "") for item in self.presented]
+
+    @property
+    def by_wire_label(self) -> dict[str, dict[str, object]]:
+        return {
+            str(item["wire_label"]): dict(item)
+            for item in self.presented
+            if str(item.get("wire_label", "") or "")
+        }
+
+
+class CandidateCompiler:
+    """Compile lawful action+target combinations into U and P.
+
+    Inputs are deliberately plain mappings so existing registry, affordance,
+    execution-contract and MindFrame projections can feed this without a
+    second planner or a new wire schema.
+    """
+
+    DESCRIPTION_CONTRACT_REVISION = "candidate-semantics:v5:1"
+    HISTORICAL_DESCRIPTION_CONTRACT_REVISION = "candidate-semantics:v4:1"
+
+    def __init__(self, *, description_contract_revision: str | None = None) -> None:
+        self.description_contract_revision = description_contract_revision or self.DESCRIPTION_CONTRACT_REVISION
+        if self.description_contract_revision not in {self.DESCRIPTION_CONTRACT_REVISION, self.HISTORICAL_DESCRIPTION_CONTRACT_REVISION}:
+            raise ValueError("unsupported candidate description contract")
+
+    @staticmethod
+    def _semantic_description(item: dict[str, object]) -> str:
+        """Render the frozen, answer-agnostic candidate description.
+
+        The description is generated from registered action semantics and
+        target/condition metadata only.  It never carries grading guidance,
+        reviewer rationale, or execution receipts.
+        """
+        family = str(item.get("action_family", "unknown") or "unknown")
+        family_scopes = {
+            "observation": "gather perceptible information",
+            "communication": "exchange information",
+            "movement": "change position or contact distance",
+            "combat": "attempt a combat interaction",
+            "protection": "reduce exposure",
+        }
+        # The development aliases are existing intent identifiers, not new
+        # authority/registry admissions. Distinguish the observation intents
+        # even though L3 groups them into one capability family.
+        intent = str(item.get("semantic_intent_id", item.get("action_id", "")) or "")
+        intent_scopes = {
+            "observe": "gather perceptible information without commitment",
+            "inspect_object": "inspect perceptible properties of the referenced object",
+            "ask_probe": "request information to reduce uncertainty",
+            "defer": "postpone commitment without asserting a world change",
+            "pause": "pause commitment without asserting a world change",
+            "stay_silent": "withhold speech without asserting a world change",
+        }
+        observation_aliases = {"observe", "ask_probe", "defer"}
+        scope = intent_scopes.get(intent) if family in {"observation", *observation_aliases} else None
+        if family in observation_aliases:
+            scope = intent_scopes[family]
+        if family not in family_scopes and family not in observation_aliases:
+            family = "unknown"
+        effects = scope or family_scopes.get(family, "unknown intent scope")
+        target_refs = item.get("target_refs", {})
+        target_parts = []
+        if isinstance(target_refs, dict):
+            for key in sorted(target_refs):
+                if key not in {"target", "actor", "entity", "object", "location", "recipient", "source", "destination"}:
+                    continue
+                value = target_refs[key]
+                ref = value if isinstance(value, str) and re.fullmatch(r"[\w:./#-]{1,160}", value) else "unknown"
+                if any(term in ref.lower() for term in ("acceptable", "rationale", "correct", "gold", "score")):
+                    ref = "unknown"
+                target_parts.append(f"{key}={ref}")
+        target = ", ".join(target_parts) or "no explicit target relation"
+        conditions = item.get("required_conditions", {})
+        precondition_parts = []
+        if isinstance(conditions, dict):
+            for key in sorted(conditions):
+                if key not in {"visibility", "consent", "privacy", "contact", "range", "permission", "availability"}:
+                    continue
+                value = conditions[key]
+                status = value if isinstance(value, str) and value in {"satisfied", "required", "blocked", "unknown", "unavailable"} else "unknown"
+                precondition_parts.append(f"{key}={status}")
+        preconditions = ", ".join(precondition_parts) or "unknown"
+        revision = item.get("description_contract_revision", CandidateCompiler.DESCRIPTION_CONTRACT_REVISION)
+        if revision == CandidateCompiler.HISTORICAL_DESCRIPTION_CONTRACT_REVISION:
+            return (
+                f"{family}: {effects}. Target: {target}. Preconditions: {preconditions}. "
+                "Runtime legality/owner permission/execution unverified."
+            )
+        if revision != CandidateCompiler.DESCRIPTION_CONTRACT_REVISION:
+            raise ValueError("unsupported candidate description contract")
+        compact_scopes = {
+            "observe": "gather perceptible information; no commitment",
+            "inspect_object": "inspect perceptible object properties",
+            "ask_probe": "request information",
+            "defer": "postpone commitment",
+            "pause": "pause commitment",
+            "stay_silent": "withhold speech",
+        }
+        if scope:
+            effects = compact_scopes.get(family if family in observation_aliases else intent, effects)
+        elif family == "movement":
+            effects = "change position/contact distance"
+        elif family == "combat":
+            effects = "attempt combat interaction"
+        target = ",".join(target_parts) or "none"
+        preconditions = ",".join(precondition_parts) or "unknown"
+        return (
+            f"{family}: {effects}; target:{target}; requires:{preconditions}; "
+            "Runtime legality/owner permission/execution unverified"
+        )
+
+    def compile(
+        self,
+        *,
+        candidates: list[dict[str, object]],
+        envelope: object | None = None,
+        policy: object | None = None,
+        visible_targets: set[str] | list[str] | None = None,
+    ) -> CandidateCompilation:
+        envelope_map = envelope if isinstance(envelope, dict) else getattr(envelope, "model_dump", lambda **_: {})()
+        envelope_map = envelope_map if isinstance(envelope_map, dict) else {}
+        allowed = {str(item) for item in envelope_map.get("allowed_action_families", []) or []}
+        blocked = {str(item) for item in envelope_map.get("blocked_action_families", []) or []}
+        policy_map = policy if isinstance(policy, dict) else getattr(policy, "model_dump", lambda **_: {})()
+        policy_map = policy_map if isinstance(policy_map, dict) else {}
+        reasoning = policy_map.get("reasoning", {})
+        if not isinstance(reasoning, dict):
+            reasoning = {}
+        visible = {str(item) for item in (visible_targets or set())}
+        max_count_raw = envelope_map.get("max_candidate_intents")
+        if max_count_raw is None:
+            max_count_raw = envelope_map.get("cognitive_limits", {}).get("max_candidate_intents") if isinstance(envelope_map.get("cognitive_limits"), dict) else None
+        if max_count_raw is None:
+            max_count_raw = reasoning.get("max_candidate_intents")
+        max_count = int(max_count_raw) if isinstance(max_count_raw, int) and max_count_raw >= 0 else None
+
+        universe: list[dict[str, object]] = []
+        diagnostics: list[dict[str, object]] = []
+        for index, raw in enumerate(candidates):
+            item = dict(raw)
+            candidate_id = str(item.get("candidate_id", "") or "")
+            family = str(item.get("action_family", "") or "")
+            conditions = item.get("required_conditions", {})
+            if not candidate_id:
+                diagnostics.append({"candidate": item, "reason": "candidate_id_missing"})
+                continue
+            if not isinstance(item.get("target_refs", {}), dict):
+                diagnostics.append({"candidate_id": candidate_id, "reason": "target_refs_invalid"})
+                continue
+            if isinstance(conditions, dict):
+                visibility_status = str(conditions.get("visibility", "satisfied") or "satisfied")
+                if visibility_status in {"unknown", "unavailable"}:
+                    item["diagnosis"] = {"status": visibility_status, "reason": f"condition_{visibility_status}"}
+                if visibility_status == "blocked":
+                    item["diagnosis"] = {"status": "blocked", "reason": "condition_blocked"}
+            target_refs = item.get("target_refs", {})
+            target_values = [str(value) for value in target_refs.values()] if isinstance(target_refs, dict) else []
+            if visible_targets is not None and any(target not in visible for target in target_values):
+                item["diagnosis"] = {"status": "blocked", "reason": "target_not_visible"}
+            wire_label = str(item.get("wire_label", "") or candidate_id)
+            if not wire_label or wire_label in {str(existing.get("wire_label", "")) for existing in universe}:
+                wire_label = f"{wire_label or candidate_id}#{index + 1}"
+            item.setdefault("availability", "available")
+            item["candidate_id"] = candidate_id
+            item["wire_label"] = wire_label
+            item["source_refs"] = [str(ref) for ref in item.get("source_refs", []) or []]
+            item.setdefault("target_visibility", "visible" if target_values and (not visible or all(target in visible for target in target_values)) else "none")
+            item.setdefault("target_provenance", [])
+            item.setdefault("affordance_result", {"status": "available", "reason": "not_provided"})
+            item.setdefault("owner_route", "")
+            item.setdefault("revision_pins", {})
+            item["description_contract_revision"] = self.description_contract_revision
+            item["description"] = self._semantic_description(item)
+            universe.append(item)
+
+        legal_universe: list[dict[str, object]] = []
+        for item in universe:
+            family = str(item.get("action_family", "") or "")
+            diagnosis = item.get("diagnosis")
+            reason = str(diagnosis.get("reason", "") or "") if isinstance(diagnosis, dict) else ""
+            if family in blocked:
+                diagnostics.append({"candidate_id": item["candidate_id"], "reason": "action_family_blocked"})
+                continue
+            if allowed and family not in allowed:
+                diagnostics.append({"candidate_id": item["candidate_id"], "reason": "action_family_not_allowed"})
+                continue
+            if reason:
+                diagnostics.append({"candidate_id": item["candidate_id"], "reason": reason})
+                continue
+            availability = str(item.get("availability", "available") or "unknown")
+            if availability in {"unknown", "unavailable", "blocked"}:
+                diagnostics.append({"candidate_id": item["candidate_id"], "reason": f"availability_{availability}"})
+                continue
+            legal_universe.append(item)
+        universe = legal_universe
+        presented: list[dict[str, object]] = []
+        pruned: list[dict[str, object]] = []
+        for item in universe:
+            affordance = item.get("affordance_result")
+            if isinstance(affordance, dict) and str(affordance.get("status", "available")) in {"unknown", "unavailable", "blocked"}:
+                affordance_reason = str(affordance.get("reason", "affordance_unknown") or "affordance_unknown")
+                diagnostics.append({"candidate_id": item["candidate_id"], "reason": affordance_reason})
+                pruned.append({"candidate_id": item["candidate_id"], "reason": affordance_reason})
+                continue
+            if max_count is not None and len(presented) >= max_count:
+                pruned.append({"candidate_id": item["candidate_id"], "reason": "max_candidate_intents"})
+                continue
+            presented.append(item)
+        payload = {
+            "universe": universe,
+            "presented": presented,
+            "pruned": pruned,
+            "diagnostics": diagnostics,
+        }
+        digest = "sha256:" + hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+        ).hexdigest()
+        return CandidateCompilation(
+            universe=universe,
+            presented=presented,
+            pruned=pruned,
+            diagnostics=diagnostics,
+            coverage={
+                "universe_count": len(universe),
+                "presented_count": len(presented),
+                "pruned_count": len(pruned),
+                "diagnostic_count": len(diagnostics),
+                "coverage_ratio": (len(presented) / len(universe)) if universe else 1.0,
+            },
+            digest=digest,
+        )
 
 
 @dataclass(frozen=True)
@@ -45,6 +304,11 @@ class PreparedCharacterIntentPlan:
     local_active_goal_tags: list[str]
     active_goal_frame: CharacterActiveGoalFrame
     memory_recall: dict[str, object]
+    frozen_candidates: list[dict[str, object]] = field(default_factory=list)
+    candidate_mapping: dict[str, dict[str, object]] = field(default_factory=dict)
+    candidate_digest: str = ""
+    capability_envelope: dict[str, object] = field(default_factory=dict)
+    cognition_policy: dict[str, object] = field(default_factory=dict)
 
     def to_json_value(self) -> dict[str, object]:
         """按明确字段结构冻结续执行帧，不保存运行时引用。"""
@@ -54,7 +318,10 @@ class PreparedCharacterIntentPlan:
     def from_json_value(cls, value: dict[str, object]) -> 'PreparedCharacterIntentPlan':
         if set(value) != {'schema_version', 'prepared'} or type(value['schema_version']) is not int or value['schema_version'] != 1:
             raise ValueError('character_intent_frame_schema_invalid')
-        if not isinstance(value['prepared'], dict) or set(value['prepared']) != set(cls.__dataclass_fields__):
+        fields = set(cls.__dataclass_fields__)
+        legacy_fields = fields - {'frozen_candidates', 'candidate_mapping', 'candidate_digest',
+                                  'capability_envelope', 'cognition_policy'}
+        if not isinstance(value['prepared'], dict) or set(value['prepared']) not in (fields, legacy_fields):
             raise ValueError('character_intent_frame_fields_invalid')
         return TypeAdapter(cls).validate_json(json.dumps(value['prepared'], ensure_ascii=False), strict=True)
 
@@ -71,6 +338,220 @@ class CharacterAgentL3Service:
         self._memory_recall_policy = memory_recall_policy or CharacterMemoryRecallPolicy()
         self._semantic_recall_service = semantic_recall_service
         self._consumed_behavior_policy_ids: set[str] = set()
+
+    @staticmethod
+    def _candidate_semantic_action(intent: str) -> str:
+        return {
+            "short_punch": "action:melee.short_punch",
+            "unarmed_punch": "action:melee.unarmed_punch",
+            "sword_slash": "action:melee.sword_slash",
+            "observe": "action:observe",
+            "inspect_object": "action:inspect",
+            "ask_probe": "action:ask_probe",
+            "speak_public": "action:speak",
+            "speak_private": "action:speak",
+            "share_info": "action:speak",
+            "withhold": "action:speak",
+            "approach": "action:approach",
+            "follow_target": "action:approach",
+            "seek_private_distance": "action:approach",
+            "withdraw": "action:withdraw",
+            "break_contact": "action:withdraw",
+            "self_protect": "action:self_protect",
+            "stay_silent": "action:observe",
+            "pause": "action:observe",
+            "defer": "action:observe",
+        }.get(intent, f"action:{intent}")
+
+    @staticmethod
+    def _candidate_action_family(intent: str) -> str:
+        if intent in {"short_punch", "unarmed_punch", "sword_slash"}:
+            return "combat"
+        if intent in {"speak_public", "speak_private", "share_info", "withhold"}:
+            return "communication"
+        if intent in {"approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"}:
+            return "movement"
+        if intent in {"ask_probe", "inspect_object", "observe", "pause", "defer", "stay_silent"}:
+            return "observation"
+        return "protection"
+
+    def _candidate_records(
+        self,
+        *,
+        intents: list[str],
+        interpretation: CharacterInterpretation,
+        snapshot: dict[str, object],
+        envelope: CapabilityEnvelope,
+        policy: CognitionPolicy,
+        frame: CharacterMindFrame | None,
+        skill_affordance_summary: dict[str, object],
+    ) -> list[dict[str, object]]:
+        """Expand intent labels into complete action/target records.
+
+        Targeted records are created only from an explicit target catalog. L2's
+        attention target and the current player are never used as a target
+        source. Missing target records remain diagnostics and cannot enter P.
+        """
+        raw_catalog = snapshot.get("target_catalog", [])
+        catalog = [dict(item) for item in raw_catalog if isinstance(item, dict)] if isinstance(raw_catalog, list) else []
+        visible = {
+            str(item)
+            for item in snapshot.get("visible_target_refs", [])
+            if str(item or "")
+        } if isinstance(snapshot.get("visible_target_refs", []), list) else set()
+        target_required = {
+            "inspect_object", "share_info", "speak_private", "follow_target",
+            "seek_private_distance", "break_contact", "withdraw", "approach",
+            "withhold", "short_punch", "unarmed_punch", "sword_slash",
+        }
+        frame_pins = {
+            "frame_digest": frame.frame_digest,
+            "turn_id": frame.turn_id,
+            "policy_revision": frame.policy_revision,
+            "input_revision_vector": dict(frame.input_revision_vector),
+            "memory_revision_vector": dict(frame.memory_revision_vector),
+        } if frame is not None else {}
+        revision_pins = {
+            **frame_pins,
+            "envelope_revision": envelope.envelope_revision,
+            "envelope_digest": envelope.envelope_digest,
+            "capability_revision": envelope.capability_revision,
+            "policy_id": policy.policy_id,
+            "policy_digest": policy.policy_digest,
+            **dict(envelope.revision_pins),
+            **dict(policy.revision_pins),
+        }
+        records: list[dict[str, object]] = []
+        for intent in dict.fromkeys(str(item) for item in intents if str(item)):
+            family = self._candidate_action_family(intent)
+            targets = catalog if intent in target_required else [None]
+            if intent in target_required and not targets:
+                targets = [None]
+            for descriptor in targets:
+                descriptor = descriptor if isinstance(descriptor, dict) else {}
+                target_ref = str(descriptor.get("target_ref", "") or "")
+                candidate_id = intent if not target_ref else f"{intent}:{target_ref}"
+                target_refs = {str(k): str(v) for k, v in descriptor.get("target_refs", {}).items()} if isinstance(descriptor.get("target_refs", {}), dict) else {}
+                if target_ref and not target_refs:
+                    target_refs = {"target": target_ref}
+                target_values = list(dict.fromkeys(target_refs.values()))
+                condition = dict(descriptor.get("required_conditions", {})) if isinstance(descriptor.get("required_conditions", {}), dict) else {}
+                if intent in target_required and not target_values:
+                    condition.setdefault("visibility", "blocked")
+                    diagnosis = {"status": "blocked", "reason": "target_required"}
+                else:
+                    diagnosis = dict(descriptor.get("diagnosis", {})) if isinstance(descriptor.get("diagnosis", {}), dict) else {}
+                if target_values and "visible_target_refs" in snapshot and any(value not in visible for value in target_values):
+                    condition["visibility"] = "blocked"
+                    diagnosis = {"status": "blocked", "reason": "target_not_visible"}
+                if "supported_intents" in descriptor and intent not in descriptor["supported_intents"]:
+                    diagnosis = {"status": "blocked", "reason": "target_action_not_supported"}
+                affordance = descriptor.get("affordance_result", {"status": "available", "reason": "registered"})
+                if not isinstance(affordance, dict):
+                    affordance = {"status": "unknown", "reason": "affordance_invalid"}
+                record = {
+                    "candidate_id": candidate_id,
+                    "wire_label": candidate_id,
+                    "semantic_action_id": self._candidate_semantic_action(intent),
+                    "semantic_intent_id": intent,
+                    "target_refs": target_refs,
+                    "target_visibility": str(descriptor.get("target_visibility", "visible" if target_values else "none") or "none"),
+                    "target_provenance": list(descriptor.get("target_provenance", []) or []) if isinstance(descriptor.get("target_provenance", []), list) else [],
+                    "affordance_result": affordance,
+                    "action_family": family,
+                    "required_conditions": condition,
+                    "owner_route": str(descriptor.get("owner_route", "") or ""),
+                    "source_refs": list(descriptor.get("source_refs", []) or []) if isinstance(descriptor.get("source_refs", []), list) else [],
+                    "frame_ref": str(descriptor.get("frame_ref", "") or frame_pins.get("frame_digest", "")),
+                    "revision_pins": {
+                        **revision_pins,
+                        **({"target_admission_digest": descriptor["target_admission_digest"]}
+                           if descriptor.get("target_admission_digest") else {}),
+                        "target_revision_vector": dict(descriptor.get("target_revision_vector", {}))
+                        if isinstance(descriptor.get("target_revision_vector", {}), dict) else {},
+                    },
+                    "diagnosis": diagnosis,
+                    "execution_contract": {
+                        "semantic_action_id": self._candidate_semantic_action(intent),
+                        "semantic_intent_id": intent,
+                        "target_refs": target_values,
+                        "owner_route": str(descriptor.get("owner_route", "") or ""),
+                        "revision_pins": {
+                            **revision_pins,
+                            **({"target_admission_digest": descriptor["target_admission_digest"]}
+                               if descriptor.get("target_admission_digest") else {}),
+                            "target_revision_vector": dict(descriptor.get("target_revision_vector", {}))
+                            if isinstance(descriptor.get("target_revision_vector", {}), dict) else {},
+                        },
+                    },
+                }
+                # An explicit stable affordance summary may provide a richer
+                # result for the action family; it can only narrow admission.
+                family_affordances = skill_affordance_summary.get("action_affordances", {})
+                if isinstance(family_affordances, dict) and family in family_affordances:
+                    supplied = family_affordances[family]
+                    if isinstance(supplied, dict) and record["affordance_result"].get("status", "unknown") == "available":
+                        record["affordance_result"] = supplied
+                records.append(record)
+        # Keep a safe observation/protection floor first, then surface complete
+        # action+target records before lower priority targetless fallbacks so a
+        # bounded P still contains lawful targeted choices when available.
+        return sorted(
+            records,
+            key=lambda item: (
+                0 if item.get("semantic_intent_id") == "observe" else
+                1 if item.get("semantic_intent_id") == "self_protect" else
+                2 if bool(item.get("target_refs")) and not item.get("diagnosis") else
+                3,
+                str(item.get("candidate_id", "")),
+            ),
+        )
+
+    def _compile_capability_contracts(
+        self,
+        *,
+        interpretation: CharacterInterpretation,
+        actor_id: str,
+        turn_context: CharacterTurnContext | None,
+        profile: dict[str, object],
+        effective_profile: dict[str, object],
+        snapshot: dict[str, object],
+        dynamic_state: dict[str, object],
+        skill_affordance_summary: dict[str, object],
+    ) -> tuple[CapabilityEnvelope, CognitionPolicy]:
+        stable = skill_affordance_summary.get("stable_ability_snapshot") or skill_affordance_summary.get("stable_snapshot") or {
+            "actor_id": actor_id,
+            "capability_revision": str(skill_affordance_summary.get("capability_revision", f"capability:{actor_id}:prepared")),
+            "registry_revision": str(skill_affordance_summary.get("registry_revision", "skills:unknown")),
+            "allowed_action_families": list(skill_affordance_summary.get("allowed_action_families", []) or []),
+            "blocked_action_families": list(skill_affordance_summary.get("blocked_action_families", []) or []),
+            "source_refs": list(skill_affordance_summary.get("source_refs", []) or []),
+        }
+        turn_id = turn_context.turn_id if turn_context is not None else str(snapshot.get("turn_id", "") or f"prepared:{actor_id}")
+        envelope = CapabilityEnvelope.compile(
+            actor_id=actor_id,
+            turn_id=turn_id,
+            profile=effective_profile or profile,
+            stable_snapshot=stable,
+            dynamic_state=dynamic_state,
+            event_domain=str(interpretation.interpretation_type or "") or None,
+            allowed_action_families=tuple(skill_affordance_summary.get("allowed_action_families", []) or ()),
+            blocked_action_families=tuple(skill_affordance_summary.get("blocked_action_families", []) or ()),
+            source_refs=tuple(skill_affordance_summary.get("source_refs", []) or ()),
+            revision_pins={
+                "policy_revision": str(snapshot.get("policy_revision", "") or ""),
+            } if str(snapshot.get("policy_revision", "") or "") else None,
+        )
+        policy = CognitionPolicy.resolve(
+            envelope=envelope,
+            profile=effective_profile or profile,
+            event_complexity={
+                "ambiguity": {"low": 0.1, "medium": 0.5, "high": 1.0}.get(interpretation.ambiguity_level, 0.5),
+                "risk": {"low": 0.1, "medium": 0.5, "high": 1.0}.get(interpretation.risk_level, 0.5),
+            },
+            source_refs=tuple(skill_affordance_summary.get("source_refs", []) or ()),
+        )
+        return envelope, policy
 
     def build_intent_plan(
         self,
@@ -135,6 +616,9 @@ class CharacterAgentL3Service:
         skill_affordance_summary: dict[str, object] | None = None,
         behavior_policy_snapshot: dict[str, object] | None = None,
         turn_context: CharacterTurnContext | None = None,
+        frame: CharacterMindFrame | None = None,
+        capability_envelope: dict[str, object] | None = None,
+        cognition_policy: dict[str, object] | None = None,
     ) -> PreparedCharacterIntentPlan:
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
@@ -220,34 +704,103 @@ class CharacterAgentL3Service:
             working_memory_state=normalized_working_memory_state,
             current_goal_state=normalized_current_goal_state,
         )
+        normalized_skill_affordance_summary = self._normalize_mapping(skill_affordance_summary)
+        normalized_skill_affordance_summary.pop("registry", None)
+        if capability_envelope is not None or cognition_policy is not None:
+            if capability_envelope is None or cognition_policy is None or turn_context is None:
+                raise ValueError("cognition_contract_pair_required")
+            capability_envelope = CapabilityEnvelope.model_validate(capability_envelope)
+            cognition_policy = CognitionPolicy.model_validate(cognition_policy)
+            cognition_policy.validate_envelope(
+                capability_envelope, actor_id=interpretation.actor_id, turn_id=turn_context.turn_id,
+                turn_actor_id=turn_context.actor_id, policy_revision=turn_context.policy_revision,
+                source_event_ref=turn_context.source_event_ref,
+            )
+        else:
+            capability_envelope, cognition_policy = self._compile_capability_contracts(
+                interpretation=interpretation,
+                actor_id=interpretation.actor_id,
+                turn_context=turn_context,
+                profile=normalized_profile,
+                effective_profile=normalized_effective_profile,
+                snapshot=normalized_snapshot,
+                dynamic_state=normalized_dynamic_state,
+                skill_affordance_summary=normalized_skill_affordance_summary,
+            )
+        candidate_intents = self._generate_candidates(interpretation, control_mode)
+        if behavior_policy:
+            candidate_intents = self._apply_behavior_policy(
+                candidate_intents,
+                behavior_policy,
+                local_affordances=candidate_intents,
+            )
+        candidate_records = self._candidate_records(
+            intents=candidate_intents,
+            interpretation=interpretation,
+            snapshot=normalized_snapshot,
+            envelope=capability_envelope,
+            policy=cognition_policy,
+            frame=frame,
+            skill_affordance_summary=normalized_skill_affordance_summary,
+        )
+        compilation = CandidateCompiler().compile(
+            candidates=candidate_records,
+            envelope=capability_envelope,
+            policy=cognition_policy,
+            visible_targets=set(
+                str(item) for item in normalized_snapshot.get("visible_target_refs", [])
+                if str(item or "")
+            ) if isinstance(normalized_snapshot.get("visible_target_refs", []), list) else None,
+        )
+        frozen_candidate_intents = compilation.wire_labels
+        candidate_mapping = compilation.by_wire_label
+        laya_route = bool(os.getenv("CHARACTER_LAYA_ENDPOINT", "").strip())
+        request_context = {
+            "actor_id": interpretation.actor_id,
+            "control_mode": control_mode,
+            "interpretation": interpretation.model_dump(),
+            "profile": normalized_profile,
+            "effective_profile": normalized_effective_profile,
+            "need_tension_state": normalized_need_tension_state,
+            "dynamic_state": normalized_dynamic_state,
+            "snapshot": normalized_snapshot,
+            "memory": recall.memory,
+            "memory_recall": recall.metadata,
+            **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
+            **({"semantic_cards": [card.to_payload() for card in semantic_recall.cards]} if semantic_recall is not None else {}),
+            "verification": verification,
+            "behavior_policy": behavior_policy,
+            "working_memory_state": normalized_working_memory_state,
+            "active_goal_tags": context_goal_tags,
+            "active_goal_frame": context_goal_frame.model_dump(),
+            "current_goal_state": normalized_current_goal_state,
+            "goal_state_history": normalized_goal_state_history,
+            "supervision_state": normalized_supervision_state,
+            "unresolved_tensions": normalized_unresolved_tensions,
+            "background_agenda_state": normalized_background_agenda_state,
+            "skill_affordance_summary": normalized_skill_affordance_summary,
+            "candidate_intents": frozen_candidate_intents,
+            "frozen_candidates": compilation.presented,
+            "candidate_mapping": candidate_mapping,
+            "candidate_universe": compilation.universe,
+            "candidate_pruned": compilation.pruned,
+            "candidate_diagnostics": compilation.diagnostics,
+            "candidate_digest": compilation.digest,
+            "capability_envelope": capability_envelope.model_dump(mode="json"),
+            "cognition_policy": cognition_policy.model_dump(mode="json"),
+            **({"frame": frame} if frame is not None else {}),
+        }
+        if laya_route:
+            request_context["provider_revision"] = LayaSystemOneProvider.PROVIDER_REVISION
+            max_len = os.getenv("CHARACTER_LAYA_INPUT_MAX_LEN", "").strip()
+            if max_len:
+                request_context.update(input_budget_required=True, max_len=int(max_len),
+                                       head_max_len=LayaSystemOneProvider.OPTION_HEAD_MAX_LEN)
         request = self._gateway.prepare_run_request(
             task_kind="l3_planning",
+            route_override=("laya" if laya_route else None),
             prepared_recall=recall,
-            context={
-                "actor_id": interpretation.actor_id,
-                "control_mode": control_mode,
-                "interpretation": interpretation.model_dump(),
-                "profile": normalized_profile,
-                "effective_profile": normalized_effective_profile,
-                "need_tension_state": normalized_need_tension_state,
-                "dynamic_state": normalized_dynamic_state,
-                "snapshot": normalized_snapshot,
-                "memory": recall.memory,
-                "memory_recall": recall.metadata,
-                **({"semantic_recall": semantic_recall.metadata} if semantic_recall is not None else {}),
-                **({"semantic_cards": [card.to_payload() for card in semantic_recall.cards]} if semantic_recall is not None else {}),
-                "verification": verification,
-                "behavior_policy": behavior_policy,
-                "working_memory_state": normalized_working_memory_state,
-                "active_goal_tags": context_goal_tags,
-                "active_goal_frame": context_goal_frame.model_dump(),
-                "current_goal_state": normalized_current_goal_state,
-                "goal_state_history": normalized_goal_state_history,
-                "supervision_state": normalized_supervision_state,
-                "unresolved_tensions": normalized_unresolved_tensions,
-                "background_agenda_state": normalized_background_agenda_state,
-                "skill_affordance_summary": normalized_skill_affordance_summary,
-            },
+            context=request_context,
         )
         return PreparedCharacterIntentPlan(
             snapshot=deepcopy(normalized_snapshot),
@@ -265,6 +818,11 @@ class CharacterAgentL3Service:
             local_active_goal_tags=deepcopy(local_active_goal_tags),
             active_goal_frame=deepcopy(active_goal_frame),
             memory_recall=deepcopy(recall.metadata),
+            frozen_candidates=deepcopy(compilation.presented),
+            candidate_mapping=deepcopy(candidate_mapping),
+            candidate_digest=compilation.digest,
+            capability_envelope=capability_envelope.model_dump(mode="json"),
+            cognition_policy=cognition_policy.model_dump(mode="json"),
         )
 
     def finish_intent_plan(
@@ -295,15 +853,38 @@ class CharacterAgentL3Service:
         local_active_goal_tags = prepared.local_active_goal_tags
         active_goal_frame = prepared.active_goal_frame
         local_affordances = self._generate_candidates(interpretation, control_mode)
+        candidate_mapping = deepcopy(prepared.candidate_mapping)
+        frozen_labels = list(candidate_mapping)
+        strict_mapping = bool(str(model_output.get("candidate_digest", "") or "")) or bool(model_output.get("laya_evidence"))
+        if strict_mapping:
+            self._validate_frozen_choice_output(
+                prepared=prepared,
+                output=model_output,
+                candidate_mapping=candidate_mapping,
+            )
         candidates = self._model_owned_candidates(
             model_candidates=model_output.get("candidate_intents", []),
-            local_affordances=local_affordances,
+            local_affordances=(frozen_labels if strict_mapping else local_affordances) or local_affordances,
         )
         candidates = self._apply_behavior_policy(
             candidates,
             behavior_policy,
-            local_affordances=local_affordances,
+            local_affordances=(frozen_labels if strict_mapping else local_affordances) or local_affordances,
         )
+        if not strict_mapping:
+            for candidate in candidates:
+                candidate_mapping.setdefault(candidate, {
+                    "candidate_id": candidate,
+                    "wire_label": candidate,
+                    "semantic_intent_id": candidate,
+                    "semantic_action_id": self._candidate_semantic_action(candidate),
+                    "target_refs": {},
+                    "target_visibility": "none",
+                    "target_provenance": [],
+                    "affordance_result": {"status": "compatibility_only", "reason": "legacy_gateway"},
+                    "owner_route": "",
+                    "revision_pins": {},
+                })
         active_goal_tags = self._model_owned_active_goal_tags(
             model_goal_tags=model_output.get("active_goal_tags", []),
             fallback_goal_tags=local_active_goal_tags,
@@ -314,7 +895,7 @@ class CharacterAgentL3Service:
         )
         filter_results = [
             self._score_candidate(
-                candidate,
+                str(candidate_mapping.get(candidate, {}).get("semantic_intent_id", candidate) or candidate),
                 interpretation,
                 snapshot=normalized_snapshot,
                 memory_bundle=recalled_memory_bundle,
@@ -328,6 +909,12 @@ class CharacterAgentL3Service:
             )
             for candidate in candidates
         ]
+        for label, result in zip(candidates, filter_results):
+            result["candidate"] = label
+            if label in candidate_mapping:
+                result["candidate_id"] = candidate_mapping[label].get("candidate_id", label)
+                result["semantic_action_id"] = candidate_mapping[label].get("semantic_action_id", "")
+                result["target_refs"] = candidate_mapping[label].get("target_refs", {})
         return {
             "actor_id": interpretation.actor_id,
             "control_mode": control_mode,
@@ -339,7 +926,54 @@ class CharacterAgentL3Service:
             "memory_recall": prepared.memory_recall,
             "verification": verification,
             "behavior_policy": behavior_policy,
+            "frozen_candidates": deepcopy(prepared.frozen_candidates),
+            "candidate_mapping": candidate_mapping,
+            "candidate_digest": prepared.candidate_digest,
+            "capability_envelope": deepcopy(prepared.capability_envelope),
+            "cognition_policy": deepcopy(prepared.cognition_policy),
         }
+
+    @staticmethod
+    def _validate_frozen_choice_output(
+        *,
+        prepared: PreparedCharacterIntentPlan,
+        output: dict[str, object],
+        candidate_mapping: dict[str, dict[str, object]],
+    ) -> None:
+        labels = output.get("candidate_intents", [])
+        if not isinstance(labels, list):
+            raise ValueError("l3 candidate labels are invalid")
+        labels = [str(item).strip() for item in labels if str(item).strip()]
+        if len(labels) != len(set(labels)):
+            raise ValueError("l3 candidate labels must be unique")
+        if any(label not in candidate_mapping for label in labels):
+            raise ValueError("l3 choice is not in frozen candidate mapping")
+        selected = str(output.get("selected_intent", "") or "").strip()
+        if selected not in candidate_mapping:
+            raise ValueError("l3 choice is not in frozen candidate mapping")
+        recommended = output.get("recommended_intents", [])
+        if isinstance(recommended, list) and any(str(item) not in candidate_mapping for item in recommended):
+            raise ValueError("l3 recommended choice is not in frozen candidate mapping")
+        output_digest = str(output.get("candidate_digest", "") or "")
+        if output_digest and output_digest != prepared.candidate_digest:
+            raise ValueError("l3 candidate revision is stale")
+        for label in {selected, *labels}:
+            record = candidate_mapping.get(label)
+            if not isinstance(record, dict):
+                raise ValueError("l3 candidate mapping is invalid")
+            diagnosis = record.get("diagnosis")
+            if isinstance(diagnosis, dict) and str(diagnosis.get("status", "") or "") in {"blocked", "unknown"}:
+                raise ValueError("l3 candidate is blocked")
+            visibility = str(record.get("target_visibility", "none") or "none")
+            if record.get("target_refs") and visibility not in {"visible", "none"}:
+                raise ValueError("l3 target is invalid")
+            pins = record.get("revision_pins", {})
+            if not isinstance(pins, dict):
+                raise ValueError("l3 candidate revision pins are invalid")
+            if pins.get("envelope_digest") and pins.get("envelope_digest") != prepared.capability_envelope.get("envelope_digest"):
+                raise ValueError("l3 candidate envelope revision is stale")
+            if pins.get("policy_digest") and pins.get("policy_digest") != prepared.cognition_policy.get("policy_digest"):
+                raise ValueError("l3 candidate policy revision is stale")
 
     def select_intent(
         self,
@@ -402,6 +1036,15 @@ class CharacterAgentL3Service:
             raise ValueError("model planning did not produce a locally valid candidate")
         selected_result = self._filter_result_for_candidate(plan["filter_results"], chosen_candidate)
         gain_loss_score = float(selected_result.get("gain_loss_score", 0.0) or 0.0) if selected_result else 0.0
+        selected_record = plan.get("candidate_mapping", {}).get(chosen_candidate, {}) if isinstance(plan.get("candidate_mapping", {}), dict) else {}
+        selected_record = selected_record if isinstance(selected_record, dict) else {}
+        target_refs = selected_record.get("target_refs", {})
+        if isinstance(target_refs, dict):
+            target_refs = [str(value) for value in target_refs.values() if str(value or "")]
+        elif isinstance(target_refs, list):
+            target_refs = [str(value) for value in target_refs if str(value or "")]
+        else:
+            target_refs = []
         active_goal_frame = plan.get("active_goal_frame", {})
         typed_active_goal_frame = CharacterActiveGoalFrame(
             primary_goal=str(active_goal_frame.get("primary_goal", "") or ""),
@@ -420,7 +1063,7 @@ class CharacterAgentL3Service:
         )
         return CharacterIntentDecision(
             actor_id=interpretation.actor_id,
-            selected_intent=self._map_candidate_to_intent(chosen_candidate),
+            selected_intent=self._map_candidate_to_intent(str(selected_record.get("semantic_intent_id", chosen_candidate) or chosen_candidate)),
             persona_passed=bool(selected_result and selected_result.get("persona_passed")),
             logic_passed=bool(selected_result and selected_result.get("logic_passed")),
             gain_loss_passed=gain_loss_score >= 0.5,
@@ -436,6 +1079,12 @@ class CharacterAgentL3Service:
             active_goal_frame=typed_active_goal_frame,
             planning_status=planning_status if planning_status in {"model", "continuity_floor"} else "model",
             fallback_mode=fallback_mode,
+            semantic_action_id=str(selected_record.get("semantic_action_id", "") or "") or None,
+            target_refs=target_refs,
+            candidate_id=str(selected_record.get("candidate_id", chosen_candidate) or chosen_candidate),
+            candidate_digest=str(plan.get("candidate_digest", "") or "") or None,
+            candidate_revision_pins=dict(selected_record.get("revision_pins", {})) if isinstance(selected_record.get("revision_pins", {}), dict) else {},
+            owner_route=str(selected_record.get("owner_route", "") or ""),
         )
 
     def build_suggestion_packet(
