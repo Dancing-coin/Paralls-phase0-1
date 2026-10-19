@@ -5,6 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from app.world_runtime.embodied_spatial_source import EmbodiedSpatialScope
+
 
 SimingLlmProviderName = Literal["disabled", "openai_responses", "deepseek_chat", "seed_doubao", "qwen"]
 SimingHeavenlyMode = Literal["off", "shadow", "active"]
@@ -122,6 +124,7 @@ class Settings(BaseModel):
     gameplay_mirror_trusted_local_launch_profiles: list[GameplayMirrorTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
     gameplay_mirror_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     embodied_controller_trusted_local_launch_profiles: list[EmbodiedControllerTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
+    embodied_spatial_scopes: list[EmbodiedSpatialScope] = Field(default_factory=list)
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     world_admin_credentials: list[WorldAdminCredentialSettings] = Field(default_factory=list, repr=False, exclude=True)
     gameplay_mirror_projection_queue_capacity: int = Field(default=160, ge=1, le=1024)
@@ -335,6 +338,8 @@ settings = Settings(
         for item in _env_object_list("EMBODIED_CONTROLLER_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON")
     ],
     embodied_controller_launcher_bootstrap_secret=_env_optional("EMBODIED_CONTROLLER_LAUNCHER_BOOTSTRAP_SECRET"),
+    embodied_spatial_scopes=[EmbodiedSpatialScope.model_validate(item)
+                             for item in _env_object_list("EMBODIED_SPATIAL_SCOPES_JSON")],
     world_admin_credentials=[WorldAdminCredentialSettings.model_validate(item)
                              for item in _env_object_list("WORLD_ADMIN_CREDENTIALS_JSON")],
     gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "160") or "160"),

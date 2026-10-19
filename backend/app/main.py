@@ -113,6 +113,7 @@ from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.conversation_relation_service import ConversationRelationService
 from app.services.esm_service import ESMService
 from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService, EmbodiedControllerEnrollment
+from app.world_runtime.embodied_spatial_source import EmbodiedSpatialSample, EmbodiedSpatialSource
 from app.services.embodied_execution_ingress import (
     EmbodiedExecutionIngress,
     EmbodiedRealizationRouteGate,
@@ -1166,6 +1167,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global l1_perception_bridge
     global interaction_orchestration_service
     global embodied_controller_auth_service
+    global embodied_spatial_source
     global embodied_controller_trusted_local_enrollment_issuer
     global embodied_controller_launcher_bootstrap_secret
     global websocket_session_auth_service
@@ -1290,6 +1292,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         harness_trace=harness_execution_trace,
     )
     embodied_controller_auth_service = EmbodiedControllerAuthService()
+    embodied_spatial_source = EmbodiedSpatialSource(
+        store=gameplay_event_store, auth=embodied_controller_auth_service,
+        scopes=settings.embodied_spatial_scopes,
+    )
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
@@ -2590,6 +2596,7 @@ def _dialogue_connection_envelope(envelope_json: str, context: WebSocketConnecti
 
 def _disconnect_dialogue_connection(coordinator, context):
     coordinator.disconnect(context.connection_ref)
+    embodied_controller_auth_service.disconnect_connection(context.connection_ref)
     _cognition_output_routes.disconnect(context.connection_ref)
     _cancel_transport_cognition(context.connection_ref)
     if context.binding is not None:
@@ -3912,6 +3919,22 @@ def _handle_envelope(
 
     if envelope.message_type == "embodied_grab_carry_place_probe":
         return _handle_embodied_grab_carry_place_probe(envelope)
+
+    if envelope.message_type == "embodied_spatial_sample":
+        try:
+            sample = EmbodiedSpatialSample.model_validate(envelope.payload)
+            receipt = embodied_spatial_source.accept(sample, connection_ref=connection_context.connection_ref)
+        except ValidationError as exc:
+            return [_as_envelope("embodied_spatial_sample_result", {
+                "accepted": False, "error_code": f"invalid_payload:{exc.errors()[0]['type']}",
+            })]
+        except ValueError as exc:
+            return [_as_envelope("embodied_spatial_sample_result", {
+                "accepted": False, "error_code": str(exc),
+            })]
+        return [_as_envelope("embodied_spatial_sample_result", {
+            "accepted": bool(receipt.committed), "receipt": receipt.model_dump(mode="json"),
+        })]
 
     if envelope.message_type == "embodied_controller_bind":
         try:
