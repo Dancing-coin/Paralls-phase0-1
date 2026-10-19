@@ -692,6 +692,7 @@ class CharacterAgentRuntime:
                 },
             )
             return []
+        cognition_contract = self._freeze_turn_cognition_contract(event.actor_id, snapshot, turn)
         interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -712,6 +713,8 @@ class CharacterAgentRuntime:
                 effective_profile=effective_profile,
                 need_tension_state=need_tension_state,
                 turn_context=turn,
+                capability_envelope=cognition_contract["capability_envelope"],
+                cognition_policy=cognition_contract["cognition_policy"],
             ),
         )
         turn = self._turn_coordinator.append_stage(
@@ -780,6 +783,8 @@ class CharacterAgentRuntime:
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
                 behavior_policy_snapshot=behavior_policy_snapshot,
                 turn_context=turn,
+                capability_envelope=cognition_contract["capability_envelope"],
+                cognition_policy=cognition_contract["cognition_policy"],
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -1093,6 +1098,7 @@ class CharacterAgentRuntime:
                 },
             )
             return []
+        cognition_contract = self._freeze_turn_cognition_contract(event.actor_id, snapshot, turn)
         interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=event.actor_id,
             producer_ts=event.producer_ts,
@@ -1111,6 +1117,8 @@ class CharacterAgentRuntime:
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 turn_context=turn,
+                capability_envelope=cognition_contract["capability_envelope"],
+                cognition_policy=cognition_contract["cognition_policy"],
             ),
         )
         turn = self._turn_coordinator.append_stage(
@@ -1167,6 +1175,8 @@ class CharacterAgentRuntime:
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
                 behavior_policy_snapshot=behavior_policy_snapshot,
                 turn_context=turn,
+                capability_envelope=cognition_contract["capability_envelope"],
+                cognition_policy=cognition_contract["cognition_policy"],
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -1320,6 +1330,32 @@ class CharacterAgentRuntime:
         if 'l2_profile' in plan['after']:
             self._l2._profile_cache[actor_id] = deepcopy(plan['after']['l2_profile'])
 
+    def _freeze_turn_cognition_contract(self, actor_id, snapshot, turn, *, effective_profile=None):
+        from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+        from app.character_agent.cognition.cognition_policy import CognitionPolicy
+        if effective_profile is None:
+            effective_profile = self._effective_profile_payload(actor_id)
+        stable = self._skill_service.compile_stable_snapshot(
+            actor_id=actor_id,
+            skill_states=self._skill_service.initial_skill_states(actor_id=actor_id, profile=effective_profile),
+            source_refs=[turn.source_event_ref, *snapshot.recent_perception_source_lineage],
+        )
+        envelope = CapabilityEnvelope.compile(
+            actor_id=actor_id, turn_id=turn.turn_id, profile=effective_profile,
+            stable_snapshot=stable, dynamic_state=self.get_dynamic_state(actor_id),
+            source_refs=tuple(stable.source_refs),
+            revision_pins={'policy_revision': turn.policy_revision},
+        )
+        policy = CognitionPolicy.resolve(
+            envelope=envelope, profile=effective_profile,
+            event_complexity={'ambiguity': 1.0 - snapshot.certainty_score},
+            source_refs=tuple(stable.source_refs),
+        )
+        return dict(effective_profile=effective_profile,
+            stable_ability_snapshot=stable.model_dump(mode='json'),
+            capability_envelope=envelope.model_dump(mode='json'),
+            cognition_policy=policy.model_dump(mode='json'))
+
     def _prepare_siming_l2_request(self, snapshot, payload, context, *, memory_override=None):
         request_context = {key: value for key, value in context.items() if key != 'stable_ability_snapshot'}
         return self._l2.prepare_siming_output(snapshot, payload,
@@ -1335,30 +1371,8 @@ class CharacterAgentRuntime:
             supervision_state=self.get_supervision_state(actor_id), unresolved_tensions=self.get_unresolved_tensions(actor_id),
             background_agenda_state=self.get_background_agenda_state(actor_id))
         if frame['source_kind'] == 'ingest_siming_output':
-            from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
-            from app.character_agent.cognition.cognition_policy import CognitionPolicy
             turn = self._durable_cognition_turn_context(frame)
-            effective_profile = self._effective_profile_payload(actor_id)
-            stable = self._skill_service.compile_stable_snapshot(
-                actor_id=actor_id,
-                skill_states=self._skill_service.initial_skill_states(actor_id=actor_id, profile=effective_profile),
-                source_refs=[turn.source_event_ref, *snapshot.recent_perception_source_lineage],
-            )
-            envelope = CapabilityEnvelope.compile(
-                actor_id=actor_id, turn_id=turn.turn_id, profile=effective_profile,
-                stable_snapshot=stable, dynamic_state=self.get_dynamic_state(actor_id),
-                source_refs=tuple(stable.source_refs),
-                revision_pins={'policy_revision': turn.policy_revision},
-            )
-            policy = CognitionPolicy.resolve(
-                envelope=envelope, profile=effective_profile,
-                event_complexity={'ambiguity': 1.0 - snapshot.certainty_score},
-                source_refs=tuple(stable.source_refs),
-            )
-            context.update(turn_context=turn, effective_profile=effective_profile,
-                stable_ability_snapshot=stable.model_dump(mode='json'),
-                capability_envelope=envelope.model_dump(mode='json'),
-                cognition_policy=policy.model_dump(mode='json'))
+            context.update(turn_context=turn, **self._freeze_turn_cognition_contract(actor_id, snapshot, turn))
         if frame['source_kind'] == 'run_background_cognition_tick':
             background = self._background_reappraisal_payload(actor_id=actor_id, producer_ts=frame['producer_ts'],
                 snapshot=snapshot, current_goal_state=context['current_goal_state'],
@@ -1527,6 +1541,16 @@ class CharacterAgentRuntime:
                     "pressure_hint": str(normalized_payload.get("pressure_hint", "") or ""),
                 },
             )
+        turn = self._begin_canonical_turn(
+            actor_id=actor_id,
+            source_event_ref=str(normalized_payload.get("message_id", "") or ""),
+            producer_ts=producer_ts,
+            causation_id=str(normalized_payload.get("causation_id", "") or ""),
+            correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
+        )
+        if "execution" in turn.stage_refs:
+            return []
+        cognition_contract = self._freeze_turn_cognition_contract(actor_id, snapshot, turn)
         interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -1537,18 +1561,10 @@ class CharacterAgentRuntime:
                 dict(memory_bundle=memory_record_bundle, control_mode=self.get_control_mode(actor_id),
                     working_memory_state=working_memory_state, current_goal_state=current_goal_state,
                     goal_state_history=goal_state_history, supervision_state=supervision_state,
-                    unresolved_tensions=unresolved_tensions, background_agenda_state=self.get_background_agenda_state(actor_id)),
+                    unresolved_tensions=unresolved_tensions, background_agenda_state=self.get_background_agenda_state(actor_id),
+                    turn_context=turn, **{key: value for key, value in cognition_contract.items() if key != "stable_ability_snapshot"}),
                 memory_override=memory_override),
         )
-        turn = self._begin_canonical_turn(
-            actor_id=actor_id,
-            source_event_ref=str(normalized_payload.get("message_id", "") or ""),
-            producer_ts=producer_ts,
-            causation_id=str(normalized_payload.get("causation_id", "") or ""),
-            correlation_id=str(normalized_payload.get("correlation_id", "") or ""),
-        )
-        if "execution" in turn.stage_refs:
-            return []
         turn = self._turn_coordinator.append_stage(
             context=turn,
             stage="context",
@@ -1603,7 +1619,9 @@ class CharacterAgentRuntime:
                 actor_id, snapshot, interpretation,
                 dict(memory_bundle=memory_record_bundle, working_memory_state=working_memory_state,
                     current_goal_state=current_goal_state, goal_state_history=goal_state_history,
-                    supervision_state=supervision_state, unresolved_tensions=unresolved_tensions),
+                    supervision_state=supervision_state, unresolved_tensions=unresolved_tensions,
+                    background_agenda_state=self.get_background_agenda_state(actor_id),
+                    turn_context=turn, **cognition_contract),
                 memory_override=memory_override),
         )
         self._consume_behavior_policy_for_turn(
