@@ -38,7 +38,7 @@
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 正式运行配置冻结、同 request usage/pins，超预算明确失败；不能靠静默截断解决 |
 | R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
-| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现 | stable ability、CapabilityEnvelope、CognitionPolicy、L3 gate | 同源 envelope/policy 进入 L2/L3/dialogue/recall，绑定 turn/frame/revision；L2 尚未消费 L3 编译合同，不能虚构 profile 认知差异 |
+| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn | direct/background 尚待对齐；dialogue/recall 硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 未实现（生产闭环）；adapter 合同已有 | `l4_adapter.py::admit_execution_contract/build_action_attempt/accept_execution_feedback` | 三方法当前未被 main/runtime 调用。先接无需物理造证的真实领域纵切；再以真实 physics 接近战。执行成功必须有 domain owner receipt |
 | R09 中断／恢复／回放 | 未验证（端到端） | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
@@ -85,7 +85,7 @@
 - `fac6a634`：私有视觉身份/source/catalog、scope 清空、只读 ESM inspect 投影及生产 reset 接线；独立测试 3 passed。12 文件 170 passed 的组合证据为 run `1c29eb21a796483aac675bc7433bc1fa`，目录 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/target-focused/`；cleanup passed。
 - 执行投影修复：冻结 choice 的 target、candidate identity/owner route、owner digest、target revision、room/scene/zone 保持到 L4；`inspect_object`＋`action:inspect`映射到注册的 `interact/inspect`，ActionRequest 与 InteractIntent 共享冻结 scope。暂存隔离测试 4 passed（run `b2b503f2b1a94580815bb3724b32b3f3`）；组合回归 75 passed（run `0a932502a9dd40c794b41b9c8127f209`，之后仅增加来源断言与不同 attention 参数）；backend-contract 静态门禁 passed（run `28cedfd8828843cf96e9ab286b281b4a`）。证据分别在同一外部根的 `inspect-staged-unit/`、`inspect-projection-corrected/`、`inspect-backend-contract/`，cleanup passed。
 - 独立审查发现暂存版本漏带 candidate identity/owner/target revision，已补齐并由隔离测试核验。第一次隔离尝试的既有集成用例缺少文档夹具；第二次扩大夹具复制遇到 Windows 长路径，导出失败。只清理了本轮隔离副本与失败导出中的副本；后续只隔离所需四项单元用例，未将失败集成用例计为通过。
-- R05仍为 inspect 输入切片；R06同源能力尚未覆盖生产 L2。R07无真实 Laya 原动作证据；R08仍缺生产执行准入、实时 owner 重验、领域实际提交与 durable receipt。当前 canonical character interact 路径只 resolve/发布 accepted，不能当成 player interact 路径中的 object transition/commit，更不能据此关闭 R08。
+- R05仍为 inspect 输入切片；R06现已覆盖 durable Siming 的 L2/L3 同源合同；direct/background/dialogue/recall 仍缺。R07无真实 Laya 原动作证据；R08仍缺生产执行准入、实时 owner 重验、领域实际提交与 durable receipt。当前 canonical character interact 路径只 resolve/发布 accepted，不能当成 player interact 路径中的 object transition/commit，更不能据此关闭 R08。
 - 未运行全量 pytest/Harness all、真实模型或 Godot；历史 `.harness/verification` 与用户其余 dirty 保留。
 
 ## 执行顺序
@@ -96,3 +96,13 @@
 4. 交错收口 D03–D11、R10–R14；不重复建设已有能力；各 owner 一旦正式准入就加入共同 cut。
 5. Q01–Q04：有来源的完整动作/目标开发归因→新 calibration→预算阈值冻结→独立 final/holdout；训练仅经有证据方案单独处理。
 6. 后端四组矩阵条件满足后，集中 G-A→G-B→G-C；到此才考虑最终必须的扩大验证，并先说明与用户禁止无意义全量运行的关系。
+
+## 本轮共享认知合同进展
+
+- `2d420aae`：整理并提交稳定技能投影与包络/策略基础；`84f3e668`：提交既有候选编译/Laya 适配基础及 durable Siming 的生产接线。角色、turn、policy revision、source event 和 pair pins 在 L2/L3 网关前共同校验，L4 沿用冻结 turn；旧版 L3 prepared frame 保持恢复兼容。
+- 暂存隔离验证：基础 9 passed / 8 deselected，run `d2390709db9640c5a371c9cd36389552`；接线 129 passed，run `96c67549533340c8830d374ba89ea3a8`。均使用 HEAD archive＋暂存后端＋HEAD 角色档案，未混入历史 mind projection 或执行 lifecycle 改动。
+- 第一次基础隔离缺少根目录角色档案，配置导入失败，run `936609250ce14ff798177d051e543f80`；随后按真实 loader 路径只补已提交档案，未扩大复制整个 docs。失败不计通过。
+- backend-contract 静态门禁 passed，run `855cb5ea59f74891b3ac795707e045e8`。上述证据在外部根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 的 `cognition-foundation-staged-corrected/`、`durable-cognition-staged/`、`durable-cognition-contract/`；cleanup 均 passed。
+- 后端：仅关闭 durable Siming 共享合同子项。模型质量：未运行真实评估、Q01–Q04未关闭。角色闭环：R07–R09仍缺真实原动作、owner提交/回执及端到端恢复。Godot：仍未修改、启动或验收。未跑全量 pytest/Harness all。
+
+- 文档门禁首次因计划文件未用 `-implementation-plan.md` 命名失败（run `6f03d94662194d9c8bb1a158b488e853`）；修正本轮计划名称及链接后 passed，run `8023305d1fd942ebbb991c60609dd9ed`，外部目录 `durable-cognition-docs-corrected/`，cleanup passed。本轮三个临时诊断日志经 run_scope 导出后删除。

@@ -47,4 +47,4 @@ flowchart TD
   G --> O["semantic contract; no world write"]
 ```
 
-Acceptance: real durable coordinator L2→L3 digest/turn equality; pending-stage reopening preserves exact contract; mismatched actor/turn/pair rejects without provider invocation or authority writes. Plan: [shared contract implementation](../plans/2026-10-20-durable-cognition-shared-contract-plan.md).
+Acceptance: real durable coordinator L2→L3 digest/turn equality; pending-stage reopening preserves exact contract; mismatched actor/turn/pair rejects without provider invocation or authority writes. Plan: [shared contract implementation](../plans/2026-10-20-durable-cognition-shared-contract-implementation-plan.md).
