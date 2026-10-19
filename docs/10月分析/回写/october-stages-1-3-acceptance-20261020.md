@@ -38,7 +38,7 @@
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 正式运行配置冻结、同 request usage/pins，超预算明确失败；不能靠静默截断解决 |
 | R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
-| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn | direct/background 尚待对齐；dialogue/recall 硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
+| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming 与三类同步入口同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn | background 尚待对齐；dialogue/recall 硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 未实现（生产闭环）；adapter 合同已有 | `l4_adapter.py::admit_execution_contract/build_action_attempt/accept_execution_feedback` | 三方法当前未被 main/runtime 调用。先接无需物理造证的真实领域纵切；再以真实 physics 接近战。执行成功必须有 domain owner receipt |
 | R09 中断／恢复／回放 | 未验证（端到端） | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
@@ -115,3 +115,10 @@
 - 原始日志、暂存 patch 和 manifest 分别在外部根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 的 `perceived-turn-recall-staged/`、`self-body-turn-recall-staged/`、`esm-readmission-staged/`；均 cleanup passed，临时 checkout 已回收。
 - 后端：本批补齐 ESM 执行时 policy/state/occupant 重验子项；ESM state 与 settlement cache 仍为内存，缺少 canonical 距离来源时仍不能计作正式动作提交。装备已有真实 durable owner，但调用权限目前绑定 controller，不能直接当角色授权；work intent 仅有合同与事件注册；SocialDelivery 的 delivery receipt 不证明 speech played/heard。R05/R08 保持局部实现，R07/R09 保持未验证。
 - 模型质量：本批未运行真实 Laya、calibration/final/holdout，Q01–Q04 未关闭。角色闭环：仍缺完整原动作→真实 owner→receipt→恢复回放。Godot：未修改、启动、操作或验收。没有运行全量 pytest/Harness all；用户历史修改与历史证据保留。
+
+## 三类同步入口共享合同回写
+
+- `19078684`：perceived、self-body、同步 Siming 在 L2 前冻结同一 turn 的 stable ability、CapabilityEnvelope 与 CognitionPolicy，L2/L3 复用一次编译结果；durable Siming 复用同一冻结方法。同步 Siming 同时补齐 L3 所需 background agenda context。turn 以类型对象传递，避免 mappingproxy JSON 序列化失败被 fallback 掩盖。
+- 精确暂存隔离四文件 95 passed，保留两条既有 mappingproxy serializer warnings；run `f462954ad3ca4669af07a4b511b61c30`，外部目录 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/direct-shared-contract-staged/`，含 staged patch、pytest.log 和 manifest，cleanup passed。测试 provider 是本地受控 gateway，不是实际 Laya 证据。
+- R06 仍局部实现：background/dialogue/recall 硬预算、canonical 可信输入与 memory revision 未完成；Task1 不关闭。R07–R09 未取得真实模型原动作、owner 提交/回执和端到端恢复证据。Q01–Q04 未关闭，Godot 未操作。
+- 上一文档批 docs gate passed/cleanup passed：run `47c5f01bc26546fabe42f9068b891408`，同外部根 `recall-readmission-docs/`。本批不重跑不受影响的后端验证，不运行全量 pytest/Harness all。
