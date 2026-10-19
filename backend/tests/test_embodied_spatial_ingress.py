@@ -88,3 +88,15 @@ def test_transport_disconnect_revokes_spatial_source(configured):
     context.connection_ref = "spatial:c"
     main._disconnect_dialogue_connection(SimpleNamespace(disconnect=lambda _: None), context)
     assert dispatch({**payload(binding), "physics_tick": 2})[0]["payload"]["accepted"] is False
+
+
+def test_network_binding_uses_backend_clock_not_payload_time(configured):
+    credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
+        actor_id="char_a", controller_instance_id="spatial:a", issued_at=100, expires_at=200)
+    context = WebSocketConnectionContext.direct_handler_compatibility()
+    context.connection_ref = "network:expired"
+    messages = main._handle_envelope(Envelope(message_type="embodied_controller_bind", payload={
+        "credential_kind": "trusted_local_launch", "credential": credential, "actor_id": "char_a",
+        "controller_instance_id": "spatial:a", "protocol_version": 1,
+    }), connection_context=context)
+    assert any(message["payload"].get("error_code") == "trusted_local_launch_expired" for message in messages)
