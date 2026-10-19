@@ -106,3 +106,12 @@
 - 后端：仅关闭 durable Siming 共享合同子项。模型质量：未运行真实评估、Q01–Q04未关闭。角色闭环：R07–R09仍缺真实原动作、owner提交/回执及端到端恢复。Godot：仍未修改、启动或验收。未跑全量 pytest/Harness all。
 
 - 文档门禁首次因计划文件未用 `-implementation-plan.md` 命名失败（run `6f03d94662194d9c8bb1a158b488e853`）；修正本轮计划名称及链接后 passed，run `8023305d1fd942ebbb991c60609dd9ed`，外部目录 `durable-cognition-docs-corrected/`，cleanup passed。本轮三个临时诊断日志经 run_scope 导出后删除。
+
+## 本轮召回入口与 authority 重验修复
+
+- `10de477f`：perceived-event wrapper 向 L2 传递已有 canonical turn；真实 semantic recall 的 cards/source/revision 进入请求，跨 actor turn 或私有 memory 拒绝。旧 L2 测试 profile stub 同步接受生产已有 JSON dump mode。精确暂存隔离 52 passed（run `e1026efc47b44046a81e8ed90a8896ff`）。
+- `4fa9d0ea`：self-body runtime 同样传递 canonical turn；真实 runtime→L2 recall 与相邻恢复回归精确暂存隔离 57 passed（run `609b59d7286b4b2ea1783702b438d13c`）。已有 mappingproxy serializer warnings 仍保留；不据此声明 direct/self-body 的 L2/L3 已共享包络或硬预算。
+- `055d5abf`：ESM 的直接执行入口复用既有 policy/state/occupant 检查；未注册对象、非法动作、状态变化及他人占用均拒绝，拒绝结果保留 canonical pins。请求与事件的 actor/scope/target/action 必须一致；canonical idempotency fingerprint 加入 room/scene/zone，拒绝跨场景重复键。12 个新增行为用例先 RED 后 GREEN；与既有 ESM/后果边界用例精确暂存隔离 52 passed（run `f5f7631c131041d9add2b9986391373d`）。工作树中另含 target projection 回归 67 passed，仅作组合兼容证据，不替代隔离结果。
+- 原始日志、暂存 patch 和 manifest 分别在外部根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 的 `perceived-turn-recall-staged/`、`self-body-turn-recall-staged/`、`esm-readmission-staged/`；均 cleanup passed，临时 checkout 已回收。
+- 后端：本批补齐 ESM 执行时 policy/state/occupant 重验子项；ESM state 与 settlement cache 仍为内存，缺少 canonical 距离来源时仍不能计作正式动作提交。装备已有真实 durable owner，但调用权限目前绑定 controller，不能直接当角色授权；work intent 仅有合同与事件注册；SocialDelivery 的 delivery receipt 不证明 speech played/heard。R05/R08 保持局部实现，R07/R09 保持未验证。
+- 模型质量：本批未运行真实 Laya、calibration/final/holdout，Q01–Q04 未关闭。角色闭环：仍缺完整原动作→真实 owner→receipt→恢复回放。Godot：未修改、启动、操作或验收。没有运行全量 pytest/Harness all；用户历史修改与历史证据保留。
