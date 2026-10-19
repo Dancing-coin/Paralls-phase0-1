@@ -122,3 +122,12 @@
 - 精确暂存隔离四文件 95 passed，保留两条既有 mappingproxy serializer warnings；run `f462954ad3ca4669af07a4b511b61c30`，外部目录 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/direct-shared-contract-staged/`，含 staged patch、pytest.log 和 manifest，cleanup passed。测试 provider 是本地受控 gateway，不是实际 Laya 证据。
 - R06 仍局部实现：background/dialogue/recall 硬预算、canonical 可信输入与 memory revision 未完成；Task1 不关闭。R07–R09 未取得真实模型原动作、owner 提交/回执和端到端恢复证据。Q01–Q04 未关闭，Godot 未操作。
 - 上一文档批 docs gate passed/cleanup passed：run `47c5f01bc26546fabe42f9068b891408`，同外部根 `recall-readmission-docs/`。本批不重跑不受影响的后端验证，不运行全量 pytest/Harness all。
+
+
+## ESM object-only owner 前置能力回写
+
+- `4a18a6f9`：原 ESM 增加显式 opt-in durable settlement，复用共享 GameplayEventStore。范围仅 `obj_plaque/inspect`、`obj_worktable/use/finish_use`；不表示生产、工资或工作完成。环境、body、physics 路由拒绝部分提交。请求/event 的身份、scope、动作、目标与 canonical pins 在原回执查询前绑定；有限坐标是 owner 前置条件，不证明到达或角色授权。
+- 写入先于状态投影；scope stream 与 caller read revisions 同批 CAS；exact retry 返回原 result/receipt；SQLite 重开恢复；durable 对象禁止旧内存提交入口绕账。显式事件注册支持 strict store。定向组合工作区 80 passed；精确暂存隔离 73 passed，run `368161ea887f43db890f67b12870cb19`，外部根下 `esm-object-owner-staged/` 含 patch、日志、manifest，cleanup passed。首轮 `6ff8b184002c486fb15e52a137fa6ce3` 测试通过但 pytest 临时链接阻止导出，未用作可留存验收证据；临时根已回收，修正临时数据清理后得到上述有效 run。
+- 后端：仅完成 R08 的 bounded owner 前置子项。R08 生产闭环仍未实现；不能把 caller 提供坐标当可信 spatial source。原 session 冻结合同可作为角色执行来源，但 session SQLite 与 world store 独立，不能虚报跨库原子；恢复必须查原 world owner receipt，再幂等补记角色侧。R09 仍端到端未验证。
+- 模型质量：未运行真实 Laya 或正式 calibration/final/holdout，Q01–Q04 不关闭。角色闭环：原动作→生产准入→owner→反馈及完整回放未验收。Godot：未修改、启动、操作或验证；最终需绑定真实空间来源并取得 A/B/C 可见结果。
+- 前一文档批 `8f85692` docs gate passed/cleanup passed：run `0fbe61ed9eee40b597721b837116605f`，同外部根 `direct-shared-contract-docs/`。本批未运行全量 pytest/Harness all；历史修改与历史证据保留。
