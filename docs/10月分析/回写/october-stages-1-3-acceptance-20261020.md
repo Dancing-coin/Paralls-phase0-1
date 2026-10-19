@@ -131,3 +131,13 @@
 - 后端：仅完成 R08 的 bounded owner 前置子项。R08 生产闭环仍未实现；不能把 caller 提供坐标当可信 spatial source。原 session 冻结合同可作为角色执行来源，但 session SQLite 与 world store 独立，不能虚报跨库原子；恢复必须查原 world owner receipt，再幂等补记角色侧。R09 仍端到端未验证。
 - 模型质量：未运行真实 Laya 或正式 calibration/final/holdout，Q01–Q04 不关闭。角色闭环：原动作→生产准入→owner→反馈及完整回放未验收。Godot：未修改、启动、操作或验证；最终需绑定真实空间来源并取得 A/B/C 可见结果。
 - 前一文档批 `8f85692` docs gate passed/cleanup passed：run `0fbe61ed9eee40b597721b837116605f`，同外部根 `direct-shared-contract-docs/`。本批未运行全量 pytest/Harness all；历史修改与历史证据保留。
+
+
+## 原 session 执行来源准入回写
+
+- `d13994bd`：生产 canonical execution ingress 在生成 ActionRequest、调用 owner 或记录 settlement 前，必须与原 actor session 的 `character_agent_execution_request` 完整合同一致。兼容同步直接合同与 durable plan 内合同两种既有存储形态；跨 actor、未记录合同、改写动作/目标/source/turn/revision/observation 均拒绝，同键冲突记录不能以第一条合法记录掩盖。只返回来源 event ref，不授予 world authority，不替代权限、时钟、空间及 owner 重验；legacy bundle 兼容入口仍存在。
+- 先得到 11 项 RED（包含生产入口错误接纳未记录合同），再修复。工作区两文件组合 38 passed；精确暂存隔离四文件 39 passed，run `c7c05088285f48449c7f8ea923dc34fe`，外部根下 `execution-source-staged-short/` 含 patch、日志、manifest，cleanup passed。四条既有 FastAPI lifecycle deprecation warnings 保留。backend-contract passed/cleanup passed，run `5ab8f46639db41faaf4f7dff299f7047`，目录 `execution-source-contract/`。
+- 首次扩大隔离运行 `280ae4dc8784414c99a90efdf2f19734` 为 7 failed / 64 passed：五项缺六个已提交的 production manifest 夹具；两项为 HEAD 已有失败。后一次补夹具时遇到 Windows 长路径，run `87e4a6c4c50d41d5a421f6854de4eace` 未运行测试；自有失败导出中的 checkout/tar 已清理。有效运行改用自有短路径 checkout，并只复制 registry 明列的六个 HEAD manifest，没有引入工作区历史修改。
+- 两项 HEAD 基线失败单独复现并保留 baseline.log：`test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_under_local_only_planner`（期望 observe_target，实际 physiology_hint）；`test_character_agent_runtime_feeds_previous_goal_portfolio_back_into_next_model_turn`（缺 execution target_ref）。本批不修改其历史混改；不能声称整个 runtime suite 通过。
+- 后端：关闭来源绑定子项，R08 生产完整闭环仍未实现；可信 spatial source、L4 实时准入、真实 owner receipt 与 session 补记仍待完成。角色 R07/R09、模型 Q01–Q04、最终 Godot G-A/B/C 状态均不升级。未运行全量 pytest/Harness all、真实模型或 Godot。
+- 前一文档批 `eaeda35` docs gate passed/cleanup passed，run `6fdffc0c5cae4eb095cd73eab159dffc`，同外部根 `esm-object-owner-docs/`。
