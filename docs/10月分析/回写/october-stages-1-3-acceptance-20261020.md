@@ -38,7 +38,7 @@
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 正式运行配置冻结、同 request usage/pins，超预算明确失败；不能靠静默截断解决 |
 | R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
-| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming 与三类同步入口同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn | background 尚待对齐；dialogue/recall 硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
+| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming 与三类同步入口同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background、dialogue、模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 未实现（生产闭环）；adapter 合同已有 | `l4_adapter.py::admit_execution_contract/build_action_attempt/accept_execution_feedback` | 三方法当前未被 main/runtime 调用。先接无需物理造证的真实领域纵切；再以真实 physics 接近战。执行成功必须有 domain owner receipt |
 | R09 中断／恢复／回放 | 未验证（端到端） | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
@@ -141,3 +141,12 @@
 - 两项 HEAD 基线失败单独复现并保留 baseline.log：`test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_under_local_only_planner`（期望 observe_target，实际 physiology_hint）；`test_character_agent_runtime_feeds_previous_goal_portfolio_back_into_next_model_turn`（缺 execution target_ref）。本批不修改其历史混改；不能声称整个 runtime suite 通过。
 - 后端：关闭来源绑定子项，R08 生产完整闭环仍未实现；可信 spatial source、L4 实时准入、真实 owner receipt 与 session 补记仍待完成。角色 R07/R09、模型 Q01–Q04、最终 Godot G-A/B/C 状态均不升级。未运行全量 pytest/Harness all、真实模型或 Godot。
 - 前一文档批 `eaeda35` docs gate passed/cleanup passed，run `6fdffc0c5cae4eb095cd73eab159dffc`，同外部根 `esm-object-owner-docs/`。
+
+
+## 冻结召回预算子项回写
+
+- `cdaff0a2`：冻结 policy 限制跨 memory pools 的总召回条数和既有 token 估算预算；strong/requirements 不能扩容。semantic cards 裁剪同时裁 memory，保留 omission；零预算不查询 graph。L3 在首次召回前冻结/校验 policy，使用 semantic 返回的裁剪后 memory；gateway 二次召回不能突破冻结上限。actor/turn 不一致拒绝。
+- 精确暂存五文件隔离 163 passed，10 条既有 mappingproxy serializer warnings；run `84939863833b47b7a4a95367f3806e2a`，外部根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/recall-budget-staged-corrected/` 含 patch、日志、manifest。backend-contract passed，run `c0948577424d45fd8d98015f5df71143`，同根 `recall-budget-contract/`；均 cleanup passed。
+- 初始 RED run `3e47dde6404646e9ba7cc62ae14d6a63`（10 failed），L3 RED `dff7558d9a4c49f580aea6c833565516`（2 failed）。扩大组合 run `09ff9274a4d947f39ef1bc8b500a6c55` 为 1 failed/140 passed：既有 strong-memory 测试依赖隐式扩容；改为 profile 显式冻结 2400 后维持原长记忆断言。run `261534c9ee5e420399eb812ec42d523d` 因清单含未提交历史测试文件而零测试，已纠正清单取得上述有效隔离结果；不计作通过。诊断目录分别为 `recall-budget-red/`、`recall-budget-l3-red/`、`recall-budget-layers/`、`recall-budget-staged/`，均已清理本轮临时副本。
+- R06/Task1 保持局部实现。这里使用既有 JSON 长度估算，不是实际 tokenizer 或整个 prompt 的硬预算；background、dialogue 和可信输入/memory revisions 仍待补齐。R07–R09 未升级：未运行真实 Laya、未打通生产 L4→owner receipt→恢复。Q01–Q04 与 Godot G-A/B/C 均未关闭，Godot 未操作。
+- 上一文档批 `ae613868` docs gate passed/cleanup passed，run `410e806999814d49b9ee1132183edf94`，同根 `execution-source-docs/`。本批未运行全量 pytest/Harness all，保留历史修改和证据。
