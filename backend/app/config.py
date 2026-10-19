@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 SimingLlmProviderName = Literal["disabled", "openai_responses", "deepseek_chat", "seed_doubao", "qwen"]
@@ -35,7 +35,26 @@ class EmbodiedControllerTrustedLocalLaunchProfileSettings(BaseModel):
     credential_ttl_seconds: int = Field(ge=1, le=300)
 
 
+class WorldAdminCredentialSettings(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
+    credential_ref: str = Field(min_length=1)
+    principal_ref: str = Field(min_length=1)
+    world_refs: tuple[str, ...] = Field(min_length=1)
+    secret: str = Field(min_length=32, repr=False, exclude=True)
+    expires_at: int = Field(ge=1, strict=True)
+
+    @field_validator("world_refs")
+    @classmethod
+    def validate_world_refs(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if any(not ref for ref in value) or len(set(value)) != len(value):
+            raise ValueError("world_admin_world_scope_invalid")
+        return value
+
+
 class Settings(BaseModel):
+    model_config = ConfigDict(hide_input_in_errors=True)
+
     dialogue_mode: str = "stub"
     tts_mode: Literal["stub", "openai_compatible", "dashscope_http"] = "stub"
     tts_provider_endpoint: str | None = None
@@ -104,6 +123,7 @@ class Settings(BaseModel):
     gameplay_mirror_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     embodied_controller_trusted_local_launch_profiles: list[EmbodiedControllerTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
+    world_admin_credentials: list[WorldAdminCredentialSettings] = Field(default_factory=list, repr=False, exclude=True)
     gameplay_mirror_projection_queue_capacity: int = Field(default=160, ge=1, le=1024)
     gameplay_mirror_control_queue_capacity: int = Field(default=8, ge=1, le=128)
     gameplay_mirror_dirty_actor_limit: int = Field(default=16, ge=1, le=128)
@@ -315,6 +335,8 @@ settings = Settings(
         for item in _env_object_list("EMBODIED_CONTROLLER_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON")
     ],
     embodied_controller_launcher_bootstrap_secret=_env_optional("EMBODIED_CONTROLLER_LAUNCHER_BOOTSTRAP_SECRET"),
+    world_admin_credentials=[WorldAdminCredentialSettings.model_validate(item)
+                             for item in _env_object_list("WORLD_ADMIN_CREDENTIALS_JSON")],
     gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "160") or "160"),
     gameplay_mirror_control_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_CONTROL_QUEUE_CAPACITY", "8") or "8"),
     gameplay_mirror_dirty_actor_limit=int(_env_value("GAMEPLAY_MIRROR_DIRTY_ACTOR_LIMIT", "16") or "16"),
