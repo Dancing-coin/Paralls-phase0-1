@@ -4406,6 +4406,14 @@ def _handle_envelope(
                     route="character_agent_execution_contract",
                     error=error,
                 )]
+            try:
+                character_agent_runtime.verify_recorded_execution_contract(execution_contract)
+            except ValueError as error:
+                return [_as_error_ack(
+                    source_type=envelope.message_type,
+                    route="character_agent_execution_source",
+                    error=error,
+                )]
             actor_id = execution_contract.actor_id
             requested_actions = [_semantic_action_from_execution_contract(execution_contract)]
             execution_payload = execution_contract.model_dump()

@@ -1928,6 +1928,36 @@ class CharacterAgentRuntime:
     def get_session_timeline(self, actor_id: str) -> list[dict[str, object]]:
         return self._session_timeline_after(actor_id, 0)
 
+    def verify_recorded_execution_contract(self, contract: CharacterExecutionContract) -> str:
+        """Bind ingress to the original session contract; this grants no world authority."""
+        actor_id = contract.actor_id
+        with self._session_store.transaction():
+            if actor_id in self._recovery_blocked_actor_ids:
+                raise ValueError("execution_recovery_required")
+            expected = contract.model_dump(mode="json")
+            source_event_id = ""
+            for event in self.get_session_timeline(actor_id):
+                if event.get("event_type") != "character_agent_execution_request":
+                    continue
+                payload = event.get("payload")
+                if not isinstance(payload, dict):
+                    continue
+                raw = payload.get("execution_contract", payload)
+                if not isinstance(raw, dict) or raw.get("idempotency_key") != contract.idempotency_key:
+                    continue
+                if event.get("actor_id") != actor_id:
+                    raise ValueError("execution_source_mismatch")
+                try:
+                    recorded = CharacterExecutionContract.model_validate(raw)
+                except ValueError as error:
+                    raise ValueError("execution_source_invalid") from error
+                if recorded.model_dump(mode="json") != expected:
+                    raise ValueError("execution_source_mismatch")
+                source_event_id = source_event_id or str(event["event_id"])
+            if not source_event_id:
+                raise ValueError("execution_source_missing")
+            return source_event_id
+
     def begin_embodied_episode(
         self,
         *,

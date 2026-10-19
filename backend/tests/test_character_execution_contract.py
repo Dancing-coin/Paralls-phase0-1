@@ -249,6 +249,7 @@ def test_contract_pins_reach_actual_settlement_result(
     semantic_action_id: str,
 ) -> None:
     from app.main import Envelope, _handle_envelope, reset_runtime_state
+    import app.main as main
 
     reset_runtime_state()
     contract = _valid_contract(
@@ -259,6 +260,10 @@ def test_contract_pins_reach_actual_settlement_result(
         expected_observation={"requested_action": requested_action},
     )
 
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10,
+        payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
+    )
     messages = _handle_envelope(
         Envelope(message_type="character_agent_execution", payload=contract)
     )
@@ -330,6 +335,10 @@ def test_contract_pins_reach_social_dialogue_settlement(monkeypatch: pytest.Monk
         },
     )
 
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10,
+        payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
+    )
     messages = main._handle_envelope(
         main.Envelope(message_type="character_agent_execution", payload=contract)
     )
