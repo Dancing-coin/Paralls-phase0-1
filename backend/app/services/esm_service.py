@@ -1,5 +1,13 @@
 import hashlib
 import json
+import math
+from copy import copy
+from threading import RLock
+
+from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_schema_registry import EventSchemaRegistration
+from app.gameplay.models import AppendBatchResult
+from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch
 
 from app.contracts.l1.action_request import ActionRequest
 from app.models.environment_request import EnvironmentRequest
@@ -12,6 +20,11 @@ from app.models.world_result import (
     ConstraintStateResult,
     EnvironmentStateResult,
     ObjectStateResult,
+)
+
+
+ESM_OBJECT_SETTLEMENT_SCHEMA = EventSchemaRegistration(
+    "gameplay.esm.object_settled", 1, "sha256:esm:object-settled:v1",
 )
 
 
@@ -560,7 +573,8 @@ class ESMService:
         },
     }
 
-    def __init__(self, *, readable_records: dict[str, dict[str, object]] | None = None) -> None:
+    def __init__(self, *, readable_records: dict[str, dict[str, object]] | None = None,
+                 store: GameplayEventStore | None = None) -> None:
         self._readable_records = {} if readable_records is None else readable_records
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
         self._latest_environment_result: EnvironmentStateResult | None = None
@@ -576,6 +590,157 @@ class ESMService:
         self._canonical_interaction_settlements: dict[
             str, tuple[tuple[object, ...], ActionResolutionResult | ConstraintStateResult]
         ] = {}
+        self._object_store = store
+        self._object_lock = RLock()
+        self._object_revisions: dict[str, int] = {}
+        self._object_receipts: dict[str, tuple[str, ActionResolutionResult, AppendBatchResult]] = {}
+        self._restore_object_settlements()
+
+    _OBJECT_STREAM_PREFIX = "gameplay:esm:object:"
+    _OBJECT_PRINCIPAL = "authority:esm:object"
+    _OBJECT_EVENT = "gameplay.esm.object_settled"
+
+    @staticmethod
+    def _object_digest(value: object) -> str:
+        return "sha256:" + hashlib.sha256(json.dumps(
+            value, sort_keys=True, separators=(",", ":"), allow_nan=False,
+        ).encode("utf-8")).hexdigest()
+
+    @classmethod
+    def _object_stream(cls, scope: tuple[str, str, str, str]) -> str:
+        return cls._OBJECT_STREAM_PREFIX + cls._object_digest(scope)[7:]
+
+    def _restore_object_settlements(self) -> None:
+        if self._object_store is None:
+            return
+        for stream in sorted(self._object_store.get_stream_heads()):
+            if not stream.startswith(self._OBJECT_STREAM_PREFIX):
+                continue
+            for event in self._object_store.read_stream(
+                stream, from_revision=self._object_revisions.get(stream, 0) + 1,
+            ):
+                tx = self._object_store.get_transaction(event.transaction_id)
+                p = event.payload
+                try:
+                    request = ActionRequest.model_validate(p["request"])
+                    scope = (request.room_id, request.scene_id, request.zone_id, request.target_object_id)
+                    digest = self._object_digest(request.model_dump(mode="json"))
+                    result = ActionResolutionResult.model_validate(p["result"])
+                    receipt = self._object_store.get_by_idempotency(self._OBJECT_PRINCIPAL, request.idempotency_key)
+                    rebuilt = build_multi_stream_atomic_event_batch(
+                        command_id=event.command_id, principal_ref=self._OBJECT_PRINCIPAL,
+                        expected_revisions={stream: event.stream_revision - 1},
+                        event_specs={stream: ((self._OBJECT_EVENT, p),)},
+                        event_visibility_policies={stream: ("authority_only",)},
+                        idempotency_key=request.idempotency_key, causation_id=request.causation_id,
+                        correlation_id=request.correlation_id,
+                        read_stream_revisions=tx.read_stream_revisions if tx is not None else {},
+                    )
+                    rebuilt.events[0].stream_revision = event.stream_revision
+                    rebuilt.events[0].global_sequence = event.global_sequence
+                    if (tx != rebuilt or event != rebuilt.events[0] or not request.turn_id
+                            or not request.idempotency_key or stream != self._object_stream(scope)
+                            or event.stream_revision != self._object_revisions.get(stream, 0) + 1
+                            or p["request_digest"] != digest
+                            or result.settlement_status != "committed"
+                            or result.settlement_id != event.transaction_id
+                            or result.idempotency_key != request.idempotency_key
+                            or result.turn_id != request.turn_id
+                            or result.actor_id != request.actor_id
+                            or result.target_object_id != request.target_object_id
+                            or (result.room_id, result.scene_id, result.zone_id) != scope[:3]
+                            or receipt is None or not receipt.committed
+                            or receipt.transaction_id != event.transaction_id
+                            or receipt.command_id != event.command_id
+                            or receipt.committed_event_ids != [event.event_id]
+                            or receipt.resulting_stream_revisions != {stream: event.stream_revision}
+                            or receipt.global_sequence_range != (event.global_sequence, event.global_sequence)
+                            or request.idempotency_key in self._object_receipts
+                            or not isinstance(p["current_state"], str)):
+                        raise ValueError("object receipt invalid")
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise ValueError("esm_object_recovery_invalid") from exc
+                self._registered_interaction_states[scope] = p["current_state"]
+                self._object_revisions[stream] = event.stream_revision
+                self._object_receipts[request.idempotency_key] = (digest, result, receipt)
+
+    def settle_object_interaction(
+        self, event: InteractIntent, *, action_request: ActionRequest,
+        actor_position: tuple[float, float, float] | None,
+        read_stream_revisions: dict[str, int] | None = None,
+    ) -> tuple[ActionResolutionResult | ConstraintStateResult, AppendBatchResult | None]:
+        """Commit object-only effects. The internal caller owns source admission.
+
+        Supplied coordinates are not proof of arrival. Production callers must
+        establish range provenance and execution authorization before this API.
+        """
+        if self._object_store is None:
+            raise ValueError("esm_object_store_required")
+        request = action_request.model_copy(deep=True)
+        event = event.model_copy(deep=True)
+        reads = dict(read_stream_revisions or {})
+        if not all((request.turn_id, request.idempotency_key, request.room_id,
+                    request.scene_id, request.zone_id, request.actor_id)):
+            raise ValueError("esm_object_canonical_request_required")
+        expected = self.build_action_request(event)
+        bound_fields = ("request_type", "room_id", "scene_id", "zone_id", "actor_id",
+            "action_type", "action_profile", "target_object_id", "target_entity_refs",
+            "turn_id", "idempotency_key", "payload")
+        if any(getattr(request, field) != getattr(expected, field) for field in bound_fields):
+            raise ValueError("interaction request does not match event")
+        digest = self._object_digest(request.model_dump(mode="json"))
+        with self._object_lock:
+            self._restore_object_settlements()
+            prior = self._object_receipts.get(request.idempotency_key)
+            if prior is not None:
+                if prior[0] != digest:
+                    raise ValueError("esm_object_idempotency_conflict")
+                return prior[1].model_copy(deep=True), prior[2].model_copy(deep=True)
+            if (not isinstance(actor_position, (tuple, list)) or len(actor_position) != 3
+                    or any(type(x) not in (int, float) or not math.isfinite(x) for x in actor_position)):
+                raise ValueError("esm_object_position_required")
+            # Other policies require separate environment, body or physical owners.
+            if ((event.target_object_id, event.interaction_type) not in {
+                    ("obj_plaque", "inspect"), ("obj_worktable", "use"),
+                    ("obj_worktable", "finish_use")}):
+                raise ValueError("esm_object_only_route_required")
+            policy = self.interaction_policy_for(
+                event.target_object_id, event.interaction_type, room_id=event.room_id,
+                scene_id=event.scene_id, zone_id=event.zone_id, actor_id=event.actor_id,
+            )
+            if (policy is None or policy.get("environment_transition", "none") != "none"
+                    or policy.get("body_state_class") or policy.get("actor_scoped")):
+                raise ValueError("esm_object_only_policy_required")
+            staged = copy(self)
+            staged._canonical_interaction_settlements = {}
+            resolution = staged.resolve_interaction(event, action_request=request,
+                actor_position=tuple(actor_position))
+            if not isinstance(resolution, ActionResolutionResult) or resolution.resolution_status != "accepted":
+                return resolution, None
+            scope = (event.room_id, event.scene_id, event.zone_id, event.target_object_id)
+            stream = self._object_stream(scope)
+            revision = self._object_revisions.get(stream, 0)
+            command_id = "esm-object:" + self._object_digest(request.idempotency_key)[7:]
+            result = resolution.model_copy(update={
+                "settlement_status": "committed", "settlement_id": f"transaction:{command_id}",
+                "applied_state_changes": ["object_state_result"],
+                "stable_state_summary": "registered object interaction committed",
+            })
+            payload = dict(request=request.model_dump(mode="json"), request_digest=digest,
+                result=result.model_dump(mode="json"), current_state=str(policy["current_state"]))
+            batch = build_multi_stream_atomic_event_batch(
+                command_id=command_id, principal_ref=self._OBJECT_PRINCIPAL,
+                expected_revisions={stream: revision}, event_specs={stream: ((self._OBJECT_EVENT, payload),)},
+                event_visibility_policies={stream: ("authority_only",)},
+                idempotency_key=request.idempotency_key, causation_id=request.causation_id,
+                correlation_id=request.correlation_id, read_stream_revisions=reads,
+            )
+            receipt = self._object_store.append_batch(batch)
+            if not receipt.committed:
+                raise ValueError("esm_object_commit_failed")
+            self._restore_object_settlements()
+            settled = self._object_receipts[request.idempotency_key]
+            return settled[1].model_copy(deep=True), settled[2].model_copy(deep=True)
 
     def build_action_request(self, event: InteractIntent, *, source_system: str = "player_input_bridge") -> ActionRequest:
         request_id = f"interact:{event.producer_ts}:{event.target_object_id}"
@@ -956,6 +1121,8 @@ class ESMService:
         actor_id: str = "",
         interaction_type: str = "",
     ) -> None:
+        if self._object_store is not None and target_object_id in {"obj_plaque", "obj_worktable"}:
+            raise ValueError("esm_object_durable_settlement_required")
         policy = self.INTERACTION_POLICIES.get(target_object_id)
         if policy is None or not bool(policy.get("stateful", False)):
             return
