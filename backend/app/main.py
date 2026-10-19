@@ -1275,6 +1275,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     else:
         character_perceived_input_service.clear()
     esm_service = ESMService()
+    character_agent_runtime.set_target_catalog_resolver(esm_service.project_character_targets)
     harness_ledger_parent = (
         None
         if Path(settings.heavenly_graph_path).name == ":memory:"

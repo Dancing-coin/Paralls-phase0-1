@@ -1,3 +1,6 @@
+import hashlib
+import json
+
 from app.contracts.l1.action_request import ActionRequest
 from app.models.environment_request import EnvironmentRequest
 from app.models.player_input import InteractIntent
@@ -800,6 +803,39 @@ class ESMService:
             tuple(sorted(request.expected_memory_revision_vector.items())),
             request.expected_snapshot_revision,
         )
+
+    def project_character_targets(self, snapshot) -> list[dict[str, object]]:
+        """Read-only candidate eligibility; execution still rechecks the owner."""
+        descriptors = []
+        for target in sorted(set(snapshot.visible_target_refs)):
+            policy = self.interaction_policy_for(
+                target, "inspect", room_id=snapshot.room_id, scene_id=snapshot.scene_id,
+                zone_id=snapshot.zone_id, actor_id=snapshot.actor_id)
+            if policy is None:
+                continue
+            state = self.interaction_state_for(
+                room_id=snapshot.room_id, scene_id=snapshot.scene_id,
+                zone_id=snapshot.zone_id, target_object_id=target)
+            owner = self.interaction_owner_for(
+                room_id=snapshot.room_id, scene_id=snapshot.scene_id,
+                zone_id=snapshot.zone_id, target_object_id=target)
+            payload = dict(actor=snapshot.actor_id, room=snapshot.room_id, scene=snapshot.scene_id,
+                           zone=snapshot.zone_id, target=target, state=state, owner=owner,
+                           policy={key: sorted(value) if isinstance(value, set) else value
+                                   for key, value in policy.items()})
+            digest = "sha256:" + hashlib.sha256(json.dumps(
+                payload, sort_keys=True, separators=(",", ":"),
+            ).encode("utf-8")).hexdigest()
+            available = bool(policy.get("state_match", True)) and bool(policy.get("owner_match", True))
+            descriptors.append(dict(
+                target_ref=target, target_refs={"object": target}, supported_intents=["inspect_object"],
+                target_visibility="visible", owner_route="esm.interaction",
+                target_admission_digest=digest, source_refs=[f"esm:inspect:{target}:{digest}"],
+                required_conditions={"visibility": "satisfied", "range": "required"},
+                affordance_result={"status": "available" if available else "blocked",
+                                   "reason": "registered_inspect" if available else "owner_state_mismatch"},
+            ))
+        return descriptors
 
     def interaction_policy_for(
         self,

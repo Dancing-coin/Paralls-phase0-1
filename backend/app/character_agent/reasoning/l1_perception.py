@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from copy import deepcopy
+
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
@@ -6,9 +9,22 @@ from app.world_runtime.intelligence_upgrade import CanonicalPerceptBundle
 
 
 class CharacterAgentL1Service:
-    def __init__(self) -> None:
+    def __init__(self, *, target_catalog_resolver: Callable[[CharacterPrivateWorldSnapshot], list[dict[str, object]]] | None = None) -> None:
         self._snapshots: dict[str, CharacterPrivateWorldSnapshot] = {}
         self._ask_store = ActorSceneKnowledgeStore()
+        self._target_catalog_resolver = target_catalog_resolver
+
+    def _refresh_target_catalog(self, snapshot: CharacterPrivateWorldSnapshot) -> CharacterPrivateWorldSnapshot:
+        snapshot.target_catalog = []
+        if self._target_catalog_resolver is not None:
+            for raw in self._target_catalog_resolver(snapshot.model_copy(deep=True)):
+                target = raw.get("target_ref")
+                if target not in snapshot.visible_target_refs:
+                    continue
+                descriptor = deepcopy(raw)
+                descriptor["target_provenance"] = list(snapshot.visible_target_sources.get(target, []))
+                snapshot.target_catalog.append(descriptor)
+        return snapshot
 
     def get_snapshot(self, actor_id: str) -> CharacterPrivateWorldSnapshot | None:
         return self._snapshots.get(actor_id)
@@ -26,6 +42,13 @@ class CharacterAgentL1Service:
         )
         if event.percept_channel == "visual":
             snapshot.visible_entities = [event.perceived_summary]
+            target = event.target_ref or self._resolve_attention_target(
+                target_actor_id=event.target_actor_id, target_object_id=event.target_object_id,
+                target_environment_id=event.target_environment_id)
+            snapshot.visible_target_refs = [target] if target else []
+            snapshot.visible_target_sources = {
+                target: list(dict.fromkeys([event.source_candidate_event_id, *event.source_ref_lineage]))
+            } if target else {}
         elif event.percept_channel == "auditory":
             snapshot.audible_entities = [event.perceived_summary]
         elif event.percept_channel == "olfactory":
@@ -85,7 +108,7 @@ class CharacterAgentL1Service:
         snapshot.attention_pressure = max(snapshot.attention_pressure, min(1.0, max(event.clarity_score, event.certainty_score)))
         snapshot.updated_at = event.producer_ts
         snapshot.producer_ts = event.producer_ts
-        return snapshot
+        return self._refresh_target_catalog(snapshot)
 
     def apply_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> CharacterPrivateWorldSnapshot:
         snapshot = self._get_or_create_snapshot(
@@ -110,18 +133,20 @@ class CharacterAgentL1Service:
             zone_id=str(payload.get("zone_id", "") or "zone_focus"),
             producer_ts=int(payload.get("producer_ts", 0) or 0),
         )
-        return self._apply_siming_to_snapshot(snapshot, payload)
+        return self._refresh_target_catalog(self._apply_siming_to_snapshot(snapshot, payload))
 
     def plan_siming_output(self, payload: dict[str, object]) -> CharacterPrivateWorldSnapshot:
         """只复制受影响角色的 L1；冻结 after-state 不修改当前感知。"""
         actor_id = str(payload.get("target_actor_id", "") or "")
         current = self._snapshots.get(actor_id)
-        snapshot = current.model_copy(deep=True) if current is not None else CharacterPrivateWorldSnapshot(
-            actor_id=actor_id, room_id=str(payload.get("room_id", "") or "room_demo"),
-            scene_id=str(payload.get("scene_id", "") or "scene_demo"),
-            zone_id=str(payload.get("zone_id", "") or "zone_focus"),
+        scope = (str(payload.get("room_id", "") or "room_demo"),
+                 str(payload.get("scene_id", "") or "scene_demo"),
+                 str(payload.get("zone_id", "") or "zone_focus"))
+        same_scope = current is not None and (current.room_id, current.scene_id, current.zone_id) == scope
+        snapshot = current.model_copy(deep=True) if same_scope else CharacterPrivateWorldSnapshot(
+            actor_id=actor_id, room_id=scope[0], scene_id=scope[1], zone_id=scope[2],
             producer_ts=int(payload.get("producer_ts", 0) or 0), updated_at=int(payload.get("producer_ts", 0) or 0))
-        return self._apply_siming_to_snapshot(snapshot, payload)
+        return self._refresh_target_catalog(self._apply_siming_to_snapshot(snapshot, payload))
 
     @staticmethod
     def _apply_siming_to_snapshot(snapshot: CharacterPrivateWorldSnapshot, payload: dict[str, object]) -> CharacterPrivateWorldSnapshot:
@@ -261,7 +286,7 @@ class CharacterAgentL1Service:
         producer_ts: int,
     ) -> CharacterPrivateWorldSnapshot:
         existing = self._snapshots.get(actor_id)
-        if existing is not None:
+        if existing is not None and (existing.room_id, existing.scene_id, existing.zone_id) == (room_id, scene_id, zone_id):
             return existing
 
         snapshot = CharacterPrivateWorldSnapshot(

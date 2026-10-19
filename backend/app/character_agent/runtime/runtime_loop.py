@@ -154,6 +154,7 @@ class CharacterAgentRuntime:
         memory_source_resolver: Callable[[str], MemorySourceRecord | None] | None = None,
         memory_now_ts_provider: Callable[[], int] | None = None,
         state_group_registry: StateGroupRegistry | None = None,
+        target_catalog_resolver: Callable[[CharacterPrivateWorldSnapshot], list[dict[str, object]]] | None = None,
     ) -> None:
         if os.getenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1" and continuity_store is None:
             raise ValueError("graph continuity store is required in production continuity mode")
@@ -184,7 +185,7 @@ class CharacterAgentRuntime:
         self._activation_owner_thread: int | None = None
         self._activation_receipts: OrderedDict[str, tuple[ActivationHandle, ActivationReceipt]] = OrderedDict()
         self._sync_activation_handles: dict[str, ActivationHandle] = {}
-        self._l1 = CharacterAgentL1Service()
+        self._l1 = CharacterAgentL1Service(target_catalog_resolver=target_catalog_resolver)
         self._l2 = CharacterAgentL2Service(profile_registry=self._profile_registry)
         self._l3 = CharacterAgentL3Service()
         self._l4 = CharacterAgentL4Adapter()
@@ -1827,6 +1828,9 @@ class CharacterAgentRuntime:
         self._activation_receipts.clear()
         if first_error is not None:
             raise first_error
+
+    def set_target_catalog_resolver(self, resolver: Callable[[CharacterPrivateWorldSnapshot], list[dict[str, object]]]) -> None:
+        self._l1._target_catalog_resolver = resolver
 
     def set_activation_authority(self, authority: ProfileActivationAuthority) -> None:
         if self._activation_handles and authority is not self._activation_authority:

@@ -36,6 +36,9 @@ SHARED_CHARACTER_COMMANDS = (
 
 
 class CharacterPrivateWorldSnapshot(BaseModel):
+    visible_target_refs: list[str] = Field(default_factory=list)
+    visible_target_sources: dict[str, list[str]] = Field(default_factory=dict)
+    target_catalog: list[dict[str, object]] = Field(default_factory=list)
     actor_id: str
     room_id: str
     scene_id: str
