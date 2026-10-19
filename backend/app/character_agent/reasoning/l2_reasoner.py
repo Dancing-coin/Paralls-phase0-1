@@ -212,6 +212,7 @@ class CharacterAgentL2Service:
             background_agenda_state=background_agenda_state,
             effective_profile=effective_profile,
             need_tension_state=need_tension_state,
+            turn_context=turn_context,
         )
         return CharacterModelGateway.freeze_prepared_request(request)
 

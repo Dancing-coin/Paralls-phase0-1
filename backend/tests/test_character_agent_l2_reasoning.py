@@ -91,7 +91,8 @@ class _StubProfile:
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = deepcopy(payload)
 
-    def model_dump(self) -> dict[str, object]:
+    def model_dump(self, *, mode: str = "python") -> dict[str, object]:
+        assert mode in {"python", "json"}
         return deepcopy(self._payload)
 
 
