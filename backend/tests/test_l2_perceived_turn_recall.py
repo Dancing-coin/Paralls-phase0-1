@@ -51,3 +51,41 @@ def test_perceived_event_rejects_foreign_turn_before_gateway_preparation():
 def test_perceived_event_rejects_foreign_private_memory_before_gateway_preparation():
     with pytest.raises(ValueError, match="actor scope"):
         _prepare(memory_actor="char_a")
+
+
+def test_self_body_runtime_prepares_semantic_recall_before_l2(tmp_path):
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+    from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
+    from app.models.self_body_perceived import SelfBodyPerceivedEvent
+    from test_character_agent_l2_reasoning import _LocalGateway
+
+    class RecordingLocalGateway(_LocalGateway):
+        def __init__(self):
+            super().__init__()
+            self.contexts = []
+
+        def prepare_run_request(self, *, task_kind, context, **kwargs):
+            self.contexts.append((task_kind, context))
+            return super().prepare_run_request(task_kind=task_kind, context=context, **kwargs)
+
+    gateway = RecordingLocalGateway()
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    runtime._l2 = CharacterAgentL2Service(
+        gateway=gateway, profile_registry=runtime._profile_registry,
+        semantic_recall_service=CharacterSemanticRecallService(),
+    )
+    runtime._l3 = CharacterAgentL3Service(gateway=gateway)
+    try:
+        commands = runtime.ingest_self_body_perceived_event(SelfBodyPerceivedEvent(
+            actor_id="char_b", body_state_class="interaction_strain", producer_ts=320,
+            room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",
+            perceived_summary="body_state_result/interaction_strain=engaged",
+            source_body_result_id="body_result:char_b:320",
+        ))
+        l2_contexts = [context for task, context in gateway.contexts if task == "l2_reasoning"]
+        assert len(l2_contexts) == 1
+        assert "semantic_recall" in l2_contexts[0]
+        assert isinstance(l2_contexts[0]["semantic_cards"], list)
+        assert commands and commands[0].actor_id == "char_b"
+    finally:
+        runtime.close()

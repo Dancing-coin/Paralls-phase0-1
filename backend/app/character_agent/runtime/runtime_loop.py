@@ -1110,6 +1110,7 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state,
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=self.get_background_agenda_state(event.actor_id),
+                turn_context=turn,
             ),
         )
         turn = self._turn_coordinator.append_stage(
