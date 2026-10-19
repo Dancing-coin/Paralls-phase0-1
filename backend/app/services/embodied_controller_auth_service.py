@@ -111,7 +111,13 @@ class EmbodiedControllerAuthService:
         if credential.actor_id != enrollment.actor_id or credential.controller_instance_id != enrollment.controller_instance_id:
             return ControllerBindResult(accepted=False, error_code="trusted_local_launch_subject_mismatch")
         credential.used = True
-        epoch = self._controller_epochs.get(enrollment.controller_instance_id, 0) + 1
+        previous_epoch = self._controller_epochs.get(enrollment.controller_instance_id, 0)
+        if previous_epoch:
+            self.revoke_controller_epoch(
+                controller_instance_id=enrollment.controller_instance_id,
+                connection_epoch=previous_epoch,
+            )
+        epoch = previous_epoch + 1
         self._controller_epochs[enrollment.controller_instance_id] = epoch
         binding = ControllerBinding(
             binding_id=f"controller_binding:{enrollment.controller_instance_id}:{epoch}",
@@ -164,6 +170,8 @@ class EmbodiedControllerAuthService:
         binding = self._bindings.get(binding_id)
         if binding is None or binding.state != "bound":
             return ControllerBindingLookupResult(accepted=False, error_code="controller_binding_required")
+        if binding.connection_epoch != self._controller_epochs.get(binding.controller_instance_id):
+            return ControllerBindingLookupResult(accepted=False, error_code="stale_connection_epoch")
         if binding.actor_id != actor_id:
             return ControllerBindingLookupResult(accepted=False, error_code="controller_binding_subject_mismatch")
         return ControllerBindingLookupResult(accepted=True, binding=binding)
@@ -219,9 +227,25 @@ class EmbodiedControllerAuthService:
         return GrantValidationResult(accepted=True, grant=grant)
 
     def revoke_controller_epoch(self, *, controller_instance_id: str, connection_epoch: int) -> None:
+        for binding in self._bindings.values():
+            if binding.controller_instance_id == controller_instance_id and binding.connection_epoch == connection_epoch:
+                binding.state = "revoked"
         for grant in self._grants.values():
             if grant.controller_instance_id == controller_instance_id and grant.connection_epoch == connection_epoch:
                 grant.state = "revoked"
+
+    def disconnect_connection(self, connection_ref: str) -> None:
+        """Revoke controller bindings and grants owned by a closed transport."""
+        binding_id = self._binding_ids_by_connection_ref.pop(connection_ref, None)
+        if binding_id is None:
+            return
+        binding = self._bindings.get(binding_id)
+        if binding is None:
+            return
+        self.revoke_controller_epoch(
+            controller_instance_id=binding.controller_instance_id,
+            connection_epoch=binding.connection_epoch,
+        )
 
     @staticmethod
     def request_digest(request: EmbodiedActionRequest) -> str:
