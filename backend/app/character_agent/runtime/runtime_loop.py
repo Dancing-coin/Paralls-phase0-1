@@ -1958,6 +1958,44 @@ class CharacterAgentRuntime:
                 raise ValueError("execution_source_missing")
             return source_event_id
 
+    def offer_execution_dispatch(self, contract: CharacterExecutionContract, *,
+                                 process_epoch: str, now_ms: int) -> dict[str, object]:
+        """Internal egress admission, persisted separately from deterministic L4 plans."""
+        with self._session_store.transaction():
+            source = self.verify_recorded_execution_contract(contract)
+            for event in self.get_session_timeline(contract.actor_id):
+                if (event.get("event_type") == "character_agent_execution_dispatch_offered"
+                        and event["payload"].get("execution_key") == contract.idempotency_key):
+                    return deepcopy(event["payload"])
+            payload = dict(execution_key=contract.idempotency_key, source_event_ref=source,
+                           process_epoch=process_epoch, offered_at_ms=now_ms, lease_ms=1000)
+            self._append_session_event(actor_id=contract.actor_id,
+                event_type="character_agent_execution_dispatch_offered",
+                producer_ts=contract.producer_ts, payload=payload)
+            return deepcopy(payload)
+
+    def verify_execution_dispatch(self, contract: CharacterExecutionContract, *,
+                                  process_epoch: str, now_ms: int) -> None:
+        source = self.verify_recorded_execution_contract(contract)
+        latest_key = ""
+        offers = []
+        for event in self.get_session_timeline(contract.actor_id):
+            payload = event.get("payload", {})
+            if event.get("event_type") == "character_agent_execution_request":
+                raw = payload.get("execution_contract", payload)
+                # A later legacy request also supersedes the old canonical dispatch.
+                latest_key = str(raw.get("idempotency_key", "")) if isinstance(raw, dict) else ""
+            elif (event.get("event_type") == "character_agent_execution_dispatch_offered"
+                  and payload.get("execution_key") == contract.idempotency_key):
+                offers.append(payload)
+        if latest_key != contract.idempotency_key or len(offers) != 1:
+            raise ValueError("execution_dispatch_missing_or_superseded")
+        offer = offers[0]
+        if (offer.get("source_event_ref") != source or offer.get("process_epoch") != process_epoch
+                or type(offer.get("offered_at_ms")) is not int or offer.get("lease_ms") != 1000
+                or not 0 <= now_ms - offer["offered_at_ms"] <= 1000):
+            raise ValueError("execution_dispatch_expired_or_foreign")
+
     def begin_embodied_episode(
         self,
         *,

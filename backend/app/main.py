@@ -25,6 +25,7 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.config import Settings, settings
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
+from app.character_agent.execution.object_execution import CharacterObjectExecution
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -1168,6 +1169,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global interaction_orchestration_service
     global embodied_controller_auth_service
     global embodied_spatial_source
+    global character_object_execution
     global embodied_controller_trusted_local_enrollment_issuer
     global embodied_controller_launcher_bootstrap_secret
     global websocket_session_auth_service
@@ -1276,7 +1278,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         character_perceived_input_service = CharacterPerceivedInputService()
     else:
         character_perceived_input_service.clear()
-    esm_service = ESMService()
+    esm_service = ESMService(store=gameplay_event_store)
     character_agent_runtime.set_target_catalog_resolver(esm_service.project_character_targets)
     harness_ledger_parent = (
         None
@@ -1294,6 +1296,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     embodied_controller_auth_service = EmbodiedControllerAuthService()
     embodied_spatial_source = EmbodiedSpatialSource(
         store=gameplay_event_store, auth=embodied_controller_auth_service,
+        scopes=settings.embodied_spatial_scopes,
+    )
+    character_object_execution = CharacterObjectExecution(
+        runtime=character_agent_runtime, owner=esm_service, source=embodied_spatial_source,
         scopes=settings.embodied_spatial_scopes,
     )
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
@@ -4440,6 +4446,19 @@ def _handle_envelope(
             actor_id = execution_contract.actor_id
             requested_actions = [_semantic_action_from_execution_contract(execution_contract)]
             execution_payload = execution_contract.model_dump()
+            if str(requested_actions[0].get("request_type", "")) == "interact":
+                try:
+                    event, request, result, receipt = character_object_execution.execute(execution_contract)
+                except ValueError as error:
+                    return [_as_error_ack(source_type=envelope.message_type,
+                        route="character_object_execution", error=error)]
+                messages = [_as_envelope("ack", {
+                    "accepted": receipt is not None and receipt.committed,
+                    "source_type": envelope.message_type, "route": "character_object_execution",
+                    "owner_receipt": receipt.model_dump(mode="json") if receipt is not None else None,
+                }), _as_envelope("action_request", request.model_dump(mode="json"))]
+                messages.extend(_publish_world_result_authority_event(result, source_event=event))
+                return _finalize_outbound_messages(messages)
         route_name = "esm_service"
         if str(requested_actions[0].get("request_type", "") or "") in {
             "speak_public", "speak_private", "share_info", "withhold"
@@ -6328,6 +6347,8 @@ def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]
         raw_contract = execution_payload.get("execution_contract")
         if isinstance(raw_contract, dict):
             contract = CharacterExecutionContract.model_validate(raw_contract)
+            if contract.semantic_intent_id == "inspect_object":
+                character_object_execution.offer(contract)
             envelopes.append(
                 {
                     "message_type": "character_agent_execution",

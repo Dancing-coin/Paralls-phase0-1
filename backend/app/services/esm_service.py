@@ -664,6 +664,27 @@ class ESMService:
                 self._object_revisions[stream] = event.stream_revision
                 self._object_receipts[request.idempotency_key] = (digest, result, receipt)
 
+    def find_object_settlement(self, event: InteractIntent, *, action_request: ActionRequest
+                               ) -> tuple[ActionResolutionResult, AppendBatchResult] | None:
+        """Recover only the original canonical request, before transient admission."""
+        if self._object_store is None:
+            raise ValueError("esm_object_store_required")
+        expected = self.build_action_request(event)
+        bound_fields = ("request_type", "room_id", "scene_id", "zone_id", "actor_id",
+            "action_type", "action_profile", "target_object_id", "target_entity_refs",
+            "turn_id", "idempotency_key", "payload")
+        if (not event.turn_id or not event.execution_contract_ref
+                or any(getattr(action_request, f) != getattr(expected, f) for f in bound_fields)):
+            raise ValueError("interaction request does not match event")
+        with self._object_lock:
+            self._restore_object_settlements()
+            prior = self._object_receipts.get(action_request.idempotency_key)
+            if prior is None:
+                return None
+            if prior[0] != self._object_digest(action_request.model_dump(mode="json")):
+                raise ValueError("esm_object_idempotency_conflict")
+            return prior[1].model_copy(deep=True), prior[2].model_copy(deep=True)
+
     def settle_object_interaction(
         self, event: InteractIntent, *, action_request: ActionRequest,
         actor_position: tuple[float, float, float] | None,
