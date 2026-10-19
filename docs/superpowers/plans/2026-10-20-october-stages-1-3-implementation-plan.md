@@ -32,7 +32,7 @@
 - [x] 修复 production spawn wiring、执行前身份重验、启动校验 secret 泄漏；定向 Task1/Task6/docs passed 且 cleanup passed。
 - [x] 提交独立 credential 层 `c2ebb578`，保留其余历史混改。
 - [x] 依据原规格/计划/回写/当前代码建立统一矩阵；准确区分四种状态与历史证据。
-- [ ] 文档门禁后提交本整合计划及矩阵，继续 Task1。
+- [x] 文档门禁后以 `9929127` 提交本整合计划及矩阵，继续 Task1。
 
 ## Task 1: 真实私有输入、动作目标与同源能力
 
@@ -130,3 +130,9 @@ flowchart TD
   D --> R["current receipt; planned end-to-end recovery"] --> V["planned final visible evidence"]
   Q["planned isolated calibration/final/holdout"] --> M
 ```
+
+## 执行记录
+
+- Task1：`fac6a634` 已提交独立私有目标目录；ESM inspect 之外仍未完成。
+- Task2 前置：已修复 inspect 语义映射、冻结 scope 和 target/source pins；75 项组合回归与4项暂存隔离用例通过。生产 Laya、owner 提交和回执未验收。
+- Task2 dependency ruling：原 canonical interact 只产生 accepted；不得将其记成领域提交。补真正 owner 提交时复用已有状态机/领域 event spine，不能以 ack 代替 receipt。

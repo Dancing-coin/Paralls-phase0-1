@@ -33,11 +33,11 @@
 
 | ID／来源 | 当前状态 | 可复用实现与证据入口 | 剩余工作与验收条件 |
 |---|---|---|---|
-| R01 turn／MindFrame／ThoughtMode；规格01–03、计划01 | 局部实现 | turn coordinator、frame builder、cognition coordinator/driver、frozen session stages | 同一真实 turn 的 source→frame→L2/L3→Laya→执行→owner receipt→writeback；background cognition 继续 commands=[] |
+| R01 turn／MindFrame／ThoughtMode；规格01–03、计划01 | 局部实现 | turn coordinator、frame builder、cognition coordinator/driver、frozen session stages | 同一真实 turn 的 source→frame→L2/L3→Laya→执行→owner receipt→writeback；background cognition 继续 commands=[]；资源模板 tuple 进入 L2 缓存破坏 JsonValue frame 的问题已从 profile JSON 序列化入口修复，8 项 frame 回归通过 |
 | R02 memory；规格04 | 局部实现 | recall、semantic cards、writeback policy、consistency/recovery tests | 真实 outcome 与 authority receipt 绑定，重复、冲突、重开不重复沉淀；保留隐私与来源 |
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 正式运行配置冻结、同 request usage/pins，超预算明确失败；不能靠静默截断解决 |
-| R05 完整 U/P 与动作＋目标 | 未实现（生产目录）；compiler 已有 | `l3_planner.py::_candidate_records/CandidateCompiler`、输出映射合同 | `CharacterPrivateWorldSnapshot` 尚无 target_catalog/visible_target_refs，生产者缺失。由真实私有感知与已有 domain admission 提供目标、权限、affordance、revision、owner route；不得用 attention 或当前玩家猜目标 |
+| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现 | stable ability、CapabilityEnvelope、CognitionPolicy、L3 gate | 同源 envelope/policy 进入 L2/L3/dialogue/recall，绑定 turn/frame/revision；L2 尚未消费 L3 编译合同，不能虚构 profile 认知差异 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 未实现（生产闭环）；adapter 合同已有 | `l4_adapter.py::admit_execution_contract/build_action_attempt/accept_execution_feedback` | 三方法当前未被 main/runtime 调用。先接无需物理造证的真实领域纵切；再以真实 physics 接近战。执行成功必须有 domain owner receipt |
@@ -78,6 +78,15 @@
 - 提交 `c2ebb578`：配置、digest verifier、fresh-process secret-redaction 测试，三文件。
 - 凭据聚焦 15 passed；Task1 run `f655b7b782f34f22b27b9afef6bc905c`；Task6 run `2d79296173bc41c394a792b334b4c5ef`；docs run `0748fd411fc341a8af79d3aea2ce36ac`。三个 Harness 均 passed/cleanup passed。
 - 原始报告：`D:/Users/User/Documents/paralls-evidence/stage3-admin-reviewed-20261020-01/{task1,task6,docs}/`。对应管理员源码修订，后续文档索引修改不要求重跑无关 backend。没有运行全量 pytest/all、模型评估或 Godot。
+
+## 本轮角色输入与执行投影进展
+
+- `bc946612`：L2 registry/loader 两条 profile cache 路线使用 JSON 值，修复阶段三资源 tuple 阻断 durable cognition frame；聚焦 10 passed。
+- `fac6a634`：私有视觉身份/source/catalog、scope 清空、只读 ESM inspect 投影及生产 reset 接线；独立测试 3 passed。12 文件 170 passed 的组合证据为 run `1c29eb21a796483aac675bc7433bc1fa`，目录 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/target-focused/`；cleanup passed。
+- 执行投影修复：冻结 choice 的 target、candidate identity/owner route、owner digest、target revision、room/scene/zone 保持到 L4；`inspect_object`＋`action:inspect`映射到注册的 `interact/inspect`，ActionRequest 与 InteractIntent 共享冻结 scope。暂存隔离测试 4 passed（run `b2b503f2b1a94580815bb3724b32b3f3`）；组合回归 75 passed（run `0a932502a9dd40c794b41b9c8127f209`，之后仅增加来源断言与不同 attention 参数）；backend-contract 静态门禁 passed（run `28cedfd8828843cf96e9ab286b281b4a`）。证据分别在同一外部根的 `inspect-staged-unit/`、`inspect-projection-corrected/`、`inspect-backend-contract/`，cleanup passed。
+- 独立审查发现暂存版本漏带 candidate identity/owner/target revision，已补齐并由隔离测试核验。第一次隔离尝试的既有集成用例缺少文档夹具；第二次扩大夹具复制遇到 Windows 长路径，导出失败。只清理了本轮隔离副本与失败导出中的副本；后续只隔离所需四项单元用例，未将失败集成用例计为通过。
+- R05仍为 inspect 输入切片；R06同源能力尚未覆盖生产 L2。R07无真实 Laya 原动作证据；R08仍缺生产执行准入、实时 owner 重验、领域实际提交与 durable receipt。当前 canonical character interact 路径只 resolve/发布 accepted，不能当成 player interact 路径中的 object transition/commit，更不能据此关闭 R08。
+- 未运行全量 pytest/Harness all、真实模型或 Godot；历史 `.harness/verification` 与用户其余 dirty 保留。
 
 ## 执行顺序
 
