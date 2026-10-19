@@ -197,7 +197,10 @@ def test_l3_final_model_request_retains_selected_strong_memory() -> None:
             salience_score=0.8, ambiguity_level="low", risk_level="low", opportunity_level="medium",
             attention_target="obj_letter", inner_prompt_candidate="inspect",
         ), control_mode="agent_full_auto", snapshot={"current_attention_targets": ["obj_letter"]},
-        profile={"capability_constraint_layer": {"memory_retention": "strong"}},
+        profile={
+            "capability_constraint_layer": {"memory_retention": "strong"},
+            "cognitive_capability_layer": {"compute_defaults": {"memory_token_budget": 2400}},
+        },
         memory_bundle={"event_memories": [{
             "memory_id": "event:letter_destroyed", "actor_id": "char_a", "event_id": "letter_destroyed",
             "source_event_id": "observation:letter", "world_ts": 1, "event_type": "observation",

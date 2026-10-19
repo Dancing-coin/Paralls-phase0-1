@@ -8,6 +8,8 @@ import re
 from copy import deepcopy
 from typing import Any
 
+from app.character_agent.cognition.cognition_policy import CognitionPolicy
+
 
 _POOL_NAMES = (
     "working_memory",
@@ -106,6 +108,16 @@ class CharacterMemoryRecallPolicy:
             pool_limit = min(16, max(pool_limit, requested_pool_limit))
         if isinstance(requested_token_budget, int) and not isinstance(requested_token_budget, bool):
             token_budget = min(2400, max(token_budget, requested_token_budget))
+        cognition_policy = None
+        recall_limit = None
+        if context.get("cognition_policy") is not None:
+            cognition_policy = CognitionPolicy.model_validate(context["cognition_policy"])
+            if cognition_policy.actor_id != context.get("actor_id"):
+                raise ValueError("cognition_contract_actor_mismatch")
+            if cognition_policy.turn_id != context.get("turn_id"):
+                raise ValueError("cognition_contract_turn_mismatch")
+            recall_limit = cognition_policy.memory.recall_limit
+            token_budget = min(token_budget, cognition_policy.memory.token_budget)
         subjects = self._current_subjects(context)
         required = self._required_memories(normalized, subjects) if strong else set()
         terms = self._context_terms(context)
@@ -145,7 +157,7 @@ class CharacterMemoryRecallPolicy:
         truncated = False
         for score, pool, memory_id, entry in candidates:
             entry_tokens = self._estimate_tokens(entry)
-            if estimated_tokens + entry_tokens > token_budget:
+            if (recall_limit is not None and len(kept_ids) >= recall_limit) or estimated_tokens + entry_tokens > token_budget:
                 truncated = True
                 if (pool, memory_id) in required:
                     missing_required_refs.append(f"{_REF_PREFIXES[pool]}:{memory_id}")
@@ -184,6 +196,8 @@ class CharacterMemoryRecallPolicy:
             },
             "pool_limit": pool_limit,
             "token_budget": token_budget,
+            "recall_limit": recall_limit,
+            "cognition_policy_digest": cognition_policy.policy_digest if cognition_policy else None,
             "estimated_tokens": estimated_tokens,
             "missing_required_refs": missing_required_refs,
             "truncated": truncated or any(

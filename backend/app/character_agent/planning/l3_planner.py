@@ -641,9 +641,35 @@ class CharacterAgentL3Service:
         )
         if not behavior_policy and behavior_policy_snapshot is None:
             behavior_policy = self._legacy_behavior_policy_from_memory(normalized_memory_bundle)
+        normalized_skill_affordance_summary = self._normalize_mapping(skill_affordance_summary)
+        normalized_skill_affordance_summary.pop("registry", None)
+        if capability_envelope is not None or cognition_policy is not None:
+            if capability_envelope is None or cognition_policy is None or turn_context is None:
+                raise ValueError("cognition_contract_pair_required")
+            capability_envelope = CapabilityEnvelope.model_validate(capability_envelope)
+            cognition_policy = CognitionPolicy.model_validate(cognition_policy)
+            cognition_policy.validate_envelope(
+                capability_envelope, actor_id=interpretation.actor_id, turn_id=turn_context.turn_id,
+                turn_actor_id=turn_context.actor_id, policy_revision=turn_context.policy_revision,
+                source_event_ref=turn_context.source_event_ref,
+            )
+        else:
+            capability_envelope, cognition_policy = self._compile_capability_contracts(
+                interpretation=interpretation,
+                actor_id=interpretation.actor_id,
+                turn_context=turn_context,
+                profile=normalized_profile,
+                effective_profile=normalized_effective_profile,
+                snapshot=normalized_snapshot,
+                dynamic_state=normalized_dynamic_state,
+                skill_affordance_summary=normalized_skill_affordance_summary,
+            )
         recall = self._memory_recall_policy.select(
             normalized_memory_bundle,
             context={
+                "actor_id": interpretation.actor_id,
+                "turn_id": cognition_policy.turn_id,
+                "cognition_policy": cognition_policy.model_dump(mode="json"),
                 "snapshot": normalized_snapshot,
                 "interpretation": interpretation.model_dump(),
                 "current_goal_state": normalized_current_goal_state,
@@ -658,6 +684,8 @@ class CharacterAgentL3Service:
         if self._semantic_recall_service is not None and turn_context is not None:
             semantic_context = {
                 "actor_id": interpretation.actor_id,
+                "turn_id": cognition_policy.turn_id,
+                "cognition_policy": cognition_policy.model_dump(mode="json"),
                 "snapshot": normalized_snapshot,
                 "interpretation": interpretation.model_dump(),
                 "current_goal_state": normalized_current_goal_state,
@@ -670,7 +698,7 @@ class CharacterAgentL3Service:
             )
             recall_metadata = dict(recall.metadata)
             recall_metadata.update(semantic_recall.metadata)
-            recall = recall.__class__(memory=recall.memory, metadata=recall_metadata)
+            recall = recall.__class__(memory=semantic_recall.memory, metadata=recall_metadata)
         recalled_memory_bundle = self._memory_record_bundle_model(recall.memory)
         verification = self._verification_context(
             interpretation, normalized_snapshot, recall.memory, normalized_effective_profile,
@@ -706,27 +734,6 @@ class CharacterAgentL3Service:
         )
         normalized_skill_affordance_summary = self._normalize_mapping(skill_affordance_summary)
         normalized_skill_affordance_summary.pop("registry", None)
-        if capability_envelope is not None or cognition_policy is not None:
-            if capability_envelope is None or cognition_policy is None or turn_context is None:
-                raise ValueError("cognition_contract_pair_required")
-            capability_envelope = CapabilityEnvelope.model_validate(capability_envelope)
-            cognition_policy = CognitionPolicy.model_validate(cognition_policy)
-            cognition_policy.validate_envelope(
-                capability_envelope, actor_id=interpretation.actor_id, turn_id=turn_context.turn_id,
-                turn_actor_id=turn_context.actor_id, policy_revision=turn_context.policy_revision,
-                source_event_ref=turn_context.source_event_ref,
-            )
-        else:
-            capability_envelope, cognition_policy = self._compile_capability_contracts(
-                interpretation=interpretation,
-                actor_id=interpretation.actor_id,
-                turn_context=turn_context,
-                profile=normalized_profile,
-                effective_profile=normalized_effective_profile,
-                snapshot=normalized_snapshot,
-                dynamic_state=normalized_dynamic_state,
-                skill_affordance_summary=normalized_skill_affordance_summary,
-            )
         candidate_intents = self._generate_candidates(interpretation, control_mode)
         if behavior_policy:
             candidate_intents = self._apply_behavior_policy(
@@ -788,6 +795,7 @@ class CharacterAgentL3Service:
             "candidate_digest": compilation.digest,
             "capability_envelope": capability_envelope.model_dump(mode="json"),
             "cognition_policy": cognition_policy.model_dump(mode="json"),
+            "turn_id": cognition_policy.turn_id,
             **({"frame": frame} if frame is not None else {}),
         }
         if laya_route:

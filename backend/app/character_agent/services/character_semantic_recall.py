@@ -8,6 +8,7 @@ from typing import Any, Callable, Mapping
 
 from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy, MissingRequiredMemoryEvidence
 from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.cognition.cognition_policy import CognitionPolicy
 from app.models.siming_heavenly_graph import (
     BehaviorTurnQuery, CausalPathQuery, ConflictSetQuery, GraphReaderContext,
     PerspectiveQuery, SourceImpactQuery,
@@ -77,6 +78,15 @@ class CharacterSemanticRecallService:
         if not isinstance(turn_context, CharacterTurnContext) or actor_id != turn_context.actor_id:
             raise ValueError("semantic recall actor does not match canonical turn context")
         context = dict(context)
+        cognition_policy = None
+        if context.get("cognition_policy") is not None:
+            cognition_policy = CognitionPolicy.model_validate(context["cognition_policy"])
+            if cognition_policy.actor_id != actor_id:
+                raise ValueError("cognition_contract_actor_mismatch")
+            if cognition_policy.turn_id != turn_context.turn_id:
+                raise ValueError("cognition_contract_turn_mismatch")
+            context["actor_id"] = actor_id
+            context["turn_id"] = turn_context.turn_id
         raw_memory = context.get("memory", context.get("memory_bundle"))
         if not isinstance(raw_memory, Mapping) and self._memory_reader is not None:
             raw_memory = self._memory_reader(actor_id)
@@ -96,7 +106,10 @@ class CharacterSemanticRecallService:
         revisions = self._revision_map(turn_context.memory_revision_vector)
         incomplete = "token_budget_exhausted" if policy.metadata.get("truncated") else None
         graph_truncated = False
-        if self._graph is not None and reader is not None:
+        budget_enabled = cognition_policy is None or (
+            cognition_policy.memory.recall_limit > 0 and cognition_policy.memory.token_budget > 0
+        )
+        if self._graph is not None and reader is not None and budget_enabled:
             query_count = result_count = 0
             queries = list(self._queries(actor_id, turn_context, dict(cards), reader))
             for kind, query in queries:
@@ -130,9 +143,20 @@ class CharacterSemanticRecallService:
                 self._merge_cards(kind, result, cards, actor_id)
         profiles = [context.get("profile"), context.get("effective_profile")]
         required_cards = {ref for ref in selected if ref.startswith("knowledge:") and any(isinstance(p, Mapping) and isinstance(p.get("capability_constraint_layer"), Mapping) and p["capability_constraint_layer"].get("memory_retention") == "strong" for p in profiles)}
-        cards, card_truncated, missing_cards = self._bound_cards(cards, required_cards)
+        card_budget = min(self._card_budget, cognition_policy.memory.recall_limit) if cognition_policy else self._card_budget
+        token_budget = min(self._token_budget, cognition_policy.memory.token_budget) if cognition_policy else self._token_budget
+        cards, card_truncated, missing_cards = self._bound_cards(cards, required_cards,
+            card_budget=card_budget, token_budget=token_budget)
         if missing_cards:
             raise MissingRequiredMemoryEvidence(missing_cards)
+        selected = tuple(ref for ref in selected if ref in cards)
+        omitted = tuple(sorted(self._all_refs(memory) - set(selected)))
+        bounded_memory = {}
+        for pool, entries in policy.memory.items():
+            if pool in {"episodic_memories", "relational_memories"}:
+                continue  # Gateway rebuilds compatibility aliases from the retained canonical pools.
+            bounded_memory[pool] = [deepcopy(entry) for entry in entries
+                if any(ref in cards for ref, _ in self._selected_entries({pool: [entry]}))]
         truncated = bool(policy.metadata.get("truncated") or graph_truncated or card_truncated)
         if card_truncated and not incomplete: incomplete = "token_budget_exhausted"
         digest_payload = {"context": context, "turn": turn_context.model_dump(), "scope": reader.model_dump() if reader else None, "revision": revisions,
@@ -140,7 +164,11 @@ class CharacterSemanticRecallService:
                           "relations": sorted(relations), "causal": sorted(causal), "conflicts": sorted(conflicts), "perspectives": sorted(perspectives)}
         context_hash = hashlib.sha256(json.dumps(digest_payload, sort_keys=True, default=str, separators=(",", ":")).encode()).hexdigest()
         metadata = dict(policy.metadata)
-        metadata.update({"semantic_selected_refs": list(selected), "semantic_omitted_refs": list(omitted), "relation_refs": sorted(relations),
+        metadata.update({"selected_memory_refs": list(selected),
+                         "selected_counts": {pool: len(entries) for pool, entries in bounded_memory.items()},
+                         "estimated_tokens": sum(self._policy._estimate_tokens(entry) for entries in bounded_memory.values() for entry in entries),
+                         "truncated": truncated,
+                         "semantic_selected_refs": list(selected), "semantic_omitted_refs": list(omitted), "relation_refs": sorted(relations),
                          "causal_refs": sorted(causal), "conflict_refs": sorted(conflicts), "perspective_refs": sorted(perspectives),
                          "revision_vector": revisions, "incomplete_reason": incomplete, "cards": [c.ref for c in cards.values()]})
         ordered = tuple(cards[ref] for ref in sorted(cards))
@@ -148,7 +176,7 @@ class CharacterSemanticRecallService:
             relation_refs=tuple(sorted(relations)), causal_refs=tuple(sorted(causal)), conflict_refs=tuple(sorted(conflicts)),
             perspective_refs=tuple(sorted(perspectives)), revision_vector=revisions, context_hash=context_hash,
             truncated=truncated, incomplete_reason=incomplete, cards_by_ref={c.ref: c for c in ordered},
-            memory=deepcopy(policy.memory), metadata=metadata)
+            memory=bounded_memory, metadata=metadata)
 
     def _validate_memory(self, raw: object, actor_id: str) -> dict[str, list[dict[str, object]]]:
         if not isinstance(raw, Mapping): return {}
@@ -253,12 +281,15 @@ class CharacterSemanticRecallService:
             if ref: refs.add(ref)
         return {x for x in refs if x}, rels
 
-    def _bound_cards(self, cards: dict[str, SemanticRecallCard], required: set[str] | None = None):
+    def _bound_cards(self, cards: dict[str, SemanticRecallCard], required: set[str] | None = None,
+                     *, card_budget: int | None = None, token_budget: int | None = None):
         required = required or set()
+        card_budget = self._card_budget if card_budget is None else card_budget
+        token_budget = self._token_budget if token_budget is None else token_budget
         kept = {}; used = 0; truncated = False
         for ref in sorted(cards):
-            cost = max(1, len(json.dumps(cards[ref].payload, default=str)) // 4)
-            if len(kept) >= self._card_budget or used + cost > self._token_budget:
+            cost = self._policy._estimate_tokens(dict(cards[ref].payload))
+            if len(kept) >= card_budget or used + cost > token_budget:
                 if ref in required: return kept, True, sorted(required - set(kept) | {ref})
                 truncated = True; continue
             kept[ref] = cards[ref]; used += cost
