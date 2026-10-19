@@ -29,7 +29,7 @@ flowchart LR
 sequenceDiagram
   participant G as Controller (Godot last)
   participant A as Existing auth
-  participant S as Spatial source (planned)
+  participant S as Spatial source (current)
   participant W as Existing world store
   participant O as ESM owner (consumer pending)
   G->>S: scope + binding epoch + tick + position
@@ -47,11 +47,11 @@ sequenceDiagram
 
 ```mermaid
 flowchart TD
-  I["planned controller observation; not authority"] --> A["current identity boundary"]
-  R["internal authored scope and bounds"] --> B["planned continuity / clock admission"]
-  A --> B --> E["planned admitted sample event"]
+  I["current network ingress; Godot producer pending"] --> A["current identity boundary"]
+  R["internal authored scope and bounds"] --> B["current continuity / clock admission"]
+  A --> B --> E["current admitted sample event"]
   E --> W["current durable world spine"]
-  W --> P["planned fresh position + revision reference"]
+  W --> P["current fresh position + revision reference"]
   P --> O["pending domain authority boundary: object settlement"]
   O --> F["pending receipt / feedback / replay"]
   F --> G["planned final visible Godot acceptance"]
@@ -59,4 +59,4 @@ flowchart TD
 
 ## Acceptance and implementation map
 
-`backend/app/world_runtime/embodied_spatial_source.py` implements strict scope/sample models and the admitted source. `backend/tests/test_embodied_spatial_source.py` covers authenticated subject/connection, scope and nonfinite rejection, first/reconnect continuity, backend-time speed limits, stale/duplicate handling, revocation, SQLite recovery and owner CAS races. Event registration is opt-in using the existing EventSchemaRegistry. Production composition/ingress/consumer will be connected in the next Task2 batch; these tests must not be reported as a live character or Godot result.
+`backend/app/world_runtime/embodied_spatial_source.py` implements strict scope/sample models and the admitted source. `backend/tests/test_embodied_spatial_source.py` covers authenticated subject/connection, scope and nonfinite rejection, first/reconnect continuity, backend-time speed limits, stale/duplicate handling, revocation, SQLite recovery and owner CAS races. Event registration is opt-in using the existing EventSchemaRegistry. Production composition and strict network ingress are implemented in `cafeaeed`; network binding expiry uses backend time in `e7063bcc`. A real HTTP/WebSocket probe verifies original spatial receipt and duplicate handling, with cleanup failure separately recorded in the unified matrix. The ESM/L4 consumer remains pending. This is not a live Laya/character or Godot result.

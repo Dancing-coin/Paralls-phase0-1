@@ -161,3 +161,14 @@
 - 上一文档批 `58cdc65` docs passed/cleanup passed，run `c70a211dc49144089310ab703cfbbae2`，同根 `recall-budget-docs/`。
 
 - 本批 docs 首跑 `b43940fa31434f0e873872eab9a8fdea` 因门禁要求同名计划缺失而失败；增加链接到统一计划的空间来源 lane 后，`b4f073d817a74d15b796d74cee859a9d` passed/cleanup passed，外部根 `spatial-source-docs-corrected/`。
+
+
+## 空间生产接线与真实边界子项（Task2 仍未完成）
+
+- `cafeaeed`：内部 `EMBODIED_SPATIAL_SCOPES_JSON` 严格配置、共享 world store/auth 组合、`embodied_spatial_sample` 真实 ingress 和断连接撤权。精确暂存隔离 69 passed，run `61250907b02142a3be805756e75570c9`，`spatial-ingress-staged-final/`；backend-contract passed，run `62f952b0b0094b7fae2ee506a82e4034`，`spatial-ingress-contract/`；两轮 cleanup passed。
+- `e7063bcc`：真实网络绑定使用后端 wallclock，禁止默认固定时间绕过已过期 launcher credential；仅内部 direct-handler 测试保留历史兼容时间。回归先 RED（run `14233352e71b43a6bc45ddeb0def9227`，1 failed/7 deselected，`spatial-bind-clock-red/`），再精确暂存隔离 70 passed / 4 既有 FastAPI warnings。
+- 真实独立 uvicorn＋HTTP enrollment＋WebSocket bind/sample 验证 passed：首样本得到持久提交 receipt，exact retry 返回原回执，changed duplicate 拒绝。run `2305abd50062465880574e1fc7e281c4`，目录 `spatial-ingress-live/`；manifest 保存原始边界响应和版本 patch。证据根仍为 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/`。
+- 此 live run 清理失败：Windows 文件占用使 checkout/backend 与 backend.log 删除失败。随后进程快照未发现本轮 uvicorn；精确路径 PowerShell 清理被自动审批策略拒绝，未绕过。遗留仅本轮 `C:/Users/User/AppData/Local/Temp/oc-2305abd5` 与 `C:/Users/User/AppData/Local/Temp/paralls-harness-2305abd50062465880574e1fc7e281c4`；保留 cleanup failed，不把此 run 总体记为全绿。
+- 后端：空间生产准入子项局部实现，默认内部 scopes 为空，尚无 ESM/L4 consumer。角色闭环：R07–R09 未关闭；历史 dirty L4 方法不等于已提交生产基础，下一批先审阅必要依赖，再接 source→L4→owner receipt/recovery。模型质量：未运行真实 Laya 或正式 splits。Godot：未修改、启动或验收；最终 producer 必须发送内部配置匹配的 actor/scope/scene_instance/revision、绑定 epoch、tick、位置，且仍需 A/B/C 可见结果。未运行全量 pytest/Harness all。
+
+- 本批文档门禁 passed/cleanup passed，run `c6d7ea770733488ca9dc1ff79b06b772`，外部 `spatial-ingress-docs/`。
