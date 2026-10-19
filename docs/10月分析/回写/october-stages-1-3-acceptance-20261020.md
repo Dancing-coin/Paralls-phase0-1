@@ -150,3 +150,14 @@
 - 初始 RED run `3e47dde6404646e9ba7cc62ae14d6a63`（10 failed），L3 RED `dff7558d9a4c49f580aea6c833565516`（2 failed）。扩大组合 run `09ff9274a4d947f39ef1bc8b500a6c55` 为 1 failed/140 passed：既有 strong-memory 测试依赖隐式扩容；改为 profile 显式冻结 2400 后维持原长记忆断言。run `261534c9ee5e420399eb812ec42d523d` 因清单含未提交历史测试文件而零测试，已纠正清单取得上述有效隔离结果；不计作通过。诊断目录分别为 `recall-budget-red/`、`recall-budget-l3-red/`、`recall-budget-layers/`、`recall-budget-staged/`，均已清理本轮临时副本。
 - R06/Task1 保持局部实现。这里使用既有 JSON 长度估算，不是实际 tokenizer 或整个 prompt 的硬预算；background、dialogue 和可信输入/memory revisions 仍待补齐。R07–R09 未升级：未运行真实 Laya、未打通生产 L4→owner receipt→恢复。Q01–Q04 与 Godot G-A/B/C 均未关闭，Godot 未操作。
 - 上一文档批 `ae613868` docs gate passed/cleanup passed，run `410e806999814d49b9ee1132183edf94`，同根 `execution-source-docs/`。本批未运行全量 pytest/Harness all，保留历史修改和证据。
+
+
+## 可信空间来源前置回写（Task2 保持开放）
+
+- `cdb424d8`：内部 authored scope、真实 controller/epoch 绑定、首样本/重连位置连续、backend 单调时间与 tick 双重限速、bounds/freshness、持久化 provenance、同 world spine read CAS。旧重复请求返回原 receipt，不刷新 freshness；进程重启须新样本。采样和读取只读取当前 head 一条，旧 retry 直接查询原事务。纳入已有 controller 断连/重连撤销实现，防止旧连接继续被接纳。
+- 精确暂存隔离 **62 passed**，4 条已有 FastAPI lifespan warnings；run `93614848ee2e446199c8b2cd369ecd27`，外部根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/spatial-source-staged-final/`。backend-contract passed run `4693379c1044449c803bc686fc5fd254`，同根 `spatial-source-contract/`。均 cleanup passed。
+- 初始 RED `93396480fea54a2eaf9257160336b27e`：16 缺模块与1个测试 context-manager 错误；修正后 SQLite RED `070b10dbb50d48c6b69ce1d618cd16e4` 正确缺模块。局部实现 run `02d58bdc6a6140fd84589b2b43d58bfd` 50 passed。新增有界历史读取 RED `e47d4479ba684dc391d7bb365f56d50b` 1 failed。第一次隔离 `6cd20c5ebdb145b4aefbe1e882feddbf` 3 failed/58 passed：发现未提交 auth 撤销依赖，并缺 production manifests/静态桥文件；补齐后 `5a18bdba6e27496fb6ff76e643e83e93` 1 failed/61 passed，仅还缺 LocalPresentationBus 静态文件。补齐明确 HEAD 夹具才取得上述有效结果；不将失败计为通过。本轮没有修改、启动或操作 Godot；读取已提交静态文本不构成场景验收。
+- R08 只补来源前置，生产 composition/消息 ingress、L4 实时准入与 ESM receipt consumer 仍待接。该来源证明有界 controller evidence，不证明 server physics/contact/path clearance。controller auth 是内存状态；撤销与 world append 尚非跨组件原子，不声称全生产准入原子性。R07/R09、Q01–Q04、G-A/B/C 均不升级，未跑真实模型/全量 pytest/Harness all。
+- 上一文档批 `58cdc65` docs passed/cleanup passed，run `c70a211dc49144089310ab703cfbbae2`，同根 `recall-budget-docs/`。
+
+- 本批 docs 首跑 `b43940fa31434f0e873872eab9a8fdea` 因门禁要求同名计划缺失而失败；增加链接到统一计划的空间来源 lane 后，`b4f073d817a74d15b796d74cee859a9d` passed/cleanup passed，外部根 `spatial-source-docs-corrected/`。

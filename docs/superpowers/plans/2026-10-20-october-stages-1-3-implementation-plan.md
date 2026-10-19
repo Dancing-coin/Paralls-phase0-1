@@ -137,6 +137,10 @@ flowchart TD
 
 ## 执行记录
 
+### Task2 spatial source dependency (next batch)
+
+Design: [controller-bound source](../specs/2026-10-20-embodied-spatial-source-design.md). Implement a strict internally authored scope and authenticated pose admission over the existing shared world store. First RED: unbound/foreign controller, scope mismatch/nonfinite input, missing/stale/revoked source, first/reconnect teleport, tick-inflated movement, changed duplicate, restart freshness and owner read CAS. Then minimal source implementation and SQLite recovery; focused tests and backend-contract only. Production composition, message ingress, L4 admission and ESM consumer follow this prerequisite; no live/Godot claim from source tests. Keep Task2 open.
+
 - Task1：`fac6a634` 已提交独立私有目标目录；ESM inspect 之外仍未完成。
 - Task2 前置：已修复 inspect 语义映射、冻结 scope 和 target/source pins；75 项组合回归与4项暂存隔离用例通过。生产 Laya、owner 提交和回执未验收。
 - Task2 dependency ruling：原 canonical interact 只产生 accepted；不得将其记成领域提交。补真正 owner 提交时复用已有状态机/领域 event spine，不能以 ack 代替 receipt。
@@ -160,3 +164,6 @@ Acceptance for this sub-batch: real SQLite reopen/exact retry, changed duplicate
 `d13994bd` 已将原 session 冻结合同核验接入生产 canonical execution ingress；精确暂存隔离 39 passed，详情与两项 HEAD 已有 runtime 失败见统一矩阵。下一步保持原合同→可信空间/权限/时钟→L4→owner receipt 的依赖；来源一致不等于 world admission。legacy bundle 收敛仍待完成，不以兼容入口冒充正式闭环。
 
 **Task1 recall budget prerequisite:** `cdaff0a2` caps aggregate memory recall and existing token estimates by the frozen policy before L3 recall and during gateway reselection; semantic card pruning also prunes returned memory. Exact staged isolation: 163 passed, run `84939863833b47b7a4a95367f3806e2a`; backend-contract run `c0948577424d45fd8d98015f5df71143` passed, cleanup passed. This is not total prompt/tokenizer enforcement. Background/dialogue/revision sources remain open. Continue Task2 spatial/admission/owner production wiring next; do not extend local budget tests without a new risk.
+
+
+**Spatial prerequisite committed:** `cdb424d8`, exact staged 62 passed (`93614848ee2e446199c8b2cd369ecd27`), backend-contract passed (`4693379c1044449c803bc686fc5fd254`), cleanup passed. Source uses head-only validated reads and original transaction lookup. Controller disconnect/rebind revokes old bindings. Auth revocation and world append are not a shared atomic transaction. Next batch connects internal settings, production shared-store composition and strict bound-sample ingress before L4/ESM consumption; R07–R09 remain open.
