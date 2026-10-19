@@ -666,6 +666,11 @@ class ESMService:
         action_request: ActionRequest | None = None,
     ) -> ActionResolutionResult | ConstraintStateResult:
         request = action_request or self.build_action_request(event)
+        if (request.actor_id, request.room_id, request.scene_id, request.zone_id,
+                request.target_object_id, request.action_profile) != (
+                event.actor_id, event.room_id, event.scene_id, event.zone_id,
+                event.target_object_id, event.interaction_type):
+            raise ValueError("interaction request does not match event")
         request_fingerprint = self._canonical_execution_fingerprint(request)
         if request_fingerprint is not None:
             existing = self._canonical_interaction_settlements.get(request.idempotency_key)
@@ -673,6 +678,27 @@ class ESMService:
                 if existing[0] != request_fingerprint:
                     raise ValueError("canonical interaction idempotency conflict")
                 return existing[1]
+        policy = self.interaction_policy_for(
+            event.target_object_id, event.interaction_type, room_id=event.room_id,
+            scene_id=event.scene_id, zone_id=event.zone_id, actor_id=event.actor_id,
+        )
+        if policy is None:
+            return self._with_execution_contract_pins(request, self.reject_unsupported_interaction(event))
+        if not bool(policy.get("state_match", True)):
+            return self._with_execution_contract_pins(request, self.reject_interaction_state(
+                event, expected_state=str(policy.get("previous_state", "")),
+                actual_state=self.interaction_state_for(
+                    room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id,
+                    target_object_id=event.target_object_id),
+            ))
+        if not bool(policy.get("owner_match", True)):
+            return self._with_execution_contract_pins(request, self.reject_interaction_owner(
+                event, expected_owner=(event.actor_id
+                    if policy.get("owner_requirement") == "actor_is_owner" else "unclaimed"),
+                actual_owner=self.interaction_owner_for(
+                    room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id,
+                    target_object_id=event.target_object_id),
+            ))
         next_is_in_range = is_in_range if is_in_range is not None else self._is_in_range(event.target_object_id, actor_position)
         if not next_is_in_range:
             return self._with_execution_contract_pins(request, ConstraintStateResult(
@@ -795,6 +821,9 @@ class ESMService:
             request.request_id,
             request.turn_id,
             request.actor_id,
+            request.room_id,
+            request.scene_id,
+            request.zone_id,
             request.target_object_id,
             request.action_profile,
             request.causation_id,
