@@ -179,7 +179,7 @@ class DialogueCoordinator:
                    and self.runtime.activation_is_current(turn.handle.lock_ref, turn.handle.token)
                    and self._capture_pin(turn) == turn.pin
                    and (not turn.binding_pin or (binding is not None
-                        and turn.handle.actor_id in binding.allowed_actor_refs)))
+                        and 'character:' + turn.handle.actor_id in binding.allowed_actor_refs)))
         if not current:
             self.cancel(ticket_id, reason='execution_context_invalid')
         return current

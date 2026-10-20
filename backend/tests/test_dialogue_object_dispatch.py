@@ -43,18 +43,19 @@ def test_dialogue_cognition_offers_original_contract_before_next_provider(tmp_pa
         owner.cancel(advance.job.ticket_id, reason='cancelled')
 
 
-@pytest.mark.parametrize('ending', ['cancel', 'disconnect', 'context_change', 'actor_unauthorized'])
+@pytest.mark.parametrize('ending', ['cancel', 'disconnect', 'context_change', 'actor_unauthorized', 'bare_actor_id'])
 def test_ended_or_stale_dialogue_does_not_drain_execution(tmp_path, monkeypatch, ending):
     owner = coordinator()
     with vertical(tmp_path) as (execution, runtime, esm, source, world, sessions, clock, contract):
         monkeypatch.setattr(main, 'character_object_execution', execution)
         monkeypatch.setattr(owner, '_prepare_cognition',
             lambda *_: CognitionAdvance('completed', result=[command(contract)]))
-        if ending == 'actor_unauthorized':
+        if ending in {'actor_unauthorized', 'bare_actor_id'}:
             from app.services.websocket_session_auth_service import WebSocketSessionEnrollment
             now = int(time())
             credential = owner.auth.create_trusted_local_launch_credential(principal_ref='p1',
-                allowed_actor_refs=('char_c',), issued_at=now, expires_at=now + 60)
+                allowed_actor_refs=('character:char_c',) if ending == 'actor_unauthorized' else ('char_a',),
+                issued_at=now, expires_at=now + 60)
             binding = owner.auth.bind_session(WebSocketSessionEnrollment(credential_kind='trusted_local_launch',
                 credential=credential, protocol_version=1), remote_host='127.0.0.1', now=now).binding
             owner.bind('connection:test', binding)
@@ -121,7 +122,7 @@ def test_websocket_dispatch_before_blocked_dialogue_then_original_owner_receipt(
                     now = int(time())
                     credential = main.runtime_execution.submit(lambda:
                         owner.auth.create_trusted_local_launch_credential(principal_ref='p1',
-                            allowed_actor_refs=('char_a', 'char_c'), issued_at=now, expires_at=now + 60)).result(2)
+                            allowed_actor_refs=('character:char_a', 'character:char_c'), issued_at=now, expires_at=now + 60)).result(2)
                     websocket.send_json({'message_type': 'websocket_session_bind', 'payload': {
                         'credential_kind': 'trusted_local_launch', 'credential': credential, 'protocol_version': 1}})
                     assert websocket.receive_json()['payload']['accepted']
