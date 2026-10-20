@@ -471,3 +471,12 @@ D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner�
 后端 D08 的认证 faction 来源现在覆盖默认生产 spawn host；管理员显式 policy timeline 不授予当前 encounter、action、contact 或 physics。完整 target/action admission、真实角色/Laya/多owner回执仍开放，Q01–Q04与Godot A/B/C状态不变。未运行全量pytest/Harness all、模型或Godot，未改历史草稿。
 
 本批 backend-contract `8f7b5d36776044b1baf17311aae61495` passed／cleanup passed（`faction-spawn-contract/`）。
+
+
+## R01 MindFrame→L3 实际输入前置修复（2026-10-20）
+
+HEAD的原L3已经读取frame_digest/turn/revision字段，而已提交MindFrame没有对应合同；此前frame=None路径掩盖错误。本批仅采用历史草稿中的turn字段，修复幂等绑定摘要、MappingProxy JSON序列化、正文与当前turn重新校验；未收编regulation/self/external工作区草稿，也未声称输入source authority。冻结前绑定现有CharacterTurnContext，候选与execution_contract携带同一digest/pins；跨actor/branch/input/memory/policy/snapshot及冻结后正文改动拒绝，旧unbound diagnostic保留。
+
+精确HEAD `7835655a` 加三份暂存源码/测试，隔离 **90 passed**，run `96b45e76e6974f879b282745c365e797`，涵盖原frame model/builder和L3；RED11failed `55179ca124d744d6bf782381ff69dbe4`，保留AttributeError及缺少binding的原失败。外部证据 `mind-frame-turn-red/green/`；backend-contract `2205567e73954ed28675703abc9d65cc`（`mind-frame-turn-contract/`）passed；均cleanup passed。本轮faction文档门禁 `9eb027200eb449ff9915c155ef02e56b` passed。
+
+R01/R06仍局部：production runtime尚未把同一MindFrame交给L2/L3，来源/revision及self/external完整字段尚缺。下一批直接补原生产stage同帧输入，不扩大此helper测试作为核心闭环替代。Q01–Q04、完整角色owner闭环、GodotA/B/C不升级。无全量pytest/Harness all、模型调用、训练或Godot。

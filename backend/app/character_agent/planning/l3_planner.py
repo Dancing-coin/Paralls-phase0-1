@@ -642,6 +642,13 @@ class CharacterAgentL3Service:
         capability_envelope: dict[str, object] | None = None,
         cognition_policy: dict[str, object] | None = None,
     ) -> PreparedCharacterIntentPlan:
+        if frame is not None:
+            if frame.actor_id != interpretation.actor_id:
+                raise ValueError("mind frame actor mismatch")
+            if turn_context is not None:
+                frame = frame.bind_to_turn(turn_context)
+            elif frame.turn_id:
+                raise ValueError("mind frame turn context required")
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
         normalized_profile = self._normalize_profile(profile)

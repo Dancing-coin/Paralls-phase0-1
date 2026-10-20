@@ -1,8 +1,14 @@
 from __future__ import annotations
 
-from typing import Literal
+import hashlib
+import json
+from types import MappingProxyType
+from typing import Literal, Mapping
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
+
+
+from app.character_agent.models.turn_context import CharacterTurnContext
 
 
 MindFactorLayer = Literal[
@@ -111,6 +117,33 @@ class CharacterMindFrame(StrictMindFrameModel):
     affordances: MindFrameLayer = Field(default_factory=MindFrameLayer)
     cognition_workspace: CognitionWorkspace = Field(default_factory=CognitionWorkspace)
     provenance: MindFrameProvenance = Field(default_factory=MindFrameProvenance)
+    turn_id: str = ""
+    branch_id: str | None = None
+    input_revision_vector: Mapping[str, int] = Field(default_factory=dict)
+    memory_revision_vector: Mapping[str, int] = Field(default_factory=dict)
+    policy_revision: str = ""
+    snapshot_revision: int = 0
+    frame_digest: str = ""
+    source_refs: tuple[str, ...] = ()
+
+    @field_validator("input_revision_vector", "memory_revision_vector", mode="after")
+    @classmethod
+    def freeze_frame_revision_vectors(cls, value: Mapping[str, int]) -> Mapping[str, int]:
+        if any(revision < 0 for revision in value.values()):
+            raise ValueError("mind frame revisions must be non-negative")
+        return MappingProxyType(dict(value))
+
+    @field_serializer("input_revision_vector", "memory_revision_vector")
+    def serialize_frame_revision_vectors(self, value: Mapping[str, int]) -> dict[str, int]:
+        return dict(value)
+
+    @field_validator("source_refs", mode="before")
+    @classmethod
+    def normalize_source_refs(cls, value: object) -> tuple[str, ...]:
+        if value is None:
+            return ()
+        return tuple(str(ref) for ref in value)  # type: ignore[arg-type]
+
 
     @model_validator(mode="after")
     def validate_layer_buckets(self) -> CharacterMindFrame:
@@ -129,6 +162,47 @@ class CharacterMindFrame(StrictMindFrameModel):
                         f"got {card.factor_type!r} on {card.layer!r}"
                     )
         return self
+
+    def _content_digest(self) -> str:
+        payload = self.model_dump(mode="json", exclude={"frame_digest"})
+        return hashlib.sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True,
+            separators=(",", ":"), allow_nan=False).encode("utf-8")).hexdigest()
+
+    def bind_to_turn(self, turn: CharacterTurnContext) -> "CharacterMindFrame":
+        """Bind once; later consumers must validate the original content and pins."""
+        if self.actor_id != turn.actor_id:
+            raise ValueError("mind frame actor mismatch")
+        if self.turn_id:
+            self.validate_turn(turn)
+            return self
+        bound = self.model_copy(update={
+            "turn_id": turn.turn_id,
+            "branch_id": turn.branch_id,
+            "input_revision_vector": MappingProxyType(dict(turn.input_revision_vector)),
+            "memory_revision_vector": MappingProxyType(dict(turn.memory_revision_vector)),
+            "policy_revision": turn.policy_revision,
+            "snapshot_revision": turn.snapshot_revision,
+            "source_refs": tuple(sorted(set(self.provenance.source_refs))),
+        })
+        return bound.model_copy(update={"frame_digest": bound._content_digest()})
+
+    def validate_turn(self, turn: CharacterTurnContext) -> None:
+        if not self.turn_id:
+            raise ValueError("mind frame is not bound to a turn")
+        if self.actor_id != turn.actor_id:
+            raise ValueError("mind frame actor mismatch")
+        if self.turn_id != turn.turn_id:
+            raise ValueError("mind frame turn mismatch")
+        if self.branch_id != turn.branch_id:
+            raise ValueError("mind frame branch mismatch")
+        if dict(self.input_revision_vector) != dict(turn.input_revision_vector):
+            raise ValueError("mind frame input revision mismatch")
+        if dict(self.memory_revision_vector) != dict(turn.memory_revision_vector):
+            raise ValueError("mind frame memory revision mismatch")
+        if self.policy_revision != turn.policy_revision or self.snapshot_revision != turn.snapshot_revision:
+            raise ValueError("mind frame revision mismatch")
+        if not self.frame_digest or self.frame_digest != self._content_digest():
+            raise ValueError("mind frame digest mismatch")
 
 
 class L2InterpretationView(StrictMindFrameModel):
