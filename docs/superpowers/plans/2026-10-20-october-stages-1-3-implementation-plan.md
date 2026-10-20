@@ -373,6 +373,18 @@ Root cause: DialogueCoordinator compared raw runtime actor ID `char_a` to bindin
 
 Slow goal audit: `LayaSystemOneProvider.complete` returns the input active_goal_frame; `prepare_intent_plan` supplies a persisted frame or preserve_continuity shell. Existing goal event/store projection admits and records a proposed frame but does not perform slow model reasoning. Thus there is no independent triggered slow-model goal reorganization on the Laya path. Keep this R01/R07 gap explicit; do not promote L2 goal_hints directly, fake a finish goal, or force every fast turn to await slow reasoning. Next design the bounded asynchronous proposal using existing gateway/coordinator/frozen admission and original goal owner; stale/expired/context-changed proposals must zero-write. No second scheduler/lock/store.
 
+#### Slow goal reorganization dependency and acceptance
+
+The review against role specs 01/02 and `角色/02-Laya快循环与快慢思考战斗设计.md` confirms the intended ownership but not a complete persisted request/result contract. Keep R01/R07 **not implemented** until that bounded child design and its end-to-end evidence exist.
+
+Existing `PreparedCognitionJob` continuation is asynchronous and validates generation, deadline, activation and the captured cognition pin before resuming its generator on the owner thread. It is not an independent same-actor branch: `prepare_cognition_job` rejects a second pending turn as `actor_busy`, and its continuation receipts are in-memory. Existing `CharacterCognitionProgress` is a durable linear admission stage and likewise does not support a concurrent slow proposal. Do not use either boundary to claim same-actor parallelism or durable slow-result replay without extending the owning lifecycle.
+
+The child design must define a frozen proposal request from admitted `CharacterMindFrame`, current goal state/history, permitted interpretation and evidence, lawful capability/policy projection, trigger/source identity, actor and goal revisions, expiry and cancellation identity. The fast Laya action+target selection remains independent and available while that request is pending. The response is a typed goal proposal with no authority effect; the original goal owner rechecks trigger, actor activation, expiry, current goal/revision, allowed transition fields and idempotency before producing the existing `goal_state_event`. A stale, cancelled, expired, conflicting or provider-failed proposal must produce zero goal/world writes and must not replace the current Laya action with an old continuity floor. L2 `goal_hints` remain hints.
+
+Required evidence: no-trigger no-call; triggered request freezes only permitted inputs; Laya continues while the provider is pending; valid result reaches the original goal owner exactly once with receipt and replay behavior; cancelled/late/expired/revision-conflicting results produce zero writes; restart recovery preserves the exact request and original receipt if persistence is required by the accepted contract. Select focused tests and harness from the child design once its owner/lifecycle interfaces are explicit. No Godot work is part of this child batch.
+
+Next active work resumes with the unified acceptance matrix: advance stage 1/2 role and domain dependencies through small owner-backed slices, reusing the live sourced use/finish evidence already recorded at the end of the acceptance matrix. Do not repeat that model call to refresh evidence. Keep stage 3 retained and open only for uncovered sources/owners; model Q01-Q04 and Godot A/B/C remain their own final gates.
+
 Backend: canonical actor scope defect fixed and controlled WS owner path verified. Model quality: Q01-Q04 open; these are development diagnostics, no quality pass. Role: sourced live post-repair cycle still requires one measurement on the corrected code; multi-domain/slow-goal closure open. Godot G-A/B/C unstarted, last. No broad pytest/Harness all, formal split access or training. Overall objective remains stages1-3; Goal status active, objective-edit API unavailable.
 
 
@@ -383,3 +395,8 @@ Backend: canonical actor scope defect fixed and controlled WS owner path verifie
 - **后端**：修复后的 sourced worktable dispatch/owner/recovery 子项已验证。**角色闭环**：R08/R09新增这一真实连续子项；完整 action+target、多 owner、慢目标重组、完整回放仍开放。**模型质量**：development-only、formal_eligible=false，Q01–Q04未验收；未读取 final/holdout、未训练。**Godot**：A/B/C未修改、启动或验证；spatial 来源为认证开发控制器，不能证明 physics。
 - runner cleanup passed，临时根已不存在，8765/18766无监听。WSL清理命令退出0；外层 subprocess 文本解码出现 UnicodeDecodeError，保留输出，不将其等同产品失败或独立清理证明；最终端口及临时目录检查确认回收。原始失败证据保留，无全量 pytest/Harness all。
 - 后续源码核对确认 Soul timeline 审查项已经由 `9d25d89b` 修复；不重复修改或测试该项。下一批处理慢目标重组的冻结提案输入和路由，随后接现有 coordinator/driver 重新准入；单纯请求准备不能关闭R01/R07。
+
+
+### Slow goal proposal contract batch (2026-10-21)
+
+Continue through the [child design](../specs/2026-10-21-character-slow-goal-proposal-design.md) and [five-batch plan](2026-10-21-character-slow-goal-proposal-implementation-plan.md). Batch 1 is contract-only; batches 2–5 remain open. R01/R07 are not closed by gateway success.
