@@ -52,13 +52,13 @@ def source(tmp_path):
                {"kind": "wire_output", "message": result}]
     path = tmp_path / "trace.jsonl"
 
-    def run(change=None):
+    def run(change=None, **kwargs):
         rows = copy.deepcopy(records)
         if change:
             change(rows)
         raw = "\n".join(json.dumps(x, ensure_ascii=False) for x in rows).encode()
         path.write_bytes(raw)
-        return export_runtime_trace(path, provider=provider), raw
+        return export_runtime_trace(path, provider=provider, **kwargs), raw
     return run
 
 
@@ -137,3 +137,89 @@ def test_truncation_of_questions_is_not_a_valid_complete_input(source):
     result, _ = source(lambda rows: rows[2]["call"]["response"]["usage"].update(truncated_questions=["choice"]))
     assert result["accepted_count"] == 0
     assert result["rejections"][0]["reason"] == "usage_invalid"
+
+
+@pytest.fixture
+def owner_snapshot(tmp_path):
+    from app.gameplay.event_store import DurableGameplayEventStore
+    from app.models.player_input import InteractIntent
+    from app.services.esm_service import ESMService
+
+    def create(*, action="use", actor="char_a"):
+        target = "obj_plaque" if action == "inspect" else "obj_worktable"
+        path = tmp_path / "owner.json"
+        store = DurableGameplayEventStore(tmp_path / f"{action}-{actor}.db")
+        try:
+            owner = ESMService(store=store)
+            event = InteractIntent(player_id="character_agent", actor_id=actor,
+                room_id="room", scene_id="scene", zone_id="zone", producer_ts=10,
+                target_object_id=target, interaction_type=action,
+                turn_id="turn:1", execution_contract_ref="execution:turn:1")
+            request = owner.build_action_request(event, source_system="character_agent_l4").model_copy(update={
+                "request_id": "execution:turn:1:0",
+                "source": {"layer": "L4", "system": "character_agent", "actor_id": actor},
+                "causation_id": "cause:1", "correlation_id": "correlation:1"})
+            result, receipt = owner.settle_object_interaction(event, action_request=request,
+                actor_position=owner.OBJECT_POSITIONS[target])
+            assert receipt.committed
+            store.save_snapshot(path)
+        finally:
+            store.close()
+
+        def bind(rows):
+            rows[3]["contract"].update(producer_ts=10, causation_id="cause:1",
+                correlation_id="correlation:1", expected_revision_vector={},
+                expected_memory_revision_vector={}, expected_snapshot_revision=0)
+            rows[4]["message"]["payload"].update(result.model_dump(mode="json"))
+        return path, bind, receipt
+    return create
+
+
+def test_original_durable_owner_snapshot_matches_without_exposing_private_payload(source, owner_snapshot):
+    path, bind, receipt = owner_snapshot()
+    before = path.read_bytes()
+    result, _ = source(bind, owner_snapshot=path)
+    assert result["accepted_count"] == 1
+    record = result["records"][0]
+    assert record["owner_store_validation"] == "snapshot_matched"
+    assert record["owner_evidence"]["source_sha256"] == "sha256:" + hashlib.sha256(before).hexdigest()
+    assert record["owner_evidence"]["event_id"] == receipt.committed_event_ids[0]
+    assert record["owner_evidence"]["transaction_id"] == receipt.transaction_id
+    assert record["quality"] == "unscored" and record["recovery"] == "unverified"
+    assert result["formal_eligible"] is False
+    assert set(record["owner_evidence"]) == {"source_sha256", "event_id", "event_digest",
+        "transaction_id", "receipt_digest", "global_sequence"}
+    assert path.read_bytes() == before
+
+
+@pytest.mark.parametrize("changed", ["actor", "action", "correlation", "boundary", "missing"])
+def test_owner_snapshot_mismatch_rejects_archive_association(source, owner_snapshot, changed):
+    path, bind, _ = owner_snapshot(actor="char_b" if changed == "actor" else "char_a",
+                                  action="inspect" if changed == "action" else "use")
+    def mutate(rows):
+        bind(rows)
+        # Preserve a consistent archive, while the original owner retains its request.
+        rows[4]["message"]["payload"]["actor_id"] = "char_a"
+        if changed == "action":
+            rows[4]["message"]["payload"]["target_object_id"] = "obj_worktable"
+        if changed == "correlation":
+            rows[3]["contract"]["correlation_id"] = "other"
+        if changed == "boundary":
+            rows[4]["message"]["payload"]["settlement_id"] = "transaction:other"
+        if changed == "missing":
+            rows[3]["contract"]["idempotency_key"] = "execution:other"
+            rows[4]["message"]["payload"]["idempotency_key"] = "execution:other"
+    result, _ = source(mutate, owner_snapshot=path)
+    assert result["accepted_count"] == 0
+    assert result["rejections"][0]["reason"] == {
+        "actor": "owner_request_mismatch", "action": "owner_request_mismatch",
+        "correlation": "owner_request_mismatch", "boundary": "owner_boundary_mismatch",
+        "missing": "owner_receipt_missing",
+    }[changed]
+
+
+def test_corrupt_supplied_owner_snapshot_cannot_degrade_to_unverified(source, owner_snapshot):
+    path, bind, _ = owner_snapshot()
+    path.write_text('{}', encoding="utf-8")
+    with pytest.raises(ValueError, match="owner_snapshot_invalid"):
+        source(bind, owner_snapshot=path)

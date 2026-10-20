@@ -1,4 +1,4 @@
-"""Read-only development inputs from serial diagnostic archives, never owner proof."""
+"""Read-only development inputs with optional original owner snapshot association."""
 from __future__ import annotations
 
 import copy
@@ -7,6 +7,9 @@ import json
 from pathlib import Path
 
 from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
+from app.gameplay.event_store import GameplayEventStore
+from app.models.player_input import InteractIntent
+from app.services.esm_service import ESMService
 
 
 def _digest(value: object) -> str:
@@ -30,8 +33,44 @@ class _Rejected(ValueError):
     pass
 
 
+def _owner_association(owner: ESMService, store: GameplayEventStore,
+                       contract: dict, boundary: dict) -> dict:
+    """Use original recovery/idempotency rules, without executing any command."""
+    actions = {"inspect_object": "inspect", "use_object": "use", "finish_use": "finish_use"}
+    action = actions.get(contract["semantic_intent_id"])
+    if not action or contract["semantic_action_id"] not in {action, "action:" + action}:
+        raise _Rejected("owner_request_mismatch")
+    try:
+        scope = contract["expected_observation"]["execution_scope"]
+        actor_id = contract["actor_ref"].removeprefix("character:")
+        event = InteractIntent(player_id="character_agent", actor_id=actor_id,
+            **scope, producer_ts=contract["producer_ts"], target_object_id=contract["target_ref"],
+            interaction_type=action, turn_id=contract["turn_id"],
+            execution_contract_ref=contract["idempotency_key"])
+        request = owner.build_action_request(event, source_system="character_agent_l4").model_copy(update={
+            "request_id": f"{contract['idempotency_key']}:0",
+            "source": {"layer": "L4", "system": "character_agent", "actor_id": actor_id},
+            **{key: contract[key] for key in ("causation_id", "correlation_id",
+                "expected_revision_vector", "expected_memory_revision_vector", "expected_snapshot_revision")},
+        })
+        original = owner.find_object_settlement(event, action_request=request)
+    except (ValueError, TypeError, KeyError) as exc:
+        raise _Rejected("owner_request_mismatch") from exc
+    if original is None:
+        raise _Rejected("owner_receipt_missing")
+    result, receipt = original
+    saved = result.model_dump(mode="json")
+    if any(boundary[key] != saved[key] for key in boundary.keys() & saved.keys()):
+        raise _Rejected("owner_boundary_mismatch")
+    event = store.get_event(receipt.committed_event_ids[0])
+    return {"event_id": event.event_id, "event_digest": _digest(event.model_dump(mode="json")),
+            "transaction_id": receipt.transaction_id, "receipt_digest": _digest(receipt.model_dump(mode="json")),
+            "global_sequence": event.global_sequence}
+
+
 def _record(prepared: dict, call: dict, rows: list[dict], *, provider: LayaSystemOneProvider,
-            prepared_line: int, model_line: int) -> dict:
+            prepared_line: int, model_line: int,
+            owner_source: tuple[ESMService, GameplayEventStore, str] | None = None) -> dict:
     context = prepared.get("context", {})
     if (context.get("provider_revision") != provider.PROVIDER_REVISION
             or not context.get("turn_id") or not context.get("actor_id")):
@@ -107,7 +146,7 @@ def _record(prepared: dict, call: dict, rows: list[dict], *, provider: LayaSyste
             or any(not scope.get(key) or boundary.get(key) != scope[key]
                    for key in ("room_id", "scene_id", "zone_id"))):
         raise _Rejected("boundary_identity_mismatch")
-    return {
+    record = {
         "turn_id": context["turn_id"], "actor_id": context["actor_id"],
         "source_lines": {"prepared": prepared_line, "model": model_line,
                          "execution": execution_line, "boundary": boundary_line},
@@ -123,15 +162,32 @@ def _record(prepared: dict, call: dict, rows: list[dict], *, provider: LayaSyste
             "settlement_status", "settlement_id", "turn_id", "idempotency_key", "actor_id", "target_object_id")},
         "owner_store_validation": "unverified", "quality": "unscored", "recovery": "unverified",
     }
+    if owner_source is not None:
+        owner, store, source_digest = owner_source
+        record["owner_evidence"] = dict(_owner_association(owner, store, contract, boundary),
+                                        source_sha256=source_digest)
+        record["owner_store_validation"] = "snapshot_matched"
+    return record
 
 
-def export_runtime_trace(path: Path, *, provider: LayaSystemOneProvider) -> dict:
-    """Associate serial archive records; do not contact a model or open a world store.
+def export_runtime_trace(path: Path, *, provider: LayaSystemOneProvider,
+                         owner_snapshot: Path | None = None) -> dict:
+    """Associate serial records without contacting a model or executing commands.
 
-    The caller supplies the local pinned provider/tokenizer used to rebuild wire
-    inputs. Digests prove archive consistency only, never origin authenticity.
+    The optional Gameplay JSON snapshot is read once and validated through the
+    original store and ESM recovery. No writable database is opened. Digests
+    prove consistency of supplied artifacts, never independent authenticity.
     """
     raw = path.read_bytes()
+    owner_source = None
+    if owner_snapshot is not None:
+        try:
+            owner_raw = owner_snapshot.read_bytes()
+            store = GameplayEventStore.from_snapshot(json.loads(owner_raw))
+            owner_source = (ESMService(store=store), store,
+                            "sha256:" + hashlib.sha256(owner_raw).hexdigest())
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise ValueError("owner_snapshot_invalid") from exc
     rows = [json.loads(line) for line in raw.decode("utf-8-sig").splitlines()]
     records, rejections = [], []
     pending: tuple[int, dict] | None = None
@@ -148,7 +204,7 @@ def export_runtime_trace(path: Path, *, provider: LayaSystemOneProvider) -> dict
                 prepared_line, prepared = pending
                 try:
                     record = _record(prepared, row["call"], rows, provider=provider,
-                                     prepared_line=prepared_line, model_line=line)
+                                     prepared_line=prepared_line, model_line=line, owner_source=owner_source)
                     record["record_digest"] = _digest(record)
                     records.append(record)
                 except _Rejected as exc:

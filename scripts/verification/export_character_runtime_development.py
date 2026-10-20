@@ -23,6 +23,8 @@ def main() -> int:
     parser.add_argument("--trace", type=Path, required=True)
     parser.add_argument("--tokenizer", type=Path, required=True)
     parser.add_argument("--tokenizer-sha256", required=True)
+    parser.add_argument("--owner-snapshot", type=Path,
+                        help="Optional original Gameplay JSON snapshot; read only, not formal quality proof")
     parser.add_argument("--export-evidence", type=Path, required=True)
     args = parser.parse_args()
     provider = LayaSystemOneProvider(
@@ -30,7 +32,7 @@ def main() -> int:
         tokenizer_sha256=args.tokenizer_sha256,
     )
     with run_scope(PROJECT_ROOT, export_to=args.export_evidence) as run:
-        result = export_runtime_trace(args.trace, provider=provider)
+        result = export_runtime_trace(args.trace, provider=provider, owner_snapshot=args.owner_snapshot)
         (run.evidence_root / "development-source.json").write_text(
             json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False), encoding="utf-8")
         summary = {"run_id": run.run_id, **{key: result[key] for key in (
