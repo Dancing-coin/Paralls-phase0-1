@@ -234,7 +234,8 @@ class SoulAnchorAuthority:
                 or spawns[0].payload.get('source_activation_event_id') != payload.get('activation_event_id')):
             raise ValueError(invalid)
         for pin, source in zip(pins, sources, strict=True):
-            if not isinstance(pin, dict) or pin.get('actor_ref') != actor or pin.get('world_ref') != world:
+            if (not isinstance(pin, dict) or pin.get('actor_ref') != actor
+                    or pin.get('world_ref') != world or pin.get('timeline_ref') != payload.get('timeline_ref')):
                 raise ValueError(invalid)
             resource_stream = f"gameplay:resources:{actor}"
             expected.add(resource_stream)

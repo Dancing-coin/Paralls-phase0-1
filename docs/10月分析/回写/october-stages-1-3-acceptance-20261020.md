@@ -26,7 +26,7 @@
 | D07 状态／效果／装备；规格10 | 局部实现 | Status lifecycle、equipment activation/command、effect/stat projection | 实际角色动作消费的权限/版本/失效链、效果与资源真实 owner 回执及恢复；全领域集中切换不能由装备单例代替 |
 | D08 技法／多 owner／物理；规格11、计划04 Task4 | 局部实现 | 既有 ESM、street embodied owner、Durable combat adapter、canonical faction/Threat/encounter | authenticated canonical combat producer、正式 faction/target source、角色合同接线；真实 physics/contact 证据在最终 Godot 阶段取得，禁止伪造 |
 | D09 LifeState／Presence；规格12、计划04 Task5 | 局部实现 | LifeState owner、case-death caller、Population activation→Presence、incarnation/replay | 正式场景 source 与角色私有投影/target eligibility、迁移恢复；不从 HP 或 profile 推死亡事实 |
-| D10 Soul／identity；规格08/12 | 未实现（完整 Soul owner） | 现有 identity、continuity 和缺 owner 拒绝合同可复用；当前代码未发现 Soul authority | 按原规格补必要 owner/权限/事件/receipt/恢复，再返回角色验收；identity/L1 hint 不能替代 Soul 事实 |
+| D10 Soul／identity；规格08/12 | 局部实现（来源与 anchor provenance） | soul_sources.py、soul_presence_sources.py、soul_runtime.py；Presence/Resource 原始 owner 来源 cut 与 Soul authority-only anchor receipt 有隔离证据 | 完成 Life/mind 注册语义、link/grant/protection 与四门事实 owner、恢复/replay/common-cut/private projection 和生产角色/L4 接线；source/anchor 不授予任何执行权限 |
 | D11 全域 replay 与故障；计划04 Task6 | 局部实现 | 十领域 shared Durable cut、具名 participant matrix、Task6 fault allowlist | 全部本次正式准入 owner 的同一 global atomic cut，以及恢复/迁移/权限/隐私 parity；42 participant 独立测试不等于共同 cut |
 
 ## 二、角色与 Laya 闭环
@@ -314,9 +314,10 @@
 - `presence-owner-red`因尚无adapter预期失败11/43；最终修复了事实索引缺失时KeyError逸出、幂等schema registration、receipt/global cut边界。未运行全量pytest/Harness all、模型或Godot。临时副本已清理，用户已有.harness内容保留。
 
 
-## D10 Soul Presence source依赖
+## D10 Soul Presence 与 anchor source依赖
 
 - 新增 `soul_presence_sources.py` 与真实 owner 测试；固定 Presence head重建并验证完整历史，返回当前 incarnation、spawn/activation refs、不可变来源和 Population/Presence/Life=0 read heads，供后续 Soul append CAS。当前 activation grant/profile/lifecycle单独重验；旧spawn不授权，任何Life历史继续不可用，不推断alive或timeline。
 - HEAD `a28eac5b`＋两份精确源码隔离 **48 passed**，run `9c62f6b8f6914426bb16655e7b4806b3`，外部根 `soul-presence-final/`，cleanup passed。RED缺模块9失败/37通过；固定cut竞态、SQLite reopen、旧incarnation、撤grant和坏原receipt均覆盖。独立只读审查无阻断；最初review模型503未产生结论，随后使用可用代理完成。
-- **后端**：仅来源依赖完成，D10完整Soul owner仍未实现；生产composition、Life adapter、anchor/grant/protection/four gates及共同cut继续开放。**模型质量**：Q01–Q04无新增评分。**角色闭环**：R14/Laya完整动作验收未升级。**Godot**：A/B/C未操作或验证。
-- 无全量pytest/Harness all、模型调用/训练或Godot；run_scope本轮产物已回收，历史工作区保留。Goal仍active，扩展范围以本矩阵与执行计划为准。下一步直接推进Soul anchor/identity binding及注册life/mind语义与四门owner。
+- **后端**：Presence/Resource来源与anchor provenance局部完成，D10完整Soul owner仍未实现；生产composition、Life adapter、link/grant/protection/four gates与共同cut继续开放。**模型质量**：Q01–Q04无新增评分。**角色闭环**：R14/Laya完整动作验收未升级。**Godot**：A/B/C未操作或验证。
+- Anchor隔离55 passed，run `c2094a68f7124a349d9cc979e1f47fa2`；backend-contract `4b8cc088d2b44d6db7280e91cf2dc2e1` passed；cleanup passed。真实Presence incarnation与Resource cut进入authority-only原子anchor receipt，重开后只恢复原receipt，不授予gate。提交 `03f200ed` 及 timeline 内部scope恢复校验。
+- 无全量pytest/Harness all、模型调用/训练或Godot；run_scope本轮产物已回收，历史工作区保留。Goal仍active，扩展范围以本矩阵与执行计划为准。下一步实现Soul自有link/grant/protection与四门owner；缺失Life/mind语义保持fail-closed。

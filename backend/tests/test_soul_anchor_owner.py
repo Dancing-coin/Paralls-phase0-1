@@ -161,3 +161,16 @@ def test_anchor_history_rejects_corrupt_original_receipt(monkeypatch):
     assert not owner.issue(_request()).committed
     with pytest.raises(ValueError, match='soul_anchor_original'):
         owner.projection(world_ref=WORLD, actor_ref=ACTOR)
+
+
+def test_anchor_history_rejects_resource_pin_from_another_timeline():
+    store = GameplayEventStore()
+    _, presence, resources = _sources(store)
+    owner = _owner(store, presence, resources)
+    assert owner.issue(_request()).committed
+    projection = owner.projection(world_ref=WORLD, actor_ref=ACTOR)
+    projection['resource_pins'][0]['timeline_ref'] = 'timeline:other'
+    event = store.read_stream(owner.stream_id(WORLD, ACTOR))[0]
+    batch = store.get_transaction(event.transaction_id)
+    with pytest.raises(ValueError, match='soul_anchor_original'):
+        owner._validate_source_cut(projection, batch.read_stream_revisions, event.global_sequence)
