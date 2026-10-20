@@ -39,8 +39,8 @@
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 生产 L3 默认完整输入预算门已启用（c3fbbf27）；正式运行 tokenizer/config 冻结、同 request usage/pins 仍待真实模型验证，不能靠静默截断解决 |
 | R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
-| R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
-| R08 L4→owner→反馈 | 局部实现（生产 plaque inspect consumer）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；仅 public plaque inspect。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
+| R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
+| R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect owner＋session outcome）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；仅 public plaque inspect。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
 | R09 中断／恢复／回放 | 未验证（端到端） | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
 | R10 学习／技能形成；规格06 | 局部实现 | extractor/gate/settlement、capability-action vertical | 四学习路线目前到缺 owner 拒绝；正式对象/策略注册与真实 skill owner 结算。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |
@@ -191,3 +191,22 @@
 - `c3fbbf27`：L3 生产 Laya request 无论环境变量缺失、空值还是空白，都冻结完整输入预算（默认 max_len=2091、head_max_len=256）；显式配置仍冻结到原 request。复用现有 provider tokenizer gate，缺 pinned tokenizer 或总输入超限在 HTTP 前拒绝。
 - RED 5 failed，run `ffc3cc6569954313bf3943a5e61724e0`；HEAD `2cb97f5f` archive＋精确两文件 GREEN/回归 **72 passed**，run `0ed5fd71ca7d4902944c73f41f9f1384`。提交前核对两文件 SHA 与隔离 manifest 一致。backend-contract passed，run `be6de26f061046ec93a3ea9b57925a98`；各 run cleanup passed。证据在既有仓库外根目录的 `laya-default-budget-{red,isolated,contract}/`。
 - 后端：只关闭生产默认预算门子项，R04/R06仍局部；4 条既有 mappingproxy serializer warnings保留。模型质量：受控 tokenizer 测试不能替代正式 tokenizer/usage 或 calibration/final/holdout，Q01–Q04未关闭。角色闭环：R07–R09未升级，下一步真实 Laya→L4→ESM receipt纵切。Godot：未修改、启动或验收；没有运行全量 pytest/Harness all。
+
+
+## Laya 冻结认知输入修复与真实诊断
+
+- `4c4b65e7`：L3 原已准备的 actor-scoped goal frame/tags、current goal、已裁剪 memory/semantic cards、need/dynamic state、supervision/background/tension 通过显式 allowlist 进入 Laya state；不复制整个 context、原始档案或 grading。所有新增输入仍经过既有 pinned tokenizer 总预算门，超限在 HTTP 前拒绝。此批不宣称所有 frame/source 输入已完整。
+- 10 项新增输入保留用例先 RED（10 failed）；精确两文件 HEAD 隔离验证 **131 passed**，run `12803a3e4a944604b32fca4cf96d15c7`，外部根下 `laya-frozen-context-isolated/`。backend-contract passed，run `d99751bd2d32491aa7fd6acc671a8937`，目录 `laya-frozen-context-contract/`；均 cleanup passed。
+- 修复前真实 backend 诊断 runs `5abeca21340a4cfd8af623044b66044a`、`6f05c7a2b03a4db29fb84184ef9d4016` 各两次 Laya HTTP 成功，均选择合法 observe，未到 owner。前者目录 `laya-object-production-diagnostic-exact-manifests/`，后者 `laya-object-production-diagnostic-action-request/`。缺 manifest 的前次 launcher 失败不计通过。
+- 修复后 HEAD 真实 backend WebSocket raw fact→L2 local baseline→official pinned Laya run `f0fe891b98174b5f8936e4d5e69ddc5b`：原冻结三候选顺序不变，选择 `inspect_object:obj_plaque`（0.7819），完整输入 **5844 tokens**，服务 usage 与本地预算完全一致、无截断、无 provider error。目录 `laya-object-production-frozen-context/`，cleanup passed。本次 15 秒观察窗口在 L3 返回附近结束并取消 pending，未形成 L4/owner 闭环；不能把模型选择计为 R07/R08完成。L2 是 continuity baseline，正式 L2质量未验。
+- 上述输入只属开发诊断，不能进入 final/holdout；单例选择变化不能证明统计质量或唯一归因。Q01–Q04仍未关闭。Godot未修改、启动或操作。未跑全量 pytest/Harness all；用户历史修改与 `.harness` 产物保留。
+
+- 上述输入修复的 docs gate passed/cleanup passed：run `5e3d1323da2f4d8bb419afc16eb0402e`，目录 `laya-frozen-context-docs/`。
+- 延长真实观察窗口后的 run `114fc8b34fc745ae93edb2932f821a44`，目录 `laya-object-production-owner/`，Laya仍选择 inspect，但生产 L3 legacy mapping 把原语义改为 observe_target，而合同保留 action:inspect/candidate pins；没有调用 inspect owner。该 run 是定位证据，不是闭环通过，cleanup passed。开发 controller已绑定，但条件按inspect合同发送的空间sample未触发，不能宣称新鲜空间或owner提交。后续修复必须让正式冻结候选保持原 semantic intent，并从planner一路覆盖到L4。
+
+- `628f05c2`：正式带 candidate_digest/Laya evidence 的冻结选择直接保留 compiler semantic intent，不再套历史表现映射。新回归从真实 planner prepare→受控冻结 choice→decision→L4 contract验证 inspect/action/target/owner pins；未把受控 choice标作真实模型。行为 RED为 observe_target!=inspect_object，修复后精确两文件隔离 **136 passed**、4条既有FastAPI deprecation warnings，run `f115f41572eb4e33b4dfe5161826f274`，目录 `laya-frozen-choice-isolated-corrected/`，cleanup passed。首次隔离 `20602e90a4c64c758039583a1652333d`为1 failed/135 passed（新增用例空revision夹具不合法），修正测试为非空真实形态后重跑；不计前者通过。
+
+- `628f05c2` 的 backend-contract passed/cleanup passed：run `6a86b07f718043d0a81a9ecc6dae104a`，目录 `laya-frozen-choice-contract/`；docs passed/cleanup passed：run `6f6621990c1642c88cab8c8e5eca1fc4`，目录 `laya-frozen-choice-docs/`。
+- 真实纵切前 run `0232edbf21964d9195d8ed094eb5517b`（目录 `laya-object-production-owner-original-intent/`）已保持 inspect 原合同，但 launcher 在 app/config 导入后才设置scope环境变量，导致 scope mismatch，零owner写；修正launcher将scope置于所有app导入前，未放宽生产准入。该失败不计通过。
+- 有效纵切 run **`4f2816ada4884a7dabab3644ff878564`**（HEAD `628f05c2`，目录 `laya-object-production-owner-configured/`）：真实 WebSocket raw fact→L2 local baseline→官方 Laya `inspect_object:obj_plaque`→同一turn/source/candidate/digest的 L4 inspect/action:inspect→认证开发controller空间sample→原 shared-store ESM owner提交→world_result与角色session settlement outcome。空间receipt位于global sequence 9，ESM receipt位于10；owner transaction为 `transaction:esm-object:5efe5d357f4378db0475365744a690496317250267f93e6fc161f855e4d8ba90`，world_result和session outcome均引用原transaction。服务输入5822 tokens无截断。cleanup passed，本轮Laya服务已正常关闭。
+- 该空间sample为认证开发controller报告，**不是Godot/physics/contact证据**；L2是local baseline。仅升级 R07/R08 的公开plaque inspect子项，R09完整恢复/回放、其余动作/owner覆盖与Q01–Q04、G-A/B/C仍开放。不能从此单例推正式模型质量、通用owner admission或整个角色闭环完成。
