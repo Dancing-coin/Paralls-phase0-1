@@ -93,6 +93,7 @@ class CandidateCompiler:
             "movement": "change position or contact distance",
             "combat": "attempt a combat interaction",
             "interaction": "use registered object or finish registered use",
+            "procedure": "use registered object or finish registered use",
             "protection": "reduce exposure",
         }
         # The development aliases are existing intent identifiers, not new
@@ -379,7 +380,7 @@ class CharacterAgentL3Service:
         if intent in {"ask_probe", "inspect_object", "observe", "pause", "defer", "stay_silent"}:
             return "observation"
         if intent in {"use_object", "finish_use"}:
-            return "interaction"
+            return "procedure"
         return "protection"
 
     def _candidate_records(
