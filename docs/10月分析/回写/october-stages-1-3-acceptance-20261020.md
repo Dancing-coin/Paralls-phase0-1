@@ -275,3 +275,12 @@
 - **后端**：上述子项完成。主动发话的后备 speaker 可能与 cognition recipient 不同，现明确不继承对方私有合同；自己的新契约及无 cognition job 路径仍缺，R06维持局部。历史 SpeechLease 和其他用户修改未混入本提交。
 - **模型质量**：无新真实模型评分，Q01–Q04状态不变。**角色闭环**：本批没有新增领域 owner 或完整动作闭环，R07–R14依原矩阵开放。**Godot**：A/B/C未修改、启动或验证。
 - 未运行全量pytest/Harness all；只运行相关对话、认知、provider和持久化检查。run_scope临时副本已清理；早期默认pytest目录及历史证据保留。扩大目标以本矩阵/计划为准；Goal工具只有状态接口，无法修改旧objective文本，保持active，不虚报目标已改或已完成。
+
+
+## R06 实际 speaker 契约与 lease 竞态收口子项
+
+- `c0d198da`：当 DialogueCoordinator 没有同角色 cognition 合同时，从原 typed DialogueSubmit 和实际发言者当前 profile/skill/learning/dynamic/pins 冻结新合同；完整事件摘要作为 source，记录 session/memory/snapshot revision与context digest。仅准备请求，不发布伪感知或完成canonical turn。无snapshot保持无snapshot；已有snapshot scope不同则拒绝。无旧request_id时沿用完整事件source作为causation/correlation。角色主动发话不会借用接收者私有合同。
+- 同角色继承现在包括原effective_profile，避免后备上下文读取不同档案而仍声称沿用原policy。新contract仍通过既有recall和provider输出预算consumer。旧独立DialogueService helper及整体tokenizer/真实memory/input revision完整治理仍未闭合，R06保持局部实现。
+- lease竞态：HEAD冲突结果与non-player持有者检查分为两个owner调用，期间background lease释放会错误拒绝对话。审查并采用工作区已有的同命令检查小段，未纳入其他main改动。确定性插入“冲突结果交付后立刻释放”回归在HEAD路径失败；修复后通过，保留player冲突拒绝、原deadline及activation校验。
+- 精确HEAD `ac9c07c`＋五份源码隔离 **285 passed**，run `f2c4004dcded42b68897e51cf454c047`，cleanup passed，外部根 `dialogue-own-speaker-lease-final/`。backend-contract `beb333d414fa48eaa90c4c76a4249a62` passed/cleanup passed。先前283项通过快照被新profile回归替代；最终前一快照283 passed/1 failed正确暴露HEAD lease竞态；确定性RED run `a6d39671f00d4b4b96d369b8e0541867`失败1项，不计通过。未盲目重试失败套件。
+- **后端**：上述生产对话consumer子项完成。**模型质量**：无新正式模型分数，Q01–Q04不变。**角色闭环**：无新跨领域动作owner验收；依据矩阵转入D10四门真实source/owner依赖，不能从profile vulnerability或调用方bool推导Soul allow。**Godot**：A/B/C仍未操作/验证。未运行全量pytest/Harness all、训练或模型服务。
