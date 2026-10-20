@@ -32,6 +32,8 @@ def create_runtime_app(component_app):
                     configured[name] = getattr(main.settings, name)
             configured['siming_llm_routes'] = [dict(route.model_dump(mode='json'), api_key=route.api_key)
                 for route in main.settings.siming_llm_routes]
+            configured['world_admin_credentials'] = [dict(credential.model_dump(mode='json'), secret=credential.secret)
+                for credential in main.settings.world_admin_credentials]
             host = RuntimeProcess(json.dumps(configured, ensure_ascii=False, allow_nan=False))
             app.state.runtime_process = host
             try:
@@ -55,6 +57,7 @@ def create_runtime_app(component_app):
                 raise HTTPException(400, 'There was an error parsing the body') from error
             try:
                 result = await host.request('http.request', dict(route=route_name, method=request.method,
+                    scheme=request.scope['scheme'],
                     path=request.url.path, query=request.scope['query_string'].decode('latin-1'), body=body,
                     headers=[[key.decode('latin-1'), value.decode('latin-1')] for key, value in request.scope['headers']],
                     remote_host=request.client.host if request.client else '',

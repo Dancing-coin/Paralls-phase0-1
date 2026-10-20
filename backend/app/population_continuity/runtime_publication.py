@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStoreSnapshotError
-from app.gameplay.models import GameplayOutboxEntry, ProjectionCheckpoint
+from app.gameplay.models import AppendBatchResult, GameplayFailure, GameplayOutboxEntry, ProjectionCheckpoint
 from app.gameplay.organization_government_runtime import OrganizationAuthority, OperatingWindowDueRequest
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.models.authority_event import AuthorityEvent
@@ -34,6 +34,77 @@ class RuntimeCadencePublisher:
     """既有 Gameplay 日志确认窗口，outbox 重试投递；热表仅为可重建投影。"""
 
     DOMAIN_TOPIC = "population_domain_cadence_event"
+    CADENCE_REVOCATION_PRINCIPAL = "world_admin"
+    CADENCE_REVOCATION_CONTRACT = "world-admin:population-cadence-revocation@1"
+
+    def revoke_cadence(self, *, cadence_id: str, reason_code: str,
+                       caller_principal_ref: str | None = None,
+                       command_id: str | None = None,
+                       authenticated_principal_ref: str | None = None,
+                       credential_ref: str | None = None):
+        """Append a durable world-admin revocation for a published cadence.
+
+        This trusted backend entry requires an explicitly supplied principal;
+        it does not authenticate an external caller. An authenticated admin
+        boundary must supply that principal before exposing this operation.
+        """
+        if caller_principal_ref != self.CADENCE_REVOCATION_PRINCIPAL:
+            raise ValueError("population_cadence_revocation_principal_invalid")
+        if not cadence_id or not reason_code:
+            raise ValueError("population_cadence_revocation_identity_missing")
+        record = self._record_for(cadence_id)
+        if record is None:
+            raise ValueError("population_cadence_not_found")
+        command = command_id or f"world-admin:revoke:{cadence_id}"
+        source_event_id = self.store.get_by_idempotency(
+            "world_runtime.cadence", f"population-runtime:{cadence_id}"
+        ).committed_event_ids[0]
+        source_event = self.store.get_event(source_event_id)
+        payload = {
+            "command_id": command,
+            "cadence_id": cadence_id,
+            "world_ref": self.world.mode.world_ref,
+            "issuer_ref": self.CADENCE_REVOCATION_PRINCIPAL,
+            "authority_contract_ref": self.CADENCE_REVOCATION_CONTRACT,
+            "reason_code": reason_code,
+            "source_cadence_event_id": source_event.event_id,
+        }
+        if authenticated_principal_ref is not None or credential_ref is not None:
+            if not authenticated_principal_ref or not credential_ref:
+                raise ValueError("population_cadence_revocation_authenticated_identity_incomplete")
+            payload["authenticated_principal_ref"] = authenticated_principal_ref
+            payload["credential_ref"] = credential_ref
+        # Resolve an exact retry before reading the current revocation stream
+        # head, while still rejecting a changed command payload without a write.
+        existing = self.store.get_by_idempotency(self.CADENCE_REVOCATION_PRINCIPAL, command)
+        if existing is not None:
+            prior = self.store.get_event(existing.committed_event_ids[0]) if existing.committed_event_ids else None
+            if prior is None or prior.payload != payload:
+                return AppendBatchResult(
+                    committed=False,
+                    transaction_id=f"tx:{command}",
+                    command_id=command,
+                    idempotency_status="rejected",
+                    failure=GameplayFailure(
+                        error_code="idempotency_key_reused",
+                        message="population cadence revocation command payload changed",
+                        failed_stage="population_cadence_revocation_idempotency",
+                    ),
+                )
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        stream_id = f"population-cadence-revocation:{self.world.mode.world_ref}"
+        batch = build_atomic_event_batch(
+            command_id=command,
+            principal_ref=self.CADENCE_REVOCATION_PRINCIPAL,
+            stream_id=stream_id,
+            expected_revision=self.store.get_stream_head(stream_id),
+            event_specs=(("population.cadence.revoked", payload),),
+            idempotency_key=command,
+            causation_id=command,
+            correlation_id=cadence_id,
+        )
+        return self.store.append_batch(batch)
+
 
     def __init__(self, *, world_runtime: WorldContinuityRuntime, event_bus: AuthorityEventBusPort,
                  room_id: str, scene_id: str, zone_id: str, conflict_pump=None) -> None:

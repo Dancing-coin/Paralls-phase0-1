@@ -44,7 +44,7 @@ RED run `7d1e5035224448de802e40fec2cc3056` 为缺少 resolver 方法的6项失�
 | ID／来源 | 当前状态 | 可复用实现与证据入口 | 剩余工作与验收条件 |
 |---|---|---|---|
 | D01 时间／迁移；规格09、计划04 Task1 | 局部实现 | `simulation_clock`、temporal mapping/profile、Population cadence；closure 的 Task1 consumer 矩阵 | 逐个实际 consumer 的 source/clock/revision/expiry/grant 与 receipt；保留 world-time 和 operational timeout 分离，不另造 clock |
-| D02 管理员 cadence 撤权生产入口 | 局部实现（测试部署已有证据，应用路由仍未收编） | credential/verifier 已提交；`runtime_asgi.py`、`runtime_process.py`、cadence main 路由仍为历史工作树；本轮 Task1/Task6/docs 导出见下 | 先核验并收编必要应用接线；真正部署 credential/TLS 尚未验证；本行不代表通用 capability/facility grant issuer 完成 |
+| D02 管理员 cadence 撤权生产入口 | 局部实现（持久撤权应用链已收编并验证） | credential/verifier、HTTP→spawn child→RuntimeExecution→原 cadence owner 已接线；原回执重开恢复见本轮 D02 增量 | 下游 consumer 撤权读集/CAS 尚未收编；真正部署 credential/TLS 尚未验证；本行不代表通用 capability/facility grant issuer 完成 |
 | D03 SettlementWindow／owner 批次；规格09 | 局部实现 | Population→Inventory custody、Economy tax/calendar、Ecology temporal、Status/Action；[stage3 closure](stage3-closure-20261016.md) | 复核正式启用 consumer 的完整 read-set、cutoff/order/late-input、原子 owner receipt 与重启；不能从一个 consumer 推全域 |
 | D04 T07 随机业务；计划04 Task2 | 局部实现 | Economy random owner、版本化 policy、typed self-draw ingress、random replay participant | authenticated lottery/loot/event-choice 实际 producer、公开交付与收据回流；不能把 fixture demand 或 controller binding 当正式业务来源 |
 | D05 T09 prediction；计划04 Task2 | 局部实现 | Equipment command/prediction typed ingress、ledger、confirmation、Durable recovery | 正式 demand producer、确认/撤销/冲突与真实 owner receipt；不能把 preview promotion unsupported 改写为通过 |
@@ -453,3 +453,12 @@ D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner�
 - 边界裁定：来源资格不等于动作权限、范围、contact 或 L4 执行。descriptor 的 supported_intents 为空，affordance 明确 unavailable；后续必须接入注册动作能力、真实执行 owner 的 admission/CAS，不能把本次目录当完整动作菜单。schema2 目前仅正式初始 alive 合同；其他生命周期合同需独立准入。沿用原计划的三张 authority/sequence/data-flow 图，本批仅实现 private perception→owner-scoped target source 的只读边。
 - 验证：真实 main startup＋RuntimeExecution，两个显式 grants 的 Activation/Presence/Life、真实认证 faction HTTP、错误 timeline、self/unknown 目标、重开摘要、faction 撤权、Presence 离场及零写。RED `1d92b815c36046aba5eaaa8cd5d76ae3` 正确暴露目录为空。首次 stage script 因 HEAD 模块无预期 __all__ 而未写入 source，随后隔离仍1 failed/34 passed（`f585ff57dae2413daf78c7c7af09b19b`），修正精确采用方式后35 passed（`1c5ed6b8f8c845d59b6ae411a8e4b062`）。补验曾误导入未提交历史测试 helper，collection error（`1daf081cf7f447399bdc43eefd40a756`），已删除该依赖。最终精确 HEAD `fa06649c`＋本批五文件隔离 **90 passed／4既有 FastAPI warnings**，run `02972e53d74343d181cc531155aa22b0`，目录 `combat-target-final2/`；上述 scope 全部 cleanup passed。backend-contract `286460db4d3e4e63a1723b8ea4973b7e` passed／cleanup passed（`combat-target-backend-contract/`）。证据根同前。
 - 四组状态：**后端**只关闭目标来源读取子项，D08/R05仍局部；**模型质量**Q01–Q04无新增评分，未读正式 split／未训练；**角色闭环**完整 Laya/action+target/L4/owner receipt 仍开放；**Godot**A/B/C未修改、启动、操作或验证。下一批优先返回无需 physics 的原 ESM Laya→L4→owner 真实链路；combat 动作/Threat caller 后续按其真实能力补齐，避免只继续扩目录局部测试。未运行全量 pytest/Harness all。
+
+
+## D02 cadence 撤权生产入口收编（2026-10-20）
+
+- 采用历史工作树中经过审查的有限撤权 writer、显式认证 HTTP、排队执行前身份重验，以及 spawn bootstrap 的凭据与原 scheme 传递。原 owner 提交持久事件并绑定认证 principal/credential；exact retry 先查原回执，changed duplicate 零写拒绝。未收编 pinned publication、广泛 temporal grant 或下游 Inventory 撤权逻辑。
+- 精确 HEAD `290ce0df`＋六份暂存源码/测试隔离 **62 passed／4既有 FastAPI warnings**，run `bb6eb9bdb65246d098eadda94e62409b`；包括真实 spawn child、HTTP/HTTPS transport metadata、非本机 HTTP 拒绝（伪造 forwarded header 无效）、凭据未配置、排队期间撤权/过期/身份变化、持久事件、新进程原回执恢复。使用 TestClient/ASGI transport，未证明外网 TLS 部署。
+- RED `b1a63568b90c46f799cd885df8190d33` 8 failed，暴露 HEAD 路由缺失与 credential JSON 序列化问题；首轮 GREEN `0528309f54254cfb936d63b115b127e1` 60 passed／2 failed，分别为重启可合法追加 cadence 的快照比较与旧测试将结构化凭据替换为字符串；修正 fixture 后重验通过。保留失败证据。外部根下 `cadence-production-red/green/final/`，均 cleanup passed。
+- backend-contract run `648c9b3904674815b1dfbcc56d243967` passed／cleanup passed，导出 `cadence-production-contract/`。独立静态审查未发现本批阻断问题，并指出 faction route 尚未加入 spawn HTTP 路由表，下一批直接修复此生产缺口。
+- **后端**：D02 只关闭持久撤权应用入口；正式 consumer 取消读集/CAS、完整 grant 生命周期与外网部署仍开放。**模型质量**：Q01–Q04 无新增分数。**角色闭环**：完整动作＋目标／Laya／多领域原回执仍开放。**Godot**：A/B/C 未操作。无全量 pytest、Harness all、模型调用或训练；历史 dirty 与历史证据保留。

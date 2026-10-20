@@ -584,6 +584,7 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
                 # 确认已落盘；显示故障只记录最近诊断，不重放authority窗口。
                 mirror.last_error = type(error).__name__
         return event
+    publish.revoke_cadence = publisher.revoke_cadence
     return PopulationCadenceDriver(
         world_runtime=world_runtime,
         publish_window=publish,
@@ -2620,6 +2621,63 @@ async def record_world_admin_faction_relation(
         return owner.record(FactionRelationRequest(
             **payload.model_dump(), authorized_caller="world_admin",
             authenticated_principal_ref=identity.principal_ref, credential_ref=identity.credential_ref))
+
+    try:
+        result = await _dialogue_owner_call(execution, command)
+    except (RuntimeStopped, RuntimeQueueFull) as exc:
+        raise HTTPException(status_code=503, detail={"error_code": "runtime_stopped"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"error_code": str(exc)}) from exc
+    if not result.committed:
+        raise HTTPException(status_code=409, detail={"error_code": result.failure.error_code})
+    return result.model_dump(exclude_none=True)
+
+
+class WorldAdminCadenceRevocationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    world_ref: str = Field(min_length=1)
+    cadence_id: str = Field(min_length=1)
+    reason_code: str = Field(min_length=1)
+    command_id: str = Field(min_length=1)
+
+
+@app.post("/admin/cadence-revocations")
+async def revoke_world_admin_cadence(
+    payload: WorldAdminCadenceRevocationRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    verifier = world_admin_credential_verifier
+    if not verifier.enabled:
+        raise HTTPException(status_code=503, detail={"error_code": "world_admin_unconfigured"})
+    peer_host = request.client.host if request.client is not None else ""
+    if request.url.scheme != "https" and peer_host not in _LOOPBACK_HOSTS:
+        raise HTTPException(status_code=403, detail={"error_code": "world_admin_secure_transport_required"})
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else None
+    identity = verifier.authenticate(token, world_ref=payload.world_ref, now=int(time()))
+    if identity is None:
+        raise HTTPException(status_code=403, detail={"error_code": "world_admin_unauthorized"})
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise HTTPException(status_code=503, detail={"error_code": "runtime_stopped"})
+
+    def command():
+        current_identity = world_admin_credential_verifier.authenticate(
+            token, world_ref=payload.world_ref, now=int(time()))
+        if current_identity is None or current_identity != identity:
+            raise HTTPException(status_code=403, detail={"error_code": "world_admin_unauthorized"})
+        driver = _population_runtime_driver
+        if driver is None or driver.world_runtime.mode.world_ref != identity.world_ref:
+            raise ValueError("world_admin_runtime_world_mismatch")
+        return driver.publish_window.revoke_cadence(
+            cadence_id=payload.cadence_id,
+            reason_code=payload.reason_code,
+            command_id=payload.command_id,
+            caller_principal_ref="world_admin",
+            authenticated_principal_ref=identity.principal_ref,
+            credential_ref=identity.credential_ref,
+        )
 
     try:
         result = await _dialogue_owner_call(execution, command)

@@ -282,3 +282,8 @@ Ruling: adopt only existing four typed time values, rational clock mapping and b
 ### Task1/D08 combat target source sub-batch
 
 Actual main now joins explicit private visible actors to current backend timeline and durable Presence/initial Life/faction sources through an identity-only reader. ESM remains on its original resolver. No action grants or fake physics: combat descriptors stay unavailable pending actual action registration and execution admission. Exact staged 90 passed (run `02972e53d74343d181cc531155aa22b0`), backend-contract passed, cleanup passed; full evidence and failed iteration provenance in matrix. Task1/Task2 remain open. Next return to non-physics ESM live Laya→L4→owner; do not expand this source-only slice into a substitute for complete character acceptance.
+
+
+### D02 production boundary adoption
+
+Adopt only original cadence revocation owner and authenticated application/spawn transport. Exact HEAD290ce0df plus six staged sources/tests:62passed, bb6eb9bdb65246d098eadda94e62409b; backend-contract648c9b3904674815b1dfbcc56d243967 passed, cleanup passed. Preserve failed RED/first-green and historical drafts. D02 consumer/CAS and deployment remain open. Next fix faction route missing from production spawn route table, then return to full role action/target dependencies. This does not close Tasks1–4, formal quality or GodotA/B/C.

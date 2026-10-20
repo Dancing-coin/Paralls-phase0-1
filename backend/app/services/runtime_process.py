@@ -17,6 +17,7 @@ RUNTIME_HTTP_ROUTE_NAMES = frozenset({
     "commit_trusted_local_gameplay_mirror_live_probe", "commit_trusted_local_gameplay_mirror_live_probe_reconnect",
     "confirm_trusted_local_gameplay_mirror_live_prediction", "reject_trusted_local_gameplay_mirror_live_prediction",
     "close_trusted_local_gameplay_mirror_live_probe_transport", "commit_trusted_local_adventure_basic_live_probe",
+    "revoke_world_admin_cadence",
 })
 
 
@@ -591,6 +592,7 @@ async def _run_child(commands, controls, results, notifications, settings_json):
         _, generation_one, generation_two = gc.get_threshold()
         gc.set_threshold(21000, generation_one, generation_two)
     main.settings = config.settings
+    main.world_admin_credential_verifier = main.WorldAdminCredentialVerifier(tuple(config.settings.world_admin_credentials))
     main._runtime_execution_credit = execution_credit
     generation = uuid4().hex
     stopped = asyncio.Event()
@@ -958,13 +960,14 @@ async def _dispatch_http(component_app, payload):
             or not isinstance(payload.get("path"), str) or not route.path_regex.fullmatch(payload["path"])):
         raise ValueError("runtime_http_route_invalid")
     if (not isinstance(payload.get("body"), str) or not isinstance(payload.get("query"), str)
+            or payload.get("scheme", "http") not in ("http", "https")
             or not isinstance(payload.get("remote_host"), str) or type(payload.get("remote_port")) is not int
             or not isinstance(payload.get("headers"), list)
             or any(not isinstance(row, list) or len(row) != 2 or any(not isinstance(x, str) for x in row)
                    for row in payload["headers"])):
         raise ValueError("runtime_http_metadata_invalid")
     scope = dict(type="http", asgi={"version": "3.0"}, http_version="1.1", method=payload["method"],
-                 scheme="http", path=payload["path"], raw_path=payload["path"].encode("utf-8"), root_path="",
+                 scheme=payload.get("scheme", "http"), path=payload["path"], raw_path=payload["path"].encode("utf-8"), root_path="",
                  query_string=payload["query"].encode("latin-1"),
                  headers=[(key.encode("latin-1"), value.encode("latin-1")) for key, value in payload["headers"]],
                  client=(payload["remote_host"], payload["remote_port"]), server=("runtime-child", 0))
