@@ -28,6 +28,12 @@ MindFrame, and main composition still needs a dedicated
 through the existing coordinator/driver and owner receipt path, production slow
 goal closure is not claimed.
 
+The proposal context contract also now keeps expiry in the admission wall-clock
+domain (`ca1789f3`); event `producer_ts` remains an event-time value and is no
+longer compared directly with expiry. The focused contract/coordinator/admission
+selection is **68 passed**. This removes a cross-domain validation defect but
+does not advance the production-trigger or Laya/Godot acceptance rows.
+
 以下是生产能力的剩余依赖，不把旧的三选项信息诊断包扩充后冒充完整动作集。
 
 | 路径 | 当前实现及来源 | 下一验收依赖 |
