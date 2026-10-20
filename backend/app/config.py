@@ -6,6 +6,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.world_runtime.embodied_spatial_source import EmbodiedSpatialScope
+from app.population_continuity.models import ActivationGrant
 
 
 SimingLlmProviderName = Literal["disabled", "openai_responses", "deepseek_chat", "seed_doubao", "qwen"]
@@ -56,6 +57,16 @@ class WorldAdminCredentialSettings(BaseModel):
 
 class Settings(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
+
+    population_activation_grants: list[ActivationGrant] = Field(default_factory=list)
+    population_activation_producer_ref: str = "population:siming"
+
+    @field_validator("population_activation_producer_ref")
+    @classmethod
+    def validate_activation_producer(cls, value: str) -> str:
+        if not value.strip() or value != value.strip():
+            raise ValueError("population_activation_producer_invalid")
+        return value
 
     dialogue_mode: str = "stub"
     tts_mode: Literal["stub", "openai_compatible", "dashscope_http"] = "stub"
@@ -340,6 +351,9 @@ settings = Settings(
     embodied_controller_launcher_bootstrap_secret=_env_optional("EMBODIED_CONTROLLER_LAUNCHER_BOOTSTRAP_SECRET"),
     embodied_spatial_scopes=[EmbodiedSpatialScope.model_validate(item)
                              for item in _env_object_list("EMBODIED_SPATIAL_SCOPES_JSON")],
+    population_activation_grants=[ActivationGrant.model_validate(item)
+                                  for item in _env_object_list("POPULATION_ACTIVATION_GRANTS_JSON")],
+    population_activation_producer_ref=_env_value("POPULATION_ACTIVATION_PRODUCER_REF", "population:siming"),
     world_admin_credentials=[WorldAdminCredentialSettings.model_validate(item)
                              for item in _env_object_list("WORLD_ADMIN_CREDENTIALS_JSON")],
     gameplay_mirror_projection_queue_capacity=int(_env_value("GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY", "160") or "160"),

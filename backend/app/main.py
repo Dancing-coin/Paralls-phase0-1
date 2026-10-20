@@ -148,6 +148,9 @@ from app.services.per_character_percept_filter import filter_candidate_for_actor
 from app.services.phase0_authority_event_adapter import Phase0AuthorityEventAdapter
 from app.services.session_input_router import SessionInputRouter
 from app.population_continuity.activation import ProfileActivationAuthority
+from app.population_continuity.activation_presence import PopulationActivationPresenceService
+from app.population_continuity.presence_runtime import PopulationPresenceAuthority
+from app.population_continuity.activation_sources import ActivationSourceReader
 from app.population_continuity.activation_policy import ActivationPolicy
 from app.world_runtime.population_driver import PopulationCadenceDriver
 from app.services.runtime_execution import RuntimeExecution, RuntimeQueueFull, RuntimeStopped
@@ -648,6 +651,31 @@ async def _shutdown_population_runtime() -> None:
         except Exception:
             # 失败已记录供 health 查询，资源关闭不能被失败任务阻断。
             pass
+
+
+def submit_population_activation_presence(*, proposal, presence_idempotency_key,
+                                           presence_expected_revision):
+    """Production Population activation -> Presence application ingress.
+
+    The caller must provide a proposal from the admitted Population source. The
+    bound service validates the existing grant and uses the application's
+    activation and Presence authorities on the same Durable store.
+    """
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def commit_and_spawn():
+        service = globals().get("population_activation_presence_service")
+        if service is None:
+            raise ValueError("population_activation_presence_runtime_unavailable")
+        return service.commit_and_spawn(
+            proposal,
+            presence_idempotency_key=presence_idempotency_key,
+            presence_expected_revision=presence_expected_revision,
+        )
+
+    return execution.submit(commit_and_spawn)
 
 
 @app.on_event("startup")
@@ -1194,6 +1222,9 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global embodied_execution_ingress
     global embodied_realization_route_gate
     global gameplay_event_store
+    global population_activation_authority
+    global population_presence_authority
+    global population_activation_presence_service
     global stormnight_realtime_session_service
     global gameplay_outbox_dispatcher
     global adventure_basic_mirror_runtime
@@ -1261,11 +1292,24 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     if runtime_execution is None:
         websocket_transport_closers = {}
     character_agent_runtime = runtime_state.character_agent_runtime
-    character_agent_runtime.set_activation_authority(
-        ProfileActivationAuthority(
-            registry=character_agent_runtime._profile_registry,
-            store=gameplay_event_store,
-        )
+    population_activation_authority = ProfileActivationAuthority(
+        registry=character_agent_runtime._profile_registry,
+        store=gameplay_event_store,
+        grants=tuple(settings.population_activation_grants),
+    )
+    character_agent_runtime.set_activation_authority(population_activation_authority)
+    population_presence_authority = PopulationPresenceAuthority(
+        store=gameplay_event_store,
+        activation_sources=ActivationSourceReader(
+            authority=population_activation_authority,
+            producer_ref=settings.population_activation_producer_ref,
+        ),
+    )
+    population_activation_presence_service = PopulationActivationPresenceService(
+        store=gameplay_event_store,
+        activation_authority=population_activation_authority,
+        presence_authority=population_presence_authority,
+        producer_ref=settings.population_activation_producer_ref,
     )
     activation_policy = ActivationPolicy()
 

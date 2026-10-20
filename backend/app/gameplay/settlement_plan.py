@@ -92,6 +92,7 @@ def _single_stream_digest_payload(
     event_specs: Sequence[tuple[str, Mapping[str, Any]]],
     read_stream_revisions: Mapping[str, int] | None,
     pinned_revisions: Mapping[str, int] | None,
+    schema_version: int = 1,
 ) -> dict[str, object]:
     return {
         "command_id": command_id,
@@ -102,7 +103,7 @@ def _single_stream_digest_payload(
             {
                 "stream_id": stream_id,
                 "event_type": event_type,
-                "schema_version": 1,
+                "schema_version": schema_version,
                 "visibility_policy": "project",
                 "payload": dict(payload),
             }
@@ -299,6 +300,7 @@ def build_atomic_event_batch(
     correlation_id: str,
     read_stream_revisions: Mapping[str, int] | None = None,
     pinned_revisions: Mapping[str, int] | None = None,
+    schema_version: int = 1,
 ) -> AtomicEventBatch:
     """Build one owner-scoped batch for a domain authority to submit.
 
@@ -312,7 +314,7 @@ def build_atomic_event_batch(
         GameplayEvent(
             event_id=f"event:{command_id}:{index}",
             event_type=event_type,
-            schema_version=1,
+            schema_version=schema_version,
             stream_id=stream_id,
             stream_revision=0,
             global_sequence=0,
@@ -333,6 +335,7 @@ def build_atomic_event_batch(
             event_specs=event_specs,
             read_stream_revisions=read_stream_revisions,
             pinned_revisions=pinned_revisions,
+            schema_version=schema_version,
         )
     )
     return AtomicEventBatch(

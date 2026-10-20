@@ -203,8 +203,15 @@ class ProfileActivationAuthority:
             proposal.source_ref, proposal.idempotency_key
         )
         if existing is not None:
+            if not self._existing_commit_matches(
+                proposal=proposal,
+                result=existing,
+                stream=stream,
+                identity_digest=identity_digest,
+            ):
+                return self._rejected(proposal, "activation_idempotency_key_reused")
             replayed = existing.model_copy(
-                update={"idempotency_status": "duplicate_replayed"}
+                update={"idempotency_status": "duplicate_replayed"}, deep=True
             )
             return self._receipt(proposal, replayed, "active", identity_digest)
         if self.store.get_stream_head(stream) != expected:
@@ -241,6 +248,57 @@ class ProfileActivationAuthority:
                 result.failure.error_code if result.failure else "append_rejected",
             )
         return self._receipt(proposal, result, "active", identity_digest)
+
+    def _existing_commit_matches(
+        self,
+        *,
+        proposal: ActivationProposal,
+        result: AppendBatchResult,
+        stream: str,
+        identity_digest: str,
+    ) -> bool:
+        """Validate the persisted receipt before exposing duplicate success."""
+        if (
+            not result.committed
+            or result.failure is not None
+            or len(result.committed_event_ids) != 1
+            or result.global_sequence_range is None
+            or result.global_sequence_range[0] != result.global_sequence_range[1]
+        ):
+            return False
+        try:
+            event = self.store.get_event(result.committed_event_ids[0])
+            batch = self.store.get_transaction(result.transaction_id)
+        except KeyError:
+            return False
+        expected_payload = {
+            "profile_ref": proposal.profile_ref,
+            "identity_digest": identity_digest,
+            "world_ref": proposal.world_ref,
+            "package_revision": proposal.package_revision,
+            "policy_revision": proposal.policy_revision,
+            "scope_grant": list(proposal.scope_grant),
+            "cadence_class": proposal.cadence_class,
+            "activation_reason": proposal.activation_reason,
+        }
+        return bool(
+            batch is not None
+            and batch.transaction_id == result.transaction_id
+            and batch.command_id == proposal.proposal_id
+            and batch.idempotency_record.principal_ref == proposal.source_ref
+            and batch.idempotency_record.idempotency_key == proposal.idempotency_key
+            and len(batch.events) == 1
+            and batch.events[0].event_id == event.event_id
+            and event.transaction_id == result.transaction_id
+            and event.event_type == "population.activation.committed"
+            and event.stream_id == stream
+            and event.command_id == proposal.proposal_id
+            and event.causation_id == proposal.proposal_id
+            and event.correlation_id == proposal.correlation_id
+            and event.payload == expected_payload
+            and result.resulting_stream_revisions == {stream: event.stream_revision}
+            and result.global_sequence_range == (event.global_sequence, event.global_sequence)
+        )
 
     def suspend(
         self, world_ref: str, profile_ref: str, *, expected_revision: int
