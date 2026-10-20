@@ -801,9 +801,11 @@ class CharacterAgentL3Service:
         if laya_route:
             request_context["provider_revision"] = LayaSystemOneProvider.PROVIDER_REVISION
             max_len = os.getenv("CHARACTER_LAYA_INPUT_MAX_LEN", "").strip()
-            if max_len:
-                request_context.update(input_budget_required=True, max_len=int(max_len),
-                                       head_max_len=LayaSystemOneProvider.OPTION_HEAD_MAX_LEN)
+            request_context.update(
+                input_budget_required=True,
+                max_len=int(max_len) if max_len else LayaSystemOneProvider.DEFAULT_MAX_LEN,
+                head_max_len=LayaSystemOneProvider.OPTION_HEAD_MAX_LEN,
+            )
         request = self._gateway.prepare_run_request(
             task_kind="l3_planning",
             route_override=("laya" if laya_route else None),
