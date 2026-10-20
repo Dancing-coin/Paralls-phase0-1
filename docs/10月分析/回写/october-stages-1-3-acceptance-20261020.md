@@ -52,7 +52,7 @@
 
 | ID | 当前状态 | 已有证据与限制 | 剩余验收 |
 |---|---|---|---|
-| Q01 诊断与归因 | 未通过（历史诊断） | [calibration repair](calibration-repair-20261014.md)：autonomous 0/8、explicit diagnostic 0/6、role-sensitive 1/8，未达冻结 6/5/6；22 条已暴露，不是 final/holdout | 先修真实输入/候选，再分析位置、描述、映射。18/22 选 C3 只提供归因线索，不能直接归因为需训练 |
+| Q01 诊断与归因 | 未通过（质量）；位置／标签归因已有新增证据 | [calibration repair](calibration-repair-20261014.md)：autonomous 0/8、explicit diagnostic 0/6、role-sensitive 1/8，未达冻结 6/5/6；新增同版官方模型66次已暴露诊断，见文末；不是 final/holdout | 候选反序改变15/22语义选择，循环重标改变12/22；继续核查输入呈现与官方 checkpoint layout，不直接归因为需训练，不择优顺序冒充质量修复 |
 | Q02 来源／隔离／冻结 | 局部实现 | evaluation/calibration contracts、prepare/freeze/run/score 工具；four_role_lock_event 只有 dev trajectory，正式 splits 为空 | 审查原始 source drift，登记新版本而非直接刷新 hash；构造有来源的 dev/calibration/final/independent_holdout，trajectory 隔离、threshold/预算/freeze 先于评分 |
 | Q03 完整 action+target 质量 | 未验证 | 既有 22 条信息诊断的 runtime legality/owner receipt 分母为 0 | 完整包络后正式动作/目标/U/P 覆盖与角色轨两轨验收；真实 receipt 与质量评分分列 |
 | Q04 final／holdout | 未实现（正式数据集与验收） | 旧轮次关闭已由当前授权解除；不能重用暴露 calibration 为独立集 | 独立来源、冻结、无 truth transport、封存后评分；不自动训练/微调，若必要先提出有证据方案 |
@@ -244,3 +244,13 @@
 - 来源owner/type/subject/world/成功条件可由registered learning authority消费，受控策略的ESM→披露→skill owner证明真实事件/回执链；**尚无生产自动晋升caller、完整episode/time/resource/teacher策略或四学习路线**。这不是观察他人/模仿授权，不代表能力mastery。生产store目前非strict schema；新事件提供opt-in schema，未假称全局registry收口。
 - HEAD `7b27b5f6`＋四份精确源码隔离 **141 passed**、4条既有FastAPI deprecation warnings，run `666e911afa0c4212a0dee8644feeac2b`，exit=0/cleanup passed，外部根下`esm-personal-learning-disclosure-isolated/`。包含ESM既有服务/真实对象持久结算/readmission、canonical execution、registered learning owner和cognition binding回归。四份暂存规范化源码hash与manifest一致；历史main修改保留。初始RED中测试曾误读不存在的EVENT_SCHEMA并使用非object-only letter夹具，修为既有schema/plaque；正式RED确认disclosure不存在，修复后8项→10项针对性风险验证，不将夹具错误计为产品缺陷。
 - backend-contract run `29caab9348704b73a35eb3c5e5c2984e` passed/cleanup passed。没有真实模型/Godot验证升级；R10仍局部实现，下一步补完整学习episode与实际策略准入，再执行真实角色学习纵切。上批初步pytest目录6291/6292/6293的删除被自动审批策略拒绝，保留并记录在ledger；本批早期显式`paralls-owned-esm-disclosure-*20261020`临时测试目录也未报告已删除。正式run_scope隔离副本及Harness根已清理，历史.harness资料未删除。
+
+
+## Q01/Q02 诊断入口收口与位置／标签归因
+
+- `35282e65` 将原有未提交 evaluation envelope、diagnostic runner/scorer 与预算／独立批准回归纳入可独立验证的提交，并修复 runner 的越界/空/非字符串 choice、畸形 answers、bool-as-zero usage、重复/空题号、相同数量但漏题的准备包、旧封存覆盖。实际发送 request 的候选集是唯一成员校验来源；离线评分同样拒绝缺 request/candidates 或越界 choice。新增首失败即封存/停止、零后续请求和零覆盖回归；不以调用者提供的候选副本代替原请求。manifest 顺序决定执行顺序，execution start 记录真实运行开始时间。
+- 先复现 runner 8项失败、scorer 2项失败后修复；早期候选副本草稿已撤下，未作正式证据。测试自身一次使用 pytest 保留参数名 `request` 导致 collection error，改为 `wire_request` 后重跑，未将其计为产品缺陷。HEAD `d3afb8ea`＋精确6份源码隔离 **80 passed**，run `acd15a0771204bb889dba11eaea21c67`，exit=0/cleanup passed；外部根下 `calibration-transport-isolated/` 保留源码、SHA256、日志与JUnit。精准暂存hash与隔离manifest逐项一致；未运行全量pytest/Harness all。
+- 真实位置／标签诊断 run `85d3f2dfc5cd4681be53e66391217c63`，外部根下 `exposed-calibration-position-diagnostic/`：读取原已暴露22题 archive（原字节SHA `9da73a0207bfdd3b9e73bfa9ba55a82c41eca1f25cb454d7851886b9d5807e58`），在首个新响应前冻结全部66个请求、顺序、语义标签逆映射、完整token预算及脚本身份。三组为原顺序、只反转criteria插入顺序、保持标签顺序并循环移动描述。保存逐请求有序wire字节SHA，避免canonical排序digest掩盖顺序变化；未更改state、描述内容、checkpoint、tokenizer、CPU、2091/256预算，没有依结果重试、truth读取或训练。
+- 同一官方source/checkpoint `68804629.../1720e3...`、原固定tokenizer，合成预检及前后health一致；**66/66**响应在原候选集内、无截断、state dropped=0、实际input tokens逐项匹配预算。原序C3为18/22；反序C3为6/22，语义选择仅7/22与原序一致；循环重标后语义选择10/22与原序一致。说明该呈现下选择对顺序与标签敏感；不能由此选最有利的顺序、修改truth或宣称模型已修好。没有独立批准这些变体的truth，因此只报告不含truth的稳定性归因，不产生新质量分数。
+- 本轮官方服务由离线缓存启动，诊断后Ctrl+C结束；随后18765/18766无listener。run_scope诊断及隔离副本cleanup passed。历史用户资料和早期pytest目录保留，未把此前删除审批拒绝改写为已清理；本轮未清理历史`.harness/verification`。
+- **后端**：仅诊断封存/评分准入子项完成；**模型质量**：Q01仍未通过、Q02仍局部、Q03/Q04未升级；**角色闭环**：R07–R10及其余领域仍依矩阵开放，本次未取得新owner闭环；**Godot**：A/B/C仍未操作或验证。下一步先检查官方checkpoint声明的option layout与输入/候选描述合同，再决定新开发归因；正式完整动作数据集及独立final/holdout仍缺，不把该信息诊断套件扩充为动作验收。
