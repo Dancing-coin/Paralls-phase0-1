@@ -22,6 +22,14 @@
 
 backend-contract `b66d4c422df44094b5ef2ffa8708dc07` passed/cleanup passed，导出目录 `candidate-conditions-contract/`。后端仍局部；Q01–Q04 无新增质量通过；角色跨领域完整闭环未通过；Godot G-A/B/C 未操作、未验收。下一项是已有可信空间来源与 ESM 候选 range 的生产映射，继而回到正式 faction/target 与角色 owner caller；不要继续扩展条件编译器测试来替代这些缺口。
 
+## 当前批次：真实 Laya worktable 与原 owner 来源关联
+
+精确 HEAD `0f6bb4a4` 真实 backend/认证 WS→原 L2 local baseline→官方 Laya→原 L4/ESM，run `ab243b0d77a7451d94d4d6d46b32ef5b`，目录 `laya-worktable-current-head-diagnostic/`。第一回合真实选择 use_object:obj_worktable，原 owner 提交 transaction:esm-object:5efe5d357f4378db0475365744a690496317250267f93e6fc161f855e4d8ba90；第二回合候选含 finish，但选择 observe。输入分别6383/7927 tokens，无截断或丢弃。独立新进程重开原 session/gameplay store，两次 exact retry 恢复同一原回执、零新 world 写入，状态 engaged。输入只有 generic visible/available，L2 为 cognition_unavailable/local_only_stub、目标 preserve_continuity，没有显式完成任务，因此不把 observe 判作正式质量失败，也不宣称连续 use→finish 通过。空间样本来自认证开发控制器，不是 physics/Godot 证据。
+
+保留原 trace 与 owner JSON 后发现 exporter 重建 request 的 source.system 错用 character_agent，原 L4 实为 character_agent_l4，造成 owner_request_mismatch。修复精确身份，不放宽 owner digest。原 L3→L4→owner 受控 use/finish 回归 RED `3cee9da0928944f3a727f70768cede5c`（1 failed）；精确 HEAD 加本批两文件 GREEN `5a73187d830b42e1a36d8bc99011b032` **88 passed/4既有warnings**，目录 `live-owner-request-green/`。同一 live archive 无新增模型调用重关联：RED `3f88fb4bb7314fc5a60f2007e0e1e80f` accepted0，GREEN `49a420503dab4150b7c13195bfeaa727` accepted1/snapshot_matched，observe 正确为 execution_missing。snapshot_matched 只证明供应资料一致，不证明独立真实性或质量；exporter recovery 仍 unverified，新进程证据单独记录。backend-contract `c5ef2d90976d464fa07eb3777a220ec2` passed；上述 run cleanup passed。证据均在既有仓库外根目录。
+
+后端：原请求关联缺陷修复，领域仍局部。模型：仅 development，Q01–Q04 未关闭。角色：R08 增加当前 live use 原 owner 快照关联，R09 增加该 use 独立进程 exact receipt，连续与多 owner 仍开放。Godot A/B/C 未操作、未验收。未运行全量 pytest/Harness all、训练或正式隔离集；官方模型服务和本轮 backend 已停止，临时副本已回收。下一项从真实任务/目标与 L2 来源补角色输入，不重复模型调用碰运气或扩大 exporter 测试。
+
 ## 判定与证据复用
 
 ### ESM 候选距离来源接线增量

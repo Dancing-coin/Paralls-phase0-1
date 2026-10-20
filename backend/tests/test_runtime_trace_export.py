@@ -157,7 +157,7 @@ def owner_snapshot(tmp_path):
                 turn_id="turn:1", execution_contract_ref="execution:turn:1")
             request = owner.build_action_request(event, source_system="character_agent_l4").model_copy(update={
                 "request_id": "execution:turn:1:0",
-                "source": {"layer": "L4", "system": "character_agent", "actor_id": actor},
+                "source": {"layer": "L4", "system": "character_agent_l4", "actor_id": actor},
                 "causation_id": "cause:1", "correlation_id": "correlation:1"})
             result, receipt = owner.settle_object_interaction(event, action_request=request,
                 actor_position=owner.OBJECT_POSITIONS[target])
@@ -223,3 +223,54 @@ def test_corrupt_supplied_owner_snapshot_cannot_degrade_to_unverified(source, ow
     path.write_text('{}', encoding="utf-8")
     with pytest.raises(ValueError, match="owner_snapshot_invalid"):
         source(bind, owner_snapshot=path)
+
+
+def test_export_matches_original_l4_executor_requests_for_worktable_cycle(tmp_path, monkeypatch):
+    """Controlled choices, real L3/L4/owner: avoid hand-authoring owner requests."""
+    from test_character_object_execution import vertical
+    from test_character_worktable_vertical import selected_contract
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+
+    monkeypatch.setenv("CHARACTER_LAYA_ENDPOINT", "http://unused.invalid/v1/systemone")
+    prepared_requests = []
+    prepare = CharacterAgentL3Service.prepare_intent_plan
+
+    def capture(self, *args, **kwargs):
+        prepared = prepare(self, *args, **kwargs)
+        prepared_requests.append(json.loads(prepared.request_json))
+        return prepared
+
+    monkeypatch.setattr(CharacterAgentL3Service, "prepare_intent_plan", capture)
+    provider = LayaSystemOneProvider(endpoint="http://unused.invalid/v1/systemone",
+        option_tokenizer=lambda _: [1], tokenizer_sha256="sha256:synthetic")
+    rows, receipts = [], []
+    with vertical(tmp_path, target="obj_worktable", intent="use_object", action="action:use") as (
+        execution, runtime, owner, source, world, sessions, clock, _
+    ):
+        for sequence, intent in enumerate(("use_object", "finish_use"), 1):
+            contract = selected_contract(runtime, owner, sessions, intent, sequence)
+            execution.offer(contract)
+            result, receipt = execution.execute(contract)[2:]
+            receipts.append(receipt.transaction_id)
+            prepared = prepared_requests[-1]
+            rows.extend([
+                {"kind": "laya_enter", "frozen_request": prepared},
+                {"kind": "laya_http_result", "call": {"request": provider.build_wire_request(prepared),
+                    "response": {"answers": {"choice": {"choice": f"{intent}:obj_worktable"}},
+                        "usage": {"truncated": False, "state_tokens_dropped": 0, "truncated_questions": []}}}},
+                {"kind": "execution_input", "contract": contract.model_dump(mode="json")},
+                {"kind": "wire_output", "message": {"message_type": "world_result",
+                    "payload": result.model_dump(mode="json")}},
+            ])
+        snapshot = tmp_path / "original-owner.json"
+        world.save_snapshot(snapshot)
+    trace = tmp_path / "original-runtime.jsonl"
+    trace.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    before = snapshot.read_bytes()
+    exported = export_runtime_trace(trace, provider=provider, owner_snapshot=snapshot)
+    assert exported["accepted_count"] == 2, exported["rejections"]
+    assert exported["rejections"] == []
+    assert [row["owner_evidence"]["transaction_id"] for row in exported["records"]] == receipts
+    assert all(row["owner_store_validation"] == "snapshot_matched" for row in exported["records"])
+    assert exported["formal_eligible"] is False
+    assert snapshot.read_bytes() == before

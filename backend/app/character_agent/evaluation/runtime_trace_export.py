@@ -49,7 +49,7 @@ def _owner_association(owner: ESMService, store: GameplayEventStore,
             execution_contract_ref=contract["idempotency_key"])
         request = owner.build_action_request(event, source_system="character_agent_l4").model_copy(update={
             "request_id": f"{contract['idempotency_key']}:0",
-            "source": {"layer": "L4", "system": "character_agent", "actor_id": actor_id},
+            "source": {"layer": "L4", "system": "character_agent_l4", "actor_id": actor_id},
             **{key: contract[key] for key in ("causation_id", "correlation_id",
                 "expected_revision_vector", "expected_memory_revision_vector", "expected_snapshot_revision")},
         })

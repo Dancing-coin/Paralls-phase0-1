@@ -337,4 +337,6 @@ Extend the existing development exporter with optional --owner-snapshot (the ori
 
 ### Task 4 D02 有界进展：Inventory 原 owner 撤权 CAS
 
+后续 R08/R09 批次：真实 current HEAD backend/Laya 选择 worktable use，原 ESM 提交，新进程两次恢复同一回执且零写；第二选择 observe，连续 use/finish 未通过。generic visibility 与 local L2 preserve_continuity 不是有来源的完成任务，不能作为正式质量失败。原 owner 快照暴露 exporter source.system 身份错误，修正为原 character_agent_l4，保留严格 digest；原 L3/L4/owner 回归 RED1failed，GREEN88passed/4既有warnings（5a73187d830b42e1a36d8bc99011b032），backend-contract c5ef2d90976d464fa07eb3777a220ec2 passed，cleanup passed。同一 live trace accepted1/snapshot_matched，仅 development。证据及边界见统一矩阵当前批次；下一项实际任务/目标及 L2 来源，不再盲重试模型或扩展 parser 测试。Godot 最后。
+
 已补原 cadence 回执/事件/事务与精确输入关联，缺准入/已撤权零写；准入与撤权流版本进入 Inventory 最终 command read-set CAS。实际 publisher、原认证/Inventory 提交与 seed、内存/SQLite 撤权竞态、SQLite 重开定向33 passed（run `694911dd6ed94343b699a1cf997dafc3`），backend-contract passed（`a359f759e5cf42f3988eb4eb5492fe71`），cleanup passed。测试失败及修正记录见统一矩阵。仅关闭此子项；完整时间授权、生产领域投递及跨域角色 caller 继续执行。没有新模型质量结果，Godot 继续最后执行。
