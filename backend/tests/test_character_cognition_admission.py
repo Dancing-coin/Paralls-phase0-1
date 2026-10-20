@@ -213,9 +213,10 @@ def test_original_admission_without_business_tick_stays_readable_without_inventi
 def test_goal_proposal_can_enter_durable_provider_pending_and_reopen_exactly(tmp_path):
     path = tmp_path / 'goal-proposal.sqlite3'
     store, admissions = service(path)
+    trigger = store.append_event('char_a', 'goal_trigger_source', 42, {'source_ref': 'outcome:1'})
     entry = admissions.admit(**{**request(), 'source_kind': 'goal_proposal_trigger',
-        'payload': {'trigger_kind': 'phase_change', 'trigger_source_ref': 'outcome:1',
-            'evidence_refs': ['outcome:1']}})
+        'payload': {'trigger_kind': 'phase_change', 'trigger_source_ref': trigger['event_id'],
+            'evidence_refs': [trigger['event_id']]}})
     frame = {'actor_id': 'char_a', 'child_key': entry.child_key, 'stage': 'goal_proposal'}
     request_json = '{"contract":"goal_proposal:v1"}'
     pending = admissions.advance_progress(key=entry.child_key, expected_revision=0,
@@ -231,6 +232,20 @@ def test_goal_proposal_can_enter_durable_provider_pending_and_reopen_exactly(tmp
         assert admissions.advance_progress(key=entry.child_key, expected_revision=0,
             stage='goal_proposal', status='provider_pending', frame=frame,
             request_json=request_json, now=102.) == pending
+    finally:
+        store.close()
+
+
+def test_goal_trigger_rejects_uncommitted_caller_supplied_source_without_writes(tmp_path):
+    store, admissions = service(tmp_path / 'uncommitted-trigger.sqlite3')
+    payload = {'trigger_kind': 'phase_change', 'trigger_source_ref': 'caller:invented',
+        'evidence_refs': ['caller:invented']}
+    try:
+        with pytest.raises(ValueError, match='goal_proposal_trigger_source_uncommitted'):
+            admissions.admit(**{**request(), 'source_kind': 'goal_proposal_trigger', 'payload': payload})
+        assert admissions.list_pending() == ()
+        assert store.event_count('char_a') == 0
+        assert store.list_receipts('char_a', 'cognition_admission') == {}
     finally:
         store.close()
 

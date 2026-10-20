@@ -95,6 +95,9 @@ class CharacterCognitionAdmissionService:
             refs = payload.get('evidence_refs')
             if not isinstance(refs, list) or payload.get('trigger_source_ref') not in refs:
                 raise ValueError('goal_proposal_trigger_evidence_required')
+            trigger_source = self.store.read_event(actor_id, event_id=payload['trigger_source_ref'])
+            if trigger_source is None or trigger_source.get('actor_id') != actor_id:
+                raise ValueError('goal_proposal_trigger_source_uncommitted')
         if source_kind == 'ingest_siming_output':
             delivery = SimingCharacterCompatibilityInput.model_validate(payload)
             if (delivery.actor_id, delivery.delivery_id, delivery.producer_ts) != (actor_id, delivery_id, producer_ts):
