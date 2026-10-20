@@ -148,10 +148,14 @@ def test_every_family_has_stable_semantics_ignoring_injected_answer_fields(famil
            "required_conditions": {"visibility": "satisfied", "gold": "correct answer",
                                    "consent": {"rationale": "grading-sentinel"}}}
     first = CandidateCompiler().compile(candidates=[raw])
-    assert scope in first.presented[0]["description"]
-    assert "correct answer" not in first.presented[0]["description"]
-    assert "grading-sentinel" not in first.presented[0]["description"]
-    assert "consent=unknown" in first.presented[0]["description"]
+    # Rendering stays answer-agnostic; malformed consent cannot enter U/P.
+    description = CandidateCompiler._semantic_description(raw)
+    assert scope in description
+    assert "correct answer" not in description
+    assert "grading-sentinel" not in description
+    assert "consent=unknown" in description
+    assert first.presented == []
+    assert first.diagnostics[0]["condition"] == "consent"
     assert first.digest == CandidateCompiler().compile(candidates=[raw]).digest
 
 
@@ -251,3 +255,51 @@ def test_domain_candidate_expansion_accepts_only_registered_worktable_interactio
     intents = CharacterAgentL3Service._expand_domain_candidates(["observe"], snapshot)
 
     assert intents == ["observe", "use_object", "finish_use"]
+
+
+@pytest.mark.parametrize("condition", ["consent", "privacy", "contact", "range", "permission", "availability"])
+@pytest.mark.parametrize("status", ["blocked", "unknown", "unavailable", None, {"status": "satisfied"}])
+def test_nonvisual_required_condition_cannot_admit_an_executable_candidate(condition, status):
+    denied = {**_candidate("denied"),
+              "required_conditions": {"visibility": "satisfied", condition: status}}
+    result = CandidateCompiler().compile(candidates=[denied, _candidate("observe")])
+
+    assert result.wire_labels == ["observe"]
+    assert [item["candidate_id"] for item in result.universe] == ["observe"]
+    diagnostic, = result.diagnostics
+    assert diagnostic["candidate_id"] == "denied"
+    assert diagnostic["condition"] == condition
+
+
+def test_deferred_range_check_is_not_a_known_denial_or_a_satisfied_condition():
+    raw = {**_candidate("inspect"),
+           "required_conditions": {"visibility": "satisfied", "range": "required"}}
+    result = CandidateCompiler().compile(candidates=[raw])
+    assert result.wire_labels == ["inspect"]
+    assert result.presented[0]["required_conditions"]["range"] == "required"
+    assert "range=required" in result.presented[0]["description"]
+
+
+def test_l3_preparation_preserves_permission_denial_in_the_frozen_provider_input():
+    import json
+
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+    from app.models.character_agent_runtime import CharacterInterpretation, CharacterPrivateWorldSnapshot
+    from app.services.esm_service import ESMService
+
+    snapshot = CharacterPrivateWorldSnapshot(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
+        producer_ts=1, updated_at=1, visible_target_refs=["obj_worktable"])
+    snapshot.target_catalog = ESMService().project_character_targets(snapshot)
+    for descriptor in snapshot.target_catalog:
+        descriptor["required_conditions"]["permission"] = "blocked"
+    restored = CharacterPrivateWorldSnapshot.model_validate_json(snapshot.model_dump_json())
+    prepared = CharacterAgentL3Service().prepare_intent_plan(
+        interpretation=CharacterInterpretation(actor_id="char_a", interpreted_summary="visible worktable",
+            interpretation_type="object", salience_score=0.5, ambiguity_level="low", risk_level="low",
+            opportunity_level="medium", attention_target="obj_worktable"),
+        control_mode="agent_full_auto", snapshot=restored.model_dump(mode="json"))
+    context = json.loads(prepared.request_json)["context"]
+    assert all("obj_worktable" not in label for label in context["candidate_intents"])
+    assert "observe" in context["candidate_intents"]
+    assert any(item["candidate_id"] == "use_object:obj_worktable" and item["condition"] == "permission"
+               for item in context["candidate_diagnostics"])

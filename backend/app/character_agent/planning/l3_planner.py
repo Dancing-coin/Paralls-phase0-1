@@ -206,12 +206,22 @@ class CandidateCompiler:
             if not isinstance(item.get("target_refs", {}), dict):
                 diagnostics.append({"candidate_id": candidate_id, "reason": "target_refs_invalid"})
                 continue
-            if isinstance(conditions, dict):
-                visibility_status = str(conditions.get("visibility", "satisfied") or "satisfied")
-                if visibility_status in {"unknown", "unavailable"}:
-                    item["diagnosis"] = {"status": visibility_status, "reason": f"condition_{visibility_status}"}
-                if visibility_status == "blocked":
-                    item["diagnosis"] = {"status": "blocked", "reason": "condition_blocked"}
+            if not isinstance(conditions, dict):
+                item["diagnosis"] = {"status": "unknown", "reason": "conditions_invalid"}
+            else:
+                # A visible target does not satisfy its other admission gates.
+                # `required` preserves a deferred check, never affirmative
+                # evidence; L4/owner must still validate it at execution.
+                for condition in ("visibility", "consent", "privacy", "contact", "range", "permission", "availability"):
+                    if condition not in conditions:
+                        continue
+                    status = conditions[condition]
+                    if isinstance(status, str) and status in {"satisfied", "required"}:
+                        continue
+                    status = status if isinstance(status, str) and status in {"blocked", "unknown", "unavailable"} else "unknown"
+                    if not item.get("diagnosis"):
+                        item["diagnosis"] = {"status": status, "reason": f"condition_{status}", "condition": condition}
+                    break
             target_refs = item.get("target_refs", {})
             target_values = [str(value) for value in target_refs.values()] if isinstance(target_refs, dict) else []
             if visible_targets is not None and any(target not in visible for target in target_values):
@@ -244,7 +254,10 @@ class CandidateCompiler:
                 diagnostics.append({"candidate_id": item["candidate_id"], "reason": "action_family_not_allowed"})
                 continue
             if reason:
-                diagnostics.append({"candidate_id": item["candidate_id"], "reason": reason})
+                diagnostic = {"candidate_id": item["candidate_id"], "reason": reason}
+                if diagnosis.get("condition"):
+                    diagnostic["condition"] = diagnosis["condition"]
+                diagnostics.append(diagnostic)
                 continue
             availability = str(item.get("availability", "available") or "unknown")
             if availability in {"unknown", "unavailable", "blocked"}:

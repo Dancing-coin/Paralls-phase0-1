@@ -4,6 +4,24 @@
 
 **当前执行目标：整体完成十月主线阶段一至三的实现与验收。** Goal ledger 仍 active；当前工具 `update_goal` 仅支持 status，无法修改 objective，不能以虚报旧目标 complete 的方式替换。本文件及[执行计划](../../superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md)承载扩展后的权威执行范围。
 
+## 当前优先缺口：完整动作与目标来源审查（2026-10-20）
+
+以下是生产能力的剩余依赖，不把旧的三选项信息诊断包扩充后冒充完整动作集。
+
+| 路径 | 当前实现及来源 | 下一验收依赖 |
+|---|---|---|
+| ESM inspect/use/finish | `main.py` 将当前 ESM 的 `project_character_targets` 绑定到 L1；原 descriptor 冻结目标、动作、owner、state digest；已有 receipt/recovery 证据复用 | `range=required` 仍是执行时检查，不能视为候选生成时的肯定距离证据；完整跨目标/连续选择和正式质量仍未验收 |
+| 其他目标动作 | `_candidate_records` 已要求显式目录；`_expand_domain_candidates` 只补 use_object/finish_use；生产 resolver 目前只提供 ESM 目录 | 从各自真实 owner/registry 与私有感知补动作专属目标和版本，不把 attention 或当前玩家转成授权 |
+| 战斗/Boss | 复用 `canonical_combat_authority.py` 的 faction/Threat owner 和 `combat_durable_adapter.py` | 正式 faction/target source、角色原合同与 owner caller；physics/contact 留最终 Godot，不用测试事实补造生产来源 |
+| 信息/移动/协同 | L3 存在动作字符串与本地合同 | 各自 recipient/空间/协同来源、owner 路由与回执，不能把 ESM 目标共用为所有动作的接收方 |
+| 质量准备来源 | 旧 `prepare_character_evaluation.py` 仅 authored observe/ask_probe/defer，owner unassigned，空 envelope/policy；runtime trace exporter 仅真实 ESM 成功边界开发来源 | 新完整 action+target 来源、独立分组与评审，再 calibration/freeze/final/holdout；旧开发或已暴露输入不可补入独立集 |
+
+**已修复的生产候选缺口：** CandidateCompiler 原来只检查 visibility，明确否定的 consent/privacy/contact/range/permission/availability 仍可进入 U/P。本批按现有条件协议拒绝 blocked/unknown/unavailable 和非法单项值，诊断保留 condition；真实 L3 准备→typed snapshot→冻结 provider 输入回归证明拒绝继续传递，合法 observe 保留。既有 `required` 表示延后核验，缺字段兼容也保留；两者都不证明肯定准入，因此不关闭 R05，也不改变规格05要求的最终门槛。旧 v4/v5 描述协议不变；新编译结果的诊断/摘要应以新来源记录，不刷新旧正式来源 hash。
+
+证据根仍为 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/`。RED `afe42c71c368459b9cd8de9a22757ef4`：30 failed/1 passed；工作树 GREEN `334555a5b3474626a4f5ed006d4c214a`：56 passed。首次隔离 `4adc9e50dbdf48ffa9712754c21ff3c7` 因选入未提交的历史 `test_character_owner_target_projection.py` 而 exit4、零测试，保留失败，不采用该文件。修正为四个已提交选集，精确 HEAD `f4bce4a0` 加本批两文件隔离 **110 passed/4 FastAPI 既有 warnings**，run `db76736909f4435e84d5708c88cf6550`，目录 `candidate-conditions-isolated-fixed/`；均 cleanup passed。未运行全量 pytest/Harness all、模型、训练或 Godot。
+
+backend-contract `b66d4c422df44094b5ef2ffa8708dc07` passed/cleanup passed，导出目录 `candidate-conditions-contract/`。后端仍局部；Q01–Q04 无新增质量通过；角色跨领域完整闭环未通过；Godot G-A/B/C 未操作、未验收。下一项是已有可信空间来源与 ESM 候选 range 的生产映射，继而回到正式 faction/target 与角色 owner caller；不要继续扩展条件编译器测试来替代这些缺口。
+
 ## 判定与证据复用
 
 - **已完成**：仅指该行精确能力与证据边界已满足；不自动关闭所属阶段。

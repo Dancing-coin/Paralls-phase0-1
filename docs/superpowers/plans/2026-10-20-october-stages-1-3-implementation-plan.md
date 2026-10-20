@@ -36,6 +36,8 @@
 
 ## Task 1: 真实私有输入、动作目标与同源能力
 
+**完整候选来源审查增量：** 统一矩阵顶部列明 ESM、其他目标动作、combat、协同/移动和质量准备来源的生产差距。旧三选项 authored 包不能替代完整动作/目标来源。本批先修复已复现的 CandidateCompiler 非视觉条件否定被忽略：RED30failed/1passed，typed L3准备与provider输入等精确 HEAD+两文件隔离110passed/4既有warnings（`db76736909f4435e84d5708c88cf6550`，cleanup passed）。保留延后核验的 `required` 及缺字段兼容，故不关闭规格05的肯定证据门槛。下批直接映射已有可信空间来源到 ESM 候选 range、再补原 faction/target 与角色 owner caller，不扩展此局部条件测试。Q01–Q04与完整角色/Godot门不升级。
+
 **Files:** `backend/app/models/character_agent_runtime.py`、`character_agent/reasoning/l1_perception.py`、`planning/l3_planner.py`、`runtime/runtime_loop.py`、`reasoning/l2_reasoner.py`；复用 `services/scene_affordance_registry.py`、`character_agent/skills/service.py`。测试在 `backend/tests/` 中沿已有 L1/candidate/capability 入口增加。
 
 **Interfaces:** 已过滤的真实感知＋现有 registry/owner 的版本与权限→私有 target catalog、visible refs、action-specific affordance→既有 CandidateCompiler；同一 turn 的 envelope/policy→L2/L3/dialogue/recall。
