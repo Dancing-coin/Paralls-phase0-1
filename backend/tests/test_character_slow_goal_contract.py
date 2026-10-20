@@ -22,15 +22,15 @@ class RecordingProvider:
         return self.output
 
 
-def proposal_context():
+def proposal_context(producer_ts=10):
     turn = CharacterTurnContext(
         turn_id="turn:1", actor_id="char_a", source_event_ref="outcome:1",
         causation_id="cause:1", correlation_id="correlation:1", lifecycle="prepared",
         input_revision_vector={"source": 1}, memory_revision_vector={"goals": 2},
-        policy_revision="policy:1", snapshot_revision=1, valid_at=10, producer_ts=10,
+        policy_revision="policy:1", snapshot_revision=1, valid_at=producer_ts, producer_ts=producer_ts,
     )
     frame = CharacterMindFrame(
-        actor_id="char_a", mind_turn_id="mind:1", producer_ts=10,
+        actor_id="char_a", mind_turn_id="mind:1", producer_ts=producer_ts,
         provenance=MindFrameProvenance(source_refs=["outcome:1"]),
     ).bind_to_turn(turn)
     envelope = CapabilityEnvelope(
@@ -75,6 +75,14 @@ def test_proposal_roundtrip_preserves_frozen_input_without_an_action(monkeypatch
     assert "candidate_intents" not in sent["prompt"]["system_instruction"]
 
 
+def test_proposal_expiry_uses_wall_clock_domain_not_event_timestamp(monkeypatch):
+    monkeypatch.setattr(settings, "character_model_provider_kind", "deepseek")
+    context = proposal_context(producer_ts=1_797_000_000_000)
+    provider = RecordingProvider({"active_goal_frame": {"primary_goal": "find_gate_key"}, "evidence_refs": ["outcome:1"]})
+    request = prepare(CharacterModelGateway(provider=provider), context)
+    assert request["context"]["expires_at"] == 30
+
+
 @pytest.mark.parametrize("route", ["local_only", "laya", "hybrid_ready"])
 def test_proposal_rejects_non_generative_route_before_provider(route):
     provider = RecordingProvider({})
@@ -90,7 +98,7 @@ def test_proposal_rejects_non_generative_route_before_provider(route):
     lambda c: c.update(evidence_refs=["outcome:1", "outcome:1"]),
     lambda c: c.update(raw_dossier={"secret": True}),
     lambda c: c["frame"].update(frame_digest="tampered"),
-    lambda c: c.update(expires_at=10),
+    lambda c: c.update(expires_at=-1),
     lambda c: c.update(cognition_policy={}),
     lambda c: c["cognition_policy"].update(policy_digest=""),
     lambda c: c["capability_envelope"].update(envelope_digest=""),

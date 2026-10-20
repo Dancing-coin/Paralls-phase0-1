@@ -33,7 +33,7 @@ class GoalProposalContext(BaseModel):
     capability_envelope: CapabilityEnvelope
     cognition_policy: CognitionPolicy
     goal_revision: int = Field(ge=0, strict=True)
-    expires_at: int = Field(ge=0, strict=True)
+    expires_at: float = Field(ge=0, allow_inf_nan=False)
 
     @model_validator(mode="before")
     @classmethod
@@ -60,8 +60,6 @@ class GoalProposalContext(BaseModel):
         validate_evidence_refs(self.evidence_refs, set(frame.source_refs))
         if self.trigger_source_ref not in self.evidence_refs:
             raise ValueError("goal proposal trigger requires permitted evidence")
-        if self.expires_at <= frame.producer_ts:
-            raise ValueError("goal proposal expiry must follow its source")
         if not self.request_id.strip():
             raise ValueError("goal proposal request identity must not be blank")
         return self
