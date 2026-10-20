@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictInt, model_validator
 
 
 class StrictProfileModel(BaseModel):
@@ -17,6 +17,61 @@ class IdentityCore(StrictProfileModel):
     canonical_name: str
     aliases: list[str] = Field(default_factory=list)
     occupation_role: str
+
+
+ResourcePolicyId = Literal["core.stamina", "core.mana", "core.action_points"]
+ResourceRelationKind = Literal["independent", "coupled", "fused"]
+
+
+class CharacterResourcePolicyEntry(StrictProfileModel):
+    resource_id: ResourcePolicyId
+    maximum: StrictInt = Field(ge=0)
+    capacity: StrictInt = Field(ge=0)
+    base_capacity: StrictInt = Field(ge=0)
+    initial: StrictInt = Field(ge=0)
+    recovery_amount: StrictInt = Field(ge=0)
+    recovery_period_world_ticks: StrictInt = Field(gt=0)
+    debt_policy: Literal["forbidden"] = "forbidden"
+    lock_issuer_ref: str = Field(min_length=1)
+    lock_lifecycle_revision: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "CharacterResourcePolicyEntry":
+        if self.maximum > self.capacity:
+            raise ValueError("character_resource_capacity_below_maximum")
+        if self.initial > self.maximum or self.initial > self.capacity or self.base_capacity > self.capacity:
+            raise ValueError("character_resource_initial_exceeds_maximum")
+        return self
+
+
+class CharacterResourceTemplate(StrictProfileModel):
+    template_ref: str = Field(min_length=1)
+    template_revision: str = Field(min_length=1)
+    issuer_ref: str = Field(min_length=1)
+    fact_owner_ref: str = Field(min_length=1)
+    valid_from_world_tick: StrictInt = Field(ge=0)
+    valid_until_world_tick: StrictInt | None = Field(default=None, ge=0)
+    world_scope: tuple[str, ...] = Field(min_length=1)
+    timeline_scope: tuple[str, ...] = Field(min_length=1)
+    binding_revision: str = Field(min_length=1)
+    read_principals: tuple[str, ...] = Field(min_length=1)
+    receipt_kind: str = Field(min_length=1)
+    receipt_key: str = Field(min_length=1)
+    revocation_owner_ref: str = Field(min_length=1)
+    relation_policy_ref: str = "resource-relation:independent@1"
+    relation_kind: ResourceRelationKind = "independent"
+    resources: tuple[CharacterResourcePolicyEntry, ...] = Field(min_length=3, max_length=3)
+
+    @model_validator(mode="after")
+    def validate_template(self) -> "CharacterResourceTemplate":
+        ids = tuple(entry.resource_id for entry in self.resources)
+        if set(ids) != {"core.stamina", "core.mana", "core.action_points"} or len(ids) != len(set(ids)):
+            raise ValueError("character_resource_core_set_incomplete")
+        if self.valid_until_world_tick is not None and self.valid_until_world_tick < self.valid_from_world_tick:
+            raise ValueError("character_resource_validity_invalid")
+        if self.relation_kind != "independent" or self.relation_policy_ref != "resource-relation:independent@1":
+            raise ValueError("character_resource_relation_policy_invalid")
+        return self
 
 
 class TraitVectorLayer(StrictProfileModel):
@@ -222,6 +277,7 @@ class RuntimeDefaults(StrictProfileModel):
 
 class CharacterProfile(StrictProfileModel):
     identity_core: IdentityCore
+    resource_template: CharacterResourceTemplate | None = None
     origin_seed: OriginSeed
     life_memory_backbone: LifeMemoryBackbone
     virtue_value_layer: VirtueValueLayer

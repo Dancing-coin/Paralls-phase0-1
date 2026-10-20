@@ -7,6 +7,7 @@ import json
 
 from app.character_agent.profile.loader import CharacterProfileLoader
 from app.character_agent.profile.models import CharacterProfile
+from app.gameplay.resource_template_admission import ResourceTemplateEntry, ResourceTemplateSource
 
 
 class CharacterProfileRegistry:
@@ -54,6 +55,48 @@ class CharacterProfileRegistry:
             profile.identity_core.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
         ).encode("utf-8")
         return "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    def resource_template_source(
+        self,
+        actor_ref: str,
+        *,
+        world_ref: str,
+        timeline_ref: str,
+    ) -> ResourceTemplateSource:
+        """Expose the authored, versioned resource policy as an admitted source.
+
+        The profile remains the content owner; this adapter only binds its
+        published policy to the existing read-only admission contract.
+        """
+        profile = self.profile_ref(actor_ref)
+        template = profile.resource_template
+        if template is None:
+            raise KeyError(f"resource_template:{actor_ref}")
+        if world_ref not in template.world_scope or timeline_ref not in template.timeline_scope:
+            raise ValueError("resource_template_scope_not_published")
+        encoded = json.dumps(template.model_dump(mode="json"), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return ResourceTemplateSource(
+            template_ref=template.template_ref,
+            template_revision=template.template_revision,
+            issuer_ref=template.issuer_ref,
+            fact_owner_ref=template.fact_owner_ref,
+            actor_scope=(profile.identity_core.character_id,),
+            world_scope=template.world_scope,
+            timeline_scope=template.timeline_scope,
+            valid_from_world_tick=template.valid_from_world_tick,
+            valid_until_world_tick=template.valid_until_world_tick,
+            source_digest="sha256:" + hashlib.sha256(encoded).hexdigest(),
+            binding_revision=template.binding_revision,
+            read_principals=template.read_principals,
+            receipt_kind=template.receipt_kind,
+            receipt_key=template.receipt_key,
+            revocation_owner_ref=template.revocation_owner_ref,
+            relation_policy_ref=template.relation_policy_ref,
+            relation_kind=template.relation_kind,
+            resources=tuple(
+                ResourceTemplateEntry(**entry.model_dump(mode="json")) for entry in template.resources
+            ),
+        )
 
     def build_gameplay_scope_view(
         self,

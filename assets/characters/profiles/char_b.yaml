@@ -6,6 +6,62 @@ identity_core:
     - Gate Watcher
   occupation_role: security steward
 
+# 本次设计并实现：阶段三核心资源政策来源；不是历史既有业务事实。
+resource_template:
+  template_ref: character-template:char_b
+  template_revision: character-template:char_b@1
+  issuer_ref: issuer:character-template-phase3
+  fact_owner_ref: owner:character-template-phase3
+  valid_from_world_tick: 0
+  world_scope:
+    - world:main
+    - world:bakery
+    - world:bakery-district
+  timeline_scope:
+    - timeline:main
+    - population:world:bakery
+    - population:world:bakery-district
+    - timeline:world
+  binding_revision: binding:character-profile@1
+  read_principals:
+    - resource-template-consumer
+  receipt_kind: character_template_publication
+  receipt_key: character-template:char_b@1
+  revocation_owner_ref: owner:character-template-phase3
+  relation_policy_ref: resource-relation:independent@1
+  relation_kind: independent
+  resources:
+    - resource_id: core.stamina
+      maximum: 120
+      capacity: 120
+      base_capacity: 120
+      initial: 120
+      recovery_amount: 6
+      recovery_period_world_ticks: 10
+      debt_policy: forbidden
+      lock_issuer_ref: owner:ability-resource-lock
+      lock_lifecycle_revision: lock:ability-resource@1
+    - resource_id: core.mana
+      maximum: 60
+      capacity: 60
+      base_capacity: 60
+      initial: 60
+      recovery_amount: 3
+      recovery_period_world_ticks: 10
+      debt_policy: forbidden
+      lock_issuer_ref: owner:ability-resource-lock
+      lock_lifecycle_revision: lock:ability-resource@1
+    - resource_id: core.action_points
+      maximum: 8
+      capacity: 8
+      base_capacity: 8
+      initial: 8
+      recovery_amount: 1
+      recovery_period_world_ticks: 1
+      debt_policy: forbidden
+      lock_issuer_ref: owner:ability-resource-lock
+      lock_lifecycle_revision: lock:ability-resource@1
+
 origin_seed:
   homeland: outer gate barracks
   formative_context: trained through rule-first corridor duty
