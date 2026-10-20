@@ -148,3 +148,21 @@ def test_prepare_goal_proposal_requires_readable_committed_source():
             'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
         )
     assert admissions.calls == []
+
+
+def test_prepare_goal_proposal_rejects_ineligible_committed_source(monkeypatch):
+    monkeypatch.setattr(settings, 'character_model_provider_kind', 'deepseek')
+    coordinator, admissions = _coordinator()
+    trigger_kind = admissions.entry.payload['context']['trigger_kind']
+    admissions.store = SimpleNamespace(read_event=lambda actor_id, *, event_id: {
+        'actor_id': actor_id, 'event_id': event_id,
+        'payload': {'goal_proposal_trigger': {
+            'eligible': False, 'trigger_kind': trigger_kind,
+            'frame_digest': proposal_context()['frame']['frame_digest'], 'goal_revision': 2,
+        }},
+    })
+    with pytest.raises(ValueError, match='cognition_goal_proposal_source_mismatch'):
+        coordinator.prepare_goal_proposal(
+            'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
+        )
+    assert admissions.calls == []

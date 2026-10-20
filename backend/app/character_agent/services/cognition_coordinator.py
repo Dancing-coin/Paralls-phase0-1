@@ -46,7 +46,14 @@ class CharacterCognitionCoordinator:
         source = source_reader(entry.actor_id, event_id=context.trigger_source_ref)
         source_payload = source.get('payload') if isinstance(source, dict) else None
         source_contract = source_payload.get('goal_proposal_trigger') if isinstance(source_payload, dict) else None
+        allowed_trigger_kinds = {
+            'repeated_failure', 'phase_change', 'context_conflict', 'goal_conflict',
+            'complex_information_failure', 'high_risk_information_failure',
+            'persistent_information_failure',
+        }
         if (not isinstance(source_contract, dict)
+                or source_contract.get('eligible') is not True
+                or source_contract.get('trigger_kind') not in allowed_trigger_kinds
                 or source_contract.get('trigger_kind') != context.trigger_kind
                 or source_contract.get('frame_digest') != context.frame.frame_digest
                 or source_contract.get('goal_revision') != context.goal_revision):
