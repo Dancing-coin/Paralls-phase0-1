@@ -26,6 +26,7 @@ from starlette.websockets import WebSocketDisconnect
 from app.config import Settings, settings
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.execution.object_execution import CharacterObjectExecution
+from app.character_agent.execution.combat_target_catalog import CharacterCombatTargetCatalog
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -1359,6 +1360,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         runtime=character_agent_runtime, owner=esm_service, source=embodied_spatial_source,
         scopes=settings.embodied_spatial_scopes,
         learning_world_ref=character_agent_runtime._learning_world_ref,
+        combat_targets=CharacterCombatTargetCatalog(
+            store=gameplay_event_store, presence=population_presence_authority,
+            timeline=lambda: (_population_runtime_driver.clock.timeline
+                              if _population_runtime_driver is not None else None)),
     )
     character_agent_runtime.set_target_catalog_resolver(character_object_execution.project_character_targets)
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()

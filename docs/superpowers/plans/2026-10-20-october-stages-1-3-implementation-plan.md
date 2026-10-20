@@ -277,3 +277,8 @@ HEAD wiring correction and final resume check: committed coordinator already car
 ### D01/D08 runtime timeline 来源前置
 
 Ruling: adopt only existing four typed time values, rational clock mapping and backend-owned Population timeline in the actual driver. Keep fixed seconds profile and existing durable publisher cursor; do not adopt historical grants, migration, scheduling or broad main/publisher changes. Process-local timeline authoritative_revision is not a durable CAS pin. Actual main runtime RED lacked timeline; exact HEAD d37d9c81 plus four staged files now68passed/4existingwarnings (46803e72aad24c43ad2eac68eb274fb7), including failed publisher/no advance, wrong mapping zero-write and durable reopen. Cleanup passed; evidence and limits in matrix D01/D08. Next original canonical target source/caller; not more local temporal tests. No fullpytest/all/model/training/Godot. D02 matrix corrected to distinguish credential commit from historical uncommitted cadence route.
+
+
+### Task1/D08 combat target source sub-batch
+
+Actual main now joins explicit private visible actors to current backend timeline and durable Presence/initial Life/faction sources through an identity-only reader. ESM remains on its original resolver. No action grants or fake physics: combat descriptors stay unavailable pending actual action registration and execution admission. Exact staged 90 passed (run `02972e53d74343d181cc531155aa22b0`), backend-contract passed, cleanup passed; full evidence and failed iteration provenance in matrix. Task1/Task2 remain open. Next return to non-physics ESM live Laya→L4→owner; do not expand this source-only slice into a substitute for complete character acceptance.

@@ -11,7 +11,7 @@
 | 路径 | 当前实现及来源 | 下一验收依赖 |
 |---|---|---|
 | ESM inspect/use/finish | `main.py` 将当前 `CharacterObjectExecution.project_character_targets` 绑定到 L1；连接原 ESM descriptor 与同 scope 新鲜、绑定有效的 spatial source；原 owner/state digest 和 receipt/recovery 复用 | 已有位置映射的对象可取得肯定 range，缺失/过期/撤权/跨 scope 为 unknown、远距为 blocked；完整跨目标/连续选择和正式质量仍未验收 |
-| 其他目标动作 | `_candidate_records` 已要求显式目录；`_expand_domain_candidates` 只补 use_object/finish_use；生产 resolver 目前只提供 ESM 目录 | 从各自真实 owner/registry 与私有感知补动作专属目标和版本，不把 attention 或当前玩家转成授权 |
+| 其他目标动作 | `_candidate_records` 已要求显式目录；`_expand_domain_candidates` 只补 use_object/finish_use；生产 resolver 提供 ESM 动作目录及只读 canonical combat 来源；combat 尚不授予动作 | 从各自真实 owner/registry 与私有感知补动作专属目标和版本，不把 attention 或当前玩家转成授权 |
 | 战斗/Boss | 复用 `canonical_combat_authority.py` 的 faction/Threat owner 和 `combat_durable_adapter.py` | 正式 faction/target source、角色原合同与 owner caller；physics/contact 留最终 Godot，不用测试事实补造生产来源 |
 | 信息/移动/协同 | L3 存在动作字符串与本地合同 | 各自 recipient/空间/协同来源、owner 路由与回执，不能把 ESM 目标共用为所有动作的接收方 |
 | 质量准备来源 | 旧 `prepare_character_evaluation.py` 仅 authored observe/ask_probe/defer，owner unassigned，空 envelope/policy；runtime trace exporter 仅真实 ESM 成功边界开发来源 | 新完整 action+target 来源、独立分组与评审，再 calibration/freeze/final/holdout；旧开发或已暴露输入不可补入独立集 |
@@ -445,3 +445,11 @@ D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner�
 - RED `3f575efc252b43338c9583278530e421`：实际 main startup 后无 clock.timeline，1 failed。初次绿色49 passed，run `62c0253b04504cf188034dd6de28608d`；补入错误 unit/revision/timeline 零写、raw advance 拒绝与原 durable cadence recovery 后，精确 HEAD `d37d9c81`＋暂存四文件 **68 passed / 4既有FastAPI warnings**，run `46803e72aad24c43ad2eac68eb274fb7`。三个 scope cleanup passed；证据根同前，目录 `population-timeline-red/`、`population-timeline-green/`、`population-timeline-final/`。覆盖实际 RuntimeExecution、失败发布不推进、真实 cadence 确认推进和 SQLite 重开；不要求启动时没有合法新增 cadence。
 - **后端**：仅关闭当前 timeline 来源前置，D01/D08 仍局部；下一项是 Presence/Life/faction 真实 target/caller，而非继续扩展时钟局部测试。**模型质量**：Q01–Q04不变，无模型调用/训练或正式 split 暴露。**角色闭环**：完整动作目标及 Laya/L4/多领域原回执仍开放。**Godot**：A/B/C未修改、启动、操作或验证。未运行全量pytest/Harness all；历史工作树保留，暂存只含四文件必要子集。
 - 静态 gate：backend-contract `0eaa92f3a84544e6a5372f83e040463a`、docs `b972a284d5934b65971f9679316686f6` 均passed/cleanup passed（`population-timeline-contract/`、`population-timeline-docs/`）。
+
+
+## D08／R05 私有 combat 目标来源接线（2026-10-20）
+
+- 后端：从历史 Threat 草稿抽出 `CanonicalCombatTargetReader`，输入仅 actor/target identity，不制造 ActionAttempt 或 physics/contact。实际 main 的原 resolver 保留 ESM，追加显式可见目标的 canonical Presence、当前 Life、方向性 faction 校验；world/timeline 来自当前 backend driver。核验原 owner transaction、activation→presence→life 来源、incarnation、两个历史 Life stream 的最新事实，返回五个原事件、同源 heads 与摘要；只读，不生成领域写入。Threat 草稿的未收编部分保留工作树。
+- 边界裁定：来源资格不等于动作权限、范围、contact 或 L4 执行。descriptor 的 supported_intents 为空，affordance 明确 unavailable；后续必须接入注册动作能力、真实执行 owner 的 admission/CAS，不能把本次目录当完整动作菜单。schema2 目前仅正式初始 alive 合同；其他生命周期合同需独立准入。沿用原计划的三张 authority/sequence/data-flow 图，本批仅实现 private perception→owner-scoped target source 的只读边。
+- 验证：真实 main startup＋RuntimeExecution，两个显式 grants 的 Activation/Presence/Life、真实认证 faction HTTP、错误 timeline、self/unknown 目标、重开摘要、faction 撤权、Presence 离场及零写。RED `1d92b815c36046aba5eaaa8cd5d76ae3` 正确暴露目录为空。首次 stage script 因 HEAD 模块无预期 __all__ 而未写入 source，随后隔离仍1 failed/34 passed（`f585ff57dae2413daf78c7c7af09b19b`），修正精确采用方式后35 passed（`1c5ed6b8f8c845d59b6ae411a8e4b062`）。补验曾误导入未提交历史测试 helper，collection error（`1daf081cf7f447399bdc43eefd40a756`），已删除该依赖。最终精确 HEAD `fa06649c`＋本批五文件隔离 **90 passed／4既有 FastAPI warnings**，run `02972e53d74343d181cc531155aa22b0`，目录 `combat-target-final2/`；上述 scope 全部 cleanup passed。backend-contract `286460db4d3e4e63a1723b8ea4973b7e` passed／cleanup passed（`combat-target-backend-contract/`）。证据根同前。
+- 四组状态：**后端**只关闭目标来源读取子项，D08/R05仍局部；**模型质量**Q01–Q04无新增评分，未读正式 split／未训练；**角色闭环**完整 Laya/action+target/L4/owner receipt 仍开放；**Godot**A/B/C未修改、启动、操作或验证。下一批优先返回无需 physics 的原 ESM Laya→L4→owner 真实链路；combat 动作/Threat caller 后续按其真实能力补齐，避免只继续扩目录局部测试。未运行全量 pytest/Harness all。
