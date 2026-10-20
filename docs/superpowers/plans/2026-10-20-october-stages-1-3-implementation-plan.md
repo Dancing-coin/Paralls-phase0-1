@@ -287,3 +287,8 @@ Actual main now joins explicit private visible actors to current backend timelin
 ### D02 production boundary adoption
 
 Adopt only original cadence revocation owner and authenticated application/spawn transport. Exact HEAD290ce0df plus six staged sources/tests:62passed, bb6eb9bdb65246d098eadda94e62409b; backend-contract648c9b3904674815b1dfbcc56d243967 passed, cleanup passed. Preserve failed RED/first-green and historical drafts. D02 consumer/CAS and deployment remain open. Next fix faction route missing from production spawn route table, then return to full role action/target dependencies. This does not close Tasks1–4, formal quality or GodotA/B/C.
+
+
+### D08 faction production spawn correction
+
+The default spawn host now includes the original authenticated faction handler. RED3failed404 cd31f3617c924337b57601fbbc8d4291; exact HEADaed7164b+two staged files41passed/4existingwarnings 41800777a7484251b45283598a135f93, cleanup passed. Component and actual child durable receipt/reopen verified; ASGI scheme is not deployed TLS. Explicit policy timeline grants no encounter/action/physics. Next return to Stage1 MindFrame→L3 production input: committed planner dereferences unimplemented frame pins when a real frame is supplied; reproduce before adopting only the required turn-binding subset, then wire original private sources. No fullpytest/all/model/Godot.

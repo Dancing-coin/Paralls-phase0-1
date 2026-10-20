@@ -18,6 +18,7 @@ RUNTIME_HTTP_ROUTE_NAMES = frozenset({
     "confirm_trusted_local_gameplay_mirror_live_prediction", "reject_trusted_local_gameplay_mirror_live_prediction",
     "close_trusted_local_gameplay_mirror_live_probe_transport", "commit_trusted_local_adventure_basic_live_probe",
     "revoke_world_admin_cadence",
+    "record_world_admin_faction_relation",
 })
 
 

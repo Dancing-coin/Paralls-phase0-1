@@ -462,3 +462,12 @@ D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner�
 - RED `b1a63568b90c46f799cd885df8190d33` 8 failed，暴露 HEAD 路由缺失与 credential JSON 序列化问题；首轮 GREEN `0528309f54254cfb936d63b115b127e1` 60 passed／2 failed，分别为重启可合法追加 cadence 的快照比较与旧测试将结构化凭据替换为字符串；修正 fixture 后重验通过。保留失败证据。外部根下 `cadence-production-red/green/final/`，均 cleanup passed。
 - backend-contract run `648c9b3904674815b1dfbcc56d243967` passed／cleanup passed，导出 `cadence-production-contract/`。独立静态审查未发现本批阻断问题，并指出 faction route 尚未加入 spawn HTTP 路由表，下一批直接修复此生产缺口。
 - **后端**：D02 只关闭持久撤权应用入口；正式 consumer 取消读集/CAS、完整 grant 生命周期与外网部署仍开放。**模型质量**：Q01–Q04 无新增分数。**角色闭环**：完整动作＋目标／Laya／多领域原回执仍开放。**Godot**：A/B/C 未操作。无全量 pytest、Harness all、模型调用或训练；历史 dirty 与历史证据保留。
+
+
+## D08 faction 生产 spawn 路由修复（2026-10-20）
+
+原 main handler 与 component HTTP 已存在，但生产 parent 的命名路由白名单遗漏 `record_world_admin_faction_relation`。真实 spawn RED 三项均在认证前404，run `cd31f3617c924337b57601fbbc8d4291`。仅补原路由名；精确 HEAD `aed7164b` 加源码与新增生产测试，定向隔离 **41 passed／4既有 FastAPI warnings**，run `41800777a7484251b45283598a135f93`。包含 actual child PID、loopback HTTP、remote HTTPS scope、remote HTTP即使伪造 forwarded header仍403、无凭据403、原 faction owner durable事件、changed duplicate409、新进程 exact receipt replay与零新增 faction event、child退出和credit归零。ASGI TestClient的scheme/peer不是外网TLS部署证据。外部证据根的 `faction-spawn-red/green/` 均 cleanup passed。
+
+后端 D08 的认证 faction 来源现在覆盖默认生产 spawn host；管理员显式 policy timeline 不授予当前 encounter、action、contact 或 physics。完整 target/action admission、真实角色/Laya/多owner回执仍开放，Q01–Q04与Godot A/B/C状态不变。未运行全量pytest/Harness all、模型或Godot，未改历史草稿。
+
+本批 backend-contract `8f7b5d36776044b1baf17311aae61495` passed／cleanup passed（`faction-spawn-contract/`）。
