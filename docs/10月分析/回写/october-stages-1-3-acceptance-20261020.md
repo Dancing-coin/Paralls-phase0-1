@@ -312,3 +312,11 @@
 - Presence schema为owner局部opt-in schema1两条event；不把独立schema2 LifeState归属并入Presence。activation reader仅作为构造参数；跨store拒绝。新spawn对Population原head、Presence写head与Life absence=0原子CAS。历史receipt可按原activation cut恢复，不重解释当前grant/registry；但若Life历史非空，仍无法断言可重新spawn，明确不可用。
 - **后端**：Population/Presence source slice可用但未接生产composition、Soul anchor/grants/protection/four gates未实现，D10开放。**模型质量**：Q01–Q04无变化。**角色闭环**：Laya/L4/R14未升级。**Godot**：A/B/C尚未开始。下一依赖是已注册的Soul anchor/identity binding owner与真实opt-in Life semantics，再实现四门和L4 original action consumer，不把当前Presence接入误报为完整角色准入。
 - `presence-owner-red`因尚无adapter预期失败11/43；最终修复了事实索引缺失时KeyError逸出、幂等schema registration、receipt/global cut边界。未运行全量pytest/Harness all、模型或Godot。临时副本已清理，用户已有.harness内容保留。
+
+
+## D10 Soul Presence source依赖
+
+- 新增 `soul_presence_sources.py` 与真实 owner 测试；固定 Presence head重建并验证完整历史，返回当前 incarnation、spawn/activation refs、不可变来源和 Population/Presence/Life=0 read heads，供后续 Soul append CAS。当前 activation grant/profile/lifecycle单独重验；旧spawn不授权，任何Life历史继续不可用，不推断alive或timeline。
+- HEAD `a28eac5b`＋两份精确源码隔离 **48 passed**，run `9c62f6b8f6914426bb16655e7b4806b3`，外部根 `soul-presence-final/`，cleanup passed。RED缺模块9失败/37通过；固定cut竞态、SQLite reopen、旧incarnation、撤grant和坏原receipt均覆盖。独立只读审查无阻断；最初review模型503未产生结论，随后使用可用代理完成。
+- **后端**：仅来源依赖完成，D10完整Soul owner仍未实现；生产composition、Life adapter、anchor/grant/protection/four gates及共同cut继续开放。**模型质量**：Q01–Q04无新增评分。**角色闭环**：R14/Laya完整动作验收未升级。**Godot**：A/B/C未操作或验证。
+- 无全量pytest/Harness all、模型调用/训练或Godot；run_scope本轮产物已回收，历史工作区保留。Goal仍active，扩展范围以本矩阵与执行计划为准。下一步直接推进Soul anchor/identity binding及注册life/mind语义与四门owner。
