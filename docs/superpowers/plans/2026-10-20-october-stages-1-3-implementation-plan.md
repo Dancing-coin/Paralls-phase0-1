@@ -238,6 +238,18 @@ Map registered worktable intents to existing procedure capability instead of abs
 
 D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner、四门组合、读集与 effect 写入同一 CAS、schema/composition、checkpoint/common-cut/private projection、L4 均未关闭。Q01–Q04、R07–R09/R14 和 Godot A/B/C 状态不提升。未运行全量 pytest/Harness all、模型或 Godot。下一批回到完整 action+target 质量来源与角色闭环，避免继续扩展 reader 局部测试。
 
+### Worktable recovery follow-up
+
+The focused `test_worktable_process_recovery.py` regression now exercises a real
+`use_object` then `finish_use` pair against the durable ESM object owner, closes
+the original process after the finish owner commit but before session writeback,
+and reopens from SQLite with no live controller/source/snapshot. The reopened
+execution repairs the missing outcome from the original receipts, rejects a
+changed contract, and leaves the world sequence unchanged on exact retry. The
+D-drive isolated run passed 1 test. This closes only the worktable R09 recovery
+sub-item; live backend/Laya evidence, production output, multi-domain recovery,
+Q01-Q04, and Godot A/B/C remain open.
+
 
 ### Task5 bounded runtime development source export
 
