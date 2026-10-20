@@ -655,6 +655,15 @@ class CharacterAgentSessionStore:
                 if previous != entry:
                     raise ValueError('character_session_receipt_conflict')
                 return
+            if entry.get('source_kind') == 'goal_proposal_trigger':
+                pending_keys = self._connection.execute(
+                    'SELECT child_key FROM character_session_cognition_heads WHERE actor_id=? AND pending=1',
+                    (actor,),
+                ).fetchall()
+                for (pending_key,) in pending_keys:
+                    pending = self.read_cognition_admission(pending_key)
+                    if pending is not None and pending.get('source_kind') == 'goal_proposal_trigger':
+                        raise ValueError('cognition_goal_proposal_actor_pending')
             self.save_receipt(actor, kind='cognition_admission', key=key, receipt=entry)
             self._connection.execute('INSERT INTO character_session_cognition_heads(child_key,actor_id,admitted_at) VALUES (?,?,?)', (key, actor, admitted))
 

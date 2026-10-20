@@ -249,6 +249,62 @@ def test_goal_trigger_rejects_uncommitted_caller_supplied_source_without_writes(
     finally:
         store.close()
 
+
+def test_only_one_pending_goal_proposal_child_per_actor(tmp_path):
+    store, admissions = service(tmp_path / 'one-goal-proposal.sqlite3')
+    trigger_one = store.append_event('char_a', 'goal_trigger_source', 42, {'source_ref': 'outcome:1'})
+    first = admissions.admit(**{**request(), 'source_kind': 'goal_proposal_trigger',
+        'payload': {'trigger_kind': 'phase_change', 'trigger_source_ref': trigger_one['event_id'],
+            'evidence_refs': [trigger_one['event_id']]}})
+    trigger_two = store.append_event('char_a', 'goal_trigger_source', 43, {'source_ref': 'outcome:2'})
+    try:
+        with pytest.raises(ValueError, match='cognition_goal_proposal_actor_pending'):
+            admissions.admit(**{**request(1), 'source_kind': 'goal_proposal_trigger',
+                'payload': {'trigger_kind': 'repeated_failure', 'trigger_source_ref': trigger_two['event_id'],
+                    'evidence_refs': [trigger_two['event_id']]}})
+        assert admissions.read(first.child_key) == first
+        assert len(admissions.list_pending()) == 1
+        assert store.list_receipts('char_a', 'cognition_admission').keys() == {first.child_key}
+    finally:
+        store.close()
+
+
+def test_goal_proposal_pending_does_not_block_non_goal_cognition_admission(tmp_path):
+    store, admissions = service(tmp_path / 'goal-and-fast.sqlite3')
+    trigger = store.append_event('char_a', 'goal_trigger_source', 42, {'source_ref': 'outcome:1'})
+    slow = admissions.admit(**{**request(), 'source_kind': 'goal_proposal_trigger',
+        'payload': {'trigger_kind': 'phase_change', 'trigger_source_ref': trigger['event_id'],
+            'evidence_refs': [trigger['event_id']]}})
+    try:
+        fast = admissions.admit(**request(1))
+        assert slow.child_key != fast.child_key
+        assert len(admissions.list_pending()) == 2
+    finally:
+        store.close()
+
+
+def test_terminal_goal_proposal_releases_actor_pending_slot(tmp_path):
+    store, admissions = service(tmp_path / 'terminal-goal-proposal.sqlite3')
+    trigger_one = store.append_event('char_a', 'goal_trigger_source', 42, {'source_ref': 'outcome:1'})
+    first = admissions.admit(**{**request(), 'source_kind': 'goal_proposal_trigger',
+        'payload': {'trigger_kind': 'phase_change', 'trigger_source_ref': trigger_one['event_id'],
+            'evidence_refs': [trigger_one['event_id']]}})
+    frame = {'actor_id': 'char_a', 'child_key': first.child_key, 'stage': 'goal_proposal'}
+    pending = admissions.advance_progress(key=first.child_key, expected_revision=0,
+        stage='goal_proposal', status='provider_pending', frame=frame,
+        request_json='{"contract":"goal_proposal:v1"}', now=101.)
+    admissions.advance_progress(key=first.child_key, expected_revision=pending.revision,
+        stage='goal_proposal', status='stale', frame=frame, now=102., reason='source_changed')
+    trigger_two = store.append_event('char_a', 'goal_trigger_source', 43, {'source_ref': 'outcome:2'})
+    try:
+        second = admissions.admit(**{**request(1), 'source_kind': 'goal_proposal_trigger',
+            'payload': {'trigger_kind': 'repeated_failure', 'trigger_source_ref': trigger_two['event_id'],
+                'evidence_refs': [trigger_two['event_id']]}})
+        assert second.child_key != first.child_key
+        assert len(admissions.list_pending()) == 1
+    finally:
+        store.close()
+
 @pytest.mark.parametrize('tick', [None, True, '42'])
 def test_new_admission_requires_actual_integer_business_tick(tmp_path, tick):
     store, admissions = service(tmp_path / 'missing-tick.sqlite3')
