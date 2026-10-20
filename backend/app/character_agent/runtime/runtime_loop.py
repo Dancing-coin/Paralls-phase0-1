@@ -1457,6 +1457,9 @@ class CharacterAgentRuntime:
                 lambda memory_override=None: self._prepare_siming_l2_request(snapshot, frame['normalized_payload'], context,
                     memory_override=memory_override))
         from app.character_agent.gateway.model_gateway import CharacterModelGateway
+        prepared_context = json.loads(request)["context"]
+        if prepared_context.get("frame") is not None:
+            context["mind_frame"] = prepared_context["frame"]
         frozen = json.loads(CharacterModelGateway.freeze_prepared_request(context))
         return request, frozen
 
@@ -1472,7 +1475,17 @@ class CharacterAgentRuntime:
             turn_context=(CharacterTurnContext.model_validate(context['turn_context'])
                           if context.get('turn_context') else None),
             capability_envelope=context.get('capability_envelope'),
-            cognition_policy=context.get('cognition_policy'))
+            cognition_policy=context.get('cognition_policy'),
+            frame=(self._restore_cognition_mind_frame(context)))
+
+    @staticmethod
+    def _restore_cognition_mind_frame(context):
+        from app.character_agent.models.mind_frame import CharacterMindFrame
+        if context.get('mind_frame') is None:
+            return None  # Legacy durable requests predate the shared frame.
+        mind_frame = CharacterMindFrame.model_validate(context['mind_frame'])
+        mind_frame.validate_turn(CharacterTurnContext.model_validate(context['turn_context']))
+        return mind_frame
 
     def _freeze_siming_l3_request(self, actor_id: str, frame: dict):
         snapshot = CharacterPrivateWorldSnapshot.model_validate(frame['entry_after']['private_snapshot'])

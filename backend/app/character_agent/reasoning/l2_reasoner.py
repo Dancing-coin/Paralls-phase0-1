@@ -92,6 +92,21 @@ class CharacterAgentL2Service:
             context["memory_recall"] = semantic.metadata
             context["semantic_recall"] = semantic.metadata
             context["semantic_cards"] = [card.to_payload() for card in semantic.cards]
+        if turn_context is not None:
+            from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+            mind_frame = CharacterMindFrameBuilder().build_frame(
+                actor_id=snapshot.actor_id, producer_ts=turn_context.producer_ts,
+                trigger_event=context["event"], snapshot=context["snapshot"],
+                effective_profile=context["effective_profile"], memory_bundle=context["memory"],
+                need_tension_state=context["need_tension_state"],
+                current_goal_state=context["current_goal_state"],
+                goal_state_history=context["goal_state_history"],
+                supervision_state=context["supervision_state"],
+                unresolved_tensions=context["unresolved_tensions"],
+            )
+            mind_frame = mind_frame.model_copy(update={"provenance": mind_frame.provenance.model_copy(
+                update={"source_refs": sorted(set(mind_frame.provenance.source_refs) | {turn_context.source_event_ref})})})
+            context["frame"] = mind_frame.bind_to_turn(turn_context).model_dump(mode="json")
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
             context=context,
