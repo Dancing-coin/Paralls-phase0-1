@@ -1055,6 +1055,9 @@ class CharacterAgentL3Service:
             target_refs = [str(value) for value in target_refs if str(value or "")]
         else:
             target_refs = []
+        semantic_intent = str(selected_record.get("semantic_intent_id", chosen_candidate) or chosen_candidate)
+        frozen_choice = bool(plan.get("model_output", {}).get("candidate_digest")) or bool(
+            plan.get("model_output", {}).get("laya_evidence"))
         active_goal_frame = plan.get("active_goal_frame", {})
         typed_active_goal_frame = CharacterActiveGoalFrame(
             primary_goal=str(active_goal_frame.get("primary_goal", "") or ""),
@@ -1073,7 +1076,7 @@ class CharacterAgentL3Service:
         )
         return CharacterIntentDecision(
             actor_id=interpretation.actor_id,
-            selected_intent=self._map_candidate_to_intent(str(selected_record.get("semantic_intent_id", chosen_candidate) or chosen_candidate)),
+            selected_intent=semantic_intent if frozen_choice else self._map_candidate_to_intent(semantic_intent),
             persona_passed=bool(selected_result and selected_result.get("persona_passed")),
             logic_passed=bool(selected_result and selected_result.get("logic_passed")),
             gain_loss_passed=gain_loss_score >= 0.5,

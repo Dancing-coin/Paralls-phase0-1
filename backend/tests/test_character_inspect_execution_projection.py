@@ -9,6 +9,45 @@ from app.models.character_agent_runtime import (
 )
 
 
+def test_frozen_model_choice_survives_planner_to_l4_without_legacy_remapping(monkeypatch):
+    import json
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+
+    monkeypatch.setenv("CHARACTER_LAYA_ENDPOINT", "http://127.0.0.1:1")
+    planner = CharacterAgentL3Service()
+    interpretation = CharacterInterpretation(actor_id="char_a", interpreted_summary="Visible plaque",
+        interpretation_type="state_change", salience_score=.8, ambiguity_level="low",
+        risk_level="low", opportunity_level="medium", attention_target="obj_plaque")
+    prepared = planner.prepare_intent_plan(interpretation=interpretation, control_mode="agent_full_auto",
+        snapshot={"actor_id": "char_a", "visible_target_refs": ["obj_plaque"], "target_catalog": [{
+            "target_ref": "obj_plaque", "target_refs": {"object": "obj_plaque"},
+            "supported_intents": ["inspect_object"], "target_visibility": "visible",
+            "owner_route": "esm.interaction", "target_admission_digest": "sha256:owner-state",
+            "source_refs": ["esm:plaque@1"], "required_conditions": {"visibility": "satisfied"},
+            "affordance_result": {"status": "available", "reason": "registered_inspect"}}]})
+    context = json.loads(prepared.request_json)["context"]
+    label = "inspect_object:obj_plaque"
+    assert label in context["candidate_intents"]
+    plan = planner.finish_intent_plan(prepared, {
+        "candidate_intents": context["candidate_intents"], "selected_intent": label,
+        "recommended_intents": [label], "candidate_digest": context["candidate_digest"],
+        "planning_status": "model", "why_this_now": "inspect visible plaque"})
+    decision = planner.decision_from_plan(plan, interpretation=interpretation)
+    assert decision.selected_intent == "inspect_object"
+    assert decision.semantic_action_id == "action:inspect"
+    assert decision.target_refs == ["obj_plaque"]
+    assert decision.candidate_id == label
+    snapshot = CharacterPrivateWorldSnapshot(actor_id="char_a", room_id="r", scene_id="s",
+        zone_id="z", producer_ts=10, updated_at=10)
+    turn = CharacterTurnContext.begin(actor_id="char_a", source_event_ref="percept:1", producer_ts=10,
+        input_revision_vector={"l1_input": 10}, memory_revision_vector={}, policy_revision="policy:1",
+        snapshot_revision=0, causation_id="cause:1", correlation_id="corr:1", branch_id="main")
+    contract = CharacterAgentL4Executor().build_execution_contract(snapshot, interpretation, decision, turn)
+    assert contract.semantic_intent_id == "inspect_object"
+    assert contract.target_refs == ("obj_plaque",)
+    assert contract.expected_observation["owner_route"] == "esm.interaction"
+
+
 def _contract(attention_target="obj_letter"):
     snapshot = CharacterPrivateWorldSnapshot(
         actor_id="char_a", room_id="room_review", scene_id="scene_archive",
