@@ -72,6 +72,15 @@ class LearningCommitRequest(_Contract):
     correlation_id: str = Field(min_length=1)
 
 
+class LearningStateSnapshot(_Contract):
+    world_ref: str
+    actor_id: str
+    stream_id: str
+    revision: int = Field(ge=0, strict=True)
+    states: tuple[CharacterSkillState, ...]
+    source_event_refs: tuple[str, ...]
+
+
 class RegisteredLearningAuthority:
     PRINCIPAL = "authority:character:learning"
     EVENT = "gameplay.character.skill_learned"
@@ -187,7 +196,7 @@ class RegisteredLearningAuthority:
                 used.update(keys)
             except (KeyError, TypeError, ValueError) as exc:
                 raise ValueError("learning_replay_invalid") from exc
-        return states, used
+        return states, used, tuple(event.event_id for event in events)
 
     @staticmethod
     def _validate_rule(request, caller, rule):
@@ -220,7 +229,7 @@ class RegisteredLearningAuthority:
             raise ValueError("learning_registration_missing")
         self._validate_rule(request, caller_principal, rule)
         self._require_learnable(rule.skill_id)
-        states, used = self._history(request.world_ref, request.actor_id)
+        states, used, _ = self._history(request.world_ref, request.actor_id)
         stream = self.stream_id(request.world_ref, request.actor_id)
         if self._store.get_stream_head(stream) != request.expected_revision:
             raise ValueError("learning_revision_conflict")
@@ -232,5 +241,11 @@ class RegisteredLearningAuthority:
         return self._store.append_batch(self._batch(request, caller_principal, rule))
 
     def states(self, *, world_ref, actor_id):
-        states, _ = self._history(world_ref, actor_id)
-        return [states[key].model_copy(deep=True) for key in sorted(states)]
+        return list(self.read_snapshot(world_ref=world_ref, actor_id=actor_id).states)
+
+    def read_snapshot(self, *, world_ref, actor_id):
+        states, _, event_refs = self._history(world_ref, actor_id)
+        return LearningStateSnapshot(world_ref=world_ref, actor_id=actor_id,
+            stream_id=self.stream_id(world_ref, actor_id), revision=len(event_refs),
+            states=tuple(states[key].model_copy(deep=True) for key in sorted(states)),
+            source_event_refs=event_refs)

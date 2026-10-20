@@ -99,6 +99,7 @@ class CharacterCognitionCoordinator:
             entry.actor_id, dict(progress.frame, source_event_ref=key))
         revision = self.admissions.store.event_count(entry.actor_id)
         pins = dict(self.runtime._capture_cognition_pin(entry.actor_id))
+        self.runtime._validate_learning_contract(entry.actor_id, context, actor_pins=pins)
         pins['timeline'] = self.runtime._cognition_digest(revision + 1)
         frame = dict(progress.frame, stage='l2', actor_pin=[list(pair) for pair in sorted(pins.items())],
             l2_profile=self.runtime._l2._profile_cache[entry.actor_id])

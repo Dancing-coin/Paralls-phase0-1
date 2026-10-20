@@ -60,6 +60,7 @@ from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
 from app.character_agent.models.mind_frame import MindDeltaLedger
 from app.character_agent.skills.catalog import create_runtime_skill_registry
+from app.character_agent.skills.learning_authority import RegisteredLearningAuthority
 from app.character_agent.skills.models import ActionSettlementResult
 from app.character_agent.skills.service import CharacterSkillService
 from app.models.character_agent_runtime import CharacterGoalCommand
@@ -145,6 +146,8 @@ class CharacterAgentRuntime:
         continuity_actor_ids: set[str] | frozenset[str] | None = None,
         session_store: CharacterAgentSessionStore | None = None,
         skill_service: CharacterSkillService | None = None,
+        learning_authority: RegisteredLearningAuthority | None = None,
+        learning_world_ref: str | None = None,
         memory_store: CharacterMemoryStorePort | None = None,
         continuity_store: CharacterGraphContinuityStore | None = None,
         activation_authority: ProfileActivationAuthority | None = None,
@@ -156,6 +159,10 @@ class CharacterAgentRuntime:
         state_group_registry: StateGroupRegistry | None = None,
         target_catalog_resolver: Callable[[CharacterPrivateWorldSnapshot], list[dict[str, object]]] | None = None,
     ) -> None:
+        if (learning_authority is None) != (learning_world_ref is None) or learning_world_ref == "":
+            raise ValueError("learning_reader_world_binding_required")
+        self._learning_authority = learning_authority
+        self._learning_world_ref = learning_world_ref
         if os.getenv("CHARACTER_GRAPH_REQUIRE_CONTINUITY", "").strip() == "1" and continuity_store is None:
             raise ValueError("graph continuity store is required in production continuity mode")
         # ponytail: 仅旧同步调用串行 drain；生产异步入口由 owner 调度，不在等待 I/O 时持此锁。
@@ -470,6 +477,9 @@ class CharacterAgentRuntime:
             if request.task_kind == "l2_reasoning":
                 self._record_reasoning_request(turn.actor_id, turn.producer_ts, json.loads(request.request_json))
             revisions = self._capture_cognition_pin(turn.actor_id, policy_id=request.policy_id)
+            if request.task_kind in {"l2_reasoning", "l3_planning"}:
+                self._validate_learning_contract(turn.actor_id, json.loads(request.request_json)["context"],
+                    actor_pins=dict(revisions))
             job_id = f"{turn.turn_id}:{turn.stage}"
             turn.job = PreparedCognitionJob(job_id=job_id, turn_id=turn.turn_id, stage=turn.stage,
                 task_kind=request.task_kind, actor_id=turn.actor_id, request_json=request.request_json,
@@ -543,7 +553,21 @@ class CharacterAgentRuntime:
             "social_ticks": self._cognition_social_ticks(actor_id),
             "policy_consumed": bool(policy_id and policy_id in self._l3._consumed_behavior_policy_ids),
         }
+        if self._learning_authority is not None:
+            values["learning"] = self._learning_snapshot(actor_id).model_dump(mode="json")
         return tuple((key, self._cognition_digest(value)) for key, value in sorted(values.items()))
+
+    def _learning_snapshot(self, actor_id):
+        if self._learning_authority is None:
+            return None
+        return self._learning_authority.read_snapshot(world_ref=self._learning_world_ref, actor_id=actor_id)
+
+    def _validate_learning_contract(self, actor_id, context, *, actor_pins):
+        if self._learning_authority is None:
+            return
+        frozen = context.get("capability_envelope", {}).get("revision_pins", {}).get("learning_revision")
+        if frozen is None or frozen != actor_pins.get("learning"):
+            raise ValueError("learning_contract_stale")
 
     def _drain_cognition(self, **kwargs):
         with self._sync_cognition_lock:
@@ -1335,16 +1359,24 @@ class CharacterAgentRuntime:
         from app.character_agent.cognition.cognition_policy import CognitionPolicy
         if effective_profile is None:
             effective_profile = self._effective_profile_payload(actor_id)
+        learning = self._learning_snapshot(actor_id)
+        skill_states = self._skill_service.initial_skill_states(actor_id=actor_id, profile=effective_profile)
+        if learning is not None:
+            skill_states.extend(learning.states)
         stable = self._skill_service.compile_stable_snapshot(
             actor_id=actor_id,
-            skill_states=self._skill_service.initial_skill_states(actor_id=actor_id, profile=effective_profile),
-            source_refs=[turn.source_event_ref, *snapshot.recent_perception_source_lineage],
+            skill_states=skill_states,
+            source_refs=[turn.source_event_ref, *snapshot.recent_perception_source_lineage,
+                *(learning.source_event_refs if learning is not None else ())],
         )
+        revision_pins = {'policy_revision': turn.policy_revision}
+        if learning is not None:
+            revision_pins['learning_revision'] = self._cognition_digest(learning.model_dump(mode="json"))
         envelope = CapabilityEnvelope.compile(
             actor_id=actor_id, turn_id=turn.turn_id, profile=effective_profile,
             stable_snapshot=stable, dynamic_state=self.get_dynamic_state(actor_id),
             source_refs=tuple(stable.source_refs),
-            revision_pins={'policy_revision': turn.policy_revision},
+            revision_pins=revision_pins,
         )
         policy = CognitionPolicy.resolve(
             envelope=envelope, profile=effective_profile,

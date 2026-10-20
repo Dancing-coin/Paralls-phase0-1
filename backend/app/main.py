@@ -859,10 +859,18 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
     session_store = CharacterAgentSessionStore(storage_root=character_agent_storage_root,
         database_path=graph_path if graph_path.name != ':memory:' else None)
     cleanup.callback(_close_constructed_runtime_resource, session_store)
+    from app.character_agent.skills.catalog import create_runtime_skill_registry
+    from app.character_agent.skills.learning_authority import RegisteredLearningAuthority
+    learning_store = globals().get("gameplay_event_store")
+    learning_reader = (RegisteredLearningAuthority(store=learning_store,
+        registry=create_runtime_skill_registry(), rules=())
+        if isinstance(learning_store, GameplayEventStore) else None)
     character_agent_runtime = CharacterAgentRuntime(
         continuity_actor_ids=frozenset(roster.actor_ids),
         storage_root=character_agent_storage_root,
         session_store=session_store,
+        learning_authority=learning_reader,
+        learning_world_ref=_bakery_population_mode().world_ref if learning_reader is not None else None,
         memory_store=memory_router,
         continuity_store=continuity_store,
         state_group_registry=state_group_registry,

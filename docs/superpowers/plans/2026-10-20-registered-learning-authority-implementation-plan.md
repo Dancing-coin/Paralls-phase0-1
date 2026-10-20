@@ -23,6 +23,10 @@
 - [ ] Register sourced objects/rules for all four specified routes; use actual source owners, privacy/teacher context and time/resource policies.
 - [ ] Replace nonempty-string authority admission in the legacy learning projection with original committed owner-event/receipt lookup; preserve exact retry and failure evidence.
 - [ ] Route learned facts to the existing stable compiler before the next cognition turn, with capability revision invalidation. Verify actor/scope/revocation/source changes.
+  - [x] Read one owner snapshot containing states, stream revision and original event refs.
+  - [x] Bind runtime reader/world explicitly; preserve authored inputs and existing compiler precedence.
+  - [x] Freeze the snapshot digest in the envelope; validate handoff and sync/durable result pins to reject concurrent learning updates.
+  - [x] Bind the production runtime to the shared owner reader; preserve historical dirty code through exact source snapshot staging and HEAD-isolated evidence. 176 passed, run `9c33cb1d2e5f4c27837ca583005ff547`. Parent checkbox remains open for remaining grant/revocation/source admissions.
 - [ ] Verify observation/imitation/guidance/practice/combat/review/research/mentorship/transfer stages and the specified mastery/difficulty dimensions without direct model skill writes.
 - [ ] Add the admitted owner to the existing common replay cut, including checkpoint-tail, corruption rejection and recovery; keep model quality and final Godot gates separate.
 

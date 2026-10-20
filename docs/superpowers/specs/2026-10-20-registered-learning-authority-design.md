@@ -30,6 +30,14 @@ Required focused evidence: reject absent/forged/wrong-actor/private/stale/failed
 
 ## Architecture
 
+### Next-turn read integration (authorized implementation increment)
+
+Bind an optional RegisteredLearningAuthority and explicit world_ref to CharacterAgentRuntime. A same-read snapshot contains actor/world, learned-stream revision, recorded states and original learning event refs. Compile these states together with authored states through the existing stable compiler; do not mutate the authored profile. Keep the existing compiler's precedence rules. Bind the complete learning snapshot digest into both the frozen envelope revision pins and asynchronous actor pins. Validate agreement before delivering a model request and when accepting a result, including durable coordinator entrypoints. A concurrent commit between contract freeze and request handoff must reject rather than pin new facts to an old contract. Frozen pending requests are never rebuilt with new skills. Existing unbound unit/legacy runtimes retain their original pin shape.
+
+Production assembly binds the reader to the existing shared gameplay store and explicit world mode using the runtime skill registry. This binding has no learning rules or public mutation endpoint; it reads only already committed owner history. Old pending frames without the learning pin fail closed when deployed with this new binding; completed owner receipts remain recoverable. Global source admission, four-route learning producers, resource/time/teacher gates and common-cut recovery remain open.
+
+Architecture/data flow: the current projection→stable compiler edge below becomes a production read binding; the compiler's envelope carries a learning revision pin to the current async coordinator. Principal sequence: read one owner snapshot→compile/freeze→compare current pin before handoff→provider wait→compare original pin before accepting→continue the original frozen turn. On mismatch, reject the old result and require a new turn; no skill, owner or cognition result is synthesized.
+
 ```mermaid
 flowchart LR
   E["current: domain receipt / observation"] --> A["current: registered source admission"]
@@ -37,6 +45,9 @@ flowchart LR
   R["current: skill registry / internal learning object rules"] --> A
   A --> O["current: learning authority"] --> S["current: shared GameplayEventStore"]
   S --> P["current: learned state projection"] --> B["current: stable capability compiler"]
+  P --> F["current increment: explicit actor/world read binding"] --> B
+  B --> FE["current increment: frozen envelope / learning pin"]
+  FE --> V["current increment: sync + durable handoff / completion validation"]
   X["later: production callers / four routes / shared cut"] -.-> O
   D["deferred: general editor / model training / Godot until final"]
 ```
@@ -56,7 +67,10 @@ sequenceDiagram
   S-->>A: original durable receipt
   A->>A: rebuild recorded learned state
   A-->>C: receipt + learned state
-  C->>B: later production integration: invalidate / compile new revision
+  C->>B: current increment: next turn reads scoped owner snapshot and compiles
+  B-->>C: frozen envelope with original learning revision
+  C->>A: current increment: reread actor/world snapshot before handoff and acceptance
+  A-->>C: compare original learning pin; reject changed pending work
 ```
 
 ## Data flow and authority boundary
@@ -71,5 +85,11 @@ flowchart TD
   G -->|yes| O["current: owner-only atomic commit"]
   O --> F["current shared ledger / opt-in learning event"]
   F --> L["current recorded learned projection"] --> B["current stable capability snapshot"]
-  B --> N["later: next frozen cognition turn"]
+  B --> N["current increment: next frozen cognition turn"]
+  L --> H["current increment: actor/world snapshot digest"]
+  H --> N
+  H --> Q["current increment: validate provider handoff / completion"]
+  N --> Q
+  Q -->|changed| Z
+  Q -->|same| A["current: accept original provider continuation"]
 ```
