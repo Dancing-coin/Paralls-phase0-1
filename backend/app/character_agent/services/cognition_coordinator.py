@@ -2,6 +2,7 @@
 import math
 import json
 from .cognition_frame import freeze_fields, validate_cognition_contract
+from .cognition_admission import CharacterCognitionProgress, _digest
 
 
 class CharacterCognitionCoordinator:
@@ -40,24 +41,7 @@ class CharacterCognitionCoordinator:
         context = GoalProposalContext.model_validate(entry.payload.get('context'))
         if context.actor_id != entry.actor_id or context.trigger_source_ref not in entry.payload.get('evidence_refs', []):
             raise ValueError('cognition_goal_proposal_source_mismatch')
-        source_reader = getattr(self.admissions.store, 'read_event', None)
-        if not callable(source_reader):
-            raise ValueError('cognition_goal_proposal_source_unreadable')
-        source = source_reader(entry.actor_id, event_id=context.trigger_source_ref)
-        source_payload = source.get('payload') if isinstance(source, dict) else None
-        source_contract = source_payload.get('goal_proposal_trigger') if isinstance(source_payload, dict) else None
-        allowed_trigger_kinds = {
-            'repeated_failure', 'phase_change', 'context_conflict', 'goal_conflict',
-            'complex_information_failure', 'high_risk_information_failure',
-            'persistent_information_failure',
-        }
-        if (not isinstance(source_contract, dict)
-                or source_contract.get('eligible') is not True
-                or source_contract.get('trigger_kind') not in allowed_trigger_kinds
-                or source_contract.get('trigger_kind') != context.trigger_kind
-                or source_contract.get('frame_digest') != context.frame.frame_digest
-                or source_contract.get('goal_revision') != context.goal_revision):
-            raise ValueError('cognition_goal_proposal_source_mismatch')
+        self._validate_goal_proposal_source(entry, context, now=now)
         progress = self.admissions.read_progress(key)
         if progress is not None:
             if progress.stage != 'goal_proposal' or progress.status != 'provider_pending':
@@ -76,6 +60,110 @@ class CharacterCognitionCoordinator:
             trigger_source_ref=context.trigger_source_ref, actor_pin=[list(pair) for pair in self.runtime._capture_cognition_pin(entry.actor_id)])
         return self.admissions.advance_progress(key=key, expected_revision=0, stage='goal_proposal',
             status='provider_pending', frame=frame, request_json=request_json, now=now)
+
+    def _validate_goal_proposal_source(self, entry, context, *, now):
+        if context.actor_id != entry.actor_id or context.trigger_source_ref not in entry.payload.get('evidence_refs', []):
+            raise ValueError('cognition_goal_proposal_source_mismatch')
+        if now >= context.expires_at:
+            raise ValueError('cognition_goal_proposal_expired')
+        source_reader = getattr(self.admissions.store, 'read_event', None)
+        if not callable(source_reader):
+            raise ValueError('cognition_goal_proposal_source_unreadable')
+        source = source_reader(entry.actor_id, event_id=context.trigger_source_ref)
+        source_payload = source.get('payload') if isinstance(source, dict) else None
+        source_contract = source_payload.get('goal_proposal_trigger') if isinstance(source_payload, dict) else None
+        allowed_trigger_kinds = {
+            'repeated_failure', 'phase_change', 'context_conflict', 'goal_conflict',
+            'complex_information_failure', 'high_risk_information_failure',
+            'persistent_information_failure',
+        }
+        if (not isinstance(source_contract, dict)
+                or source_contract.get('eligible') is not True
+                or source_contract.get('trigger_kind') not in allowed_trigger_kinds
+                or source_contract.get('trigger_kind') != context.trigger_kind
+                or source_contract.get('frame_digest') != context.frame.frame_digest
+                or source_contract.get('goal_revision') != context.goal_revision):
+            raise ValueError('cognition_goal_proposal_source_mismatch')
+
+    def accept_goal_proposal(self, key, *, activation, now):
+        """Accept one frozen slow result through the original Character goal owner."""
+        self.admissions._owner()
+        entry = self.admissions.read(key)
+        if entry is None:
+            raise ValueError('cognition_admission_missing')
+        if (activation is None or activation.actor_id != entry.actor_id
+                or not self.runtime.activation_is_current(activation.lock_ref, activation.token)):
+            raise ValueError('cognition_activation_invalid')
+        progress = self.admissions.read_progress(key)
+        if progress is None or progress.stage != 'goal_proposal':
+            raise ValueError('cognition_goal_proposal_result_not_ready')
+        if progress.status in {'completed', 'stale', 'cancelled', 'failed'}:
+            terminal = self.admissions.store.read_receipt(entry.actor_id, kind='cognition_goal_terminal', key=key)
+            if terminal is None:
+                raise ValueError('cognition_goal_proposal_terminal_missing')
+            return {'terminal': terminal, 'progress': progress}
+        entry = self._entry(key, activation, now)
+        if progress.status != 'result_ready':
+            raise ValueError('cognition_goal_proposal_result_not_ready')
+        self._validate_provider_pin(entry.actor_id, progress.frame)
+        if not progress.request_json or not progress.completion or 'output' not in progress.completion:
+            raise ValueError('cognition_goal_proposal_completion_invalid')
+        from app.character_agent.gateway.goal_proposal import GoalProposalContext
+        context = GoalProposalContext.model_validate(json.loads(progress.request_json)['context'])
+        self._validate_goal_proposal_source(entry, context, now=now)
+        planned = self.runtime._plan_goal_proposal_event(context, progress.completion['output'])
+        before = dict(progress.frame)
+        after = dict(progress.frame, stage='goal_proposal', goal_event=planned)
+        expected_revision = self.admissions.store.event_count(entry.actor_id)
+        event = dict(event_type='goal_state_event', producer_ts=entry.producer_ts, payload=planned)
+        terminal_progress = CharacterCognitionProgress(
+            child_key=key, actor_id=entry.actor_id, input_digest=entry.input_digest,
+            revision=progress.revision + 1, stage='goal_proposal', status='completed',
+            frame=after, plan=dict(
+                expected_revision=expected_revision, events=[event], before=before, after=after),
+            completion=progress.completion, request_json=progress.request_json,
+            reason='', progress_digest='')
+        terminal_progress = terminal_progress.model_copy(update={
+            'progress_digest': _digest(terminal_progress.model_dump(mode='json', exclude={'progress_digest'}))})
+        result = self.admissions.store.commit_cognition_goal_proposal(
+            actor_id=entry.actor_id, key=key, expected_revision=expected_revision,
+            events=[event], before=before, after=after,
+            progress=terminal_progress.model_dump(mode='json'),
+            expected_progress_revision=progress.revision)
+        self.runtime._finish_session_projections(entry.actor_id)
+        self.runtime._install_recovery_state(entry.actor_id)
+        return result
+
+    def terminate_goal_proposal(self, key, *, activation, now, status, reason):
+        """Persist a slow proposal terminal rejection without producing goal truth."""
+        self.admissions._owner()
+        entry = self.admissions.read(key)
+        if entry is None:
+            raise ValueError('cognition_admission_missing')
+        if (activation is None or activation.actor_id != entry.actor_id
+                or not self.runtime.activation_is_current(activation.lock_ref, activation.token)):
+            raise ValueError('cognition_activation_invalid')
+        if status not in {'stale', 'cancelled', 'failed'} or not isinstance(reason, str) or not reason.strip():
+            raise ValueError('cognition_goal_proposal_terminal_invalid')
+        progress = self.admissions.read_progress(key)
+        if progress is None or progress.stage != 'goal_proposal':
+            raise ValueError('cognition_goal_proposal_progress_required')
+        if progress.status in {'completed', 'stale', 'cancelled', 'failed'}:
+            terminal = self.admissions.store.read_receipt(entry.actor_id, kind='cognition_goal_terminal', key=key)
+            if terminal is None:
+                raise ValueError('cognition_goal_proposal_terminal_missing')
+            return {'terminal': terminal, 'progress': progress}
+        terminal = CharacterCognitionProgress(child_key=key, actor_id=entry.actor_id,
+            input_digest=entry.input_digest, revision=progress.revision + 1,
+            stage='goal_proposal', status=status, frame=progress.frame, plan=progress.plan,
+            completion=progress.completion, request_json=progress.request_json,
+            reason=reason, progress_digest='')
+        terminal = terminal.model_copy(update={
+            'progress_digest': _digest(terminal.model_dump(mode='json', exclude={'progress_digest'}))})
+        return self.admissions.store.commit_cognition_goal_proposal(
+            actor_id=entry.actor_id, key=key, expected_revision=self.admissions.store.event_count(entry.actor_id),
+            events=[], before={}, after={}, progress=terminal.model_dump(mode='json'),
+            expected_progress_revision=progress.revision)
 
     def begin_entry(self, key, *, activation, now):
         entry = self._entry(key, activation, now)

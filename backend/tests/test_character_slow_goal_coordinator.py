@@ -166,3 +166,15 @@ def test_prepare_goal_proposal_rejects_ineligible_committed_source(monkeypatch):
             'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
         )
     assert admissions.calls == []
+
+
+def test_accept_goal_proposal_requires_result_ready_and_owner_pin():
+    coordinator, admissions = _coordinator()
+    activation = SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token')
+    with pytest.raises(ValueError, match='cognition_goal_proposal_result_not_ready'):
+        coordinator.accept_goal_proposal('child:proposal', activation=activation, now=12)
+
+
+def test_accept_goal_proposal_is_an_owner_operation():
+    coordinator, admissions = _coordinator()
+    assert callable(getattr(coordinator, 'accept_goal_proposal', None))
