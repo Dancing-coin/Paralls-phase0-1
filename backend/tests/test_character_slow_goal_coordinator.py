@@ -52,6 +52,7 @@ class FakeAdmissions:
         self.progress = SimpleNamespace(
             stage=kwargs['stage'], status=kwargs['status'],
             request_json=kwargs.get('request_json'), frame=kwargs['frame'],
+            revision=len(self.calls), completion=kwargs.get('completion'),
         )
         return self.progress
 
@@ -69,7 +70,7 @@ def _coordinator():
         _session_store=admissions.store,
         _l3=SimpleNamespace(_gateway=gateway),
         activation_is_current=lambda lock, token: (lock, token) == ('lock', 'token'),
-        _capture_cognition_pin=lambda actor_id: {'goal_revision': 2},
+        _capture_cognition_pin=lambda actor_id, **kwargs: (('goal_revision', 2),),
     )
     return CharacterCognitionCoordinator(runtime=runtime, admissions=admissions), admissions
 
@@ -178,3 +179,25 @@ def test_accept_goal_proposal_requires_result_ready_and_owner_pin():
 def test_accept_goal_proposal_is_an_owner_operation():
     coordinator, admissions = _coordinator()
     assert callable(getattr(coordinator, 'accept_goal_proposal', None))
+
+
+def test_accept_goal_proposal_result_validates_and_persists_provider_output(monkeypatch):
+    monkeypatch.setattr(settings, 'character_model_provider_kind', 'deepseek')
+    coordinator, admissions = _coordinator()
+    activation = SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token')
+    pending = coordinator.prepare_goal_proposal('child:proposal', activation=activation, now=11)
+    context = GoalProposalContext.model_validate(proposal_context())
+    output = {
+        'active_goal_frame': {
+            'primary_goal': 'open', 'goal_portfolio': [], 'dominant_goal_id': '',
+            'preserved_goal_ids': [], 'suppressed_goal_ids': [],
+        },
+        'evidence_refs': ['outcome:1'],
+    }
+    result = coordinator.accept_goal_proposal_result(
+        'child:proposal', activation=activation, now=12, output=output,
+    )
+    assert result.status == 'result_ready'
+    assert result.completion['output']['active_goal_frame']['primary_goal'] == 'open'
+    assert result.completion['output']['evidence_refs'] == ['outcome:1']
+    assert admissions.calls[-1]['status'] == 'result_ready'

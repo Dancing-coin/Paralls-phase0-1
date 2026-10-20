@@ -153,6 +153,18 @@ flowchart TD
 
 ## 执行记录
 
+### Slow goal provider result admission (2026-10-21)
+
+The character cognition driver now dispatches `goal_proposal_trigger` admissions to
+the dedicated slow proposal preparation path. Provider output is validated against
+the frozen `GoalProposalContext`, source event, evidence refs, and provider pin, then
+persisted through `provider_pending -> result_ready` before the resumable owner
+commit. A later poll resumes `accept_goal_proposal`, so a worker response cannot
+directly write the active goal. Focused driver/coordinator/transition/atomic tests:
+35 passed. This closes the provider-result persistence seam only; a production
+trigger producer, complete Laya action/target path, formal model quality, and Godot
+A/B/C remain open.
+
 ### Task2 spatial source dependency (next batch)
 
 Design: [controller-bound source](../specs/2026-10-20-embodied-spatial-source-design.md). Implement a strict internally authored scope and authenticated pose admission over the existing shared world store. First RED: unbound/foreign controller, scope mismatch/nonfinite input, missing/stale/revoked source, first/reconnect teleport, tick-inflated movement, changed duplicate, restart freshness and owner read CAS. Then minimal source implementation and SQLite recovery; focused tests and backend-contract only. Production composition, message ingress, L4 admission and ESM consumer follow this prerequisite; no live/Godot claim from source tests. Keep Task2 open.

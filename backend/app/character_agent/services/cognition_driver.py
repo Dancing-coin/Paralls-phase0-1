@@ -85,11 +85,17 @@ class CharacterCognitionDriver:
             for _ in range(8):
                 progress = c.admissions.read_progress(key)
                 if progress is None:
-                    c.begin_entry(key, activation=handle, now=self.clock())
+                    if entry.source_kind == 'goal_proposal_trigger':
+                        c.prepare_goal_proposal(key, activation=handle, now=self.clock())
+                    else:
+                        c.begin_entry(key, activation=handle, now=self.clock())
                 elif progress.status == 'commit_started':
                     getattr(c, 'resume_'+progress.stage)(key, activation=handle, now=self.clock())
                 elif progress.status == 'result_ready':
-                    getattr(c, 'freeze_'+progress.stage)(key, activation=handle, now=self.clock())
+                    if progress.stage == 'goal_proposal':
+                        c.accept_goal_proposal(key, activation=handle, now=self.clock())
+                    else:
+                        getattr(c, 'freeze_'+progress.stage)(key, activation=handle, now=self.clock())
                 elif progress.status == 'stage_ready':
                     if progress.stage in {'entry', 'l2'}:
                         getattr(c, 'prepare_'+('l2' if progress.stage == 'entry' else 'l3'))(key, activation=handle, now=self.clock())
@@ -102,7 +108,11 @@ class CharacterCognitionDriver:
                         return None
                     c._entry(key, handle, self.clock())
                     c._validate_provider_pin(entry.actor_id, progress.frame)
-                    gateway = c.runtime._l2._gateway if progress.stage == 'l2' else c.runtime._l3._gateway
+                    gateway = (
+                        c.runtime._l2._gateway
+                        if progress.stage == 'l2'
+                        else c.runtime._l3._gateway
+                    )
                     return progress.stage, progress.request_json.encode('utf-8'), gateway
                 else:
                     if progress.status == 'completed':
@@ -150,7 +160,10 @@ class CharacterCognitionDriver:
                 raise
         else:
             try:
-                getattr(c, 'accept_'+stage)(key, activation=handle, now=self.clock(), output=output)
+                if stage == 'goal_proposal':
+                    c.accept_goal_proposal_result(key, activation=handle, now=self.clock(), output=output)
+                else:
+                    getattr(c, 'accept_'+stage)(key, activation=handle, now=self.clock(), output=output)
                 self._provider_attempts.pop(key, None)
                 self._retry_after.pop(key, None)
             except ValueError as error:

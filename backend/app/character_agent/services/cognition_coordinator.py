@@ -85,6 +85,27 @@ class CharacterCognitionCoordinator:
                 or source_contract.get('goal_revision') != context.goal_revision):
             raise ValueError('cognition_goal_proposal_source_mismatch')
 
+    def accept_goal_proposal_result(self, key, *, activation, now, output):
+        """Persist validated provider output before the resumable goal owner commit."""
+        entry = self._entry(key, activation, now)
+        progress = self.admissions.read_progress(key)
+        if progress is None or progress.stage != 'goal_proposal':
+            raise ValueError('cognition_goal_proposal_provider_not_pending')
+        if progress.status == 'result_ready':
+            if progress.completion != {'output': output}:
+                raise ValueError('cognition_progress_completion_conflict')
+            return progress
+        if progress.status != 'provider_pending' or not progress.request_json:
+            raise ValueError('cognition_goal_proposal_provider_not_pending')
+        self._validate_provider_pin(entry.actor_id, progress.frame)
+        from app.character_agent.gateway.goal_proposal import GoalProposalContext, validate_proposal_output
+        context = GoalProposalContext.model_validate(json.loads(progress.request_json)['context'])
+        self._validate_goal_proposal_source(entry, context, now=now)
+        validated = validate_proposal_output(output, context.evidence_refs)
+        return self.admissions.advance_progress(key=key, expected_revision=progress.revision,
+            stage='goal_proposal', status='result_ready', frame=progress.frame,
+            completion={'output': validated}, request_json=progress.request_json, now=now)
+
     def accept_goal_proposal(self, key, *, activation, now):
         """Accept one frozen slow result through the original Character goal owner."""
         self.admissions._owner()

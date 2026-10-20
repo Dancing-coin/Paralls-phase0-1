@@ -6,6 +6,17 @@
 
 ## 当前优先缺口：完整动作与目标来源审查（2026-10-20）
 
+### 2026-10-21 slow-goal admission increment
+
+Character slow-goal admissions now have a production-shaped result boundary:
+`goal_proposal_trigger` is prepared by its dedicated coordinator path; the driver
+routes provider output through source/evidence/context/provider-pin validation and
+persists `result_ready`; a later poll performs the existing resumable goal owner
+commit. Focused slow-goal driver/coordinator/transition/atomic tests are **35
+passed**. This is a local character state-machine seam only. It does not establish
+a production trigger producer, complete Laya action+target→L4→domain-owner receipt
+and recovery, Q01–Q04 model quality, or Godot A/B/C.
+
 以下是生产能力的剩余依赖，不把旧的三选项信息诊断包扩充后冒充完整动作集。
 
 | 路径 | 当前实现及来源 | 下一验收依赖 |
