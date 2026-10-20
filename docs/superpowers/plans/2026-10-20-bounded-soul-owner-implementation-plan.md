@@ -23,3 +23,12 @@ Anchor source slice implemented in `soul_runtime.py`: construction-time immutabl
 
 
 Soul fact lifecycle base: `soul_fact_runtime.py` and `test_soul_fact_owner.py` freeze original registration snapshots, isolate package/version histories, require matching policy on revoke, and validate original receipt/transaction plus actor/target anchor source cuts. RED exposed missing snapshots, mixed versions, forged snapshots and missing anchor cuts. Final isolation73 passed (`f657afeff55e49809db846799b80bc96`), cleanup passed, external evidence `soul-fact-review-final/`. Finite effect/value operations, four gates, counterplay, Life/mind, production schema/composition, common cut, privacy and L4 remain open. Next implement typed effect operations and gates from actual registered sources; do not infer life/mind from core resources.
+
+
+## 只读 vulnerability 来源计算（2026-10-20）
+
+`soul_vulnerability.py` 实现冻结的显式 life/mind→resource/definition/整数阈值注册、有限 comparator、三值 OR、当前 Presence/anchor 与原 Resource 来源前缀核验，返回当前 read revisions、source refs 及包含注册与投影的确定性摘要。读取不写任何 owner；合法资源结算后仍可验证 anchor 连续性。测试中的 stamina→mind 是显式测试注册，不是产品 life/mind 语义。
+
+精确 HEAD d7fdc2d7 加两份新增源码/测试的隔离 Soul 回归 **67 passed**，run `b024191aa9fe4d11bc7bd38bdc4f62b1`；backend-contract `080e84cf103c4035bcaa843bd5e56a27` passed；均 cleanup passed。外部证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `soul-vulnerability-continuity-red/`（目录名不代表 RED，实际 exit0）及 `soul-vulnerability-contract/`。最初 RED 17 failed/49 passed；首轮实现 1 failed/65 passed 为伪造夹具默认 project visibility 比 owner 白名单更早被拒绝，改为 authority_only 夹具后证明精确 unsupported-owner 拒绝；不削弱源校验。
+
+D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner、四门组合、读集与 effect 写入同一 CAS、schema/composition、checkpoint/common-cut/private projection、L4 均未关闭。Q01–Q04、R07–R09/R14 和 Godot A/B/C 状态不提升。未运行全量 pytest/Harness all、模型或 Godot。下一批回到完整 action+target 质量来源与角色闭环，避免继续扩展 reader 局部测试。

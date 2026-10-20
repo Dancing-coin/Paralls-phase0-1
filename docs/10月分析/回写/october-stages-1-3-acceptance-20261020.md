@@ -26,7 +26,7 @@
 | D07 状态／效果／装备；规格10 | 局部实现 | Status lifecycle、equipment activation/command、effect/stat projection | 实际角色动作消费的权限/版本/失效链、效果与资源真实 owner 回执及恢复；全领域集中切换不能由装备单例代替 |
 | D08 技法／多 owner／物理；规格11、计划04 Task4 | 局部实现 | 既有 ESM、street embodied owner、Durable combat adapter、canonical faction/Threat/encounter | authenticated canonical combat producer、正式 faction/target source、角色合同接线；真实 physics/contact 证据在最终 Godot 阶段取得，禁止伪造 |
 | D09 LifeState／Presence；规格12、计划04 Task5 | 局部实现 | LifeState owner、case-death caller、Population activation→Presence、incarnation/replay | 正式场景 source 与角色私有投影/target eligibility、迁移恢复；不从 HP 或 profile 推死亡事实 |
-| D10 Soul／identity；规格08/12 | 局部实现（来源、anchor provenance、事实发行/撤销基础） | soul_sources.py、soul_presence_sources.py、soul_runtime.py、soul_fact_runtime.py；本轮事实注册快照、版本隔离、原 anchor cut 与重开回执测试见下 | 完成 Life/mind 注册语义、带 effect/value 的有限 operation 与 counterplay、四门 admission、正式 schema/composition、checkpoint/common-cut/private projection 和生产角色/L4 接线；当前 issue/revoke 仅为事实生命周期基础，不代表效果执行权限 |
+| D10 Soul／identity；规格08/12 | 局部实现（来源、anchor provenance、事实发行/撤销、只读 vulnerability 计算） | soul_sources.py、soul_presence_sources.py、soul_runtime.py、soul_fact_runtime.py、soul_vulnerability.py；本轮事实注册快照、版本隔离、原 anchor cut 与重开回执测试见下 | 完成 Life/mind 注册语义、带 effect/value 的有限 operation 与 counterplay、四门 admission、正式 schema/composition、checkpoint/common-cut/private projection 和生产角色/L4 接线；当前 issue/revoke 仅为事实生命周期基础，不代表效果执行权限 |
 | D11 全域 replay 与故障；计划04 Task6 | 局部实现 | 十领域 shared Durable cut、具名 participant matrix、Task6 fault allowlist | 全部本次正式准入 owner 的同一 global atomic cut，以及恢复/迁移/权限/隐私 parity；42 participant 独立测试不等于共同 cut |
 
 ## 二、角色与 Laya 闭环
@@ -348,3 +348,12 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 - 真实 backend/WebSocket＋官方 pinned Laya run **`ee14e70f72ef49be88c63e14f8548da6`**（`laya-worktable-procedure-production-20261020/`）：源码为 HEAD＋上述 planner。两次模型成功且无 fallback；第一轮原候选 `observe/use_object:obj_worktable/ask_probe`，Laya 选择 use（0.8347），输入6235 tokens无截断。原动作及目标进入 L4，认证开发 controller 提供空间sample，ESM owner 返回 new_commit，global sequence 10，world_result 引用原transaction并 committed；第二轮候选已切换为 `finish_use`，模型选择 observe（0.7013），输入7817 tokens无截断。该样本不是 Godot/physics 或生产产出证据，L2仍为local baseline。
 - 恢复子进程硬编码要求两份回执，实际只有一份，故 recovery_exit=1；后续在已清理路径尝试恢复亦未执行数据库验证。原状态已按 retention 清理，不重建或复写历史证据。修正未来探针按实际匹配回执数量检查，但本run恢复仍失败/未验证，不将 backend exit=0/cleanup passed当闭环全绿。未为补证据重跑模型。服务已停止，18765/18766无listener。
 - **后端**：能力映射子项完成；**角色闭环**：仅新增真实 worktable use→ESM receipt 子项，finish连续周期、R09故障/回放及多领域仍开放。**模型质量**：本例不是评分，Q01–Q04不升级；**Godot**：A/B/C均未修改、启动或验证。没有全量pytest/Harness all或训练；历史用户改动保留。下一步返回正式完整动作/目标数据与来源冻结缺口，避免继续追加此切片无新增风险的测试。
+
+
+## 只读 vulnerability 来源计算（2026-10-20）
+
+`soul_vulnerability.py` 实现冻结的显式 life/mind→resource/definition/整数阈值注册、有限 comparator、三值 OR、当前 Presence/anchor 与原 Resource 来源前缀核验，返回当前 read revisions、source refs 及包含注册与投影的确定性摘要。读取不写任何 owner；合法资源结算后仍可验证 anchor 连续性。测试中的 stamina→mind 是显式测试注册，不是产品 life/mind 语义。
+
+精确 HEAD d7fdc2d7 加两份新增源码/测试的隔离 Soul 回归 **67 passed**，run `b024191aa9fe4d11bc7bd38bdc4f62b1`；backend-contract `080e84cf103c4035bcaa843bd5e56a27` passed；均 cleanup passed。外部证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `soul-vulnerability-continuity-red/`（目录名不代表 RED，实际 exit0）及 `soul-vulnerability-contract/`。最初 RED 17 failed/49 passed；首轮实现 1 failed/65 passed 为伪造夹具默认 project visibility 比 owner 白名单更早被拒绝，改为 authority_only 夹具后证明精确 unsupported-owner 拒绝；不削弱源校验。
+
+D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner、四门组合、读集与 effect 写入同一 CAS、schema/composition、checkpoint/common-cut/private projection、L4 均未关闭。Q01–Q04、R07–R09/R14 和 Godot A/B/C 状态不提升。未运行全量 pytest/Harness all、模型或 Godot。下一批回到完整 action+target 质量来源与角色闭环，避免继续扩展 reader 局部测试。

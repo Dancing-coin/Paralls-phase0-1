@@ -228,3 +228,12 @@ Design: [bounded Soul owner](../specs/2026-10-20-bounded-soul-owner-design.md), 
 ### Worktable procedure production increment
 
 Map registered worktable intents to existing procedure capability instead of absent interaction family. Exact HEAD+two sources37 passed (b12eb914bdc5423a9a710de987d2357c), backend-contract5d66626c72bc4d17b7044c04eb863076 passed; cleanup passed. Live official Laya ee14e70f72ef49be88c63e14f8548da6 selected use_object:obj_worktable and received original ESM new_commit/world_result; next turn selected observe instead of finish_use. Both full inputs untruncated. Recovery script incorrectly demanded two receipts; recovery failed and state was cleaned, so no recovery claim. Authenticated developer controller spatial sample is not physics/Godot. Keep Tasks2/3, Q01–Q04 and A/B/C open. Return next to full-action quality sources/frozen datasets; do not multiply local worktable tests or rerun models solely to repair evidence.
+
+
+## 只读 vulnerability 来源计算（2026-10-20）
+
+`soul_vulnerability.py` 实现冻结的显式 life/mind→resource/definition/整数阈值注册、有限 comparator、三值 OR、当前 Presence/anchor 与原 Resource 来源前缀核验，返回当前 read revisions、source refs 及包含注册与投影的确定性摘要。读取不写任何 owner；合法资源结算后仍可验证 anchor 连续性。测试中的 stamina→mind 是显式测试注册，不是产品 life/mind 语义。
+
+精确 HEAD d7fdc2d7 加两份新增源码/测试的隔离 Soul 回归 **67 passed**，run `b024191aa9fe4d11bc7bd38bdc4f62b1`；backend-contract `080e84cf103c4035bcaa843bd5e56a27` passed；均 cleanup passed。外部证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `soul-vulnerability-continuity-red/`（目录名不代表 RED，实际 exit0）及 `soul-vulnerability-contract/`。最初 RED 17 failed/49 passed；首轮实现 1 failed/65 passed 为伪造夹具默认 project visibility 比 owner 白名单更早被拒绝，改为 authority_only 夹具后证明精确 unsupported-owner 拒绝；不削弱源校验。
+
+D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner、四门组合、读集与 effect 写入同一 CAS、schema/composition、checkpoint/common-cut/private projection、L4 均未关闭。Q01–Q04、R07–R09/R14 和 Godot A/B/C 状态不提升。未运行全量 pytest/Harness all、模型或 Godot。下一批回到完整 action+target 质量来源与角色闭环，避免继续扩展 reader 局部测试。
