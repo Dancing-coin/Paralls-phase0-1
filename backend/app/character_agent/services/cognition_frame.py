@@ -2,6 +2,51 @@
 import hashlib
 import json
 
+from ..cognition.capability_envelope import CapabilityEnvelope
+from ..cognition.cognition_policy import CognitionPolicy
+
+
+def validate_cognition_contract(frame):
+    """Validate optional envelope/policy pins carried by a stage frame.
+
+    Existing frames predate the capability contract and remain valid. Once a
+    frame carries either contract, both must be present and the policy must pin
+    the same envelope digest and revisions.
+    """
+    if not isinstance(frame, dict):
+        raise ValueError('cognition_frame_reference_invalid')
+    envelope = frame.get('capability_envelope')
+    policy = frame.get('cognition_policy')
+    if not any(key in frame for key in ('capability_envelope', 'cognition_policy',
+            'envelope_digest', 'policy_digest')):
+        return
+    if not isinstance(envelope, dict) or not isinstance(policy, dict):
+        raise ValueError('cognition_contract_pin_invalid')
+    envelope_digest = envelope.get('envelope_digest')
+    policy_digest = policy.get('policy_digest')
+    if not isinstance(envelope_digest, str) or not envelope_digest:
+        raise ValueError('cognition_contract_pin_invalid')
+    if not isinstance(policy_digest, str) or not policy_digest:
+        raise ValueError('cognition_contract_pin_invalid')
+    envelope = CapabilityEnvelope.model_validate(envelope)
+    policy = CognitionPolicy.model_validate(policy)
+    if not (frame.get('actor_id') == envelope.actor_id == policy.actor_id):
+        raise ValueError('cognition_contract_actor_mismatch')
+    if not (frame.get('turn_id') == envelope.turn_id == policy.turn_id):
+        raise ValueError('cognition_contract_turn_mismatch')
+    expected_pins = {'envelope_revision': envelope.envelope_revision,
+        'envelope_digest': envelope.envelope_digest, **envelope.revision_pins}
+    if policy.envelope_digest != envelope_digest or policy.revision_pins != expected_pins:
+        raise ValueError('cognition_contract_pin_mismatch')
+    if frame.get('envelope_digest', envelope_digest) != envelope_digest:
+        raise ValueError('cognition_contract_pin_mismatch')
+    if frame.get('policy_digest', policy_digest) != policy_digest:
+        raise ValueError('cognition_contract_pin_mismatch')
+    if 'revision_pins' in frame and frame['revision_pins'] != expected_pins:
+        raise ValueError('cognition_contract_revision_pins_invalid')
+    if 'source_event_ref' in frame and frame['source_event_ref'] not in envelope.source_refs:
+        raise ValueError('cognition_contract_source_mismatch')
+
 
 ORIGINS = {'context': {'l2'}, 'l3_prepared': {'l3', 'suggestion'}, 'suggestion_context': {'suggestion'}}
 
@@ -30,6 +75,9 @@ def frame_references(frame, *, actor_id, child_key):
 
 
 def validate_frame(store, frame, *, actor_id, child_key, checked=None):
+    validate_cognition_contract(frame)
+    if 'capability_envelope' in frame and frame.get('actor_id') != actor_id:
+        raise ValueError('cognition_contract_actor_mismatch')
     checked = set() if checked is None else checked
     for ref in frame_references(frame, actor_id=actor_id, child_key=child_key):
         key = receipt_key(ref)
@@ -45,6 +93,7 @@ def validate_frame(store, frame, *, actor_id, child_key, checked=None):
 def freeze_fields(store, frame, *, actor_id, child_key, origin_stage, fields):
     # 调用者的 session transaction 同时保存正文和首次引用，失败不能留下孤儿 receipt。
     result = dict(frame, child_key=child_key)
+    validate_cognition_contract(result)
     for field, value in fields.items():
         if field not in ORIGINS or origin_stage not in ORIGINS[field] or frame.get('actor_id') != actor_id:
             raise ValueError('cognition_frame_reference_invalid')
