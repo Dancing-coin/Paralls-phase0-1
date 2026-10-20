@@ -67,6 +67,15 @@
 
 任一必需 boundary、receipt 或 visible evidence 缺失，整体 Goal 不得 complete。后端定向 profile 不替代 A/B/C。
 
+## D06／D10 来源依赖：正式采用静态资源 genesis（2026-10-20）
+
+- 提交 `8af22a6a`：经审查采用已有 authored resource template、三角色资源块、v2 projector／有限 reservation／migration planner 及聚焦测试，未重建第二套 Resource owner。materialization 原 source snapshot 随真实 owner 事务持久化；无当前模板的新进程可恢复原 receipt，changed request、跨 world 重物化、非法 read-set 零写拒绝。修复容量边界、孤立 lock、完整 action 原事务校验及校验后重读 head 的竞态。
+- 精确 `77fd4bb`＋13 个源码快照隔离：110 passed，run `70500ea8636946ef8b8d955d6a65071d`；backend-contract `0d23b439fe2647f8a80b5f161de1159e` passed；docs 修正后 `bb056c07e2cf40578f7a855b9c5904c8` passed；均 cleanup passed。证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `resource-genesis-final/`、`resource-genesis-contract/`、`resource-genesis-docs-corrected/`。stage 的归一化源码 SHA 与隔离 manifest 逐项一致。
+- 保留真实失败：恢复 RED `00d135e3ef6f48b6b08c192e0603607f` 两项失败；caller/profile/别名 RED `32fc8c045d7040299b669ab2e6aaa60d` 三项失败；owner 审查 RED `584e730c527547268be08b0c14c4eaf0` 七项失败（工作树，非 HEAD 隔离）。首次 docs `7d98ed7c5e9849288e21599eeb1e8d23` 缺同名计划，已添加关联主计划的 Soul 实施计划后通过，不以盲重试消除失败。
+- 范围：新 materialization 仅接受无时限静态 authored 模板；registry 深拷贝按服务 composition 冻结，重新部署更换内容，不声称热更新撤权原子性。调用方 tick 不是 confirmed world time；模板内 issuer/publication key 是内容元数据，不能当 publisher receipt 或 Soul grant。actor-global Resource stream 绑定首个 world/timeline，迁移未验收。三种 core 资源不自动代表 life/mind vulnerability。
+- D06 仍局部实现：生产 caller、confirmed time、恢复／转换／modifier 等对应独立 owner 与全域共同 cut 仍按原矩阵验收。D10 完整 owner 仍未实现；已补闭合 source adapter 映射、有限操作／反制、incarnation、absence CAS、时间与隐私设计，见 [Soul 设计](../../superpowers/specs/2026-10-20-bounded-soul-owner-design.md)。下一步为真实来源适配器与 Presence 依赖，随后四 gate／owner／角色回验。
+- 模型质量：没有新增评分或质量通过证据，Q01–Q04 保持原状态。角色闭环：没有新增完整 Laya／L4／Soul receipt 链，R14 不升级。Godot：未修改、启动或操作，G-A/B/C 均未验证。没有全量 pytest／Harness all、模型调用或训练。历史工作区和 `.harness` 内容保留。
+
 ## 排除与保留
 
 阶段四、通用编辑器、AD/Blender、自走棋及明确延期内容继续排除。facility repair 的四项明确 deferred 决策保留，不自动恢复，也不拿它阻塞不依赖它的角色纵切。旧轮次 choice-only／禁止模型评估／只做阶段三等限制不再限制本目标；authority、隐私、来源、隔离与 freeze 规则永久保留。
