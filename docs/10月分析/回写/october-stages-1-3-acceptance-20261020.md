@@ -36,7 +36,7 @@
 | R01 turn／MindFrame／ThoughtMode；规格01–03、计划01 | 局部实现 | turn coordinator、frame builder、cognition coordinator/driver、frozen session stages | 同一真实 turn 的 source→frame→L2/L3→Laya→执行→owner receipt→writeback；background cognition 继续 commands=[]；资源模板 tuple 进入 L2 缓存破坏 JsonValue frame 的问题已从 profile JSON 序列化入口修复，8 项 frame 回归通过 |
 | R02 memory；规格04 | 局部实现 | recall、semantic cards、writeback policy、consistency/recovery tests | 真实 outcome 与 authority receipt 绑定，重复、冲突、重开不重复沉淀；保留隐私与来源 |
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
-| R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 正式运行配置冻结、同 request usage/pins，超预算明确失败；不能靠静默截断解决 |
+| R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 生产 L3 默认完整输入预算门已启用（c3fbbf27）；正式运行 tokenizer/config 冻结、同 request usage/pins 仍待真实模型验证，不能靠静默截断解决 |
 | R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
@@ -185,3 +185,9 @@
 - `22522948`：同步 background 与 durable background 在 L2 前冻结同一 turn 的 CapabilityEnvelope/CognitionPolicy，L2/L3 复用该合同；durable provider-pending 重开读取原冻结请求，source event ref 绑定原 cognition child key。后台仍不产生执行命令。
 - HEAD `249a9eed` archive 加精确方法补丁隔离 **58 passed**，run `ae1be16c6a024afd9a625a60cefa9d76`；证据为 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/background-staged-isolated/` 中 manifest、patch、pytest.log、JUnit。cleanup passed。提交前以独立 Git index 重建证据 tree，与 staged tree `413be97d7a91517b415f8e3ad95bafeda6648639` 完全一致；用户原有 MindFrame projection、frame 参数和 coordinator 重验修改没有并入本批。
 - 后端：仅关闭 background 同源合同子项，R06/Task1 仍局部实现；background/dialogue/总输入硬预算及可信 revision 未关闭。模型质量：未运行真实 Laya 或正式 splits。角色闭环：R07–R09 未升级。Godot：未修改、启动或验收，A/B/C 留到后端及模型门完成后。不重复运行无关全量 pytest/Harness all，历史修改和证据保留。
+
+## Laya 生产默认完整输入预算子项
+
+- `c3fbbf27`：L3 生产 Laya request 无论环境变量缺失、空值还是空白，都冻结完整输入预算（默认 max_len=2091、head_max_len=256）；显式配置仍冻结到原 request。复用现有 provider tokenizer gate，缺 pinned tokenizer 或总输入超限在 HTTP 前拒绝。
+- RED 5 failed，run `ffc3cc6569954313bf3943a5e61724e0`；HEAD `2cb97f5f` archive＋精确两文件 GREEN/回归 **72 passed**，run `0ed5fd71ca7d4902944c73f41f9f1384`。提交前核对两文件 SHA 与隔离 manifest 一致。backend-contract passed，run `be6de26f061046ec93a3ea9b57925a98`；各 run cleanup passed。证据在既有仓库外根目录的 `laya-default-budget-{red,isolated,contract}/`。
+- 后端：只关闭生产默认预算门子项，R04/R06仍局部；4 条既有 mappingproxy serializer warnings保留。模型质量：受控 tokenizer 测试不能替代正式 tokenizer/usage 或 calibration/final/holdout，Q01–Q04未关闭。角色闭环：R07–R09未升级，下一步真实 Laya→L4→ESM receipt纵切。Godot：未修改、启动或验收；没有运行全量 pytest/Harness all。
