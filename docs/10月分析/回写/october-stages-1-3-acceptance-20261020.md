@@ -254,3 +254,14 @@
 - 同一官方source/checkpoint `68804629.../1720e3...`、原固定tokenizer，合成预检及前后health一致；**66/66**响应在原候选集内、无截断、state dropped=0、实际input tokens逐项匹配预算。原序C3为18/22；反序C3为6/22，语义选择仅7/22与原序一致；循环重标后语义选择10/22与原序一致。说明该呈现下选择对顺序与标签敏感；不能由此选最有利的顺序、修改truth或宣称模型已修好。没有独立批准这些变体的truth，因此只报告不含truth的稳定性归因，不产生新质量分数。
 - 本轮官方服务由离线缓存启动，诊断后Ctrl+C结束；随后18765/18766无listener。run_scope诊断及隔离副本cleanup passed。历史用户资料和早期pytest目录保留，未把此前删除审批拒绝改写为已清理；本轮未清理历史`.harness/verification`。
 - **后端**：仅诊断封存/评分准入子项完成；**模型质量**：Q01仍未通过、Q02仍局部、Q03/Q04未升级；**角色闭环**：R07–R10及其余领域仍依矩阵开放，本次未取得新owner闭环；**Godot**：A/B/C仍未操作或验证。下一步先检查官方checkpoint声明的option layout与输入/候选描述合同，再决定新开发归因；正式完整动作数据集及独立final/holdout仍缺，不把该信息诊断套件扩充为动作验收。
+
+
+## R06 frozen policy→实际 provider 输出预算
+
+- `067f69df`：`CharacterModelProvider` 在路由选择前验证已携带的 frozen `CognitionPolicy` digest与actor；L2/L3/dialogue 的任务输出上限分别取同一policy中的对应字段，与原prompt policy上限取min后进入实际HTTP JSON。dialogue SSE同样受约束；零预算、缺digest、篡改、actor错配和非正整数请求预算在调用前拒绝，不能被hybrid/local fallback吞掉。请求对象不被改写，保留原冻结请求/策略的重试身份。已有未携带policy的旧请求仍走原兼容合同，不伪称所有dialogue入口已经冻结同源策略。
+- 首轮RED **12 failed, 1 passed**确认实际max_tokens未受约束；补充RED **8 failed**确认无效请求预算被hybrid fallback吞掉，校验移至所有路由前后修复。精确HEAD `9c15be9`＋2份源码隔离 **186 passed**，14条FastAPI/Pydantic warnings，run `5c5fdc666d0a491792846a5dd289e5f6`，exit=0/cleanup passed；外部根下`cognition-output-budget-isolated/`有源码、hash、JUnit和日志。当前组合工作树140项仅作兼容，不替代隔离证据；精准暂存hash与最终manifest相符。
+- 这是受控HTTP/SSE传输合同证据，不是新真实模型质量、同源dialogue入口、tokenizer总输入硬预算或Godot证据；R06保持局部实现。下一consumer依赖是`DialogueService`的runtime context provider与canonical dialogue turn/lease来源，不能直接复用上次L2/L3回合的policy当成新对话授权。
+- Q01布局静态核查：实际checkpoint config无`option_layout`字段，官方`uses_parallel_layout`默认sequential；源码明确布局属于训练权重合同，不能直接改成parallel。checkpoint默认max_len为1024，此次已完整预算验证的诊断transport为2091；可传输不代表较长输入的质量已验证。该核查不证明所有质量失败由长度或布局造成，不修改模型或输入合同。
+- 未运行全量pytest/Harness all，未启动模型训练、Godot或新增真实owner纵切。后端预算子项完成；正式质量、完整角色闭环和最终A/B/C仍开放。
+
+- 本批静态布局来源导出 run `531c12727a7f40d7a6ff5dd1188da796`（`model-layout-source-audit/`，config与官方common源码及各自SHA），cleanup passed。矩阵/计划docs gate run `efd6b023adef48a2bec8f35d34a4fd08`（`cognition-output-budget-docs/`）passed/cleanup passed；上批归因docs gate `4f4ecbe3c9704d019ff024867d2408f0`同样通过。
