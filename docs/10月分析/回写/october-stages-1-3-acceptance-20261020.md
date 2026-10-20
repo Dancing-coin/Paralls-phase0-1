@@ -76,6 +76,8 @@
 - D06 仍局部实现：生产 caller、confirmed time、恢复／转换／modifier 等对应独立 owner 与全域共同 cut 仍按原矩阵验收。D10 完整 owner 仍未实现；已补闭合 source adapter 映射、有限操作／反制、incarnation、absence CAS、时间与隐私设计，见 [Soul 设计](../../superpowers/specs/2026-10-20-bounded-soul-owner-design.md)。下一步为真实来源适配器与 Presence 依赖，随后四 gate／owner／角色回验。
 - 模型质量：没有新增评分或质量通过证据，Q01–Q04 保持原状态。角色闭环：没有新增完整 Laya／L4／Soul receipt 链，R14 不升级。Godot：未修改、启动或操作，G-A/B/C 均未验证。没有全量 pytest／Harness all、模型调用或训练。历史工作区和 `.harness` 内容保留。
 
+**Soul Resource 来源适配器提交 `0d10856a`：**固定接受已准入 materialization、action settlement、reservation 三类 owner 的原完整事务；核验原事件、schema、receipt、companion、摘要与 world/timeline 绑定，拒绝 probe／fixture、伪造单事件和未支持 producer。读取冻结 canonical head（含空 head0）并返回完整事务证据/cut 上界；资源不存在保持 unavailable，版本不匹配拒绝，不从 stamina/mana 推 life/mind。实际 genesis→action 与 reservation consume、SQLite reopen 均通过；适配器没有 Soul 写入、授权或生产 L4 接线。精确 HEAD＋两源码隔离84 passed，run `764fb9d4323b48da8c0eb19347bbc102`；backend-contract `b026b0f62dbf46789649be6f25b8bd03`、docs `4ebd081316884873a6d6e5b58d265325` passed；均 cleanup passed。外部同根 `soul-resource-sources-final/`、`soul-resource-sources-contract/`、`soul-resource-sources-docs/`。缓存后 membership RED `70855409cd7a4a63b51320d045325ca0`、版本／摘要 RED `e7b12dadb8a643e3b28024da25ffaecc` 已修复；最初缺适配器 RED `2b05aab008ca4952a280a7f7742f8807` 保留。D10 完整 owner 仍未实现；下一项是 Population/Presence anchor source，随后真正的规则事实 owner 与 gate，避免继续扩展此局部测试。
+
 ## 排除与保留
 
 阶段四、通用编辑器、AD/Blender、自走棋及明确延期内容继续排除。facility repair 的四项明确 deferred 决策保留，不自动恢复，也不拿它阻塞不依赖它的角色纵切。旧轮次 choice-only／禁止模型评估／只做阶段三等限制不再限制本目标；authority、隐私、来源、隔离与 freeze 规则永久保留。
