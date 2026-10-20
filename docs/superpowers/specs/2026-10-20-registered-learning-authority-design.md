@@ -30,6 +30,14 @@ Required focused evidence: reject absent/forged/wrong-actor/private/stale/failed
 
 ## Architecture
 
+### Personal ESM action disclosure increment
+
+The original ESM object receipt is authority_only and nested. The ESM-owned actor-private personal-action disclosure API requires a real original canonical request/receipt, successful object settlement and an internally registered (room, scene, zone)→world binding. Derive acceptance and producer time from the original result/request; no caller accepted flag, skill numbers, teacher knowledge, hidden object state or raw private request is copied. Disclose only actor/world/scope/target/action/turn/time and original event/transaction/stream provenance. This is evidence of one's own committed action, not evidence of observing another actor or having mastered a skill.
+
+Use a separate disclosure stream and explicit opt-in event schema so object replay is unchanged. Read-CAS the original source stream when appending. Idempotency is tied to the original owner event, with a digest of the disclosed scope/world; exact retry returns the original disclosure even after source advancement or scope-registration removal, while changed world/scope/receipt rejects. A missing mapping, foreign receipt or unsuccessful action writes nothing. Production assembly maps registered embodied scopes to its explicit world and enables disclosure in the existing bounded inspect execution consumer, after owner commit and before session outcome. If disclosure or session writing fails, original execution retry recovers both original receipts before completing the outcome. No public endpoint or automatic skill promotion is added; policy/episode/time/resource/teacher admission and all learning route acceptance remain subsequent tasks. The existing ESM owner retains responsibility for original controller/range admission. The schema remains opt-in; current production store is not a strict-schema composition, so no global registry change is claimed.
+
+Architecture: ESM owner→original authority-only receipt→owner-authorized personal disclosure→actor-private shared ledger→registered learning source validation. Sequence: validate canonical source receipt→lookup exact disclosure retry→validate scope mapping→append disclosure with source read CAS→return original durable receipt. Data flow crosses the authority-only/actor-private boundary only through the explicit field allowlist; raw source payload remains authority-only.
+
 ### Next-turn read integration (authorized implementation increment)
 
 Bind an optional RegisteredLearningAuthority and explicit world_ref to CharacterAgentRuntime. A same-read snapshot contains actor/world, learned-stream revision, recorded states and original learning event refs. Compile these states together with authored states through the existing stable compiler; do not mutate the authored profile. Keep the existing compiler's precedence rules. Bind the complete learning snapshot digest into both the frozen envelope revision pins and asynchronous actor pins. Validate agreement before delivering a model request and when accepting a result, including durable coordinator entrypoints. A concurrent commit between contract freeze and request handoff must reject rather than pin new facts to an old contract. Frozen pending requests are never rebuilt with new skills. Existing unbound unit/legacy runtimes retain their original pin shape.
@@ -41,6 +49,8 @@ Architecture/data flow: the current projection→stable compiler edge below beco
 ```mermaid
 flowchart LR
   E["current: domain receipt / observation"] --> A["current: registered source admission"]
+  EO["current: ESM authority-only object receipt"] --> ED["current increment: ESM personal disclosure / explicit world scope"]
+  ED --> EP["current increment: actor-private disclosure ledger"] --> A
   C["current: evidence / learning proposal"] --> A
   R["current: skill registry / internal learning object rules"] --> A
   A --> O["current: learning authority"] --> S["current: shared GameplayEventStore"]
@@ -61,6 +71,7 @@ sequenceDiagram
   participant S as Shared store (current)
   participant B as Capability compiler (current)
   C->>A: object digest + evidence refs + expected revision
+  Note over C,S: ESM consumer first commits owner result, then personal disclosure, then session outcome
   A->>S: find original receipt / reread source and prerequisites
   A->>A: verify registration, ownership, privacy, outcome and evidence reuse
   A->>S: one owner append with source/prerequisite read CAS
@@ -79,6 +90,8 @@ sequenceDiagram
 flowchart TD
   P["proposal refs; no skill mutation authority"] --> V["current: source proof validation"]
   W["current: committed domain events + receipts"] --> V
+  EW["current: ESM authority-only raw payload"] --> ED["current increment: ESM validates own source / scope and allowlists fields"]
+  ED --> EP["current increment: personal action disclosure; actor-private"] --> V
   R["current: internal registered outcome policy"] --> V
   V --> G{"all gates / read revisions valid?"}
   G -->|no| Z["reject / zero skill writes"]

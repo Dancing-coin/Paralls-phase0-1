@@ -20,6 +20,8 @@
 
 ## Task 2: Production episode and outcome consumers
 
+- [x] Add ESM owner-authorized personal-action disclosure with canonical source receipt, explicit scene/world mapping, actor-private field allowlist, source read CAS and durable exact/changed retry. Existing production bounded inspect consumer emits it before session outcome; failed session write retries both original receipts. ESM→disclosure→registered learning source consumption tested with controlled registered policy. Exact four-file isolation 141 passed (4 existing FastAPI deprecation warnings), run `666e911afa0c4212a0dee8644feeac2b`. Four-route acceptance remains open.
+
 - [ ] Register sourced objects/rules for all four specified routes; use actual source owners, privacy/teacher context and time/resource policies.
 - [ ] Replace nonempty-string authority admission in the legacy learning projection with original committed owner-event/receipt lookup; preserve exact retry and failure evidence.
 - [ ] Route learned facts to the existing stable compiler before the next cognition turn, with capability revision invalidation. Verify actor/scope/revocation/source changes.

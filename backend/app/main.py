@@ -1286,7 +1286,11 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         character_perceived_input_service = CharacterPerceivedInputService()
     else:
         character_perceived_input_service.clear()
-    esm_service = ESMService(store=gameplay_event_store)
+    esm_service = ESMService(store=gameplay_event_store, learning_disclosure_scopes={
+        (scope.room_id, scope.scene_id, scope.zone_id): character_agent_runtime._learning_world_ref
+        for scope in settings.embodied_spatial_scopes
+        if character_agent_runtime._learning_world_ref is not None
+    })
     character_agent_runtime.set_target_catalog_resolver(esm_service.project_character_targets)
     harness_ledger_parent = (
         None
@@ -1309,6 +1313,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     character_object_execution = CharacterObjectExecution(
         runtime=character_agent_runtime, owner=esm_service, source=embodied_spatial_source,
         scopes=settings.embodied_spatial_scopes,
+        learning_world_ref=character_agent_runtime._learning_world_ref,
     )
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
     embodied_evidence_ledger = EmbodiedEvidenceLedger()

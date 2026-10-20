@@ -29,6 +29,9 @@ ESM_OBJECT_SETTLEMENT_SCHEMA = EventSchemaRegistration(
 
 
 class ESMService:
+    LEARNING_DISCLOSURE_SCHEMA = EventSchemaRegistration(
+        "gameplay.esm.personal_action_disclosed", 1, "sha256:esm:personal-action-disclosed:v1",
+    )
     INTERACTION_RANGE = 3.0
     WORKBENCH_HISTORY_LIMIT = 2
     SUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"light_level_drop", "light_level_restore", "thermal_level_rise", "smoke_density_rise", "noise_level_rise"}
@@ -574,7 +577,13 @@ class ESMService:
     }
 
     def __init__(self, *, readable_records: dict[str, dict[str, object]] | None = None,
-                 store: GameplayEventStore | None = None) -> None:
+                 store: GameplayEventStore | None = None,
+                 learning_disclosure_scopes: dict[tuple[str, str, str], str] | None = None) -> None:
+        self._learning_disclosure_scopes = dict(learning_disclosure_scopes or {})
+        for scope, world in self._learning_disclosure_scopes.items():
+            if (not isinstance(scope, tuple) or len(scope) != 3
+                    or any(not isinstance(part, str) or not part.strip() for part in (*scope, world))):
+                raise ValueError("esm_learning_disclosure_scope_invalid")
         self._readable_records = {} if readable_records is None else readable_records
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
         self._latest_environment_result: EnvironmentStateResult | None = None
@@ -762,6 +771,70 @@ class ESMService:
             self._restore_object_settlements()
             settled = self._object_receipts[request.idempotency_key]
             return settled[1].model_copy(deep=True), settled[2].model_copy(deep=True)
+
+    def publish_learning_disclosure(self, event: InteractIntent, *, world_ref: str,
+                                    action_request: ActionRequest,
+                                    receipt: AppendBatchResult | None) -> AppendBatchResult:
+        """Disclose only one's own committed action; this never grants a skill."""
+        if self._object_store is None or not isinstance(world_ref, str) or not world_ref.strip():
+            raise ValueError("esm_learning_disclosure_source_invalid")
+        with self._object_lock:
+            original = self.find_object_settlement(event, action_request=action_request)
+            if (original is None or receipt is None or receipt != original[1]
+                    or not receipt.committed or original[0].resolution_status != "accepted"
+                    or len(receipt.committed_event_ids) != 1):
+                raise ValueError("esm_learning_disclosure_source_invalid")
+            source = self._object_store.get_event(receipt.committed_event_ids[0])
+            scope = (event.room_id, event.scene_id, event.zone_id)
+            payload = dict(actor_id=event.actor_id, world_ref=world_ref,
+                room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id,
+                target_object_id=event.target_object_id, action=event.interaction_type,
+                turn_id=event.turn_id, producer_ts=action_request.producer_ts, accepted=True,
+                source_event_id=source.event_id, source_transaction_id=source.transaction_id,
+                source_stream_id=source.stream_id, source_stream_revision=source.stream_revision)
+            key = "esm-learning-disclosure:" + source.event_id
+            stream = "gameplay:esm:learning:" + self._object_digest([world_ref, event.actor_id])[7:]
+            prior = self._object_store.get_by_idempotency(self._OBJECT_PRINCIPAL, key)
+            if prior is not None:
+                if not prior.committed or len(prior.committed_event_ids) != 1:
+                    raise ValueError("esm_learning_disclosure_receipt_invalid")
+                saved = self._object_store.get_event(prior.committed_event_ids[0])
+                if (saved.payload != payload or saved.stream_id != stream
+                        or saved.event_type != self.LEARNING_DISCLOSURE_SCHEMA.event_type
+                        or saved.schema_version != 1
+                        or saved.visibility_policy != f"actor_private:{event.actor_id}"):
+                    raise ValueError("esm_learning_disclosure_idempotency_conflict")
+                transaction = self._object_store.get_transaction(prior.transaction_id)
+                rebuilt = (build_multi_stream_atomic_event_batch(command_id=key,
+                    principal_ref=self._OBJECT_PRINCIPAL,
+                    expected_revisions={stream: saved.stream_revision - 1},
+                    event_specs={stream: ((self.LEARNING_DISCLOSURE_SCHEMA.event_type, payload),)},
+                    event_visibility_policies={stream: (f"actor_private:{event.actor_id}",)},
+                    read_stream_revisions=transaction.read_stream_revisions,
+                    idempotency_key=key, causation_id=source.event_id, correlation_id=source.correlation_id)
+                    if transaction is not None else None)
+                if rebuilt is not None:
+                    rebuilt.events[0].stream_revision = saved.stream_revision
+                    rebuilt.events[0].global_sequence = saved.global_sequence
+                if (transaction is None or saved not in transaction.events
+                        or transaction != rebuilt or saved != rebuilt.events[0]
+                        or transaction.idempotency_record.principal_ref != self._OBJECT_PRINCIPAL
+                        or transaction.idempotency_record.idempotency_key != key
+                        or prior.transaction_id != saved.transaction_id
+                        or prior.committed_event_ids != [saved.event_id]
+                        or prior.resulting_stream_revisions != {stream: saved.stream_revision}
+                        or prior.global_sequence_range != (saved.global_sequence, saved.global_sequence)):
+                    raise ValueError("esm_learning_disclosure_receipt_invalid")
+                return prior
+            if self._learning_disclosure_scopes.get(scope) != world_ref:
+                raise ValueError("esm_learning_disclosure_scope_invalid")
+            return self._object_store.append_batch(build_multi_stream_atomic_event_batch(
+                command_id=key, principal_ref=self._OBJECT_PRINCIPAL,
+                expected_revisions={stream: self._object_store.get_stream_head(stream)},
+                event_specs={stream: ((self.LEARNING_DISCLOSURE_SCHEMA.event_type, payload),)},
+                event_visibility_policies={stream: (f"actor_private:{event.actor_id}",)},
+                read_stream_revisions={source.stream_id: self._object_store.get_stream_head(source.stream_id)},
+                idempotency_key=key, causation_id=source.event_id, correlation_id=source.correlation_id))
 
     def build_action_request(self, event: InteractIntent, *, source_system: str = "player_input_bridge") -> ActionRequest:
         request_id = f"interact:{event.producer_ts}:{event.target_object_id}"

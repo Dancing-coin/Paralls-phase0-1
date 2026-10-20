@@ -9,10 +9,11 @@ from app.models.player_input import InteractIntent
 
 
 class CharacterObjectExecution:
-    def __init__(self, *, runtime, owner, source, scopes, clock_ms=None):
+    def __init__(self, *, runtime, owner, source, scopes, clock_ms=None, learning_world_ref=None):
         self._runtime, self._owner, self._source = runtime, owner, source
         self._scopes = {scope.actor_id: scope for scope in scopes}
         self._clock_ms = clock_ms or (lambda: time.monotonic_ns() // 1_000_000)
+        self._learning_world_ref = learning_world_ref
         self._epoch = uuid4().hex
         self._lock = RLock()
 
@@ -73,6 +74,11 @@ class CharacterObjectExecution:
             else:
                 result, receipt = prior
             if receipt is not None and receipt.committed and result.settlement_status == "committed":
+                if self._learning_world_ref is not None:
+                    disclosed = self._owner.publish_learning_disclosure(event, action_request=request,
+                        world_ref=self._learning_world_ref, receipt=receipt)
+                    if not disclosed.committed:
+                        raise ValueError("execution_learning_disclosure_commit_failed")
                 self._runtime.record_settlement_result(actor_id=contract.actor_id,
                     producer_ts=result.producer_ts, payload=result.model_dump(exclude_none=True))
             return event, request, result, receipt
