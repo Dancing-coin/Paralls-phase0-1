@@ -67,6 +67,7 @@ class CharacterModelProvider:
         return replace(self._last_call_evidence)
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
+        self._max_output_tokens(request, default=800)
         route = request.get("route", {})
         task_kind = str(request.get("task_kind", "") or "")
         provider_kind = self._provider_kind
@@ -153,6 +154,7 @@ class CharacterModelProvider:
             yield {"event": "cancelled"}
             return
 
+        self._max_output_tokens(request, default=400)
         route = request.get("route", {})
         provider_kind = self._provider_kind
         if isinstance(route, dict):
@@ -246,7 +248,7 @@ class CharacterModelProvider:
                 {"role": "user", "content": str(prompt.get("user_instruction", "") or "")},
             ],
             "temperature": float(policy.get("temperature", 0.2) or 0.2),
-            "max_tokens": int(policy.get("max_tokens", 400) or 400),
+            "max_tokens": self._max_output_tokens(request, default=400),
             "stream": True,
         }
         if self._provider_kind == "deepseek":
@@ -318,6 +320,37 @@ class CharacterModelProvider:
     def _requires_model_semantic_ownership(self, task_kind: str) -> bool:
         return task_kind in {"l2_reasoning", "l3_planning"}
 
+    @staticmethod
+    def _frozen_output_budget(request: dict[str, object]) -> int | None:
+        context = request.get("context")
+        if not isinstance(context, dict) or "cognition_policy" not in context:
+            return None
+        from app.character_agent.cognition.cognition_policy import CognitionPolicy
+
+        raw = context["cognition_policy"]
+        if not isinstance(raw, dict) or not raw.get("policy_digest"):
+            raise ValueError("character provider requires a frozen cognition policy")
+        policy = CognitionPolicy.model_validate(raw)
+        if context.get("actor_id") != policy.actor_id:
+            raise ValueError("character provider cognition policy actor mismatch")
+        budgets = {"l2_reasoning": policy.reasoning.l2_max_tokens,
+                   "l3_planning": policy.reasoning.l3_max_tokens,
+                   "dialogue_generation": policy.dialogue.max_tokens}
+        budget = budgets.get(request.get("task_kind"))
+        if budget is None or budget <= 0:
+            raise ValueError("character provider cognition output budget unavailable")
+        return budget
+
+    def _max_output_tokens(self, request: dict[str, object], *, default: int) -> int:
+        policy = request.get("policy")
+        requested = policy.get("max_tokens", default) if isinstance(policy, dict) else default
+        budget = self._frozen_output_budget(request)
+        if budget is not None:
+            if type(requested) is not int or requested <= 0:
+                raise ValueError("character provider output token limit must be a positive integer")
+            return min(requested, budget)
+        return int(requested or default)
+
     def _complete_via_deepseek(self, request: dict[str, object]) -> dict[str, object]:
         if not self._endpoint_url or not self._api_key:
             raise ValueError("character model provider requires endpoint and api key")
@@ -361,7 +394,7 @@ class CharacterModelProvider:
             ],
             "response_format": {"type": "json_object"},
             "temperature": float(policy.get("temperature", 0.1) or 0.1),
-            "max_tokens": int(policy.get("max_tokens", 800) or 800),
+            "max_tokens": self._max_output_tokens(request, default=800),
         }
         if self._provider_kind == "deepseek":
             payload["thinking"] = {"type": "disabled"}
