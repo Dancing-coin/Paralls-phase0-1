@@ -12,8 +12,9 @@ Character slow-goal admissions now have a production-shaped result boundary:
 `goal_proposal_trigger` is prepared by its dedicated coordinator path; the driver
 routes provider output through source/evidence/context/provider-pin validation and
 persists `result_ready`; a later poll performs the existing resumable goal owner
-commit. Focused slow-goal driver/coordinator/transition/atomic tests are **35
-passed**. This is a local character state-machine seam only. It does not establish
+commit. Focused slow-goal driver/coordinator/transition/atomic tests are **37
+passed** after activation release, deferred re-acquisition, and provider-failure
+termination coverage. This is a local character state-machine seam only. It does not establish
 a production trigger producer, complete Laya action+target→L4→domain-owner receipt
 and recovery, Q01–Q04 model quality, or Godot A/B/C.
 

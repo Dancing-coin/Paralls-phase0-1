@@ -161,7 +161,7 @@ the frozen `GoalProposalContext`, source event, evidence refs, and provider pin,
 persisted through `provider_pending -> result_ready` before the resumable owner
 commit. A later poll resumes `accept_goal_proposal`, so a worker response cannot
 directly write the active goal. Focused driver/coordinator/transition/atomic tests:
-35 passed. This closes the provider-result persistence seam only; a production
+37 passed. This closes the provider-result persistence seam only; a production
 trigger producer, complete Laya action/target path, formal model quality, and Godot
 A/B/C remain open.
 
