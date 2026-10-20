@@ -174,3 +174,17 @@ def test_anchor_history_rejects_resource_pin_from_another_timeline():
     batch = store.get_transaction(event.transaction_id)
     with pytest.raises(ValueError, match='soul_anchor_original'):
         owner._validate_source_cut(projection, batch.read_stream_revisions, event.global_sequence)
+
+
+def test_projection_is_detached_and_original_retry_survives_despawn():
+    store = GameplayEventStore()
+    _, presence, resources = _sources(store)
+    owner = _owner(store, presence, resources)
+    result = owner.issue(_request())
+    projection = owner.projection(world_ref=WORLD, actor_ref=ACTOR)
+    projection['resource_pins'][0]['timeline_ref'] = 'timeline:caller'
+    assert owner.projection(world_ref=WORLD, actor_ref=ACTOR)['resource_pins'][0]['timeline_ref'] == 'timeline:main'
+    assert presence.despawn(CharacterDespawnRequest(world_ref=WORLD, character_ref=PROFILE,
+        incarnation=1, expected_revision=1, idempotency_key='anchor-after', reason='leave')).committed
+    retry = owner.issue(_request(expected_revision=99))
+    assert retry.committed and retry.zero_write and retry.committed_event_ids == result.committed_event_ids
