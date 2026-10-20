@@ -142,3 +142,8 @@ flowchart TD
 5. Godot A/B/C only after backend closure under the main plan. No Godot work in this batch.
 
 Relevant focused tests, backend-contract/docs and source isolation; never full pytest/all just to fill evidence. Export via run_scope and preserve historical dirty files. Matrix statuses upgrade only per acceptance result.
+
+
+### Activation source implementation boundary
+
+`activation_sources.py` now implements the closed actual ProfileActivationAuthority adapter. New admission requires an exact configured producer and a nonempty immutable deployment grant snapshot, plus current profile identity and latest finite lifecycle. Construction may retain an empty snapshot solely so historical `recover` still works after grant removal; `read` rejects it before admission. This is not a durable issuer/grant owner or Soul permission. All indexed Population rows must match an original transaction member before lifecycle/subject filtering. The returned fixed stream head must enter the Presence append CAS. Presence integration, Life adapter, Soul anchor/gate and common-cut participants remain planned.

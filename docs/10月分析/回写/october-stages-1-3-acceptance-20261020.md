@@ -295,3 +295,12 @@
 - lease竞态：HEAD冲突结果与non-player持有者检查分为两个owner调用，期间background lease释放会错误拒绝对话。审查并采用工作区已有的同命令检查小段，未纳入其他main改动。确定性插入“冲突结果交付后立刻释放”回归在HEAD路径失败；修复后通过，保留player冲突拒绝、原deadline及activation校验。
 - 精确HEAD `ac9c07c`＋五份源码隔离 **285 passed**，run `f2c4004dcded42b68897e51cf454c047`，cleanup passed，外部根 `dialogue-own-speaker-lease-final/`。backend-contract `beb333d414fa48eaa90c4c76a4249a62` passed/cleanup passed。先前283项通过快照被新profile回归替代；最终前一快照283 passed/1 failed正确暴露HEAD lease竞态；确定性RED run `a6d39671f00d4b4b96d369b8e0541867`失败1项，不计通过。未盲目重试失败套件。
 - **后端**：上述生产对话consumer子项完成。**模型质量**：无新正式模型分数，Q01–Q04不变。**角色闭环**：无新跨领域动作owner验收；依据矩阵转入D10四门真实source/owner依赖，不能从profile vulnerability或调用方bool推导Soul allow。**Godot**：A/B/C仍未操作/验证。未运行全量pytest/Harness all、训练或模型服务。
+
+
+## D10 Presence依赖：真实activation来源准入
+
+- `2fef3fe9`新增`activation_sources.py`及真实owner回归。composition绑定实际`ProfileActivationAuthority`、精确producer及grant原语深快照；不接受principal前缀作为授权。新准入要求非空grant、当前profile identity及最新有限生命周期；region/pending不充当deactivation。历史`recover`只重建原8字段、command/cause/correlation、schema1、完整builder batch及原new_commit receipt，不消费当前registry/grant。撤除grant后仍可恢复，但不可新准入。
+- 读取固定Population head，返回该head供consumer原子CAS。全部索引事件先核原transaction membership，再按type/profile筛选，避免篡改suspend让旧activation复活。独立审查两项发现均先复现再修复；另修复矛盾receipt状态。
+- HEAD `91da7f0e`＋两份精确源码隔离**36 passed**、8条既有FastAPI/Pydantic warnings；run `5164b2e1f0a84d19b0a6b0a99131c032`，外部证据根下`activation-sources-final/`。backend-contract `f19b4222cc304791ba44f636c93e8375` passed；两者cleanup passed。首次RED的19项缺adapter失败属预期，另两项旧测试缺manifest是隔离脚本错误，补入HEAD已提交manifest后通过，未当成产品缺陷。恢复RED `78a0cee9474c4c60b7239136384609e0`；索引篡改RED `033e78f271a64cc7929cb3cf6abc75c2`；receipt状态RED `c5526b1bbd704d3cb66dfc63fd1e974c`。
+- **后端**：只完成activation来源适配器，尚未接入Presence owner/生产composition，D10完整Soul owner仍未实现。**模型质量**：Q01–Q04不变，无新正式分数。**角色闭环**：R14未升级。**Godot**：A/B/C仍未操作/验证。下一步以该reader替换历史Presence前缀准入，并补合法incarnation历史、原receipt恢复及固定cut写CAS；有任何Life历史时新spawn保持不可用，直到正式Life source adapter存在。
+- 本轮没有全量pytest/Harness all、模型调用/训练或Godot。临时副本通过run_scope回收；历史工作区和.harness证据保留。Goal保持active；工具只能修改状态，扩展目标仍以统一矩阵与计划为准，不虚标完成以替换旧标题。
