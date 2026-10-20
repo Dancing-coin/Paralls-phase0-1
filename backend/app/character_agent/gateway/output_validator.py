@@ -12,6 +12,7 @@ from app.character_agent.models.cognition_delta import (
 from app.character_agent.models.goal_runtime import CharacterActiveGoalFrame
 from app.character_agent.models.goal_runtime import CharacterGoalHint
 from app.character_agent.models.goal_runtime import CharacterGoalPortfolioEntry
+from app.character_agent.gateway.goal_proposal import GOAL_PROPOSAL_CONTRACT, validate_proposal_output
 
 
 class CharacterStructuredOutputValidator:
@@ -41,9 +42,15 @@ class CharacterStructuredOutputValidator:
         cognition_policy: dict[str, object] | None = None,
         expected_candidate_labels: list[str] | None = None,
         expected_candidate_digest: str | None = None,
+        output_contract: str | None = None,
+        allowed_evidence_refs: list[str] | None = None,
     ) -> dict[str, object]:
         if not isinstance(output, dict):
             raise ValueError("structured model output must be a dictionary")
+        if output_contract is not None:
+            if output_contract != GOAL_PROPOSAL_CONTRACT or task_kind != "l3_planning":
+                raise ValueError("unsupported character output contract")
+            return validate_proposal_output(output, allowed_evidence_refs or [])
         if task_kind == "dialogue_generation":
             normalized = self._validate_dialogue_output(output)
             return self._apply_policy_gate(task_kind=task_kind, output=normalized, policy=cognition_policy)

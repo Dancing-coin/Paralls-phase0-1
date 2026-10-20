@@ -9,6 +9,7 @@ from app.character_agent.gateway.model_provider import CharacterModelProvider
 from app.character_agent.gateway.model_router import CharacterModelRouter
 from app.character_agent.gateway.output_validator import CharacterStructuredOutputValidator
 from app.character_agent.gateway.prompt_policy import CharacterPromptPolicy
+from app.character_agent.gateway.goal_proposal import validate_proposal_request
 
 
 class CharacterModelGateway:
@@ -35,7 +36,18 @@ class CharacterModelGateway:
         context: dict[str, object],
         route_override: str | None = None,
         prepared_recall: MemoryRecallResult | None = None,
+        output_contract: str | None = None,
     ) -> dict[str, object]:
+        if output_contract is not None:
+            request = {
+                "task_kind": task_kind, "output_contract": output_contract,
+                "route": self._router.resolve_route(route_override), "context": context,
+            }
+            proposal = validate_proposal_request(request)
+            request["context"] = proposal.model_dump(mode="json")
+            request["prompt"] = self._prompt_policy.build_goal_proposal_prompt(request["context"])
+            request["policy"] = self._prompt_policy.build_policy(task_kind=task_kind, route=request["route"])
+            return request
         route = self._router.resolve_route(route_override)
         recall = prepared_recall if prepared_recall is not None else self._memory_recall.select(
             dict(context.get("memory", {}) or {}),
@@ -117,6 +129,7 @@ class CharacterModelGateway:
             raise ValueError("character prepared request has an unsupported task kind")
         if not isinstance(request.get("context"), dict):
             raise ValueError("character prepared request must contain a context object")
+        validate_proposal_request(request)
         return request
 
     def complete_prepared_request(self, request_json: bytes) -> dict[str, object]:
@@ -141,6 +154,8 @@ class CharacterModelGateway:
                 str(context.get("candidate_digest", "") or "")
                 if isinstance(context, dict) else None
             ),
+            output_contract=request.get("output_contract"),
+            allowed_evidence_refs=context.get("evidence_refs", []),
         )
 
     def run_task(

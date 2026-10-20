@@ -9,6 +9,7 @@ from urllib.request import Request, urlopen
 
 from app.config import settings
 from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
+from app.character_agent.gateway.goal_proposal import validate_proposal_request
 
 
 _DEFAULT_ENDPOINTS = {
@@ -67,6 +68,7 @@ class CharacterModelProvider:
         return replace(self._last_call_evidence)
 
     def complete(self, request: dict[str, object]) -> dict[str, object]:
+        validate_proposal_request(request)
         self._max_output_tokens(request, default=800)
         route = request.get("route", {})
         task_kind = str(request.get("task_kind", "") or "")
@@ -285,6 +287,8 @@ class CharacterModelProvider:
                 transport_succeeded=True,
                 fallback_used=False,
             )
+            if request.get("output_contract") is not None:
+                return output
             return self._coerce_output_for_task(task_kind, output)
         except Exception as exc:
             self._record_evidence(
