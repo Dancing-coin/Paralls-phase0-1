@@ -81,6 +81,24 @@ def test_prepare_goal_proposal_exact_retry_reuses_original_request(monkeypatch):
     assert len(admissions.calls) == 1
 
 
+def test_prepare_goal_proposal_retry_returns_frozen_request_without_rerouting(monkeypatch):
+    monkeypatch.setattr(settings, 'character_model_provider_kind', 'deepseek')
+    coordinator, admissions = _coordinator()
+    activation = SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token')
+    first = coordinator.prepare_goal_proposal('child:proposal', activation=activation, now=11)
+    original_gateway = coordinator.runtime._l3._gateway
+
+    class ReroutedGateway:
+        def prepare_run_request(self, **kwargs):
+            raise AssertionError('a retry must use the frozen request')
+
+    coordinator.runtime._l3._gateway = ReroutedGateway()
+    second = coordinator.prepare_goal_proposal('child:proposal', activation=activation, now=12)
+    assert second.request_json == first.request_json
+    assert len(admissions.calls) == 1
+    coordinator.runtime._l3._gateway = original_gateway
+
+
 def test_prepare_goal_proposal_rejects_non_goal_source_without_write():
     coordinator, admissions = _coordinator()
     admissions.entry.source_kind = 'run_background_cognition_tick'

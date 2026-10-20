@@ -40,6 +40,11 @@ class CharacterCognitionCoordinator:
         context = GoalProposalContext.model_validate(entry.payload.get('context'))
         if context.actor_id != entry.actor_id or context.trigger_source_ref not in entry.payload.get('evidence_refs', []):
             raise ValueError('cognition_goal_proposal_source_mismatch')
+        progress = self.admissions.read_progress(key)
+        if progress is not None:
+            if progress.stage != 'goal_proposal' or progress.status != 'provider_pending':
+                raise ValueError('cognition_goal_proposal_progress_conflict')
+            return progress
         gateway = getattr(self.runtime._l3, '_gateway', None)
         if gateway is None:
             raise ValueError('cognition_goal_proposal_gateway_missing')
@@ -47,13 +52,6 @@ class CharacterCognitionCoordinator:
             task_kind='l3_planning', context=context.model_dump(mode='json'),
             route_override='online_default', output_contract='goal_proposal:v1')
         request_json = gateway.freeze_prepared_request(request).decode('utf-8')
-        progress = self.admissions.read_progress(key)
-        if progress is not None:
-            if progress.stage != 'goal_proposal' or progress.status != 'provider_pending':
-                raise ValueError('cognition_goal_proposal_progress_conflict')
-            if progress.request_json != request_json:
-                raise ValueError('cognition_goal_proposal_request_conflict')
-            return progress
         frame = dict(actor_id=entry.actor_id, stage='goal_proposal', source_kind=entry.source_kind,
             producer_ts=entry.producer_ts, source_pins=entry.source_pins,
             request_id=context.request_id, trigger_kind=context.trigger_kind,
