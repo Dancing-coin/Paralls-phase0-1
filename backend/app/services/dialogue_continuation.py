@@ -55,11 +55,12 @@ class _PendingDialogue:
     fallback_used: bool = False
     cognition_provider_attempts: int = 0
     cognition_context_json: bytes = b''
+    execution_commands_json: bytes = b'[]'
 
 
 class DialogueCoordinator:
     def __init__(self, *, runtime, character_service, auth, begin_activation,
-                 prepare_cognition, speech_content, finish_response):
+                 prepare_cognition, speech_content, finish_response, prepare_execution):
         self.runtime = runtime
         self.character_service = character_service
         self.auth = auth
@@ -67,6 +68,7 @@ class DialogueCoordinator:
         self._prepare_cognition = prepare_cognition
         self._speech_content = speech_content
         self._finish_response = finish_response
+        self._prepare_execution = prepare_execution
         self._connections = {}
         self._pending = {}
         self._receipts = OrderedDict()
@@ -148,6 +150,8 @@ class DialogueCoordinator:
         if advance.status != 'completed':
             self.cancel(ticket_id, reason=advance.reason or advance.status)
             return DialogueAdvance('requeued', reason=advance.reason)
+        turn.execution_commands_json = _json([command.model_dump(mode='json')
+                                               for command in advance.result or []])
         content = self._speech_content(advance.result or [])
         if content:
             # cognition 直接发言始终属于被激活的接收者；agent fallback 才沿用发起者。
@@ -165,6 +169,34 @@ class DialogueCoordinator:
             **({'cognition_context': inherited} if inherited is not None else {}))
         turn.context_actor_ids = tuple(dict.fromkeys((turn.handle.actor_id, speaker)))
         return self._stage(ticket_id, turn, 'dialogue_generation', request, self.character_service.dialogue._gateway)
+
+    def execution_is_current(self, ticket_id: str) -> bool:
+        turn = self._pending.get(ticket_id)
+        if turn is None:
+            return False
+        binding = self.auth.resolve_binding(turn.binding_pin[0]) if turn.binding_pin else None
+        current = (self._connection_current(turn.connection_ref, turn.binding_pin)
+                   and self.runtime.activation_is_current(turn.handle.lock_ref, turn.handle.token)
+                   and self._capture_pin(turn) == turn.pin
+                   and (not turn.binding_pin or (binding is not None
+                        and turn.handle.actor_id in binding.allowed_actor_refs)))
+        if not current:
+            self.cancel(ticket_id, reason='execution_context_invalid')
+        return current
+
+    def drain_execution_messages(self, ticket_id: str) -> list[dict]:
+        # Called on the runtime owner, immediately before transport.
+        turn = self._pending.get(ticket_id)
+        if turn is None or turn.execution_commands_json == b'[]':
+            return []
+        if not self.execution_is_current(ticket_id):
+            return []
+        commands = json.loads(turn.execution_commands_json)
+        turn.execution_commands_json = b'[]'
+        messages = self._prepare_execution(commands, turn.handle.actor_id)
+        # Offering the original dispatch lease writes the actor session.
+        turn.pin = self._capture_pin(turn)
+        return messages
 
     def _tts(self, ticket_id, turn):
         response = turn.response

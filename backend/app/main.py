@@ -3171,6 +3171,18 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                 while advance.status == "pending":
                     if cancelled.is_set():
                         break
+                    async with send_lock:
+                        messages = await _dialogue_owner_call(execution,
+                            lambda: coordinator.drain_execution_messages(ticket_id))
+                        for message in messages:
+                            current = await _dialogue_owner_call(execution,
+                                lambda: coordinator.execution_is_current(ticket_id))
+                            if not current or transport_close_requested.is_set():
+                                cancelled.set()
+                                break
+                            await websocket.send_json(message)
+                    if cancelled.is_set():
+                        break
                     future = asyncio.wrap_future(slot.submit(advance.job, advance.provider, cancelled, emit))
                     while True:
                         if cancelled.is_set():
@@ -6122,7 +6134,7 @@ def _get_dialogue_coordinator() -> DialogueCoordinator:
             runtime=character_agent_runtime, character_service=character_service,
             auth=websocket_session_auth_service, begin_activation=_begin_dialogue_activation,
             prepare_cognition=_prepare_dialogue_cognition, speech_content=_first_speech_command_content,
-            finish_response=_finish_dialogue_response)
+            finish_response=_finish_dialogue_response, prepare_execution=_prepare_dialogue_execution)
     return _dialogue_coordinator
 
 
@@ -6520,6 +6532,20 @@ def _as_envelope(message_type: str, payload: dict[str, object]) -> dict[str, obj
         "message_type": message_type,
         "payload": payload,
     }
+
+
+def _prepare_dialogue_execution(commands, actor_id):
+    admitted = []
+    for raw in commands:
+        command = CharacterGoalCommand.model_validate(raw)
+        contract_raw = (command.execution_payload or {}).get("execution_contract")
+        if not isinstance(contract_raw, dict):
+            continue
+        contract = CharacterExecutionContract.model_validate(contract_raw)
+        if (contract.actor_ref == "character:" + actor_id and contract.expected_observation.get("owner_route") == "esm.interaction"
+                and contract.semantic_intent_id in {"inspect_object", "use_object", "finish_use"}):
+            admitted.append(command)
+    return _as_character_agent_execution_envelopes(admitted)
 
 
 def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]) -> list[dict[str, object]]:
