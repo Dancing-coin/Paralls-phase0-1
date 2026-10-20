@@ -696,7 +696,7 @@ class CharacterAgentSessionStore:
             receipt = self.read_receipt(head[0], kind='cognition_progress', key=f'{key}/progress:{target}')
             if (receipt is None or receipt.get('revision') != target or receipt.get('child_key') != key
                     or receipt.get('actor_id') != head[0]
-                    or (target == head[1] and bool(head[2]) != (receipt.get('status') not in {'completed', 'stale'}))):
+                    or (target == head[1] and bool(head[2]) != (receipt.get('status') not in {'completed', 'stale', 'cancelled', 'failed'}))):
                 raise ValueError('cognition_progress_index_mismatch')
             return receipt
 
@@ -713,8 +713,96 @@ class CharacterAgentSessionStore:
                 raise ValueError('cognition_progress_revision_conflict')
             self.save_receipt(actor, kind='cognition_progress', key=f'{key}/progress:{revision}', receipt=progress)
             self._connection.execute('UPDATE character_session_cognition_heads SET stage_revision=?,pending=? WHERE child_key=?',
-                (revision, int(progress['status'] not in {'completed', 'stale'}), key))
+                (revision, int(progress['status'] not in {'completed', 'stale', 'cancelled', 'failed'}), key))
             return progress
+
+    def commit_cognition_goal_proposal(
+        self, *, actor_id: str, key: str, expected_revision: int,
+        events: list[dict], before: dict, after: dict,
+        progress: dict, expected_progress_revision: int,
+    ) -> dict:
+        """Atomically commit a Character goal proposal and its terminal child state.
+
+        The goal event, immutable terminal receipt, and cognition progress CAS share
+        the original session transaction. This is Character goal truth only; domain
+        authority receipts remain owned by their respective gameplay owners.
+        """
+        if type(expected_revision) is not int or expected_revision < 0:
+            raise ValueError('cognition_stage_invalid')
+        if type(expected_progress_revision) is not int or expected_progress_revision < 0:
+            raise ValueError('cognition_goal_terminal_progress_invalid')
+        if not isinstance(events, list):
+            raise ValueError('cognition_stage_invalid')
+        if any(not isinstance(event, dict) or event.get('event_type') != 'goal_state_event' for event in events):
+            raise ValueError('cognition_goal_event_invalid')
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            raise ValueError('cognition_stage_invalid')
+        if self._connection is None or not self._recovery_enabled:
+            raise ValueError('cognition_stage_requires_durable_session')
+        stage_receipt = self._cognition_stage_receipt(
+            actor_id=actor_id, key=key, expected_revision=expected_revision,
+            events=events, before=before, after=after,
+        )
+        progress = json.loads(self._json(progress))
+        if (progress.get('child_key') != key or progress.get('actor_id') != actor_id
+                or progress.get('revision') != expected_progress_revision + 1
+                or progress.get('status') not in {'completed', 'stale', 'cancelled', 'failed'}):
+            raise ValueError('cognition_goal_terminal_progress_invalid')
+        if progress['status'] != 'completed' and events:
+            raise ValueError('cognition_goal_terminal_events_invalid')
+        if progress['status'] == 'completed' and len(events) != 1:
+            raise ValueError('cognition_goal_terminal_events_invalid')
+        if not isinstance(progress.get('progress_digest'), str) or not progress['progress_digest']:
+            raise ValueError('cognition_goal_terminal_progress_invalid')
+        terminal = {
+            'schema_version': 1,
+            'actor_id': actor_id,
+            'child_key': key,
+            'stage_receipt_digest': stage_receipt['input_digest'],
+            'progress_revision': progress['revision'],
+            'progress_digest': progress.get('progress_digest', ''),
+            'outcome': progress['status'],
+        }
+        with self.transaction():
+            existing = self.read_receipt(actor_id, kind='cognition_goal_terminal', key=key)
+            if existing is not None:
+                if existing != terminal:
+                    raise ValueError('cognition_goal_terminal_conflict')
+                saved_stage = self.read_receipt(actor_id, kind='cognition_stage', key=key)
+                if saved_stage != stage_receipt:
+                    raise ValueError('cognition_stage_projection_proof_invalid')
+                if any(self.read_event(actor_id, event_id=event['event_id']) != event
+                       for event in stage_receipt['events']):
+                    raise ValueError('cognition_goal_event_missing_or_conflicting')
+                if stage_receipt['events']:
+                    self.read_current_cognition_stage(actor_id)
+                saved_progress = self.read_cognition_progress(key, revision=progress['revision'])
+                if saved_progress != progress:
+                    raise ValueError('cognition_goal_progress_missing_or_conflicting')
+                return {'terminal': existing, 'progress': saved_progress}
+            head = self._connection.execute(
+                'SELECT actor_id,stage_revision,pending FROM character_session_cognition_heads WHERE child_key=?',
+                (key,),
+            ).fetchone()
+            if head != (actor_id, expected_progress_revision, 1):
+                raise ValueError('cognition_progress_revision_conflict')
+            if self.event_count(actor_id) != expected_revision:
+                raise ValueError('character_revision_conflict')
+            for event in stage_receipt['events']:
+                self._append_entry(event)
+            self.save_receipt(actor_id, kind='cognition_stage', key=key, receipt=stage_receipt)
+            self.save_receipt(actor_id, kind='cognition_goal_terminal', key=key, receipt=terminal)
+            self.save_receipt(actor_id, kind='cognition_progress', key=f'{key}/progress:{progress["revision"]}', receipt=progress)
+            if stage_receipt['events']:
+                state = self.read_runtime_state(actor_id)
+                state['cognition_stage'] = dict(key=key, input_digest=stage_receipt['input_digest'],
+                    start=expected_revision, end=expected_revision + len(stage_receipt['events']))
+                self._write_runtime_state(actor_id, state)
+            self._connection.execute(
+                'UPDATE character_session_cognition_heads SET stage_revision=?,pending=0 WHERE child_key=?',
+                (progress['revision'], key),
+            )
+            return {'terminal': terminal, 'progress': progress}
 
     def save_receipt(self, actor_id: str, *, kind: str, key: str, receipt: dict, event_id: str | None = None) -> None:
         with self.transaction():
