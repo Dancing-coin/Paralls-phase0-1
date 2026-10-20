@@ -124,8 +124,8 @@ class DialogueCoordinator:
         if stage == 'cognition':
             context = json.loads(request_json).get('context', {})
             if 'capability_envelope' in context or 'cognition_policy' in context:
-                contract = _json({key: context.get(key) for key in
-                    ('capability_envelope', 'cognition_policy', 'turn_id')})
+                contract = _json({key: context[key] for key in
+                    ('capability_envelope', 'cognition_policy', 'turn_id', 'effective_profile') if key in context})
                 if turn.cognition_context_json and turn.cognition_context_json != contract:
                     raise ValueError('dialogue_cognition_contract_changed')
                 turn.cognition_context_json = contract
@@ -159,6 +159,8 @@ class DialogueCoordinator:
         speaker = turn.event.actor_id if turn.event.player_id == 'character_agent' else turn.event.target_actor_id
         if inherited is not None and inherited['capability_envelope']['actor_id'] != speaker:
             inherited = None
+        if inherited is None:
+            inherited = self.runtime.freeze_dialogue_cognition_context(turn.event)
         request = self.character_service.prepare_dialogue(turn.event,
             **({'cognition_context': inherited} if inherited is not None else {}))
         turn.context_actor_ids = tuple(dict.fromkeys((turn.handle.actor_id, speaker)))

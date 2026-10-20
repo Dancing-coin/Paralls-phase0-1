@@ -41,6 +41,8 @@ class DialogueService:
                 source_event_ref=envelope.source_refs[0])
             context.update(capability_envelope=envelope.model_dump(mode="json"),
                 cognition_policy=policy.model_dump(mode="json"), turn_id=turn_id)
+            if "effective_profile" in cognition_context:
+                context["effective_profile"] = cognition_context["effective_profile"]
         request = self._gateway.prepare_run_request(
             task_kind="dialogue_generation",
             context=context,

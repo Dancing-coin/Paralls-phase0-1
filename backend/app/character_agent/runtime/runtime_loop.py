@@ -1360,7 +1360,30 @@ class CharacterAgentRuntime:
         if 'l2_profile' in plan['after']:
             self._l2._profile_cache[actor_id] = deepcopy(plan['after']['l2_profile'])
 
-    def _freeze_turn_cognition_contract(self, actor_id, snapshot, turn, *, effective_profile=None):
+    def freeze_dialogue_cognition_context(self, event):
+        """Freeze an owner-prepared request context without fabricating a percept or turn commit."""
+        self._assert_cognition_owner()
+        actor_id = event.actor_id if event.player_id == 'character_agent' else event.target_actor_id
+        if not self.supports_actor(actor_id):
+            raise ValueError('dialogue_speaker_not_registered')
+        snapshot = self._l1.get_snapshot(actor_id)
+        if snapshot is not None and (snapshot.room_id, snapshot.scene_id, snapshot.zone_id) != (
+                event.room_id, event.scene_id, event.zone_id):
+            raise ValueError('dialogue_snapshot_scope_mismatch')
+        source = 'dialogue:' + self._cognition_digest(event.model_dump(mode='json'))
+        turn = CharacterTurnContext.begin(actor_id, source, event.producer_ts,
+            causation_id=event.request_id or source, correlation_id=event.request_id or source,
+            input_revision_vector={'session': self._session_timeline_event_count(actor_id)},
+            memory_revision_vector={'memory': self.get_memory_revision(actor_id)},
+            policy_revision='policy:character-runtime:v1',
+            snapshot_revision=snapshot.producer_ts if snapshot is not None else 0, branch_id='branch:main')
+        contract = self._freeze_turn_cognition_contract(actor_id, snapshot, turn,
+            revision_pins={'dialogue_context_digest': self._cognition_digest(self._capture_cognition_pin(actor_id))})
+        return {key: contract[key] for key in ('effective_profile', 'capability_envelope', 'cognition_policy')} | {
+            'turn_id': turn.turn_id}
+
+    def _freeze_turn_cognition_contract(self, actor_id, snapshot, turn, *, effective_profile=None,
+                                       revision_pins=None):
         from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
         from app.character_agent.cognition.cognition_policy import CognitionPolicy
         if effective_profile is None:
@@ -1372,10 +1395,10 @@ class CharacterAgentRuntime:
         stable = self._skill_service.compile_stable_snapshot(
             actor_id=actor_id,
             skill_states=skill_states,
-            source_refs=[turn.source_event_ref, *snapshot.recent_perception_source_lineage,
+            source_refs=[turn.source_event_ref, *(snapshot.recent_perception_source_lineage if snapshot is not None else ()),
                 *(learning.source_event_refs if learning is not None else ())],
         )
-        revision_pins = {'policy_revision': turn.policy_revision}
+        revision_pins = {**(revision_pins or {}), 'policy_revision': turn.policy_revision}
         if learning is not None:
             revision_pins['learning_revision'] = self._cognition_digest(learning.model_dump(mode="json"))
         envelope = CapabilityEnvelope.compile(
@@ -1386,7 +1409,7 @@ class CharacterAgentRuntime:
         )
         policy = CognitionPolicy.resolve(
             envelope=envelope, profile=effective_profile,
-            event_complexity={'ambiguity': 1.0 - snapshot.certainty_score},
+            event_complexity={'ambiguity': 1.0 - snapshot.certainty_score} if snapshot is not None else {},
             source_refs=tuple(stable.source_refs),
         )
         return dict(effective_profile=effective_profile,

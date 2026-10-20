@@ -84,9 +84,9 @@ def test_agent_fallback_does_not_inherit_recipient_private_contract():
             advance, _ = complete(owner, advance)
         context = json.loads(advance.job.request_json)['context']
         assert context['actor_id'] == 'char_b'
-        # Own-speaker policy admission is a separate remaining production lane.
-        assert 'cognition_policy' not in context
-        assert 'capability_envelope' not in context
+        assert context['cognition_policy']['actor_id'] == 'char_b'
+        assert context['capability_envelope']['actor_id'] == 'char_b'
+        assert context['turn_id'].startswith('turn:char_b:dialogue:')
     finally:
         owner.close()
 
@@ -108,3 +108,114 @@ def test_durable_suggestion_request_reuses_frozen_turn_contract(tmp_path):
             assert actual[key] == original[key]
     finally:
         runtime.close()
+
+
+def test_no_cognition_fallback_freezes_actual_speaker_contract(monkeypatch):
+    from app.character_agent.runtime.cognition_continuation import CognitionAdvance
+
+    owner = coordinator()
+    try:
+        monkeypatch.setattr(owner, '_prepare_cognition', lambda *_: CognitionAdvance('completed', result=[]))
+        advance = begin(owner)
+        context = json.loads(advance.job.request_json)['context']
+        assert context['cognition_policy']['actor_id'] == 'char_a'
+        assert context['memory_recall']['cognition_policy_digest'] == context['cognition_policy']['policy_digest']
+    finally:
+        owner.close()
+
+
+def test_same_speaker_dialogue_keeps_profile_used_to_compile_original_policy(monkeypatch):
+    owner = coordinator()
+    try:
+        advance = begin(owner)
+        original = json.loads(advance.job.request_json)['context']['effective_profile']
+        monkeypatch.setattr(owner.character_service.dialogue, '_context_provider',
+            lambda _: {'effective_profile': {'unexpected_later_profile': True}})
+        while advance.job.stage == 'cognition':
+            advance, _ = complete(owner, advance)
+        assert json.loads(advance.job.request_json)['context']['effective_profile'] == original
+    finally:
+        owner.close()
+
+
+def test_own_dialogue_source_binds_full_event_and_live_actor_revisions_without_perception_writes():
+    from test_dialogue_review_fixes import agent_event
+
+    owner = coordinator()
+    try:
+        event = agent_event()
+        timeline = owner.runtime.get_session_timeline('char_b')
+        snapshot = owner.runtime._l1.get_snapshot('char_b')
+        original = owner.runtime.freeze_dialogue_cognition_context(event)
+        assert owner.runtime.freeze_dialogue_cognition_context(event) == original
+        changed = owner.runtime.freeze_dialogue_cognition_context(event.model_copy(update={'content': 'changed'}))
+        assert changed['turn_id'] != original['turn_id']
+        assert owner.runtime.get_session_timeline('char_b') == timeline
+        owner.runtime.set_background_mode('char_b', 'active')
+        revision = owner.runtime.freeze_dialogue_cognition_context(event)
+        assert revision['capability_envelope']['revision_pins']['dialogue_context_digest'] != original['capability_envelope']['revision_pins']['dialogue_context_digest']
+        assert owner.runtime._l1.get_snapshot('char_b') == snapshot
+        # Only the explicit mode change may append its own event.
+        assert not any(row['event_type'].startswith('character_turn_') for row in
+            owner.runtime.get_session_timeline('char_b')[len(timeline):])
+    finally:
+        owner.close()
+
+
+def test_request_without_legacy_id_still_has_original_event_source():
+    from test_dialogue_review_fixes import agent_event
+
+    owner = coordinator()
+    try:
+        context = owner.runtime.freeze_dialogue_cognition_context(agent_event().model_copy(update={'request_id': ''}))
+        assert context['capability_envelope']['source_refs'][0].startswith('dialogue:')
+    finally:
+        owner.close()
+
+
+def test_own_dialogue_rejects_snapshot_from_different_scope():
+    from test_cognition_completion_revision import perceived
+    from test_dialogue_review_fixes import agent_event
+
+    owner = coordinator()
+    try:
+        owner.runtime._l1.apply_character_perceived_event(perceived().model_copy(update={
+            'actor_id': 'char_b', 'room_id': 'other-room'}))
+        with pytest.raises(ValueError, match='dialogue_snapshot_scope_mismatch'):
+            owner.runtime.freeze_dialogue_cognition_context(agent_event())
+    finally:
+        owner.close()
+
+
+def test_background_lease_release_between_owner_delivery_and_retry_keeps_dialogue(monkeypatch):
+    import app.main as main
+    from fastapi.testclient import TestClient
+    from test_character_agent_activation_handoff import active_dialogue_decision
+    from test_character_dialogue_streaming import _dialogue_envelope
+
+    main.reset_runtime_state()
+    with TestClient(main.component_app) as client:
+        execution = main.runtime_execution
+        handle, _ = execution.submit(lambda: main.character_agent_runtime.begin_actor_activation(
+            'char_a', active_dialogue_decision(), producer_ts=90209, activation_kind='background')).result(2)
+        original = main._dialogue_owner_call
+        released = False
+
+        async def release_after_conflict(owner, command, **kwargs):
+            nonlocal released
+            result = await original(owner, command, **kwargs)
+            advance = result[0] if isinstance(result, tuple) else result
+            if not released and getattr(advance, 'reason', '') == 'activation_lock_conflict':
+                await original(owner, lambda: main.character_agent_runtime.finish_actor_activation(handle, reason='completed'))
+                released = True
+            return result
+
+        monkeypatch.setattr(main, '_dialogue_owner_call', release_after_conflict)
+        with client.websocket_connect('/ws') as websocket:
+            websocket.send_json(_dialogue_envelope('deterministic-lease-race'))
+            assert websocket.receive_json()['payload']['accepted'] is True
+            message = websocket.receive_json()
+            while message['message_type'] != 'dialogue_stream_end':
+                message = websocket.receive_json()
+            assert message['payload']['status'] == 'completed'
+        assert released

@@ -3332,16 +3332,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                                 route = runtime.accept_player_input(event_copy)
                                 if route["route"] != "character_service":
                                     raise ValueError("dialogue_route_invalid")
-                                return coordinator.begin(event_json, connection_ref=connection_ref,
-                                                         deadline_monotonic=deadline)
-                            advance = await _dialogue_owner_call(execution, begin_dialogue)
+                                result = coordinator.begin(event_json, connection_ref=connection_ref,
+                                                           deadline_monotonic=deadline)
+                                # 同一 owner 命令内固定冲突持有者；lease 可在结果交付前释放。
+                                non_player = (result.status == "requeued"
+                                    and result.reason == "activation_lock_conflict"
+                                    and character_agent_runtime.activation_is_non_player(activation_actor_id))
+                                return result, non_player
+                            advance, non_player = await _dialogue_owner_call(execution, begin_dialogue)
                             if (advance.status != "requeued"
                                     or advance.reason != "activation_lock_conflict"):
                                 break
-                            non_player = await _dialogue_owner_call(
-                                execution,
-                                lambda: character_agent_runtime.activation_is_non_player(activation_actor_id),
-                            )
                             remaining = deadline - monotonic()
                             if not non_player or remaining <= 0:
                                 break
