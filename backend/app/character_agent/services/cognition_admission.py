@@ -98,6 +98,25 @@ class CharacterCognitionAdmissionService:
             trigger_source = self.store.read_event(actor_id, event_id=payload['trigger_source_ref'])
             if trigger_source is None or trigger_source.get('actor_id') != actor_id:
                 raise ValueError('goal_proposal_trigger_source_uncommitted')
+            source_payload = trigger_source.get('payload')
+            source_contract = source_payload.get('goal_proposal_trigger') if isinstance(source_payload, dict) else None
+            if (not isinstance(source_contract, dict) or source_contract.get('eligible') is not True
+                    or source_contract.get('trigger_kind') not in {
+                        'repeated_failure', 'phase_change', 'context_conflict', 'goal_conflict',
+                        'complex_information_failure', 'high_risk_information_failure',
+                        'persistent_information_failure',
+                    }
+                    or not isinstance(source_contract.get('frame_digest'), str)
+                    or not source_contract['frame_digest']
+                    or type(source_contract.get('goal_revision')) is not int
+                    or source_contract['goal_revision'] < 0):
+                raise ValueError('goal_proposal_trigger_ineligible')
+            supplied_contract = payload.get('source_contract')
+            expected_contract = {key: source_contract[key] for key in ('trigger_kind', 'frame_digest', 'goal_revision')}
+            if (payload.get('trigger_kind') != source_contract['trigger_kind']
+                    or not isinstance(supplied_contract, dict)
+                    or supplied_contract != expected_contract):
+                raise ValueError('goal_proposal_trigger_source_mismatch')
         if source_kind == 'ingest_siming_output':
             delivery = SimingCharacterCompatibilityInput.model_validate(payload)
             if (delivery.actor_id, delivery.delivery_id, delivery.producer_ts) != (actor_id, delivery_id, producer_ts):

@@ -107,3 +107,19 @@ def test_prepare_goal_proposal_rejects_non_goal_source_without_write():
             'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
         )
     assert admissions.calls == []
+
+
+def test_prepare_goal_proposal_rejects_context_not_bound_to_committed_trigger():
+    coordinator, admissions = _coordinator()
+    admissions.store = SimpleNamespace(read_event=lambda actor_id, *, event_id: {
+        'actor_id': actor_id, 'event_id': event_id,
+        'payload': {'goal_proposal_trigger': {
+            'eligible': True, 'trigger_kind': 'phase_change',
+            'frame_digest': 'different-frame', 'goal_revision': 2,
+        }},
+    })
+    with pytest.raises(ValueError, match='cognition_goal_proposal_source_mismatch'):
+        coordinator.prepare_goal_proposal(
+            'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
+        )
+    assert admissions.calls == []

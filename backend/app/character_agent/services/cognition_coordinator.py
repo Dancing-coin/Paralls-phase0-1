@@ -40,6 +40,16 @@ class CharacterCognitionCoordinator:
         context = GoalProposalContext.model_validate(entry.payload.get('context'))
         if context.actor_id != entry.actor_id or context.trigger_source_ref not in entry.payload.get('evidence_refs', []):
             raise ValueError('cognition_goal_proposal_source_mismatch')
+        source_reader = getattr(self.admissions.store, 'read_event', None)
+        if callable(source_reader):
+            source = source_reader(entry.actor_id, event_id=context.trigger_source_ref)
+            source_payload = source.get('payload') if isinstance(source, dict) else None
+            source_contract = source_payload.get('goal_proposal_trigger') if isinstance(source_payload, dict) else None
+            if (not isinstance(source_contract, dict)
+                    or source_contract.get('trigger_kind') != context.trigger_kind
+                    or source_contract.get('frame_digest') != context.frame.frame_digest
+                    or source_contract.get('goal_revision') != context.goal_revision):
+                raise ValueError('cognition_goal_proposal_source_mismatch')
         progress = self.admissions.read_progress(key)
         if progress is not None:
             if progress.stage != 'goal_proposal' or progress.status != 'provider_pending':
