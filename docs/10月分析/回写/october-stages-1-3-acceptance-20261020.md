@@ -42,7 +42,7 @@
 | R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect owner＋session outcome）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；仅 public plaque inspect。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
 | R09 中断／恢复／回放 | 局部验证（真实inspect提交后新进程exact receipt恢复）；完整故障/回放未验证 | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
-| R10 学习／技能形成；规格06 | 局部实现 | extractor/gate/settlement、capability-action vertical | 四学习路线目前到缺 owner 拒绝；正式对象/策略注册与真实 skill owner 结算。工程模型训练不产生角色技能事件 |
+| R10 学习／技能形成；规格06 | 局部实现 | extractor/gate/settlement、capability-action vertical；新增 registered learning owner 前置，39 项隔离验证，见下文 | 四学习路线仍缺生产 source/episode/gate→owner→下一回合 capability 接线、时间/资源/teacher 准入、正式 mastery 语义与共同 cut。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |
 | R12 协同／短契约；计划03 | 局部实现 | local coordination signal/contract、recipient filtering | 真实 fact consumer 的可信时钟/context revision/participant 状态；双角色实际接收与连续协同回执 |
 | R13 SpeechLease／三路径语音 | 局部实现 | lease、dialogue continuation、TTS adapter | preset/catchphrase 目录、三路径 dispatch、取消/迟到；音频生成不等于空间 played/heard，听见证据最后验收 |
@@ -219,3 +219,12 @@
 - R09只完成真实提交后的新进程exact retry/changed duplicate子项。fixture已有的丢writeback修复不等同于该真实模型run经历了提交前后中断；checkpoint＋tail、共同cut、旧worker迟到、多owner和完整角色生命周期仍待验。正式模型Q01–Q04与Godot三项状态不升级。下一批依据D06/D10/R10–R14的实际consumer依赖推进，不为已有inspect子项继续堆叠无新增风险的测试。
 
 - 本批恢复索引 docs gate passed/cleanup passed：run `c5b229b132a9453f98edbf26e49b0da2`，外部根下 `laya-owner-recovery-docs/`。仅精准提交本轮矩阵回写，不提交历史dirty/untracked领域文件。
+
+## R10 registered learning owner 前置
+
+- [设计](../../superpowers/specs/2026-10-20-registered-learning-authority-design.md)与[计划](../../superpowers/plans/2026-10-20-registered-learning-authority-implementation-plan.md)：新增独立 `skills/learning_authority.py`，复用现有 shared GameplayEventStore、技能 registry 和 stable compiler，不依赖历史未提交 episode/settlement 改动。
+- 内部对象规则绑定 skill、方法/阶段/operation、来源 owner/type/version、actor/world、最低证据与注册 outcome；每条 evidence 必须有同库原事件、transaction membership 和已提交 receipt。来源 read CAS 与 actor learned stream write CAS 原子校验。原 receipt exact retry 可跨 source advance、rule removal 和 SQLite 重开；changed duplicate、同 actor/object 重复证据与坏 projection 拒绝。
+- 受限 `granted/locked` 技能不能被对象注册直接授予；`evolution` operation 和 `evolved` stage 都要求注册 Siming source。补充 RED 先复现受限技能授予、可变 dict 的 bool revision 被 JSON dump 转整数，以及 evolved stage 绕过；改为原 Python 值严格重验并补门禁。两处新增测试曾误读 receipt 顶层 error_code，已按实际 failure 合同修正，不作为产品缺陷。
+- 最终隔离 run `060b10b09b334dd7bc372a20bcb6cb69`，HEAD `e23c917a`＋精确两新增后端文件，**39 passed**（owner 29＋既有 service 10），exit=0/cleanup passed；外部根下 `registered-learning-owner-receipt-scope-final/` 有原始日志、JUnit、source 与 SHA256 manifest。覆盖缺来源/错误 subject/principal/outcome/privacy/stale、零写拒绝、前置技能成功链、source 并发变更、写入前故障、提交后丢响应、strict schema opt-in、损坏 projection、SQLite 恢复及 existing compiler 消费。较早36项与38项隔离结果由最终39项取代，不重复计入。最终复核 RED 复现其他 stream 回执被 exact retry 接纳；已补 owner stream/type/version/transaction 作用域门禁。
+- backend-contract run `76752ae4862a4223be71c49ca28593b5` passed/cleanup passed，外部根下 `registered-learning-owner-contract/`。这是静态边界门禁，不能代替运行时学习路线。
+- **R10仍局部实现**：schema 仅 opt-in，尚无生产 shared-store registration/caller。episode、时间/资源、teacher 可见性、八维 mastery/七维 difficulty、fusion/evolution 图语义、下一回合 capability 刷新和共同 checkpoint cut 均待后续接线。测试 source 为受控提交，非真实角色/Laya学习证据；无正式模型质量或Godot升级。未运行全量 pytest/Harness all，未启动模型训练或Godot。
