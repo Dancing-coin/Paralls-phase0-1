@@ -187,3 +187,8 @@ Production egress persists a separate dispatch-offered session event (not a nond
 
 - `067f69df` enforces the existing frozen policy task output budgets in actual HTTP/SSE payloads and validates before provider routing/fallback. Exact two-source isolation186 passed (run `5c5fdc666d0a491792846a5dd289e5f6`, cleanup passed); no policy/model/world rule invented. Requests with no policy retain legacy behavior, so this does not close dialogue ingress or whole-input budgeting.
 - Next: map DialogueService runtime context and canonical dialogue turn/lease to the shared frozen envelope/policy. Do not silently reuse the previous cognition turn. Separate source/revision and provider identity from output-token enforcement, and keep model quality/Godot gates open.
+
+
+### R06 dialogue inheritance and assisted suggestion increment
+
+`63739f10`: same-speaker dialogue fallback consumes the current original L2/L3 frozen contract; actual player reply recipient corrected. All three synchronous assisted sources and durable suggestion preparation now carry that same turn/contract through the third L3 request. Exact five-source isolation271 passed, run `e8f8bb4dd7384e9fae31f35238e6ea69`; backend-contract `165c62e3bec2462e9e093e59fe141306` passed; cleanup passed. Historical SpeechLease/runtime edits excluded. Cross-speaker fallback deliberately does not inherit recipient private policy; own speaker contract and no-cognition paths remain open. Next resolve those actual dialogue source/pin contracts before claiming R06 closure; preserve the matrix's full owner/model/Godot dependency order and do not extend narrow tests without a concrete new risk.

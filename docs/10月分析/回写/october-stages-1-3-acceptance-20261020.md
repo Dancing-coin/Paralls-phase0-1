@@ -265,3 +265,13 @@
 - 未运行全量pytest/Harness all，未启动模型训练、Godot或新增真实owner纵切。后端预算子项完成；正式质量、完整角色闭环和最终A/B/C仍开放。
 
 - 本批静态布局来源导出 run `531c12727a7f40d7a6ff5dd1188da796`（`model-layout-source-audit/`，config与官方common源码及各自SHA），cleanup passed。矩阵/计划docs gate run `efd6b023adef48a2bec8f35d34a4fd08`（`cognition-output-budget-docs/`）passed/cleanup passed；上批归因docs gate `4f4ecbe3c9704d019ff024867d2408f0`同样通过。
+
+
+## R06 对话同角色契约与 assisted 建议增量
+
+- `63739f10`：同一 DialogueCoordinator 续执行冻结并校验 L2/L3 的原包络、策略和 turn；同角色后备 dialogue_generation 沿用该合同，召回和实际 provider 输出预算消费同一 policy。拒绝缺摘要、摘要篡改、错角色/turn与阶段间合同变化。玩家回复的目标改为实际发起者，避免回复上下文指向自己。
+- assisted 第三次 L3 建议请求原先缺合同，被现有 learning revision 校验以 `learning_contract_stale` 拒绝；修复三个同步来源及持久化 suggestion 请求的原 turn/contract 传递，不放宽校验。持久化 turn 先还原为 CharacterTurnContext。新回归覆盖实际三个 provider 请求及持久化 frozen context。
+- 精确 HEAD `e1f95fac`＋五份源码隔离 **271 passed**，run `e8f8bb4dd7384e9fae31f35238e6ea69`，cleanup passed；外部根下 `dialogue-contract-inheritance-final/` 保留源码、manifest、JUnit、日志。backend-contract run `165c62e3bec2462e9e093e59fe141306` passed/cleanup passed。最初隔离177 passed/3 failed；失败已定位并修复，不计入通过证据。新增 durable 回归发现的 dict turn 错误也已修复。
+- **后端**：上述子项完成。主动发话的后备 speaker 可能与 cognition recipient 不同，现明确不继承对方私有合同；自己的新契约及无 cognition job 路径仍缺，R06维持局部。历史 SpeechLease 和其他用户修改未混入本提交。
+- **模型质量**：无新真实模型评分，Q01–Q04状态不变。**角色闭环**：本批没有新增领域 owner 或完整动作闭环，R07–R14依原矩阵开放。**Godot**：A/B/C未修改、启动或验证。
+- 未运行全量pytest/Harness all；只运行相关对话、认知、provider和持久化检查。run_scope临时副本已清理；早期默认pytest目录及历史证据保留。扩大目标以本矩阵/计划为准；Goal工具只有状态接口，无法修改旧objective文本，保持active，不虚报目标已改或已完成。
