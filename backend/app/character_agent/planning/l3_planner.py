@@ -826,7 +826,7 @@ class CharacterAgentL3Service:
             "capability_envelope": capability_envelope.model_dump(mode="json"),
             "cognition_policy": cognition_policy.model_dump(mode="json"),
             "turn_id": cognition_policy.turn_id,
-            **({"frame": frame.model_dump(mode="json")} if frame is not None else {}),
+            **({"frame": frame} if frame is not None else {}),
         }
         if laya_route:
             request_context["provider_revision"] = LayaSystemOneProvider.PROVIDER_REVISION

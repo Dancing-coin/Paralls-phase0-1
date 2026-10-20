@@ -106,7 +106,7 @@ class CharacterAgentL2Service:
             )
             mind_frame = mind_frame.model_copy(update={"provenance": mind_frame.provenance.model_copy(
                 update={"source_refs": sorted(set(mind_frame.provenance.source_refs) | {turn_context.source_event_ref})})})
-            context["frame"] = mind_frame.bind_to_turn(turn_context).model_dump(mode="json")
+            context["frame"] = mind_frame.bind_to_turn(turn_context)
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
             context=context,

@@ -616,5 +616,6 @@ Contract commit `063b29a0`; docs first failed (`7dae8ac4ffd64e03a0462d5d6e259412
 ### Driver batch 4 diagnostic (2026-10-21)
 
 - 首次尝试在 provider pending 时释放 actor activation，违反现有 driver 的 slot/lease/retry/cancellation 预期，driver suite 为 7 failed/2 passed；撤下该未提交 driver patch 后，同一 suite 仍为 7 failed/2 passed，现有 provider preparation/delivery 根因待独立定位。该结果不作为 fast/slow coexistence 证据，也不改变已通过的 owner 接纳实现状态。
+- 根因定位与修复（2026-10-21）：普通 `ingest_siming_output` 的 L2/L3 请求在 gateway 校验前把 `CharacterMindFrame` 提前转成 JSON dict，导致 `gateway requires a frozen mind frame`，provider 未启动。保留 MindFrame 实例到 gateway，交由冻结序列化处理；driver 回归 `python -m pytest -q backend/tests/test_character_cognition_driver.py` 为 **9 passed**，与慢目标 coordinator/store/transition 合并为 **41 passed**。这只恢复 driver 基线，不代表生产 trigger、快慢并行、完整 Laya、正式模型质量或 Godot 已验收。
 - 复验 owner 接纳相关范围：`python -m pytest -q backend/tests/test_character_slow_goal_coordinator.py backend/tests/test_character_slow_goal_atomic_acceptance.py backend/tests/test_character_slow_goal_transition.py`，32 passed。无本批运行产物需保留；没有运行全量 pytest、Harness all、真实模型、正式质量拆分、训练或 Godot。
 - 矩阵状态：后端 coordinator/store owner acceptance 子项已完成；driver/provider dispatch 未验收。Q01–Q04 未验收；角色完整慢目标→Laya action+target→L4→domain receipt/recovery 未验证；最终 Godot G-A/B/C 未操作，仍排最后。
