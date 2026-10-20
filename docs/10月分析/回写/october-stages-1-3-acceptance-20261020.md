@@ -26,7 +26,7 @@
 | D07 状态／效果／装备；规格10 | 局部实现 | Status lifecycle、equipment activation/command、effect/stat projection | 实际角色动作消费的权限/版本/失效链、效果与资源真实 owner 回执及恢复；全领域集中切换不能由装备单例代替 |
 | D08 技法／多 owner／物理；规格11、计划04 Task4 | 局部实现 | 既有 ESM、street embodied owner、Durable combat adapter、canonical faction/Threat/encounter | authenticated canonical combat producer、正式 faction/target source、角色合同接线；真实 physics/contact 证据在最终 Godot 阶段取得，禁止伪造 |
 | D09 LifeState／Presence；规格12、计划04 Task5 | 局部实现 | LifeState owner、case-death caller、Population activation→Presence、incarnation/replay | 正式场景 source 与角色私有投影/target eligibility、迁移恢复；不从 HP 或 profile 推死亡事实 |
-| D10 Soul／identity；规格08/12 | 局部实现（来源、anchor provenance、事实发行/撤销、只读 vulnerability 计算） | soul_sources.py、soul_presence_sources.py、soul_runtime.py、soul_fact_runtime.py、soul_vulnerability.py；本轮事实注册快照、版本隔离、原 anchor cut 与重开回执测试见下 | 完成 Life/mind 注册语义、带 effect/value 的有限 operation 与 counterplay、四门 admission、正式 schema/composition、checkpoint/common-cut/private projection 和生产角色/L4 接线；当前 issue/revoke 仅为事实生命周期基础，不代表效果执行权限 |
+| D10 Soul／identity；规格08/12 | 局部实现（来源、anchor、事实生命周期、vulnerability 与 bind/unbind 四门 CAS） | soul_sources.py、soul_presence_sources.py、soul_runtime.py、soul_fact_runtime.py、soul_vulnerability.py、soul_effect_runtime.py；本轮事实注册快照、版本隔离、原 anchor cut 与重开回执测试见下 | 完成生产 Life/mind 注册语义、其余有限 effect/value operation 与 counterplay、生产四门 admission、正式 schema/composition、checkpoint/common-cut/private projection 和生产角色/L4 接线；当前 issue/revoke 仅为事实生命周期基础，不代表效果执行权限 |
 | D11 全域 replay 与故障；计划04 Task6 | 局部实现 | 十领域 shared Durable cut、具名 participant matrix、Task6 fault allowlist | 全部本次正式准入 owner 的同一 global atomic cut，以及恢复/迁移/权限/隐私 parity；42 participant 独立测试不等于共同 cut |
 
 ## 二、角色与 Laya 闭环
@@ -375,3 +375,12 @@ D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner�
 
 - 新增 `backend/tests/test_worktable_process_recovery.py` 定向回归：真实 `use_object:obj_worktable` 与 `finish_use:obj_worktable` 通过同一 `ESMService` durable object owner，先提交两个原始 owner receipt，再模拟 finish outcome 写回丢失；新 Python 进程只从 SQLite 原回执恢复两个 settlement，补写缺失 session outcome，exact retry 不新增 outcome 或 world event，改变 causation 的合同被拒。工作树 D 盘运行 **1 passed**；精确 HEAD `dc923017` 加新测试的隔离 run `d14ee3c0a3744ad982453ac913eb1171` 也 **1 passed**，cleanup passed，外部 `worktable-process-recovery/`。
 - 这只关闭 R09 的 worktable recovery 子项，并证明 owner receipt→角色 outcome 的重开路径；没有提升 R07/R08 的真实 backend/Laya live 证据，也不证明 finish 产出、多领域恢复、模型质量或 Godot A/B/C。
+
+
+## Soul binding 四门 owner 窄片（2026-10-20）
+
+- 后端：新增 `soul_effect_runtime.py`，仅实现注册的 `bind/unbind`、原 effect ref 反制、真实 link/grant/protection 与目标 vulnerability、完整 incarnation/包版本身份、所有活跃 issuer 的空 fact head0，以及来源读集和 Soul-only 写入同一 CAS。高于或等于 effect 的 protection 阻挡，低于不挡；跨规则保护逐项核验，不以最后一条遮蔽强保护。原 receipt 恢复先于当前 gates，持久化原注册及 vulnerability 摘要，并在原事务前缀中重做 settlement；不宣称 checkpoint/common-cut。
+- 验证：双角色 fixture 修复 char_b authored stamina 120 的真实 definition bounds；没有削弱生产校验。effect 文件29 passed，run `e4963d7a5a054d8a93c607943ebbbb61`。另发现4条 effect 的 projection 递归重验15次，新增回归 RED，改为单次同步调用内共享完整 transaction 身份验证集，独立调用重新验证；effect30 passed，run `869d7ae0c0b2497683821cc531109e7f`。精确 HEAD `82cce394` 加本批两文件隔离，Activation/Presence/Soul来源至effect **134 passed**，run `6c71edfa65944337a4e751c9f2937779`；backend-contract `3586c4b5928a46faaf6af66050efb083` passed。以上 scope 均 cleanup passed，外部证据同根下 `soul-effect-fixture-fixed/`、`soul-effect-replay-fixed/`、`soul-effect-isolated-final/`、`soul-effect-contract/`。
+- 审查限制：独立 reviewer spawn 因 C 盘空间不足失败，已做作者源码审查，不能记为独立通过。回放仍需逐历史前缀，消除了重复递归，不声称大历史性能已验收。anchor 尚为首 incarnation 单次绑定；重生重新准入仍缺。
+- 模型质量：未调用模型、未读取 final/holdout、未训练，Q01–Q04不升级。角色闭环：生产 schema/composition、私有投影、时间/expiry、其他 effect、共同 cut 与 Laya/L4 Soul接线仍缺，D10/R14不关闭。Godot A/B/C未修改、启动、操作或验证。没有运行全量pytest/Harness all，历史修改和证据保留。
+- 下一批返回阶段一/二的完整输入与动作目标、真实 owner 回执和正式质量来源，避免继续扩展本局部 owner 测试。Goal保持active；扩展目标由本矩阵与主计划承载，API无法改objective。

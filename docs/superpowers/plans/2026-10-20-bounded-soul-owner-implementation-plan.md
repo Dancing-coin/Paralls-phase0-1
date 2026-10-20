@@ -32,3 +32,12 @@ Soul fact lifecycle base: `soul_fact_runtime.py` and `test_soul_fact_owner.py` f
 精确 HEAD d7fdc2d7 加两份新增源码/测试的隔离 Soul 回归 **67 passed**，run `b024191aa9fe4d11bc7bd38bdc4f62b1`；backend-contract `080e84cf103c4035bcaa843bd5e56a27` passed；均 cleanup passed。外部证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `soul-vulnerability-continuity-red/`（目录名不代表 RED，实际 exit0）及 `soul-vulnerability-contract/`。最初 RED 17 failed/49 passed；首轮实现 1 failed/65 passed 为伪造夹具默认 project visibility 比 owner 白名单更早被拒绝，改为 authority_only 夹具后证明精确 unsupported-owner 拒绝；不削弱源校验。
 
 D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner、四门组合、读集与 effect 写入同一 CAS、schema/composition、checkpoint/common-cut/private projection、L4 均未关闭。Q01–Q04、R07–R09/R14 和 Godot A/B/C 状态不提升。未运行全量 pytest/Harness all、模型或 Godot。下一批回到完整 action+target 质量来源与角色闭环，避免继续扩展 reader 局部测试。
+
+
+## Soul binding 四门 owner 窄片（2026-10-20）
+
+- 后端：新增 `soul_effect_runtime.py`，仅实现注册的 `bind/unbind`、原 effect ref 反制、真实 link/grant/protection 与目标 vulnerability、完整 incarnation/包版本身份、所有活跃 issuer 的空 fact head0，以及来源读集和 Soul-only 写入同一 CAS。高于或等于 effect 的 protection 阻挡，低于不挡；跨规则保护逐项核验，不以最后一条遮蔽强保护。原 receipt 恢复先于当前 gates，持久化原注册及 vulnerability 摘要，并在原事务前缀中重做 settlement；不宣称 checkpoint/common-cut。
+- 验证：双角色 fixture 修复 char_b authored stamina 120 的真实 definition bounds；没有削弱生产校验。effect 文件29 passed，run `e4963d7a5a054d8a93c607943ebbbb61`。另发现4条 effect 的 projection 递归重验15次，新增回归 RED，改为单次同步调用内共享完整 transaction 身份验证集，独立调用重新验证；effect30 passed，run `869d7ae0c0b2497683821cc531109e7f`。精确 HEAD `82cce394` 加本批两文件隔离，Activation/Presence/Soul来源至effect **134 passed**，run `6c71edfa65944337a4e751c9f2937779`；backend-contract `3586c4b5928a46faaf6af66050efb083` passed。以上 scope 均 cleanup passed，外部证据同根下 `soul-effect-fixture-fixed/`、`soul-effect-replay-fixed/`、`soul-effect-isolated-final/`、`soul-effect-contract/`。
+- 审查限制：独立 reviewer spawn 因 C 盘空间不足失败，已做作者源码审查，不能记为独立通过。回放仍需逐历史前缀，消除了重复递归，不声称大历史性能已验收。anchor 尚为首 incarnation 单次绑定；重生重新准入仍缺。
+- 模型质量：未调用模型、未读取 final/holdout、未训练，Q01–Q04不升级。角色闭环：生产 schema/composition、私有投影、时间/expiry、其他 effect、共同 cut 与 Laya/L4 Soul接线仍缺，D10/R14不关闭。Godot A/B/C未修改、启动、操作或验证。没有运行全量pytest/Harness all，历史修改和证据保留。
+- 下一批返回阶段一/二的完整输入与动作目标、真实 owner 回执和正式质量来源，避免继续扩展本局部 owner 测试。Goal保持active；扩展目标由本矩阵与主计划承载，API无法改objective。
