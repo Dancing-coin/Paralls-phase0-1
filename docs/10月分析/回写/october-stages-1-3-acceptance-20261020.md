@@ -41,7 +41,7 @@
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect owner＋session outcome）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；仅 public plaque inspect。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
-| R09 中断／恢复／回放 | 未验证（端到端） | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
+| R09 中断／恢复／回放 | 局部验证（真实inspect提交后新进程exact receipt恢复）；完整故障/回放未验证 | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
 | R10 学习／技能形成；规格06 | 局部实现 | extractor/gate/settlement、capability-action vertical | 四学习路线目前到缺 owner 拒绝；正式对象/策略注册与真实 skill owner 结算。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |
 | R12 协同／短契约；计划03 | 局部实现 | local coordination signal/contract、recipient filtering | 真实 fact consumer 的可信时钟/context revision/participant 状态；双角色实际接收与连续协同回执 |
@@ -210,3 +210,12 @@
 - 真实纵切前 run `0232edbf21964d9195d8ed094eb5517b`（目录 `laya-object-production-owner-original-intent/`）已保持 inspect 原合同，但 launcher 在 app/config 导入后才设置scope环境变量，导致 scope mismatch，零owner写；修正launcher将scope置于所有app导入前，未放宽生产准入。该失败不计通过。
 - 有效纵切 run **`4f2816ada4884a7dabab3644ff878564`**（HEAD `628f05c2`，目录 `laya-object-production-owner-configured/`）：真实 WebSocket raw fact→L2 local baseline→官方 Laya `inspect_object:obj_plaque`→同一turn/source/candidate/digest的 L4 inspect/action:inspect→认证开发controller空间sample→原 shared-store ESM owner提交→world_result与角色session settlement outcome。空间receipt位于global sequence 9，ESM receipt位于10；owner transaction为 `transaction:esm-object:5efe5d357f4378db0475365744a690496317250267f93e6fc161f855e4d8ba90`，world_result和session outcome均引用原transaction。服务输入5822 tokens无截断。cleanup passed，本轮Laya服务已正常关闭。
 - 该空间sample为认证开发controller报告，**不是Godot/physics/contact证据**；L2是local baseline。仅升级 R07/R08 的公开plaque inspect子项，R09完整恢复/回放、其余动作/owner覆盖与Q01–Q04、G-A/B/C仍开放。不能从此单例推正式模型质量、通用owner admission或整个角色闭环完成。
+
+
+## 真实 inspect 纵切的新进程恢复子项
+
+- run `e9c21eb2ffa945c18fb95a289d14c8aa`（HEAD `143799c`），外部根下 `laya-object-production-owner-recovery/`。先运行同一真实 backend/Laya/认证开发空间source/ESM owner路径，关闭backend后，新 Python 进程重开原 world SQLite＋原 character session SQLite，以原冻结合同查询执行；没有新模型调用、派发offer或新鲜pose。原 receipt逐字段一致，重复执行不重复提交，改写目标在source校验拒绝。
+- `new-process-recovery.json`：世界 global sequence **10→10**，session event count **17→17**，settlement outcome **1条**；changed duplicate错误 `execution_source_mismatch`。recovery exit=0，主backend exit=0，run cleanup passed；本轮Laya进程正常退出，18765/18766无listener。
+- R09只完成真实提交后的新进程exact retry/changed duplicate子项。fixture已有的丢writeback修复不等同于该真实模型run经历了提交前后中断；checkpoint＋tail、共同cut、旧worker迟到、多owner和完整角色生命周期仍待验。正式模型Q01–Q04与Godot三项状态不升级。下一批依据D06/D10/R10–R14的实际consumer依赖推进，不为已有inspect子项继续堆叠无新增风险的测试。
+
+- 本批恢复索引 docs gate passed/cleanup passed：run `c5b229b132a9453f98edbf26e49b0da2`，外部根下 `laya-owner-recovery-docs/`。仅精准提交本轮矩阵回写，不提交历史dirty/untracked领域文件。
