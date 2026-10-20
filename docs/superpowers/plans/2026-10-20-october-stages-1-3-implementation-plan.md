@@ -273,3 +273,7 @@ HEAD wiring correction and final resume check: committed coordinator already car
 ### D08 authenticated faction source 批次
 
 复用 world-admin verifier 和 RuntimeExecution，新增严格 HTTP 命令与真实 faction owner receipt，队列执行前再次认证并核对当前 world。明确 timeline 是管理员显式作用域，不授予 encounter 或 physics 事实。精确 HEAD fd48888a 加三文件隔离24 passed/4既有warnings，包含独立 uvicorn 真实 HTTP、进程重启原 receipt 与 SQLite 单事件验证；run 5aded566ac5d42bf98b701c3598cfba4，backend-contract 103c59e0a50e42ba928086aaf40dfd63 passed，cleanup passed。修复前的测试观察器竞态22pass1fail保留，见矩阵。仅采用 faction 部分，不收编历史 Threat/encounter/adapter/main cadence 路由。下一批直接连接角色 target admission 与执行时 source CAS，模型正式质量/完整角色/Godot 不升级。
+
+### D01/D08 runtime timeline 来源前置
+
+Ruling: adopt only existing four typed time values, rational clock mapping and backend-owned Population timeline in the actual driver. Keep fixed seconds profile and existing durable publisher cursor; do not adopt historical grants, migration, scheduling or broad main/publisher changes. Process-local timeline authoritative_revision is not a durable CAS pin. Actual main runtime RED lacked timeline; exact HEAD d37d9c81 plus four staged files now68passed/4existingwarnings (46803e72aad24c43ad2eac68eb274fb7), including failed publisher/no advance, wrong mapping zero-write and durable reopen. Cleanup passed; evidence and limits in matrix D01/D08. Next original canonical target source/caller; not more local temporal tests. No fullpytest/all/model/training/Godot. D02 matrix corrected to distinguish credential commit from historical uncommitted cadence route.

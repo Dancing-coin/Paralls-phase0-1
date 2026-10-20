@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Awaitable, Callable
 from time import monotonic
 from math import floor, isfinite
@@ -12,6 +13,7 @@ from app.population_continuity.siming_contracts import PopulationCadenceInput
 from app.population_continuity.world import WorldContinuityRuntime
 
 from .simulation_clock import SimulationClock, calculate_window_bounds
+from .temporal_contracts import ClockMapping, SimulationTimeline, TemporalProfile
 
 
 @dataclass(frozen=True)
@@ -45,13 +47,40 @@ class PopulationCadenceDriver:
         self.window_size = window_size
         self.catch_up_limit = catch_up_limit
         self.wall_period_seconds = wall_period_seconds
+        world_ref = world_runtime.mode.world_ref
+        confirmed = int(getattr(publish_window, "confirmed_tick",
+                        max(initial_tick, getattr(world_runtime, "_population_driver_confirmed_tick", initial_tick))))
+        self.mapping = ClockMapping(
+            mapping_id=f"population-seconds:{world_ref}", revision="population-seconds:v1",
+            source_clock_ref=f"population-driver:{world_ref}", source_unit_ref="second",
+            target_timeline_ref=f"population:{world_ref}", target_profile_revision="population-seconds:v1",
+            source_origin=0, target_origin=0, ratio=Fraction(1), rounding_policy="exact",
+            valid_source_interval=(0, 2**63 - 1), max_lateness=0,
+            evidence_source_policy_ref="population-cadence-driver",
+        )
+        profile = TemporalProfile(
+            profile_id="population-seconds", revision="population-seconds:v1",
+            content_package_ref="population-runtime", advancement_policy="caller-driven",
+            resolution_quantum="fixed_step", scheduling_policy="scheduled_event",
+            settlement_policy="confirmed_window", time_control_policy="world",
+            determinism_policy="best_effort", rewind_policy="disabled",
+            canonical_unit_ref="second", step_duration=Fraction(1),
+            supported_clock_mappings=(self.mapping.mapping_id,), rounding_policy="exact",
+            activation_boundary="window", compatibility_constraints=(),
+        )
+        timeline = SimulationTimeline(
+            timeline_id=f"population:{world_ref}", world_scope_ref=world_ref,
+            advancement_owner_ref=self.mapping.source_clock_ref, profile_ref=profile.profile_id,
+            profile_revision=profile.revision, epoch_ref="population-runtime:v1",
+            current_step=confirmed, current_phase=None, authoritative_revision=0, status="active",
+        )
         self.clock = SimulationClock(
             world_ref=world_runtime.mode.world_ref,
-            initial_tick=initial_tick,
+            initial_tick=confirmed,
             catch_up_budget=catch_up_limit,
+            temporal_profile=profile,
+            timeline=timeline,
         )
-        self.clock.tick = int(getattr(publish_window, "confirmed_tick",
-                              max(initial_tick, getattr(world_runtime, "_population_driver_confirmed_tick", initial_tick))))
 
     @property
     def current_tick(self) -> int:
@@ -82,6 +111,15 @@ class PopulationCadenceDriver:
         advanced_count = due_count = deferred_count = rejected_count = 0
         for index, (cadence_id, window_start, window_end) in enumerate(selected):
             try:
+                if (self.mapping.source_unit_ref != "second"
+                        or self.mapping.source_clock_ref != self.clock.timeline.advancement_owner_ref
+                        or self.mapping.ratio != Fraction(1)):
+                    raise ValueError("population_time_unit_mismatch")
+                mapped = self.clock.map_source_time(
+                    mapping=self.mapping, source_clock_ref=self.clock.timeline.advancement_owner_ref,
+                    source_unit_ref="second", source_revision="population-seconds:v1",
+                    expected_source_revision="population-seconds:v1", mapping_revision="population-seconds:v1",
+                    sampled_at=window_end, received_at=window_end)
                 with self.world_runtime.store.group_commit():
                     cadence = self.world_runtime.build_population_cadence(
                         window_start=window_start,
@@ -103,13 +141,14 @@ class PopulationCadenceDriver:
                 break
             published.append(cadence_id)
             confirmed_tick = window_end
+            self.clock.advance_mapped(mapped, advancement_owner_ref=self.clock.timeline.advancement_owner_ref,
+                                      source_mapping=self.mapping)
             receipt = getattr(self.world_runtime, "last_population_confirmation", None)
             if receipt is not None and receipt.cadence_id == cadence_id:
                 advanced_count += receipt.advanced_count
                 due_count += receipt.due_count
                 deferred_count += receipt.deferred_count
                 rejected_count += receipt.rejected_count
-        self.clock.tick = confirmed_tick
         self.world_runtime._population_driver_confirmed_tick = confirmed_tick
         return PopulationDriverTickResult(
             published_cadence_ids=tuple(published),

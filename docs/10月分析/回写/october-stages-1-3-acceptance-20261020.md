@@ -44,7 +44,7 @@ RED run `7d1e5035224448de802e40fec2cc3056` 为缺少 resolver 方法的6项失�
 | ID／来源 | 当前状态 | 可复用实现与证据入口 | 剩余工作与验收条件 |
 |---|---|---|---|
 | D01 时间／迁移；规格09、计划04 Task1 | 局部实现 | `simulation_clock`、temporal mapping/profile、Population cadence；closure 的 Task1 consumer 矩阵 | 逐个实际 consumer 的 source/clock/revision/expiry/grant 与 receipt；保留 world-time 和 operational timeout 分离，不另造 clock |
-| D02 管理员 cadence 撤权生产入口 | 已完成（测试部署边界） | `world_admin_auth_service.py`、`runtime_asgi.py`、`runtime_process.py`、`main.py`；本轮 Task1/Task6/docs 导出见下 | 真正部署 credential/TLS 尚未验证；本行不代表通用 capability/facility grant issuer 完成 |
+| D02 管理员 cadence 撤权生产入口 | 局部实现（测试部署已有证据，应用路由仍未收编） | credential/verifier 已提交；`runtime_asgi.py`、`runtime_process.py`、cadence main 路由仍为历史工作树；本轮 Task1/Task6/docs 导出见下 | 先核验并收编必要应用接线；真正部署 credential/TLS 尚未验证；本行不代表通用 capability/facility grant issuer 完成 |
 | D03 SettlementWindow／owner 批次；规格09 | 局部实现 | Population→Inventory custody、Economy tax/calendar、Ecology temporal、Status/Action；[stage3 closure](stage3-closure-20261016.md) | 复核正式启用 consumer 的完整 read-set、cutoff/order/late-input、原子 owner receipt 与重启；不能从一个 consumer 推全域 |
 | D04 T07 随机业务；计划04 Task2 | 局部实现 | Economy random owner、版本化 policy、typed self-draw ingress、random replay participant | authenticated lottery/loot/event-choice 实际 producer、公开交付与收据回流；不能把 fixture demand 或 controller binding 当正式业务来源 |
 | D05 T09 prediction；计划04 Task2 | 局部实现 | Equipment command/prediction typed ingress、ledger、confirmation、Durable recovery | 正式 demand producer、确认/撤销/冲突与真实 owner receipt；不能把 preview promotion unsupported 改写为通过 |
@@ -437,3 +437,11 @@ D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner�
 - 此入口仅授权指定 world 下明确 timeline 的方向性 faction 事实；不授予当前 timeline、encounter、Presence/Life 或 Threat 准入。无外网 TLS 部署证据。此次才将 verifier 的 main composition 纳入提交；此前 `c2ebb578` 仅提交 credential 层，D02 的 cadence 应用路由仍在历史工作树，既有测试部署证据不能推断其已提交。
 - **后端**：D08 faction 来源子项完成，完整 target/caller/Threat 仍开放。**模型质量**：Q01–Q04无新增评分。**角色闭环**：完整动作、目标与真实 L4 纵切仍开放。**Godot**：A/B/C 未修改、启动或验证。无全量 pytest/Harness all、模型训练或额外真实模型调用。下一步消费已接通的 Presence/Life/faction 到角色目标准入与执行时 recheck/CAS；禁止仅翻转历史 adapter 常量或伪造 hit。
 - docs gate `3c6933d57cf64f208cf81c0a4845d34a` passed/cleanup passed；最终暂存仅整理 faction 模块空行，行为与上述隔离源码一致。
+
+## D01/D08 后端自有 timeline 前置
+
+- 依据规格09 T01/T03、计划04 Task1及本整合计划 Task2，窄采用历史 TemporalProfile/SimulationTimeline/SimulationTime/ClockMapping 与精确 mapping；实际 Population driver 以 `population:<world_ref>` 为 timeline、`population-driver:<world_ref>` 为推进 owner。timeline 来自后端组合，不能由 faction 请求或角色选择覆盖。现有 canonical second/cadence 单位不变；拒绝 raw advance，映射先于 cadence 构建，只有 publisher 确认才推进 timeline。
+- Ruling：本批不收编完整时间授权、迁移、跨领域 scheduler 或历史 publisher/main 组合。固定 profile 与 timeline 身份可由实际运行时提供；durable confirmed cursor 仍来自既有 publisher 重开逻辑。timeline 的 authoritative_revision 是本次进程内推进计数，不是持久化 CAS revision；角色执行仍须消费真正 owner source revision。完整时间迁移/授权与 common cut 保持开放。架构、时序、数据流沿用[规格09](../规格/09-通用时间权限投影与领域服务接入规格.md)及其 linked 回写，不新增时间 owner。
+- RED `3f575efc252b43338c9583278530e421`：实际 main startup 后无 clock.timeline，1 failed。初次绿色49 passed，run `62c0253b04504cf188034dd6de28608d`；补入错误 unit/revision/timeline 零写、raw advance 拒绝与原 durable cadence recovery 后，精确 HEAD `d37d9c81`＋暂存四文件 **68 passed / 4既有FastAPI warnings**，run `46803e72aad24c43ad2eac68eb274fb7`。三个 scope cleanup passed；证据根同前，目录 `population-timeline-red/`、`population-timeline-green/`、`population-timeline-final/`。覆盖实际 RuntimeExecution、失败发布不推进、真实 cadence 确认推进和 SQLite 重开；不要求启动时没有合法新增 cadence。
+- **后端**：仅关闭当前 timeline 来源前置，D01/D08 仍局部；下一项是 Presence/Life/faction 真实 target/caller，而非继续扩展时钟局部测试。**模型质量**：Q01–Q04不变，无模型调用/训练或正式 split 暴露。**角色闭环**：完整动作目标及 Laya/L4/多领域原回执仍开放。**Godot**：A/B/C未修改、启动、操作或验证。未运行全量pytest/Harness all；历史工作树保留，暂存只含四文件必要子集。
+- 静态 gate：backend-contract `0eaa92f3a84544e6a5372f83e040463a`、docs `b972a284d5934b65971f9679316686f6` 均passed/cleanup passed（`population-timeline-contract/`、`population-timeline-docs/`）。
