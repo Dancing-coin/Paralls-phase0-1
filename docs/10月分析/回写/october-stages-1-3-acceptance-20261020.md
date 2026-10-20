@@ -18,6 +18,16 @@ termination coverage. This is a local character state-machine seam only. It does
 a production trigger producer, complete Laya action+target→L4→domain-owner receipt
 and recovery, Q01–Q04 model quality, or Godot A/B/C.
 
+The bounded trigger derivation slice is committed as `5ab38894`: it derives
+`repeated_failure` and explicit actor-private failure markers from committed
+settlement outcomes and deliberately ignores L2 `goal_hints`. Focused producer
+coverage is **2 passed** (10 passed with the behavior-turn recorder selection).
+This remains **局部实现**: the runtime hook still needs a turn-bound frozen
+MindFrame, and main composition still needs a dedicated
+`goal_proposal_trigger` admission/activation branch. Until those are connected
+through the existing coordinator/driver and owner receipt path, production slow
+goal closure is not claimed.
+
 以下是生产能力的剩余依赖，不把旧的三选项信息诊断包扩充后冒充完整动作集。
 
 | 路径 | 当前实现及来源 | 下一验收依赖 |
