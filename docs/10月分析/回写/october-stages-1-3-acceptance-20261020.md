@@ -304,3 +304,11 @@
 - HEAD `91da7f0e`＋两份精确源码隔离**36 passed**、8条既有FastAPI/Pydantic warnings；run `5164b2e1f0a84d19b0a6b0a99131c032`，外部证据根下`activation-sources-final/`。backend-contract `f19b4222cc304791ba44f636c93e8375` passed；两者cleanup passed。首次RED的19项缺adapter失败属预期，另两项旧测试缺manifest是隔离脚本错误，补入HEAD已提交manifest后通过，未当成产品缺陷。恢复RED `78a0cee9474c4c60b7239136384609e0`；索引篡改RED `033e78f271a64cc7929cb3cf6abc75c2`；receipt状态RED `c5526b1bbd704d3cb66dfc63fd1e974c`。
 - **后端**：只完成activation来源适配器，尚未接入Presence owner/生产composition，D10完整Soul owner仍未实现。**模型质量**：Q01–Q04不变，无新正式分数。**角色闭环**：R14未升级。**Godot**：A/B/C仍未操作/验证。下一步以该reader替换历史Presence前缀准入，并补合法incarnation历史、原receipt恢复及固定cut写CAS；有任何Life历史时新spawn保持不可用，直到正式Life source adapter存在。
 - 本轮没有全量pytest/Harness all、模型调用/训练或Godot。临时副本通过run_scope回收；历史工作区和.harness证据保留。Goal保持active；工具只能修改状态，扩展目标仍以统一矩阵与计划为准，不虚标完成以替换旧标题。
+
+
+## D10 Presence owner准入依赖
+
+- 已基于上一批真实activation reader实现并审核Presence spawn/despawn owner；本批精确源在`presence-owner-final/`：HEAD `c72f5ee0`＋三份源码隔离**46 passed**，run `ad396f75baa24b408be116b6807ceffc`，cleanup passed。覆盖真实Activation Authority/非空grant、SQLite恢复、双incarnation连续spawn/despawn、原Presence回执exact retry、无写projection checkpoint replay、坏transaction/receipt/index缺失、旧source/historical recover、非法incarnation、变更重复请求、expected-head提前拒绝、activation与Life缺失CAS竞态，以及无Life adapter时dead/alive任意life history fail closed。backend-contract `351c989d07cb4fd4ba9714e51a74ffa3` passed/cleanup passed。最终文件逐项匹配隔离manifest。
+- Presence schema为owner局部opt-in schema1两条event；不把独立schema2 LifeState归属并入Presence。activation reader仅作为构造参数；跨store拒绝。新spawn对Population原head、Presence写head与Life absence=0原子CAS。历史receipt可按原activation cut恢复，不重解释当前grant/registry；但若Life历史非空，仍无法断言可重新spawn，明确不可用。
+- **后端**：Population/Presence source slice可用但未接生产composition、Soul anchor/grants/protection/four gates未实现，D10开放。**模型质量**：Q01–Q04无变化。**角色闭环**：Laya/L4/R14未升级。**Godot**：A/B/C尚未开始。下一依赖是已注册的Soul anchor/identity binding owner与真实opt-in Life semantics，再实现四门和L4 original action consumer，不把当前Presence接入误报为完整角色准入。
+- `presence-owner-red`因尚无adapter预期失败11/43；最终修复了事实索引缺失时KeyError逸出、幂等schema registration、receipt/global cut边界。未运行全量pytest/Harness all、模型或Godot。临时副本已清理，用户已有.harness内容保留。

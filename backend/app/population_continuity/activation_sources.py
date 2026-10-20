@@ -54,12 +54,15 @@ class ActivationSourceReader:
         self._grants = tuple((g.profile_ref, g.world_ref, g.package_revision,
             g.policy_revision, tuple(g.scope_grant)) for g in grants)
 
-    def recover(self, event_id: str, *, world_ref: str, profile_ref: str) -> ActivationSource:
+    def recover(self, event_id: str, *, world_ref: str, profile_ref: str,
+                at_revision: int | None = None) -> ActivationSource:
         """Validate an original activation, without asserting current permission."""
         event = self._event(event_id)
         self._validate(event, world_ref=world_ref, profile_ref=profile_ref)
         if event.event_type != _COMMITTED:
             raise ValueError('activation_source_not_committed')
+        if at_revision is not None:
+            return self._cut(event, world_ref=world_ref, profile_ref=profile_ref, head=at_revision)
         return self._source(event, event.stream_revision, (event,))
 
     def read(self, event_id: str, *, world_ref: str, profile_ref: str) -> ActivationSource:
@@ -81,6 +84,11 @@ class ActivationSourceReader:
         if identity != payload['identity_digest']:
             raise ValueError('activation_source_profile')
         head = self._store.get_stream_head(event.stream_id)
+        return self._cut(event, world_ref=world_ref, profile_ref=profile_ref, head=head)
+
+    def _cut(self, event, *, world_ref, profile_ref, head):
+        if type(head) is not int or head < event.stream_revision:
+            raise ValueError('activation_source_history')
         events = self._store.read_stream(event.stream_id, to_revision=head) if head else []
         if (len(events) != head or event.stream_revision > head
                 or any(type(item.stream_revision) is not int or item.stream_revision != index
