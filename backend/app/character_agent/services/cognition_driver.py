@@ -113,6 +113,8 @@ class CharacterCognitionDriver:
                         if progress.stage == 'l2'
                         else c.runtime._l3._gateway
                     )
+                    if progress.stage == 'goal_proposal':
+                        self._release(key, 'provider_pending')
                     return progress.stage, progress.request_json.encode('utf-8'), gateway
                 else:
                     if progress.status == 'completed':
@@ -131,14 +133,29 @@ class CharacterCognitionDriver:
     def _accept(self, key, stage, future):
         c = self.coordinator
         if c.admissions.read_progress(key).status in {'completed', 'stale'}:
-            return
-        handle = self._handles[key]
+            return True
+        entry = c.admissions.read(key)
+        handle = self._handles.get(key)
+        if handle is None:
+            handle = self.begin_activation(entry)
+            if handle is None:
+                return False
+            self._handles[key] = handle
         try:
             output = future.result()
         except Exception as provider_error:
+            if stage == 'goal_proposal':
+                try:
+                    c.terminate_goal_proposal(key, activation=handle, now=self.clock(),
+                        status='failed', reason='provider_error:'+type(provider_error).__name__)
+                except ValueError as acceptance_error:
+                    self._stale(key, acceptance_error)
+                else:
+                    self._release(key, 'failed')
+                return True
             if stage == 'suggestion':
                 self._stale(key, provider_error)
-                return
+                return True
             try:
                 c.accept_provider_error(key, activation=handle, now=self.clock(), stage=stage, error=provider_error)
             except Exception as acceptance_error:
@@ -149,14 +166,14 @@ class CharacterCognitionDriver:
                     if attempt > len(_PROVIDER_RETRY_DELAYS):
                         self._stale(key, ValueError(
                             'cognition_provider_retry_exhausted:' + type(provider_error).__name__))
-                        return
+                        return True
                     # 强制在线模式保留原冻结请求；短退避避免持续外部故障压垮 owner。
                     self._provider_attempts[key] = attempt + 1
                     self._retry_after[key] = self.retry_clock() + _PROVIDER_RETRY_DELAYS[attempt - 1]
-                    return
+                    return True
                 if isinstance(acceptance_error, ValueError):
                     self._stale(key, acceptance_error)
-                    return
+                    return True
                 raise
         else:
             try:
@@ -168,6 +185,8 @@ class CharacterCognitionDriver:
                 self._retry_after.pop(key, None)
             except ValueError as error:
                 self._stale(key, error)
+            self._release(key, 'result_ready' if stage == 'goal_proposal' else 'completed')
+        return True
 
     async def poll(self):
         if self._closed:
@@ -180,10 +199,13 @@ class CharacterCognitionDriver:
                 if not future.done():
                     continue
                 try:
-                    await self._owner(lambda: self._accept(key, stage, future))
-                finally:
+                    accepted = await self._owner(lambda: self._accept(key, stage, future))
+                except BaseException:
                     slot.close()
-                self._active.pop(key)
+                    raise
+                if accepted:
+                    slot.close()
+                    self._active.pop(key)
             for key in await self._owner(self._keys):
                 if key in self._active or self._closed:
                     continue
