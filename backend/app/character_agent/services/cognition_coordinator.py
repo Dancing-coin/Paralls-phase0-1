@@ -95,7 +95,8 @@ class CharacterCognitionCoordinator:
         if progress.stage != 'entry' or progress.status != 'stage_ready':
             raise ValueError('cognition_l2_entry_not_ready')
         self._validate_entry_pin(entry.actor_id, progress.plan, self_write=True)
-        request, context = self.runtime._freeze_siming_l2_request(entry.actor_id, progress.frame)
+        request, context = self.runtime._freeze_siming_l2_request(
+            entry.actor_id, dict(progress.frame, source_event_ref=key))
         revision = self.admissions.store.event_count(entry.actor_id)
         pins = dict(self.runtime._capture_cognition_pin(entry.actor_id))
         pins['timeline'] = self.runtime._cognition_digest(revision + 1)

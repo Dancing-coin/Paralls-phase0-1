@@ -1,4 +1,6 @@
 """真实子入站的第一阶段恢复，不能重新执行 Siming 感知入口。"""
+import json
+
 import pytest
 
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
@@ -584,6 +586,16 @@ def test_background_wake_uses_private_snapshot_and_completes_original_agenda(tmp
     assert entry_ready.status == 'stage_ready', entry_ready.frame.get('background_result')
     for stage in ('l2', 'l3'):
         pending = getattr(coordinator, 'prepare_'+stage)(child.child_key, activation=handle, now=112.)
+        request_context = json.loads(pending.request_json)['context']
+        turn = rt._cognition_frame_value(pending.frame, 'context')['turn_context']
+        assert turn['source_event_ref'] == child.child_key
+        assert request_context['cognition_policy']['turn_id'] == turn['turn_id'] == request_context['turn_id']
+        assert request_context['cognition_policy']['envelope_digest'] == request_context['capability_envelope']['envelope_digest']
+        if stage == 'l2':
+            frozen_contract = request_context
+        else:
+            assert request_context['cognition_policy'] == frozen_contract['cognition_policy']
+            assert request_context['capability_envelope'] == frozen_contract['capability_envelope']
         getattr(coordinator, 'accept_'+stage)(child.child_key, activation=handle, now=113.,
             output=rt._l2._gateway.complete_prepared_request(pending.request_json.encode()))
         getattr(coordinator, 'freeze_'+stage)(child.child_key, activation=handle, now=114.)

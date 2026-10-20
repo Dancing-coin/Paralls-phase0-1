@@ -1374,12 +1374,22 @@ class CharacterAgentRuntime:
             turn = self._durable_cognition_turn_context(frame)
             context.update(turn_context=turn, **self._freeze_turn_cognition_contract(actor_id, snapshot, turn))
         if frame['source_kind'] == 'run_background_cognition_tick':
+            turn = CharacterTurnContext.begin(
+                actor_id=actor_id, source_event_ref=str(frame['source_event_ref']),
+                producer_ts=int(frame['producer_ts']), causation_id=str(frame['source_event_ref']),
+                correlation_id=str(frame['source_event_ref']),
+                input_revision_vector={'l1_input': int(frame['producer_ts'])},
+                memory_revision_vector={'memory': 0}, policy_revision='policy:character-runtime:v1',
+                snapshot_revision=int(frame['producer_ts']), branch_id='branch:main',
+            )
+            context.update(turn_context=turn, **self._freeze_turn_cognition_contract(actor_id, snapshot, turn))
             background = self._background_reappraisal_payload(actor_id=actor_id, producer_ts=frame['producer_ts'],
                 snapshot=snapshot, current_goal_state=context['current_goal_state'],
                 unresolved_tensions=context['unresolved_tensions'], supervision_state=context['supervision_state'])
+            request_context = {key: value for key, value in context.items() if key != 'stable_ability_snapshot'}
             request = self._run_with_memory_recall(actor_id, snapshot,
                 lambda memory_override=None: self._l2.prepare_background_state(snapshot, background,
-                    **dict(context, memory_bundle=context['memory_bundle'] if memory_override is None else memory_override)))
+                    **dict(request_context, memory_bundle=context['memory_bundle'] if memory_override is None else memory_override)))
             context['background_payload'] = background
         else:
             request = self._run_with_memory_recall(actor_id, snapshot,
@@ -2946,6 +2956,15 @@ class CharacterAgentRuntime:
             unresolved_tensions=unresolved_tensions,
             supervision_state=supervision_state.model_dump(),
         )
+        background_turn = CharacterTurnContext.begin(
+            actor_id=actor_id, source_event_ref=f"background:{actor_id}:{producer_ts}",
+            producer_ts=producer_ts, causation_id=f"background:{actor_id}:{producer_ts}",
+            correlation_id=f"background:{actor_id}:{producer_ts}",
+            input_revision_vector={"l1_input": producer_ts}, memory_revision_vector={"memory": 0},
+            policy_revision="policy:character-runtime:v1", snapshot_revision=producer_ts,
+            branch_id="branch:main",
+        )
+        background_contract = self._freeze_turn_cognition_contract(actor_id, snapshot, background_turn)
         interpretation = yield from self._interpret_with_continuity_floor(
             actor_id=actor_id,
             producer_ts=producer_ts,
@@ -2963,6 +2982,10 @@ class CharacterAgentRuntime:
                 supervision_state=supervision_state.model_dump(),
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
+                effective_profile=background_contract["effective_profile"],
+                turn_context=background_turn,
+                capability_envelope=background_contract["capability_envelope"],
+                cognition_policy=background_contract["cognition_policy"],
             ),
         )
         if interpretation.cognition_status == "model":
@@ -2995,6 +3018,10 @@ class CharacterAgentRuntime:
                 unresolved_tensions=unresolved_tensions,
                 background_agenda_state=background_agenda_state,
                 behavior_policy_snapshot=behavior_policy_snapshot,
+                effective_profile=background_contract["effective_profile"],
+                turn_context=background_turn,
+                capability_envelope=background_contract["capability_envelope"],
+                cognition_policy=background_contract["cognition_policy"],
             ),
         )
         self._consume_behavior_policy_for_turn(

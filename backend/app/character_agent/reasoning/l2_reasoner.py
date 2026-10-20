@@ -397,6 +397,10 @@ class CharacterAgentL2Service:
         supervision_state: dict[str, object] | None = None,
         unresolved_tensions: list[dict[str, object]] | None = None,
         background_agenda_state: dict[str, object] | None = None,
+        effective_profile: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
+        capability_envelope: dict[str, object] | None = None,
+        cognition_policy: dict[str, object] | None = None,
     ) -> bytes:
         request = self.prepare_reasoning_request(
             snapshot=snapshot,
@@ -409,6 +413,10 @@ class CharacterAgentL2Service:
             supervision_state=supervision_state,
             unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state,
+            effective_profile=effective_profile,
+            turn_context=turn_context,
+            capability_envelope=capability_envelope,
+            cognition_policy=cognition_policy,
         )
         return CharacterModelGateway.freeze_prepared_request(request)
 

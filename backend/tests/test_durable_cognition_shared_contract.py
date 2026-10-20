@@ -9,10 +9,19 @@ from app.character_agent.planning.l3_planner import PreparedCharacterIntentPlan
 from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation, CharacterPrivateWorldSnapshot
 
 from test_character_cognition_coordinator import setup
+from test_character_cognition_admission import request
 
 
-def _pending(tmp_path):
+def _pending(tmp_path, *, background=False):
     runtime, admissions, coordinator, child, handle = setup(tmp_path)
+    if background:
+        runtime._l1.apply_siming_output(runtime._plan_siming_entry(child.payload)['normalized_payload'])
+        runtime.set_background_cognition_enabled(True)
+        runtime.set_background_mode('char_a', 'active')
+        runtime._refresh_weak_supervision_state(
+            actor_id='char_a', producer_ts=9999, reason_summary='background enabled')
+        child = admissions.admit(**{**request(), 'delivery_id': 'wake',
+            'source_kind': 'run_background_cognition_tick', 'payload': {}, 'producer_ts': 10000})
     coordinator.begin_entry(child.child_key, activation=handle, now=110.)
     coordinator.resume_entry(child.child_key, activation=handle, now=111.)
     pending = coordinator.prepare_l2(child.child_key, activation=handle, now=112.)
@@ -61,11 +70,17 @@ def test_durable_l2_and_l3_use_one_frozen_source_contract(tmp_path):
         rt.close()
 
 
-def test_provider_pending_reopen_does_not_recompile_contract(tmp_path, monkeypatch):
-    rt, _, _, child, _, pending = _pending(tmp_path)
+@pytest.mark.parametrize('background', [False, True])
+def test_provider_pending_reopen_does_not_recompile_contract(tmp_path, monkeypatch, background):
+    rt, _, _, child, _, pending = _pending(tmp_path, background=background)
     rt.close()
     rt, _, coordinator, _, handle = setup(tmp_path)
     try:
+        if background:
+            rt.set_background_cognition_enabled(True)
+            rt.set_background_mode('char_a', 'active')
+            rt._refresh_weak_supervision_state(
+                actor_id='char_a', producer_ts=9999, reason_summary='background enabled')
         monkeypatch.setattr(rt._skill_service, "compile_stable_snapshot", lambda **_: pytest.fail("must read frozen contract"))
         restored = coordinator.prepare_l2(child.child_key, activation=handle, now=113.)
         assert restored.request_json == pending.request_json

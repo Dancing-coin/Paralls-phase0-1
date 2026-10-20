@@ -10,7 +10,7 @@ from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from test_character_agent_l2_reasoning import _LocalGateway
 
 
-@pytest.mark.parametrize("source", ["perceived", "self_body", "siming"])
+@pytest.mark.parametrize("source", ["perceived", "self_body", "siming", "background"])
 def test_entry_l2_and_l3_share_pre_interpretation_contract(tmp_path, monkeypatch, source):
     class Gateway(_LocalGateway):
         def __init__(self):
@@ -53,6 +53,14 @@ def test_entry_l2_and_l3_share_pre_interpretation_contract(tmp_path, monkeypatch
                 common, target_actor_id="char_b", message_id="siming:320",
                 delivery_id="delivery:320", input_type="siming_high_level_message", band="fact_reveal",
                 causation_id="siming:320", correlation_id="siming:320", presentation_hint="Notice the door"))
+            if source == "background":
+                gateway.contexts.clear()
+                compiled.clear()
+                runtime.set_background_cognition_enabled(True)
+                runtime.set_background_mode("char_b", "active")
+                runtime._refresh_weak_supervision_state(
+                    actor_id="char_b", producer_ts=9999, reason_summary="background enabled")
+                assert runtime.run_background_cognition_tick(actor_id="char_b", producer_ts=10000).ran
         l2 = next(context for kind, context in gateway.contexts if kind == "l2_reasoning")
         l3 = next(context for kind, context in gateway.contexts if kind == "l3_planning")
         assert "capability_envelope" in l2
