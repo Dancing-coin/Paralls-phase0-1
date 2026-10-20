@@ -10,7 +10,7 @@
 
 | 路径 | 当前实现及来源 | 下一验收依赖 |
 |---|---|---|
-| ESM inspect/use/finish | `main.py` 将当前 ESM 的 `project_character_targets` 绑定到 L1；原 descriptor 冻结目标、动作、owner、state digest；已有 receipt/recovery 证据复用 | `range=required` 仍是执行时检查，不能视为候选生成时的肯定距离证据；完整跨目标/连续选择和正式质量仍未验收 |
+| ESM inspect/use/finish | `main.py` 将当前 `CharacterObjectExecution.project_character_targets` 绑定到 L1；连接原 ESM descriptor 与同 scope 新鲜、绑定有效的 spatial source；原 owner/state digest 和 receipt/recovery 复用 | 已有位置映射的对象可取得肯定 range，缺失/过期/撤权/跨 scope 为 unknown、远距为 blocked；完整跨目标/连续选择和正式质量仍未验收 |
 | 其他目标动作 | `_candidate_records` 已要求显式目录；`_expand_domain_candidates` 只补 use_object/finish_use；生产 resolver 目前只提供 ESM 目录 | 从各自真实 owner/registry 与私有感知补动作专属目标和版本，不把 attention 或当前玩家转成授权 |
 | 战斗/Boss | 复用 `canonical_combat_authority.py` 的 faction/Threat owner 和 `combat_durable_adapter.py` | 正式 faction/target source、角色原合同与 owner caller；physics/contact 留最终 Godot，不用测试事实补造生产来源 |
 | 信息/移动/协同 | L3 存在动作字符串与本地合同 | 各自 recipient/空间/协同来源、owner 路由与回执，不能把 ESM 目标共用为所有动作的接收方 |
@@ -23,6 +23,14 @@
 backend-contract `b66d4c422df44094b5ef2ffa8708dc07` passed/cleanup passed，导出目录 `candidate-conditions-contract/`。后端仍局部；Q01–Q04 无新增质量通过；角色跨领域完整闭环未通过；Godot G-A/B/C 未操作、未验收。下一项是已有可信空间来源与 ESM 候选 range 的生产映射，继而回到正式 faction/target 与角色 owner caller；不要继续扩展条件编译器测试来替代这些缺口。
 
 ## 判定与证据复用
+
+### ESM 候选距离来源接线增量
+
+生产 resolver 现在先取得原 ESM 动作专属 descriptor，再读取当前 actor 的内部 authored scope 与现有 `EmbodiedSpatialSource`。只有同 scope、控制器绑定仍有效且新鲜的来源以及已有 owner 位置映射才能生成 `range=satisfied/blocked`，并保留 spatial event ref；其他情况为 unknown，由原 compiler 拒绝。typed L1 snapshot roundtrip→L3 冻结 provider 请求验证了近距候选保留、远距/过期/撤权/缺失/跨场景候选排除。owner admission digest 继续只表达原 owner/state，执行时仍重新读取 source 并参与原 owner CAS；旧 receipt 恢复顺序未改。source 只证明有界控制器证据接纳，不证明独立服务器 physics/contact。
+
+RED run `7d1e5035224448de802e40fec2cc3056` 为缺少 resolver 方法的6项失败；该次日志导出因 pytest 链接被拒，顶层报告 cleanup failed，不计作完整导出证据。首次 GREEN `a7a30e1040de4d32875e364a8f87a75f` 为43 passed/2 failed：远距测试选了无 inspect policy 的对象、重启测试仍断言旧 resolver；修正为真实移动样本和当前 owner/source 绑定，不放宽产品约束。工作树 `5b33f87284654401aeb5271b09b60355` 102 passed。精确 HEAD `e3a5cf36` 加本批4源码/测试文件隔离 `1ff4684984624fe99ac3638bcc355b27` **102 passed/4既有 FastAPI warnings**，证据 `spatial-candidates-isolated/`，保存源码 SHA256/命令/exit；backend-contract `b4fb9faa545c46cca31deac1a2092b9a` passed，目录 `spatial-candidates-contract/`。后续运行均 cleanup passed，未收编 main.py 其余历史混改。
+
+四组状态：后端仍局部实现，新增上述肯定距离子项；模型 Q01–Q04 无新增验收；角色 R05/R07–R09 的完整动作跨域与连续链仍开放；Godot A/B/C 最后且未操作。未运行全量 pytest/Harness all、模型、训练或 Godot。下一项回到正式 faction/target source 与角色原合同的 owner caller，不重复扩大 compiler 或已验收 worktable recovery 测试。
 
 - **已完成**：仅指该行精确能力与证据边界已满足；不自动关闭所属阶段。
 - **局部实现**：已有可复用实现／局部合同，生产接线或剩余语义仍缺。

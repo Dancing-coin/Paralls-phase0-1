@@ -18,7 +18,7 @@ from app.world_runtime.embodied_spatial_source import (
 
 
 @contextmanager
-def vertical(tmp_path, *, target="obj_plaque", intent="inspect_object", action="action:inspect"):
+def vertical(tmp_path, *, target="obj_plaque", intent="inspect_object", action="action:inspect", admit_sample=True):
     from app.character_agent.execution.object_execution import CharacterObjectExecution
 
     world = DurableGameplayEventStore(tmp_path / "world.sqlite3")
@@ -37,9 +37,10 @@ def vertical(tmp_path, *, target="obj_plaque", intent="inspect_object", action="
     binding = auth.bind_controller(EmbodiedControllerEnrollment(credential_kind="trusted_local_launch",
         credential=secret, actor_id="char_a", controller_instance_id="c", protocol_version=1),
         remote_host="127.0.0.1", now=1, connection_ref="network:c").binding
-    source.accept(EmbodiedSpatialSample(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
-        scene_instance_id="s:1", scene_revision=1, connection_epoch=binding.connection_epoch,
-        physics_tick=1, position=scope.spawn_position), connection_ref="network:c")
+    if admit_sample:
+        source.accept(EmbodiedSpatialSample(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
+            scene_instance_id="s:1", scene_revision=1, connection_epoch=binding.connection_epoch,
+            physics_tick=1, position=scope.spawn_position), connection_ref="network:c")
     snapshot = CharacterPrivateWorldSnapshot(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
         producer_ts=10, updated_at=10, visible_target_refs=[target])
     runtime._l1._snapshots["char_a"] = snapshot
@@ -61,6 +62,55 @@ def vertical(tmp_path, *, target="obj_plaque", intent="inspect_object", action="
     finally:
         runtime.close()
         world.close()
+
+
+@pytest.mark.parametrize("case, expected", [
+    ("fresh", "satisfied"), ("far", "blocked"), ("stale", "unknown"),
+    ("foreign_scope", "unknown"), ("missing", "unknown"), ("revoked", "unknown"),
+])
+def test_production_target_projection_requires_current_spatial_evidence(tmp_path, case, expected):
+    from app.character_agent.reasoning.l1_perception import CharacterAgentL1Service
+    from app.models.character_perceived import CharacterPerceivedEvent
+
+    with vertical(tmp_path, admit_sample=case != "missing") as (execution, runtime, owner, source, world, sessions, clock, contract):
+        target = "obj_plaque"
+        scene = "foreign" if case == "foreign_scope" else "s"
+        if case == "stale":
+            clock[0] += 501
+        elif case == "far":
+            clock[0] += 800
+            source.accept(EmbodiedSpatialSample(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
+                scene_instance_id="s:1", scene_revision=1, connection_epoch=1,
+                physics_tick=49, position=(-5.3, 1.2, -2)), connection_ref="network:c")
+        elif case == "revoked":
+            source._auth.revoke_controller_epoch(controller_instance_id="c", connection_epoch=1)
+        before = world.get_last_global_sequence()
+        l1 = CharacterAgentL1Service(target_catalog_resolver=execution.project_character_targets)
+        snapshot = l1.apply_character_perceived_event(CharacterPerceivedEvent(
+            actor_id="char_a", percept_channel="visual", producer_ts=10,
+            room_id="r", scene_id=scene, zone_id="z", perceived_summary="visible object",
+            target_object_id=target, source_candidate_event_id="perceived:spatial:10"))
+        restored = CharacterPrivateWorldSnapshot.model_validate_json(snapshot.model_dump_json())
+        descriptor, = restored.target_catalog
+        assert descriptor["required_conditions"]["range"] == expected
+        assert descriptor["target_provenance"] == ["perceived:spatial:10"]
+        spatial_refs = [ref for ref in descriptor["source_refs"] if ref.startswith("spatial:")]
+        assert bool(spatial_refs) == (case in {"fresh", "far"})
+        if case == "fresh":
+            assert descriptor["target_admission_digest"] == owner.project_character_targets(restored)[0]["target_admission_digest"]
+            assert descriptor["affordance_result"]["status"] == "available"
+        import json
+        from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+        from app.models.character_agent_runtime import CharacterInterpretation
+
+        prepared = CharacterAgentL3Service().prepare_intent_plan(
+            interpretation=CharacterInterpretation(actor_id="char_a", interpreted_summary="visible plaque",
+                interpretation_type="object", salience_score=0.5, ambiguity_level="low", risk_level="low",
+                opportunity_level="medium", attention_target=target),
+            control_mode="agent_full_auto", snapshot=restored.model_dump(mode="json"))
+        context = json.loads(prepared.request_json)["context"]
+        assert ("inspect_object:obj_plaque" in context["candidate_intents"]) == (case == "fresh")
+        assert world.get_last_global_sequence() == before
 
 
 def test_frozen_contract_commits_owner_and_writes_original_receipt_once(tmp_path):

@@ -87,7 +87,9 @@ async def test_backend_restarts_bind_new_owner_and_refresh_its_state(tmp_path, m
             def observe():
                 owners.append(main.esm_service)
                 l1 = main.character_agent_runtime._l1
-                assert l1._target_catalog_resolver.__self__ is main.esm_service
+                assert l1._target_catalog_resolver.__self__ is main.character_object_execution
+                assert main.character_object_execution._owner is main.esm_service
+                assert main.character_object_execution._source is main.embodied_spatial_source
                 first = l1.apply_character_perceived_event(_event()).model_copy(deep=True)
                 main.esm_service.commit_interaction_state(
                     room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",

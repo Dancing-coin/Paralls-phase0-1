@@ -51,6 +51,8 @@
 
 ## Task 2: 第一条真实 Laya→L4→owner 纵切
 
+**Task1 距离来源子项已补：** production resolver 连接当前 ESM 与已有可信空间来源；同 scope/新鲜/绑定有效且有位置映射时生成肯定 range，否则 unknown 或 blocked。typed L1→L3 验证、当前 source/owner 重启绑定、原执行及恢复共102项隔离通过（HEAD e3a5cf36 加4文件，run `1ff4684984624fe99ac3638bcc355b27`）；backend-contract passed，后续 cleanup passed。保留首次 RED 日志导出失败与首轮两项测试错误，详见统一矩阵。不关闭完整 R05/模型质量/角色/Godot。下一批返回正式 faction/target 与原角色 owner caller；本子项不继续扩测试。
+
 **Files:** `character_agent/runtime/runtime_loop.py`、`execution/l4_adapter.py`、`backend/app/main.py`、既有对应 domain owner/caller，以及原 cognition/runtime application tests。
 
 **Interfaces:** 真实 Siming/获准 ingress→冻结 U/P→官方 Laya choice→canonical execution contract→执行时 admission→原 domain owner receipt→原 outcome/writeback。

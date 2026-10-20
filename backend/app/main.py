@@ -1291,7 +1291,6 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         for scope in settings.embodied_spatial_scopes
         if character_agent_runtime._learning_world_ref is not None
     })
-    character_agent_runtime.set_target_catalog_resolver(esm_service.project_character_targets)
     harness_ledger_parent = (
         None
         if Path(settings.heavenly_graph_path).name == ":memory:"
@@ -1315,6 +1314,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         scopes=settings.embodied_spatial_scopes,
         learning_world_ref=character_agent_runtime._learning_world_ref,
     )
+    character_agent_runtime.set_target_catalog_resolver(character_object_execution.project_character_targets)
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(

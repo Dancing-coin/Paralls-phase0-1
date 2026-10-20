@@ -28,6 +28,28 @@ class CharacterObjectExecution:
         return self._runtime.offer_execution_dispatch(contract,
             process_epoch=self._epoch, now_ms=self._now())
 
+    def project_character_targets(self, snapshot):
+        """Join owner eligibility with current admitted spatial evidence, read only."""
+        descriptors = self._owner.project_character_targets(snapshot)
+        authored = self._scopes.get(snapshot.actor_id)
+        scope = {name: getattr(snapshot, name) for name in ("room_id", "scene_id", "zone_id")}
+        evidence = None
+        if authored is not None and all(getattr(authored, name) == value for name, value in scope.items()):
+            try:
+                evidence = self._source.read(actor_id=snapshot.actor_id, **scope,
+                    scene_instance_id=authored.scene_instance_id, scene_revision=authored.scene_revision)
+            except ValueError:
+                # Source absence, expiry or revocation cannot become affirmative range evidence.
+                pass
+        for descriptor in descriptors:
+            target = descriptor["target_ref"]
+            range_status = "unknown"
+            if evidence is not None and target in self._owner.OBJECT_POSITIONS:
+                range_status = "satisfied" if self._owner._is_in_range(target, evidence.position) else "blocked"
+                descriptor["source_refs"].append(f"spatial:{evidence.event_ref}")
+            descriptor["required_conditions"] = dict(descriptor["required_conditions"], range=range_status)
+        return descriptors
+
     def execute(self, contract):
         with self._lock:
             self._runtime.verify_recorded_execution_contract(contract)
