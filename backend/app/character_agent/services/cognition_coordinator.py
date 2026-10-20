@@ -1,7 +1,7 @@
 """Character owner 的原计划阶段提交；模型调度仍使用后续同槽驱动。"""
 import math
 import json
-from .cognition_frame import freeze_fields
+from .cognition_frame import freeze_fields, validate_cognition_contract
 
 
 class CharacterCognitionCoordinator:
@@ -21,9 +21,45 @@ class CharacterCognitionCoordinator:
         if not math.isfinite(now) or now >= entry.expires_at:
             raise ValueError('cognition_admission_expired')
         self.admissions._validate_source(entry)
-        if entry.source_kind not in {'ingest_siming_output', 'run_background_cognition_tick'}:
+        # Admission pins are checked again at every stage boundary. This keeps
+        # a persisted request from crossing into a newer envelope or policy.
+        progress = self.admissions.read_progress(key)
+        if progress is not None:
+            validate_cognition_contract(progress.frame)
+            self.admissions._validate_contract_source_pins(progress.frame, entry.source_pins)
+        if entry.source_kind not in {'ingest_siming_output', 'run_background_cognition_tick', 'goal_proposal_trigger'}:
             raise ValueError('cognition_entry_source_not_supported')
         return entry
+
+    def prepare_goal_proposal(self, key, *, activation, now):
+        """Freeze a lawful goal proposal request; provider execution stays outside the owner lock."""
+        entry = self._entry(key, activation, now)
+        if entry.source_kind != 'goal_proposal_trigger':
+            raise ValueError('cognition_goal_proposal_source_required')
+        from app.character_agent.gateway.goal_proposal import GoalProposalContext
+        context = GoalProposalContext.model_validate(entry.payload.get('context'))
+        if context.actor_id != entry.actor_id or context.trigger_source_ref not in entry.payload.get('evidence_refs', []):
+            raise ValueError('cognition_goal_proposal_source_mismatch')
+        gateway = getattr(self.runtime._l3, '_gateway', None)
+        if gateway is None:
+            raise ValueError('cognition_goal_proposal_gateway_missing')
+        request = gateway.prepare_run_request(
+            task_kind='l3_planning', context=context.model_dump(mode='json'),
+            route_override='online_default', output_contract='goal_proposal:v1')
+        request_json = gateway.freeze_prepared_request(request).decode('utf-8')
+        progress = self.admissions.read_progress(key)
+        if progress is not None:
+            if progress.stage != 'goal_proposal' or progress.status != 'provider_pending':
+                raise ValueError('cognition_goal_proposal_progress_conflict')
+            if progress.request_json != request_json:
+                raise ValueError('cognition_goal_proposal_request_conflict')
+            return progress
+        frame = dict(actor_id=entry.actor_id, stage='goal_proposal', source_kind=entry.source_kind,
+            producer_ts=entry.producer_ts, source_pins=entry.source_pins,
+            request_id=context.request_id, trigger_kind=context.trigger_kind,
+            trigger_source_ref=context.trigger_source_ref, actor_pin=[list(pair) for pair in self.runtime._capture_cognition_pin(entry.actor_id)])
+        return self.admissions.advance_progress(key=key, expected_revision=0, stage='goal_proposal',
+            status='provider_pending', frame=frame, request_json=request_json, now=now)
 
     def begin_entry(self, key, *, activation, now):
         entry = self._entry(key, activation, now)

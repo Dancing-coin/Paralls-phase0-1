@@ -209,6 +209,31 @@ def test_original_admission_without_business_tick_stays_readable_without_inventi
     finally:
         store.close()
 
+
+def test_goal_proposal_can_enter_durable_provider_pending_and_reopen_exactly(tmp_path):
+    path = tmp_path / 'goal-proposal.sqlite3'
+    store, admissions = service(path)
+    entry = admissions.admit(**{**request(), 'source_kind': 'goal_proposal_trigger',
+        'payload': {'trigger_kind': 'phase_change', 'trigger_source_ref': 'outcome:1',
+            'evidence_refs': ['outcome:1']}})
+    frame = {'actor_id': 'char_a', 'child_key': entry.child_key, 'stage': 'goal_proposal'}
+    request_json = '{"contract":"goal_proposal:v1"}'
+    pending = admissions.advance_progress(key=entry.child_key, expected_revision=0,
+        stage='goal_proposal', status='provider_pending', frame=frame,
+        request_json=request_json, now=101.)
+    assert pending.status == 'provider_pending'
+    store.close()
+
+    store, admissions = service(path)
+    try:
+        restored = admissions.read_progress(entry.child_key)
+        assert restored == pending
+        assert admissions.advance_progress(key=entry.child_key, expected_revision=0,
+            stage='goal_proposal', status='provider_pending', frame=frame,
+            request_json=request_json, now=102.) == pending
+    finally:
+        store.close()
+
 @pytest.mark.parametrize('tick', [None, True, '42'])
 def test_new_admission_requires_actual_integer_business_tick(tmp_path, tick):
     store, admissions = service(tmp_path / 'missing-tick.sqlite3')

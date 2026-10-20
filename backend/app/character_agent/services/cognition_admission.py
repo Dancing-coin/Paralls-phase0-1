@@ -22,7 +22,7 @@ class CharacterCognitionAdmission(BaseModel):
     child_key: str
     actor_id: str
     delivery_id: str
-    source_kind: Literal['ingest_siming_output', 'run_background_cognition_tick']
+    source_kind: Literal['ingest_siming_output', 'run_background_cognition_tick', 'goal_proposal_trigger']
     source_event: dict[str, JsonValue]
     payload: dict[str, JsonValue]
     source_pins: dict[str, JsonValue]
@@ -41,8 +41,8 @@ class CharacterCognitionProgress(BaseModel):
     actor_id: str
     input_digest: str
     revision: int = Field(ge=1)
-    stage: Literal['entry', 'l2', 'l3', 'suggestion', 'execution']
-    status: Literal['commit_started', 'stage_ready', 'provider_pending', 'result_ready', 'completed', 'stale']
+    stage: Literal['entry', 'l2', 'l3', 'suggestion', 'execution', 'goal_proposal']
+    status: Literal['commit_started', 'stage_ready', 'provider_pending', 'result_ready', 'completed', 'stale', 'cancelled', 'failed']
     frame: dict[str, JsonValue]
     plan: dict[str, JsonValue] | None = None
     completion: dict[str, JsonValue] | None = None
@@ -85,6 +85,16 @@ class CharacterCognitionAdmissionService:
             raise ValueError('cognition_admission_expired')
         if source_kind == 'run_background_cognition_tick' and payload:
             raise ValueError('background_wake_must_not_inject_perception')
+        if source_kind == 'goal_proposal_trigger':
+            if not isinstance(payload, dict) or payload.get('trigger_kind') not in {
+                'repeated_failure', 'phase_change', 'context_conflict', 'goal_conflict',
+                'complex_information_failure', 'high_risk_information_failure',
+                'persistent_information_failure',
+            }:
+                raise ValueError('goal_proposal_trigger_invalid')
+            refs = payload.get('evidence_refs')
+            if not isinstance(refs, list) or payload.get('trigger_source_ref') not in refs:
+                raise ValueError('goal_proposal_trigger_evidence_required')
         if source_kind == 'ingest_siming_output':
             delivery = SimingCharacterCompatibilityInput.model_validate(payload)
             if (delivery.actor_id, delivery.delivery_id, delivery.producer_ts) != (actor_id, delivery_id, producer_ts):
@@ -111,13 +121,36 @@ class CharacterCognitionAdmissionService:
         return progress
 
     def _validate_progress_frames(self, progress, entry):
-        from .cognition_frame import validate_frame
+        from .cognition_frame import validate_frame, validate_cognition_contract
         checked = set()
         frames = [progress.frame]
         if progress.plan:
             frames.extend(progress.plan[name] for name in ('before', 'after') if name in progress.plan)
         for frame in frames:
+            validate_cognition_contract(frame)
+            self._validate_contract_source_pins(frame, entry.source_pins)
             validate_frame(self.store, frame, actor_id=entry.actor_id, child_key=entry.child_key, checked=checked)
+
+    @staticmethod
+    def _validate_contract_source_pins(frame, source_pins):
+        """Reject a frame whose frozen contract revisions disagree with admission pins."""
+        if not isinstance(source_pins, dict):
+            return
+        for field in ('envelope_digest', 'policy_digest', 'capability_revision', 'policy_revision'):
+            expected = source_pins.get(field)
+            if expected is None:
+                continue
+            actual = frame.get(field)
+            if actual is None and isinstance(frame.get('capability_envelope'), dict):
+                actual = frame['capability_envelope'].get(field)
+                if actual is None:
+                    actual = frame['capability_envelope'].get('revision_pins', {}).get(field)
+            if actual is None and isinstance(frame.get('cognition_policy'), dict):
+                actual = frame['cognition_policy'].get(field)
+                if actual is None:
+                    actual = frame['cognition_policy'].get('revision_pins', {}).get(field)
+            if actual != expected:
+                raise ValueError('cognition_contract_pin_mismatch')
 
     def advance_progress(self, *, key, expected_revision, stage, status, frame, now,
                          plan=None, completion=None, request_json=None, reason=''):
@@ -138,7 +171,7 @@ class CharacterCognitionAdmissionService:
                 raise ValueError('cognition_progress_completion_conflict')
             if completion is None:
                 completion = previous.completion
-            if plan is None and status in {'stage_ready', 'completed', 'stale'}:
+            if plan is None and status in {'stage_ready', 'completed', 'stale', 'cancelled', 'failed'}:
                 plan = previous.plan
         progress = CharacterCognitionProgress(child_key=key, actor_id=entry.actor_id, input_digest=entry.input_digest,
             revision=expected_revision + 1, stage=stage, status=status, frame=frame, plan=plan,
@@ -158,8 +191,9 @@ class CharacterCognitionAdmissionService:
             raise ValueError('cognition_progress_request_required')
         allowed = False
         if current is None:
-            allowed = stage == 'entry' and (status == 'commit_started' or (status == 'stale' and bool(reason)))
-        elif current.status not in {'completed', 'stale'}:
+            allowed = (stage == 'entry' and (status == 'commit_started' or (status == 'stale' and bool(reason)))) \
+                or (stage == 'goal_proposal' and status == 'provider_pending')
+        elif current.status not in {'completed', 'stale', 'cancelled', 'failed'}:
             if status == 'stale':
                 allowed = (stage == current.stage and bool(reason) and frame == current.frame
                     and plan == current.plan)
@@ -170,7 +204,7 @@ class CharacterCognitionAdmissionService:
                 if current.status in {'provider_pending', 'result_ready'}:
                     allowed = allowed and frame == current.frame
                 if current.status == 'commit_started' and status == 'completed':
-                    allowed = stage in {'entry', 'l3', 'suggestion', 'execution'}
+                    allowed = stage in {'entry', 'l3', 'suggestion', 'execution', 'goal_proposal'}
                 if current.status == 'commit_started' and status in {'stage_ready', 'completed'}:
                     allowed = allowed and plan == current.plan and frame == current.plan.get('after')
             elif current.stage == 'l3' and current.status == 'stage_ready' and stage == 'execution' and status == 'commit_started':
