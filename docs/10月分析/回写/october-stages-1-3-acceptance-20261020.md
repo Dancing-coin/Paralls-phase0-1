@@ -349,6 +349,12 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 - 恢复子进程硬编码要求两份回执，实际只有一份，故 recovery_exit=1；后续在已清理路径尝试恢复亦未执行数据库验证。原状态已按 retention 清理，不重建或复写历史证据。修正未来探针按实际匹配回执数量检查，但本run恢复仍失败/未验证，不将 backend exit=0/cleanup passed当闭环全绿。未为补证据重跑模型。服务已停止，18765/18766无listener。
 - **后端**：能力映射子项完成；**角色闭环**：仅新增真实 worktable use→ESM receipt 子项，finish连续周期、R09故障/回放及多领域仍开放。**模型质量**：本例不是评分，Q01–Q04不升级；**Godot**：A/B/C均未修改、启动或验证。没有全量pytest/Harness all或训练；历史用户改动保留。下一步返回正式完整动作/目标数据与来源冻结缺口，避免继续追加此切片无新增风险的测试。
 
+### 真实角色轨迹开发来源导出（仅开发，不能晋升质量证据）
+
+- `backend/app/character_agent/evaluation/runtime_trace_export.py` 与 `scripts/verification/export_character_runtime_development.py` 只读接合真实归档：要求以当前 pinned Laya provider/tokenizer 重建完整wire请求、核对原U/P/展示/裁剪/诊断摘要与候选覆盖，关联同turn/actor/action/target/candidate pins的原L4合同和唯一、同scope、committed的边界 world_result；拒绝截断、错序、越界choice、源/合同/身份不匹配及重复冲突边界。归档 source SHA256 和逐行引用可复核；调用者不能直接输入合法布尔值或owner receipt。
+- 导出只保留 allowlisted wire、候选、合同摘要与边界结果，不复制原角色上下文或配置环境。artifacts固定 `developer_private`、`development_only`、`formal_eligible=false`、`quality=unscored`、`owner_store_validation=unverified`、`recovery=unverified`。边界 world_result 与同trace的continuity receipt均不证明底层 owner store/恢复。
+- 对既有真实归档实际解析1条 use→L4→committed boundary，后续 observe 无可配对执行合同而被拒绝；没有调用模型。该归档原始 SHA256 `dc4ec36430fc7ab2e7d5526a2b7e7ab53e1246cd3c38e6865ff552dd05d22ac6`。这只弥补可审查开发输入来源，不是完整模型质量样本，不改变Q01–Q04。
+
 
 ## 只读 vulnerability 来源计算（2026-10-20）
 
@@ -357,3 +363,10 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 精确 HEAD d7fdc2d7 加两份新增源码/测试的隔离 Soul 回归 **67 passed**，run `b024191aa9fe4d11bc7bd38bdc4f62b1`；backend-contract `080e84cf103c4035bcaa843bd5e56a27` passed；均 cleanup passed。外部证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `soul-vulnerability-continuity-red/`（目录名不代表 RED，实际 exit0）及 `soul-vulnerability-contract/`。最初 RED 17 failed/49 passed；首轮实现 1 failed/65 passed 为伪造夹具默认 project visibility 比 owner 白名单更早被拒绝，改为 authority_only 夹具后证明精确 unsupported-owner 拒绝；不削弱源校验。
 
 D10 仍局部：生产 life/mind semantic registry、有限 effect/value owner、四门组合、读集与 effect 写入同一 CAS、schema/composition、checkpoint/common-cut/private projection、L4 均未关闭。Q01–Q04、R07–R09/R14 和 Godot A/B/C 状态不提升。未运行全量 pytest/Harness all、模型或 Godot。下一批回到完整 action+target 质量来源与角色闭环，避免继续扩展 reader 局部测试。
+
+
+### 开发来源导出验证与状态（2026-10-20）
+
+- 精确HEAD `88f088bc` + exporter/test源快照的隔离回归 **83 passed、3 deselected**，run `55242ea8a22d4be180fa3bca6a79c187`，外部 `runtime-development-source-verified/`，cleanup passed。3项外部calibration/runner测试与本变更无关，不作为本次门禁。该run中额外archive probe失败，不能整体记绿：入口错误强制formal option pin，历史dev请求不具备该pin。修正CLI不再强制formal模式，仍以真实SHA校验的tokenizer执行现有选项与总输入预算校验；不改写归档或补pin。最终CLI run `2e34b24f1c814305b54a863378c5555f`（`runtime-development-source-cli/`）exit0/cleanup passed，导出1条、拒绝1条；artifact digest `sha256:b77a9bd3df495cdfe4b85e5c749f90c6674bd8787f2abd88a799213b523624dd`。
+- backend-contract `62bd593267eb4ca8902a099693d466f6`、docs `dd100c6e5f9d4966a4100d69da958db3` 均passed/cleanup passed，外部同名前缀目录。初始RED缺模块，候选从重算摘要的universe中缺失RED在D盘复现后修复。早期隔离缺HEAD profiles及两脚本依赖导致未通过；这些结果不计绿。C盘0空闲导致一次临时目录失败；两次pytest临时链接令证据导出失败，run_scope根实际已清理。后续用D盘自有临时目录并在导出前回收隔离副本/pytest数据，未清理用户历史资料。
+- **后端**：新增只读开发来源导出，不写owner或生产准入。**模型质量**：Q01–Q04仍开放，正式完整动作集/独立标签/模型质量未通过。**角色闭环**：这是一条归档use链的字段关联，不新增连续finish/recovery、多领域或A/B/C闭环证明。**Godot**：仍未修改、启动或验证。下一任务按矩阵补实际角色缺少的owner与生产调用，再以冻结输入安排独立开发标注/正式来源；不继续用局部reader或诊断导出测试替代验收。
