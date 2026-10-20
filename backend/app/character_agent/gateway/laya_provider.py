@@ -318,6 +318,16 @@ class LayaSystemOneProvider:
                            snapshot=context.get("snapshot") or {})
         if isinstance(profile, dict) and profile:
             payload["effective_profile_summary"] = CharacterPromptPolicy()._profile_summary(profile)
+        # These are the actor-scoped, frozen L3 inputs, including already
+        # budgeted recall. Do not copy the whole context: it also holds audit
+        # metadata and may hold evaluation truth or unprojected profile data.
+        for key in (
+            "active_goal_tags", "active_goal_frame", "current_goal_state",
+            "memory", "semantic_cards", "need_tension_state", "dynamic_state",
+            "supervision_state", "background_agenda_state", "unresolved_tensions",
+        ):
+            if key in context:
+                payload[key] = context[key]
         contract_fields = {
             "capability_envelope": ("actor_id", "turn_id", "capability_revision", "envelope_revision",
                 "cognitive_limits", "active_domains", "allowed_action_families", "blocked_action_families",

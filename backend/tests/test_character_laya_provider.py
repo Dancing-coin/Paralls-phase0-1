@@ -10,6 +10,30 @@ from app.character_agent.planning.l3_planner import CandidateCompiler, Character
 from app.models.character_agent_runtime import CharacterInterpretation
 
 
+@pytest.mark.parametrize("field,value", [
+    ("active_goal_tags", ["inspect_notice"]),
+    ("active_goal_frame", {"primary_goal": "inspect_notice"}),
+    ("current_goal_state", {"immediate_goal": "inspect_notice"}),
+    ("memory", {"observation_memories": [{"summary": "notice is unread"}]}),
+    ("semantic_cards", [{"summary": "notice is unread", "source_refs": ["memory:1"]}]),
+    ("need_tension_state", {"safety": 0.4}),
+    ("dynamic_state", {"curiosity": 0.6}),
+    ("supervision_state", {"status": "inactive"}),
+    ("background_agenda_state", {"pending": ["inspect_notice"]}),
+    ("unresolved_tensions", [{"summary": "notice is unread"}]),
+])
+def test_laya_preserves_frozen_deliberation_inputs_without_grading(field, value):
+    context = {"interpretation": {"interpreted_summary": "Visible notice"},
+               field: value, "grading": {"answer": "grading-sentinel"},
+               "private_truth_profile": {"secret": "archive-sentinel"}}
+    original = json.dumps(context, sort_keys=True)
+    state = json.loads(LayaSystemOneProvider._state(context))
+    assert state[field] == value
+    assert "grading-sentinel" not in json.dumps(state)
+    assert "archive-sentinel" not in json.dumps(state)
+    assert json.dumps(context, sort_keys=True) == original
+
+
 def test_laya_runtime_role_conditions_reach_wire_without_private_archive():
     interpretation = CharacterInterpretation(
         actor_id="char_a", interpreted_summary="Inspect the visible lock",
@@ -33,6 +57,39 @@ def test_laya_runtime_role_conditions_reach_wire_without_private_archive():
     assert "max_reasoning_hops" in state
     assert "provider_thinking_effort" in state
     assert "private-sentinel" not in state
+
+
+def test_laya_prepared_goal_and_recall_reach_the_actual_http_payload():
+    interpretation = CharacterInterpretation(
+        actor_id="char_a", interpreted_summary="The notice is unread",
+        interpretation_type="ambiguous_event", salience_score=0.5,
+        ambiguity_level="high", risk_level="low", opportunity_level="low",
+    )
+    prepared = CharacterAgentL3Service().prepare_intent_plan(
+        interpretation=interpretation, control_mode="agent_full_auto",
+        current_goal_state={"primary_goal": "read_notice", "immediate_goal": "inspect_notice"},
+    )
+    request = json.loads(prepared.request_json)
+    original = json.dumps(request, sort_keys=True)
+    provider = LayaSystemOneProvider(endpoint="http://127.0.0.1:1")
+    wire = provider.build_wire_request(request)
+    state = json.loads(wire["state"])
+    assert state["active_goal_frame"]["immediate_goal"] == "inspect_notice"
+    for key in ("active_goal_tags", "active_goal_frame", "current_goal_state", "memory"):
+        assert state[key] == request["context"][key]
+    assert list(wire["questions"]["choice"]["criteria"]) == request["context"]["candidate_intents"]
+    assert json.dumps(request, sort_keys=True) == original
+
+
+def test_laya_counts_recalled_memory_in_total_budget_before_http():
+    provider = LayaSystemOneProvider(endpoint="http://127.0.0.1:1",
+        option_tokenizer=lambda text: text.split(), tokenizer_sha256="test:words")
+    request = {"task_kind": "l3_planning", "context": {
+        "candidate_intents": ["observe"], "input_budget_required": True,
+        "max_len": 512, "memory": {"observation_memories": [{"summary": "memory " * 600}]},
+    }}
+    with pytest.raises(ValueError, match="input budget exceeded before transport"):
+        provider.build_wire_request(request)
 
 
 def test_explicit_event_does_not_override_runtime_role_conditions():
