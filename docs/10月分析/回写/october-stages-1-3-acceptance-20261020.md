@@ -8,6 +8,23 @@
 
 ### 2026-10-21 slow-goal admission increment
 
+Follow-up wiring repair: the production composition now derives the cognition
+policy pin from `CognitionPolicy.revision_pins["policy_revision"]` (the policy
+model has no top-level `policy_revision`) and forces the committed trigger event
+ref into the admission `evidence_refs`. The focused slow-goal selection is now
+**74 passed**. This removes two deterministic admission failures, but it is
+still only a production wiring increment: a real backend settlement→provider→
+original goal-owner receipt, restart recovery, live Laya action/target closure,
+formal Q01–Q04 quality, and Godot A/B/C evidence are still absent.
+
+The runtime hook now has a focused composition-level regression: three committed
+actor-private rejected settlements produce one committed trigger source, preserve
+the final source ref in `evidence_refs`, and pass the same frozen frame digest to
+the admission bridge. The combined selection is **75 passed**. This proves
+trigger-source construction and idempotent selection at the runtime seam only;
+provider execution, terminal owner receipt, restart recovery, and Laya/Godot
+acceptance remain open.
+
 Character slow-goal admissions now have a production-shaped result boundary:
 `goal_proposal_trigger` is prepared by its dedicated coordinator path; the driver
 routes provider output through source/evidence/context/provider-pin validation and

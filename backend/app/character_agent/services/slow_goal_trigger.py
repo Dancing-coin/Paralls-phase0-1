@@ -49,7 +49,7 @@ def derive_goal_proposal_trigger(
     if not marker:
         return None
     evidence_refs = [str(item.get("result_id", "") or "") for item in [*prior[-2:], payload]]
-    evidence_refs = list(dict.fromkeys(ref for ref in evidence_refs if ref))
+    evidence_refs = list(dict.fromkeys([source_event_id, *(ref for ref in evidence_refs if ref)]))
     return {
         "eligible": True,
         "trigger_kind": marker,

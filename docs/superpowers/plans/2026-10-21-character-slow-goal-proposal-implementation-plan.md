@@ -66,3 +66,19 @@ Owner acceptance follow-up (2026-10-21): coordinator now exposes `accept_goal_pr
 Driver integration diagnostic and baseline repair (2026-10-21): a first attempt to release the actor activation during slow provider work broke existing slot/lease/retry/cancellation expectations (7 failed, 2 passed), and the patch was removed. Root cause was then isolated: L2/L3 converted the frozen `CharacterMindFrame` to a JSON dict before gateway validation, so provider preparation failed with `gateway requires a frozen mind frame`. Keeping the model instance through gateway validation and letting freeze serialization perform JSON conversion restored `python -m pytest -q backend/tests/test_character_cognition_driver.py` to **9 passed**. The combined coordinator/store/transition/driver focus is **41 passed**. This restores the driver baseline only; production trigger derivation, fast/slow coexistence, live Laya closure, formal quality and Godot remain open. No model call, formal split access, training, full pytest, Harness all or Godot operation.
 
 Driver coexistence follow-up (2026-10-21): slow goal dispatch now releases the actor activation after freezing the provider request, reacquires it before accepting the result, and keeps a completed future/provider slot pending when activation is temporarily unavailable. Provider errors terminate the slow proposal instead of entering the ordinary L2/L3 fallback path. The focused slow-goal lifecycle selection passed **37 tests**; the existing shared-slot/owner-thread/retry/cancel/worker-lifetime suite passed **9 tests**. This verifies the driver dispatch seam and preserved baseline contracts; same-actor lawful fast progress during a real delayed proposal and production trigger creation remain open. No live model call, formal split access, training, full pytest, Harness all or Godot operation.
+
+Production composition pin repair (2026-10-21): `_build_conflict_cognition` now
+reads the policy revision from `CognitionPolicy.revision_pins` and includes the
+committed trigger event ref in `evidence_refs`, matching the admission and
+coordinator contracts. The focused slow-goal selection passed **74 tests**.
+This is a fail-closed wiring correction; it does not constitute a live backend
+provider run, original goal-owner receipt/recovery, Laya closure, formal model
+quality, or Godot evidence.
+
+Runtime trigger seam regression (2026-10-21): a runtime-level test now drives
+three committed actor-private rejected settlements and verifies one committed
+`character_goal_proposal_trigger`, final source-ref/evidence binding, and exact
+frame digest handoff to the admission bridge. The combined selection passed
+**75 tests**. This closes only trigger construction at the runtime seam; live
+provider execution, terminal owner receipt/recovery, Laya closure, formal
+quality, and Godot remain open.

@@ -11,6 +11,8 @@ def test_settlement_trigger_requires_reliable_failure_streak_and_never_goal_hint
     assert trigger["trigger_kind"] == "repeated_failure"
     assert trigger["frame_digest"] == "fd"
     assert trigger["goal_revision"] == 2
+    assert trigger["trigger_source_ref"] in trigger["evidence_refs"]
+    assert trigger["trigger_source_ref"] in trigger["evidence_refs"]
 
 def test_settlement_trigger_ignores_single_normal_outcome_and_hints():
     payload={"result_id":"r1","settlement_status":"accepted","result_type":"action_resolution_result","goal_hints":[{"goal":"ignore"}]}
