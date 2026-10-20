@@ -92,6 +92,7 @@ class CandidateCompiler:
             "communication": "exchange information",
             "movement": "change position or contact distance",
             "combat": "attempt a combat interaction",
+            "interaction": "use registered object or finish registered use",
             "protection": "reduce exposure",
         }
         # The development aliases are existing intent identifiers, not new
@@ -146,6 +147,8 @@ class CandidateCompiler:
         compact_scopes = {
             "observe": "gather perceptible information; no commitment",
             "inspect_object": "inspect perceptible object properties",
+            "use_object": "use registered object",
+            "finish_use": "finish registered use",
             "ask_probe": "request information",
             "defer": "postpone commitment",
             "pause": "pause commitment",
@@ -347,6 +350,8 @@ class CharacterAgentL3Service:
             "sword_slash": "action:melee.sword_slash",
             "observe": "action:observe",
             "inspect_object": "action:inspect",
+            "use_object": "action:use",
+            "finish_use": "action:finish_use",
             "ask_probe": "action:ask_probe",
             "speak_public": "action:speak",
             "speak_private": "action:speak",
@@ -373,6 +378,8 @@ class CharacterAgentL3Service:
             return "movement"
         if intent in {"ask_probe", "inspect_object", "observe", "pause", "defer", "stay_silent"}:
             return "observation"
+        if intent in {"use_object", "finish_use"}:
+            return "interaction"
         return "protection"
 
     def _candidate_records(
@@ -400,7 +407,7 @@ class CharacterAgentL3Service:
             if str(item or "")
         } if isinstance(snapshot.get("visible_target_refs", []), list) else set()
         target_required = {
-            "inspect_object", "share_info", "speak_private", "follow_target",
+            "inspect_object", "use_object", "finish_use", "share_info", "speak_private", "follow_target",
             "seek_private_distance", "break_contact", "withdraw", "approach",
             "withhold", "short_punch", "unarmed_punch", "sword_slash",
         }
@@ -424,7 +431,8 @@ class CharacterAgentL3Service:
         records: list[dict[str, object]] = []
         for intent in dict.fromkeys(str(item) for item in intents if str(item)):
             family = self._candidate_action_family(intent)
-            targets = catalog if intent in target_required else [None]
+            targets = [item for item in catalog
+                       if "supported_intents" not in item or intent in item["supported_intents"]] if intent in target_required else [None]
             if intent in target_required and not targets:
                 targets = [None]
             for descriptor in targets:
@@ -735,6 +743,7 @@ class CharacterAgentL3Service:
         normalized_skill_affordance_summary = self._normalize_mapping(skill_affordance_summary)
         normalized_skill_affordance_summary.pop("registry", None)
         candidate_intents = self._generate_candidates(interpretation, control_mode)
+        candidate_intents = self._expand_domain_candidates(candidate_intents, normalized_snapshot)
         if behavior_policy:
             candidate_intents = self._apply_behavior_policy(
                 candidate_intents,
@@ -1553,6 +1562,18 @@ class CharacterAgentL3Service:
             candidates.append("speak_public")
         if control_mode == "player_priority_assisted":
             candidates.append("stay_silent")
+        return candidates
+
+    @staticmethod
+    def _expand_domain_candidates(candidates: list[str], snapshot: dict[str, object]) -> list[str]:
+        candidates = list(candidates)
+        catalog = snapshot.get("target_catalog", [])
+        for descriptor in catalog if isinstance(catalog, list) else []:
+            if not isinstance(descriptor, dict):
+                continue
+            for intent in descriptor.get("supported_intents", []) if isinstance(descriptor.get("supported_intents", []), list) else []:
+                if intent in {"use_object", "finish_use"} and intent not in candidates:
+                    candidates.append(intent)
         return candidates
 
     def _score_candidate(

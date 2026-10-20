@@ -31,16 +31,33 @@
 
 ## 二、角色与 Laya 闭环
 
+### 本批新增证据（2026-10-20）
+
+`obj_worktable` 的 `use_object`/`finish_use` 已接入同一私有目录、CandidateCompiler、L4
+canonical contract 和 durable ESM owner。ready→engaged→ready 状态循环、动作专属
+admission digest、单目标/动作组合校验、owner receipt、旧合同 exact retry 和无写入拒绝
+通过当前工作树定向回归 **47 passed**。精确 HEAD＋暂存批次及已提交数据资产隔离
+run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧合同文件共得
+**89 passed/1 failed**，失败是 `obj_letter` 未获准仍期待 settlement 的历史预期；
+原样 HEAD 复现 run `e39e1dd0a0614e509aed6235cc8505dd`（1 passed/1 failed），不宣称
+扩展套件全绿。两次 cleanup passed。先前归档遗漏manifest和Windows路径长度失败只作
+隔离脚本诊断，不当产品绿色证据；旧run `c0c28134270c44ce8e21d9a5f9848c93`早于最终修正。Harness
+`backend-contract` run `20c68e3bb7144abfa592c2a64939bdb9` 与 `docs` run
+`eeb0f37f29c844d2a6ad08e15c86f3c0` 均 passed/cleanup passed。
+这只把 R05 的 worktable 动作目标切片从“inspect 输入”扩展为“局部已实现”，并把 R07/R08
+标记为仍局部：尚未证明真实 Laya 服务选择、完整输入预算、跨领域 owner、live backend
+边界、回放，以及 Godot 可见结果。
+
 | ID／来源 | 当前状态 | 可复用实现与证据入口 | 剩余工作与验收条件 |
 |---|---|---|---|
 | R01 turn／MindFrame／ThoughtMode；规格01–03、计划01 | 局部实现 | turn coordinator、frame builder、cognition coordinator/driver、frozen session stages | 同一真实 turn 的 source→frame→L2/L3→Laya→执行→owner receipt→writeback；background cognition 继续 commands=[]；资源模板 tuple 进入 L2 缓存破坏 JsonValue frame 的问题已从 profile JSON 序列化入口修复，8 项 frame 回归通过 |
 | R02 memory；规格04 | 局部实现 | recall、semantic cards、writeback policy、consistency/recovery tests | 真实 outcome 与 authority receipt 绑定，重复、冲突、重开不重复沉淀；保留隐私与来源 |
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 生产 L3 默认完整输入预算门已启用（c3fbbf27）；正式运行 tokenizer/config 冻结、同 request usage/pins 仍待真实模型验证，不能靠静默截断解决 |
-| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
+| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect/worktable 输入） | 私有 visible refs/source/catalog、ESM inspect/worktable policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片及 worktable `use_object`/`finish_use` 局部切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
-| R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect owner＋session outcome）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；仅 public plaque inspect。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
+| R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect；受控 worktable use/finish owner slice）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；worktable 仅为受控 supplied-choice 的 ready→engaged→ready bounded slice，尚无真实 Laya选择或生产产出。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
 | R09 中断／恢复／回放 | 局部验证（真实inspect提交后新进程exact receipt恢复）；完整故障/回放未验证 | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
 | R10 学习／技能形成；规格06 | 局部实现 | registered learning owner前置39项；owner→冻结能力/旧provider拒绝/生产读取176项；生产inspect个人动作披露与来源owner/consumer回归141项，见下文 | 四学习路线仍缺完整生产source/episode/gate→owner策略、时间/资源/teacher与grant撤销准入、正式mastery语义与共同cut。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |

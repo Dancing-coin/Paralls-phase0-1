@@ -43,6 +43,26 @@ def test_unobserved_or_unknown_target_has_no_esm_permission():
     assert CharacterAgentL1Service().apply_character_perceived_event(_event()).target_catalog == []
 
 
+def test_worktable_catalog_projects_use_and_finish_use_as_distinct_stateful_actions():
+    owner = ESMService()
+    snapshot = CharacterPrivateWorldSnapshot(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
+        producer_ts=1, updated_at=1, visible_target_refs=["obj_worktable"])
+
+    ready = {item["supported_intents"][0]: item for item in owner.project_character_targets(snapshot)}
+    assert set(ready) == {"use_object", "finish_use"}
+    assert ready["use_object"]["affordance_result"]["status"] == "available"
+    assert ready["finish_use"]["affordance_result"]["status"] == "blocked"
+    assert ready["use_object"]["target_admission_digest"].startswith("sha256:")
+
+    owner.commit_interaction_state(room_id="r", scene_id="s", zone_id="z",
+        target_object_id="obj_worktable", current_state="engaged")
+    engaged = {item["supported_intents"][0]: item for item in owner.project_character_targets(snapshot)}
+    assert set(engaged) == {"use_object", "finish_use"}
+    assert engaged["use_object"]["affordance_result"]["status"] == "blocked"
+    assert engaged["finish_use"]["affordance_result"]["status"] == "available"
+    assert engaged["finish_use"]["target_admission_digest"] != ready["use_object"]["target_admission_digest"]
+
+
 @pytest.mark.asyncio
 async def test_backend_restarts_bind_new_owner_and_refresh_its_state(tmp_path, monkeypatch):
     from app import main

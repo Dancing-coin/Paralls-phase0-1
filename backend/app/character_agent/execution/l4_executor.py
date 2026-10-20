@@ -92,6 +92,8 @@ class CharacterAgentL4Executor:
             "observe_target": "action:observe",
             "attention_shift": "action:observe",
             "inspect_object": "action:inspect",
+            "use_object": "action:use",
+            "finish_use": "action:finish_use",
             "speak_public": "action:speak",
             "speak_private": "action:speak",
             "share_info": "action:speak",
@@ -115,7 +117,7 @@ class CharacterAgentL4Executor:
             return ["world_motion", "facing"], "drive_locomotion"
         if selected_intent in {"speak_public", "speak_private", "share_info", "withhold"}:
             return ["upper_body", "voice_channel"], "coexist"
-        if selected_intent in {"inspect_object", "interact"}:
+        if selected_intent in {"inspect_object", "use_object", "finish_use", "interact"}:
             return ["upper_body", "interaction_reach"], "coexist"
         return ["head"], "coexist"
 
@@ -221,7 +223,7 @@ class CharacterAgentL4Executor:
         ]
         target_refs: list[str] = list(dict.fromkeys(frozen_target_refs))
         if decision.selected_intent in {
-            "inspect_object", "share_info", "speak_private", "follow_target",
+            "inspect_object", "use_object", "finish_use", "share_info", "speak_private", "follow_target",
             "seek_private_distance", "break_contact", "withdraw", "approach",
             "withhold", "short_punch", "unarmed_punch", "sword_slash",
         } and not target_refs:
@@ -847,13 +849,15 @@ class CharacterAgentL4Executor:
         target_ref: str,
         interpretation: CharacterInterpretation,
     ) -> list[dict[str, object]]:
-        if selected_intent == "inspect_object" and target_ref.startswith("obj_"):
+        if selected_intent in {"inspect_object", "use_object", "finish_use"} and target_ref.startswith("obj_"):
+            interaction_type = {"inspect_object": "inspect", "use_object": "use",
+                                "finish_use": "finish_use"}[selected_intent]
             return [
                 {
                     "request_type": "interact",
                     "actor_id": actor_id,
                     "target_object_id": target_ref,
-                    "interaction_type": "inspect",
+                    "interaction_type": interaction_type,
                 }
             ]
         if selected_intent == "approach" and target_ref.startswith("char_"):

@@ -18,7 +18,7 @@ from app.world_runtime.embodied_spatial_source import (
 
 
 @contextmanager
-def vertical(tmp_path):
+def vertical(tmp_path, *, target="obj_plaque", intent="inspect_object", action="action:inspect"):
     from app.character_agent.execution.object_execution import CharacterObjectExecution
 
     world = DurableGameplayEventStore(tmp_path / "world.sqlite3")
@@ -41,12 +41,12 @@ def vertical(tmp_path):
         scene_instance_id="s:1", scene_revision=1, connection_epoch=binding.connection_epoch,
         physics_tick=1, position=scope.spawn_position), connection_ref="network:c")
     snapshot = CharacterPrivateWorldSnapshot(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
-        producer_ts=10, updated_at=10, visible_target_refs=["obj_plaque"])
+        producer_ts=10, updated_at=10, visible_target_refs=[target])
     runtime._l1._snapshots["char_a"] = snapshot
     descriptor = owner.project_character_targets(snapshot)[0]
     contract = CharacterExecutionContract(turn_id="turn:a:1", actor_ref="character:char_a",
-        source_ref="percept:1", producer_ts=10, target_refs=["object:obj_plaque"],
-        semantic_intent_id="inspect_object", semantic_action_id="action:inspect",
+        source_ref="percept:1", producer_ts=10, target_refs=[f"object:{target}"],
+        semantic_intent_id=intent, semantic_action_id=action,
         expected_revision_vector={"session:char_a": 1}, idempotency_key="execution:a:1",
         causation_id="cause:a:1", correlation_id="corr:a:1", privacy_scope="actor_private:char_a",
         authority_scope="world:default", expected_observation={
@@ -143,12 +143,16 @@ def test_new_service_cannot_reissue_old_dispatch_to_commit(tmp_path):
         assert world.get_last_global_sequence() == 1
 
 
-def test_production_egress_and_ingress_use_owner_receipt(tmp_path, monkeypatch):
+@pytest.mark.parametrize("target,intent,action", [
+    ("obj_plaque", "inspect_object", "action:inspect"),
+    ("obj_worktable", "use_object", "action:use"),
+])
+def test_production_egress_and_ingress_use_owner_receipt(tmp_path, monkeypatch, target, intent, action):
     import app.main as main
     from app.models.character_agent_runtime import CharacterGoalCommand
 
     main.reset_runtime_state()
-    with vertical(tmp_path) as (execution, runtime, owner, source, world, sessions, clock, contract):
+    with vertical(tmp_path, target=target, intent=intent, action=action) as (execution, runtime, owner, source, world, sessions, clock, contract):
         monkeypatch.setattr(main, "character_agent_runtime", runtime)
         monkeypatch.setattr(main, "character_object_execution", execution)
         command = CharacterGoalCommand(actor_id="char_a", command_type="interact", ttl_ms=1000,

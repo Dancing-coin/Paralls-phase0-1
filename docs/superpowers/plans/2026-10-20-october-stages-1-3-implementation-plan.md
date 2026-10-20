@@ -58,6 +58,18 @@
 - [ ] 实际启动本轮拥有的 backend/Laya 服务，发送真实事实；保留同 turn/request/frame/candidate/contract/receipt 关联，不使用 fixture choice 冒充 live。
 - [ ] 聚焦验收与矩阵 R07/R08 写回后提交；若缺 owner，先完成对应 D 行再回此任务。
 
+**2026-10-20 worktable owner slice:** L3 now expands only registered `use_object`/
+`finish_use` descriptors, preserves action-specific target admission digests, and
+L4 emits the corresponding canonical interaction request. Durable ESM execution
+rechecks a single target, action/target pairing, scope and digest. The focused
+worktree run is 47 passed; Harness backend-contract `20c68e3bb7144abfa592c2a64939bdb9`
+and docs `eeb0f37f29c844d2a6ad08e15c86f3c0` passed with cleanup. An exact staged
+snapshot passed the 5 directly scoped files (80 passed); adding the broader legacy
+execution-contract file exposes one unsupported `obj_letter` assertion, reproduced
+on unchanged HEAD (`e39e1dd0a0614e509aed6235cc8505dd`). This remains a bounded owner
+slice, not live Laya or full R07/R08. Earlier run `c0c28134270c44ce8e21d9a5f9848c93`
+is historical and predates the final contract projection tightening.
+
 **已提交前置修复（不关闭 Task 2）：** `055d5abf` 将既有 ESM policy/state/occupant 检查补到直接 authority 入口，绑定 request/event 的 actor/scope/target/action，canonical 重复键禁止跨 scope；精确暂存隔离 52 passed。ESM 仍缺 durable transition/receipt 与 canonical 距离来源；Equipment controller binding 不自动授权角色，work intent 注册不等于 owner，social delivery 不等于 played/heard。下一纵切必须显式补合法角色 caller 和 owner admission，禁止伪造 physics 或授权。
 
 ## Task 3: 纵切恢复与回放

@@ -200,3 +200,54 @@ def test_v5_compacts_structure_but_preserves_v4_historical_rendering():
     assert "Runtime legality/owner permission/execution unverified" in current.presented[0]["description"]
     assert len(current.presented[0]["description"]) < len(archived.presented[0]["description"])
     assert current.digest != archived.digest
+
+
+def test_action_specific_target_projection_keeps_worktable_state_digest_on_choice():
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+    from app.models.character_agent_runtime import CharacterPrivateWorldSnapshot, CharacterInterpretation
+    from app.services.esm_service import ESMService
+
+    owner = ESMService()
+    snapshot = CharacterPrivateWorldSnapshot(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
+        producer_ts=1, updated_at=1, visible_target_refs=["obj_worktable"])
+    snapshot.target_catalog = owner.project_character_targets(snapshot)
+    planner = CharacterAgentL3Service()
+    interpretation = CharacterInterpretation(actor_id="char_a", interpreted_summary="visible worktable",
+        interpretation_type="object", salience_score=0.5, ambiguity_level="low", risk_level="low",
+        opportunity_level="medium", attention_target="obj_worktable")
+    envelope, policy = planner._compile_capability_contracts(interpretation=interpretation,
+        actor_id="char_a", turn_context=None, profile={}, effective_profile={},
+        snapshot=snapshot.model_dump(mode="json"), dynamic_state={}, skill_affordance_summary={})
+    records = planner._candidate_records(intents=["use_object", "finish_use"],
+        interpretation=interpretation, snapshot=snapshot.model_dump(mode="json"), envelope=envelope,
+        policy=policy, frame=None, skill_affordance_summary={})
+    records = CandidateCompiler().compile(candidates=records,
+        visible_targets={"obj_worktable"}).presented
+
+    assert len(records) == 1
+    record = records[0]
+    assert record["semantic_intent_id"] == "use_object"
+    assert record["semantic_action_id"] == "action:use"
+    assert record["target_refs"] == {"object": "obj_worktable"}
+    assert record["revision_pins"]["target_admission_digest"] == snapshot.target_catalog[0]["target_admission_digest"]
+    prepared = planner.prepare_intent_plan(interpretation=interpretation,
+        control_mode="autonomous", snapshot=snapshot.model_dump(mode="json"))
+    selected = prepared.candidate_mapping["use_object:obj_worktable"]
+    assert selected["revision_pins"]["target_admission_digest"] == record["revision_pins"]["target_admission_digest"]
+    assert "use registered object" in selected["description"]
+    assert "finish_use:obj_worktable" not in prepared.candidate_mapping
+    ids = [item["candidate_id"] for item in prepared.frozen_candidates]
+    assert len(ids) == len(set(ids))
+
+
+def test_domain_candidate_expansion_accepts_only_registered_worktable_interactions():
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+
+    snapshot = {"target_catalog": [
+        {"supported_intents": ["use_object", "finish_use", "injected_action"]},
+        {"supported_intents": ["finish_use"]},
+    ]}
+
+    intents = CharacterAgentL3Service._expand_domain_candidates(["observe"], snapshot)
+
+    assert intents == ["observe", "use_object", "finish_use"]

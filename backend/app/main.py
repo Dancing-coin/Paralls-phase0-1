@@ -6361,7 +6361,7 @@ def _as_character_agent_execution_envelopes(commands: list[CharacterGoalCommand]
         raw_contract = execution_payload.get("execution_contract")
         if isinstance(raw_contract, dict):
             contract = CharacterExecutionContract.model_validate(raw_contract)
-            if contract.semantic_intent_id == "inspect_object":
+            if contract.semantic_intent_id in {"inspect_object", "use_object", "finish_use"}:
                 character_object_execution.offer(contract)
             envelopes.append(
                 {
@@ -6406,11 +6406,17 @@ def _semantic_action_from_execution_contract(
     if not content:
         content = str(expected_observation.get("summary", "") or "")
     interaction_type = contract.semantic_action_id
-    if (contract.semantic_intent_id == "inspect_object"
-        and requested_action in {"inspect_object", "interact"}
-        and contract.semantic_action_id == "action:inspect"):
+    interaction_actions = {
+        "inspect_object": ("action:inspect", "inspect"),
+        "use_object": ("action:use", "use"),
+        "finish_use": ("action:finish_use", "finish_use"),
+    }
+    expected_interaction = interaction_actions.get(contract.semantic_intent_id)
+    if (expected_interaction is not None
+        and requested_action in {contract.semantic_intent_id, "interact"}
+        and contract.semantic_action_id == expected_interaction[0]):
         requested_action = "interact"
-        interaction_type = "inspect"
+        interaction_type = expected_interaction[1]
     return {
         "request_type": requested_action,
         "actor_id": contract.actor_id,
