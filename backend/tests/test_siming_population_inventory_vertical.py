@@ -40,7 +40,7 @@ def _fixture() -> tuple[GameplayEventStore, InventoryAuthorityService, object]:
     return store, inventory, certification_event
 
 
-def _read_set(certification_event: object, *, actor_ref: str = "character:worker") -> PopulationReadSet:
+def _read_set(certification_event: object, *, actor_ref: str = "character:worker", store=None) -> PopulationReadSet:
     source = inventory_output_custody_population_projections(
         committed_events=(certification_event,), scope="public"
     )[0]
@@ -56,6 +56,24 @@ def _read_set(certification_event: object, *, actor_ref: str = "character:worker
         selector_revision="selector:inventory:v1", ruleset_revision="rules:inventory:v1", deterministic_seed="seed:inventory",
         catch_up_limit=1, budget=1, report_scope="public",
     )
+    if store is not None:
+        from app.population_continuity.roster import PopulationRoster
+        from app.population_continuity.runtime_publication import RuntimeCadencePublisher
+        from app.population_continuity.world import WorldContinuityRuntime
+        from app.services.authority_event_bus import InMemoryAuthorityEventBus
+        from test_population_runtime_driver import _mode
+
+        world = WorldContinuityRuntime(store=store,
+            mode=_mode().model_copy(update={"world_ref": cadence.world_ref}),
+            roster=PopulationRoster(actor_ids=("worker",)))
+        assert world.resume().committed
+        cadence = world.build_population_cadence(window_start=0, window_end=60)
+        cadence = cadence.model_copy(update={"base_revision_vector": {
+            **cadence.base_revision_vector, **projection.revision_vector,
+        }})
+        publisher = RuntimeCadencePublisher(world_runtime=world, event_bus=InMemoryAuthorityEventBus(),
+            room_id="room", scene_id="scene", zone_id="zone")
+        assert publisher(cadence) is not None
     return PopulationReadSet.from_inputs(cadence, (projection,))
 
 
@@ -72,8 +90,8 @@ def test_certified_output_becomes_inventory_population_candidate() -> None:
 
 
 def test_selected_inventory_candidate_reaches_existing_inventory_owner() -> None:
-    _, inventory, certification_event = _fixture()
-    read_set = _read_set(certification_event)
+    store, inventory, certification_event = _fixture()
+    read_set = _read_set(certification_event, store=store)
     result = PopulationSimulationCapability(
         owner_executors={
             "population:inventory-output-custody:v1": InventoryOutputCustodyOwnerExecutor(authority=inventory)
@@ -85,8 +103,8 @@ def test_selected_inventory_candidate_reaches_existing_inventory_owner() -> None
 
 
 def test_stale_certified_output_is_zero_write() -> None:
-    _, inventory, certification_event = _fixture()
-    read_set = _read_set(certification_event)
+    store, inventory, certification_event = _fixture()
+    read_set = _read_set(certification_event, store=store)
     stale_projection = read_set.projections[0].model_copy(
         update={"revision_vector": {certification_event.stream_id: certification_event.stream_revision - 1}}, deep=True
     )
@@ -102,8 +120,8 @@ def test_stale_certified_output_is_zero_write() -> None:
 
 
 def test_changed_duplicate_inventory_intent_is_zero_write() -> None:
-    _, inventory, certification_event = _fixture()
-    read_set = _read_set(certification_event)
+    store, inventory, certification_event = _fixture()
+    read_set = _read_set(certification_event, store=store)
     capability = PopulationSimulationCapability(
         owner_executors={
             "population:inventory-output-custody:v1": InventoryOutputCustodyOwnerExecutor(authority=inventory)
@@ -123,8 +141,8 @@ def test_changed_duplicate_inventory_intent_is_zero_write() -> None:
 
 
 def test_inventory_receipt_precedes_character_seed() -> None:
-    _, inventory, certification_event = _fixture()
-    read_set = _read_set(certification_event)
+    store, inventory, certification_event = _fixture()
+    read_set = _read_set(certification_event, store=store)
 
     class Continuity:
         def __init__(self) -> None:

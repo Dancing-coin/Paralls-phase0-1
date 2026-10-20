@@ -1650,7 +1650,9 @@ class InventoryAuthorityService:
             }
         )
 
-    def settle_production_output_custody(self, *, intent: object) -> AppendBatchResult:
+    def settle_production_output_custody(
+        self, *, intent: object, temporal_read_set: dict[str, int] | None = None
+    ) -> AppendBatchResult:
         """Custody adapter sourced from certified output and admitted mappings."""
         from app.gameplay.closed_generic_gameplay_families import (
             ProductionOutputCustodyContent,
@@ -1662,6 +1664,15 @@ class InventoryAuthorityService:
             typed = intent if isinstance(intent, ProductionOutputCustodyIntent) else ProductionOutputCustodyIntent.model_validate(intent)
         except Exception:
             return self._rejected_append(str(getattr(intent, "command_id", "production-output-custody")), "production_output_custody_intent_invalid")
+        if temporal_read_set is not None and (
+            not isinstance(temporal_read_set, dict) or any(
+                not isinstance(stream, str)
+                or not stream.startswith(("population-cadence:", "population-cadence-revocation:"))
+                or type(revision) is not int or revision < 0
+                for stream, revision in temporal_read_set.items()
+            )
+        ):
+            return self._rejected_append(typed.command_id, "production_output_custody_temporal_read_set_invalid")
         registry = self._package_registry
         active = getattr(registry, "active_patch_set", None) if registry is not None else None
         if active is None:
@@ -1856,7 +1867,7 @@ class InventoryAuthorityService:
             transaction_id=f"transaction:{typed.command_id}",
             idempotency_key=key,
             expected_revisions={holder_stream: typed.expected_inventory_stream_revision},
-            read_set_revisions={source_stream: certification.stream_revision},
+            read_set_revisions={source_stream: certification.stream_revision, **(temporal_read_set or {})},
             causation_id=certification.event_id,
             correlation_id=typed.correlation_id,
             source_ref=certification.event_id,

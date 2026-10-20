@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from app.gameplay.closed_generic_gameplay_families import ProductionOutputCustodyIntent
@@ -39,6 +41,10 @@ class InventoryOutputCustodyOwnerExecutor:
         projection = next((item for item in read_set.projections if item.ref == intent.source_ref), None)
         if projection is None or projection.scope != intent.privacy_scope or dict(projection.revision_vector) != dict(intent.expected_revisions):
             return rejected()
+        try:
+            temporal_read_set = self._cadence_read_set(read_set)
+        except (KeyError, TypeError, ValueError, AttributeError):
+            return rejected()
         payload = projection.payload
         if self._FORBIDDEN_OVERRIDES.intersection(payload) or any(
             key in intent.payload for key in self._FORBIDDEN_OVERRIDES
@@ -61,7 +67,9 @@ class InventoryOutputCustodyOwnerExecutor:
                 correlation_id=intent.correlation_id,
                 submitted_at=str(payload.get("submitted_at") or f"population:{read_set.cadence.cadence_id}"),
             )
-            result = self._authority.settle_production_output_custody(intent=typed_intent)
+            result = self._authority.settle_production_output_custody(
+                intent=typed_intent, temporal_read_set=temporal_read_set
+            )
         except (KeyError, TypeError, ValueError, AttributeError):
             return rejected()
         committed = bool(getattr(result, "committed", False))
@@ -77,6 +85,41 @@ class InventoryOutputCustodyOwnerExecutor:
             zero_write=not committed or status == "duplicate_replayed",
             idempotency_status=status,
         )
+
+    def _cadence_read_set(self, read_set: PopulationReadSet) -> dict[str, int]:
+        """Validate the original admission, then pin its revocation stream for CAS."""
+        store = self._authority._store
+        cadence = read_set.cadence
+        stream = f"population-cadence:{cadence.world_ref}"
+        revocations = f"population-cadence-revocation:{cadence.world_ref}"
+        # Read BEFORE inspecting records: a later change must fail at owner append.
+        revisions = {ref: store.get_stream_head(ref) for ref in (stream, revocations)}
+        receipt = store.get_by_idempotency("world_runtime.cadence", f"population-runtime:{cadence.cadence_id}")
+        if receipt is None or not receipt.committed or len(receipt.committed_event_ids) != 1:
+            raise ValueError("inventory_cadence_admission_missing")
+        event = store.get_event(receipt.committed_event_ids[0])
+        record = event.payload
+        digest = "sha256:" + hashlib.sha256(json.dumps(
+            {key: value for key, value in record.items() if key != "record_digest"},
+            sort_keys=True, separators=(",", ":"),
+        ).encode()).hexdigest()
+        if (
+            event.event_type != "population.cadence.admitted"
+            or event.stream_id != stream
+            or event.visibility_policy != "project"
+            or event.transaction_id != receipt.transaction_id
+            or not store.transaction_owns_event(transaction_id=receipt.transaction_id,
+                event_id=event.event_id, principal_ref="world_runtime.cadence")
+            or record.get("schema_version") != 1
+            or record.get("cadence") != cadence.model_dump(mode="json")
+            or record.get("record_digest") != digest
+        ):
+            raise ValueError("inventory_cadence_admission_invalid")
+        if any(event.event_type == "population.cadence.revoked"
+               and event.payload.get("cadence_id") == cadence.cadence_id
+               for event in store.read_stream(revocations)):
+            raise ValueError("inventory_cadence_revoked")
+        return revisions
 
     def _inventory_revision(self, certification_event_id: str, payload: dict[str, object]) -> int:
         """Read the current Owner stream; only test doubles use the projection pin."""
