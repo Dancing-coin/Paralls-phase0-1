@@ -16,13 +16,34 @@ class DialogueService:
         self._context_provider = context_provider
 
     def prepare_dialogue(self, *, actor_id: str, target_actor_id: str, content: str,
-                         agent_initiated: bool = False) -> bytes:
+                         agent_initiated: bool = False,
+                         cognition_context: Mapping[str, object] | None = None) -> bytes:
         """仅 owner 读取上下文，provider 仅消费冻结请求。"""
+        context = self._context(actor_id=actor_id, content=content, target_actor_id=target_actor_id,
+            control_mode="agent_initiated_utterance" if agent_initiated else "dialogue_service",
+            intent_type="agent_initiated_utterance" if agent_initiated else "dialogue_submit")
+        if cognition_context is not None:
+            from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+            from app.character_agent.cognition.cognition_policy import CognitionPolicy
+
+            raw_envelope = cognition_context.get("capability_envelope")
+            raw_policy = cognition_context.get("cognition_policy")
+            for value, digest in ((raw_envelope, "envelope_digest"), (raw_policy, "policy_digest")):
+                if not isinstance(value, Mapping) or not isinstance(value.get(digest), str) or not value[digest]:
+                    raise ValueError("dialogue_cognition_contract_digest_missing")
+            envelope = CapabilityEnvelope.model_validate(raw_envelope)
+            policy = CognitionPolicy.model_validate(raw_policy)
+            turn_id = cognition_context.get("turn_id")
+            if not isinstance(turn_id, str) or not envelope.source_refs:
+                raise ValueError("dialogue_cognition_contract_source_missing")
+            policy.validate_envelope(envelope, actor_id=actor_id, turn_id=turn_id,
+                turn_actor_id=actor_id, policy_revision=envelope.revision_pins.get("policy_revision", ""),
+                source_event_ref=envelope.source_refs[0])
+            context.update(capability_envelope=envelope.model_dump(mode="json"),
+                cognition_policy=policy.model_dump(mode="json"), turn_id=turn_id)
         request = self._gateway.prepare_run_request(
             task_kind="dialogue_generation",
-            context=self._context(actor_id=actor_id, content=content, target_actor_id=target_actor_id,
-                control_mode="agent_initiated_utterance" if agent_initiated else "dialogue_service",
-                intent_type="agent_initiated_utterance" if agent_initiated else "dialogue_submit"),
+            context=context,
             route_override="local_only" if settings.dialogue_mode == "stub" else None,
         )
         return CharacterModelGateway.freeze_prepared_request(request)

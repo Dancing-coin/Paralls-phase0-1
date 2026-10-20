@@ -863,6 +863,9 @@ class CharacterAgentRuntime:
                     producer_ts=event.producer_ts,
                     interpretation=interpretation,
                     working_memory_state=working_memory_state,
+                    turn_context=turn,
+                    cognition_contract={key: cognition_contract[key] for key in
+                        ("effective_profile", "capability_envelope", "cognition_policy")},
                 ))
             )
             self._pending_suggestions.append(packet)
@@ -1255,6 +1258,9 @@ class CharacterAgentRuntime:
                     producer_ts=event.producer_ts,
                     interpretation=interpretation,
                     working_memory_state=working_memory_state,
+                    turn_context=turn,
+                    cognition_contract={key: cognition_contract[key] for key in
+                        ("effective_profile", "capability_envelope", "cognition_policy")},
                 ))
             )
             self._pending_suggestions.append(packet)
@@ -1718,6 +1724,9 @@ class CharacterAgentRuntime:
                     producer_ts=int(normalized_payload.get("producer_ts", 0) or 0),
                     interpretation=interpretation,
                     working_memory_state=working_memory_state,
+                    turn_context=turn,
+                    cognition_contract={key: cognition_contract[key] for key in
+                        ("effective_profile", "capability_envelope", "cognition_policy")},
                 ))
             )
             self._pending_suggestions.append(packet)
@@ -5199,7 +5208,8 @@ class CharacterAgentRuntime:
             normalized.setdefault("clarity_score", normalized_boost if normalized_boost >= 0.5 else 0.5)
         return normalized
 
-    def _prepare_suggestion_request(self, actor_id, interpretation, working_memory_state):
+    def _prepare_suggestion_request(self, actor_id, interpretation, working_memory_state, *,
+                                    turn_context=None, cognition_contract=None):
         snapshot_record = self._l1.get_snapshot(actor_id)
         original_snapshot = snapshot_record.model_dump() if snapshot_record is not None else {}
         original_memory = self.get_memory_record_bundle(actor_id)
@@ -5216,14 +5226,19 @@ class CharacterAgentRuntime:
                 supervision_state=self.get_supervision_state(actor_id),
                 unresolved_tensions=self.get_unresolved_tensions(actor_id),
                 background_agenda_state=self.get_background_agenda_state(actor_id),
+                turn_context=turn_context,
+                **(cognition_contract or {}),
             )
         )
         return prepared, original_snapshot, original_memory
 
     def _freeze_suggestion_request(self, actor_id, frame):
         interpretation = CharacterInterpretation.model_validate(frame['interpretation'])
+        frozen = self._cognition_frame_value(frame, 'context')
         prepared, snapshot, memory = self._prepare_suggestion_request(actor_id, interpretation,
-            self._cognition_frame_value(frame, 'context')['working_memory_state'])
+            frozen['working_memory_state'], turn_context=CharacterTurnContext.model_validate(frozen['turn_context']) if frozen.get('turn_context') else None,
+            cognition_contract={key: frozen[key] for key in
+                ('effective_profile', 'capability_envelope', 'cognition_policy') if key in frozen})
         context = json.loads(json.dumps(dict(snapshot=snapshot, memory=memory),
             default=lambda value: value.model_dump(mode='json'), allow_nan=False))
         return prepared, context
@@ -5257,9 +5272,12 @@ class CharacterAgentRuntime:
         producer_ts: int,
         interpretation: CharacterInterpretation,
         working_memory_state: dict[str, object] | None = None,
+        turn_context=None,
+        cognition_contract=None,
     ) -> Generator[CognitionRequest, dict[str, object], CharacterSuggestionPacket]:
         prepared, original_snapshot, original_memory = self._prepare_suggestion_request(
-            actor_id, interpretation, working_memory_state)
+            actor_id, interpretation, working_memory_state,
+            turn_context=turn_context, cognition_contract=cognition_contract)
         output = yield CognitionRequest("l3_planning", prepared.request_json,
             str(prepared.behavior_policy.get("candidate_id", "") or ""))
         plan = self._l3.finish_intent_plan(prepared, output)

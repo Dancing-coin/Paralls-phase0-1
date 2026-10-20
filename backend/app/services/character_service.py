@@ -25,12 +25,14 @@ class CharacterService:
         )
         self.tts = tts_service or TTSService()
 
-    def prepare_dialogue(self, event: DialogueSubmit) -> bytes:
+    def prepare_dialogue(self, event: DialogueSubmit, *,
+                         cognition_context: Mapping[str, object] | None = None) -> bytes:
         agent_initiated = event.player_id == "character_agent"
         return self.dialogue.prepare_dialogue(
             actor_id=event.actor_id if agent_initiated else event.target_actor_id,
-            target_actor_id=event.target_actor_id,
+            target_actor_id=event.target_actor_id if agent_initiated else event.actor_id,
             content=event.content, agent_initiated=agent_initiated,
+            **({"cognition_context": cognition_context} if cognition_context is not None else {}),
         )
 
     def build_dialogue_response(self, event: DialogueSubmit, output: dict[str, object],

@@ -54,6 +54,7 @@ class _PendingDialogue:
     context_actor_ids: tuple[str, ...] = ()
     fallback_used: bool = False
     cognition_provider_attempts: int = 0
+    cognition_context_json: bytes = b''
 
 
 class DialogueCoordinator:
@@ -120,6 +121,14 @@ class DialogueCoordinator:
             raise
 
     def _stage(self, ticket_id, turn, stage, request_json, provider):
+        if stage == 'cognition':
+            context = json.loads(request_json).get('context', {})
+            if 'capability_envelope' in context or 'cognition_policy' in context:
+                contract = _json({key: context.get(key) for key in
+                    ('capability_envelope', 'cognition_policy', 'turn_id')})
+                if turn.cognition_context_json and turn.cognition_context_json != contract:
+                    raise ValueError('dialogue_cognition_contract_changed')
+                turn.cognition_context_json = contract
         job = PreparedDialogueJob(ticket_id, uuid4().hex, stage, turn.handle.actor_id, request_json)
         turn.job = job
         turn.pin = self._capture_pin(turn)
@@ -146,8 +155,12 @@ class DialogueCoordinator:
                 turn.event, {'content': content, 'tone': 'neutral'}).model_copy(update={
                     'actor_id': turn.event.target_actor_id, 'target_actor_id': turn.event.actor_id})
             return self._tts(ticket_id, turn)
-        request = self.character_service.prepare_dialogue(turn.event)
+        inherited = json.loads(turn.cognition_context_json) if turn.cognition_context_json else None
         speaker = turn.event.actor_id if turn.event.player_id == 'character_agent' else turn.event.target_actor_id
+        if inherited is not None and inherited['capability_envelope']['actor_id'] != speaker:
+            inherited = None
+        request = self.character_service.prepare_dialogue(turn.event,
+            **({'cognition_context': inherited} if inherited is not None else {}))
         turn.context_actor_ids = tuple(dict.fromkeys((turn.handle.actor_id, speaker)))
         return self._stage(ticket_id, turn, 'dialogue_generation', request, self.character_service.dialogue._gateway)
 
