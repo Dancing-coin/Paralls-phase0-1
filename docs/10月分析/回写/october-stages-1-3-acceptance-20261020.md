@@ -38,7 +38,7 @@
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 正式运行配置冻结、同 request usage/pins，超预算明确失败；不能靠静默截断解决 |
 | R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect 输入） | 私有 visible refs/source/catalog、ESM inspect policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
-| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming 与三类同步入口同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background、dialogue、模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
+| R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 未验证 | frozen candidate map/digest、canonical execution contract | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 局部实现（生产 plaque inspect consumer）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；仅 public plaque inspect。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
 | R09 中断／恢复／回放 | 未验证（端到端） | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
@@ -179,3 +179,9 @@
 - HEAD＋精准暂存补丁隔离：95 passed，run `12b015bce3814ccfa82c53cfa34d57f6`，`object-staged-isolated/`；backend-contract passed，run `5c881ad557714ce293f8890375f1c21b`，`object-consumer-contract/`。均在本页外部证据根，cleanup passed。工作区组合 run `6bfb422ac68743aa9ac0a99601cf5158` 同为95 passed，但不代替隔离证据。
 - 覆盖原 receipt、零写拒绝、重复不续期、跨 service epoch 拒绝、生产处理函数、SQLite 关闭重开补记。fixture 注入私有 snapshot与冻结合同，没有真实模型选择或新网络纵切；不关闭 R07/R08/R09。未跑全量 pytest/all、真实模型或 Godot。
 - 后端：有界生产 consumer 和原receipt修复已测试；模型质量：Q01–Q04仍未通过；角色闭环：继续真实 Laya生产纵切，完整生命周期/多领域和full/checkpoint-tail待验；Godot：A/B/C均未执行，仍最后集中验收。既有空间live run清理失败的两条路径保持原记录，本批未尝试绕过审批清理。
+
+## Background 共享认知合同子项
+
+- `22522948`：同步 background 与 durable background 在 L2 前冻结同一 turn 的 CapabilityEnvelope/CognitionPolicy，L2/L3 复用该合同；durable provider-pending 重开读取原冻结请求，source event ref 绑定原 cognition child key。后台仍不产生执行命令。
+- HEAD `249a9eed` archive 加精确方法补丁隔离 **58 passed**，run `ae1be16c6a024afd9a625a60cefa9d76`；证据为 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/background-staged-isolated/` 中 manifest、patch、pytest.log、JUnit。cleanup passed。提交前以独立 Git index 重建证据 tree，与 staged tree `413be97d7a91517b415f8e3ad95bafeda6648639` 完全一致；用户原有 MindFrame projection、frame 参数和 coordinator 重验修改没有并入本批。
+- 后端：仅关闭 background 同源合同子项，R06/Task1 仍局部实现；background/dialogue/总输入硬预算及可信 revision 未关闭。模型质量：未运行真实 Laya 或正式 splits。角色闭环：R07–R09 未升级。Godot：未修改、启动或验收，A/B/C 留到后端及模型门完成后。不重复运行无关全量 pytest/Harness all，历史修改和证据保留。
