@@ -723,6 +723,7 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="character_perceived_event",
+            frozen_context=cognition_contract,
             run_model=lambda memory_override=None: self._l2.prepare_perceived_event(
                 snapshot,
                 event,
@@ -809,6 +810,7 @@ class CharacterAgentRuntime:
                 turn_context=turn,
                 capability_envelope=cognition_contract["capability_envelope"],
                 cognition_policy=cognition_contract["cognition_policy"],
+                frame=self._restore_cognition_mind_frame(dict(cognition_contract, turn_context=turn)),
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -1132,6 +1134,7 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(event.actor_id),
             source_stage="self_body_perceived_event",
+            frozen_context=cognition_contract,
             run_model=lambda memory_override=None: self._l2.prepare_self_body_event(
                 snapshot,
                 event,
@@ -1204,6 +1207,7 @@ class CharacterAgentRuntime:
                 turn_context=turn,
                 capability_envelope=cognition_contract["capability_envelope"],
                 cognition_policy=cognition_contract["cognition_policy"],
+                frame=self._restore_cognition_mind_frame(dict(cognition_contract, turn_context=turn)),
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -1641,6 +1645,7 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(actor_id),
             source_stage="siming_output_event",
+            frozen_context=cognition_contract,
             run_model=lambda memory_override=None: self._prepare_siming_l2_request(snapshot, normalized_payload,
                 dict(memory_bundle=memory_record_bundle, control_mode=self.get_control_mode(actor_id),
                     working_memory_state=working_memory_state, current_goal_state=current_goal_state,
@@ -3048,6 +3053,7 @@ class CharacterAgentRuntime:
             snapshot=snapshot,
             control_mode=self.get_control_mode(actor_id),
             source_stage="background_cognition_tick",
+            frozen_context=background_contract,
             run_model=lambda memory_override=None: self._l2.prepare_background_state(
                 snapshot,
                 background_payload,
@@ -3099,6 +3105,7 @@ class CharacterAgentRuntime:
                 turn_context=background_turn,
                 capability_envelope=background_contract["capability_envelope"],
                 cognition_policy=background_contract["cognition_policy"],
+                frame=self._restore_cognition_mind_frame(dict(background_contract, turn_context=background_turn)),
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -4514,9 +4521,14 @@ class CharacterAgentRuntime:
         control_mode: str,
         source_stage: str,
         run_model,
+        frozen_context: dict | None = None,
     ) -> Generator[CognitionRequest, dict[str, object], CharacterInterpretation]:
         try:
             request_json = self._run_with_memory_recall(actor_id, snapshot, run_model)
+            if frozen_context is not None:
+                prepared_context = json.loads(request_json)["context"]
+                if prepared_context.get("frame") is not None:
+                    frozen_context["mind_frame"] = prepared_context["frame"]
             output = yield CognitionRequest("l2_reasoning", request_json)
             return self._l2.map_reasoning_output(actor_id=actor_id, output=output)
         except Exception as exc:

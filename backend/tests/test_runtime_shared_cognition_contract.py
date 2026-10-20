@@ -68,5 +68,9 @@ def test_entry_l2_and_l3_share_pre_interpretation_contract(tmp_path, monkeypatch
         assert l2["cognition_policy"] == l3["cognition_policy"]
         assert l2["turn_id"] == l2["capability_envelope"]["turn_id"]
         assert len(compiled) == 1
+        assert l2["frame"] == l3["frame"]
+        assert l2["frame"]["turn_id"] == l2["turn_id"]
+        assert l2["frame"]["frame_digest"]
+
     finally:
         runtime.close()
