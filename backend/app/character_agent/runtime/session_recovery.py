@@ -17,6 +17,11 @@ from app.character_agent.storage.unresolved_tension_store import CharacterUnreso
 
 def goal_state_from_event(actor_id: str, payload: dict[str, object]) -> CharacterGoalStateRecord:
     """保留旧 timeline 恢复的缺字段/旧字段归一化规则。"""
+    if "goal_provenance" in payload:
+        from app.character_agent.models.goal_provenance import GoalProposalProvenance
+        GoalProposalProvenance.model_validate(payload["goal_provenance"])
+        if "selected_intent" in payload:
+            raise ValueError("goal proposal event cannot carry an action")
     strings = {
         key: str(payload.get(key, default) or default)
         for key, default in {

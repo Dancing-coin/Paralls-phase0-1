@@ -4374,8 +4374,31 @@ class CharacterAgentRuntime:
 
     def _plan_goal_state_event(self, actor_id: str, decision: CharacterIntentDecision) -> dict[str, object]:
         """冻结目标转换；同步写入和持久阶段共用同一领域计算。"""
-        previous_goal_state = self._goal_state_store.read(actor_id)
         active_goal_frame = decision.active_goal_frame or self._decision_goal_frame(decision)
+        return {**self._plan_goal_frame_transition(actor_id, active_goal_frame),
+                "selected_intent": decision.selected_intent}
+
+    def _plan_goal_proposal_event(self, context, output: dict[str, object]) -> dict[str, object]:
+        from app.character_agent.gateway.goal_proposal import (
+            GoalProposalContext, validate_proposal_output,
+        )
+        from app.character_agent.models.goal_provenance import GoalProposalProvenance
+        frozen = GoalProposalContext.model_validate(context.model_dump(mode="json"))
+        proposal = validate_proposal_output(output, frozen.evidence_refs)
+        provenance = GoalProposalProvenance(
+            contract="goal_proposal:v1", request_id=frozen.request_id,
+            turn_id=frozen.frame.turn_id, source_ref=frozen.trigger_source_ref,
+            goal_revision=frozen.goal_revision, frame_digest=frozen.frame.frame_digest,
+            evidence_refs=list(dict.fromkeys([frozen.trigger_source_ref, *proposal["evidence_refs"]])),
+        )
+        return {
+            **self._plan_goal_frame_transition(
+                frozen.actor_id, CharacterActiveGoalFrame.model_validate(proposal["active_goal_frame"])),
+            "goal_provenance": provenance.model_dump(mode="json"),
+        }
+
+    def _plan_goal_frame_transition(self, actor_id: str, active_goal_frame: CharacterActiveGoalFrame) -> dict[str, object]:
+        previous_goal_state = self._goal_state_store.read(actor_id)
         goal_state = active_goal_frame.model_dump()
         changed_fields = [
             key
@@ -4391,7 +4414,6 @@ class CharacterAgentRuntime:
         )
         return {
             **goal_state,
-            "selected_intent": decision.selected_intent,
             "goal_changed": bool(changed_fields),
             "changed_fields": changed_fields,
             "transition_kind": transition_kind,
