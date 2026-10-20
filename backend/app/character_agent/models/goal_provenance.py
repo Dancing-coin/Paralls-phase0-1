@@ -26,4 +26,3 @@ class GoalProposalProvenance(BaseModel):
         if len(self.evidence_refs) != len(set(self.evidence_refs)):
             raise ValueError("goal proposal provenance evidence must be unique")
         return self
-

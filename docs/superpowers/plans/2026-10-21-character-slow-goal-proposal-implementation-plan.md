@@ -2,7 +2,7 @@
 
 Goal: close the slow-goal subitem of R01/R07 without blocking lawful Laya action selection or bypassing the original Character goal owner.
 
-Design: [slow proposal lifecycle](../specs/2026-10-21-character-slow-goal-proposal-design.md). Execution remains part of the [October stages 1–3 plan](2026-10-20-october-stages-1-3-implementation-plan.md). Status: batch 1 contract implemented and verified; batches 2–5 remain planned. Product scope is covered by the user's standing authorization; unresolved technical review findings must be resolved before their affected code batch.
+Design: [slow proposal lifecycle](../specs/2026-10-21-character-slow-goal-proposal-design.md). Execution remains part of the [October stages 1–3 plan](2026-10-20-october-stages-1-3-implementation-plan.md). Status: batches 1–2 implemented and verified; batches 3–5 remain planned. Product scope is covered by the user's standing authorization; unresolved technical review findings must be resolved before their affected code batch.
 
 ## Batch 1: explicit generative proposal contract
 
@@ -15,7 +15,7 @@ Own `gateway/model_gateway.py`, `gateway/model_provider.py`, `gateway/prompt_pol
 
 ## Batch 2: original goal transition calculation
 
-Own `runtime/runtime_loop.py`, `runtime/session_recovery.py` and focused goal event/recovery tests. Extract the frame-based calculation shared by existing action decisions and a goal-only proposal. Keep original action event fields and behavior intact. The proposal path adds explicit provenance and must not synthesize selected_intent or schedule L4.
+Own `runtime/runtime_loop.py`, `runtime/session_recovery.py`, `models/goal_provenance.py` and focused goal event/recovery tests. Extract the frame-based calculation shared by existing action decisions and a goal-only proposal. Keep original action event fields and behavior intact. The proposal path adds explicit provenance and must not synthesize selected_intent or schedule L4.
 
 - RED/GREEN: original action goal transitions remain identical; valid proposal produces the same owner-calculated changed fields/transition/reasons; no action/command/world event appears.
 - Verify goal history/private projection with session recovery and unchanged action consumers. Reject a proposal provenance contract unknown to recovery rather than silently treating it as an action.
@@ -50,3 +50,5 @@ Use RED then GREEN per behavioral batch, with a separate small commit for each c
 After each batch update R01/R07 and any affected D/Q/G rows in the unified matrix with exact scope, source revision, command, exit code, run ID, evidence path and limitations. No component/service/contract success closes the full character loop. Keep Goal active until backend, formal quality, complete role closure and final Godot A/B/C all meet the matrix.
 
 Rollback: revert only the committed batch; preserve user changes and historical evidence. New receipt/schema versions must fail closed on unsupported readers and migrate transactionally. A failed later batch cannot invalidate or erase already accepted older owner receipts.
+
+Batch 2 evidence: exact HEAD `374ca1fd` plus owned overlays, RED 8 new failures plus 1 pre-existing static call-count failure / 55 passed (`89c60da603d04c8793293fd8aa94e6b3`). Final GREEN 64 passed (`7c8e2eab239a454b90ffa11025709ed4`); backend-contract passed (`18597a01002046009e9ce94c98a24e97`). Original action and goal-only calculations compared directly; session reopen preserves event and projection. No atomic proposal receipt, admission or driver is claimed. Evidence prefix `slow-goal-transition-` at the unified external root; cleanup passed.

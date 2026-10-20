@@ -1,6 +1,6 @@
 # Character slow goal proposal lifecycle
 
-Status: request/response contract implemented and verified in batch 1; owner lifecycle, durable acceptance, driver coexistence and live closure remain planned and runtime unverified. Implementation authorized by the current October stages 1–3 request.
+Status: request/response contract and shared action-free goal transition/recovery implemented and verified in batches 1–2; durable owner acceptance, driver coexistence and live closure remain planned and runtime unverified. Implementation authorized by the current October stages 1–3 request.
 
 This is an implementation refinement of role specs 01 §3.1 and 02 §4 and plan01 Task6A. It preserves the single Character owner, original goal event/store and existing gateway/provider slots. It does not authorize Godot work, training, new model quality claims or a second scheduler/store/actor writer.
 
