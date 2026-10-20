@@ -1,5 +1,6 @@
 """Frozen stage contracts must retain typed content and exact identity."""
 from copy import deepcopy
+import json
 
 import pytest
 
@@ -75,3 +76,27 @@ def test_invalid_contract_is_rejected_before_any_frozen_receipt_write():
 def test_partial_or_explicitly_null_contract_is_not_legacy(field):
     with pytest.raises(ValueError):
         validate_cognition_contract({'actor_id': 'char_a', field: None})
+
+
+def test_rehashed_progress_cannot_hide_changed_policy_on_durable_resume(tmp_path):
+    from test_durable_cognition_shared_contract import _pending
+    from app.character_agent.services.cognition_admission import _digest
+
+    rt, admissions, coordinator, child, handle, pending = _pending(tmp_path)
+    try:
+        raw = pending.model_dump(mode='json')
+        raw['frame']['cognition_policy']['dialogue']['max_tokens'] += 1
+        raw['progress_digest'] = _digest({k: v for k, v in raw.items() if k != 'progress_digest'})
+        db = rt._session_store._connection
+        db.execute("UPDATE character_session_receipts SET receipt_json=? "
+            "WHERE kind='cognition_progress' AND receipt_key=?",
+            (json.dumps(raw), f'{child.child_key}/progress:{pending.revision}'))
+        db.commit()
+        writes = db.total_changes
+        for resume in (lambda: admissions.read_progress(child.child_key),
+                lambda: coordinator.prepare_l2(child.child_key, activation=handle, now=113.)):
+            with pytest.raises(ValueError, match='cognition_policy_digest_mismatch'):
+                resume()
+        assert db.total_changes == writes
+    finally:
+        rt.close()
