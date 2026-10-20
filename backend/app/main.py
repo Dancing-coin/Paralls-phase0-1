@@ -20,7 +20,7 @@ from uuid import uuid4
 from anyio import CancelScope
 from fastapi import FastAPI, Header, HTTPException, Request, WebSocket
 from fastapi.responses import HTMLResponse, Response
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from starlette.websockets import WebSocketDisconnect
 
 from app.config import Settings, settings
@@ -154,6 +154,7 @@ from app.population_continuity.activation_sources import ActivationSourceReader
 from app.population_continuity.activation_policy import ActivationPolicy
 from app.world_runtime.population_driver import PopulationCadenceDriver
 from app.services.runtime_execution import RuntimeExecution, RuntimeQueueFull, RuntimeStopped
+from app.services.world_admin_auth_service import WorldAdminCredentialVerifier
 from app.world_runtime.storage_lease import RuntimeStorageLease
 from app.services.dialogue_continuation import DialogueCoordinator, DialogueProviderSlots
 from app.character_agent.runtime.cognition_continuation import CognitionAdvance
@@ -262,6 +263,7 @@ _mirror_transport_accepting = True
 _population_runtime_driver: PopulationCadenceDriver | None = None
 _population_mirror_source: PopulationMirrorSource | None = None
 runtime_execution: RuntimeExecution | None = None
+world_admin_credential_verifier = WorldAdminCredentialVerifier(tuple(settings.world_admin_credentials))
 _runtime_execution_credit = None
 _runtime_storage_lease: RuntimeStorageLease | None = None
 _sqlite_wal_checkpoint_worker: SqliteWalCheckpointWorker | None = None
@@ -2564,6 +2566,65 @@ async def _dialogue_owner_call(execution, command):
             await asyncio.sleep(0.02)
         else:
             return await asyncio.shield(asyncio.wrap_future(future))
+
+
+class WorldAdminFactionRelationRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    world_ref: str = Field(min_length=1, pattern=r"^\S+$")
+    timeline_ref: str = Field(min_length=1, pattern=r"^\S+$")
+    actor_ref: str = Field(pattern=r"^character:[^\s:]+$")
+    target_ref: str = Field(pattern=r"^character:[^\s:]+$")
+    hostile: bool
+    command_id: str = Field(min_length=1, pattern=r"^\S+$")
+    idempotency_key: str = Field(min_length=1, pattern=r"^\S+$")
+    causation_id: str = Field(min_length=1, pattern=r"^\S+$")
+    correlation_id: str = Field(min_length=1, pattern=r"^\S+$")
+
+
+@app.post("/admin/combat-faction-relations")
+async def record_world_admin_faction_relation(
+    payload: WorldAdminFactionRelationRequest,
+    request: Request,
+    authorization: str | None = Header(default=None),
+) -> dict[str, object]:
+    """Explicit world-admin faction truth; no hit, encounter or life inference."""
+    verifier = world_admin_credential_verifier
+    if not verifier.enabled:
+        raise HTTPException(status_code=503, detail={"error_code": "world_admin_unconfigured"})
+    peer_host = request.client.host if request.client is not None else ""
+    if request.url.scheme != "https" and peer_host not in _LOOPBACK_HOSTS:
+        raise HTTPException(status_code=403, detail={"error_code": "world_admin_secure_transport_required"})
+    token = authorization[7:] if authorization and authorization.startswith("Bearer ") else None
+    identity = verifier.authenticate(token, world_ref=payload.world_ref, now=int(time()))
+    if identity is None:
+        raise HTTPException(status_code=403, detail={"error_code": "world_admin_unauthorized"})
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise HTTPException(status_code=503, detail={"error_code": "runtime_stopped"})
+
+    def command():
+        current = world_admin_credential_verifier.authenticate(token, world_ref=payload.world_ref, now=int(time()))
+        if current is None or current != identity:
+            raise HTTPException(status_code=403, detail={"error_code": "world_admin_unauthorized"})
+        driver = _population_runtime_driver
+        if driver is None or driver.world_runtime.mode.world_ref != identity.world_ref:
+            raise ValueError("world_admin_runtime_world_mismatch")
+        from app.gameplay.canonical_combat_authority import CombatFactionRelationAuthority, FactionRelationRequest
+        owner = CombatFactionRelationAuthority(store=gameplay_event_store, authorized_callers=("world_admin",))
+        return owner.record(FactionRelationRequest(
+            **payload.model_dump(), authorized_caller="world_admin",
+            authenticated_principal_ref=identity.principal_ref, credential_ref=identity.credential_ref))
+
+    try:
+        result = await _dialogue_owner_call(execution, command)
+    except (RuntimeStopped, RuntimeQueueFull) as exc:
+        raise HTTPException(status_code=503, detail={"error_code": "runtime_stopped"}) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail={"error_code": str(exc)}) from exc
+    if not result.committed:
+        raise HTTPException(status_code=409, detail={"error_code": result.failure.error_code})
+    return result.model_dump(exclude_none=True)
 
 
 _transport_cognition_inputs = ContextVar('transport_cognition_inputs', default=None)

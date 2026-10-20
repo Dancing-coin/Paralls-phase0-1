@@ -269,3 +269,7 @@ HEAD wiring correction and final resume check: committed coordinator already car
 ### D09 生产生命周期前置批次
 
 采用初始 Activation→Presence→alive 的现有 owner/service，显式部署 grants 与精确 producer，在实际 RuntimeExecution 组合中验证提交、重启与丢响应恢复。精确暂存隔离最终56 passed，run `e30f1cf4db6e455c881d3e6b587ce16f`；backend-contract `ba2565110552457fb6b9f8302503284c` passed，cleanup passed。历史资源时钟、case-death 与其他 main 改动未收编；无 Godot/全量pytest/Harness all/模型评估。本批仅关闭 Task2/D09 的 initial-life composition 前置，不关闭完整角色纵切。接下来推进 D08 的真实 faction source、target eligibility 与原角色 caller，physics 最后。范围、状态与失败证据详见统一矩阵新增 D09 节。
+
+### D08 authenticated faction source 批次
+
+复用 world-admin verifier 和 RuntimeExecution，新增严格 HTTP 命令与真实 faction owner receipt，队列执行前再次认证并核对当前 world。明确 timeline 是管理员显式作用域，不授予 encounter 或 physics 事实。精确 HEAD fd48888a 加三文件隔离24 passed/4既有warnings，包含独立 uvicorn 真实 HTTP、进程重启原 receipt 与 SQLite 单事件验证；run 5aded566ac5d42bf98b701c3598cfba4，backend-contract 103c59e0a50e42ba928086aaf40dfd63 passed，cleanup passed。修复前的测试观察器竞态22pass1fail保留，见矩阵。仅采用 faction 部分，不收编历史 Threat/encounter/adapter/main cadence 路由。下一批直接连接角色 target admission 与执行时 source CAS，模型正式质量/完整角色/Godot 不升级。
