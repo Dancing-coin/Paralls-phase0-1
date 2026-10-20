@@ -106,6 +106,8 @@ class CharacterModelProvider:
                     transport_succeeded=False,
                     fallback_used=False,
                     error_type=exc.__class__.__name__,
+                    endpoint_url=endpoint,
+                    model_name="multilingual",
                 )
                 raise
             self._record_evidence(
@@ -114,6 +116,8 @@ class CharacterModelProvider:
                 transport_attempted=True,
                 transport_succeeded=True,
                 fallback_used=False,
+                endpoint_url=endpoint,
+                model_name="multilingual",
             )
             return output
         if provider_kind in {"qwen", "seed_doubao", "openai_compatible"}:
@@ -788,12 +792,14 @@ class CharacterModelProvider:
         transport_succeeded: bool = False,
         fallback_used: bool = False,
         error_type: str | None = None,
+        endpoint_url: str | None = None,
+        model_name: str | None = None,
     ) -> None:
         self._last_call_evidence = CharacterModelCallEvidence(
             task_kind=task_kind,
             provider_kind=provider_kind,
-            model_name=self._model_name,
-            endpoint_host=_endpoint_host(self._endpoint_url),
+            model_name=self._model_name if model_name is None else model_name,
+            endpoint_host=_endpoint_host(self._endpoint_url if endpoint_url is None else endpoint_url),
             transport_attempted=transport_attempted,
             transport_succeeded=transport_succeeded,
             fallback_used=fallback_used,

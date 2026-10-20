@@ -34,3 +34,34 @@ def test_laya_route_uses_only_its_own_provider_credential(
     assert received["endpoint"] == "http://127.0.0.1:8765/v1/systemone"
     assert provider.last_call_evidence.transport_succeeded
     assert not provider.last_call_evidence.fallback_used
+
+
+@pytest.mark.parametrize("transport_fails", [False, True])
+def test_routed_laya_evidence_identifies_actual_transport(monkeypatch, transport_fails):
+    monkeypatch.setenv("CHARACTER_LAYA_ENDPOINT", "http://127.0.0.1:8765/v1/systemone")
+
+    class LayaEndpoint:
+        def __init__(self, **configuration):
+            pass
+
+        def complete(self, request):
+            if transport_fails:
+                raise TimeoutError("endpoint timed out")
+            return {"selected_intent": "observe"}
+
+    monkeypatch.setattr("app.character_agent.gateway.model_provider.LayaSystemOneProvider", LayaEndpoint)
+    provider = CharacterModelProvider(
+        provider_kind="deepseek", endpoint_url="https://api.deepseek.com", model_name="reasoning-model"
+    )
+    request = {"task_kind": "l3_planning", "route": {"provider_kind": "laya"}}
+    if transport_fails:
+        with pytest.raises(TimeoutError):
+            provider.complete(request)
+    else:
+        provider.complete(request)
+    evidence = provider.last_call_evidence
+    assert evidence.provider_kind == "laya"
+    assert evidence.endpoint_host == "127.0.0.1"
+    assert evidence.model_name == "multilingual"
+    assert evidence.transport_succeeded is not transport_fails
+    assert not evidence.fallback_used
