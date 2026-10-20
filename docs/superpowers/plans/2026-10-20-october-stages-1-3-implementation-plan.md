@@ -340,3 +340,10 @@ Extend the existing development exporter with optional --owner-snapshot (the ori
 后续 R08/R09 批次：真实 current HEAD backend/Laya 选择 worktable use，原 ESM 提交，新进程两次恢复同一回执且零写；第二选择 observe，连续 use/finish 未通过。generic visibility 与 local L2 preserve_continuity 不是有来源的完成任务，不能作为正式质量失败。原 owner 快照暴露 exporter source.system 身份错误，修正为原 character_agent_l4，保留严格 digest；原 L3/L4/owner 回归 RED1failed，GREEN88passed/4既有warnings（5a73187d830b42e1a36d8bc99011b032），backend-contract c5ef2d90976d464fa07eb3777a220ec2 passed，cleanup passed。同一 live trace accepted1/snapshot_matched，仅 development。证据及边界见统一矩阵当前批次；下一项实际任务/目标及 L2 来源，不再盲重试模型或扩展 parser 测试。Godot 最后。
 
 已补原 cadence 回执/事件/事务与精确输入关联，缺准入/已撤权零写；准入与撤权流版本进入 Inventory 最终 command read-set CAS。实际 publisher、原认证/Inventory 提交与 seed、内存/SQLite 撤权竞态、SQLite 重开定向33 passed（run `694911dd6ed94343b699a1cf997dafc3`），backend-contract passed（`a359f759e5cf42f3988eb4eb5492fe71`），cleanup passed。测试失败及修正记录见统一矩阵。仅关闭此子项；完整时间授权、生产领域投递及跨域角色 caller 继续执行。没有新模型质量结果，Godot 继续最后执行。
+
+
+### Laya credential routing isolation (2026-10-20)
+
+The original shared provider forwarded the reasoning API key when L3 routed to Laya. RED two cases reproduced missing dedicated key and overridden dedicated key. The fix only permits native provider_kind=laya to use its constructor key; routed Laya uses CHARACTER_LAYA_API_KEY exclusively. Exact HEAD 2ad3d7e1 plus provider/test overrides: GREEN **100 passed**, run bb9318dab4ca4aac9ad720d96ca6eb9f; backend-contract a981e1a7f7a44951af8e76c6c4ebeb65 passed. Cleanup passed for both. External evidence: credential-route-green/ and credential-route-contract/ under the existing evidence root. RED97b88aedeb5b4afda4361d9ed6ecf342 retained.
+
+Backend: credential isolation complete; integrated online L2/Laya not yet proven. Model Q01-Q04: unchanged, no new quality score. Role: live continuous use/finish and complete owner closure remain open. Godot A/B/C: not operated or verified. No broad pytest/Harness all, formal split access, new model calls or training. Next return to sourced task/goal admission and original domain owner dependencies; Godot stays last.

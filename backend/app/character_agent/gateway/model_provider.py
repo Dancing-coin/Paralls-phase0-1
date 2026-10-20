@@ -91,7 +91,8 @@ class CharacterModelProvider:
             adapter = LayaSystemOneProvider(
                 endpoint=endpoint,
                 timeout_seconds=self._timeout_seconds,
-                api_key=self._api_key or os.getenv("CHARACTER_LAYA_API_KEY", "").strip(),
+                api_key=(self._api_key if self._provider_kind == "laya" else "")
+                or os.getenv("CHARACTER_LAYA_API_KEY", "").strip(),
                 tokenizer_path=os.getenv("CHARACTER_LAYA_TOKENIZER_PATH", "").strip() or None,
                 tokenizer_sha256=os.getenv("CHARACTER_LAYA_TOKENIZER_SHA256", "").strip(),
             )
