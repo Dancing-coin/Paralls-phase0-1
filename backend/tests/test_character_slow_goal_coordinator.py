@@ -11,10 +11,25 @@ from test_character_slow_goal_contract import proposal_context
 
 class FakeAdmissions:
     def __init__(self, entry):
-        self.store = object()
         self.entry = entry
+        self.store = SimpleNamespace(read_event=self._read_event)
         self.progress = None
         self.calls = []
+
+    def _read_event(self, actor_id, *, event_id):
+        context = self.entry.payload['context']
+        if actor_id != self.entry.actor_id or event_id != context['trigger_source_ref']:
+            return None
+        return {
+            'actor_id': actor_id,
+            'event_id': event_id,
+            'payload': {'goal_proposal_trigger': {
+                'eligible': True,
+                'trigger_kind': context['trigger_kind'],
+                'frame_digest': context['frame']['frame_digest'],
+                'goal_revision': context['goal_revision'],
+            }},
+        }
 
     def _owner(self):
         return None
@@ -119,6 +134,16 @@ def test_prepare_goal_proposal_rejects_context_not_bound_to_committed_trigger():
         }},
     })
     with pytest.raises(ValueError, match='cognition_goal_proposal_source_mismatch'):
+        coordinator.prepare_goal_proposal(
+            'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
+        )
+    assert admissions.calls == []
+
+
+def test_prepare_goal_proposal_requires_readable_committed_source():
+    coordinator, admissions = _coordinator()
+    admissions.store = object()
+    with pytest.raises(ValueError, match='cognition_goal_proposal_source_unreadable'):
         coordinator.prepare_goal_proposal(
             'child:proposal', activation=SimpleNamespace(actor_id='char_a', lock_ref='lock', token='token'), now=11,
         )
