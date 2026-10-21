@@ -1086,3 +1086,11 @@ drive scan or cleanup was performed.
 这证明 canonical social ingress 的 owner receipt 重发不会新增 ledger 写入；不等同于多 owner common cut、旧 worker 迟到、完整 Laya 真实模型输入或 Godot 场景验收。Q01–Q04、R09 完整恢复回放和 G-A/G-B/G-C 仍开放。
 
 **后端**：canonical social owner ingress 的 exact replay 子项已验证。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner receipt/replay 纵切已验证，多域和完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 canonical social ingress durable reopen
+
+新增持久 ingress 选择：第一阶段把显式注册的 `SocialSpatialOwner` 绑定到 `DurableGameplayEventStore`，通过真实 `character_agent_execution` 提交；关闭 store 后第二阶段重开同一 JSON ledger，再次发送同一 contract，返回 `duplicate_replayed`，actor replay 仍只有一条事件。该选择 **3 passed**（包含默认 fail-closed、内存 ingress replay、持久重开 ingress）。
+
+这证明 canonical social ingress 与 durable owner 的重开边界一致，且重复消息不新增 world ledger 写入；仍不证明 authenticated production registration、Laya 正式模型输入、跨多 owner common cut、旧 worker 迟到或 Godot 场景结果。R08/R09 和 Q01–Q04 继续保持局部/未验收。
+
+**后端**：canonical social ingress durable reopen 子项已验证。**模型质量**：Q01–Q04 未验收。**角色闭环**：single-owner durable ingress/replay 已验证，完整 Laya 多域链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
