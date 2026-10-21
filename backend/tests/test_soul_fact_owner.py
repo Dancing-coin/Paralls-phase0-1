@@ -58,10 +58,10 @@ def test_real_anchor_fact_issue_revoke_and_original_retry(kind):
     assert store.read_events() == before
 
 
-def test_legitimate_resource_change_does_not_invalidate_anchor_for_fact_admission():
+def test_legitimate_resource_change_does_not_invalidate_anchor_for_fact_admission(tmp_path):
     from test_soul_resource_sources import _action
 
-    store = GameplayEventStore()
+    store = DurableGameplayEventStore(tmp_path / 'advanced-facts.sqlite3')
     _, _, owner = _setup(store)
     assert _action(store).accepted
 
@@ -72,6 +72,16 @@ def test_legitimate_resource_change_does_not_invalidate_anchor_for_fact_admissio
     event = store.get_event(result.committed_event_ids[0])
     batch = store.get_transaction(event.transaction_id)
     assert RESOURCE not in batch.read_stream_revisions
+    store.close()
+    restored = DurableGameplayEventStore(tmp_path / 'advanced-facts.sqlite3')
+    try:
+        _, _, reopened = _setup(restored, initialize=False, registrations=())
+        assert reopened.projection(_command())['active']
+        retry = reopened.settle(_command())
+        assert retry.committed and retry.zero_write
+        assert retry.committed_event_ids == result.committed_event_ids
+    finally:
+        restored.close()
 
 
 def test_original_fact_recovery_after_reopen_without_current_policy_or_presence(tmp_path):
@@ -130,7 +140,8 @@ def test_despawn_between_evaluation_and_commit_prevents_fact_write(monkeypatch):
     assert not owner.settle(_command()).committed
 
 
-def test_self_consistent_batch_without_original_anchor_cut_is_not_owner_evidence():
+@pytest.mark.parametrize('missing', ['all', 'life'])
+def test_self_consistent_batch_without_original_anchor_cut_is_not_owner_evidence(missing):
     from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch
 
     source = GameplayEventStore()
@@ -140,13 +151,16 @@ def test_self_consistent_batch_without_original_anchor_cut_is_not_owner_evidence
     store = GameplayEventStore()
     _, _, owner = _setup(store)
     stream = owner.stream_id(WORLD, ACTOR)
+    original_reads = source.get_transaction(original.transaction_id).read_stream_revisions
+    reads = ({stream: 0} if missing == 'all' else {key: revision
+        for key, revision in original_reads.items() if key != f'gameplay:character:life:{PROFILE}'})
     forged = build_multi_stream_atomic_event_batch(command_id=original.command_id,
         principal_ref='soul.fact_authority', expected_revisions={stream: 0},
         event_specs={stream: [(original.event_type, original.payload)]},
         event_visibility_policies={stream: ['authority_only']},
         idempotency_key='soul-fact:one', causation_id=original.causation_id,
         correlation_id=original.correlation_id,
-        read_stream_revisions={stream: 0}, pinned_revisions={stream: 0})
+        read_stream_revisions=reads, pinned_revisions=reads)
     assert store.append_batch(forged).committed
     with pytest.raises(ValueError):
         owner.projection(_command())

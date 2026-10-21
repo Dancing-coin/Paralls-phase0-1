@@ -297,6 +297,10 @@ class SoulFactAuthority:
             if presence_stream in expected_reads and expected_reads[presence_stream] != presence_revision:
                 raise ValueError('soul_fact_anchor_cut_conflict')
             expected_reads[presence_stream] = presence_revision
+            active, _ = self._anchors._presence._presence._history(
+                payload['world_ref'], head=presence_revision)
+            if active.get(f'character:{actor}') != incarnation:
+                raise ValueError('soul_fact_anchor_cut_missing')
             presence_events = self.store.read_stream(presence_stream, to_revision=presence_revision)
             spawn = next((item for item in presence_events
                 if item.event_type == 'population.presence.spawned'
@@ -306,16 +310,21 @@ class SoulFactAuthority:
                 raise ValueError('soul_fact_anchor_cut_missing')
             activation = self._anchors._presence._presence._sources.recover(
                 spawn.payload['source_activation_event_id'], world_ref=payload['world_ref'],
-                profile_ref=f'character:{actor}', at_revision=None)
+                profile_ref=f'character:{actor}',
+                at_revision=batch.read_stream_revisions.get(f"population:{payload['world_ref']}"))
             for source, revision in activation.read_revisions.items():
                 if source in expected_reads and expected_reads[source] != revision:
                     raise ValueError('soul_fact_anchor_cut_conflict')
                 expected_reads[source] = revision
             life_stream = f'gameplay:character:life:character:{actor}'
-            if life_stream in batch.read_stream_revisions:
-                expected_reads[life_stream] = batch.read_stream_revisions[life_stream]
+            expected_reads[life_stream] = 0
         if expected_reads != batch.read_stream_revisions:
             raise ValueError('soul_fact_anchor_cut_missing')
+        for source, revision in expected_reads.items():
+            historical = [item for item in self.store.read_stream(source)
+                if item.global_sequence < event.global_sequence]
+            if len(historical) != revision:
+                raise ValueError('soul_fact_source_cut_stale')
         request = SoulFactRequest(world_ref=payload['world_ref'], actor_ref=payload['actor_ref'],
             target_ref=payload['target_ref'], actor_incarnation=payload['actor_incarnation'],
             target_incarnation=payload['target_incarnation'], package_ref=payload['package_ref'],
