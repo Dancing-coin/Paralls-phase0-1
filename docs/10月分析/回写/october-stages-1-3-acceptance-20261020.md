@@ -1064,3 +1064,9 @@ drive scan or cleanup was performed.
 新增定向合同测试 `test_social_spatial_owner.py`：**3 passed**，覆盖提交＋精确 replay、改变重复 key 零新增写入、未授权 caller 拒绝。canonical `character_agent_execution` ingress 尚未接入该 owner，仍保持当前 `owner_unavailable` fail-closed；因此这批不升级 R08/R09，也不构成完整 Laya action+target→L4→owner 回执闭环。后续需补正式 ingress source/target admission、角色 writeback、跨进程恢复和回放证据，再评估接线。
 
 **后端**：新增 social spatial owner 基础能力，未接入生产 ingress。**模型质量**：Q01–Q04 未验收。**角色闭环**：owner 单元合同已验证，完整 Laya/多域/恢复回放仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 social spatial owner 跨进程回执恢复
+
+在 D 盘 basetemp 下补跑 `test_social_spatial_owner.py`，**4 passed**。新增用例使用真实 `DurableGameplayEventStore`：第一进程提交 `approach` receipt 并关闭 store，第二个 owner 从同一 JSON ledger 重开，原请求返回 `duplicate_replayed`、event id 不变，replay 只包含一条已提交事件。该证据关闭 social spatial owner 的持久回执重开子项；尚未证明 canonical ingress 注册、Laya 真实输入、角色 writeback、多 owner common cut 或 Godot 可见结果。
+
+**后端**：social spatial owner 已具备持久 transaction/receipt/reopen 子项，生产 ingress 仍保持未注册 fail-closed。**模型质量**：Q01–Q04 未验收。**角色闭环**：owner recovery 子项已验证，完整 Laya action+target→L4→owner 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
