@@ -380,6 +380,16 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 
 任一必需 boundary、receipt 或 visible evidence 缺失，整体 Goal 不得 complete。后端定向 profile 不替代 A/B/C。
 
+### 最终 Godot 边界接口交接（当前静态审查，尚未验收）
+
+当前后端 `DialogueCoordinator` 会将执行合同作为 `character_agent_execution` 发给 WebSocket 客户端；`_handle_envelope("character_agent_execution")` 只有在收到客户端传回的合同后，才会调用相应执行 owner。对现有 ESM 对象动作，owner 提交后才产生带 `owner_receipt` 的 `ack`、`action_request` 和 `world_result`。后端 websocket 回归已验证这个“egress → 边界回传 → owner commit → receipt”顺序；egress 本身不结算。
+
+当前 `scripts/autoload/BackendBridge.gd` 只把收到的 `character_agent_execution` 转成 `character_agent_execution_received` presentation signal，没有发现实际客户端将**原始完整 payload** 回传 WebSocket 的调用点。`scripts/phase0/LayaCharacterRuntimeDemo.gd` 和验证 probe 的 signal 观察也不能证明动作执行或 owner receipt。因此这个接口是最终 Godot 接入的明确未实现项；不得由 backend 内部 loopback、presentation signal、单独 ack 或本地动画补造边界提交。
+
+最终消费者必须保留并原样关联 `actor_ref`、`turn_id`、`idempotency_key`、`causation_id`、`correlation_id`、`semantic_intent_id`、完整 `target_refs`、`expected_observation` 和所有 execution/source revision pins；依据本地 embodiment 执行或拒绝该合同，再把对应的原合同作为 `character_agent_execution` 消息发回同一认证 WebSocket session。验收要同时封存：入站合同、客户端发出的回传、后端返回的 owner receipt（含拒绝时零写结果）、receipt 关联的 world/session outcome、画面/音频结果及后续恢复/重放。重连或重试只能用原幂等身份；不得以新合同重放旧动作。各动作仅在其领域 owner 已接线且确有该 owner 的回执类型后进入场景验收；当前 ESM `inspect_object`/worktable owner slice 不能证明 Combat、Resource、Soul 或双角色协同 owner 已就绪。
+
+该静态交接不升级 R07–R09 或 G-A/B/C。Godot 仍留到后端与领域 owner 收口后修改及运行；届时应先验证上述回传和 receipt 往返，再按 G-A、G-B、G-C 顺序采集真实 boundary、owner 与可见场景证据。
+
 ## D06／D10 来源依赖：正式采用静态资源 genesis（2026-10-20）
 
 - 提交 `8af22a6a`：经审查采用已有 authored resource template、三角色资源块、v2 projector／有限 reservation／migration planner 及聚焦测试，未重建第二套 Resource owner。materialization 原 source snapshot 随真实 owner 事务持久化；无当前模板的新进程可恢复原 receipt，changed request、跨 world 重物化、非法 read-set 零写拒绝。修复容量边界、孤立 lock、完整 action 原事务校验及校验后重读 head 的竞态。
