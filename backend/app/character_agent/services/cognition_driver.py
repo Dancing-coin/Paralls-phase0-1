@@ -66,7 +66,7 @@ class CharacterCognitionDriver:
         c = self.coordinator
         entry = c.admissions.read(key)
         progress = c.admissions.read_progress(key)
-        if progress is not None and progress.status in {'completed', 'stale'}:
+        if progress is not None and progress.status in {'completed', 'stale', 'cancelled', 'failed'}:
             if progress.status == 'completed':
                 self.on_completed(entry, progress)
             self._release(key, progress.status)
@@ -132,7 +132,7 @@ class CharacterCognitionDriver:
 
     def _accept(self, key, stage, future):
         c = self.coordinator
-        if c.admissions.read_progress(key).status in {'completed', 'stale'}:
+        if c.admissions.read_progress(key).status in {'completed', 'stale', 'cancelled', 'failed'}:
             return True
         entry = c.admissions.read(key)
         handle = self._handles.get(key)

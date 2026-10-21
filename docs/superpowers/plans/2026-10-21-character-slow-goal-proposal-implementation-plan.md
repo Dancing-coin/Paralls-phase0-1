@@ -82,3 +82,12 @@ frame digest handoff to the admission bridge. The combined selection passed
 **75 tests**. This closes only trigger construction at the runtime seam; live
 provider execution, terminal owner receipt/recovery, Laya closure, formal
 quality, and Godot remain open.
+
+Driver terminal-state guard (2026-10-21): the provider driver now treats the
+durable slow-proposal terminal states `cancelled` and `failed` like `stale` and
+`completed` when preparing or accepting work. Late provider results therefore
+cannot reacquire an actor activation or write after a terminal cancellation or
+failure. Focused slow-goal/driver selection passed **77 tests**. This is a
+fail-closed lifecycle boundary; same-actor fast/slow live coexistence, live
+provider dispatch, full Laya/domain closure, formal quality and Godot remain
+open.

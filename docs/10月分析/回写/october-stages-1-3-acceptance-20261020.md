@@ -658,6 +658,15 @@ Contract commit `063b29a0`; docs first failed (`7dae8ac4ffd64e03a0462d5d6e259412
 - Focused RED confirmed the owner acceptance API was absent. GREEN: coordinator + atomic store tests **24 passed**; coordinator + goal transition + admission slow-goal selection **21 passed (22 deselected)**; final coordinator + atomic acceptance **24 passed**. No live model/backend run, formal model evaluation, full pytest/Harness all or Godot operation.
 - **后端**：关闭 coordinator/store 原子 owner acceptance implementation 子项；生产 trigger producer/frozen MindFrame reconstruction、driver/fast-loop coexistence、pending worker generation and crash-after-commit end-to-end recovery remain open. **模型质量**：Q01–Q04 未验收。**角色闭环**：完整 live Laya goal→action+target→L4→domain owner receipt/recovery 未通过。**最终 Godot**：A/B/C 未操作、未验证，仍为最后门槛。
 
+### Driver terminal-state guard
+
+慢目标 driver 现将持久终态 `cancelled`、`failed` 与 `stale`、`completed`
+统一处理。取消或失败后到达的 provider 结果不会重新取得 actor activation，也
+不会再次提交 goal/world 写入；新增 terminal regression 与既有 slow-goal、driver、
+admission、owner acceptance、runtime trigger 组合选择共 **77 passed**。
+这只是 fail-closed 生命周期边界，不代表同角色快慢并行的真实延迟运行、真实
+provider dispatch、完整 Laya/领域 owner 闭环、Q01–Q04 或 Godot A/B/C。
+
 ### Driver batch 4 diagnostic (2026-10-21)
 
 - 首次尝试在 provider pending 时释放 actor activation，违反现有 driver 的 slot/lease/retry/cancellation 预期，driver suite 为 7 failed/2 passed；撤下该未提交 driver patch 后，同一 suite 仍为 7 failed/2 passed，现有 provider preparation/delivery 根因待独立定位。该结果不作为 fast/slow coexistence 证据，也不改变已通过的 owner 接纳实现状态。
