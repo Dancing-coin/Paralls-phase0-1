@@ -1132,3 +1132,13 @@ drive scan or cleanup was performed.
 这关闭了 action payload 改写目标后仍能提交 owner receipt 的合同缺口；候选 digest/source provenance、空间可达性、physics/contact、跨域 common cut、正式模型质量与 Godot 验收仍开放。
 
 **后端**：social ingress 已接入 actor admission 与 frozen target pin 校验。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner action+target 来源完整性和 replay 已验证，多域与完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 legacy social synthetic settlement fail-closed
+
+复核发现 `character_agent_execution` 的旧 `action_request_bundle` spatial actions 在无 `CharacterExecutionContract` 来源时仍可落入 `_actor_target_action_settlement` 的 `source_type=system` synthetic accepted fallback。该回执不来自真实领域 owner，不能作为 canonical truth；旧 routing/timeline/episodic-memory synthetic-success 测试已不再用作成功证据。legacy `approach`、`follow_target`、`seek_private_distance`、`withdraw`、`break_contact` 现在在写入前以 `legacy_social_spatial_source_unavailable` 拒绝，且无 action/world/runtime result、timeline、owner replay 或 gameplay-ledger 写入。
+
+成功覆盖迁至 canonical `CharacterExecutionContract` 注册 owner 路径：五动作均验证 committed owner receipt、`social_spatial_runtime_result`、execution/settlement timeline、working-memory settlement、contact continuity、exact retry replay 单事件；legacy 五动作零写测试也通过。相关定向选择排除独立对象 inspect stale fixture 后 **70 passed、1 deselected**（4 个既有 FastAPI lifespan warnings 与原 Pydantic mappingproxy warnings）。未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+证据边界：canonical social 仍是单 owner backend contract slice，不是 authenticated Laya production admission、完整候选/source provenance、多 owner common cut、真实边界进程、Q01–Q04 模型质量或 Godot 可见结果。对象 inspect stale fixture 在完整两文件选择中仍失败，原因是旧测试 contract 未满足现有 owner candidate/scope admission；未放宽 owner 准入，也未计入通过证据。
+
+**后端**：legacy synthetic spatial success 已 fail-closed；canonical 五动作 durable owner receipt/replay 与角色回写定向通过。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner social slice 已验证，完整 Laya action+target→L4→多领域 owner 及真实 backend 输入仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后验收。
