@@ -2,6 +2,7 @@ from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.main import reset_runtime_state, _handle_envelope
 from app.models.character_agent_runtime import CharacterInterpretation, CharacterIntentDecision, CharacterPrivateWorldSnapshot
 from app.ws_protocol import Envelope
+import pytest
 
 
 def _snapshot() -> CharacterPrivateWorldSnapshot:
@@ -704,62 +705,8 @@ def test_backend_maps_execution_plan_break_contact_requests_to_action_request_en
     assert messages[0]["payload"]["target_entity_refs"]["actor_ids"] == ["char_a"]
 
 
-def test_character_agent_execution_message_routes_break_contact_request_through_esm_with_settlement_result() -> None:
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "break_contact",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    assert messages[0]["message_type"] == "ack"
-    assert messages[0]["payload"]["route"] == "esm_service"
-    assert any(message["message_type"] == "action_request" for message in messages)
-    world_results = [message for message in messages if message["message_type"] == "world_result"]
-    assert world_results
-    assert world_results[0]["event_type"] == "action_resolution_result"
-    assert world_results[0]["entity_id"] == "char_a"
 
 
-def test_character_agent_execution_message_routes_withdraw_request_through_esm_with_settlement_result() -> None:
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "withdraw",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    assert messages[0]["message_type"] == "ack"
-    assert messages[0]["payload"]["route"] == "esm_service"
-    assert any(message["message_type"] == "action_request" for message in messages)
-    world_results = [message for message in messages if message["message_type"] == "world_result"]
-    assert world_results
-    assert world_results[0]["event_type"] == "action_resolution_result"
-    assert world_results[0]["entity_id"] == "char_a"
 
 
 def test_character_agent_execution_message_routes_public_speech_through_character_service() -> None:
@@ -897,581 +844,38 @@ def test_character_agent_execution_message_routes_interact_request_through_esm()
     assert any(message["message_type"] == "world_result" for message in messages)
 
 
-def test_character_agent_execution_message_routes_approach_request_through_esm_with_settlement_result() -> None:
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    assert messages[0]["message_type"] == "ack"
-    assert messages[0]["payload"]["route"] == "esm_service"
-    assert any(message["message_type"] == "action_request" for message in messages)
-    world_results = [message for message in messages if message["message_type"] == "world_result"]
-    assert world_results
-    assert world_results[0]["event_type"] == "action_resolution_result"
-    assert world_results[0]["entity_id"] == "char_a"
-    assert world_results[0]["payload"]["action_profile"] == "approach"
-    assert world_results[0]["payload"]["source_action_request_type"] == "approach"
-    assert world_results[0]["payload"]["applied_state_changes"] == ["social_spatial_state_result"]
-
-
-def test_character_agent_execution_message_routes_follow_target_request_through_esm_with_settlement_result() -> None:
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "follow_target",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    assert messages[0]["message_type"] == "ack"
-    assert messages[0]["payload"]["route"] == "esm_service"
-    assert any(message["message_type"] == "action_request" for message in messages)
-    world_results = [message for message in messages if message["message_type"] == "world_result"]
-    assert world_results
-    assert world_results[0]["event_type"] == "action_resolution_result"
-    assert world_results[0]["entity_id"] == "char_a"
-    assert world_results[0]["payload"]["action_profile"] == "follow_target"
-    assert world_results[0]["payload"]["source_action_request_type"] == "follow_target"
-    assert world_results[0]["payload"]["applied_state_changes"] == ["social_spatial_state_result"]
-
-
-def test_character_agent_execution_message_routes_seek_private_distance_request_through_esm_with_settlement_result() -> None:
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "seek_private_distance",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    assert messages[0]["message_type"] == "ack"
-    assert messages[0]["payload"]["route"] == "esm_service"
-    assert any(message["message_type"] == "action_request" for message in messages)
-    world_results = [message for message in messages if message["message_type"] == "world_result"]
-    assert world_results
-    assert world_results[0]["event_type"] == "action_resolution_result"
-    assert world_results[0]["entity_id"] == "char_a"
-    assert world_results[0]["payload"]["action_profile"] == "seek_private_distance"
-    assert world_results[0]["payload"]["source_action_request_type"] == "seek_private_distance"
-    assert world_results[0]["payload"]["applied_state_changes"] == ["social_spatial_state_result"]
-
-
-def test_approach_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    event_types = [entry["event_type"] for entry in timeline]
-    assert "character_agent_execution_request" in event_types
-    assert "character_agent_settlement_result" in event_types
-    assert any(entry["event_type"] == "character_agent_execution_request" for entry in bundle["working_memory"])
-    assert any(entry["event_type"] == "character_agent_settlement_result" for entry in bundle["working_memory"])
-
-
-def test_social_spatial_settlement_updates_runtime_continuity_state() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    approached = main.character_agent_runtime.get_runtime_continuity_state("char_b")
-    assert approached["ongoing_contact_target"] == "char_a"
-    assert approached["interrupted_action"] == ""
-    assert approached["last_transition_kind"] == "accepted"
-
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "break_contact",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    settled = main.character_agent_runtime.get_runtime_continuity_state("char_b")
-    assert settled["ongoing_contact_target"] == ""
-    assert settled["interrupted_action"] == ""
-    assert settled["last_transition_kind"] == "accepted"
-
-
-def test_social_spatial_continuity_marks_recovering_when_contact_resumes() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "break_contact",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    execution_requests = [
-        entry
-        for entry in timeline
-        if entry["event_type"] == "character_agent_execution_request"
-    ]
-    recovered = main.character_agent_runtime.get_runtime_continuity_state("char_b")
-    assert execution_requests
-    assert recovered["last_transition_kind"] == "accepted"
-    assert recovered["ongoing_contact_target"] == "char_a"
-    assert recovered["interrupted_action"] == ""
-
-
-def test_character_agent_execution_route_emits_scheduling_round_trace() -> None:
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    traces = [message for message in messages if message["message_type"] == "scheduling_round_trace"]
-
-    assert traces
-    payload = traces[-1]["payload"]
-    assert payload["round_id"] == 1
-    assert payload["lead_actor_id"] == "char_b"
-    assert payload["active_actor_ids"]
-
-
-def test_follow_target_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "follow_target",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    event_types = [entry["event_type"] for entry in timeline]
-    assert "character_agent_execution_request" in event_types
-    assert "character_agent_settlement_result" in event_types
-    assert any(entry["event_type"] == "character_agent_execution_request" for entry in bundle["working_memory"])
-    assert any(entry["event_type"] == "character_agent_settlement_result" for entry in bundle["working_memory"])
-
-
-def test_seek_private_distance_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "seek_private_distance",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    event_types = [entry["event_type"] for entry in timeline]
-    assert "character_agent_execution_request" in event_types
-    assert "character_agent_settlement_result" in event_types
-    assert any(entry["event_type"] == "character_agent_execution_request" for entry in bundle["working_memory"])
-    assert any(entry["event_type"] == "character_agent_settlement_result" for entry in bundle["working_memory"])
-
-
-def test_approach_settlement_is_written_into_episodic_memory() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "approach",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    assert bundle["episodic_memories"]
-    assert bundle["episodic_memories"][-1]["summary"] == "approach accepted"
-
-
-def test_follow_target_settlement_is_written_into_episodic_memory() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "follow_target",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    assert bundle["episodic_memories"]
-    assert bundle["episodic_memories"][-1]["summary"] == "follow_target accepted"
-
-
-def test_seek_private_distance_settlement_is_written_into_episodic_memory() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "seek_private_distance",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    assert bundle["episodic_memories"]
-    assert bundle["episodic_memories"][-1]["summary"] == "seek_private_distance accepted"
-
-
-def test_break_contact_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "break_contact",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    event_types = [entry["event_type"] for entry in timeline]
-    assert "character_agent_execution_request" in event_types
-    assert "character_agent_settlement_result" in event_types
-    assert any(entry["event_type"] == "character_agent_execution_request" for entry in bundle["working_memory"])
-    assert any(entry["event_type"] == "character_agent_settlement_result" for entry in bundle["working_memory"])
-
-
-def test_withdraw_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "withdraw",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    event_types = [entry["event_type"] for entry in timeline]
-    assert "character_agent_execution_request" in event_types
-    assert "character_agent_settlement_result" in event_types
-    assert any(entry["event_type"] == "character_agent_execution_request" for entry in bundle["working_memory"])
-    assert any(entry["event_type"] == "character_agent_settlement_result" for entry in bundle["working_memory"])
-
-
-def test_actor_target_settlements_carry_structured_social_spatial_metadata() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    messages = _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "break_contact",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    world_result_payloads = [message["payload"] for message in messages if message["message_type"] == "world_result"]
-    assert world_result_payloads
-    payload = world_result_payloads[0]
-
-    assert payload["action_profile"] == "break_contact"
-    assert payload["source_action_request_type"] == "break_contact"
-    assert payload["applied_state_changes"] == ["social_spatial_state_result"]
-    assert "stable_state_summary" in payload
-
-
-def test_break_contact_settlement_is_written_into_episodic_memory() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "break_contact",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    assert bundle["episodic_memories"]
-    assert bundle["episodic_memories"][-1]["summary"] == "break_contact accepted"
-
-
-def test_withdraw_settlement_is_written_into_episodic_memory() -> None:
-    import app.main as main
-
-    reset_runtime_state()
-    _handle_envelope(
-        Envelope(
-            message_type="character_agent_execution",
-            payload={
-                "actor_id": "char_b",
-                "action_request_bundle": {
-                    "requested_actions": [
-                        {
-                            "request_type": "withdraw",
-                            "actor_id": "char_b",
-                            "target_actor_id": "char_a",
-                        }
-                    ]
-                },
-            },
-        )
-    )
-
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-
-    assert bundle["episodic_memories"]
-    assert bundle["episodic_memories"][-1]["summary"] == "withdraw accepted"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def test_character_agent_execution_request_and_settlement_are_written_back_to_runtime_timeline() -> None:
@@ -1658,3 +1062,22 @@ def test_withhold_response_is_written_into_episodic_memory() -> None:
 
     assert bundle["episodic_memories"]
     assert bundle["episodic_memories"][-1]["summary"].startswith("dialogue_response:")
+
+
+@pytest.mark.parametrize("request_type", ("approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"))
+def test_legacy_social_spatial_bundle_fails_closed_without_runtime_writes(request_type: str) -> None:
+    import app.main as main
+    main.reset_runtime_state()
+    before = main.gameplay_event_store.read_events()
+    messages = main._handle_envelope(Envelope(message_type="character_agent_execution", payload={
+        "actor_id": "char_b", "action_request_bundle": {"requested_actions": [{
+            "request_type": request_type, "actor_id": "char_b", "target_actor_id": "char_a",
+        }]},
+    }))
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["error_code"] == "legacy_social_spatial_source_unavailable"
+    assert not any(message["message_type"] in {"action_request", "world_result", "social_spatial_runtime_result"} for message in messages)
+    assert main.character_agent_runtime.get_session_timeline("char_b") == []
+    assert main.social_spatial_owner.replay("char_b") == []
+    assert main.gameplay_event_store.read_events() == before

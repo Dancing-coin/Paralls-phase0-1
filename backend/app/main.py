@@ -5441,6 +5441,18 @@ def _handle_envelope(
                 expected_snapshot_revision=0,
             )
             execution_payload = payload
+            if any(
+                str(action.get("request_type", "") or "") in {
+                    "approach", "follow_target", "seek_private_distance", "withdraw", "break_contact",
+                }
+                for action in requested_actions
+            ):
+                return [_as_envelope("ack", {
+                    "accepted": False,
+                    "source_type": envelope.message_type,
+                    "route": "social_spatial_owner",
+                    "error_code": "legacy_social_spatial_source_unavailable",
+                })]
         else:
             try:
                 execution_contract = CharacterExecutionContract.model_validate(payload)

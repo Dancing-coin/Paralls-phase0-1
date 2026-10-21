@@ -434,7 +434,11 @@ def test_social_spatial_contract_fails_closed_without_registered_owner() -> None
     )
 
 
-def test_social_spatial_contract_uses_registered_durable_owner() -> None:
+@pytest.mark.parametrize(
+    "request_type",
+    ("approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"),
+)
+def test_social_spatial_contract_uses_registered_durable_owner(request_type: str) -> None:
     import app.main as main
     from app.gameplay.social_spatial_owner import SocialSpatialOwner
 
@@ -442,9 +446,9 @@ def test_social_spatial_contract_uses_registered_durable_owner() -> None:
     main.social_spatial_owner = SocialSpatialOwner(store=main.gameplay_event_store)
     contract = _valid_contract(
         target_refs=("character:char_a",),
-        semantic_intent_id="approach",
-        semantic_action_id="action:approach",
-        expected_observation={"requested_action": "approach"},
+        semantic_intent_id=request_type,
+        semantic_action_id=f"action:{request_type}",
+        expected_observation={"requested_action": request_type},
     )
     main.character_agent_runtime.record_execution_request(
         actor_id="char_b", producer_ts=10,
@@ -458,6 +462,19 @@ def test_social_spatial_contract_uses_registered_durable_owner() -> None:
     assert messages[0]["payload"]["owner_receipt"]["committed"] is True
     assert any(message["message_type"] == "social_spatial_runtime_result" for message in messages)
     assert main.social_spatial_owner.replay("char_b")
+    timeline = main.character_agent_runtime.get_session_timeline("char_b")
+    timeline_types = [entry["event_type"] for entry in timeline]
+    assert "character_agent_execution_request" in timeline_types
+    assert "character_agent_settlement_result" in timeline_types
+    continuity = main.character_agent_runtime.get_runtime_continuity_state("char_b")
+    expected_contact_target = "" if request_type in {"withdraw", "break_contact"} else "char_a"
+    assert continuity["ongoing_contact_target"] == expected_contact_target
+    assert continuity["last_transition_kind"] == "accepted"
+    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
+    assert any(
+        entry["event_type"] == "character_agent_settlement_result"
+        for entry in bundle["working_memory"]
+    )
     replay_messages = main._handle_envelope(
         main.Envelope(message_type="character_agent_execution", payload=contract)
     )
