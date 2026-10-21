@@ -457,6 +457,12 @@ def test_social_spatial_contract_uses_registered_durable_owner() -> None:
     assert messages[0]["payload"]["owner_receipt"]["committed"] is True
     assert any(message["message_type"] == "social_spatial_runtime_result" for message in messages)
     assert main.social_spatial_owner.replay("char_b")
+    replay_messages = main._handle_envelope(
+        main.Envelope(message_type="character_agent_execution", payload=contract)
+    )
+    assert replay_messages[0]["payload"]["accepted"] is True
+    assert replay_messages[0]["payload"]["owner_receipt"]["idempotency_status"] == "duplicate_replayed"
+    assert len(main.social_spatial_owner.replay("char_b")) == 1
 
 
 def test_execution_commitment_expires_and_rejects_stale_target_or_revision() -> None:
