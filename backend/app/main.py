@@ -5485,6 +5485,32 @@ def _handle_envelope(
                 if social_spatial_owner is not None:
                     action_profile = str(action.get("request_type", "") or "")
                     target_actor_id = str(action.get("target_actor_id", "") or "")
+                    expected_targets = execution_contract.expected_observation.get("target_refs", ())
+                    if expected_targets:
+                        if not isinstance(expected_targets, (list, tuple)):
+                            return [_as_envelope("ack", {
+                                "accepted": False, "source_type": envelope.message_type,
+                                "route": "social_spatial_owner", "error_code": "target_contract_invalid",
+                            })]
+                        normalized_expected = tuple(
+                            str(item) if str(item).startswith("character:") else f"character:{item}"
+                            for item in expected_targets
+                        )
+                        normalized_contract = tuple(
+                            str(item) if str(item).startswith("character:") else f"character:{item}"
+                            for item in execution_contract.target_refs
+                            if str(item).startswith(("character:", "char_"))
+                        )
+                        if normalized_expected != normalized_contract or len(normalized_expected) != 1:
+                            return [_as_envelope("ack", {
+                                "accepted": False, "source_type": envelope.message_type,
+                                "route": "social_spatial_owner", "error_code": "target_contract_mismatch",
+                            })]
+                        if normalized_expected[0] != (target_actor_id if target_actor_id.startswith("character:") else f"character:{target_actor_id}"):
+                            return [_as_envelope("ack", {
+                                "accepted": False, "source_type": envelope.message_type,
+                                "route": "social_spatial_owner", "error_code": "target_contract_mismatch",
+                            })]
                     target_lookup = target_actor_id.removeprefix("character:")
                     if (not target_lookup or target_lookup == actor_id
                             or not character_agent_runtime.supports_actor(target_lookup)):
