@@ -140,13 +140,6 @@ class SoulFactAuthority:
                 anchor_batch = self.store.get_transaction(anchor_event.transaction_id)
                 if anchor_batch is None:
                     return self._reject('soul_fact_anchor_receipt')
-                if any(self.store.get_stream_head(source) != revision
-                       for source, revision in anchor_batch.read_stream_revisions.items()):
-                    return self._reject('soul_fact_anchor_source_stale')
-                for source, revision in anchor_batch.read_stream_revisions.items():
-                    if source in reads and reads[source] != revision:
-                        return self._reject('soul_fact_source_cut_conflict')
-                    reads[source] = revision
                 for source, revision in current_source.read_revisions.items():
                     if source in reads and reads[source] != revision:
                         return self._reject('soul_fact_source_cut_conflict')
@@ -294,10 +287,33 @@ class SoulFactAuthority:
                 'soul.anchor_authority', original_anchor_request.idempotency_key)
             anchor_batch = self._anchors._original(original_anchor_request, anchor_receipt, anchor_stream)
             expected_reads[anchor_stream] = 1
-            for source, revision in anchor_batch.read_stream_revisions.items():
+            # The anchor transaction proves its historical source cut. A fact
+            # transaction pins current Presence sources separately and must not
+            # require historical Resource heads to remain unchanged.
+            presence_stream = self._anchors._presence._presence.stream_id(payload['world_ref'])
+            presence_revision = batch.read_stream_revisions.get(presence_stream)
+            if presence_revision is None:
+                raise ValueError('soul_fact_anchor_cut_missing')
+            if presence_stream in expected_reads and expected_reads[presence_stream] != presence_revision:
+                raise ValueError('soul_fact_anchor_cut_conflict')
+            expected_reads[presence_stream] = presence_revision
+            presence_events = self.store.read_stream(presence_stream, to_revision=presence_revision)
+            spawn = next((item for item in presence_events
+                if item.event_type == 'population.presence.spawned'
+                and item.payload.get('character_ref') == f'character:{actor}'
+                and item.payload.get('incarnation') == incarnation), None)
+            if spawn is None:
+                raise ValueError('soul_fact_anchor_cut_missing')
+            activation = self._anchors._presence._presence._sources.recover(
+                spawn.payload['source_activation_event_id'], world_ref=payload['world_ref'],
+                profile_ref=f'character:{actor}', at_revision=None)
+            for source, revision in activation.read_revisions.items():
                 if source in expected_reads and expected_reads[source] != revision:
                     raise ValueError('soul_fact_anchor_cut_conflict')
                 expected_reads[source] = revision
+            life_stream = f'gameplay:character:life:character:{actor}'
+            if life_stream in batch.read_stream_revisions:
+                expected_reads[life_stream] = batch.read_stream_revisions[life_stream]
         if expected_reads != batch.read_stream_revisions:
             raise ValueError('soul_fact_anchor_cut_missing')
         request = SoulFactRequest(world_ref=payload['world_ref'], actor_ref=payload['actor_ref'],

@@ -5,7 +5,7 @@ import pytest
 
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.population_continuity.presence_runtime import CharacterDespawnRequest
-from test_soul_anchor_owner import ACTOR, PROFILE, WORLD, _owner, _request, _sources
+from test_soul_anchor_owner import ACTOR, PROFILE, RESOURCE, WORLD, _owner, _request, _sources
 
 
 def _api():
@@ -56,6 +56,22 @@ def test_real_anchor_fact_issue_revoke_and_original_retry(kind):
     retry = owner.settle(command.model_copy(update={'expected_revision': 99}))
     assert retry.committed and retry.zero_write and retry.committed_event_ids == issued.committed_event_ids
     assert store.read_events() == before
+
+
+def test_legitimate_resource_change_does_not_invalidate_anchor_for_fact_admission():
+    from test_soul_resource_sources import _action
+
+    store = GameplayEventStore()
+    _, _, owner = _setup(store)
+    assert _action(store).accepted
+
+    result = owner.settle(_command())
+
+    assert result.committed
+    assert owner.projection(_command())['active']
+    event = store.get_event(result.committed_event_ids[0])
+    batch = store.get_transaction(event.transaction_id)
+    assert RESOURCE not in batch.read_stream_revisions
 
 
 def test_original_fact_recovery_after_reopen_without_current_policy_or_presence(tmp_path):
