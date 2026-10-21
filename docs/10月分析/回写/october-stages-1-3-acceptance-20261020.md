@@ -1070,3 +1070,11 @@ drive scan or cleanup was performed.
 在 D 盘 basetemp 下补跑 `test_social_spatial_owner.py`，**4 passed**。新增用例使用真实 `DurableGameplayEventStore`：第一进程提交 `approach` receipt 并关闭 store，第二个 owner 从同一 JSON ledger 重开，原请求返回 `duplicate_replayed`、event id 不变，replay 只包含一条已提交事件。该证据关闭 social spatial owner 的持久回执重开子项；尚未证明 canonical ingress 注册、Laya 真实输入、角色 writeback、多 owner common cut 或 Godot 可见结果。
 
 **后端**：social spatial owner 已具备持久 transaction/receipt/reopen 子项，生产 ingress 仍保持未注册 fail-closed。**模型质量**：Q01–Q04 未验收。**角色闭环**：owner recovery 子项已验证，完整 Laya action+target→L4→owner 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 registered social spatial owner ingress seam
+
+在 `main.py` 增加显式 `social_spatial_owner` 注册 seam。默认初始化将其置为 `None`，所以没有正式 owner 时既有 canonical fail-closed 合同保持不变；只有测试或后续 authenticated composition 明确注入 `SocialSpatialOwner`，`character_agent_execution` 的 social action 才会调用 owner，读取已提交事件，生成带原 turn/action/target/revision pins 的 `world_result` 与 `social_spatial_runtime_result`，并把 owner receipt 写回角色 runtime。
+
+定向测试 `test_character_execution_contract.py -k social_spatial_contract`：**2 passed**，覆盖默认未注册拒绝和注册 owner 后真实 ingress→durable receipt→runtime result。该 seam 仍不是完整生产 Laya 闭环：当前没有 authenticated production registration、候选来源完整性、多 owner common cut、Godot 回传或正式模型质量证据。
+
+**后端**：canonical social owner 已可通过显式注册 seam 接入合同 ingress，默认仍 fail-closed。**模型质量**：Q01–Q04 未验收。**角色闭环**：新增一条可持久 owner receipt 的 canonical contract 纵切，完整 Laya、多域恢复回放仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
