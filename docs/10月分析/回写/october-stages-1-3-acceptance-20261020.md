@@ -19,15 +19,16 @@ boundary until a real L4 contact evidence path and production Presence,
 LifeState, and Faction source composition exist; no physics or faction fact is
 fabricated to close R07/R08 or D08.
 
-Focused verification of the existing dirty owner slice was attempted with:
+Focused verification of the existing dirty owner slice was rerun with:
 `python -m pytest -q -p no:cacheprovider backend/tests/test_combat_durable_adapter.py backend/tests/test_combat_settlement_threat_consumer.py backend/tests/test_street_combat_durable_owner.py`.
-The adapter/owner portion produced 13 passes and the street owner tests remain
-green, while four existing Threat consumer tests fail during setup because
-their untracked fixture constructs `PopulationActivationPresenceService`
-without the current required `producer_ref` argument. The fixture was not
-modified because it is user-owned worktree state. This run is diagnostic only,
-not acceptance evidence. The production ingress and the fixture compatibility
-repair remain open; Godot remains deferred to the final A/B/C gate.
+After minimally composing the untracked Threat fixture with the production
+`ActivationSourceReader` contract, the selection is **20 passed** (adapter 13,
+Threat consumer 5, street owner 2). This verifies the controlled backend
+owner-to-Threat consumer and durable replay fixture only. It does not prove a
+live L4 contact source, production `street_combat_attempt` ingress, Laya choice
+or owner receipt, and it remains non-acceptance evidence for R07/R08/D08.
+The production ingress is still open; Godot remains deferred to the final A/B/C
+gate.
 
 ### 2026-10-21 slow-goal stale owner receipt follow-up
 
