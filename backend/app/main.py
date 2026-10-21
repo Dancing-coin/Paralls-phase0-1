@@ -5485,6 +5485,13 @@ def _handle_envelope(
                 if social_spatial_owner is not None:
                     action_profile = str(action.get("request_type", "") or "")
                     target_actor_id = str(action.get("target_actor_id", "") or "")
+                    target_lookup = target_actor_id.removeprefix("character:")
+                    if (not target_lookup or target_lookup == actor_id
+                            or not character_agent_runtime.supports_actor(target_lookup)):
+                        return [_as_envelope("ack", {
+                            "accepted": False, "source_type": envelope.message_type,
+                            "route": "social_spatial_owner", "error_code": "target_unavailable",
+                        })]
                     receipt = social_spatial_owner.submit(
                         actor_ref=execution_contract.actor_id,
                         target_ref=(target_actor_id if target_actor_id.startswith("character:")
@@ -8583,6 +8590,24 @@ def _actor_target_action_settlement(
     if owner is not None:
         actor_ref = str(getattr(execution_contract, "actor_id", "") or "")
         target_ref = target_actor_id if target_actor_id.startswith("character:") else f"character:{target_actor_id}"
+        target_lookup = target_ref.removeprefix("character:")
+        runtime = globals().get("character_agent_runtime")
+        if (not target_lookup or target_lookup == actor_ref.removeprefix("character:")
+                or runtime is None or not runtime.supports_actor(target_lookup)):
+            return {
+                "request_ref": request_ref, "result_id": f"action_resolution:{request_ref}",
+                "room_id": "room_demo", "scene_id": "scene_demo", "zone_id": "zone_focus",
+                "actor_id": actor_ref.removeprefix("character:"), "source_type": "social_spatial_owner",
+                "entity_id": target_lookup, "result_type": "action_resolution_result",
+                "turn_id": str(getattr(execution_contract, "turn_id", "") or request_ref),
+                "idempotency_key": str(getattr(execution_contract, "idempotency_key", "") or request_ref),
+                "causation_id": str(getattr(execution_contract, "causation_id", "") or request_ref),
+                "correlation_id": str(getattr(execution_contract, "correlation_id", "") or request_ref),
+                "producer_ts": int(getattr(execution_contract, "producer_ts", 0) or 0),
+                "resolution_status": "rejected", "settlement_status": "rejected",
+                "error_code": "target_unavailable", "action_profile": request_type,
+                "target_actor_id": target_lookup, "source_action_request_type": request_type,
+            }
         receipt = owner.submit(
             actor_ref=actor_ref if actor_ref.startswith("character:") else f"character:{actor_ref}",
             target_ref=target_ref,

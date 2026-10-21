@@ -474,6 +474,24 @@ def test_runtime_composition_registers_social_spatial_owner_by_default() -> None
     assert main.social_spatial_owner.store is main.gameplay_event_store
 
 
+def test_social_spatial_ingress_rejects_unadmitted_target_without_owner_write() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    contract = _valid_contract(
+        target_refs=("character:unknown",), semantic_intent_id="approach",
+        semantic_action_id="action:approach", expected_observation={"requested_action": "approach"},
+    )
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10,
+        payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
+    )
+    messages = main._handle_envelope(main.Envelope(message_type="character_agent_execution", payload=contract))
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["error_code"] == "target_unavailable"
+    assert main.social_spatial_owner.replay("char_b") == []
+
+
 def test_social_spatial_ingress_reopens_durable_owner_receipt(tmp_path) -> None:
     import app.main as main
     from app.gameplay.event_store import DurableGameplayEventStore
