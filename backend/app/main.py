@@ -8579,6 +8579,27 @@ def _actor_target_action_settlement(
     execution_contract: CharacterExecutionContract,
 ) -> dict[str, object]:
     request_ref = f"{execution_contract.idempotency_key}:0"
+    owner = globals().get("social_spatial_owner")
+    if owner is not None:
+        actor_ref = str(getattr(execution_contract, "actor_id", "") or "")
+        target_ref = target_actor_id if target_actor_id.startswith("character:") else f"character:{target_actor_id}"
+        receipt = owner.submit(
+            actor_ref=actor_ref if actor_ref.startswith("character:") else f"character:{actor_ref}",
+            target_ref=target_ref,
+            action_profile=request_type,
+            request_ref=request_ref,
+            turn_id=str(getattr(execution_contract, "turn_id", "") or request_ref),
+            idempotency_key=str(getattr(execution_contract, "idempotency_key", "") or request_ref),
+            causation_id=str(getattr(execution_contract, "causation_id", "") or request_ref),
+            correlation_id=str(getattr(execution_contract, "correlation_id", "") or request_ref),
+            producer_ts=int(getattr(execution_contract, "producer_ts", 0) or 0),
+            expected_revision_vector=dict(getattr(execution_contract, "expected_revision_vector", {}) or {}),
+            expected_memory_revision_vector=dict(getattr(execution_contract, "expected_memory_revision_vector", {}) or {}),
+            expected_snapshot_revision=int(getattr(execution_contract, "expected_snapshot_revision", 0) or 0),
+        )
+        if receipt.committed:
+            event = owner.store.get_event(receipt.committed_event_ids[0])
+            return _social_spatial_owner_result(event.payload)
     return {
         "request_ref": request_ref,
         "result_id": f"action_resolution:{request_ref}",
