@@ -70,6 +70,14 @@ or Godot operation was performed in this refresh.
 
 ## 当前优先缺口：完整动作与目标来源审查（2026-10-20）
 
+### 2026-10-21 Laya action/target admission regression refresh
+
+为复用已有实现并确认当前边界，运行了窄范围回归：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_dialogue_object_dispatch.py backend/tests/test_character_execution_source_admission.py backend/tests/test_character_candidate_compiler.py`
+→ **77 passed in 6.71s**（4 条既有 FastAPI deprecation warnings）。
+
+该选择确认 DialogueSubmit 到对象动作分发、执行来源准入和候选编译的现有 fail-closed 约束仍稳定：缺少有效来源、条件为 blocked/unknown/unavailable 或合同/目标不匹配时不进入执行。它仍是合同与边界回归，不是新的真实 Laya 调用、完整 action+target→L4→领域 owner receipt、恢复/回放或正式 Q01–Q04 证据；没有升级 R07–R09、模型质量或 Godot A/B/C。下一步继续消费真实、来源明确的动作/目标输入，接入尚缺的领域 owner caller 和共享回执，而不重复扩展同一局部 parser/compiler 测试。
+
 ### 2026-10-21 combat owner production-ingress audit
 
 The canonical faction/Threat/encounter owners and the durable embodied combat
