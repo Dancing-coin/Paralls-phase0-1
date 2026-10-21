@@ -4,6 +4,16 @@ Goal: close the slow-goal subitem of R01/R07 without blocking lawful Laya action
 
 Design: [slow proposal lifecycle](../specs/2026-10-21-character-slow-goal-proposal-design.md). Execution remains part of the [October stages 1–3 plan](2026-10-20-october-stages-1-3-implementation-plan.md). Status: batches 1–2 verified; batch 3 durable preparation, bounded admission, source eligibility and coordinator/store owner acceptance are implemented in slices. A first batch 4 driver integration attempt failed the existing driver suite (7 failed, 2 passed) and its uncommitted driver changes were removed; the baseline path still fails the same tests, so dispatch/root-cause diagnosis is open. Production trigger derivation, fast/slow coexistence, live Laya closure and formal quality remain open. Product scope is covered by the user's standing authorization; unresolved technical review findings must be resolved before their affected code batch.
 
+Current status correction (2026-10-21): the diagnostic failure in the historical
+status paragraph above has since been repaired; the existing driver baseline
+passes. Trigger construction/source binding and dispatch/terminal guards are
+implemented in bounded slices. Stale goal-proposal progress now uses the
+coordinator terminal receipt when activation is available, deferring otherwise;
+the nine-file focused selection passed **78 tests**, exit 0. Production
+expiry/source-revocation cleanup, genuine delayed-provider fast coexistence,
+live goal receipt/recovery and downstream Laya closure remain open. Historical
+batch notes below describe their original evidence boundaries.
+
 ## Batch 1: explicit generative proposal contract
 
 Own `gateway/model_gateway.py`, `gateway/model_provider.py`, `gateway/prompt_policy.py`, `gateway/output_validator.py`, the adjacent `gateway/goal_proposal.py` contract and `backend/tests/test_character_slow_goal_contract.py`. Provider dispatch must bypass ordinary L3 action coercion for this explicit contract. Preserve existing dirty hunks using a clean HEAD overlay for verification and selective staging. Do not alter global goal models or action-choice behavior for this batch.

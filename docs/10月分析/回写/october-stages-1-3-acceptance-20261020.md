@@ -6,6 +6,22 @@
 
 ## 当前优先缺口：完整动作与目标来源审查（2026-10-20）
 
+### 2026-10-21 slow-goal stale owner receipt follow-up
+
+Driver stale handling now uses `terminate_goal_proposal` for an existing
+goal-proposal stage, preserving the atomic terminal receipt/progress contract.
+If activation is temporarily unavailable, progress remains pending for owner
+retry rather than becoming a receipt-less terminal. Existing failed/cancelled
+terminals are preserved. The focused nine-file slow-goal/driver/admission/trigger
+selection passed **78 tests**, exit 0 (9.27s), with `-p no:cacheprovider`.
+This worktree test does not prove production expiry/source-revocation cleanup,
+real provider dispatch, same-actor fast coexistence, or fresh-process recovery.
+No external Harness archive was generated for this narrow regression batch.
+
+**后端**：终态事务接线局部修复，生产闭环仍开放。**模型质量**：Q01–Q04
+未新增验收。**角色闭环**：慢目标→Laya→多领域 owner→恢复仍未验收。
+**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
 ### 2026-10-21 slow-goal admission increment
 
 Follow-up wiring repair: the production composition now derives the cognition

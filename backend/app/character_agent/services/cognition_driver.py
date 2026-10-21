@@ -55,11 +55,28 @@ class CharacterCognitionDriver:
     def _stale(self, key, error):
         admissions = self.coordinator.admissions
         entry, progress = admissions.read(key), admissions.read_progress(key)
-        if progress is None or progress.status not in {'completed', 'stale'}:
-            admissions.advance_progress(key=key, expected_revision=progress.revision if progress else 0,
-                stage=progress.stage if progress else 'entry', status='stale',
-                frame=progress.frame if progress else dict(actor_id=entry.actor_id, stage='entry'),
-                plan=progress.plan if progress else None, reason=str(error), now=self.clock())
+        if progress is None or progress.status not in {'completed', 'stale', 'cancelled', 'failed'}:
+            # Slow goal proposals have a coordinator-owned terminal receipt.  Keep
+            # stale/cancelled/failed recovery on that owner boundary so a later
+            # poll or process reopen can observe the same durable terminal.
+            if (entry is not None and entry.source_kind == 'goal_proposal_trigger'
+                    and progress is not None and progress.stage == 'goal_proposal'):
+                handle = self._handles.get(key)
+                if handle is None:
+                    handle = self.begin_activation(entry)
+                    if handle is not None:
+                        self._handles[key] = handle
+                if handle is not None:
+                    self.coordinator.terminate_goal_proposal(
+                        key, activation=handle, now=self.clock(),
+                        status='stale', reason=str(error))
+                else:
+                    return
+            else:
+                admissions.advance_progress(key=key, expected_revision=progress.revision if progress else 0,
+                    stage=progress.stage if progress else 'entry', status='stale',
+                    frame=progress.frame if progress else dict(actor_id=entry.actor_id, stage='entry'),
+                    plan=progress.plan if progress else None, reason=str(error), now=self.clock())
         self._release(key, 'stale')
 
     def _prepare(self, key):
