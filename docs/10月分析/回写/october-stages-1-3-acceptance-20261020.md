@@ -1,5 +1,13 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 Soul fact 当前准入与历史来源 cut 修复
+
+提交 `e0883bd2`、`b3a1f532` 修复 anchor 创建后合法 Resource owner advance 导致 fact 准入错误拒绝的问题。anchor 原 receipt 继续验证其历史 Resource source cut；新 fact 的 CAS 绑定当前 Presence/activation/Life、anchor 与 fact stream。历史 fact 重建按原提交时刻验证 Presence incarnation、activation lifecycle、Life=0 及各来源当时的 stream head，不依赖角色当前仍在场。
+
+定向命令：`python -B -m pytest -q -p no:cacheprovider --basetemp=D:\codex-temp\soul-fact\pytest backend/tests/test_soul_fact_owner.py backend/tests/test_soul_anchor_owner.py backend/tests/test_soul_resource_sources.py`，本轮 **40 passed in 4.17s**。覆盖合法 Resource 变化后的 fact commit/projection、SQLite reopen/exact retry，以及遗漏 anchor cut 或 Life pin 的自洽伪造事务拒绝。原始输出为本轮工具执行结果，未另外导出 Harness 报告，不冒充新的完整领域验收。
+
+**后端**：D10 的 fact source-cut 缺陷已修复并定向验证，完整 Soul 生产 composition/L4/common-cut 仍开放。**模型质量**：Q01–Q04 无新增验收。**角色闭环**：完整 Laya/action+target/L4/多 owner receipt/replay 仍开放。**最终 Godot**：G-A/B/C 未操作。未运行全量 pytest、Harness all、训练或模型评估。临时输出全部位于 D 盘；本轮 `D:\codex-temp\soul-fact` 的删除被自动审批策略拒绝，目录仍保留，未换工具绕过。
+
 状态：**执行中，整体未完成**。授权：用户 2026-10-20 明确要求整体完成阶段一至三；先收尾管理员生产入口，再扩大目标，后端先行，Godot 最后集中验收。本文件是统一剩余工作索引，不替代原规格或原始证据。
 
 ### 2026-10-22 Threat encounter lifecycle gate
