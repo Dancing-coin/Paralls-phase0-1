@@ -1044,3 +1044,15 @@ drive scan or cleanup was performed.
 证据边界：这是受控 provider 的生产进程组合与 Character goal owner receipt/reopen 子项，不是实时 Laya 模型质量，也不是完整角色闭环。真实 Laya goal→action+target→L4→多领域 owner receipt/recovery/replay、Q01–Q04 和 Godot G-A/B/C 仍开放。
 
 **后端**：goal proposal provider resume、原 owner terminal receipt 与新进程 reopen 子项已验证。**模型质量**：Q01–Q04 未验收。**角色闭环**：goal 子项有跨进程证据，完整 Laya 多领域链仍未验收。**最终 Godot**：A/B/C 未操作，仍最后集中验收。
+
+### 2026-10-22 后端战斗 owner／社交 canonical 定向复验
+
+在不启动 Godot、模型或 Harness all 的前提下，使用 D 盘 basetemp 对当前后端边界做风险相称复验：
+
+- `test_canonical_combat_lifecycle.py`、`test_combat_settlement_threat_consumer.py`、`test_combat_durable_adapter.py`：**30 passed**。证据覆盖 encounter begin/end owner 回执、Threat active lifecycle gate、来源 principal/Presence/Life/Faction 校验、confirmed-hit durable CAS、精确 retry/replay 与 stale/伪造来源 fail-closed。
+- canonical social owner 缺失边界及 settlement 相关选择：**4 passed**。`approach` 等合同路径保持 `route=social_spatial_owner`, `error_code=owner_unavailable`, `accepted=false`，不产生 runtime result 或角色 settlement。
+- 同范围更宽的旧角色合同选择为 **75 passed, 1 failed**；失败为既有 `session_event_index_gap` 状态加载问题，未计入绿色证据，也未修改该路径。
+
+这批证据只提高已有战斗 owner 与 canonical social fail-closed 子项的可追溯性：D08 仍缺真实 `street_combat_attempt` 生产 ingress、Godot physics contact receipt 和完整 Laya action+target→L4→多 owner 回执；legacy `action_request_bundle` 社交兼容分支仍不能计入正式 R08/R09/G-C。Q01–Q04 与 Godot G-A/G-B/G-C 均未验收。所有 pytest 临时目录均在 D 盘并已清理；未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：战斗 encounter/Threat owner 定向证据 30 项通过，生产 ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：canonical social fail-closed 与 combat owner 子项已复验，完整 Laya 多域闭环仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
