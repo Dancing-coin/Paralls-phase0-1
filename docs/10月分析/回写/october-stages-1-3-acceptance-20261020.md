@@ -46,6 +46,24 @@ No external Harness archive was generated for this narrow regression batch.
 未新增验收。**角色闭环**：慢目标→Laya→多领域 owner→恢复仍未验收。
 **最终 Godot**：A/B/C 未操作，继续最后集中验收。
 
+### 2026-10-21 same-actor fast admission seam
+
+Added a driver-level regression that leaves a slow goal proposal at
+`provider_pending`, confirms its actor activation is released, then advances a
+same-actor fast cognition admission through the L2 provider boundary. The
+focused selection across slow-goal dispatch/terminal, cognition driver,
+coordinator, atomic acceptance, admission and trigger tests passed **71 tests**
+(`python -m pytest -q -p no:cacheprovider ...`, exit 0).
+
+This verifies scheduling at the driver seam only. The test uses controlled
+coordinator/admission collaborators; it is not evidence of a real delayed
+provider running alongside production Laya or of acceptance under unchanged
+source pins. Production fast/slow coexistence, provider-result owner receipt
+and fresh-process recovery remain open. No model call, formal quality run,
+full pytest/Harness all or Godot operation was performed.
+
+**后端**：同 actor fast admission 的 driver seam 已测；生产共存与回执恢复开放。**模型质量**：Q01–Q04 未验收。**角色闭环**：真实慢提案到 Laya、多领域 owner 与恢复未验收。**最终 Godot**：A/B/C 未操作，仍为最后门禁。
+
 ### 2026-10-21 slow-goal admission increment
 
 Follow-up wiring repair: the production composition now derives the cognition

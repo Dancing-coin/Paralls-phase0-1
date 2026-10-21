@@ -101,3 +101,5 @@ failure. Focused slow-goal/driver selection passed **77 tests**. This is a
 fail-closed lifecycle boundary; same-actor fast/slow live coexistence, live
 provider dispatch, full Laya/domain closure, formal quality and Godot remain
 open.
+
+Same-actor fast-admission seam (2026-10-21): a new driver-level regression holds a slow goal proposal at `provider_pending`, verifies the proposal lease is released, and advances a same-actor fast cognition admission to its L2 provider boundary. The focused selection passed **71 tests**. This uses controlled coordinator/admission collaborators and proves the scheduling seam, not real delayed-provider coexistence, unchanged-pin acceptance, original goal receipt/recovery, downstream Laya, model quality or Godot. No provider call or formal evaluation was made.

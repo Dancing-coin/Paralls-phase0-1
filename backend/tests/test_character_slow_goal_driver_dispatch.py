@@ -174,3 +174,83 @@ def test_driver_terminates_failed_goal_proposal_without_fast_loop_fallback():
     assert driver._accept("child:goal", "goal_proposal", driver._active["child:goal"][1]) is True
     assert terminal[0][0:2] == ("child:goal", "failed")
     assert "RuntimeError" in terminal[0][2]
+
+
+def test_slow_goal_result_wait_does_not_block_same_actor_fast_admission():
+    """A released slow proposal lease must leave the owner able to admit fast work."""
+    from app.character_agent.services.cognition_driver import CharacterCognitionDriver
+
+    slow = SimpleNamespace(child_key="child:slow", actor_id="char_a",
+        source_kind="goal_proposal_trigger", expires_at=30.0)
+    fast = SimpleNamespace(child_key="child:fast", actor_id="char_a",
+        source_kind="ingest_siming_output", expires_at=30.0)
+    progresses = {slow.child_key: SimpleNamespace(status="provider_pending", stage="goal_proposal",
+        frame={}, request_json="{}"), fast.child_key: None}
+    activations = []
+    active_actor = set()
+    fast_provider_requests = []
+
+    class Admissions:
+        def read(self, key):
+            return {slow.child_key: slow, fast.child_key: fast}[key]
+
+        def read_progress(self, key):
+            return progresses[key]
+
+        def list_pending(self, **_kwargs):
+            return (slow, fast)
+
+    class Runtime:
+        _l2 = SimpleNamespace(_gateway=object())
+        _l3 = SimpleNamespace(_gateway=object())
+
+        def finish_actor_activation(self, handle, *, reason):
+            active_actor.remove(handle.actor_id)
+            return SimpleNamespace(lock_released=True)
+
+        def activation_is_current(self, *_args):
+            return True
+
+    class Coordinator:
+        admissions = Admissions()
+        runtime = Runtime()
+
+        def _entry(self, key, activation, now):
+            return self.admissions.read(key)
+
+        def _validate_provider_pin(self, actor_id, frame):
+            return None
+
+        def prepare_goal_proposal(self, key, *, activation, now):
+            return progresses[key]
+
+        def begin_entry(self, key, *, activation, now):
+            progresses[key] = SimpleNamespace(status="stage_ready", stage="entry", frame={})
+            return progresses[key]
+
+        def prepare_l2(self, key, *, activation, now):
+            progress = SimpleNamespace(status="provider_pending", stage="l2",
+                frame={}, request_json='{"fast":true}')
+            progresses[key] = progress
+            fast_provider_requests.append(key)
+            return progress
+
+    coordinator = Coordinator()
+    driver = CharacterCognitionDriver(
+        coordinator=coordinator, owner_call=lambda fn: fn(), slots=SimpleNamespace(),
+        begin_activation=lambda entry: (
+            None if entry.actor_id in active_actor else
+            (active_actor.add(entry.actor_id),
+             activations.append(entry.child_key),
+             SimpleNamespace(actor_id=entry.actor_id))[2]),
+        on_completed=lambda *_args: None, clock=lambda: 10.0,
+    )
+
+    # The slow request reaches provider dispatch, then releases its actor lease.
+    assert driver._prepare(slow.child_key) == (
+        "goal_proposal", b"{}", coordinator.runtime._l3._gateway)
+    assert driver._handles == {}
+    # The same actor's fast cognition reaches its own provider boundary meanwhile.
+    assert driver._prepare(fast.child_key) == ("l2", b'{"fast":true}', coordinator.runtime._l2._gateway)
+    assert activations == [slow.child_key, fast.child_key]
+    assert fast_provider_requests == [fast.child_key]
