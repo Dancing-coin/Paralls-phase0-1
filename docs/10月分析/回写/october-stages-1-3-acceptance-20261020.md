@@ -1100,3 +1100,11 @@ drive scan or cleanup was performed.
 运行时组装现在在同一 `gameplay_event_store` 上默认创建 `SocialSpatialOwner`，因此正常 backend reset/启动后的 canonical social contract 不再依赖手工测试注入；无 owner 的 fail-closed 负例改为显式清空注册。定向选择 **4 passed**（默认 runtime composition、registered ingress、exact replay 和 fail-closed）。这只接通单 owner canonical social action 的 backend durable path；尚未接入 authenticated production source/candidate admission，也没有完成多域 common cut、旧 worker 迟到、完整 Laya 模型验收或 Godot。
 
 **后端**：social spatial owner 已纳入正常 backend runtime composition，canonical ingress 可产生 durable owner receipt。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner action+target→L4 contract→owner receipt/replay 已验证，多域与完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 legacy social action owner routing
+
+兼容 `action_request_bundle` 的 actor-target 社交动作现在在默认 runtime 已注册 owner 时优先提交同一个 `SocialSpatialOwner`，再由 owner event 投影为现有 world result；没有 owner 的历史兼容路径仍保留，避免破坏 fail-closed/legacy 负例。既有 approach/follow/break/social-spatial 定向选择 **18 passed**，未产生新的失败。
+
+这消除了 canonical 与 legacy 社交动作在默认 backend 上分叉到两套结算真相的问题；仍不代表 legacy 输入已经具备正式 Laya 来源完整性、authenticated candidate admission、多 owner common cut 或 Godot 物理证据。R08/R09/Q01–Q04/G-A/G-B/G-C 继续开放。
+
+**后端**：默认 runtime 下 canonical 与 legacy social actor-target action 共用 durable owner。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner 社交动作 receipt/replay 覆盖扩展到 legacy 路径，多域和完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
