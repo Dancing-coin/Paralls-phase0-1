@@ -1078,3 +1078,11 @@ drive scan or cleanup was performed.
 定向测试 `test_character_execution_contract.py -k social_spatial_contract`：**2 passed**，覆盖默认未注册拒绝和注册 owner 后真实 ingress→durable receipt→runtime result。该 seam 仍不是完整生产 Laya 闭环：当前没有 authenticated production registration、候选来源完整性、多 owner common cut、Godot 回传或正式模型质量证据。
 
 **后端**：canonical social owner 已可通过显式注册 seam 接入合同 ingress，默认仍 fail-closed。**模型质量**：Q01–Q04 未验收。**角色闭环**：新增一条可持久 owner receipt 的 canonical contract 纵切，完整 Laya、多域恢复回放仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 canonical social ingress exact replay
+
+对注册 owner 的 canonical contract 纵切做重复 ingress 定向回归：首个请求提交 owner receipt，第二个完全相同的 `character_agent_execution` 返回 `accepted=true` 且 receipt `idempotency_status=duplicate_replayed`；owner replay 仍只有一条事件。该选择与默认未注册 fail-closed 一起 **2 passed**（总 social 定向选择 **6 passed**）。
+
+这证明 canonical social ingress 的 owner receipt 重发不会新增 ledger 写入；不等同于多 owner common cut、旧 worker 迟到、完整 Laya 真实模型输入或 Godot 场景验收。Q01–Q04、R09 完整恢复回放和 G-A/G-B/G-C 仍开放。
+
+**后端**：canonical social owner ingress 的 exact replay 子项已验证。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner receipt/replay 纵切已验证，多域和完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
