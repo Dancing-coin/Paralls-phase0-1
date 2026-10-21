@@ -63,6 +63,7 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
+from app.gameplay.social_spatial_owner import SocialSpatialOwner
 from app.gameplay.p5.stormnight_realtime_session import (
     StormnightPlayerIntent,
     StormnightRealtimeSessionService,
@@ -298,6 +299,9 @@ equipment_prediction_service: EquipmentPredictionService | None = None
 # transport grants.  Until one is injected by an authenticated source, the
 # conversion ingress remains fail-closed.
 resource_conversion_capability_resolver = None
+# Explicit registration seam.  None keeps canonical social actions fail-closed;
+# tests and a future authenticated composition layer may inject the owner.
+social_spatial_owner: SocialSpatialOwner | None = None
 
 
 def _social_delivery_replay_binding():
@@ -1818,6 +1822,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global activation_policy
     global _sqlite_wal_checkpoint_worker
     global unified_character_action_settlement_service
+    global social_spatial_owner
 
     checkpoint_close_failure = None
     try:
@@ -1954,6 +1959,9 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     )
     character_agent_runtime.set_target_catalog_resolver(character_object_execution.project_character_targets)
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(store=gameplay_event_store)
+    # No implicit production caller: canonical social actions remain closed
+    # until an authenticated composition layer registers this owner.
+    social_spatial_owner = None
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
         esm_service=esm_service,
@@ -5472,10 +5480,47 @@ def _handle_envelope(
                 for action in requested_actions
                 if isinstance(action, dict)
             ):
-                # The compatibility social-spatial result below is not a domain
-                # owner: it has no durable state, receipt or recovery path.
-                # Canonical contracts therefore remain fail-closed until a
-                # registered owner is wired.
+                action = next(action for action in requested_actions if isinstance(action, dict))
+                if social_spatial_owner is not None:
+                    action_profile = str(action.get("request_type", "") or "")
+                    target_actor_id = str(action.get("target_actor_id", "") or "")
+                    receipt = social_spatial_owner.submit(
+                        actor_ref=execution_contract.actor_id,
+                        target_ref=(target_actor_id if target_actor_id.startswith("character:")
+                                    else f"character:{target_actor_id}"),
+                        action_profile=action_profile,
+                        request_ref=f"{execution_contract.idempotency_key}:0",
+                        turn_id=execution_contract.turn_id,
+                        idempotency_key=execution_contract.idempotency_key,
+                        causation_id=execution_contract.causation_id,
+                        correlation_id=execution_contract.correlation_id,
+                        producer_ts=execution_contract.producer_ts,
+                        expected_revision_vector=dict(execution_contract.expected_revision_vector),
+                        expected_memory_revision_vector=dict(execution_contract.expected_memory_revision_vector),
+                        expected_snapshot_revision=execution_contract.expected_snapshot_revision,
+                    )
+                    if receipt.committed:
+                        event = social_spatial_owner.store.get_event(receipt.committed_event_ids[0])
+                        result = _social_spatial_owner_result(event.payload)
+                        character_agent_runtime.record_settlement_result(
+                            actor_id=execution_contract.actor_id,
+                            producer_ts=int(result["producer_ts"]), payload=result,
+                        )
+                        messages = [_as_envelope("ack", {
+                            "accepted": True, "source_type": envelope.message_type,
+                            "route": "social_spatial_owner",
+                            "owner_receipt": receipt.model_dump(mode="json"),
+                        }), _as_world_result_envelope(result)]
+                        social_result = _as_social_spatial_runtime_result(result)
+                        if social_result is not None:
+                            messages.append(social_result)
+                        return _finalize_outbound_messages(messages)
+                    return [_as_envelope("ack", {
+                        "accepted": False, "source_type": envelope.message_type,
+                        "route": "social_spatial_owner",
+                        "error_code": receipt.failure.error_code if receipt.failure else "owner_rejected",
+                    })]
+                # No registered owner: canonical contracts remain fail-closed.
                 return [_as_envelope("ack", {
                     "accepted": False,
                     "source_type": envelope.message_type,
@@ -8487,6 +8532,35 @@ def _as_social_spatial_runtime_result(payload: dict[str, object]) -> dict[str, o
             "settlement_status": str(payload.get("settlement_status", "") or ""),
             "producer_ts": int(payload.get("producer_ts", 0) or 0),
         },
+    }
+
+
+def _social_spatial_owner_result(payload: dict[str, object]) -> dict[str, object]:
+    """Project a committed owner event into the existing world-result shape."""
+    action_profile = str(payload.get("action_profile", "") or "")
+    target_ref = str(payload.get("target_ref", "") or "")
+    target_actor_id = target_ref.removeprefix("character:")
+    request_ref = str(payload.get("request_ref", "") or "")
+    return {
+        "request_ref": request_ref,
+        "result_id": f"action_resolution:{request_ref}",
+        "room_id": "room_demo", "scene_id": "scene_demo", "zone_id": "zone_focus",
+        "actor_id": str(payload.get("actor_ref", "") or "").removeprefix("character:"),
+        "source_type": "social_spatial_owner", "entity_id": target_actor_id,
+        "result_type": "action_resolution_result",
+        "causation_id": str(payload.get("causation_id", "") or ""),
+        "correlation_id": str(payload.get("correlation_id", "") or ""),
+        "turn_id": str(payload.get("turn_id", "") or ""),
+        "idempotency_key": str(payload.get("idempotency_key", "") or ""),
+        "expected_revision_vector": dict(payload.get("expected_revision_vector", {})),
+        "expected_memory_revision_vector": dict(payload.get("expected_memory_revision_vector", {})),
+        "expected_snapshot_revision": int(payload.get("expected_snapshot_revision", 0) or 0),
+        "producer_ts": int(payload.get("producer_ts", 0) or 0),
+        "resolution_status": "accepted", "resolved_entities": [target_actor_id],
+        "applied_state_changes": ["social_spatial_state_result"],
+        "stable_state_summary": f"{action_profile} accepted", "settlement_status": "accepted",
+        "target_actor_id": target_actor_id, "action_profile": action_profile,
+        "source_action_request_type": action_profile,
     }
 
 

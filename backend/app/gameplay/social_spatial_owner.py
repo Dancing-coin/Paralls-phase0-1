@@ -60,6 +60,8 @@ class SocialSpatialOwner:
         payload = {
             "actor_ref": actor_ref, "target_ref": target_ref, "action_profile": action_profile,
             "request_ref": request_ref, "turn_id": turn_id, "producer_ts": producer_ts,
+            "idempotency_key": idempotency_key, "causation_id": causation_id,
+            "correlation_id": correlation_id,
             "expected_revision_vector": dict(expected_revision_vector),
             "expected_memory_revision_vector": dict(expected_memory_revision_vector),
             "expected_snapshot_revision": expected_snapshot_revision,
@@ -77,8 +79,15 @@ class SocialSpatialOwner:
     def replay(self, actor_ref: str) -> list[dict[str, Any]]:
         if not isinstance(actor_ref, str) or not actor_ref.strip():
             return []
-        return [dict(event.payload, event_id=event.event_id, stream_revision=event.stream_revision)
-                for event in self.store.read_stream(f"gameplay:character:social-spatial:{actor_ref}", event_type=SOCIAL_SPATIAL_EVENT)]
+        candidates = [actor_ref]
+        if actor_ref.startswith("character:"):
+            candidates.append(actor_ref.removeprefix("character:"))
+        else:
+            candidates.append(f"character:{actor_ref}")
+        events = []
+        for candidate in candidates:
+            events.extend(self.store.read_stream(f"gameplay:character:social-spatial:{candidate}", event_type=SOCIAL_SPATIAL_EVENT))
+        return [dict(event.payload, event_id=event.event_id, stream_revision=event.stream_revision) for event in events]
 
     def _replay_or_reject(self, prior: AppendBatchResult, payload: dict[str, Any], stream_id: str,
                           command_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
