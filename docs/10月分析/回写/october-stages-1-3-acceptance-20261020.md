@@ -1056,3 +1056,11 @@ drive scan or cleanup was performed.
 这批证据只提高已有战斗 owner 与 canonical social fail-closed 子项的可追溯性：D08 仍缺真实 `street_combat_attempt` 生产 ingress、Godot physics contact receipt 和完整 Laya action+target→L4→多 owner 回执；legacy `action_request_bundle` 社交兼容分支仍不能计入正式 R08/R09/G-C。Q01–Q04 与 Godot G-A/G-B/G-C 均未验收。所有 pytest 临时目录均在 D 盘并已清理；未运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：战斗 encounter/Threat owner 定向证据 30 项通过，生产 ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：canonical social fail-closed 与 combat owner 子项已复验，完整 Laya 多域闭环仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 canonical social spatial owner 基础实现
+
+新增 `backend/app/gameplay/social_spatial_owner.py`，作为 canonical `approach`、`follow_target`、`seek_private_distance`、`withdraw`、`break_contact` 的独立持久 owner。owner 通过现有 `GameplayEventStore` 写入 owner-scoped transaction 和 `gameplay.character.social_spatial_action_committed` receipt，按 actor stream 进行 CAS；相同请求返回 `duplicate_replayed`，改变 payload 的重复 key 拒绝，并提供基于提交事件的 replay 读取。owner 默认只接受 `character_agent` caller，不改变 Godot 运动或物理事实。
+
+新增定向合同测试 `test_social_spatial_owner.py`：**3 passed**，覆盖提交＋精确 replay、改变重复 key 零新增写入、未授权 caller 拒绝。canonical `character_agent_execution` ingress 尚未接入该 owner，仍保持当前 `owner_unavailable` fail-closed；因此这批不升级 R08/R09，也不构成完整 Laya action+target→L4→owner 回执闭环。后续需补正式 ingress source/target admission、角色 writeback、跨进程恢复和回放证据，再评估接线。
+
+**后端**：新增 social spatial owner 基础能力，未接入生产 ingress。**模型质量**：Q01–Q04 未验收。**角色闭环**：owner 单元合同已验证，完整 Laya/多域/恢复回放仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
