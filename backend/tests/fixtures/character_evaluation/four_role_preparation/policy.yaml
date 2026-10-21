@@ -1,0 +1,87 @@
+fixture_id: four-role-preparation-v1
+status: diagnostic_input_preparation
+provider:
+  source_commit: 68804629e8ccd9d616d48a40e87de9fabbeae069
+  checkpoint_revision: 1720e3e3357cfe1e281542e223f8273b0890ca34
+  provider_revision: laya:68804629e8ccd9d616d48a40e87de9fabbeae069:1720e3e3357cfe1e281542e223f8273b0890ca34
+  model: multilingual
+roles:
+  char_a:
+    status: source_supported_qualitative
+    source_refs: ["docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12"]
+    expectations: [evidence_discrimination, working_memory, social_reasoning]
+    acceptable_paths: [inspect_records, preserve_hypothesis, defer_attribution]
+  char_b:
+    status: source_supported_qualitative
+    source_refs: ["docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12"]
+    expectations: [spatial_security, authorization_check, isolation]
+    acceptable_paths: [secure_entry, isolate_access, confirm_authority]
+  char_c:
+    status: source_supported_qualitative
+    source_refs: ["docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12"]
+    expectations: [social_reasoning, mediation, inquiry]
+    acceptable_paths: [probe_relationship, mediate, ask_probe]
+  char_d:
+    status: isolated_diagnostic_only
+    runtime_admission: false
+    source_refs: ["docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12", "docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#22"]
+    source_caps:
+      preferred_effort: fast
+      maximum_effort: balanced
+      max_active_hypotheses: 1
+      max_reasoning_hops: 1
+    unresolved: [personality_numeric_values, cognitive_facets, hard_limits, compute_defaults]
+candidate_contract:
+  allowed_action_families: [observe, ask_probe, defer]
+  max_candidate_intents: 3
+  scope: closed_fixture_intents_only_not_complete_runtime_u
+  target_visibility: authored_visible_fixture
+  runtime_legality: unverified
+  owner_route: unassigned
+thresholds:
+  status: proposal_pending_development
+  approved: false
+  proposal:
+    macro_selection_accuracy_min: 0.90
+    per_role_selection_accuracy_min: 0.85
+    fixture_u_match_min: 1.0
+    illegal_submission_max: 0
+    independent_trajectories_per_role_per_split_min: 100
+    rationale: 100独立轨迹在p约0.9时正态近似95%半宽约0.059；正式验收报告Wilson区间，阈值与样本量须开发实测后审定，当前每角色每split仅4轨迹。
+  latency_timeout_limits: pending_development_observations
+calibration:
+  status: not_run
+  method: scalar_temperature_on_calibration_only_proposal
+  fit_objective: acceptable_set_negative_log_likelihood
+  metrics: [raw_probabilities, normalized_entropy, maximum_probability, acceptable_set_mass, correctness_brier, correctness_ece, reliability_bin_counts]
+  reliability_bins: 10
+  sparse_bins: report_counts_no_quality_claim
+  fit_before_final: true
+  labels_path: null
+independent_holdout:
+  status: independent_author_required_no_questions
+  independence_verified: false
+  labels_path: null
+tracks:
+  base_selection:
+    controlled_error: false
+  character_performance:
+    seed: 401
+    seed_fields: [scenario_seed, turn_id, actor_id, capability_revision, policy_revision]
+    controlled_error: proposed_only_not_implemented
+    allowed_errors: [working_memory_omission, evidence_confusion, confidence_overreach]
+metrics:
+  candidate_coverage: independent_reference_pairs_matched_over_reference_pairs
+  conditional_selection: raw_laya_hits_over_valid_input_question_candidates_with_acceptable_member_presented
+  end_to_end_selection: raw_laya_hits_over_valid_input_question_with_legal_target_including_candidate_defects
+  timeout_invalid_fallback_slow: remain_in_denominator_never_receive_laya_hit_credit
+  no_legal_target: excluded_from_runtime_action_quality
+  zero_denominator: not_run_never_pass
+  execution: separate_requires_owner_receipt_and_godot_boundary
+  role_differences: separate_descriptive_measurement_not_profile_quality_proof
+source_pins:
+  - path: docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md
+    sha256: 85da495a16e46ef1f1e5b750f555b1b7233f92eb18abbf5123902ba23fa44c54
+  - path: backend/app/character_agent/gateway/laya_provider.py
+    sha256: 34e11611c20f4794d16044ca7ec9ae9e5b5f950338e876c2dd126be33897bde7
+

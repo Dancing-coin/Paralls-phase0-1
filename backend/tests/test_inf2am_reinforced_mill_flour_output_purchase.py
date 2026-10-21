@@ -376,6 +376,31 @@ def test_inf2am_account_conflict_is_zero_write() -> None:
     assert store.export_snapshot() == before
 
 
+def test_inf2am_inventory_receipt_rejects_corrupt_event_reference_without_write() -> None:
+    store, certification_event = _certified_source()
+    _inventory_registry, inventory = _inventory_setup(store)
+    request = dict(
+        certification_event_id=certification_event.event_id,
+        expected_certification_revision=certification_event.stream_revision,
+        expected_inventory_stream_revision=store.get_stream_head(f"gameplay:inventory:{PROVIDER}"),
+        command_id="inf2am:inventory-receipt",
+        idempotency_key=_inventory_receipt_key(certification_event.event_id, certification_event.stream_revision),
+        causation_id=certification_event.event_id,
+        correlation_id="corr:inf2am:inventory-receipt",
+    )
+    first = inventory.record_reinforced_mill_flour_output_receipt(**request)
+    assert first.committed
+    key = (inventory._PRINCIPAL, f"{PROVIDER}:{request['idempotency_key']}")
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+    duplicate = inventory.record_reinforced_mill_flour_output_receipt(**request)
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "inventory_mill_flour_output_receipt_invalid"
+    assert store.export_snapshot() == before
+
+
 def test_inf2am_stale_provider_inventory_source_is_zero_write() -> None:
     store, certification_event = _certified_source()
     inventory_registry, inventory = _inventory_setup(store)

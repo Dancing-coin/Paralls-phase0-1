@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from hashlib import sha256
 from math import dist
+from copy import copy, deepcopy
+from threading import RLock
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +18,8 @@ from app.models.embodied_interaction import (
 )
 from app.services.embodied_controller_auth_service import EmbodiedControllerAuthService
 from app.services.physical_interaction_channel import PhysicalContactObservation, PhysicalInteractionChannel, PhysicalInteractionRequest
+from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 class EmbodiedAuthoritySettlementReceipt(BaseModel):
@@ -44,6 +48,7 @@ class EmbodiedAuthoritySettlementService:
         auth_service: EmbodiedControllerAuthService | None = None,
         physical_channel: PhysicalInteractionChannel | None = None,
         gameplay_event_batch_writer_available: bool = False,
+        store: GameplayEventStore | None = None,
     ) -> None:
         self._auth = auth_service
         self._physical_channel = physical_channel or PhysicalInteractionChannel()
@@ -79,6 +84,56 @@ class EmbodiedAuthoritySettlementService:
         self._snapshot_digest = "sha256:generic-initial-snapshot"
         self._resync_marker = "resync:generic-initial"
         self.mutation_count = 0
+        self._street_store = store
+        self._street_lock = RLock()
+        self._street_durable_revision = 0
+        self._restore_street_owner()
+
+    _STREET_STREAM = "gameplay:embodied:street-owner"
+    _STREET_PRINCIPAL = "authority:embodied:street-owner"
+    _STREET_EVENT = "gameplay.embodied.street_settled@1"
+
+    def _restore_street_owner(self) -> None:
+        """Rebuild this existing owner's results from the shared ledger only."""
+        if self._street_store is None:
+            return
+        for event in self._street_store.read_stream(self._STREET_STREAM):
+            if event.stream_revision <= self._street_durable_revision:
+                continue
+            tx = self._street_store.get_transaction(event.transaction_id)
+            if (event.event_type != self._STREET_EVENT or event.schema_version != 1
+                    or event.visibility_policy != "project"
+                    or event.stream_revision != self._street_durable_revision + 1
+                    or tx is None or tx.idempotency_record.principal_ref != self._STREET_PRINCIPAL
+                    or tx.command_id != event.command_id or tx.events != [event]):
+                raise ValueError("street_owner_recovery_source_invalid")
+            payload = event.payload
+            result = AuthorityResult.model_validate(payload["result"])
+            key, digest = payload["idempotency_key"], payload["attempt_payload_digest"]
+            states = payload["actors"]
+            if (result.outcome != "committed" or result.transaction_id != event.transaction_id
+                    or result.committed_event_ids != [event.event_id]
+                    or tx.idempotency_record.idempotency_key != key
+                    or key in self._street_results_by_key
+                    or set(states) != set(self._street_actors)
+                    or not isinstance(digest, str) or not digest):
+                raise ValueError("street_owner_recovery_receipt_invalid")
+            for actor_id, values in states.items():
+                if (set(values) != {"hp", "stamina"}
+                        or any(type(value) is not int or not 0 <= value <= 100 for value in values.values())):
+                    raise ValueError("street_owner_recovery_state_invalid")
+            if (payload["revisions"] != result.resulting_revisions
+                    or any(type(value) is not int or value < 0 for value in payload["revisions"].values())
+                    or type(payload["mutation_count"]) is not int
+                    or payload["mutation_count"] != self.mutation_count + 1):
+                raise ValueError("street_owner_recovery_revision_invalid")
+            for actor_id, values in states.items():
+                self._street_actors[actor_id].update(values)
+            self._aggregate_revisions = dict(payload["revisions"])
+            self.mutation_count = payload["mutation_count"]
+            self._street_results_by_key[key] = (digest, result)
+            self._attempt_results[key] = (digest, result.transaction_id, result)
+            self._street_durable_revision = event.stream_revision
 
     def disconnect_transport(self) -> None:
         self._transport_connected = False
@@ -178,6 +233,63 @@ class EmbodiedAuthoritySettlementService:
         return True
 
     def settle_street_combat(self, attempt: ActionAttempt) -> AuthorityResult:
+        if self._street_store is None:
+            return self._settle_street_combat_volatile(attempt)
+        with self._street_lock:
+            self._restore_street_owner()
+            prior = self._street_results_by_key.get(attempt.idempotency_key)
+            if prior is not None:
+                if prior[0] == attempt.payload_digest:
+                    return prior[1].model_copy(deep=True)
+                return self._result(attempt, outcome="rejected", failed_stage="idempotency",
+                                    failed_code="idempotency_key_reused", recovery_action="discard_duplicate")
+            # Stage on isolated mutable state. Neither a failed append nor a
+            # lost append response can apply HP/stamina in this live instance.
+            staged = copy(self)
+            for name in ("_street_actors", "_street_results_by_key", "_attempt_results", "_aggregate_revisions"):
+                setattr(staged, name, deepcopy(getattr(self, name)))
+            result = staged._settle_street_combat_volatile(attempt)
+            if result.outcome != "committed":
+                self._street_next_client_sequence = staged._street_next_client_sequence
+                return result
+            payload = {
+                "idempotency_key": attempt.idempotency_key,
+                "attempt_payload_digest": attempt.payload_digest,
+                "actors": {actor: {field: values[field] for field in ("hp", "stamina")}
+                           for actor, values in staged._street_actors.items()},
+                "revisions": staged._aggregate_revisions,
+                "mutation_count": staged.mutation_count,
+                "result": {},
+            }
+            batch = build_atomic_event_batch(
+                command_id=attempt.attempt_id, principal_ref=self._STREET_PRINCIPAL,
+                stream_id=self._STREET_STREAM, expected_revision=self._street_durable_revision,
+                event_specs=((self._STREET_EVENT, payload),),
+                idempotency_key=attempt.idempotency_key, causation_id=attempt.causation_id,
+                correlation_id=attempt.correlation_id,
+            )
+            result = result.model_copy(update={"transaction_id": batch.transaction_id,
+                                               "committed_event_ids": [batch.events[0].event_id]})
+            # Rebuild after receipt identity is fixed so the shared batch's
+            # payload/result digests cover exactly the stored projection.
+            payload["result"] = result.model_dump(mode="json")
+            batch = build_atomic_event_batch(
+                command_id=attempt.attempt_id, principal_ref=self._STREET_PRINCIPAL,
+                stream_id=self._STREET_STREAM, expected_revision=self._street_durable_revision,
+                event_specs=((self._STREET_EVENT, payload),),
+                idempotency_key=attempt.idempotency_key, causation_id=attempt.causation_id,
+                correlation_id=attempt.correlation_id,
+            )
+            appended = self._street_store.append_batch(batch)
+            if not appended.committed:
+                return self._result(attempt, outcome="rejected", failed_stage="durable_commit",
+                                    failed_code=appended.failure.error_code if appended.failure else "commit_failed",
+                                    recovery_action="query_receipt_and_retry")
+            self._restore_street_owner()
+            self._street_next_client_sequence = staged._street_next_client_sequence
+            return self._street_results_by_key[attempt.idempotency_key][1].model_copy(deep=True)
+
+    def _settle_street_combat_volatile(self, attempt: ActionAttempt) -> AuthorityResult:
         existing = self._street_results_by_key.get(attempt.idempotency_key)
         if existing is not None:
             digest, result = existing
@@ -264,6 +376,15 @@ class EmbodiedAuthoritySettlementService:
         result = result.model_copy(update={"committed_projection": projection})
         self._street_results_by_key[attempt.idempotency_key] = (attempt.payload_digest, result.model_copy(deep=True))
         return result
+
+    def query_street_combat_receipt(self, attempt: ActionAttempt) -> AuthorityResult | None:
+        """Read the cached embodied receipt without applying the action again."""
+        with self._street_lock:
+            self._restore_street_owner()
+            existing = self._street_results_by_key.get(attempt.idempotency_key)
+            if existing is None or existing[0] != attempt.payload_digest:
+                return None
+            return existing[1].model_copy(deep=True)
 
     def _validate_street_contact_evidence(
         self,

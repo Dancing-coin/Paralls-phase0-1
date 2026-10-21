@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-rw50-inventory-replay",
+  "order": 157,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_rw50_inventory_replay.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 1800,
+  "result_artifact": ".harness/verification/infra-rw50-inventory-replay-report.json",
+  "description": "RW-50 Inventory Durable reopen and same-participant full/checkpoint+tail verification",
+  "success_key": "overall_passed"
+}

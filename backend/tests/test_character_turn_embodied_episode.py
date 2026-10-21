@@ -163,3 +163,32 @@ def test_turn_correlation_requires_contract_identity_and_rejected_settlement_doe
     assert rejected.settlement_payload["turn_id"] == correlation.turn_id
     assert rejected.object_result is None
     assert main.default_scene_archive_door_embodied_service.commit_count == 0
+
+
+def test_local_animation_completion_without_authority_receipt_requires_recovery() -> None:
+    service = EmbodiedEpisodeService()
+    episode = service.begin(_turn(), _candidate(), pre_capture_ref="capture:1")
+
+    result = service.complete(
+        episode,
+        authority_result=None,
+        post_capture_ref="capture:2",
+        observed_state="open",
+    )
+
+    assert result.outcome == "recovery_required"
+    assert result.failure_class == "feedback_missing"
+    assert result.authority_result_ref == ""
+
+
+def test_interrupted_and_expired_commitments_emit_typed_recovery() -> None:
+    service = EmbodiedEpisodeService()
+    episode = service.begin(_turn(), _candidate(), pre_capture_ref="capture:1")
+
+    interrupted = service.interrupt(episode, reason="incoming_action")
+    assert interrupted.failure_class == "actor_interrupted"
+    assert interrupted.recovery_candidate["reason"] == "incoming_action"
+
+    expired = service.expire(episode, reason="commitment_window_elapsed")
+    assert expired.failure_class == "expired"
+    assert expired.recovery_candidate["reason"] == "commitment_window_elapsed"

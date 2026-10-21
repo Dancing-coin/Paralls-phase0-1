@@ -1883,6 +1883,20 @@ def _run_fixture_player_dialogue(character_runtime, activation_policy, dialogue)
     main._publish_debug_event = debug_events.append
     try:
         messages = main._handle_envelope(Envelope(message_type="player_input", payload=dialogue.model_dump()))
+        if not any(event.get("stage") == "activation_active" for event in debug_events):
+            rejection = next(
+                (message.get("payload", {}) for message in messages
+                 if message.get("message_type") == "ack"),
+                {},
+            )
+            raise RuntimeError(
+                "offline_fixture_player_activation_failed:"
+                + json.dumps({
+                    "request_id": dialogue.request_id,
+                    "ack": rejection,
+                    "debug_stages": [event.get("stage") for event in debug_events],
+                }, sort_keys=True, default=str)
+            )
         return messages, debug_events
     finally:
         (main.character_agent_runtime, main.activation_policy, main.runtime, main._publish_debug_event) = saved

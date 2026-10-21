@@ -135,6 +135,63 @@ def test_p3a_suspend_requeue_and_duplicate_are_replayable() -> None:
     assert duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
 
 
+def test_activation_commit_changed_duplicate_rejected_without_write() -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    first = authority.commit(proposal())
+    assert first.committed
+    before = store.get_last_global_sequence()
+    changed = authority.commit(proposal(proposal_id="proposal:changed", activation_reason="changed"))
+    assert not changed.committed
+    assert changed.stop_reason == "activation_idempotency_key_reused"
+    assert changed.zero_write
+    assert store.get_last_global_sequence() == before
+
+
+@pytest.mark.parametrize("corruption", ["receipt", "transaction", "event"])
+def test_activation_duplicate_rejects_corrupted_receipt_membership(corruption: str) -> None:
+    store = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=store)
+    first = authority.commit(proposal())
+    assert first.committed
+    key = ("population:planner", "activation:1")
+    persisted = store._idempotency_results[key]
+    if corruption == "receipt":
+        store._idempotency_results[key] = persisted.model_copy(update={"transaction_id": "transaction:other"}, deep=True)
+    elif corruption == "transaction":
+        index = next(i for i, batch in enumerate(store._transactions) if batch.transaction_id == persisted.transaction_id)
+        store._transactions[index] = store._transactions[index].model_copy(update={"command_id": "proposal:other"}, deep=True)
+    else:
+        event_id = persisted.committed_event_ids[0]
+        event = store.get_event(event_id)
+        store._events_by_id[event_id] = event.model_copy(update={"command_id": "proposal:other"}, deep=True)
+    before = store.get_last_global_sequence()
+    duplicate = authority.commit(proposal())
+    assert not duplicate.committed
+    assert duplicate.stop_reason == "activation_idempotency_key_reused"
+    assert store.get_last_global_sequence() == before
+
+
+def test_activation_commit_duplicate_survives_durable_reopen(tmp_path) -> None:
+    source = GameplayEventStore()
+    authority = ProfileActivationAuthority(registry=registry(), store=source)
+    first = authority.commit(proposal())
+    assert first.committed
+    path = tmp_path / "activation.db"
+    durable = DurableGameplayEventStore(path)
+    for batch in source.read_transactions():
+        assert durable.append_batch(batch).committed
+    checkpoint = durable.get_last_global_sequence()
+    durable.close()
+    reopened = DurableGameplayEventStore(path)
+    duplicate = ProfileActivationAuthority(registry=registry(), store=reopened).commit(proposal())
+    assert duplicate.committed
+    assert duplicate.idempotency_status == "duplicate_replayed"
+    assert duplicate.committed_event_ids == first.committed_event_ids
+    assert reopened.get_last_global_sequence() == checkpoint
+    reopened.close()
+
+
 def test_activation_lock_records_replayable_schedule_pending_then_releases() -> None:
     store = GameplayEventStore()
     authority = ProfileActivationAuthority(registry=registry(), store=store)

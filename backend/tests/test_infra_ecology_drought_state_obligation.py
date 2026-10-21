@@ -229,6 +229,45 @@ def test_ecology_drought_state_apply_commits_on_existing_ecology_stream() -> Non
     assert _open_obligation(store).due_tick == 6
 
 
+def test_ecology_owner_rejects_batch_event_diverging_from_fragment() -> None:
+    store, authority, _source_event_id, _source_event_revision = _seed_process()
+    applied = _apply(
+        authority,
+        expected_revision=store.get_stream_head(STREAM),
+        source_event_id=_source_event_id,
+        source_event_revision=_source_event_revision,
+    )
+    assert applied.committed
+    due = _due_obligation(store)
+    coordinator = ObligationSettlementCoordinator(
+        store=store,
+        lifecycle_registrations=(_registration(),),
+    )
+    fragment = authority.build_drought_state_fragment(
+        obligation=due,
+        region_ref=REGION_REF,
+        expected_revision=store.get_stream_head(STREAM),
+    )
+    plan = coordinator.plan_settle(
+        obligation=due,
+        fragments=(fragment,),
+        principal_ref="world_runtime.caller",
+    )
+    assert plan.ready and plan.owner_commit_batch is not None
+    batch = plan.owner_commit_batch
+    event = batch.events[0]
+    forged = event.model_copy(update={"payload": {**event.payload, "current_state": "forged"}}, deep=True)
+    forged_batch = batch.model_copy(update={"events": [forged, *batch.events[1:]]}, deep=True)
+    before = store.export_snapshot()
+
+    result = authority.commit_obligation_batch(forged_batch)
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "ecology_owner_commit_fragment_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_ecology_drought_state_rejects_missing_source_without_write() -> None:
     store, authority, _source_event_id, source_event_revision = _seed_process()
     before = len(store.read_events())

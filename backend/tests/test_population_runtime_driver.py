@@ -72,6 +72,24 @@ def test_driver_publishes_each_due_window_once(driver: PopulationCadenceDriver) 
     assert second.published_cadence_ids == ("cadence:world:7200", "cadence:world:10800")
 
 
+def test_each_scheduled_population_window_carries_time_pins(driver, monkeypatch):
+    from app.world_runtime import population_driver
+
+    original = population_driver.select_temporal_work
+    scheduled = []
+
+    def select(work, **kwargs):
+        scheduled.extend(work)
+        return original(work, **kwargs)
+
+    monkeypatch.setattr(population_driver, "select_temporal_work", select)
+    driver.tick(7200)
+    assert len(scheduled) == 2
+    assert [dict(item.time_pins)["sampled_at"] for item in scheduled] == [3600, 7200]
+    assert [dict(item.time_pins)["window_start"] for item in scheduled] == [0, 3600]
+    assert all(dict(item.time_pins)["timeline_id"] == "population:world" for item in scheduled)
+
+
 def test_driver_does_not_publish_partial_future_window(driver: PopulationCadenceDriver) -> None:
     result = driver.tick(1000)
 

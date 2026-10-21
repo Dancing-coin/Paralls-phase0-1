@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from .common import artifact_path, verification_dir
+    from .common import same_run_profile_report, verification_dir
 except ImportError:
-    from common import artifact_path, verification_dir
+    from common import same_run_profile_report, verification_dir
 
 import json
 import sys
@@ -27,7 +27,7 @@ def main() -> int:
         )
     }
     replay = fixture.replay_scenario("competing_candidates")
-    predecessor_path = artifact_path(root, ".harness/verification/siming-governed-three-actor-cohort-continuity-v1-report.json")
+    predecessor_path = same_run_profile_report(root, "siming-governed-three-actor-cohort-continuity-v1-report.json")
     predecessor = False
     if predecessor_path.exists():
         try:

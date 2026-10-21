@@ -325,3 +325,21 @@ def test_package_exchange_exact_duplicate_replays_and_changed_duplicate_is_zero_
     assert not changed.committed
     assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
     assert store.read_events() == before_events and store.list_outbox() == before_outbox
+
+
+def test_package_exchange_rejects_corrupt_receipt_event_reference() -> None:
+    store, economy, _inventory, _ownership, _contracts = _setup()
+    intent = _intent(outcome_ref="outcome:package-compass")
+    first = economy.settle_package_declared_negotiated_exchange(intent)
+    assert first.committed
+    store._idempotency_results[("actor_gameplay.economy_domain", intent.idempotency_key)] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    duplicate = economy.settle_package_declared_negotiated_exchange(intent)
+
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before

@@ -8,6 +8,7 @@ request settles and Godot only realizes the accepted result locally.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import re
 from types import MappingProxyType
 from typing import Literal, Mapping
@@ -150,6 +151,14 @@ class CharacterExecutionContract(BaseModel):
         validation_alias=AliasChoices("semantic_action_id", "action_id", "action"),
     )
     source_id: str = Field(default="character_agent_l4", min_length=1)
+    # Commitment policy is semantic metadata owned by the registered action
+    # contract. It is never a body command and is deliberately kept alongside
+    # the existing contract rather than introducing a second action schema.
+    commitment_ms: int = Field(default=1000, ge=1)
+    preconditions: tuple[str, ...] = Field(default_factory=tuple)
+    abort_conditions: tuple[str, ...] = Field(default_factory=tuple)
+    fallback: str = Field(default="defer", min_length=1)
+    context_revision: str = Field(default="", min_length=0)
     expected_target_revision_vector: Mapping[str, int] = Field(
         default_factory=dict,
         validation_alias=AliasChoices(
@@ -183,6 +192,45 @@ class CharacterExecutionContract(BaseModel):
     privacy_scope: str = Field(min_length=1)
     authority_scope: str = Field(min_length=1)
     expected_observation: Mapping[str, JsonValue] = Field(default_factory=dict)
+
+    @property
+    def expires_at(self) -> int:
+        """Exclusive end of the producer timestamp commitment window."""
+        return self.producer_ts + self.commitment_ms
+
+    def admission(
+        self,
+        *,
+        now_ts: int | None = None,
+        current_target_refs: tuple[str, ...] | None = None,
+        current_target_revision_vector: Mapping[str, int] | None = None,
+        current_revision_vector: Mapping[str, int] | None = None,
+        current_snapshot_revision: int | None = None,
+        revoked_grants: set[str] | None = None,
+    ) -> "ExecutionAdmission":
+        """Check a frozen commitment without writing authority state."""
+        if now_ts is not None and now_ts >= self.expires_at:
+            return ExecutionAdmission(False, "expired")
+        if current_target_refs is not None and tuple(current_target_refs) != self.target_refs:
+            return ExecutionAdmission(False, "stale_target")
+        if current_target_revision_vector is not None:
+            for ref, revision in self.expected_target_revision_vector.items():
+                if current_target_revision_vector.get(ref) != revision:
+                    return ExecutionAdmission(False, "stale_revision")
+        if current_revision_vector is not None:
+            for ref, revision in self.expected_revision_vector.items():
+                if current_revision_vector.get(ref) != revision:
+                    return ExecutionAdmission(False, "stale_revision")
+        if (
+            current_snapshot_revision is not None
+            and current_snapshot_revision != self.expected_snapshot_revision
+        ):
+            return ExecutionAdmission(False, "stale_revision")
+        revoked = set(revoked_grants or set())
+        pinned_grant = str(self.expected_observation.get("grant_ref", "") or "")
+        if pinned_grant and pinned_grant in revoked:
+            return ExecutionAdmission(False, "revoked_grant")
+        return ExecutionAdmission(True)
 
     @model_validator(mode="before")
     @classmethod
@@ -293,4 +341,48 @@ class CharacterExecutionContract(BaseModel):
         return self.semantic_action_id
 
 
-__all__ = ["CharacterExecutionContract"]
+class CharacterExecutionFeedback(BaseModel):
+    """Actor/authority feedback envelope kept separate from the commitment."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
+
+    execution_contract_ref: str = Field(min_length=1)
+    turn_id: str = Field(min_length=1)
+    actor_ref: str = Field(min_length=1)
+    producer_ts: int = Field(ge=0)
+    lifecycle: Literal[
+        "queued", "accepted", "startup", "active", "recovery", "completed",
+        "interrupted", "failed", "blocked", "cancelled", "expired",
+    ]
+    local_feedback_ref: str = ""
+    authority_receipt_ref: str = ""
+    authority_status: str = ""
+    animation_completed: bool = False
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionAdmission:
+    accepted: bool
+    reason: str = ""
+    duplicate: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionLifecycleReceipt:
+    execution_contract_ref: str
+    lifecycle: str
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionFeedbackAdmission:
+    accepted: bool
+    reason: str = ""
+    lifecycle: str = ""
+    authority_receipt_ref: str = ""
+
+__all__ = [
+    "CharacterExecutionContract", "CharacterExecutionFeedback", "ExecutionAdmission",
+    "ExecutionLifecycleReceipt", "ExecutionFeedbackAdmission",
+]

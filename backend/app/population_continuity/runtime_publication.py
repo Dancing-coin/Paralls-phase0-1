@@ -105,6 +105,16 @@ class RuntimeCadencePublisher:
         )
         return self.store.append_batch(batch)
 
+    @property
+    def confirmed_time_pins(self) -> dict | None:
+        latest = self.world.latest_confirmation
+        if latest is None:
+            return None
+        record = self._record_for(latest.cadence_id)
+        return record.get("time_pins") if record is not None else None
+
+    def publish_pinned(self, cadence: PopulationCadenceInput, time_pins: dict) -> AuthorityEvent | None:
+        return self.__call__(cadence, time_pins=time_pins)
 
     def __init__(self, *, world_runtime: WorldContinuityRuntime, event_bus: AuthorityEventBusPort,
                  room_id: str, scene_id: str, zone_id: str, conflict_pump=None) -> None:
@@ -133,7 +143,8 @@ class RuntimeCadencePublisher:
         if self._conflict_pump is None:
             return
         try:
-            self._conflict_pump(cadence)
+            record = self._record_for(cadence.cadence_id) or {}
+            self._conflict_pump(cadence, temporal_pins=record.get("time_pins"))
         except Exception as error:
             # 源仍持久待办，下一新窗口只补未接管角色；不因角色链故障停掉已确认 B0。
             self.last_conflict_error = type(error).__name__
@@ -420,10 +431,12 @@ class RuntimeCadencePublisher:
         event = AuthorityEvent.model_validate({**template, "payload": {**template["payload"], "population_projections": projections}})
         return cadence, event
 
-    def __call__(self, cadence: PopulationCadenceInput) -> AuthorityEvent | None:
+    def __call__(self, cadence: PopulationCadenceInput, *, time_pins: dict | None = None) -> AuthorityEvent | None:
         existing = self._record_for(cadence.cadence_id)
         if existing is not None:
             committed = self._validate_record(existing)
+            if time_pins is not None and existing.get("time_pins") != time_pins:
+                raise ValueError("population_time_pins_conflict")
             # 重试消费已确认输入，不用此刻的新 source revision 改写原窗口。
             keys = (
                 "world_ref",
@@ -470,6 +483,7 @@ class RuntimeCadencePublisher:
                 event_bus=self.bus, publish_event=False, **self.location,
                 causation_id=f"population-runtime:{cadence.cadence_id}",
                 correlation_id=f"population-runtime:{cadence.cadence_id}",
+                temporal_pins=time_pins,
             )
             if prepared is None:
                 return None
@@ -481,6 +495,8 @@ class RuntimeCadencePublisher:
             ]
             record = dict(schema_version=1, cadence=cadence.model_dump(mode="json"), roster_digest=self.roster_digest,
                           projection_digest=projection_digest, authority_event=template)
+            if time_pins is not None:
+                record["time_pins"] = time_pins
             domain = self._prepare_domain(cadence) if domain_ready else None
             if domain is not None:
                 record["domain_authority_event"] = domain.model_dump(mode="json")

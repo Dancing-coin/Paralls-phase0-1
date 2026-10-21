@@ -1,5 +1,22 @@
 from pydantic import BaseModel, ConfigDict
 
+from .temporal_contracts import ScheduledWork, SimulationTime
+
+
+def select_temporal_work(
+    work: tuple[ScheduledWork, ...], *, now: SimulationTime, budget: int,
+) -> tuple[tuple[ScheduledWork, ...], tuple[ScheduledWork, ...]]:
+    """Select due owner-bound work; selection does not confirm settlement."""
+    if budget < 0:
+        raise ValueError("scheduled_work_budget_invalid")
+    if any(item.due_time.timeline_id != now.timeline_id for item in work):
+        raise ValueError("scheduled_work_timeline_mismatch")
+    due = tuple(sorted(
+        (item for item in work if item.due_time.canonical_time_value <= now.canonical_time_value),
+        key=lambda item: (item.due_time.canonical_time_value, item.ordering_key, item.work_ref),
+    ))
+    return due[:budget], due[budget:]
+
 
 class RuntimeCadencePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")

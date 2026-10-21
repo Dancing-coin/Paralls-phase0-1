@@ -325,8 +325,11 @@ class ContractAuthorityService:
     ) -> AppendBatchResult:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
         if existing is not None:
-            if len(existing.committed_event_ids) == 1:
-                prior = self._store.get_event(existing.committed_event_ids[0])
+            prior = self._validated_duplicate_event(
+                existing,
+                expected_event_types=("gameplay.contract.record_created",),
+            )
+            if prior is not None:
                 if (
                     prior.event_type == "gameplay.contract.record_created"
                     and prior.payload.get("advisory_event_id") == intent.advisory_event_id
@@ -414,8 +417,11 @@ class ContractAuthorityService:
     ) -> AppendBatchResult:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
         if existing is not None:
-            if len(existing.committed_event_ids) == 1:
-                prior = self._store.get_event(existing.committed_event_ids[0])
+            prior = self._validated_duplicate_event(
+                existing,
+                expected_event_types=("gameplay.contract.record_created",),
+            )
+            if prior is not None:
                 if (
                     prior.event_type == "gameplay.contract.record_created"
                     and prior.payload.get("operational_verification_event_id") == intent.operational_verification_event_id
@@ -521,8 +527,11 @@ class ContractAuthorityService:
         """Admit one public-workshop service from the exact Construction source."""
         existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
         if existing is not None:
-            if len(existing.committed_event_ids) == 1:
-                prior = self._store.get_event(existing.committed_event_ids[0])
+            prior = self._validated_duplicate_event(
+                existing,
+                expected_event_types=("gameplay.contract.record_created",),
+            )
+            if prior is not None:
                 if (
                     prior.event_type == "gameplay.contract.record_created"
                     and prior.payload.get("public_use_event_id") == intent.public_use_event_id
@@ -661,8 +670,11 @@ class ContractAuthorityService:
         """Admit one fixed service contract from the reinforced-mill row only."""
         existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
         if existing is not None:
-            if len(existing.committed_event_ids) == 1:
-                prior = self._store.get_event(existing.committed_event_ids[0])
+            prior = self._validated_duplicate_event(
+                existing,
+                expected_event_types=("gameplay.contract.record_created",),
+            )
+            if prior is not None:
                 if (
                     prior.event_type == "gameplay.contract.record_created"
                     and prior.payload.get("public_use_event_id") == intent.public_use_event_id
@@ -1364,6 +1376,36 @@ class ContractAuthorityService:
         if result is None:
             raise ContractRuntimeError("contract_idempotency_missing_result")
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+    def _validated_duplicate_event(
+        self,
+        result: AppendBatchResult,
+        *,
+        expected_event_types: tuple[str, ...],
+    ):
+        if not result.committed or not result.transaction_id or not result.command_id:
+            return None
+        transaction = self._store.get_transaction(result.transaction_id)
+        if (
+            transaction is None
+            or transaction.command_id != result.command_id
+            or tuple(result.committed_event_ids) != tuple(event.event_id for event in transaction.events)
+            or tuple(event.event_type for event in transaction.events) != expected_event_types
+        ):
+            return None
+        event = transaction.events[0]
+        record = self._store.get_idempotency_record(
+            self._PRINCIPAL,
+            transaction.idempotency_record.idempotency_key,
+        )
+        if any(
+            item.transaction_id != transaction.transaction_id
+            or item.command_id != transaction.command_id
+            or item.visibility_policy != "authority_only"
+            for item in transaction.events
+        ) or record != transaction.idempotency_record:
+            return None
+        return event
 
     @classmethod
     def _event(cls, command_id: str, index: int, event_type: str, payload: Mapping[str, object], causation_id: str, correlation_id: str) -> dict[str, object]:

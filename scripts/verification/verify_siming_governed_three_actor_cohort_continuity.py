@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from .common import artifact_path, verification_dir
+    from .common import same_run_profile_report, verification_dir
 except ImportError:
-    from common import artifact_path, verification_dir
+    from common import same_run_profile_report, verification_dir
 
 import json
 import os
@@ -38,7 +38,7 @@ def run_focused() -> tuple[bool, str]:
 
 
 def predecessor_report(name: str) -> bool:
-    path = artifact_path(root(), f".harness/verification/{name}-report.json")
+    path = same_run_profile_report(root(), f"{name}-report.json")
     try:
         return json.loads(path.read_text(encoding="utf-8")).get("overall_passed") is True
     except (OSError, ValueError):

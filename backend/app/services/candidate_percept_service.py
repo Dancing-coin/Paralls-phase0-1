@@ -12,6 +12,8 @@ def compile_candidate_percepts(event: RawFactEvent) -> list[CandidatePerceptEven
             return []
         return [
             CandidatePerceptEvent(
+                coordination_signal=event.coordination_signal,
+                auditory_reachability=event.acoustics.reachability,
                 percept_channel="auditory",
                 source_fact_family=event.fact_family,
                 source_fact_type=event.fact_type,

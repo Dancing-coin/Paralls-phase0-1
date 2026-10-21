@@ -7,6 +7,7 @@ import time
 from app.population_continuity.conflict_activation import prepare_conflict_activation
 from app.population_continuity.recovery import durable_population_receipt
 from app.population_continuity.siming_contracts import PopulationCadenceInput
+from app.world_runtime.temporal_contracts import verify_temporal_authorization
 
 
 class PopulationConflictPump:
@@ -25,6 +26,17 @@ class PopulationConflictPump:
                 or cadence.world_mode_revision != self.world.mode.revision
                 or cadence.report_scope != "public" or durable_population_receipt(self.world, cadence) is None):
             raise ValueError("conflict_cognition_cadence_invalid")
+        pins = entry.source_pins.get("temporal_pins")
+        # Direct legacy publisher calls predate the temporal grant carrier and
+        # remain a narrow compatibility fixture. The production pinned caller
+        # always supplies pins and is fail-closed below.
+        if pins is not None and (not isinstance(pins, dict) or not verify_temporal_authorization(
+                pins=pins,
+                expected_participant="actor_gameplay.character_cognition",
+                expected_cutoff=cadence.window_end,
+                expected_timeline=str(pins.get("timeline_id", f"population:{self.world.mode.world_ref}")),
+                grant_key="character")):
+            raise ValueError("conflict_cognition_temporal_authorization_rejected")
         event = self.store.get_event(entry.source_event["event_id"])
         if event.model_dump(mode="json") != entry.source_event:
             raise ValueError("conflict_cognition_source_invalid")
@@ -35,7 +47,7 @@ class PopulationConflictPump:
                 or entry.source_pins.get("population_wake") != json.loads(json.dumps(asdict(wake)))):
             raise ValueError("conflict_cognition_wake_invalid")
 
-    def __call__(self, cadence):
+    def __call__(self, cadence, *, temporal_pins=None):
         if durable_population_receipt(self.world, cadence) is None:
             raise ValueError("conflict_cognition_public_unconfirmed")
         budget = min(4, self.world.mode.wake_budget)
@@ -46,10 +58,13 @@ class PopulationConflictPump:
             if wake.actor_id in actors:
                 continue
             now = self.wall_clock()
+            source_pins = {"population_wake": json.loads(json.dumps(asdict(wake))),
+                           "population_cadence": cadence.model_dump(mode="json")}
+            if temporal_pins is not None:
+                source_pins["temporal_pins"] = json.loads(json.dumps(temporal_pins))
             entry = self.admissions.admit(source_event=self.store.get_event(wake.source_event_id),
                 actor_id=wake.actor_id, delivery_id=wake.candidate_key, source_kind=wake.source_kind, payload={},
-                source_pins={"population_wake": json.loads(json.dumps(asdict(wake))),
-                             "population_cadence": cadence.model_dump(mode="json")},
+                source_pins=source_pins,
                 now=now, expires_at=now + self.ttl_seconds, producer_ts=cadence.window_end)
             admitted.append(entry)
             actors.add(wake.actor_id)

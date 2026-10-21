@@ -390,6 +390,23 @@ def test_commerce_delivery_payment_replays_exact_duplicate_and_rejects_changed_d
     assert len(store.read_events()) == len({event.event_id for event in store.read_events()})
 
 
+def test_commerce_delivery_payment_rejects_corrupt_receipt_event_reference() -> None:
+    store, economy, delivery_event = _delivered_fixture()
+    first = _settle(economy, delivery_event)
+    key = "idem:payment:settle"
+    store._idempotency_results[("actor_gameplay.economy_domain", key)] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    duplicate = _settle(economy, delivery_event)
+
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_commerce_delivery_payment_compensation_reverses_exact_accounts_and_rejects_duplicate_without_write() -> None:
     store, economy, delivery_event = _delivered_fixture()
     settled = _settle(economy, delivery_event)

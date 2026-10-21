@@ -1,4 +1,10 @@
-"""Canonical explicit faction relation owner; combat hit/Threat deferred."""
+"""Canonical combat source owners designed in this phase.
+
+This module owns an explicit faction relation source and a Threat owner API.
+The Threat API is intentionally conservative: it consumes an embodied owner's
+committed receipt plus canonical Presence, LifeState, and faction events.  It
+does not promote contact, HP, or profile fields into world facts.
+"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -7,14 +13,21 @@ from typing import Any
 from app.gameplay.event_store import GameplayEventStore, GameplayEventStoreSnapshotError
 from app.gameplay.models import AppendBatchResult
 from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.models.embodied_interaction import ActionAttempt, AuthorityResult
 
-
-PRESENCE_PRINCIPAL = "population.presence_authority"
-LIFE_PRINCIPAL = "authority:character:life-state"
-_TARGET_ELIGIBLE_LIFE_STATES = frozenset({"alive", "impaired", "downed", "dying", "unconscious", "reviving", "revived"})
 
 FACTION_PRINCIPAL = "authority:combat:faction-relation"
 FACTION_EVENT = "gameplay.combat.faction_relation_recorded"
+THREAT_PRINCIPAL = "authority:combat:threat-relation"
+THREAT_EVENT = "gameplay.combat.threat_relation_recorded"
+ENCOUNTER_PRINCIPAL = "authority:combat:encounter"
+ENCOUNTER_BEGUN = "gameplay.combat.encounter_begun"
+ENCOUNTER_ENDED = "gameplay.combat.encounter_ended"
+PRESENCE_PRINCIPAL = "population.presence_authority"
+LIFE_PRINCIPAL = "authority:character:life-state"
+EMBODIED_PRINCIPAL = "authority:embodied:street-owner"
+EMBODIED_EVENT = "gameplay.embodied.street_settled@1"
+_TARGET_ELIGIBLE_LIFE_STATES = frozenset({"alive", "impaired", "downed", "dying", "unconscious", "reviving", "revived"})
 
 
 @dataclass(frozen=True)
@@ -85,7 +98,7 @@ class CombatFactionRelationAuthority:
         if (tx is None or tx.idempotency_record.principal_ref != FACTION_PRINCIPAL
                 or tx.idempotency_record.idempotency_key != request.idempotency_key
                 or event.event_type != FACTION_EVENT or event.stream_id != stream_id
-                or prior.failure is not None
+                or not prior.committed or prior.failure is not None
                 or prior.command_id != request.command_id or tx.command_id != request.command_id
                 or event.transaction_id != prior.transaction_id
                 or tuple(tx.events) != (event,) or event.schema_version != 1
@@ -250,3 +263,275 @@ class CanonicalCombatTargetReader:
                 "timeline_ref": timeline_ref, "hostile": True,
             }.items()
         )
+
+
+class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
+    """Threat owner for confirmed hits; target eligibility is fail-closed."""
+
+    def __init__(self, *, store: GameplayEventStore, authorized_callers: tuple[str, ...] = ()) -> None:
+        self.store = store
+        self.authorized_callers = frozenset(authorized_callers)
+
+    def begin_encounter(self, *, attempt: ActionAttempt, authority_result: AuthorityResult,
+                        presence_event_ids: tuple[str, str], life_event_ids: tuple[str, str],
+                        faction_event_id: str, world_ref: str, timeline_ref: str, encounter_ref: str,
+                        actor_incarnation_ref: str, target_incarnation_ref: str,
+                        command_id: str, idempotency_key: str, authorized_caller: str) -> AppendBatchResult:
+        """Admit a bounded encounter from an already committed real hit.
+
+        The caller allowlist is backend composition, never a client assertion
+        of identity. No public ingress or identity issuer is created here.
+        """
+        if authorized_caller not in self.authorized_callers:
+            return self._reject(command_id, "encounter_caller_not_authorized")
+        if not all(isinstance(value, str) and value.strip() for value in
+                   (world_ref, timeline_ref, encounter_ref, command_id, idempotency_key)):
+            return self._reject(command_id, "encounter_request_invalid")
+        try:
+            sources = [self.store.get_event(ref) for ref in (*presence_event_ids, *life_event_ids, faction_event_id)]
+            revisions = {row.stream_id: self.store.get_stream_head(row.stream_id) for row in sources}
+            for actor in (attempt.actor_ref, *attempt.target_refs):
+                for suffix in {actor, actor.removeprefix("character:")}:
+                    stream = f"gameplay:character:life:{suffix}"
+                    revisions[stream] = self.store.get_stream_head(stream)
+            if (not self._valid_sources(sources, attempt, world_ref, timeline_ref,
+                                        actor_incarnation_ref, target_incarnation_ref)
+                    or not self.store.transaction_owns_event(transaction_id=sources[-1].transaction_id,
+                                                            event_id=sources[-1].event_id, principal_ref=FACTION_PRINCIPAL)
+                    or sources[-1].event_type != FACTION_EVENT
+                    or not self._current_faction(sources[-1], actor_ref=attempt.actor_ref,
+                                                target_ref=attempt.target_refs[0], world_ref=world_ref,
+                                                timeline_ref=timeline_ref)
+                    or not self._embodied_receipt_matches(attempt, authority_result)):
+                return self._reject(command_id, "encounter_source_unavailable")
+            payload = dict(world_ref=world_ref, timeline_ref=timeline_ref, encounter_ref=encounter_ref,
+                           actor_ref=attempt.actor_ref, target_ref=attempt.target_refs[0],
+                           actor_incarnation_ref=actor_incarnation_ref, target_incarnation_ref=target_incarnation_ref,
+                           source_event_ids=[row.event_id for row in sources],
+                           embodied_event_id=authority_result.committed_event_ids[0],
+                           policy_revision="combat-encounter@1", authorized_caller=authorized_caller)
+            prior = self.store.get_by_idempotency(ENCOUNTER_PRINCIPAL, idempotency_key)
+            if prior is not None:
+                return self._lifecycle_replay(prior, payload, ENCOUNTER_BEGUN, command_id, idempotency_key)
+            stream = f"gameplay:combat:encounter:{encounter_ref}"
+            if self.store.get_stream_head(stream):
+                return self._reject(command_id, "encounter_already_exists")
+            return self.store.append_batch(build_atomic_event_batch(
+                command_id=command_id, principal_ref=ENCOUNTER_PRINCIPAL, stream_id=stream,
+                expected_revision=0, event_specs=((ENCOUNTER_BEGUN, payload),),
+                idempotency_key=idempotency_key, causation_id=attempt.causation_id,
+                correlation_id=attempt.correlation_id, read_stream_revisions=revisions))
+        except (KeyError, ValueError, TypeError, IndexError, GameplayEventStoreSnapshotError):
+            return self._reject(command_id, "encounter_source_unavailable")
+
+    def end_encounter(self, *, world_ref: str, timeline_ref: str, encounter_ref: str,
+                      command_id: str, idempotency_key: str, authorized_caller: str,
+                      expected_revision: int, reason: str) -> AppendBatchResult:
+        if authorized_caller not in self.authorized_callers:
+            return self._reject(command_id, "encounter_caller_not_authorized")
+        if not all(isinstance(value, str) and value.strip() for value in
+                   (world_ref, timeline_ref, encounter_ref, command_id, idempotency_key, reason)):
+            return self._reject(command_id, "encounter_request_invalid")
+        if type(expected_revision) is not int or expected_revision < 1:
+            return self._reject(command_id, "encounter_revision_invalid")
+        payload = dict(world_ref=world_ref, timeline_ref=timeline_ref, encounter_ref=encounter_ref,
+                       reason=reason, expected_revision=expected_revision,
+                       policy_revision="combat-encounter@1", authorized_caller=authorized_caller)
+        prior = self.store.get_by_idempotency(ENCOUNTER_PRINCIPAL, idempotency_key)
+        if prior is not None:
+            return self._lifecycle_replay(prior, payload, ENCOUNTER_ENDED, command_id, idempotency_key)
+        try:
+            view = self.encounter_projection(world_ref=world_ref, timeline_ref=timeline_ref, encounter_ref=encounter_ref)
+            if view["state"] != "active":
+                return self._reject(command_id, "encounter_not_active")
+            return self.store.append_batch(build_atomic_event_batch(
+                command_id=command_id, principal_ref=ENCOUNTER_PRINCIPAL,
+                stream_id=f"gameplay:combat:encounter:{encounter_ref}", expected_revision=expected_revision,
+                event_specs=((ENCOUNTER_ENDED, payload),), idempotency_key=idempotency_key,
+                causation_id=command_id, correlation_id=command_id))
+        except (KeyError, ValueError, GameplayEventStoreSnapshotError):
+            return self._reject(command_id, "encounter_source_unavailable")
+
+    def _lifecycle_replay(self, prior: AppendBatchResult, payload: dict[str, Any], event_type: str,
+                          command_id: str, idempotency_key: str) -> AppendBatchResult:
+        try:
+            if not prior.committed or len(prior.committed_event_ids) != 1:
+                raise ValueError("invalid receipt")
+            event = self.store.get_event(prior.committed_event_ids[0])
+            tx = self.store.get_transaction(prior.transaction_id)
+            if (tx is None or tx.idempotency_record.idempotency_key != idempotency_key
+                    or event.command_id != command_id or event.event_type != event_type or event.payload != payload
+                    or event.stream_id != f"gameplay:combat:encounter:{payload['encounter_ref']}"
+                    or not self.store.transaction_owns_event(transaction_id=prior.transaction_id,
+                                                            event_id=event.event_id, principal_ref=ENCOUNTER_PRINCIPAL)):
+                raise ValueError("changed receipt")
+            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        except (KeyError, ValueError, GameplayEventStoreSnapshotError):
+            return self._reject(command_id, "encounter_idempotency_key_reused")
+
+    def encounter_projection(self, *, world_ref: str, timeline_ref: str, encounter_ref: str,
+                             checkpoint_at: int | None = None) -> dict[str, Any]:
+        """Project canonical committed events; a boundary never imports future rows."""
+        events = self.store.read_stream(f"gameplay:combat:encounter:{encounter_ref}")
+        state, totals, refs = "unavailable", {}, []
+        for event in events:
+            if checkpoint_at is not None and event.global_sequence > checkpoint_at:
+                continue
+            principal = THREAT_PRINCIPAL if event.event_type == THREAT_EVENT else ENCOUNTER_PRINCIPAL
+            if (event.schema_version != 1 or event.visibility_policy != "project"
+                    or not self.store.transaction_owns_event(transaction_id=event.transaction_id,
+                                                            event_id=event.event_id, principal_ref=principal)):
+                raise ValueError("combat_projection_source_invalid")
+            p = event.payload
+            if p.get("encounter_ref") != encounter_ref:
+                raise ValueError("combat_projection_scope_invalid")
+            if event.event_type in (ENCOUNTER_BEGUN, ENCOUNTER_ENDED):
+                if p.get("world_ref") != world_ref or p.get("timeline_ref") != timeline_ref:
+                    raise ValueError("combat_projection_scope_invalid")
+                if event.event_type == ENCOUNTER_BEGUN:
+                    if state != "unavailable":
+                        raise ValueError("combat_projection_lifecycle_invalid")
+                    state = "active"
+                else:
+                    if state != "active":
+                        raise ValueError("combat_projection_lifecycle_invalid")
+                    state, totals = "ended", {}
+            elif event.event_type == THREAT_EVENT:
+                if state == "ended" or type(p.get("damage")) is not int or p["damage"] <= 0:
+                    raise ValueError("combat_projection_lifecycle_invalid")
+                faction = self.store.get_event(p["source_event_ids"][-1])
+                if faction.payload.get("world_ref") != world_ref or faction.payload.get("timeline_ref") != timeline_ref:
+                    raise ValueError("combat_projection_scope_invalid")
+                key = (p["actor_ref"], p["target_ref"])
+                totals[key] = totals.get(key, 0) + p["damage"]
+            else:
+                raise ValueError("combat_projection_event_unknown")
+            refs.append(event.event_id)
+        rows = [{"actor_ref": actor, "target_ref": target, "threat": value}
+                for (actor, target), value in sorted(totals.items(), key=lambda pair: (-pair[1], pair[0]))]
+        return {"world_ref": world_ref, "timeline_ref": timeline_ref, "encounter_ref": encounter_ref,
+                "state": state, "rows": rows, "event_refs": refs}
+
+    def target_eligibility(self, *, attempt: ActionAttempt, **sources) -> dict[str, Any]:
+        if len(attempt.target_refs) != 1:
+            return {"eligible": False, "reason": "source_unavailable", "source_event_ids": [], "source_revisions": {}}
+        return self.source_eligibility(actor_ref=attempt.actor_ref, target_ref=attempt.target_refs[0], **sources)
+
+    def record_confirmed_hit(self, *, attempt: ActionAttempt, authority_result: AuthorityResult,
+                             presence_event_ids: tuple[str, str], life_event_ids: tuple[str, str],
+                             faction_event_id: str, world_ref: str, timeline_ref: str,
+                             encounter_ref: str, actor_incarnation_ref: str,
+                             target_incarnation_ref: str, command_id: str, idempotency_key: str) -> AppendBatchResult:
+        if (getattr(authority_result, "outcome", None) != "committed" or not isinstance(encounter_ref, str)
+                or not encounter_ref.strip() or len(presence_event_ids) != 2 or len(life_event_ids) != 2):
+            return self._reject(command_id, "threat_source_unavailable")
+        try:
+            # A lost response must remain recoverable after sources advance or
+            # an encounter ends. Replay is allowed only for the receipt-derived
+            # key and an exact payload match; it never appends after end.
+            damage = authority_result.committed_projection.get("damage")
+            if type(damage) is not int or damage <= 0:
+                return self._reject(command_id, "threat_damage_invalid")
+            receipt_event_id = authority_result.committed_event_ids[0]
+            consumption_key = f"threat:embodied-hit:{receipt_event_id}"
+            prior = self.store.get_by_idempotency(THREAT_PRINCIPAL, consumption_key)
+            if prior is not None:
+                if not self._embodied_receipt_matches(attempt, authority_result):
+                    return self._reject(command_id, "embodied_receipt_invalid")
+                expected_payload = {
+                    "actor_ref": attempt.actor_ref, "target_ref": attempt.target_refs[0],
+                    "encounter_ref": encounter_ref, "damage": damage,
+                    "source_event_ids": [*presence_event_ids, *life_event_ids, faction_event_id],
+                    "policy_revision": "threat:confirmed-hit-1to1@1",
+                    "embodied_event_id": receipt_event_id,
+                    "embodied_transaction_id": authority_result.transaction_id,
+                    "attempt_payload_digest": attempt.payload_digest,
+                }
+                return self._replay_or_reject(
+                    prior, expected_payload, f"gameplay:combat:encounter:{encounter_ref}",
+                    consumption_key, consumption_key)
+            sources = [self.store.get_event(event_id) for event_id in (*presence_event_ids, *life_event_ids, faction_event_id)]
+            # Freeze every source head before revalidation. A revocation or
+            # newer source event racing the checks must conflict with append.
+            source_revisions = {event.stream_id: self.store.get_stream_head(event.stream_id) for event in sources}
+            # LifeState v1 and v2 use different historical stream keys. Both
+            # heads participate in the same append CAS as eligibility checks.
+            for actor_ref in (attempt.actor_ref, *attempt.target_refs):
+                for suffix in {actor_ref, actor_ref.removeprefix("character:")}:
+                    stream = f"gameplay:character:life:{suffix}"
+                    source_revisions[stream] = self.store.get_stream_head(stream)
+            if not self._valid_sources(sources, attempt, world_ref, timeline_ref, actor_incarnation_ref, target_incarnation_ref):
+                return self._reject(command_id, "threat_source_unavailable")
+            faction = sources[-1]
+            if (faction.event_type != FACTION_EVENT or faction.visibility_policy != "project"
+                    or not self.store.transaction_owns_event(transaction_id=faction.transaction_id, event_id=faction.event_id, principal_ref=FACTION_PRINCIPAL)
+                    or faction.payload.get("hostile") is not True
+                    or faction.payload.get("actor_ref") != attempt.actor_ref
+                    or faction.payload.get("target_ref") != attempt.target_refs[0]
+                    or faction.payload.get("world_ref") != world_ref
+                    or faction.payload.get("timeline_ref") != timeline_ref
+                    or not self._current_faction(faction, actor_ref=attempt.actor_ref,
+                                                 target_ref=attempt.target_refs[0], world_ref=world_ref,
+                                                 timeline_ref=timeline_ref)):
+                return self._reject(command_id, "target_not_eligible")
+            if not self._embodied_receipt_matches(attempt, authority_result):
+                return self._reject(command_id, "embodied_receipt_invalid")
+            stream_id = f"gameplay:combat:encounter:{encounter_ref}"
+            encounter_revision = self.store.get_stream_head(stream_id)
+            lifecycle = self.encounter_projection(world_ref=world_ref, timeline_ref=timeline_ref,
+                                                  encounter_ref=encounter_ref)
+            if lifecycle["state"] == "ended":
+                return self._reject(command_id, "encounter_ended")
+            payload = {"actor_ref": attempt.actor_ref, "target_ref": attempt.target_refs[0], "encounter_ref": encounter_ref,
+                       "damage": damage, "source_event_ids": [event.event_id for event in sources],
+                       "policy_revision": "threat:confirmed-hit-1to1@1",
+                       "embodied_event_id": authority_result.committed_event_ids[0],
+                       "embodied_transaction_id": authority_result.transaction_id,
+                       "attempt_payload_digest": attempt.payload_digest}
+            return self.store.append_batch(build_atomic_event_batch(
+                command_id=consumption_key, principal_ref=THREAT_PRINCIPAL, stream_id=stream_id,
+                expected_revision=encounter_revision, event_specs=((THREAT_EVENT, payload),),
+                idempotency_key=consumption_key, causation_id=attempt.causation_id, correlation_id=attempt.correlation_id,
+                read_stream_revisions=source_revisions,
+            ))
+        except (KeyError, GameplayEventStoreSnapshotError, TypeError, ValueError):
+            return self._reject(command_id, "threat_source_unavailable")
+
+    def _embodied_receipt_matches(self, attempt: ActionAttempt, result: AuthorityResult) -> bool:
+        if len(result.committed_event_ids) != 1 or not result.transaction_id:
+            return False
+        try:
+            event = self.store.get_event(result.committed_event_ids[0])
+            tx = self.store.get_transaction(result.transaction_id)
+        except (IndexError, KeyError, GameplayEventStoreSnapshotError):
+            return False
+        persisted = event.payload.get("result") if tx is not None else None
+        return bool(tx is not None and tx.idempotency_record.principal_ref == EMBODIED_PRINCIPAL
+                    and tx.idempotency_record.idempotency_key == attempt.idempotency_key
+                    and event.event_type == EMBODIED_EVENT and event.stream_id == "gameplay:embodied:street-owner"
+                    and event.command_id == attempt.attempt_id and event.transaction_id == result.transaction_id
+                    and self.store.transaction_owns_event(transaction_id=tx.transaction_id, event_id=event.event_id, principal_ref=EMBODIED_PRINCIPAL)
+                    and event.payload.get("attempt_payload_digest") == attempt.payload_digest
+                    and isinstance(persisted, dict) and persisted == result.model_dump(mode="json"))
+
+    def _replay_or_reject(self, prior: AppendBatchResult, payload: dict[str, Any], stream_id: str, command_id: str, idempotency_key: str) -> AppendBatchResult:
+        if not prior.committed or len(prior.committed_event_ids) != 1:
+            return self._reject(command_id, "threat_receipt_invalid")
+        try:
+            event = self.store.get_event(prior.committed_event_ids[0]); tx = self.store.get_transaction(prior.transaction_id)
+        except (KeyError, GameplayEventStoreSnapshotError):
+            return self._reject(command_id, "threat_receipt_invalid")
+        if (tx is None or tx.idempotency_record.principal_ref != THREAT_PRINCIPAL or tx.idempotency_record.idempotency_key != idempotency_key
+                or event.event_type != THREAT_EVENT or event.stream_id != stream_id or event.payload != payload
+                or not self.store.transaction_owns_event(transaction_id=tx.transaction_id, event_id=event.event_id, principal_ref=THREAT_PRINCIPAL)):
+            return self._reject(command_id, "threat_idempotency_key_reused")
+        return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+    @staticmethod
+    def _reject(command_id: str, code: str) -> AppendBatchResult:
+        from app.gameplay.models import GameplayFailure
+        return AppendBatchResult(committed=False, transaction_id=f"rejected:{command_id}", command_id=command_id,
+                                 idempotency_status="rejected", failure=GameplayFailure(error_code=code, message=code, failed_stage="combat_threat"))
+
+
+__all__ = ["CombatFactionRelationAuthority", "CanonicalCombatThreatAuthority", "FactionRelationRequest"]

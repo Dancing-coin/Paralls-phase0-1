@@ -63,3 +63,22 @@ def test_drought_process_replays_exact_duplicate_and_checkpoint_tail() -> None:
 
     assert first.committed and duplicate.idempotency_status == "duplicate_replayed"
     assert authority.regional_replay().projection_hash == authority.regional_replay(checkpoint_at=6).projection_hash
+
+
+def test_drought_process_changed_command_identity_cannot_replay_receipt() -> None:
+    store = GameplayEventStore()
+    authority = _record(store)
+    command = _envelope(command_id="command:drought:replay", key="ecology:drought:replay", expected_revision=5, tick=3)
+    first = authority.advance_drought_process(
+        envelope=command, policy=EcologyDroughtProcessPolicy(), region_ref="region:process"
+    )
+    assert first.committed
+
+    changed = authority.advance_drought_process(
+        envelope=command.model_copy(update={"command_id": "command:drought:changed"}),
+        policy=EcologyDroughtProcessPolicy(), region_ref="region:process",
+    )
+
+    assert not changed.committed
+    assert changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-task6-fault-matrix",
+  "order": 170,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_task6_fault_matrix.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 1800,
+  "result_artifact": ".harness/verification/infra-task6-fault-matrix-report.json",
+  "description": "Bounded real caller-owner-store fault matrix for Task6, including Population-to-Economy tax calendar and random business",
+  "success_key": "overall_passed"
+}

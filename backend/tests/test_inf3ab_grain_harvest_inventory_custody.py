@@ -117,6 +117,23 @@ def test_inf3ab_duplicate_changed_duplicate_and_replay_are_bounded() -> None:
     assert source.stream_id in full.source_revision_vector
 
 
+def test_inf3ab_duplicate_rejects_corrupt_receipt_event_reference_without_write() -> None:
+    store, source = _source()
+    inventory = _inventory(store)
+    request = _request(store, source)
+    first = inventory.record_grain_harvest_custody_receipt(**request)
+    assert first.committed
+    key = (inventory._PRINCIPAL, f"{PROVIDER}:{request['idempotency_key']}")
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+    duplicate = inventory.record_grain_harvest_custody_receipt(**request)
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "inventory_grain_harvest_receipt_invalid"
+    assert store.export_snapshot() == before
+
+
 def test_inf3ab_private_or_stale_harvest_is_zero_write() -> None:
     store, source = _source()
     inventory = _inventory(store)

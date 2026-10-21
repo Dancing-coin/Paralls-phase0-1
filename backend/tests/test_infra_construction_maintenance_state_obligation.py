@@ -622,3 +622,17 @@ def test_construction_maintenance_state_obligation_replays_full_and_checkpoint_t
     checkpoint_tail = authority.projector(checkpoint_at=3)
     assert full.maintenance_states == checkpoint_tail.maintenance_states == {}
     assert full.source_revision_vector == checkpoint_tail.source_revision_vector
+
+
+def test_construction_owner_rejects_batch_events_diverging_from_fragment() -> None:
+    store, authority, facility, state_event_id = _seed_applied_state()
+    opened = authority.open_maintenance_state_obligation(state_event_id=state_event_id, due_tick=5, expected_revision=2, idempotency_key="construction:maintenance:forged", correlation_id="corr:maintenance:forged")
+    due = opened.obligation.model_copy(update={"status": "due", "expected_revisions": {f"gameplay:construction_production:{facility.facility_ref}": 3}})
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(ConstructionProductionAuthority.maintenance_state_obligation_registration(),))
+    fragment = authority.build_maintenance_state_expiry_fragment(obligation=due, facility_ref=facility.facility_ref, expected_revision=3)
+    plan = coordinator.plan_settle(obligation=due, fragments=(fragment,), principal_ref="world_runtime.caller")
+    assert plan.ready and plan.owner_commit_batch is not None
+    forged = plan.owner_commit_batch.model_copy(update={"events": [plan.owner_commit_batch.events[0].model_copy(update={"payload": {"tampered": True}}), *plan.owner_commit_batch.events[1:]]}, deep=True)
+    result = authority.commit_obligation_batch(forged)
+    assert not result.committed and result.failure and result.failure.error_code == "construction_owner_commit_fragment_mismatch"
+    assert len(store.read_events()) == 3

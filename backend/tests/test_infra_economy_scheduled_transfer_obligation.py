@@ -83,6 +83,64 @@ def test_economy_scheduled_transfer_due_settles_account_truth_and_obligation_in_
     ).rebuild(store.read_events()).terminal[due.obligation_id].status == "settled"
 
 
+@pytest.mark.parametrize("field,value", [("amount", True), ("amount", 4.0), ("amount", "4"),
+                                           ("due_tick", True), ("due_tick", 8.0), ("due_tick", "8")])
+def test_economy_scheduled_transfer_rejects_non_integer_amount_or_due_tick(field, value) -> None:
+    store, service = _service_with_accounts()
+    kwargs = dict(
+        command_id=f"scheduled-transfer:invalid:{field}",
+        transfer_ref=f"scheduled-transfer:invalid:{field}",
+        debit_account_id="account:alice",
+        credit_account_id="account:bob",
+        amount=4,
+        due_tick=8,
+        idempotency_key=f"scheduled-transfer:invalid:{field}",
+        causation_id=f"cause:scheduled-transfer:invalid:{field}",
+        correlation_id=f"corr:scheduled-transfer:invalid:{field}",
+        expected_revision=2,
+    )
+    kwargs[field] = value
+    with pytest.raises(EconomyRuntimeError, match="economy_scheduled_transfer_invalid"):
+        service.open_scheduled_account_transfer_obligation(**kwargs)
+
+
+def test_economy_owner_rejects_batch_events_that_diverge_from_owner_fragment():
+    store, service = _service_with_accounts()
+    opened = service.open_scheduled_account_transfer_obligation(
+        command_id="fragment-divergence:open",
+        transfer_ref="scheduled-transfer:fragment-divergence:1",
+        debit_account_id="account:alice", credit_account_id="account:bob", amount=4, due_tick=8,
+        idempotency_key="fragment-divergence:open", causation_id="fragment-divergence:open",
+        correlation_id="fragment-divergence:open", expected_revision=2,
+    )
+    assert opened.obligation is not None
+    obligation = opened.obligation.model_copy(update={"status": "due"})
+    coordinator = ObligationSettlementCoordinator(
+        store=store,
+        lifecycle_registrations=(service.scheduled_account_transfer_obligation_registration(),),
+    )
+    plan = coordinator.plan_settle(
+        obligation=obligation,
+        fragments=(service.build_scheduled_account_transfer_settlement_fragment(obligation=obligation),),
+        principal_ref=EconomyAuthorityService._PRINCIPAL,
+    )
+    assert plan.ready and plan.owner_commit_batch is not None
+    batch = plan.owner_commit_batch
+    changed_events = [event.model_copy(deep=True) for event in batch.events]
+    changed_events[0] = changed_events[0].model_copy(
+        update={"payload": {**changed_events[0].payload, "amount": 400}}, deep=True
+    )
+    forged_batch = batch.model_copy(update={"events": changed_events}, deep=True)
+    before = store.export_snapshot()
+
+    result = service.commit_obligation_batch(forged_batch)
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "economy_owner_commit_fragment_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_economy_scheduled_transfer_cancellation_is_terminal_without_moving_account_truth() -> None:
     store, service = _service_with_accounts()
     opened = service.open_scheduled_account_transfer_obligation(
@@ -202,7 +260,61 @@ def test_economy_scheduled_transfer_open_replays_exact_duplicate_without_second_
     assert first.committed and replayed.committed
     assert replayed.append_result.idempotency_status == "duplicate_replayed"
     assert store.export_snapshot() == before
+    changed_identity = service.open_scheduled_account_transfer_obligation(
+        command_id="scheduled-transfer:duplicate:changed-command",
+        transfer_ref="scheduled-transfer:duplicate:1",
+        debit_account_id="account:alice",
+        credit_account_id="account:bob",
+        amount=4,
+        due_tick=8,
+        idempotency_key="scheduled-transfer:duplicate:open",
+        causation_id="cause:scheduled-transfer:duplicate:open",
+        correlation_id="corr:scheduled-transfer:duplicate:open",
+        expected_revision=2,
+    )
+    assert not changed_identity.committed
+    assert changed_identity.append_result.failure is not None
+    assert changed_identity.append_result.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
 
+
+def test_scheduled_transfer_open_rejects_corrupt_transaction_refs_without_write() -> None:
+    store, service = _service_with_accounts()
+    first = service.open_scheduled_account_transfer_obligation(
+        command_id="scheduled-transfer:corrupt:open",
+        transfer_ref="scheduled-transfer:corrupt:1",
+        debit_account_id="account:alice",
+        credit_account_id="account:bob",
+        amount=4,
+        due_tick=8,
+        idempotency_key="scheduled-transfer:corrupt:open",
+        causation_id="cause:scheduled-transfer:corrupt:open",
+        correlation_id="corr:scheduled-transfer:corrupt:open",
+        expected_revision=2,
+    )
+    assert first.committed and first.append_result is not None
+    key = (EconomyAuthorityService._PRINCIPAL, "scheduled-transfer:corrupt:open")
+    store._idempotency_results[key] = first.append_result.model_copy(
+        update={"committed_event_ids": [*first.append_result.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+
+    replayed = service.open_scheduled_account_transfer_obligation(
+            command_id="scheduled-transfer:corrupt:open",
+            transfer_ref="scheduled-transfer:corrupt:1",
+            debit_account_id="account:alice",
+            credit_account_id="account:bob",
+            amount=4,
+            due_tick=8,
+            idempotency_key="scheduled-transfer:corrupt:open",
+            causation_id="cause:scheduled-transfer:corrupt:open",
+            correlation_id="corr:scheduled-transfer:corrupt:open",
+            expected_revision=2,
+        )
+    assert not replayed.committed
+    assert replayed.append_result.failure is not None
+    assert replayed.append_result.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
 
 def test_economy_scheduled_transfer_due_rejects_stale_revision_without_write() -> None:
     store, service = _service_with_accounts()

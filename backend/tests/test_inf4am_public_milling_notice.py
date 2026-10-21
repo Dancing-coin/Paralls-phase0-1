@@ -34,9 +34,11 @@ def _request(store, activity, **updates: object) -> dict[str, object]:
         "causation_id": activity.event_id,
         "correlation_id": "corr:inf4am",
         "submitted_at": "2026-08-28T00:21:00Z",
+        "effective_from": 5,
+        "effective_to": 10,
     }
     values.update(updates)
-    values["idempotency_key"] = f"government:public-milling-notice:{activity.event_id}:{values['expected_activity_revision']}:{values['expected_government_revision']}:v1"
+    values["idempotency_key"] = f"government:public-milling-notice:{activity.event_id}:{values['expected_activity_revision']}:{values['expected_government_revision']}:{values['effective_from']}:{values['effective_to']}:v2"
     return values
 
 
@@ -65,9 +67,15 @@ def test_inf4am_duplicate_changed_and_wrong_source_are_zero_write() -> None:
     before = store.export_snapshot()
     duplicate = authority.record_public_milling_notice(**request)
     changed = authority.record_public_milling_notice(**_request(store, activity, correlation_id="corr:changed"))
+    changed_window = dict(request)
+    changed_window.update(command_id="inf4am:changed-window", effective_from=6, effective_to=11)
+    changed_window["idempotency_key"] = request["idempotency_key"]
+    changed_window_result = authority.record_public_milling_notice(**changed_window)
     missing = authority.record_public_milling_notice(**_request(store, activity, activity_event_id="event:missing"))
     assert duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
-    assert not changed.committed and not missing.committed
+    assert not changed.committed and not changed_window_result.committed and not missing.committed
+    assert changed_window_result.failure is not None
+    assert changed_window_result.failure.error_code == "public_milling_notice_idempotency_key_reused"
     assert store.export_snapshot() == before
 
 

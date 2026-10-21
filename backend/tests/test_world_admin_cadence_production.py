@@ -256,3 +256,4 @@ def test_production_spawn_admin_ingress_preserves_credentials_and_transport(
             assert replayed.json()["committed_event_ids"] == response.json()["committed_event_ids"]
         assert replay_host.process.exitcode == 0
         assert replay_host.snapshot()["execution_credit"]["current"] == 0
+

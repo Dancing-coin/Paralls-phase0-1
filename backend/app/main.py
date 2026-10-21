@@ -156,6 +156,24 @@ from app.population_continuity.activation_policy import ActivationPolicy
 from app.world_runtime.population_driver import PopulationCadenceDriver
 from app.services.runtime_execution import RuntimeExecution, RuntimeQueueFull, RuntimeStopped
 from app.services.world_admin_auth_service import WorldAdminCredentialVerifier
+from app.gameplay.status_tags import StatusTagRegistry, StatusTagAuthorityService
+from app.gameplay.status_temporal_consumer import StatusTemporalConsumer
+from app.gameplay.ecology_temporal_consumer import EcologyTemporalConsumer
+from app.gameplay.economy_temporal_consumer import EconomyTemporalConsumer
+from app.gameplay.economy_random_registry import EconomyRandomPolicyRegistry
+from app.population_continuity.economy_random_caller import PopulationEconomyRandomCaller
+from app.services.economy_random_command_service import EconomyRandomCommand, EconomyRandomCommandService
+from app.services.equipment_command_service import EquipmentCommand, EquipmentCommandService, EquipmentContentSource, EquipmentWorldScope
+from app.services.equipment_prediction_service import EquipmentPredictionService
+from app.gameplay.prediction_authority import PredictionAuthority
+from app.services.resource_conversion_service import (
+    ConversionWorldScope,
+    ResourceConversionCommand,
+    ResourceConversionService,
+    load_conversion_rules,
+)
+from app.gameplay.resource_body_runtime import ResourceBodyRuntimeProjector
+from app.gameplay.p5.social_delivery_caller import GovernmentPublicMillingSocialDeliveryCaller
 from app.world_runtime.storage_lease import RuntimeStorageLease
 from app.services.dialogue_continuation import DialogueCoordinator, DialogueProviderSlots
 from app.character_agent.runtime.cognition_continuation import CognitionAdvance
@@ -265,6 +283,33 @@ _population_runtime_driver: PopulationCadenceDriver | None = None
 _population_mirror_source: PopulationMirrorSource | None = None
 runtime_execution: RuntimeExecution | None = None
 world_admin_credential_verifier = WorldAdminCredentialVerifier(tuple(settings.world_admin_credentials))
+status_tag_registry: StatusTagRegistry | None = None
+status_tag_service: StatusTagAuthorityService | None = None
+status_temporal_consumer: StatusTemporalConsumer | None = None
+ecology_temporal_consumer: EcologyTemporalConsumer | None = None
+economy_temporal_consumer: EconomyTemporalConsumer | None = None
+economy_random_caller: PopulationEconomyRandomCaller | None = None
+social_delivery_caller: GovernmentPublicMillingSocialDeliveryCaller | None = None
+resource_recovery_caller = None
+resource_recovery_failures: list[tuple[str, str]] = []
+equipment_prediction_service: EquipmentPredictionService | None = None
+# A formal capability issuer is intentionally not inferred from controller
+# transport grants.  Until one is injected by an authenticated source, the
+# conversion ingress remains fail-closed.
+resource_conversion_capability_resolver = None
+
+
+def _social_delivery_replay_binding():
+    """Return recipients proven by committed notice binding or delivery facts."""
+    authority = social_delivery_caller.authority if social_delivery_caller else None
+    driver = _population_runtime_driver
+    if authority is None or driver is None:
+        return None, None, None
+    from app.world_runtime.replay_participants import _social_delivery_scope_recipients
+    recipients = _social_delivery_scope_recipients(gameplay_event_store)
+    if not recipients:
+        return authority, None, driver.current_tick
+    return authority, recipients[0] if len(recipients) == 1 else recipients, driver.current_tick
 _runtime_execution_credit = None
 _runtime_storage_lease: RuntimeStorageLease | None = None
 _sqlite_wal_checkpoint_worker: SqliteWalCheckpointWorker | None = None
@@ -404,9 +449,35 @@ def _build_conflict_cognition(world):
             'package_registry_revision': active.registry_revision,
             'active_patch_set_revision': active.active_patch_set_revision,
             'activation_policy_revision': activation_policy.policy_revision}
+    def goal_proposal_pins(event, frame, contract):
+        envelope = contract['capability_envelope']
+        policy = contract['cognition_policy']
+        return {'source_kind': 'goal_proposal_trigger',
+            'trigger_source_ref': event['event_id'],
+            'frame_digest': frame['frame_digest'], 'turn_id': frame['turn_id'],
+            'envelope_digest': envelope['envelope_digest'],
+            'policy_digest': policy['policy_digest'],
+            'capability_revision': envelope['capability_revision'],
+            'policy_revision': policy['revision_pins']['policy_revision'],
+            'activation_policy_revision': activation_policy.policy_revision}
     def validate(entry):
         if entry.source_kind == 'run_background_cognition_tick':
             return scheduled.validate(entry) if 'scheduled_session' in entry.source_pins else pump.validate_admission(entry)
+        if entry.source_kind == 'goal_proposal_trigger':
+            source = rt._session_store.read_event(entry.actor_id, event_id=entry.source_event['event_id'])
+            payload = source.get('payload') if isinstance(source, dict) else None
+            trigger = payload.get('goal_proposal_trigger') if isinstance(payload, dict) else None
+            if (source != entry.source_event or source.get('event_type') != 'character_goal_proposal_trigger'
+                    or source.get('actor_id') != entry.actor_id or not isinstance(trigger, dict)
+                    or trigger.get('eligible') is not True
+                    or trigger.get('trigger_source_ref') != source.get('event_id')
+                    or entry.payload.get('trigger_source_ref') != source.get('event_id')
+                    or entry.payload.get('source_contract') != {key: trigger.get(key)
+                        for key in ('trigger_kind', 'frame_digest', 'goal_revision')}
+                    or entry.source_pins.get('frame_digest') != trigger.get('frame_digest')
+                    or entry.source_pins.get('trigger_source_ref') != source.get('event_id')):
+                raise ValueError('goal_proposal_source_stale')
+            return
         from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
         event = AuthorityEvent.model_validate(entry.source_event)
         pins = delivery_pins(event, SimingCharacterCompatibilityInput.model_validate(entry.payload))
@@ -436,6 +507,12 @@ def _build_conflict_cognition(world):
                 profiles=rt._profile_registry, policy=activation_policy, source_event_id=entry.source_event['event_id'],
                 actor_id=entry.actor_id, budget=4)
             decision = wake.decision
+        elif entry.source_kind == 'goal_proposal_trigger':
+            decision = activation_policy.evaluate(
+                actor_id=entry.actor_id, distance_m=0.0, focused=True,
+                interaction_type='consequential', pending_seed=False,
+                budget=int(rt.get_runtime_population_policy()['max_active_actors_per_tick']),
+                supported_actor=rt.supports_actor(entry.actor_id), stale_revision=False)
         else:
             from app.models.siming_character_bridge import SimingCharacterCompatibilityInput
             decision = activation_policy.evaluate_siming_delivery(actor_id=entry.actor_id,
@@ -455,6 +532,8 @@ def _build_conflict_cognition(world):
             if progress.frame.get('commands') != []:
                 raise ValueError('background_cognition_output_invalid')
             return
+        if entry.source_kind == 'goal_proposal_trigger':
+            return
         original_entry = admissions.read_progress(entry.child_key, revision=1)
         plan = original_entry.plan
         if plan and plan['events']:
@@ -464,6 +543,48 @@ def _build_conflict_cognition(world):
     _character_cognition_driver = CharacterCognitionDriver(
         coordinator=CharacterCognitionCoordinator(runtime=rt, admissions=admissions),
         owner_call=owner_call, slots=_dialogue_provider_slots, begin_activation=begin, on_completed=completed)
+    def admit_goal_proposal(*, actor_id, producer_ts, source_event, trigger, frame, cognition_contract):
+        from app.character_agent.models.mind_frame import CharacterMindFrame
+
+        frame = CharacterMindFrame.model_validate(frame).model_dump(mode='json')
+        validate_source = rt._session_store.read_event(actor_id, event_id=source_event['event_id'])
+        if validate_source != source_event or frame.get('frame_digest') != trigger.get('frame_digest'):
+            raise ValueError('goal_proposal_source_stale')
+        from app.character_agent.models.goal_runtime import CharacterActiveGoalFrame, CharacterGoalStateRecord
+
+        def _goal_projection(value):
+            if not value:
+                return None
+            record = CharacterGoalStateRecord.model_validate(value)
+            return CharacterActiveGoalFrame.model_validate(
+                record.model_dump(mode='json', exclude={'actor_id', 'transition_kind', 'transition_reason_tags'})
+            ).model_dump(mode='json')
+
+        context = {
+            'request_id': 'goal-proposal:' + source_event['event_id'],
+            'actor_id': actor_id, 'trigger_kind': trigger['trigger_kind'],
+            'trigger_source_ref': source_event['event_id'], 'frame': frame,
+            'current_goal_state': _goal_projection(rt.get_goal_state(actor_id)),
+            'goal_state_history': [_goal_projection(item) for item in rt.get_goal_state_history(actor_id)],
+            'interpretation_summary': str(trigger.get('interpretation_summary', '') or ''),
+            'evidence_refs': list(dict.fromkeys([source_event['event_id'], *trigger.get('evidence_refs', [])])),
+            'capability_envelope': cognition_contract['capability_envelope'],
+            'cognition_policy': cognition_contract['cognition_policy'],
+            'goal_revision': trigger['goal_revision'],
+            'expires_at': time() + 120.0,
+        }
+        pins = goal_proposal_pins(source_event, frame, cognition_contract)
+        payload = {'trigger_kind': trigger['trigger_kind'],
+            'trigger_source_ref': source_event['event_id'],
+            'evidence_refs': list(dict.fromkeys([source_event['event_id'], *context['evidence_refs']])),
+            'source_contract': {key: trigger[key] for key in ('trigger_kind', 'frame_digest', 'goal_revision')},
+            'context': context}
+        admissions.admit(source_event=source_event, actor_id=actor_id,
+            delivery_id='goal-proposal:' + source_event['event_id'],
+            source_kind='goal_proposal_trigger', payload=payload, source_pins=pins,
+            now=time(), expires_at=context['expires_at'], producer_ts=producer_ts,
+            parent_effect_key='')
+    rt.set_slow_goal_trigger_handler(admit_goal_proposal)
     if _siming_cognition_driver is not None:
         _siming_cognition_driver.coordinator.character_admissions = admissions
     return pump
@@ -555,7 +676,12 @@ async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: a
 
 
 def _build_population_driver() -> PopulationCadenceDriver | None:
+    global ecology_temporal_consumer
+    global economy_temporal_consumer
+    global economy_random_caller
     global _population_mirror_source
+    global social_delivery_caller
+    global resource_recovery_caller
     if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
         return None
     mode = _bakery_population_mode()
@@ -574,8 +700,9 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
                                    registry=gameplay_mirror_subscription_registry,
                                    delivery=gameplay_mirror_after_commit_delivery)
     _population_mirror_source = mirror
-    def publish(cadence):
-        event = publisher(cadence)
+    def publish(cadence, time_pins=None):
+        event = (publisher.publish_pinned(cadence, time_pins) if time_pins is not None
+                 else publisher(cadence))
         if event is not None:
             siming_event_pipeline.drain_observatory_messages()
             try:
@@ -584,8 +711,15 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
                 # 确认已落盘；显示故障只记录最近诊断，不重放authority窗口。
                 mirror.last_error = type(error).__name__
         return event
+    def publish_pinned(cadence, time_pins):
+        return publish(cadence, time_pins)
+    publish.publish_pinned = publish_pinned
     publish.revoke_cadence = publisher.revoke_cadence
-    return PopulationCadenceDriver(
+    publish.confirmed_tick = publisher.confirmed_tick
+    # Consumers must read the durable publisher's latest confirmed pins after
+    # each cadence commit, including after a close/reopen recovery.
+    publish.confirmed_time_pins = lambda: publisher.confirmed_time_pins
+    driver = PopulationCadenceDriver(
         world_runtime=world_runtime,
         publish_window=publish,
         window_size=window_size,
@@ -594,6 +728,416 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
         wall_period_seconds=(None if settings.population_runtime_profile == "production" else
                              float(clock_profile["wall_period_seconds"]) / int(clock_profile["speed"])),
     )
+    # Production consumers must prove admission from the durable cadence pins.
+    driver.require_temporal_authorization = True
+    # The existing Population driver is the sole source of confirmed temporal
+    # pins.  Random business is explicit-demand only; this wiring schedules no
+    # lottery, loot, or event choice by itself.
+    economy_random_caller = PopulationEconomyRandomCaller(
+        store=gameplay_event_store,
+        registry=EconomyRandomPolicyRegistry.from_directory(
+            Path(__file__).resolve().parents[2] / "assets" / "gameplay" / "economy_random"
+        ),
+        population_driver=driver,
+    )
+    from app.world_runtime.temporal_migration import recover_migrations, restore_clock
+    restore_clock(driver)
+    recover_migrations(driver, status_temporal_consumer)
+    status_temporal_consumer.admit_driver(driver)
+    ecology_temporal_consumer = EcologyTemporalConsumer(store=gameplay_event_store)
+    economy_temporal_consumer = EconomyTemporalConsumer(store=gameplay_event_store)
+    social_delivery_caller = GovernmentPublicMillingSocialDeliveryCaller(store=gameplay_event_store)
+    from app.gameplay.resource_recovery import (
+        PopulationResourceRecoveryCaller,
+        ResourceRecoveryAuthorityService,
+    )
+    resource_recovery_caller = PopulationResourceRecoveryCaller(
+        authority=ResourceRecoveryAuthorityService(store=gameplay_event_store),
+    )
+    def advance_confirmed(driver):
+        resource_recovery_failures.clear()
+        status_temporal_consumer.advance(driver)
+        ecology_temporal_consumer.advance(driver)
+        economy_temporal_consumer.advance(driver)
+        # Recovery consumes only the boundary just committed by Population.
+        # A missing complete period is normal; conflicts remain diagnosable and
+        # are retried at the next confirmed boundary by the same owner.
+        for stream_id, revision in gameplay_event_store.get_stream_heads().items():
+            prefix = "gameplay:resources:"
+            if not stream_id.startswith(prefix) or revision <= 0:
+                continue
+            actor_ref = stream_id[len(prefix):]
+            try:
+                # A confirmed boundary may be delivered more than once by the
+                # cadence driver. Once this actor already has a recovery event
+                # for that boundary, the caller has no new work to submit.
+                # Keep the owner strict about changed duplicate requests while
+                # making repeated delivery a stable no-op at the caller edge.
+                if any(
+                    event.event_type == "gameplay.resource.recovered"
+                    and event.payload.get("confirmed_world_tick") == driver.current_tick
+                    for event in gameplay_event_store.read_stream(stream_id)
+                ):
+                    continue
+                resource_recovery_caller.recover(
+                    actor_ref=actor_ref,
+                    world_ref=driver.world_runtime.mode.world_ref,
+                    timeline_ref=driver.clock.timeline.timeline_id,
+                    confirmed_world_tick=driver.current_tick,
+                    idempotency_key=f"resource-recovery:{actor_ref}:{driver.current_tick}",
+                    expected_revision=revision,
+                    read_stream_revisions={stream_id: revision},
+                )
+            except ValueError as exc:
+                if str(exc) != "resource_recovery_no_complete_period":
+                    resource_recovery_failures.append((actor_ref, str(exc)))
+    driver.on_confirmed_time = advance_confirmed
+    return driver
+
+
+def _assemble_equipment_runtime() -> EquipmentCommandService:
+    """Compose the production Equipment caller over the shared store.
+
+    Content is authored and versioned; composition registers definitions only.
+    It never creates a player item or a second store.
+    """
+    from app.gameplay.ability_runtime import AbilityDefinitionRegistry
+    from app.gameplay.equipment_runtime import EquipmentDefinitionRegistry, EquipmentSlotDefinition
+    from app.gameplay.modifier_runtime import ModifierDefinitionRegistry
+    from app.gameplay.resource_modifier_admission import CONTENT_PATH, ResourceModifierMappingRegistry, register_mana_focus_content
+    from hashlib import sha256
+    import yaml
+
+    global equipment_command_service, equipment_prediction_service, equipment_definition_registry
+    global ability_definition_registry, modifier_definition_registry, resource_modifier_mapping_registry
+    equipment_definition_registry = EquipmentDefinitionRegistry()
+    ability_definition_registry = AbilityDefinitionRegistry()
+    modifier_definition_registry = ModifierDefinitionRegistry()
+    resource_modifier_mapping_registry = ResourceModifierMappingRegistry()
+    raw_content = CONTENT_PATH.read_bytes()
+    content_registration = register_mana_focus_content(
+        inventory=inventory_definition_registry,
+        equipment=equipment_definition_registry,
+        modifiers=modifier_definition_registry,
+        mappings=resource_modifier_mapping_registry,
+        raw=raw_content,
+    )
+
+    def content_source() -> EquipmentContentSource:
+        raw = CONTENT_PATH.read_bytes()
+        document = yaml.safe_load(raw.decode("utf-8"))
+        return EquipmentContentSource(document["revision"], "sha256:" + sha256(raw).hexdigest())
+
+    def scope() -> EquipmentWorldScope | None:
+        driver = globals().get("_population_runtime_driver")
+        if driver is None:
+            return None
+        mode = getattr(getattr(driver, "world_runtime", None), "mode", None)
+        timeline = getattr(getattr(getattr(driver, "clock", None), "timeline", None), "timeline_id", None)
+        world = getattr(mode, "world_ref", None)
+        return EquipmentWorldScope(world, timeline) if isinstance(world, str) and isinstance(timeline, str) else None
+
+    equipment_command_service = EquipmentCommandService(
+        store=gameplay_event_store,
+        controller_auth=embodied_controller_auth_service,
+        scope_resolver=scope,
+        inventory_registry=inventory_definition_registry,
+        equipment_registry=equipment_definition_registry,
+        ability_registry=ability_definition_registry,
+        modifier_registry=modifier_definition_registry,
+        slots=(EquipmentSlotDefinition(content_registration["slot_key"]),),
+        resource_modifier_mappings=resource_modifier_mapping_registry,
+        content_source=content_source,
+        admitted_content=EquipmentContentSource(content_registration["revision"],
+                                                 "sha256:" + sha256(raw_content).hexdigest()),
+    )
+    # Operational expiry survives restart using the existing wall clock. World
+    # ticks remain in the owner read set and never determine this TTL.
+    now = lambda: int(time())
+    equipment_prediction_service = EquipmentPredictionService(
+        equipment=equipment_command_service,
+        prediction=PredictionAuthority(store=gameplay_event_store),
+        now=now,
+    )
+    return equipment_command_service
+
+
+def submit_temporal_profile_migration(**request):
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def activate():
+        from app.world_runtime.temporal_migration import submit_migration
+        if _population_runtime_driver is None or status_temporal_consumer is None:
+            raise ValueError("temporal_migration_runtime_unavailable")
+        return submit_migration(_population_runtime_driver, status_temporal_consumer, **request)
+
+    return execution.submit(activate)
+
+
+def submit_settlement_batch(*, batch_ref, budget, advancement_owner_ref, plan=None, window=None):
+    """Trusted internal advancement caller; no external domain write ingress."""
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def settle():
+        from app.world_runtime.batch_settlement import FrozenSettlementWindow
+        driver = _population_runtime_driver
+        if driver is None or advancement_owner_ref != driver.clock.timeline.advancement_owner_ref:
+            raise ValueError("batch_window_advancement_owner_mismatch")
+        coordinator = _settlement_batch_coordinator
+        saved = gameplay_event_store.get_projection_checkpoint(f"batch-input:{batch_ref}")
+        if plan is None:
+            if window is not None:
+                raise ValueError("batch_window_without_plan")
+            admitted = coordinator.load(batch_ref)
+        else:
+            if plan.batch_ref != batch_ref or window is None:
+                raise ValueError("batch_window_input_missing")
+            # Existing requests use their original pins after activation/restart.
+            frozen = coordinator.load(batch_ref).frozen_window if saved else FrozenSettlementWindow(
+                window, driver.clock.timeline, driver.clock.temporal_profile, driver.mapping)
+            if plan.frozen_window is not None and plan.frozen_window != replace(frozen, window=window):
+                raise ValueError("batch_input_identity_reused" if saved else "batch_window_pins_mismatch")
+            admitted = replace(plan, frozen_window=replace(frozen, window=window))
+            if saved is None:
+                activations = gameplay_event_store.read_stream(f"temporal-activation:{window.timeline_id}")
+                activation_tick = max((event.payload["request"]["boundary_tick"] for event in activations
+                                       if event.event_type == "world_runtime.time_migration.committed"), default=0)
+                if (driver.migration_pending or driver.world_runtime.is_paused()
+                        or window.from_time.canonical_time_value < activation_tick
+                        or window.to_time.canonical_time_value != driver.current_tick
+                        or window.to_time.canonical_time_value - window.from_time.canonical_time_value != driver.window_size):
+                    raise ValueError("batch_window_activation_boundary_mismatch")
+                admitted.frozen_window.validate(admitted)
+        return coordinator.execute(admitted, budget=budget)
+
+    return execution.submit(settle)
+
+
+def submit_replay_checkpoint(*, checkpoint_ref, batch_refs, advancement_owner_ref):
+    """Trusted internal reconstruction boundary; no transport read permission."""
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def capture():
+        from app.world_runtime.replay_checkpoint import capture_scoped_checkpoint
+        from app.world_runtime.replay_participants import capture_participants
+        driver = _population_runtime_driver
+        if driver is None or advancement_owner_ref != driver.clock.timeline.advancement_owner_ref:
+            raise ValueError("replay_advancement_owner_mismatch")
+        delivery_authority, delivery_recipient, delivery_now = _social_delivery_replay_binding()
+        return capture_scoped_checkpoint(store=gameplay_event_store, checkpoint_ref=checkpoint_ref,
+            batch_refs=batch_refs, participants=lambda: capture_participants(gameplay_event_store,
+                _settlement_batch_coordinator, driver, status_temporal_consumer, batch_refs,
+                inventory_authority=globals().get("inventory_authority_service"),
+                presence_authority=globals().get("population_presence_authority"),
+                social_authority=globals().get("social_fact_authority_service"),
+                social_recipient_ref="character:siming", social_now="2026-08-30T00:00:00Z",
+                social_delivery_authority=delivery_authority,
+                social_delivery_recipient_ref=delivery_recipient, social_delivery_now=delivery_now))
+
+    return execution.submit(capture)
+
+
+def submit_replay_tail(*, checkpoint_ref, advancement_owner_ref, tail=None, expected_result_digest=None):
+    """Capture or rebuild a bounded tail without resubmitting domain commands."""
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def replay():
+        from app.world_runtime.replay_checkpoint import capture_scoped_tail, replay_scoped_tail
+        from app.world_runtime.replay_participants import capture_participants
+        driver = _population_runtime_driver
+        if driver is None or advancement_owner_ref != driver.clock.timeline.advancement_owner_ref:
+            raise ValueError("replay_advancement_owner_mismatch")
+        delivery_authority, delivery_recipient, delivery_now = _social_delivery_replay_binding()
+        if tail is not None:
+            return replay_scoped_tail(store=gameplay_event_store, checkpoint_ref=checkpoint_ref,
+                tail=tail, expected_result_digest=expected_result_digest,
+                inventory_authority=globals().get("inventory_authority_service"),
+                presence_authority=globals().get("population_presence_authority"),
+                social_authority=globals().get("social_fact_authority_service"),
+                social_delivery_authority=delivery_authority)
+        checkpoint = gameplay_event_store.get_projection_checkpoint(checkpoint_ref)
+        if checkpoint is None:
+            raise ValueError("replay_checkpoint_missing")
+        refs = checkpoint.state["batch_refs"]
+        return capture_scoped_tail(store=gameplay_event_store, checkpoint_ref=checkpoint_ref,
+            participants=lambda: capture_participants(gameplay_event_store,
+                _settlement_batch_coordinator, driver, status_temporal_consumer, refs,
+                inventory_authority=globals().get("inventory_authority_service"),
+                presence_authority=globals().get("population_presence_authority"),
+                social_authority=globals().get("social_fact_authority_service"),
+                social_recipient_ref="character:siming", social_now="2026-08-30T00:00:00Z",
+                social_delivery_authority=delivery_authority,
+                social_delivery_recipient_ref=delivery_recipient, social_delivery_now=delivery_now))
+
+    return execution.submit(replay)
+
+
+def submit_social_delivery(*, notice_event_id, operational_now=None,
+                           command_id, idempotency_key, causation_id, correlation_id):
+    """Admitted Government notice -> Social delivery application ingress.
+
+    Recipient selection is performed by the caller from the source contract;
+    transport callers cannot provide an arbitrary recipient scope.
+    """
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def deliver():
+        if social_delivery_caller is None or _population_runtime_driver is None:
+            raise ValueError("social_delivery_runtime_unavailable")
+        pins = _population_runtime_driver.publish_window.confirmed_time_pins() if hasattr(
+            _population_runtime_driver.publish_window, "confirmed_time_pins") else None
+        if not isinstance(pins, dict):
+            raise ValueError("social_delivery_temporal_pins_missing")
+        # The application ingress must use the same confirmed boundary that
+        # owns the current driver instance. A stale serialized pin set cannot
+        # be reinterpreted as a new Social request.
+        driver = _population_runtime_driver
+        if (type(pins.get("sampled_at")) is not int
+                or type(pins.get("confirmation_boundary")) is not int
+                or pins.get("sampled_at") != driver.current_tick
+                or pins.get("confirmation_boundary") != driver.current_tick
+                or pins.get("timeline_id") != driver.clock.timeline.timeline_id):
+            raise ValueError("social_delivery_temporal_pins_stale")
+        return social_delivery_caller.deliver_bound_receiver_notice(
+            notice_event_id=notice_event_id, operational_now=operational_now,
+            temporal_pins=pins, command_id=command_id,
+            idempotency_key=idempotency_key, causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+
+    return execution.submit(deliver)
+
+
+def submit_social_delivery_expiry(*, notice_event_id, operational_now=None,
+                                  command_id, idempotency_key, causation_id,
+                                  correlation_id):
+    """Expire a Government-bound Social delivery through the live cadence grant."""
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def expire():
+        if social_delivery_caller is None or _population_runtime_driver is None:
+            raise ValueError("social_delivery_runtime_unavailable")
+        pins = _population_runtime_driver.publish_window.confirmed_time_pins() if hasattr(
+            _population_runtime_driver.publish_window, "confirmed_time_pins") else None
+        if not isinstance(pins, dict):
+            raise ValueError("social_delivery_temporal_pins_missing")
+        driver = _population_runtime_driver
+        if (type(pins.get("sampled_at")) is not int
+                or type(pins.get("confirmation_boundary")) is not int
+                or pins.get("sampled_at") != driver.current_tick
+                or pins.get("confirmation_boundary") != driver.current_tick
+                or pins.get("timeline_id") != driver.clock.timeline.timeline_id):
+            raise ValueError("social_delivery_temporal_pins_stale")
+        return social_delivery_caller.expire_bound_receiver_notice(
+            notice_event_id=notice_event_id, operational_now=operational_now,
+            temporal_pins=pins, command_id=command_id,
+            idempotency_key=idempotency_key, causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+
+    return execution.submit(expire)
+
+
+def submit_population_activation_presence(*, proposal, presence_idempotency_key,
+                                           presence_expected_revision):
+    """Production Population activation -> Presence application ingress.
+
+    The caller must provide a proposal from the admitted Population source. The
+    bound service validates the existing grant and uses the application's
+    activation and Presence authorities on the same Durable store.
+    """
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def commit_and_spawn():
+        service = globals().get("population_activation_presence_service")
+        if service is None:
+            raise ValueError("population_activation_presence_runtime_unavailable")
+        return service.commit_and_spawn(
+            proposal,
+            presence_idempotency_key=presence_idempotency_key,
+            presence_expected_revision=presence_expected_revision,
+            resource_timeline_ref=(_population_runtime_driver.clock.timeline.timeline_id
+                                   if _population_runtime_driver is not None else None),
+            resource_world_tick=(_population_runtime_driver.current_tick
+                                 if _population_runtime_driver is not None else None),
+        )
+
+    return execution.submit(commit_and_spawn)
+
+
+def submit_population_economy_random(
+    *, policy_ref, operation_ref, effect_ref, target_ref, actor_ref, world_ref,
+    timeline_ref, draw_index, world_tick, idempotency_key, command_id, pins=None,
+):
+    """Submit an explicit random-business demand through confirmed Population time."""
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def settle():
+        caller = economy_random_caller
+        driver = _population_runtime_driver
+        if caller is None or driver is None:
+            raise ValueError("economy_random_runtime_unavailable")
+        publisher = driver.publish_window
+        getter = getattr(publisher, "confirmed_time_pins", None)
+        confirmed = getter() if callable(getter) else getter
+        if not isinstance(confirmed, dict):
+            raise ValueError("economy_random_temporal_pins_missing")
+        if (type(world_tick) is not int or world_tick < 0
+                or type(confirmed.get("sampled_at")) is not int
+                or type(confirmed.get("confirmation_boundary")) is not int
+                or confirmed.get("sampled_at") != driver.current_tick
+                or confirmed.get("confirmation_boundary") != driver.current_tick
+                or world_tick != driver.current_tick
+                or confirmed.get("timeline_id") != driver.clock.timeline.timeline_id
+                or timeline_ref != driver.clock.timeline.timeline_id):
+            raise ValueError("economy_random_temporal_pins_stale")
+        if pins is not None and pins != confirmed:
+            raise ValueError("economy_random_temporal_pins_stale")
+        return caller.submit(
+            policy_ref=policy_ref, operation_ref=operation_ref, effect_ref=effect_ref,
+            target_ref=target_ref, actor_ref=actor_ref, world_ref=world_ref,
+            timeline_ref=timeline_ref, draw_index=draw_index, world_tick=world_tick,
+            idempotency_key=idempotency_key, command_id=command_id, pins=confirmed,
+        )
+
+    return execution.submit(settle)
+
+
+def submit_status_tag_command(command, *, expires_after_steps=None):
+    """Internal admitted owner ingress; external transports do not gain authority."""
+    execution = runtime_execution
+    if execution is None or not _mirror_transport_accepting:
+        raise RuntimeStopped("runtime_stopped")
+
+    def apply():
+        consumer = status_temporal_consumer
+        if consumer is None or command.actor_ref not in consumer.bindings:
+            raise ValueError("status_actor_not_configured")
+        consumer._check_open()
+        temporal = None
+        if expires_after_steps is not None or command.expiry is not None:
+            if _population_runtime_driver is None:
+                raise ValueError("status_time_binding_missing")
+            temporal = consumer.context(_population_runtime_driver, command.actor_ref)
+        return status_tag_service.apply(command, temporal=temporal, expires_after_steps=expires_after_steps)
+
+    return execution.submit(apply)
 
 
 def start_population_runtime() -> asyncio.Task[None] | None:
@@ -655,31 +1199,6 @@ async def _shutdown_population_runtime() -> None:
         except Exception:
             # 失败已记录供 health 查询，资源关闭不能被失败任务阻断。
             pass
-
-
-def submit_population_activation_presence(*, proposal, presence_idempotency_key,
-                                           presence_expected_revision):
-    """Production Population activation -> Presence application ingress.
-
-    The caller must provide a proposal from the admitted Population source. The
-    bound service validates the existing grant and uses the application's
-    activation and Presence authorities on the same Durable store.
-    """
-    execution = runtime_execution
-    if execution is None or not _mirror_transport_accepting:
-        raise RuntimeStopped("runtime_stopped")
-
-    def commit_and_spawn():
-        service = globals().get("population_activation_presence_service")
-        if service is None:
-            raise ValueError("population_activation_presence_runtime_unavailable")
-        return service.commit_and_spawn(
-            proposal,
-            presence_idempotency_key=presence_idempotency_key,
-            presence_expected_revision=presence_expected_revision,
-        )
-
-    return execution.submit(commit_and_spawn)
 
 
 @app.on_event("startup")
@@ -1155,6 +1674,7 @@ def _install_mirror_route(session_ref: str, connection_ref: str, sink: GameplayM
 
 
 def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+    _close_status_runtime()
     global _dialogue_provider_slots
     if _dialogue_provider_slots is None:
         _dialogue_provider_slots = DialogueProviderSlots()
@@ -1243,6 +1763,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global inventory_definition_registry
     global production_package_registry
     global production_social_policy_registry
+    global social_fact_authority_service
     global inventory_authority_service
     global embodied_custody_inventory_authority_service
     global default_scene_archive_door_embodied_service
@@ -1285,8 +1806,17 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         if restore_gameplay and graph_path.name != ":memory:"
         else GameplayEventStore()
     )
+    _assemble_settlement_batch_runtime()
+    _assemble_status_runtime()
     production_package_registry = build_production_package_registry(Path(WORKTREE_ROOT))
     production_social_policy_registry = build_production_social_policy_registry()
+    # Application replay binds the existing P5 owner to the same Durable store.
+    # This is a read-only participant binding and does not add a production caller.
+    social_fact_authority_service = SocialFactAuthority(
+        registry=production_social_policy_registry,
+        store=gameplay_event_store,
+        package_registry=production_package_registry,
+    )
     inventory_definition_registry = build_production_inventory_definition_registry()
     stormnight_realtime_session_service = StormnightRealtimeSessionService(store=gameplay_event_store)
     runtime_state = build_runtime_state(settings)
@@ -1309,11 +1839,22 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
             producer_ref=settings.population_activation_producer_ref,
         ),
     )
+    from app.gameplay.resource_materialization import (
+        CharacterResourceMaterializationCaller,
+        ResourceMaterializationAuthorityService,
+    )
+    resource_materialization_authority = ResourceMaterializationAuthorityService(
+        store=gameplay_event_store, registry=character_agent_runtime._profile_registry,
+    )
+    resource_materialization_caller = CharacterResourceMaterializationCaller(
+        authority=resource_materialization_authority,
+    )
     population_activation_presence_service = PopulationActivationPresenceService(
         store=gameplay_event_store,
         activation_authority=population_activation_authority,
         presence_authority=population_presence_authority,
         producer_ref=settings.population_activation_producer_ref,
+        resource_materialization_caller=resource_materialization_caller,
     )
     activation_policy = ActivationPolicy()
 
@@ -1367,7 +1908,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
                               if _population_runtime_driver is not None else None)),
     )
     character_agent_runtime.set_target_catalog_resolver(character_object_execution.project_character_targets)
-    unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
+    unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(store=gameplay_event_store)
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
         esm_service=esm_service,
@@ -1525,6 +2066,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         registry=inventory_definition_registry,
         package_registry=production_package_registry,
     )
+    _assemble_equipment_runtime()
     created_inventory_containers: set[tuple[str, str]] = set()
     for pickup_policy in default_scene_pickup_policy_service.policies():
         embodied_carry_place_authority_service.seed_asset_possession(
@@ -2029,9 +2571,60 @@ def _population_digest(value: object) -> str:
     ).hexdigest()
 
 
+def _close_status_runtime():
+    global status_tag_registry, status_tag_service, status_temporal_consumer, ecology_temporal_consumer, economy_temporal_consumer, economy_random_caller
+    if status_temporal_consumer is not None:
+        status_temporal_consumer.close()
+    status_temporal_consumer = status_tag_service = status_tag_registry = None
+    if ecology_temporal_consumer is not None:
+        ecology_temporal_consumer.close()
+    ecology_temporal_consumer = None
+    if economy_temporal_consumer is not None:
+        economy_temporal_consumer.close()
+    economy_temporal_consumer = None
+    economy_random_caller = None
+
+
+def _assemble_status_runtime():
+    global status_tag_registry, status_tag_service, status_temporal_consumer
+    configurations = tuple(Phase3MirrorActorConfiguration.model_validate(item)
+                           for item in settings.gameplay_mirror_phase3_actor_configs)
+    definitions, bindings = {}, {}
+    for config in configurations:
+        if config.actor_ref in bindings:
+            raise ValueError("status_actor_configuration_duplicate")
+        bindings[config.actor_ref] = config.status_time_binding
+        for definition in config.status_tag_definitions:
+            if definition.tag_id in definitions and definitions[definition.tag_id] != definition:
+                raise ValueError("status_definition_configuration_conflict")
+            definitions[definition.tag_id] = definition
+    status_tag_registry = StatusTagRegistry()
+    for definition in definitions.values():
+        status_tag_registry.register(definition)
+    status_tag_service = StatusTagAuthorityService(store=gameplay_event_store, registry=status_tag_registry)
+    # Persisted statuses must not silently disappear when configuration is removed.
+    if any(e.event_type.startswith("gameplay.status_tag.") and e.payload.get("actor_ref") not in bindings
+           for e in gameplay_event_store.read_events()):
+        raise ValueError("status_actor_configuration_missing")
+    status_temporal_consumer = StatusTemporalConsumer(service=status_tag_service, bindings=bindings)
+
+
+def _assemble_settlement_batch_runtime() -> None:
+    global _settlement_batch_coordinator
+    from app.world_runtime.batch_settlement import (
+        BatchSettlementCoordinator, OrganizationWindowBatchAdapter, EconomyWageBatchAdapter,
+    )
+    from app.gameplay.econ1_economy_runtime import EconomyAuthority
+    _settlement_batch_coordinator = BatchSettlementCoordinator(adapters=(
+        OrganizationWindowBatchAdapter(owner=OrganizationAuthority(store=gameplay_event_store), store=gameplay_event_store),
+        EconomyWageBatchAdapter(owner=EconomyAuthority(store=gameplay_event_store), store=gameplay_event_store),
+    ))
+
+
 def close_runtime_resources() -> None:
     """关闭进程持有的持久资源，成功收口后才释放存档锁。"""
     global _runtime_storage_lease
+    _close_status_runtime()
     for session_ref, (connection_ref, sink) in tuple(_mirror_transport_routes.items()):
         sink.close("runtime_shutdown")
         _drop_mirror_transport_session(WebSocketConnectionContext(remote_host="", observed_at=int(time()),
@@ -3930,6 +4523,153 @@ def _handle_envelope(
 ) -> list[dict[str, object]]:
     global unified_character_action_settlement_service
     connection_context = connection_context or WebSocketConnectionContext.direct_handler_compatibility()
+    if envelope.message_type == "economy_random_command":
+        try:
+            command = EconomyRandomCommand.model_validate(envelope.payload)
+            if economy_random_caller is None:
+                raise ValueError("economy_random_runtime_unavailable")
+            result = EconomyRandomCommandService(
+                store=gameplay_event_store, controller_auth=embodied_controller_auth_service,
+                caller=economy_random_caller,
+            ).submit(command, connection_ref=connection_context.connection_ref)
+        except (ValueError, KeyError) as exc:
+            return [_as_envelope("economy_random_command_result", {
+                "accepted": False, "error_code": str(exc),
+            })]
+        return [_as_envelope("economy_random_command_result", {
+            "accepted": True, "operation_ref": result.operation_ref,
+            "trigger_receipt": result.trigger_receipt.model_dump(mode="json"),
+            "economy_receipt": result.economy_receipt.model_dump(mode="json"),
+            "candidate_ref": result.candidate_ref, "result_ref": result.result_ref,
+        })]
+    if envelope.message_type == "resource_conversion":
+        try:
+            command = ResourceConversionCommand.model_validate(envelope.payload)
+            def conversion_scope():
+                driver = _population_runtime_driver
+                if driver is None:
+                    raise ValueError("resource_conversion_temporal_runtime_unavailable")
+                return ConversionWorldScope(
+                    world_ref=driver.world_runtime.mode.world_ref,
+                    timeline_ref=driver.clock.timeline.timeline_id,
+                )
+            stream = f"gameplay:resources:{command.actor_ref}"
+            resources = ResourceBodyRuntimeProjector().rebuild_resources(
+                command.actor_ref, gameplay_event_store.read_stream(stream)
+            )
+            service = ResourceConversionService(
+                store=gameplay_event_store,
+                controller_auth=embodied_controller_auth_service,
+                scope_resolver=conversion_scope,
+                policy_source=load_conversion_rules,
+                capability_resolver=resource_conversion_capability_resolver,
+            )
+            result = service.submit(
+                command,
+                connection_ref=connection_context.connection_ref,
+                resources=resources,
+            )
+        except (ValueError, KeyError, TypeError) as exc:
+            return [_as_envelope("resource_conversion_result", {
+                "accepted": False, "error_code": str(exc),
+            })]
+        return [_as_envelope("resource_conversion_result", {
+            "accepted": bool(result.committed),
+            "receipt": result.model_dump(mode="json"),
+        })]
+    if envelope.message_type == "equipment_command":
+        try:
+            command = EquipmentCommand.model_validate(envelope.payload)
+            service = globals().get("equipment_command_service")
+            if service is None or service.store is not gameplay_event_store:
+                service = _assemble_equipment_runtime()
+            result = service.submit(command, connection_ref=connection_context.connection_ref)
+        except (ValueError, KeyError) as exc:
+            return [_as_envelope("equipment_command_result", {
+                "accepted": False, "error_code": str(exc),
+            })]
+        return [_as_envelope("equipment_command_result", {
+            "accepted": bool(result.committed),
+            "receipt": result.model_dump(mode="json"),
+        })]
+    if envelope.message_type == "equipment_prediction":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        try:
+            service = globals().get("equipment_command_service")
+            if service is None or service.store is not gameplay_event_store:
+                service = _assemble_equipment_runtime()
+            prediction_service = globals().get("equipment_prediction_service")
+            if (prediction_service is None or prediction_service.equipment is not service
+                    or prediction_service.prediction.store is not gameplay_event_store):
+                prediction_service = EquipmentPredictionService(
+                    equipment=service,
+                    prediction=PredictionAuthority(store=gameplay_event_store),
+                    now=lambda: int(time()),
+                )
+                globals()["equipment_prediction_service"] = prediction_service
+            operation = payload.get("operation")
+            prediction_id = payload.get("prediction_id")
+            if not isinstance(prediction_id, str) or not prediction_id:
+                raise ValueError("prediction_id_required")
+            if operation in {"preview", "confirm"}:
+                idempotency_key = payload.get("idempotency_key")
+                if not isinstance(idempotency_key, str) or not idempotency_key:
+                    raise ValueError("prediction_idempotency_key_required")
+                command = EquipmentCommand.model_validate(payload.get("command"))
+                if operation == "preview":
+                    result = prediction_service.preview(
+                        command, connection_ref=connection_context.connection_ref,
+                        prediction_id=prediction_id,
+                        idempotency_key=idempotency_key,
+                        ttl=payload.get("ttl", 30),
+                    )
+                else:
+                    result = prediction_service.confirm(
+                        command, connection_ref=connection_context.connection_ref,
+                        prediction_id=prediction_id,
+                        confirm_idempotency_key=idempotency_key,
+                    )
+                prediction_payload = (result.prediction.model_dump(mode="json")
+                                      if hasattr(result.prediction, "model_dump")
+                                      else asdict(result.prediction))
+                accepted = (bool(result.prediction.committed) if operation == "preview"
+                            else bool(result.owner is not None and result.owner.committed
+                                      and result.confirmation is not None
+                                      and result.confirmation.committed))
+                body = {"accepted": accepted, "prediction": prediction_payload}
+                if result.owner is not None:
+                    body["owner_receipt"] = result.owner.model_dump(mode="json")
+                if result.confirmation is not None:
+                    body["confirmation_receipt"] = result.confirmation.model_dump(mode="json")
+            elif operation == "lookup":
+                state = prediction_service.lookup(
+                    prediction_id, actor_id=payload.get("actor_id"),
+                    connection_ref=connection_context.connection_ref)
+                body = {"accepted": True, "state": asdict(state)}
+            elif operation in {"revoke", "expire"}:
+                actor_id = payload.get("actor_id")
+                key = payload.get("idempotency_key")
+                if not isinstance(key, str) or not key:
+                    raise ValueError("prediction_idempotency_key_required")
+                if operation == "revoke":
+                    receipt = prediction_service.revoke(
+                        prediction_id=prediction_id, actor_id=actor_id,
+                        connection_ref=connection_context.connection_ref,
+                        idempotency_key=key, reason=payload.get("reason", "caller_revoked"))
+                else:
+                    receipt = prediction_service.expire(
+                        prediction_id=prediction_id, actor_id=actor_id,
+                        connection_ref=connection_context.connection_ref,
+                        idempotency_key=key, reason=payload.get("reason", "operational_deadline"))
+                body = {"accepted": bool(receipt.committed), "receipt": receipt.model_dump(mode="json"),
+                        "state": asdict(prediction_service.prediction.state(prediction_id))}
+            else:
+                raise ValueError("equipment_prediction_operation_invalid")
+        except (ValueError, KeyError, TypeError) as exc:
+            return [_as_envelope("equipment_prediction_result", {
+                "accepted": False, "error_code": str(exc),
+            })]
+        return [_as_envelope("equipment_prediction_result", body)]
     if envelope.message_type == "stormnight_player_intent":
         try:
             intent = StormnightPlayerIntent.model_validate(envelope.payload)
@@ -3978,6 +4718,7 @@ def _handle_envelope(
     if envelope.message_type == "street_combat_pose":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         actor_id = payload.get("actor_id")
+        connection_epoch = payload.get("connection_epoch")
         raw_position = payload.get("position")
         physics_tick = payload.get("physics_tick")
         valid = (
@@ -3988,18 +4729,35 @@ def _handle_envelope(
             and isinstance(physics_tick, int)
             and not isinstance(physics_tick, bool)
         )
+        binding_result = (embodied_controller_auth_service.resolve_controller_binding(
+            actor_id=actor_id, connection_ref=connection_context.connection_ref)
+            if isinstance(actor_id, str) else None)
+        if not valid:
+            error_code = "invalid_street_pose"
+        elif binding_result is None or not binding_result.accepted or binding_result.binding is None:
+            error_code = binding_result.error_code if binding_result is not None else "controller_binding_required"
+        elif type(connection_epoch) is not int or connection_epoch != binding_result.binding.connection_epoch:
+            error_code = "stale_connection_epoch"
+        else:
+            error_code = ""
         accepted = bool(valid) and unified_character_action_settlement_service.record_street_pose(
             actor_id,
             tuple(float(value) for value in raw_position),
             physics_tick=physics_tick,
-        )
-        return [_as_envelope("street_combat_pose_result", {"actor_id": actor_id if isinstance(actor_id, str) else "", "physics_tick": physics_tick if isinstance(physics_tick, int) else -1, "accepted": accepted, "actor_state": unified_character_action_settlement_service.street_actor_state(actor_id) if accepted else {}})]
+        ) if not error_code else False
+        return [_as_envelope("street_combat_pose_result", {"actor_id": actor_id if isinstance(actor_id, str) else "", "physics_tick": physics_tick if isinstance(physics_tick, int) else -1, "accepted": accepted, "error_code": error_code, "actor_state": unified_character_action_settlement_service.street_actor_state(actor_id) if accepted else {}})]
     if envelope.message_type == "street_combat_attempt":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         try:
             attempt = ActionAttempt.model_validate(payload.get("attempt"))
         except ValidationError as exc:
             return [_as_envelope("street_combat_result", {"accepted": False, "error_code": f"invalid_action_attempt:{exc.errors()[0]['type']}"})]
+        binding_result = embodied_controller_auth_service.resolve_controller_binding(
+            actor_id=attempt.actor_ref.removeprefix("character:"), connection_ref=connection_context.connection_ref)
+        if not binding_result.accepted or binding_result.binding is None:
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": binding_result.error_code})]
+        if attempt.connection_epoch != binding_result.binding.connection_epoch:
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "stale_connection_epoch"})]
         prior_mutation_count = unified_character_action_settlement_service.mutation_count
         result = unified_character_action_settlement_service.settle_street_combat(attempt)
         messages = [_as_envelope("street_combat_result", {"accepted": result.outcome == "committed", "authority_result": result.to_payload()})]
@@ -4025,7 +4783,9 @@ def _handle_envelope(
         return messages
     if envelope.message_type == "unified_character_action_recovery_snapshot_request":
         if "unified_character_action_settlement_service" not in globals():
-            unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
+            unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(
+                store=gameplay_event_store if "gameplay_event_store" in globals() else None
+            )
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         connection_epoch = payload.get("connection_epoch")
         if not isinstance(connection_epoch, int) or isinstance(connection_epoch, bool) or connection_epoch < 1:
@@ -5491,7 +6251,9 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
 def _handle_unified_character_action_foundation_probe(envelope: Envelope) -> list[dict[str, object]]:
     global unified_character_action_settlement_service
     if "unified_character_action_settlement_service" not in globals():
-        unified_character_action_settlement_service = EmbodiedAuthoritySettlementService()
+        unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(
+            store=gameplay_event_store if "gameplay_event_store" in globals() else None
+        )
     payload = envelope.payload if isinstance(envelope.payload, dict) else {}
     raw_attempt = payload.get("attempt", {})
     if not isinstance(raw_attempt, dict):

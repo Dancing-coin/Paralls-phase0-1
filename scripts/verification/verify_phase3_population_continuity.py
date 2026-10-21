@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from .common import verification_dir
+    from .common import same_run_profile_report, verification_dir
 except ImportError:
-    from common import verification_dir
+    from common import same_run_profile_report, verification_dir
 
 import json
 
@@ -18,14 +18,14 @@ def main() -> int:
         "phase3c-batch-intent-merge",
         "phase3d-bakery-district-population",
     )
-    reports = {
-        name: json.loads(
-            (directory / f"{name}-report.json").read_text(encoding="utf-8")
+    reports = {}
+    for name in names:
+        report_path = same_run_profile_report(root(), f"{name}-report.json")
+        reports[name] = (
+            json.loads(report_path.read_text(encoding="utf-8"))
+            if report_path.exists()
+            else {}
         )
-        if (directory / f"{name}-report.json").exists()
-        else {}
-        for name in names
-    }
     passed = all(report.get("overall_passed") is True for report in reports.values())
     report = {
         "overall_passed": passed,

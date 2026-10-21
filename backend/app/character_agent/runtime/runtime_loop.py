@@ -84,6 +84,9 @@ from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.models.character_execution import CharacterExecutionContract
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.models.embodied_episode import CandidateActionObservation, EmbodiedEpisodeRecord
+from app.character_agent.models.self_state_snapshot import SelfStateSnapshot
+from app.character_agent.models.external_percept_snapshot import ExternalPerceptSnapshot
+from app.character_agent.mind.self_state_normalizer import SelfStateNormalizer
 from app.models.behavior_turn import CharacterTurnStageEvent
 from app.character_agent.services.character_turn_coordinator import CharacterTurnCoordinator
 from app.character_agent.services.embodied_episode_service import EmbodiedEpisodeService
@@ -119,6 +122,7 @@ from app.world_runtime.scheduling import (
     RuntimeWakeUpCandidate,
     select_schedulable_actor_ids,
 )
+from app.character_agent.services.slow_goal_trigger import derive_goal_proposal_trigger
 
 
 @dataclass(frozen=True)
@@ -201,6 +205,10 @@ class CharacterAgentRuntime:
             registry=create_runtime_skill_registry()
         )
         self._mind_frame_builder = CharacterMindFrameBuilder()
+        self._self_state_normalizer = SelfStateNormalizer()
+        self._self_state_snapshots: dict[str, SelfStateSnapshot] = {}
+        self._external_percept_snapshots: dict[str, list[ExternalPerceptSnapshot]] = {}
+        self._mind_event_inbox: dict[str, list[dict[str, object]]] = {}
         self._mind_writeback_policy = MindWritebackPolicyRouter()
         self._observatory_projection = CharacterAgentDebugProjection()
         self._control_modes = self._build_default_control_modes()
@@ -220,6 +228,7 @@ class CharacterAgentRuntime:
         )
         self._last_perception_tick_ms: dict[str, int] = {}
         self._last_cognition_tick_ms: dict[str, int] = {}
+        self._slow_goal_trigger_handler = None
         self._last_background_tick_ms: dict[str, int] = {}
         self._last_social_request_tick_ms: dict[tuple[str, str, str], int] = {}
         self._continuity_state: dict[str, RuntimeContinuityState] = {}
@@ -627,6 +636,7 @@ class CharacterAgentRuntime:
             return []
         self._record_character_perceived_event(event)
         self._record_relational_belief_from_perceived_event(event)
+        self._record_mind_projection_for_percept(event)
         snapshot = self._l1.apply_character_perceived_event(event)
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -1065,6 +1075,7 @@ class CharacterAgentRuntime:
             )
             return []
         self._record_self_body_event(event)
+        self._record_mind_projection_for_self_body(event)
         snapshot = self._l1.apply_self_body_perceived_event(event)
         turn = self._turn_coordinator.append_stage(
             context=turn,
@@ -2835,6 +2846,8 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         ledger: MindDeltaLedger | dict[str, object],
+        frame=None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> None:
         if not self.supports_actor(actor_id):
             raise ValueError(f"unsupported actor_id: {actor_id}")
@@ -2846,6 +2859,8 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             ledger=typed_ledger,
+            frame=frame,
+            turn_context=turn_context,
         )
 
     def get_memory_bundle(self, actor_id: str) -> dict[str, list[dict[str, object]]]:
@@ -2923,6 +2938,8 @@ class CharacterAgentRuntime:
         actor_id: str,
         producer_ts: int,
         trigger_event: dict[str, object] | None = None,
+        turn_context: CharacterTurnContext | None = None,
+        source_refs: list[str] | None = None,
     ) -> dict[str, object]:
         snapshot = self._l1.get_snapshot(actor_id)
         snapshot_payload = snapshot.model_dump() if snapshot is not None else {}
@@ -2935,6 +2952,10 @@ class CharacterAgentRuntime:
             actor_id=actor_id,
             producer_ts=producer_ts,
             trigger_event=trigger_event or {},
+            turn_context=turn_context,
+            self_state_snapshot=self._self_state_snapshots.get(actor_id),
+            external_percepts=list(self._external_percept_snapshots.get(actor_id, [])),
+            event_inbox=list(self._mind_event_inbox.get(actor_id, [])),
             snapshot=snapshot_payload,
             effective_profile=effective_profile,
             memory_bundle=self.get_memory_bundle(actor_id),
@@ -2948,8 +2969,52 @@ class CharacterAgentRuntime:
                 actor_id=actor_id,
                 effective_profile=effective_profile,
             ),
+            source_refs=source_refs,
         )
         return frame.model_dump()
+
+    def _record_mind_projection_for_self_body(self, event: SelfBodyPerceivedEvent) -> None:
+        self._self_state_snapshots[event.actor_id] = self._self_state_normalizer.from_body_event(event)
+        inbox = self._mind_event_inbox.setdefault(event.actor_id, [])
+        inbox.append({
+            "event_type": event.event_type,
+            "source_ref": event.source_body_result_id,
+            "captured_at": event.producer_ts,
+            "producer_ts": event.producer_ts,
+            "revision": event.source_body_result_id,
+            "visibility": "actor_private",
+            "summary": event.perceived_summary,
+        })
+        self._mind_event_inbox[event.actor_id] = inbox[-8:]
+
+    def _record_mind_projection_for_percept(self, event: CharacterPerceivedEvent) -> None:
+        subject_ref = event.subject_ref or event.target_ref or event.target_actor_id or event.target_object_id or event.target_environment_id
+        if subject_ref:
+            percepts = self._external_percept_snapshots.setdefault(event.actor_id, [])
+            percepts.append(ExternalPerceptSnapshot(
+                actor_id=event.actor_id,
+                subject_ref=subject_ref,
+                source=event.source_candidate_event_id,
+                captured_at=event.producer_ts,
+                producer_ts=event.producer_ts,
+                revision=event.source_candidate_event_id,
+                freshness="unknown",
+                visibility="actor_private",
+                uncertainty="unknown",
+                summary=event.perceived_summary,
+            ))
+            self._external_percept_snapshots[event.actor_id] = percepts[-8:]
+        inbox = self._mind_event_inbox.setdefault(event.actor_id, [])
+        inbox.append({
+            "event_type": event.event_type,
+            "source_ref": event.source_candidate_event_id,
+            "captured_at": event.producer_ts,
+            "producer_ts": event.producer_ts,
+            "revision": event.source_candidate_event_id,
+            "visibility": "actor_private",
+            "summary": event.perceived_summary,
+        })
+        self._mind_event_inbox[event.actor_id] = inbox[-8:]
 
     def _skill_affordance_summary_payload(
         self,
@@ -3715,7 +3780,10 @@ class CharacterAgentRuntime:
                     priority=0.55,
                 )
         stored_payload = deepcopy(payload)
+        stored_payload.pop("private_snapshot", None)
         stored_payload["action_settlement_result"] = self._action_settlement_result_metadata(stored_payload)
+        if snapshot is not None:
+            stored_payload["private_snapshot"] = snapshot.model_dump(mode="json")
         stored = self._append_session_event(
             actor_id=actor_id,
             event_type="character_agent_settlement_result",
@@ -3723,6 +3791,8 @@ class CharacterAgentRuntime:
             payload=stored_payload,
         )
         self._project_session_event(stored)
+        self._maybe_emit_slow_goal_trigger(actor_id=actor_id, producer_ts=producer_ts,
+            payload=stored_payload, source_event=stored)
         target = str(payload.get("target_object_id", "") or payload.get("target_actor_id", "") or "")
         self._update_memory_scene_knowledge(stored)
         if (payload.get("result_type") == "action_resolution_result" and payload.get("resolution_status") == "accepted"
@@ -3779,6 +3849,72 @@ class CharacterAgentRuntime:
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
         )
+
+    def set_slow_goal_trigger_handler(self, handler) -> None:
+        """Install the owner admission bridge; ``None`` disables dispatch."""
+        if handler is not None and not callable(handler):
+            raise TypeError("slow_goal_trigger_handler_must_be_callable")
+        self._slow_goal_trigger_handler = handler
+
+    def _maybe_emit_slow_goal_trigger(self, *, actor_id: str, producer_ts: int,
+                                      payload: dict[str, object], source_event: dict[str, object]) -> None:
+        handler = self._slow_goal_trigger_handler
+        if handler is None:
+            return
+        history = [event.get("payload", {}) for event in self._session_store.list_events(actor_id)
+                   if event.get("event_type") == "character_agent_settlement_result"
+                   and event.get("event_id") != source_event.get("event_id")]
+        goal_revision = sum(1 for event in self._session_store.list_events(actor_id)
+                            if event.get("event_type") == "goal_state_event")
+        source_event_id = str(source_event.get("event_id", "") or "")
+        next_index = self._session_store.event_count(actor_id) + 1
+        trigger_source_ref = f"{actor_id}:character_goal_proposal_trigger:{producer_ts}:{self._session_store._runtime_id}:{next_index}"
+        snapshot = self._get_snapshot_for_observatory(actor_id, producer_ts)
+        turn = CharacterTurnContext.begin(
+            actor_id=actor_id, source_event_ref=trigger_source_ref,
+            producer_ts=producer_ts, causation_id=source_event_id,
+            correlation_id=source_event_id,
+            input_revision_vector={"session": self._session_store.event_count(actor_id)},
+            memory_revision_vector={"memory": self.get_memory_revision(actor_id)},
+            policy_revision="policy:character-runtime:v1",
+            snapshot_revision=snapshot.producer_ts, branch_id="branch:main",
+        )
+        contract = self._freeze_turn_cognition_contract(actor_id, snapshot, turn)
+        trigger = derive_goal_proposal_trigger(
+            payload, history=history, frame_digest="pending",
+            goal_revision=goal_revision, source_event_id=trigger_source_ref,
+        )
+        if trigger is None:
+            return
+        frame = self.build_shadow_mind_frame(
+            actor_id=actor_id, producer_ts=producer_ts,
+            trigger_event={"event_id": trigger_source_ref,
+                           "event_type": "character_goal_proposal_trigger",
+                           "source_stage": "settlement_result"},
+            turn_context=turn, source_refs=list(dict.fromkeys(
+                [trigger_source_ref, *trigger.get("evidence_refs", [])]
+            )),
+        )
+        trigger = derive_goal_proposal_trigger(
+            payload, history=history, frame_digest=str(frame["frame_digest"]),
+            goal_revision=goal_revision, source_event_id=trigger_source_ref,
+        )
+        if trigger is None:
+            return
+        # Persist a distinct actor-private source event carrying the contract.
+        # Admission validates this committed source; settlement payloads remain
+        # immutable and L2 hints never become trigger authority.
+        trigger_source = self._append_session_event(
+            actor_id=actor_id, event_type="character_goal_proposal_trigger",
+            producer_ts=producer_ts,
+            payload={"goal_proposal_trigger": trigger,
+                     "settlement_event_ref": source_event.get("event_id", "")},
+        )
+        if trigger_source.get("event_id") != trigger_source_ref:
+            raise ValueError("character_goal_proposal_trigger_id_mismatch")
+        self._project_session_event(trigger_source)
+        handler(actor_id=actor_id, producer_ts=producer_ts, source_event=trigger_source,
+                trigger=trigger, frame=frame, cognition_contract=contract)
         self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
     def _record_behavior_evaluation(
@@ -4052,6 +4188,7 @@ class CharacterAgentRuntime:
         # This field is derived by the runtime from the substantive settlement
         # payload; callers may include the equivalent derived value on replay.
         normalized.pop("action_settlement_result", None)
+        normalized.pop("private_snapshot", None)
         return normalized
 
     def _consume_behavior_policy_for_turn(
@@ -6000,6 +6137,17 @@ class CharacterAgentRuntime:
         if state is None:
             return
         self._runtime_field_versions[actor_id] = dict(state.get('field_versions',{}))
+        if 'private_snapshot' in state:
+            snapshot = CharacterPrivateWorldSnapshot.model_validate(state['private_snapshot'])
+            if snapshot.actor_id != actor_id:
+                raise ValueError('cognition_private_snapshot_actor_mismatch')
+            self._l1._snapshots[actor_id] = snapshot
+        if 'last_cognition_tick' in state:
+            tick = state['last_cognition_tick']
+            if tick is None:
+                self._last_cognition_tick_ms.pop(actor_id, None)
+            else:
+                self._last_cognition_tick_ms[actor_id] = tick
         if 'dynamic_state' in state:
             self._dynamic_state_store.write(actor_id, state['dynamic_state'])
         if 'need_tension_state' in state:
@@ -6157,6 +6305,7 @@ class CharacterAgentRuntime:
             return
         self._finish_session_projections(actor_id, migration=force_checkpoint)
         snapshot = {'continuity_state': self.get_runtime_continuity_state(actor_id),
+                    'last_cognition_tick': self._last_cognition_tick_ms.get(actor_id),
                     'dynamic_state': self._dynamic_state_store.read_record(actor_id).storage_dump()}
         # 弱监管也可能由 Siming 更新而没有独立 authorization event。
         if actor_id in self._supervision_states:
@@ -6751,5 +6900,3 @@ class CharacterAgentRuntime:
             goal_sources=list(decision.goal_sources),
             urgency=decision.urgency,
         )
-
-

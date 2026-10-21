@@ -406,3 +406,100 @@ Godot 可先显示 pending equip 表现，但必须：
 - `gameplay-foundation-all`
 
 证据必须包含 committed transaction batch、失败时零事件、grant/modifier/access source explanation、Godot binding runtime probe 和 replay 对比。只验证槽位 UI 或场景节点存在不构成 authority 完成证据。
+
+## 2026-10-19 production command admission — 本次设计并实现
+
+This increment reuses `EquipmentAuthorityService` and the existing shared GameplayEventStore. It does not use AdventureBasic mirror bootstrap or instantiate inventory. The application supplies the already authenticated `EmbodiedControllerAuthService`, registered inventory/equipment/ability/modifier content, slots, and a read-only Population-driver world/timeline scope resolver. A live bound controller may equip/unequip only its own `<actor_id>` custody; Population Presence and LifeState references remain `character:<actor_id>`. This explicit adapter mapping follows the existing resource materialization canonical key and does not rename historical facts. WebSocket read scope grants no equipment write permission; external authenticated-session support remains unavailable in the existing issuer.
+
+The typed command freezes world, timeline, Presence incarnation and operation identity. Admission reads the owner-committed Population activation/Presence and LifeState sources, rebuilds Body from the actor's committed Body stream (including its existing absence-of-injury semantics), and delegates custody/slot/capacity checks to the existing Equipment owner. A store delegation view adds frozen source stream revisions to the same atomic append and resolves controller/scope again immediately before append. It stores no facts and is not a second event store. Body projections supplied by transport are forbidden.
+
+The persisted Equipment command identifier includes a digest of the entire typed command; its existing actor/idempotency lookup therefore rejects changed world, incarnation, operation or event lineage on retry. Exact retry queries the same Durable receipt, with current control and scope still required. New instances rebuild from the same closed/reopened Durable store; no private state is restored from the caller. The owner remains responsible for receipt integrity and atomic Inventory/equipment/ability/modifier append; adapter failures before append are zero write. No migration rewrites existing receipts or source events. Source grants are read only through the existing binding API; binding revocation denies further commits and receipt disclosure. No administrator or facility authorization is inferred.
+
+Implementation mapping: `backend/app/services/equipment_command_service.py::{EquipmentCommand,EquipmentCommandService,EquipmentWorldScope}`; focused evidence `backend/tests/test_equipment_command_service.py` **14 passed**. The admitted formal content path is `backend/app/gameplay/resource_modifier_admission.py::register_mana_focus_content()` reading `assets/gameplay/resource-equipment/mana-focus-charm.v1.yaml`, revision `resource-equipment:mana-focus-charm@1`, authored in this stage. The service neither creates possession nor infers item issuance from this file. Existing Inventory owners must first commit actual container/item custody. Its registered modifier mapping is forwarded to the existing ResourceModifier bridge; that later phase uses its own source transaction and revisions, not Equipment's now-consumed pre-commit write heads. Resource bridge failure preserves the committed Equipment batch and retries the bridge from its receipt.
+
+Receipt verification additionally compares the complete persisted batch/event identities, schema, event lineage, authority-only visibility, actor, contiguous global range, stream revision vector and normalized event digest. Four corruption tests reject changed range/vector/payload/digest. The focused integration uses actual ProfileActivation, Presence, LifeState initialization, resource materialization, Inventory and Equipment owners on Durable; loss of the Equipment response is recovered after close/reopen. The combined explicit allowlist (`test_equipment_command_service.py`, `test_equipment_runtime.py`, `test_resource_modifier_admission.py`) passed **34 tests**. This is backend contract evidence, not a claim of production ingress or presentation acceptance.
+
+[current] The service implementation and focused backend tests are this increment. [planned] Application initialization and transport registration require the real registered Equipment content and Population driver; service tests alone do not prove deployed ingress. [deferred] Godot presentation verification, complete equipment instance lifecycle/recipes/offers and external authenticated-session issuer remain outside this increment and retain their original gates.
+
+```mermaid
+flowchart LR
+  C["current: authenticated controller"] --> A["current: EquipmentCommandService admission"]
+  P["current: Population activation / Presence / LifeState"] --> A
+  B["current: committed Body stream"] --> A
+  A --> E["current: existing Equipment owner"]
+  E --> S["current: shared Durable store / Inventory custody"]
+  T["planned: application transport registration"] --> A
+  D["deferred: Godot presentation proof"] -.-> S
+```
+
+```mermaid
+sequenceDiagram
+  participant C as current controller command
+  participant A as current admission service
+  participant P as current Population and Body sources
+  participant E as current Equipment owner
+  participant S as current shared Durable store
+  C->>A: typed command + connection reference
+  A->>P: freeze actor/world/timeline/incarnation/read revisions
+  A->>E: owner equip or unequip with rebuilt Body
+  E->>A: append delegation
+  A->>A: revalidate controller and Population scope
+  A->>S: same atomic batch + source read revisions
+  S-->>C: actual owner receipt
+  Note over C,S: planned transport integration; deferred presentation proof
+```
+
+```mermaid
+flowchart LR
+  I["current: untrusted operation identity"] --> F["current: schema + bound-controller filter"]
+  R["current: owner sources and revisions"] --> F
+  F --> O["current: Equipment authority settlement"]
+  O --> X["current: Inventory placement + activation + grant/modifier events"]
+  X --> Q["current: Durable receipt and replay"]
+  Q -.-> V["planned: transport result delivery"]
+  V -.-> G["deferred: presentation evidence"]
+```
+
+## Stage3 T09 production equipment prediction ingress（本次设计并实现）
+
+准入：`EquipmentPredictionService` 提供 typed preview、confirm 与 revoke，复用 `EquipmentCommandService` 的 own-controller/own-custody policy v1、真实 connection binding、Population world/timeline/presence/incarnation、注册 content pin 和领域 read-set。preview 为待确认意图，不报告 Equipment 成功，不写 Inventory/Equipment。confirm 重新读取授权、content/source，并在同一 Equipment append 的 read-set 中固定 preview 的 revision vector；发生 CAS 冲突须重新 preview。
+
+唯一 ledger 是现有 `PredictionAuthority`/共享 Durable store。它保存 overlay identity、command digest、base revision vector、operational expires_at；expiry 来自应用既有时间读数，禁止把它转换为世界 tick 或新增 clock。历史 opened 不含 expires_at 时 payload/digest 不变。confirm 只在真实 Equipment owner receipt 完整校验后记录引用，prediction confirmed 不替代 owner 提交。撤权/过期阻止首次 owner write；已经提交 owner 后的响应丢失可在重新授权下恢复原 receipt，保留已提交领域事实。预览 private，仅当前角色 connection 可读取或确认；不授予世界管理员或他人 custody 权限。
+
+```mermaid
+flowchart LR
+  T["planned typed transport"] --> S["current EquipmentPredictionService"]
+  S --> A["current controller auth / Population / content"]
+  S --> P["current PredictionAuthority"] --> D["current shared Durable store"]
+  S --> E["current EquipmentCommandService / owner"] --> D
+  G["deferred Godot overlay rendering"] -.-> T
+```
+
+```mermaid
+sequenceDiagram
+  participant C as Typed equipment caller
+  participant S as Prediction ingress
+  participant P as PredictionAuthority
+  participant E as Equipment command/owner
+  participant D as Shared Durable store
+  C->>S: preview typed intent
+  S->>S: authorize, freeze content, binding, read-set and deadline
+  S->>P: provisional_opened
+  P->>D: private durable overlay
+  C->>S: confirm same intent
+  S->>E: reauthorize and CAS frozen read-set
+  E->>D: actual Equipment atomic batch
+  D-->>S: durable owner receipt
+  S->>P: confirm owner receipt reference
+  P->>D: prediction.confirmed
+  Note over C,D: planned main transport; deferred Godot rendering
+```
+
+```mermaid
+flowchart TD
+  I["typed EquipmentCommand + trusted connection"] --> V["current authorization + frozen intent/content/read-set"]
+  V --> O["current provisional overlay"] --> R["current confirmation revalidation"]
+  R --> E["current Equipment owner atomic batch"] --> B["current owner receipt"] --> F["current prediction receipt reference"]
+  X["planned transport delivery"] -.-> I
+  F -.-> G["deferred Godot rendering"]
+```

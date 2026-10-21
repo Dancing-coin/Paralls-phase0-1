@@ -38,6 +38,39 @@ def test_settle_finish_run_appends_output_event_after_start() -> None:
     assert store.read_events()[-1].event_type == "gameplay.construction_production.run_finished"
 
 
+def test_settle_start_and_finish_reject_changed_command_identity_for_same_key() -> None:
+    store = GameplayEventStore()
+    authority = ConstructionProductionAuthority(store=store)
+    facility = Facility(facility_ref="facility:replay", plot_ref="plot:replay", facility_kind="bakery", condition=1)
+    recipe = Recipe(recipe_ref="recipe:replay", inputs={}, output_item="bread", duration_ticks=1)
+    started = authority.settle_start_run(
+        facility=facility, recipe=recipe, run_ref="run:replay", tick=0,
+        command_id="command:replay:start", idempotency_key="idem:replay:start",
+        causation_id="cause:replay:start", correlation_id="corr:replay",
+    )
+    assert started.committed
+    start_changed = authority.settle_start_run(
+        facility=facility, recipe=recipe, run_ref="run:replay", tick=0,
+        command_id="command:replay:start:changed", idempotency_key="idem:replay:start",
+        causation_id="cause:replay:start", correlation_id="corr:replay",
+    )
+    assert not start_changed.committed
+    assert start_changed.failure is not None and start_changed.failure.error_code == "idempotency_key_reused"
+
+    run = authority.projector().runs["run:replay"]
+    finished = authority.settle_finish_run(
+        run, tick=1, recipe=recipe, command_id="command:replay:finish",
+        idempotency_key="idem:replay:finish", causation_id="cause:replay:finish", correlation_id="corr:replay",
+    )
+    assert finished.committed
+    finish_changed = authority.settle_finish_run(
+        run, tick=1, recipe=recipe, command_id="command:replay:finish:changed",
+        idempotency_key="idem:replay:finish", causation_id="cause:replay:finish", correlation_id="corr:replay",
+    )
+    assert not finish_changed.committed
+    assert finish_changed.failure is not None and finish_changed.failure.error_code == "idempotency_key_reused"
+
+
 def test_settle_finish_run_rejects_stale_run_snapshot_before_append() -> None:
     store = GameplayEventStore()
     authority = ConstructionProductionAuthority(store=store)

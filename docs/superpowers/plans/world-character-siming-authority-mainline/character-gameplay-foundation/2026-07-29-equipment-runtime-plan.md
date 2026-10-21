@@ -45,3 +45,11 @@ Godot delivery.
 
 Unequipping either succeeds atomically or leaves item location, grants,
 modifiers, and presentation references unchanged.
+
+## Stage3 T09 production prediction ingress plan
+
+依照 Equipment 设计新增 T09 准入合同，本次在已有基础上实施：
+1. 用真实 activation/presence/inventory/Equipment owners 建立 focused allowlist RED：preview 不写领域，Durable close/reopen，changed duplicate、scope、撤权、operational expiry、CAS、owner/confirmation 丢响应。
+2. 新增 `backend/app/services/equipment_prediction_service.py`，复用 `EquipmentCommandService`、`PredictionAuthority` 和共享 store；仅作 typed caller，不新增账本或身份 issuer。
+3. `prediction_authority.py` 最小可选 expires_at 兼容扩展；历史 payload 不加 null 字段，不改写历史 receipt。生产装配由 main lane 完成。
+4. GREEN allowlist `backend/tests/test_equipment_prediction_service.py` 加既有 `test_equipment_command_service.py`；不收集带 CalibrationInput 的 branch preview tests，不运行 Godot。主线程追加 fresh Harness。

@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-task6-economy-ecology-joint",
+  "order": 158,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_task6_economy_ecology_joint.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 3000,
+  "result_artifact": ".harness/verification/infra-task6-economy-ecology-joint-report.json",
+  "description": "Economy and Ecology same-application participant cut with strict grants and Durable replay",
+  "success_key": "overall_passed"
+}

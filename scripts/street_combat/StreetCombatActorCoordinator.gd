@@ -246,7 +246,8 @@ func _on_agent_execution(payload: Dictionary) -> void:
 	if semantic_action == "action:melee.unarmed_punch":
 		var target_id := str(payload.get("target_ref", "")).trim_prefix("character:")
 		if not ACTOR_NODES.has(target_id) or target_id == actor_id:
-			target_id = player_actor_id
+			_append_event("Agent attack unavailable: target missing or invalid")
+			return
 		request_attack(actor_id, target_id, "", {}, semantic_action)
 
 

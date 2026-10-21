@@ -1,0 +1,170 @@
+[
+  {
+    "question_id": "preclosure_20261013_indicator_gap_participant_01_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_indicator_gap_participant_02_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_indicator_gap_participant_03_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_indicator_gap_participant_04_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_reply_slips_participant_01_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_reply_slips_participant_02_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_reply_slips_participant_03_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_reply_slips_participant_04_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_timeline_check_participant_01_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_timeline_check_participant_02_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_timeline_check_participant_03_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_timeline_check_participant_04_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_muted_bell_participant_01_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_muted_bell_participant_02_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_muted_bell_participant_03_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_muted_bell_participant_04_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_message_channel_participant_01_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_message_channel_participant_02_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_message_channel_participant_03_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_message_channel_participant_04_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_shared_reminder_participant_01_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_shared_reminder_participant_02_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_shared_reminder_participant_03_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  },
+  {
+    "question_id": "preclosure_20261013_shared_reminder_participant_04_v2",
+    "source_revision": "authored_fixture:preclosure-20261013:v2",
+    "split": "calibration",
+    "privacy_visibility": "public_event_plus_self_only_profile_projection; authored_private_note_when_present; no_raw_private_truth",
+    "expected_denominator_type": "diagnostic_choice_pending_independent_review; action_target_quality=0; role_conditioned_pending_or_source_blocked"
+  }
+]

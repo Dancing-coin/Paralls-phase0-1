@@ -27,6 +27,7 @@ from verify_phase3_common import write_report
 
 RUNTIME_OWNER_CAPABILITIES = {
     "population:organization-production-work-contribution:v1",
+    "population:organization-window-due:v1",
     "population:inventory-output-custody:v1",
     "population:social-population-signal:v1",
 }

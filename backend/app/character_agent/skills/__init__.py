@@ -1,6 +1,17 @@
 from app.character_agent.skills.catalog import create_core_skill_registry, create_runtime_skill_registry
-from app.character_agent.skills.evidence import SkillEvidenceExtractor
-from app.character_agent.skills.learning import SkillCandidateStore, SkillPromotionGate
+from app.character_agent.skills.evidence import (
+    DIFFICULTY_FACTORS,
+    LEARNING_STAGES,
+    MASTERY_DIMENSIONS,
+    SkillEvidenceExtractor,
+)
+from app.character_agent.skills.learning import (
+    LearningGateResult,
+    LearningProposal,
+    SkillCandidateStore,
+    SkillLearningGate,
+    SkillPromotionGate,
+)
 from app.character_agent.skills.models import (
     ActionDefinition,
     ActionSettlementResult,
@@ -19,10 +30,15 @@ from app.character_agent.skills.models import (
     SkillEvidence,
     SkillLearningPolicy,
     SkillPromotionDecision,
+    ImitationEpisode,
+    LearningEpisode,
+    StableAbilitySkill,
+    StableAbilitySnapshot,
 )
 from app.character_agent.skills.registry import CharacterSkillRegistry
 from app.character_agent.skills.service import CharacterSkillService
 from app.character_agent.skills.store import SkillEvidenceStore
+from app.character_agent.skills.settlement import LearningSettlementReceipt, SkillLearningSettlement
 from app.character_agent.skills.visibility import ObservedSkillBeliefStore, SkillVisibilityProjector
 
 __all__ = [
@@ -41,15 +57,27 @@ __all__ = [
     "SkillAffordanceSummary",
     "SkillCandidate",
     "SkillCandidateStore",
+    "SkillLearningGate",
+    "LearningGateResult",
+    "LearningProposal",
     "SkillDefinition",
     "SkillEvidenceExtractor",
+    "LearningEpisode",
+    "ImitationEpisode",
+    "LEARNING_STAGES",
+    "MASTERY_DIMENSIONS",
+    "DIFFICULTY_FACTORS",
     "SkillEvidenceStore",
     "SkillEvaluationRequest",
     "SkillEvaluationResult",
     "SkillEvidence",
     "SkillLearningPolicy",
     "SkillPromotionDecision",
+    "StableAbilitySkill",
+    "StableAbilitySnapshot",
     "SkillPromotionGate",
+    "SkillLearningSettlement",
+    "LearningSettlementReceipt",
     "SkillVisibilityProjector",
     "create_core_skill_registry",
     "create_runtime_skill_registry",

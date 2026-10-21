@@ -19,6 +19,7 @@ from app.gameplay.resource_body_runtime import (
 )
 from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupLifecycleProjector, StateGroupRegistry
 from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
+from app.gameplay.status_temporal_consumer import StatusTimeBinding
 from app.gameplay.status_tags import StatusTagDefinition, StatusTagProjector, StatusTagRegistry, active_status_tag_modifiers
 
 
@@ -47,6 +48,7 @@ class Phase3MirrorActorConfiguration(StrictGameplayModel):
     godot_allowed_group_ids: tuple[str, ...] = ()
     resource_definitions: tuple[ResourceDefinition, ...] = ()
     status_tag_definitions: tuple[StatusTagDefinition, ...] = ()
+    status_time_binding: StatusTimeBinding | None = None
     stat_baselines: tuple[StatBaseline, ...] = ()
     registry_revision: str = Field(min_length=1)
     world_config_revision: str = Field(min_length=1)

@@ -61,6 +61,54 @@ def _bind(auth: EmbodiedControllerAuthService):
     )
 
 
+def test_controller_epoch_revocation_invalidates_binding_lookup():
+    auth = EmbodiedControllerAuthService()
+    bound = _bind(auth)
+    assert bound.accepted
+    assert auth.resolve_controller_binding(actor_id="char_a", connection_ref="direct_handler").accepted
+    auth.revoke_controller_epoch(
+        controller_instance_id=bound.binding.controller_instance_id,
+        connection_epoch=bound.binding.connection_epoch,
+    )
+    assert not auth.resolve_controller_binding(actor_id="char_a", connection_ref="direct_handler").accepted
+
+
+def test_disconnect_revokes_controller_binding_and_unconsumed_grant():
+    auth = EmbodiedControllerAuthService()
+    binding = _bind(auth).binding
+    assert binding is not None
+    grant = auth.issue_execution_grant(binding=binding, request=_request(), issued_at=120, ttl=100)
+    auth.disconnect_connection("unrelated")
+    assert auth.resolve_controller_binding(actor_id="char_a", connection_ref="direct_handler").accepted
+    auth.disconnect_connection("direct_handler")
+    assert not auth.resolve_controller_binding(actor_id="char_a", connection_ref="direct_handler").accepted
+    assert not auth.validate_grant_for_phase(grant_id=grant.grant_id,
+        connection_epoch=binding.connection_epoch, connection_ref="direct_handler").accepted
+    auth.disconnect_connection("direct_handler")
+
+
+def test_controller_reenrollment_invalidates_old_connection_and_grants():
+    auth = EmbodiedControllerAuthService()
+    first = _bind(auth)
+    grant = auth.issue_execution_grant(binding=first.binding, request=_request(), issued_at=110, ttl=30)
+    secret = auth.create_trusted_local_launch_credential(
+        actor_id="char_a", controller_instance_id=first.binding.controller_instance_id,
+        issued_at=110, expires_at=200,
+    )
+    second = auth.bind_controller(EmbodiedControllerEnrollment(
+        credential_kind="trusted_local_launch", credential=secret,
+        actor_id="char_a", controller_instance_id=first.binding.controller_instance_id,
+        protocol_version=1,
+    ), remote_host="127.0.0.1", now=120, connection_ref="connection:new")
+    assert second.accepted
+    assert auth.resolve_controller_binding(actor_id="char_a", connection_ref="connection:new").accepted
+    assert not auth.resolve_controller_binding(actor_id="char_a", connection_ref="direct_handler").accepted
+    assert not auth.validate_grant_for_phase(
+        grant_id=grant.grant_id, connection_epoch=first.binding.connection_epoch,
+        connection_ref="direct_handler",
+    ).accepted
+
+
 def test_trusted_local_launch_is_loopback_only_and_one_time() -> None:
     auth = EmbodiedControllerAuthService()
     credential = auth.create_trusted_local_launch_credential(

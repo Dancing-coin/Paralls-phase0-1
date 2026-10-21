@@ -12,6 +12,15 @@ def filter_candidate_for_actor(
         return None
 
     ctx = context or {}
+    signal = candidate.coordination_signal
+    if signal is not None:
+        now_ts = ctx.get("now_ts")
+        if (candidate.percept_channel != "auditory" or candidate.observability.get("auditory") is not True
+                or candidate.auditory_reachability != "audible" or not isinstance(now_ts, int)
+                or not signal.admits(actor_id=actor_id, source_actor_id=candidate.source_actor_id,
+                    now_ts=now_ts, context_revision=str(ctx.get("context_revision", "")),
+                    participant_state=str(ctx.get("participant_state", "proposed")))):
+            return None
     is_facing_target = bool(ctx.get("is_facing_target", True))
     distance_m = float(ctx.get("distance_m", 0.0) or 0.0)
 
@@ -22,6 +31,7 @@ def filter_candidate_for_actor(
     certainty_score = 1.0 if distance_m <= 3.0 else 0.6
 
     return CharacterPerceivedEvent(
+        coordination_signal=signal,
         actor_id=actor_id,
         percept_channel=candidate.percept_channel,
         producer_ts=candidate.producer_ts,

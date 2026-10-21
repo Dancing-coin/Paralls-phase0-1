@@ -516,6 +516,26 @@ class EcologyHazardAuthority:
                 )
             except GovernedAuthorityContractError as error:
                 return self._rejected_obligation_append(batch.command_id, str(error))
+        expected_events = [
+            (stream_id, event_type, payload, visibility)
+            for fragment in batch.owner_fragments
+            for stream_id, event_specs in fragment.event_specs.items()
+            for index, (event_type, payload) in enumerate(event_specs)
+            for visibility in (
+                fragment.event_visibility_policies.get(stream_id, ("project",) * len(event_specs))[index],
+            )
+        ]
+        submitted_events = [
+            (event.stream_id, event.event_type, event.payload, event.visibility_policy)
+            for event in batch.events
+        ]
+        if (
+            len(expected_events) != len(submitted_events)
+            or expected_events != submitted_events
+            or {stream: revision for fragment in batch.owner_fragments for stream, revision in fragment.expected_revisions.items()}
+            != batch.expected_stream_revisions
+        ):
+            return self._rejected_obligation_append(batch.command_id, "ecology_owner_commit_fragment_mismatch")
         return self.store.append_batch(batch)
 
     @staticmethod
@@ -1408,11 +1428,11 @@ class EcologyHazardAuthority:
 
     def _committed_crop_state_action_digest(self, event_ids: tuple[str, ...]) -> str | None:
         committed_ids = set(event_ids)
-        for event in self.store.read_events():
-            if event.event_id in committed_ids and event.event_type == "gameplay.ecology.crop_state_dispelled":
-                digest = event.payload.get("crop_state_action_digest")
-                return digest if isinstance(digest, str) else None
-        return None
+        events = tuple(event for event in self.store.read_events() if event.event_id in committed_ids)
+        if len(events) != len(event_ids) or len(events) != 2 or sum(event.event_type == "gameplay.ecology.crop_state_dispelled" for event in events) != 1:
+            return None
+        digest = events[0].payload.get("crop_state_action_digest")
+        return digest if isinstance(digest, str) else None
 
     @staticmethod
     def _crop_state_application_digest(
@@ -1443,11 +1463,11 @@ class EcologyHazardAuthority:
 
     def _committed_crop_state_application_digest(self, event_ids: tuple[str, ...]) -> str | None:
         committed_ids = set(event_ids)
-        for event in self.store.read_events():
-            if event.event_id in committed_ids and event.event_type == "gameplay.ecology.crop_state_applied":
-                digest = event.payload.get("crop_state_application_digest")
-                return digest if isinstance(digest, str) else None
-        return None
+        events = tuple(event for event in self.store.read_events() if event.event_id in committed_ids)
+        if len(events) != len(event_ids) or len(events) != 2 or sum(event.event_type == "gameplay.ecology.crop_state_applied" for event in events) != 1:
+            return None
+        digest = events[0].payload.get("crop_state_application_digest")
+        return digest if isinstance(digest, str) else None
 
     @staticmethod
     def _drought_state_application_digest(
@@ -1480,11 +1500,11 @@ class EcologyHazardAuthority:
 
     def _committed_drought_state_application_digest(self, event_ids: tuple[str, ...]) -> str | None:
         committed_ids = set(event_ids)
-        for event in self.store.read_events():
-            if event.event_id in committed_ids and event.event_type == "gameplay.ecology.drought_state_applied":
-                digest = event.payload.get("drought_state_application_digest")
-                return digest if isinstance(digest, str) else None
-        return None
+        events = tuple(event for event in self.store.read_events() if event.event_id in committed_ids)
+        if len(events) != len(event_ids) or len(events) != 2 or sum(event.event_type == "gameplay.ecology.drought_state_applied" for event in events) != 1:
+            return None
+        digest = events[0].payload.get("drought_state_application_digest")
+        return digest if isinstance(digest, str) else None
 
     def record_resource(
         self,
@@ -1609,6 +1629,21 @@ class EcologyHazardAuthority:
     ) -> AppendBatchResult:
         existing = self.store.get_by_idempotency(envelope.principal_ref, envelope.idempotency_key)
         if existing is not None:
+            prior_events = tuple(
+                self.store.get_event(event_id) for event_id in existing.committed_event_ids
+            )
+            expected_event_type = f"gameplay.ecology.{record_kind}.retired"
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == expected_event_type
+                and prior_events[0].command_id == envelope.command_id
+                and prior_events[0].causation_id == envelope.causation_id
+                and prior_events[0].correlation_id == envelope.correlation_id
+                and prior_events[0].payload.get("record_ref") == record_ref
+                and prior_events[0].stream_id == self.ecology_stream_id(region_ref=region_ref)
+            )
+            if not exact:
+                return self._rejected(envelope, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         collection = self._collections().get(record_kind)
         if collection is None:
@@ -2095,6 +2130,19 @@ class EcologyHazardAuthority:
     def settle_frost(self, *, hazard: HazardRecord, crop: CropRecord, resistance: ResistanceProfile) -> HazardSettlementResult:
         existing = self.store.get_by_idempotency("authority:ecology", hazard.idempotency_key)
         if existing is not None and existing.committed:
+            prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.command_id == hazard.hazard_ref
+                and event.causation_id == hazard.hazard_ref
+                and event.correlation_id == f"semantic:{crop.crop_ref}"
+                and event.payload.get("entity_ref") == crop.crop_ref
+                and event.payload.get("effect_ref") == hazard.effect_ref
+                and event.payload.get("hazard_ref") == hazard.hazard_ref
+                and event.payload.get("due_tick") == hazard.due_tick
+                for event in prior_events
+            )
+            if not exact:
+                return HazardSettlementResult(committed=False, error_code="idempotency_key_reused")
             return HazardSettlementResult(committed=True, committed_event_ids=tuple(existing.committed_event_ids), idempotency_status="duplicate_replayed")
         if hazard.effect_ref != "effect:frost" or resistance.effect_ref != hazard.effect_ref:
             return HazardSettlementResult(committed=False, error_code="hazard_effect_unsupported")
@@ -2802,6 +2850,25 @@ class EcologyHazardAuthority:
         """Advance one ecology region through one existing-store atomic batch."""
         existing = self.store.get_by_idempotency(envelope.principal_ref, envelope.idempotency_key)
         if existing is not None:
+            prior_events = tuple(
+                self.store.get_event(event_id) for event_id in existing.committed_event_ids
+            )
+            tick = envelope.payload.get("tick")
+            exact = bool(prior_events) and all(
+                event.command_id == envelope.command_id
+                and event.causation_id == envelope.causation_id
+                and event.correlation_id == envelope.correlation_id
+                for event in prior_events
+            ) and any(
+                event.event_type == "gameplay.ecology.seasonal_process_advanced"
+                and event.payload.get("region_ref") == region_ref
+                and event.payload.get("last_tick") == tick
+                and event.payload.get("policy_ref") == policy.policy_ref
+                and event.payload.get("policy_revision") == policy.policy_revision
+                for event in prior_events
+            )
+            if not exact:
+                return self._rejected(envelope, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if envelope.principal_ref != self._PRINCIPAL or envelope.source_ref != self._PRINCIPAL:
             return self._rejected(envelope, "ecology_authority_required")
@@ -2911,6 +2978,25 @@ class EcologyHazardAuthority:
         """Apply one bounded drought correction through the existing Ecology stream."""
         existing = self.store.get_by_idempotency(envelope.principal_ref, envelope.idempotency_key)
         if existing is not None:
+            prior_events = tuple(
+                self.store.get_event(event_id) for event_id in existing.committed_event_ids
+            )
+            tick = envelope.payload.get("tick")
+            exact = bool(prior_events) and all(
+                event.command_id == envelope.command_id
+                and event.causation_id == envelope.causation_id
+                and event.correlation_id == envelope.correlation_id
+                for event in prior_events
+            ) and any(
+                event.event_type == "gameplay.ecology.drought_process_advanced"
+                and event.payload.get("region_ref") == region_ref
+                and event.payload.get("last_tick") == tick
+                and event.payload.get("policy_ref") == policy.policy_ref
+                and event.payload.get("policy_revision") == policy.policy_revision
+                for event in prior_events
+            )
+            if not exact:
+                return self._rejected(envelope, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if envelope.principal_ref != self._PRINCIPAL or envelope.source_ref != self._PRINCIPAL:
             return self._rejected(envelope, "ecology_authority_required")
@@ -2965,6 +3051,26 @@ class EcologyHazardAuthority:
         """Commit one ecology-owned regional weather step through one batch."""
         existing = self.store.get_by_idempotency(envelope.principal_ref, envelope.idempotency_key)
         if existing is not None:
+            prior_events = tuple(
+                self.store.get_event(event_id) for event_id in existing.committed_event_ids
+            )
+            tick = envelope.payload.get("tick")
+            exact = bool(prior_events) and all(
+                event.command_id == envelope.command_id
+                and event.causation_id == envelope.causation_id
+                and event.correlation_id == envelope.correlation_id
+                for event in prior_events
+            ) and any(
+                event.event_type == "gameplay.ecology.weather_front.propagated"
+                and event.payload.get("source_region_ref") == source_region_ref
+                and event.payload.get("target_region_ref") == target_region_ref
+                and event.payload.get("tick") == tick
+                and event.payload.get("policy_ref") == policy.policy_ref
+                and event.payload.get("policy_revision") == policy.policy_revision
+                for event in prior_events
+            )
+            if not exact:
+                return self._rejected(envelope, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if envelope.principal_ref != self._PRINCIPAL or envelope.source_ref != self._PRINCIPAL:
             return self._rejected(envelope, "ecology_authority_required")

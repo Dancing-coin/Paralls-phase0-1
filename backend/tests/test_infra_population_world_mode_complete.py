@@ -6,6 +6,7 @@ from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.replay import GameplayProjectionReplay
 from app.population_continuity.batch import ContinuityMergeAuthority, PopulationPlanner
+from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.population_continuity.branch_preview import BranchPreviewRequest
 from app.population_continuity.models import BatchIntentCandidate, PopulationWorldPlan, WorldModeProfile
 
@@ -374,6 +375,39 @@ def test_inf4z_supply_duplicate_idempotency_replays_existing_owner_receipt() -> 
     assert duplicate.committed is True
     assert duplicate.idempotency_status == "duplicate_replayed"
     assert len(store.read_events()) == 1
+
+
+def test_inf4z_supply_duplicate_rejects_corrupt_receipt_refs_without_write() -> None:
+    store = GameplayEventStore()
+    registry = CharacterProfileRegistry.from_directory(PROFILE_DIR)
+    plan = PopulationPlanner().plan_world(
+        batch_ref="batch:inf4z:corrupt-duplicate",
+        world_ref="world:bakery",
+        mode=_mode(),
+        candidates=(_candidate(),),
+        base_event_digest="sha256:base",
+        tail_boundary=0,
+        active_revision_refs=("mode:inf4z:1",),
+        source_revision_vector={"gameplay:organization:organization:bakery": 0},
+        deterministic_seed="seed:inf4z:corrupt-duplicate",
+        report_scope="actor:self",
+    )
+    authority = ContinuityMergeAuthority(store=store, registry=registry, mode=_mode())
+    first = authority.merge_world_plan(plan)
+    key = (OrganizationAuthority._PRINCIPAL, f"merge:{plan.batch_ref}")
+    original = store.get_by_idempotency(*key)
+    store._idempotency_results[key] = original.model_copy(
+        update={"committed_event_ids": [*original.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before = len(store.read_events())
+
+    duplicate = authority.merge_world_plan(plan)
+
+    assert first.committed is True
+    assert duplicate.committed is False
+    assert duplicate.stop_reason == "idempotency_key_reused"
+    assert len(store.read_events()) == before
 
 
 def test_inf4z_supply_revision_conflict_is_zero_write() -> None:

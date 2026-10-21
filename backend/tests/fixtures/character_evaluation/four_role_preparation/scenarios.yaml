@@ -1,0 +1,113 @@
+fixture_id: four-role-preparation-v1
+evidence_kind: authored_fixture
+author: Codex execution agent
+review_date: '2026-10-12'
+source_refs:
+  - docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#9
+  - docs/10月分析/规格/05-角色能力图谱、认知包络与动态算力规格.md#4.2.3
+sealed_splits:
+  final:
+    status: reserved_no_questions_or_labels
+    labels_path: null
+    release_requires: [development_observations, frozen_policy_candidates_thresholds, independently_reviewed_questions]
+  independent_holdout:
+    status: reserved_independent_author_required
+    labels_path: null
+    release_requires: [independent_source_provenance, independently_reviewed_questions, frozen_policy_candidates_thresholds]
+scenarios:
+  - scenario_id: archive-scratches
+    trajectory_group: archive-door-observation-20261012
+    split: development
+    event: 档案室门锁上有新划痕；值班记录员在场；尚不清楚划痕来源。
+    question: 先取得可以直接检查的证据，避免据划痕归责。选择下一步意图。
+    objects: [obj:archive_door]
+    contact: actor:archive_clerk
+    visible_targets: [obj:archive_door, actor:archive_clerk]
+    reference_u: [observe:obj:archive_door, ask_probe:actor:archive_clerk, defer:obj:archive_door]
+    review:
+      acceptable_pairs: [[observe, obj:archive_door], [ask_probe, actor:archive_clerk]]
+      rationale: 直接观察划痕或向在场记录员询问均能增加证据；此题没有即刻危险，单纯延期不满足获取证据目标。
+  - scenario_id: guard-order
+    trajectory_group: courtyard-authorization-query-20261012
+    split: development
+    event: 院门仍关闭；门卫在场；有人转述封锁要求，但没有给出发令者或凭据。
+    question: 核实这条口头要求来自谁；此时不提交封锁动作。选择下一步意图。
+    objects: [obj:courtyard_gate]
+    contact: actor:gate_guard
+    visible_targets: [obj:courtyard_gate, actor:gate_guard]
+    reference_u: [observe:obj:courtyard_gate, ask_probe:actor:gate_guard, defer:obj:courtyard_gate]
+    review:
+      acceptable_pairs: [[ask_probe, actor:gate_guard]]
+      rationale: 意图仅为询问要求来源；观察门形不能确定发令者，延期也没有获取要求来源。
+  - scenario_id: upset-witness
+    trajectory_group: kitchen-witness-uncertainty-20261012
+    split: development
+    event: 厨房窗扣被打开；在场帮工紧张，但没有目击记录；紧张本身不证明责任。
+    question: 了解帮工实际看到什么，保持情绪与事实分开。选择下一步意图。
+    objects: [obj:kitchen_window]
+    contact: actor:kitchen_aide
+    visible_targets: [obj:kitchen_window, actor:kitchen_aide]
+    reference_u: [observe:obj:kitchen_window, ask_probe:actor:kitchen_aide, defer:obj:kitchen_window]
+    review:
+      acceptable_pairs: [[ask_probe, actor:kitchen_aide]]
+      rationale: 此题要求询问目击内容；不能将情绪当事实；观察窗扣是另一个获取证据任务。
+  - scenario_id: unavailable-key
+    trajectory_group: storeroom-key-wait-20261012
+    split: development
+    event: 库房箱盖关闭；库管在场；检查已做完，库管明确说明等主管携钥匙回来；没有危险或新的目击内容。
+    question: 没有新信息也没有开启许可，保持箱盖关闭并等待。选择下一步意图。
+    objects: [obj:storeroom_chest]
+    contact: actor:storekeeper
+    visible_targets: [obj:storeroom_chest, actor:storekeeper]
+    reference_u: [observe:obj:storeroom_chest, ask_probe:actor:storekeeper, defer:obj:storeroom_chest]
+    review:
+      acceptable_pairs: [[defer, obj:storeroom_chest]]
+      rationale: 题面已说明检查完成且明确需要等待；继续询问或重复观察不执行等待目标。
+  - scenario_id: public-ledger
+    trajectory_group: public-counter-ledger-observation-20261012
+    split: calibration
+    event: 柜台上公开展示的登记簿有两处墨色不同的日期；接待员在场；不知道是否为更正。
+    question: 获取日期更改的可见证据或询问登记过程，暂缓认定造假。选择下一步意图。
+    objects: [obj:counter_ledger]
+    contact: actor:counter_receptionist
+    visible_targets: [obj:counter_ledger, actor:counter_receptionist]
+    reference_u: [observe:obj:counter_ledger, ask_probe:actor:counter_receptionist, defer:obj:counter_ledger]
+    review:
+      acceptable_pairs: [[observe, obj:counter_ledger], [ask_probe, actor:counter_receptionist]]
+      rationale: 两条路径都可以取得来源；只延期不满足此题的获取信息任务。
+  - scenario_id: delivery-message
+    trajectory_group: bridge-delivery-instruction-query-20261012
+    split: calibration
+    event: 桥头货箱关闭；送信人在场；口信要求挪动货箱，但负责人的签名缺失。
+    question: 向送信人核实要求的发出者，不实施搬运。选择下一步意图。
+    objects: [obj:bridge_crate]
+    contact: actor:delivery_messenger
+    visible_targets: [obj:bridge_crate, actor:delivery_messenger]
+    reference_u: [observe:obj:bridge_crate, ask_probe:actor:delivery_messenger, defer:obj:bridge_crate]
+    review:
+      acceptable_pairs: [[ask_probe, actor:delivery_messenger]]
+      rationale: 此题的目标是询问口信来源，箱体外观不提供发令者信息。
+  - scenario_id: waiting-tool
+    trajectory_group: workshop-tool-check-wait-20261012
+    split: calibration
+    event: 工具柜已检查并上锁；工匠在场且已说明须等授权检查员到来；没有新损坏和安全隐患。
+    question: 检查结果已经记录，此时等待授权检查员。选择下一步意图。
+    objects: [obj:workshop_cabinet]
+    contact: actor:workshop_craftsperson
+    visible_targets: [obj:workshop_cabinet, actor:workshop_craftsperson]
+    reference_u: [observe:obj:workshop_cabinet, ask_probe:actor:workshop_craftsperson, defer:obj:workshop_cabinet]
+    review:
+      acceptable_pairs: [[defer, obj:workshop_cabinet]]
+      rationale: 等待是明确任务；没有新证据或未回答问题，不需要重复检查。
+  - scenario_id: withdrawn-claim
+    trajectory_group: square-sign-witness-query-20261012
+    split: calibration
+    event: 广场告示被改动；报信人在场且说先前听到的归责只是猜测，没有亲眼看见。
+    question: 询问报信人的直接观察，不能把转述的猜测当作事实。选择下一步意图。
+    objects: [obj:square_notice]
+    contact: actor:square_informant
+    visible_targets: [obj:square_notice, actor:square_informant]
+    reference_u: [observe:obj:square_notice, ask_probe:actor:square_informant, defer:obj:square_notice]
+    review:
+      acceptable_pairs: [[ask_probe, actor:square_informant]]
+      rationale: 此题要求查明直接目击内容，观察告示不能回答报信人看到了什么。

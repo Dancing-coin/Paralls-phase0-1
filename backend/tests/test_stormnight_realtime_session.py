@@ -33,12 +33,31 @@ def test_player_can_start_inspect_advance_question_and_accuse_through_owner_boun
 
 def test_player_action_is_server_mapped_and_returns_npc_proposal() -> None:
     service = _service()
+    service.legacy_action_time_compatibility = True
     assert service.handle(_intent("start", "start")).accepted
     result = service.handle(_intent("pursue", "pursue"))
     assert result.accepted
     assert result.projection["action_window_count"] == 1
     assert result.npc_proposal is not None
     assert "event_specs" not in result.npc_proposal
+    before = len(service.store.read_events())
+    replay = service.handle(_intent("pursue", "pursue"))
+    assert replay.accepted and replay.idempotency_status == "duplicate_replayed"
+    assert replay.receipt_event_ids == result.receipt_event_ids
+    assert len(service.store.read_events()) == before
+    assert all("time_binding" not in service.store.get_event(event_id).payload for event_id in result.receipt_event_ids)
+    recovered = StormnightRealtimeSessionService(store=service.store, legacy_action_time_compatibility=True)
+    unbound = recovered.handle(_intent("pursue", "pursue"))
+    assert not unbound.accepted and unbound.error_code == "action_time_legacy_request_unbound"
+
+
+def test_default_session_action_requires_explicit_time_admission() -> None:
+    service = _service()
+    assert service.handle(_intent("start", "start")).accepted
+    before = len(service.store.read_events())
+    result = service.handle(_intent("pursue", "unbound"))
+    assert not result.accepted and result.error_code == "action_time_binding_missing"
+    assert len(service.store.read_events()) == before
 
 
 def test_unauthorized_coordinates_and_invalid_order_are_zero_write() -> None:

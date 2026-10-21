@@ -1,0 +1,136 @@
+[gd_scene load_steps=17 format=3]
+
+[ext_resource type="Script" path="res://scripts/phase0/LayaCharacterRuntimeDemo.gd" id="1_demo"]
+[ext_resource type="PackedScene" path="res://scenes/phase0/CharacterActor.tscn" id="2_actor"]
+[ext_resource type="Script" path="res://scripts/street_combat/StreetCharacterSkin.gd" id="3_skin"]
+[ext_resource type="PackedScene" path="res://assets/active/female_jk_external/female_jk_external.glb" id="4_jk"]
+[ext_resource type="PackedScene" path="res://assets/active/female_t_external/female_t_external.glb" id="5_t"]
+
+[sub_resource type="BoxMesh" id="floor_mesh"]
+size = Vector3(20, 0.2, 14)
+[sub_resource type="StandardMaterial3D" id="floor_mat"]
+albedo_color = Color(0.07, 0.09, 0.13, 1)
+[sub_resource type="BoxShape3D" id="floor_shape"]
+size = Vector3(20, 0.2, 14)
+[sub_resource type="TorusMesh" id="ring_mesh"]
+inner_radius = 0.8
+outer_radius = 0.88
+[sub_resource type="StandardMaterial3D" id="ring_mat"]
+shading_mode = 0
+albedo_color = Color(0.2, 0.85, 1, 0.9)
+emission_enabled = true
+emission = Color(0.1, 0.6, 1, 1)
+emission_energy_multiplier = 2.5
+
+[node name="LayaCharacterRuntimeDemo" type="Node3D"]
+script = ExtResource("1_demo")
+[node name="Sun" type="DirectionalLight3D" parent="."]
+rotation_degrees = Vector3(-55, -25, 0)
+light_energy = 1.3
+shadow_enabled = true
+[node name="Floor" type="StaticBody3D" parent="."]
+[node name="Mesh" type="MeshInstance3D" parent="Floor"]
+mesh = SubResource("floor_mesh")
+material_override = SubResource("floor_mat")
+[node name="Collision" type="CollisionShape3D" parent="Floor"]
+shape = SubResource("floor_shape")
+
+[node name="ActorA" parent="." instance=ExtResource("2_actor")]
+actor_id = "char_a"
+position = Vector3(-2.2, 0, 0)
+metadata/package_id = "female_jk_external"
+metadata/qualified = true
+[node name="GenericRoleSkin" parent="ActorA/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" index="0"]
+visible = false
+[node name="StreetCharacterSkin" type="Node3D" parent="ActorA/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot"]
+script = ExtResource("3_skin")
+package_id = "female_jk_external"
+motion_library_id = "motionlib:humanoid.v1.core@1"
+[node name="QualifiedPackage" parent="ActorA/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" instance=ExtResource("4_jk")]
+scale = Vector3(1.4, 1.4, 1.4)
+[node name="TargetRing" type="MeshInstance3D" parent="ActorA"]
+position = Vector3(0, -0.18, 0)
+mesh = SubResource("ring_mesh")
+material_override = SubResource("ring_mat")
+
+[node name="ActorB" parent="." instance=ExtResource("2_actor")]
+actor_id = "char_b"
+position = Vector3(2.2, 0, 0)
+metadata/package_id = "female_t_external"
+metadata/qualified = true
+[node name="GenericRoleSkin" parent="ActorB/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot" index="0"]
+visible = false
+[node name="StreetCharacterSkin" type="Node3D" parent="ActorB/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot"]
+script = ExtResource("3_skin")
+package_id = "female_t_external"
+motion_library_id = "motionlib:humanoid.v1.core@1"
+[node name="QualifiedPackage" parent="ActorB/VisualRoot/AssetMount/RotationOffset/ScaleOffset/ImportedModel/RoleAssetRoot/StreetCharacterSkin" instance=ExtResource("5_t")]
+scale = Vector3(1.4, 1.4, 1.4)
+[node name="TargetRing" type="MeshInstance3D" parent="ActorB"]
+position = Vector3(0, -0.18, 0)
+mesh = SubResource("ring_mesh")
+material_override = SubResource("ring_mat")
+
+[node name="Camera" type="Camera3D" parent="."]
+position = Vector3(0, 3.0, 7.5)
+rotation_degrees = Vector3(-12, 0, 0)
+current = true
+
+[node name="DemoUI" type="CanvasLayer" parent="."]
+[node name="Panel" type="Panel" parent="DemoUI"]
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 580.0
+offset_bottom = 560.0
+[node name="Title" type="Label" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 16.0
+offset_right = 540.0
+offset_bottom = 48.0
+text = "Laya 角色运行演示（真实 backend）"
+theme_override_font_sizes/font_size = 22
+[node name="ActorButton" type="Button" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 62.0
+offset_right = 260.0
+offset_bottom = 98.0
+text = "切换角色"
+[node name="EventButton" type="Button" parent="DemoUI/Panel"]
+offset_left = 275.0
+offset_top = 62.0
+offset_right = 540.0
+offset_bottom = 98.0
+text = "改变可见事件"
+[node name="Judge" type="Button" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 108.0
+offset_right = 540.0
+offset_bottom = 154.0
+text = "让角色判断（真实 Laya 链路）"
+[node name="ActorLabel" type="Label" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 166.0
+offset_right = 540.0
+offset_bottom = 194.0
+[node name="Event" type="Label" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 196.0
+offset_right = 540.0
+offset_bottom = 224.0
+[node name="Status" type="Label" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 232.0
+offset_right = 540.0
+offset_bottom = 274.0
+autowrap_mode = 2
+[node name="Details" type="RichTextLabel" parent="DemoUI/Panel"]
+offset_left = 20.0
+offset_top = 284.0
+offset_right = 540.0
+offset_bottom = 520.0
+bbcode_enabled = true
+
+[connection signal="pressed" from="DemoUI/Panel/ActorButton" to="." method="_on_actor_pressed"]
+[connection signal="pressed" from="DemoUI/Panel/EventButton" to="." method="_on_event_pressed"]
+[connection signal="pressed" from="DemoUI/Panel/Judge" to="." method="_on_judge_pressed"]
+

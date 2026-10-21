@@ -1,0 +1,15 @@
+fixture_type: authored_evaluation_input
+actor_id: char_d
+canonical_name: Abo
+authoring_status: isolated_diagnostic
+source_refs:
+  - docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12
+  - docs/10月分析/审查/05-第三项阿博评估档案与四角色夹具.md#2
+schema_mapping:
+  runtime_profile: CharacterProfile
+  runtime_admission: false
+unresolved_fields:
+  - personality_numeric_values
+  - cognitive_facets
+  - hard_limits
+  - compute_defaults

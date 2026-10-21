@@ -303,3 +303,49 @@ def test_economy_wage_terminal_cancel_and_unsettled_compensation_are_zero_write(
     assert cancellation.error_code == "obligation_not_cancellable"
     assert compensation_error == "economy_wage_obligation_compensation_invalid"
     assert len(store.read_events()) == before
+
+
+def test_obligation_duplicate_rejects_corrupt_committed_event_refs_without_write() -> None:
+    store = _opened_store(); authority = EconomyAuthority(store=store)
+    obligation = _obligation(status="due")
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(_registration(),))
+    fragment = authority.build_wage_obligation_expiry_fragment(obligation=obligation, reason_ref="reason:wage_window_elapsed")
+    plan = coordinator.plan_expire(obligation=obligation, fragment=fragment, principal_ref="world_runtime.caller", reason_ref="reason:wage_window_elapsed")
+    assert plan.ready and plan.owner_commit_batch is not None
+    committed = authority.commit_obligation_batch(plan.owner_commit_batch)
+    assert committed.committed
+    key = ("world_runtime.caller", "economy:wage:one:expire:reason:wage_window_elapsed")
+    stored = store._idempotency_results[key]
+    store._idempotency_results[key] = stored.model_copy(update={"committed_event_ids": ["missing:event"]}, deep=True)
+    before = len(store.read_events())
+    duplicate = coordinator.plan_expire(obligation=obligation, fragment=fragment, principal_ref="world_runtime.caller", reason_ref="reason:wage_window_elapsed")
+    assert duplicate.error_code == "obligation_idempotency_receipt_invalid"
+    assert len(store.read_events()) == before
+
+
+def test_economy_wage_owner_rejects_batch_events_diverging_from_fragment() -> None:
+    store = _opened_store(); authority = EconomyAuthority(store=store)
+    obligation = _obligation(status="due")
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(_registration(),))
+    fragment = authority.build_wage_obligation_expiry_fragment(obligation=obligation, reason_ref="reason:wage_window_elapsed")
+    plan = coordinator.plan_expire(obligation=obligation, fragment=fragment, principal_ref="world_runtime.caller", reason_ref="reason:wage_window_elapsed")
+    assert plan.ready and plan.owner_commit_batch is not None
+    forged = plan.owner_commit_batch.model_copy(update={"events": [plan.owner_commit_batch.events[0].model_copy(update={"payload": {"tampered": True}}), *plan.owner_commit_batch.events[1:]]}, deep=True)
+    result = authority.commit_obligation_batch(forged)
+    assert not result.committed and result.failure and result.failure.error_code == "economy_wage_owner_commit_fragment_mismatch"
+    assert len(store.read_events()) == 1
+
+
+def test_obligation_duplicate_populates_project_receipt_query_cache() -> None:
+    store = _opened_store(); authority = EconomyAuthority(store=store)
+    obligation = _obligation(status="due")
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(_registration(),))
+    fragment = authority.build_wage_obligation_expiry_fragment(obligation=obligation, reason_ref="reason:wage_window_elapsed")
+    plan = coordinator.plan_expire(obligation=obligation, fragment=fragment, principal_ref="world_runtime.caller", reason_ref="reason:wage_window_elapsed")
+    assert plan.ready and plan.owner_commit_batch is not None
+    assert authority.commit_obligation_batch(plan.owner_commit_batch).committed
+    duplicate = coordinator.plan_expire(obligation=obligation, fragment=fragment, principal_ref="world_runtime.caller", reason_ref="reason:wage_window_elapsed")
+    assert duplicate.idempotency_status == "duplicate_replayed" and duplicate.receipt is not None
+    projected = coordinator.project_receipt(scope="authority")
+    assert projected["committed_event_ids"] == duplicate.receipt.committed_event_ids
+    assert projected["audit_refs"] == duplicate.receipt.audit_refs

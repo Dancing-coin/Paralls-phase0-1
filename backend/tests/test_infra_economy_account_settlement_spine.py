@@ -114,6 +114,39 @@ def test_account_transfer_changed_duplicate_is_zero_write() -> None:
     assert store.read_events() == before_events and store.list_outbox() == before_outbox
 
 
+def test_account_transfer_changed_causation_and_correlation_reject_duplicate() -> None:
+    store, service = _service()
+    _open_accounts(service)
+    assert _transfer(service).committed
+    before_events, before_outbox = store.read_events(), store.list_outbox()
+    changed = service.transfer(
+        command_id="cmd:transfer", debit_account_id="account:alice", credit_account_id="account:bob",
+        amount=4, idempotency_key="transfer", causation_id="cause:changed",
+        correlation_id="corr:changed", expected_revision=2,
+    )
+    assert not changed.committed and changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"
+    assert store.read_events() == before_events and store.list_outbox() == before_outbox
+
+
+def test_account_transfer_corrupt_receipt_event_reference_is_zero_write() -> None:
+    store, service = _service()
+    _open_accounts(service)
+    first = _transfer(service)
+    key = "transfer"
+    store._idempotency_results[("actor_gameplay.economy_domain", key)] = first.model_copy(
+        update={"committed_event_ids": (*first.committed_event_ids, "missing:event")},
+        deep=True,
+    )
+    before_events, before_outbox = store.read_events(), store.list_outbox()
+
+    duplicate = _transfer(service)
+
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "idempotency_key_reused"
+    assert store.read_events() == before_events and store.list_outbox() == before_outbox
+
+
 def test_stale_account_revision_is_zero_write() -> None:
     store, service = _service()
     _open_accounts(service)

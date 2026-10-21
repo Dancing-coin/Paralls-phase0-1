@@ -1,4 +1,9 @@
-from app.character_agent.skills.learning import SkillCandidateStore, SkillPromotionGate
+from app.character_agent.skills.evidence import LearningEpisode
+from app.character_agent.skills.learning import (
+    SkillCandidateStore,
+    SkillLearningGate,
+    SkillPromotionGate,
+)
 from app.character_agent.skills.models import SkillDefinition, SkillEvidence, SkillLearningPolicy
 from app.character_agent.skills.registry import CharacterSkillRegistry
 
@@ -115,3 +120,73 @@ def test_promotion_gate_allows_nonblocked_trained_skill_when_policy_and_evidence
     assert decision.approved is True
     assert decision.status == "approved"
     assert decision.reasons == []
+
+
+def test_learning_gate_rejects_missing_prerequisite_privacy_and_stale_source_without_state_write() -> None:
+    episode = LearningEpisode(
+        episode_id="episode:1",
+        learner_id="char_a",
+        object_id="first_aid.basic_bandage@2",
+        skill_id="first_aid",
+        source_id="teacher:medic",
+        source_revision="teacher:medic@1",
+        expected_source_revision="teacher:medic@1",
+        source_privacy_scope="private:teacher",
+        stage="observed",
+        source_refs=["observation:1"],
+    )
+    result = SkillLearningGate().evaluate(
+        episode,
+        prerequisites_met=False,
+        allowed_privacy_scopes={"public"},
+        current_source_revision="teacher:medic@2",
+    )
+
+    assert result.accepted is False
+    assert {"missing_prerequisite", "privacy_mismatch", "stale_source"}.issubset(result.reasons)
+    assert result.proposal is None
+
+
+def test_learning_gate_allows_non_linear_reentry_and_requires_owner_for_evolution() -> None:
+    gate = SkillLearningGate()
+    episode = LearningEpisode(
+        episode_id="episode:2",
+        learner_id="char_a",
+        object_id="first_aid.basic_bandage@2",
+        skill_id="first_aid",
+        source_id="teacher:medic",
+        source_revision="teacher:medic@2",
+        stage="stable",
+        source_refs=["observation:2"],
+    )
+    reentry = gate.transition(episode, "practiced")
+    assert reentry.accepted is True
+    assert reentry.stage == "practiced"
+
+    evolved = gate.transition(episode.model_copy(update={"stage": "complete"}), "evolved")
+    assert evolved.accepted is False
+    assert "authority_required" in evolved.reasons
+
+
+def test_learning_gate_accepts_declared_prerequisites_when_prerequisites_are_met() -> None:
+    episode = LearningEpisode(
+        episode_id="episode:3",
+        learner_id="char_a",
+        object_id="first_aid.advanced@1",
+        skill_id="first_aid",
+        source_id="teacher:medic",
+        source_revision="teacher:medic@2",
+        stage="practiced",
+        prerequisites=["first_aid.basic@1"],
+        source_refs=["observation:3"],
+    )
+
+    result = SkillLearningGate().evaluate(
+        episode,
+        prerequisites_met=True,
+        allowed_privacy_scopes=set(),
+        current_source_revision="teacher:medic@2",
+    )
+
+    assert result.accepted is True
+    assert result.proposal is not None

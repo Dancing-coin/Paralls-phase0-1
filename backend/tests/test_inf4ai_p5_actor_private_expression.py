@@ -293,7 +293,7 @@ def test_handshake_shared_experience_replays_duplicate_and_rejects_changed_dupli
     before = store.export_snapshot()
     duplicate = authority.record_completed_handshake_shared_experience(**request)
     changed = authority.record_completed_handshake_shared_experience(
-        **{**request, "correlation_id": "correlation:inf4ai:changed"}
+        **{**request, "command_id": "command:inf4ai:changed"}
     )
     assert first.resolution.result_kind == "committed_success"
     assert duplicate.resolution.result_kind == "committed_success"

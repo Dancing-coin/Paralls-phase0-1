@@ -83,6 +83,15 @@ def test_missing_cadence_source_pin_is_rejected() -> None:
         PopulationCadenceInput(**cadence().model_dump(exclude={"cadence_source_ref"}))
 
 
+@pytest.mark.parametrize("field", ["cadence_source_revision", "window_start", "window_end", "catch_up_limit", "budget"])
+@pytest.mark.parametrize("value", ["101", 101.0, True])
+def test_cadence_numeric_boundaries_reject_coercible_non_integers(field: str, value: object) -> None:
+    values = cadence().model_dump()
+    values[field] = value
+    with pytest.raises(ValidationError):
+        PopulationCadenceInput(**values)
+
+
 def test_read_set_digest_is_stable_under_projection_reorder() -> None:
     first = PopulationReadSet.from_inputs(cadence(), (projection("b", value=2), projection("a", value=1)))
     second = PopulationReadSet.from_inputs(cadence(), (projection("a", value=1), projection("b", value=2)))

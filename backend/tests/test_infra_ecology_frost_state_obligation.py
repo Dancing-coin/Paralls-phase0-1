@@ -328,6 +328,22 @@ def test_ecology_frost_crop_state_changed_duplicate_is_zero_write() -> None:
     assert len(store.read_events()) == 7
 
 
+def test_ecology_frost_crop_state_duplicate_rejects_extra_committed_event_ids() -> None:
+    store, authority = _seed()
+    first = _apply(authority)
+    key = "ecology:frosted:apply:1"
+    store._idempotency_results[("authority:ecology", key)] = first.model_copy(
+        update={"committed_event_ids": (*first.committed_event_ids, "missing:event")},
+        deep=True,
+    )
+
+    duplicate = _apply(authority)
+
+    assert duplicate.committed is False
+    assert duplicate.failure is not None and duplicate.failure.error_code == "idempotency_key_reused"
+    assert len(store.read_events()) == 7
+
+
 def test_ecology_frost_crop_state_revision_conflict_is_zero_write() -> None:
     store, authority = _seed()
 

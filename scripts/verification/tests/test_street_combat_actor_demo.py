@@ -57,6 +57,16 @@ def test_actor_demo_hud_and_coordinator_follow_active_player() -> None:
     assert HUD_SCENE.exists()
 
 
+def test_agent_action_does_not_invent_a_target_when_target_ref_is_missing() -> None:
+    coordinator = COORDINATOR.read_text(encoding="utf-8")
+    execution_slice = coordinator.split("func _on_agent_execution", 1)[1].split(
+        "func _append_event", 1
+    )[0]
+    assert 'str(payload.get("target_ref", "")).trim_prefix("character:")' in execution_slice
+    assert 'target missing or invalid' in execution_slice
+    assert "target_id = player_actor_id" not in execution_slice
+
+
 def test_actor_demo_uses_sademo_movement_and_camera_policy() -> None:
     script = SCRIPT.read_text(encoding="utf-8")
     assert "Vector3(input.x, 0.0, input.y)" in script

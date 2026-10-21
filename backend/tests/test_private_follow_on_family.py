@@ -269,11 +269,16 @@ def test_private_follow_on_generic_contents_replay_and_changed_duplicate_are_zer
     changed = authority.settle_private_follow_on(
         intent=intent.model_copy(update={"correlation_id": "corr:private-follow-on:changed"})
     )
+    changed_command = authority.settle_private_follow_on(
+        intent=intent.model_copy(update={"command_id": "command:private-follow-on:changed"})
+    )
     assert duplicate.receipt is not None
     assert duplicate.receipt.idempotency_status == "duplicate_replayed"
     assert duplicate.receipt.committed_event_ids == first.receipt.committed_event_ids
     assert changed.resolution.failure_code == "private_follow_on_idempotency_key_reused"
+    assert changed_command.resolution.failure_code == "private_follow_on_idempotency_key_reused"
     assert changed.receipt is None
+    assert changed_command.receipt is None
     assert store.export_snapshot() == before
     for participant in ("organization:municipal-assessment-office", "organization:mill"):
         full = authority.public_milling_notice_social_acknowledgment_view_for(

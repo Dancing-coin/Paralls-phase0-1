@@ -497,7 +497,9 @@ class PopulationPlanner:
     @staticmethod
     def _valid_population_read_set(read_set: PopulationReadSet) -> bool:
         cadence = read_set.cadence
-        canonical = PopulationReadSet.from_inputs(cadence, read_set.projections)
+        canonical = PopulationReadSet.from_inputs(
+            cadence, read_set.projections, temporal_pins=read_set.temporal_pins
+        )
         if canonical.read_set_digest != read_set.read_set_digest:
             return False
         return all(
@@ -1149,6 +1151,26 @@ class ContinuityMergeAuthority:
                 owner_principal_ref, f"merge:{plan.batch_ref}"
             )
             if existing is not None:
+                if (
+                    not existing.committed
+                    or not existing.committed_event_ids
+                    or len(set(existing.committed_event_ids)) != len(existing.committed_event_ids)
+                    or existing.command_id != f"merge:{plan.batch_ref}"
+                    or self.store.get_transaction(existing.transaction_id) is None
+                    or tuple(event.event_id for event in self.store.get_transaction(existing.transaction_id).events)
+                    != tuple(existing.committed_event_ids)
+                ):
+                    return self._failed(plan, "idempotency_key_reused")
+                try:
+                    prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+                except KeyError:
+                    return self._failed(plan, "idempotency_key_reused")
+                if any(
+                    event.transaction_id != existing.transaction_id
+                    or event.command_id != existing.command_id
+                    for event in prior_events
+                ):
+                    return self._failed(plan, "idempotency_key_reused")
                 event = self.store.get_event(existing.committed_event_ids[0])
                 stored_request_digest = event.payload.get(
                     "population_owner_request_digest"
@@ -1551,6 +1573,30 @@ class ContinuityMergeAuthority:
             return self._failed(plan, "production_wage_privacy_denied")
         existing = self.store.get_by_idempotency(EconomyAuthority._PRINCIPAL, f"merge:{plan.batch_ref}")
         if existing is not None:
+            transaction = self.store.get_transaction(existing.transaction_id)
+            if (
+                not existing.committed
+                or existing.command_id != f"merge:{plan.batch_ref}"
+                or not existing.committed_event_ids
+                or len(set(existing.committed_event_ids)) != len(existing.committed_event_ids)
+                or transaction is None
+                or transaction.command_id != existing.command_id
+                or tuple(event.event_id for event in transaction.events) != tuple(existing.committed_event_ids)
+            ):
+                return self._failed(plan, "idempotency_key_reused")
+            try:
+                prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+            except KeyError:
+                return self._failed(plan, "idempotency_key_reused")
+            if any(
+                event.transaction_id != existing.transaction_id
+                or event.command_id != existing.command_id
+                or event.stream_id != f"gameplay:economy:wage:{candidate.profile_ref}"
+                or event.visibility_policy != f"actor:{candidate.profile_ref}"
+                or event.payload.get("production_wage_plan_digest") != _production_wage_plan_digest(plan)
+                for event in prior_events
+            ):
+                return self._failed(plan, "idempotency_key_reused")
             prior_event = self.store.get_event(existing.committed_event_ids[0])
             if prior_event.payload.get("production_wage_plan_digest") != _production_wage_plan_digest(plan):
                 return self._failed(plan, "idempotency_key_reused")
@@ -1630,7 +1676,10 @@ class ContinuityMergeAuthority:
             EconomyAuthority._PRINCIPAL, f"branch-wage:{request.batch_ref}"
         )
         if existing is not None:
-            prior = self.store.get_event(existing.committed_event_ids[0])
+            prior_events = self._validated_existing_receipt(existing)
+            if prior_events is None or len(prior_events) != 1:
+                return self._failed(plan, "idempotency_key_reused")
+            prior = prior_events[0]
             if prior.payload.get("branch_work_wage_request_digest") != request_digest:
                 return self._failed(plan, "idempotency_key_reused")
             replay = GameplayProjectionReplay(
@@ -1770,7 +1819,10 @@ class ContinuityMergeAuthority:
             f"merge:{plan.batch_ref}",
         )
         if existing is not None:
-            event = self.store.get_event(existing.committed_event_ids[0])
+            prior_events = self._validated_existing_receipt(existing)
+            if prior_events is None or not prior_events:
+                return self._failed(plan, "idempotency_key_reused")
+            event = prior_events[0]
             if event.payload.get("capability_consumer_plan_digest") != _capability_supply_plan_digest(plan):
                 return self._failed(plan, "idempotency_key_reused")
             replay = GameplayProjectionReplay(
@@ -1830,7 +1882,10 @@ class ContinuityMergeAuthority:
             f"merge:{plan.batch_ref}",
         )
         if existing is not None:
-            event = self.store.get_event(existing.committed_event_ids[0])
+            prior_events = self._validated_existing_receipt(existing)
+            if prior_events is None or not prior_events:
+                return self._failed(plan, "idempotency_key_reused")
+            event = prior_events[0]
             if event.payload.get("capability_consumer_plan_digest") != _capability_inspection_plan_digest(plan):
                 return self._failed(plan, "idempotency_key_reused")
             replay = GameplayProjectionReplay(
@@ -1969,3 +2024,33 @@ class ContinuityMergeAuthority:
             zero_write=True,
             stop_reason=reason,
         )
+
+    def _validated_existing_receipt(self, result: object) -> tuple[object, ...] | None:
+        """Validate append-derived refs before any population duplicate replay."""
+        if not getattr(result, "committed", False):
+            return None
+        refs = tuple(getattr(result, "committed_event_ids", ()))
+        if not refs or len(set(refs)) != len(refs):
+            return None
+        transaction_id = getattr(result, "transaction_id", "")
+        command_id = getattr(result, "command_id", "")
+        if not transaction_id or not command_id:
+            return None
+        transaction = self.store.get_transaction(transaction_id)
+        if (
+            transaction is None
+            or transaction.command_id != command_id
+            or tuple(event.event_id for event in transaction.events) != refs
+        ):
+            return None
+        try:
+            events = tuple(self.store.get_event(event_id) for event_id in refs)
+        except KeyError:
+            return None
+        if any(
+            event.transaction_id != transaction_id
+            or event.command_id != command_id
+            for event in events
+        ):
+            return None
+        return events

@@ -5,7 +5,7 @@ from hashlib import sha256
 
 import pytest
 
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore, GameplayEventStoreSnapshotError
 from app.gameplay.p5.contracts import (
     P5ResolutionRequest,
     P5RevisionVector,
@@ -1088,3 +1088,246 @@ def test_full_checkpoint_tail_and_live_replay_preserve_recipient_authorized_proj
     assert live_view.relationship_facts == checkpoint_tail_view.relationship_facts == full_view.relationship_facts
     assert live_view.knowledge_facts == checkpoint_tail_view.knowledge_facts == full_view.knowledge_facts
     assert live_view.reputation == checkpoint_tail_view.reputation == full_view.reputation
+
+
+@pytest.mark.parametrize("visibility", ["public", "actor:character:baker:beta"])
+def test_durable_social_authority_reopens_receipts_and_matches_checkpoint_reexecution_after_revocation(
+    registry: P5PolicyRegistry,
+    tmp_path,
+    visibility: str,
+) -> None:
+    SocialFactAuthority = _load_authority()
+    path = tmp_path / "p5-social.sqlite3"
+    store = DurableGameplayEventStore(path)
+    authority = SocialFactAuthority(registry=registry, store=store)
+
+    relationship_fact = _relationship_payload()
+    knowledge_fact = _knowledge_payload(
+        visibility=visibility,
+        knower_ref="character:guard:alpha",
+        subject_ref="character:baker:beta",
+        observation_ref="observation:durable-reopen",
+    )
+    knowledge_stream = _knowledge_stream_ref(
+        knower_ref=str(knowledge_fact["knower_ref"]),
+        fact_ref=str(knowledge_fact["fact_ref"]),
+    )
+    first_command = _record_command(
+        request_id="request:p5:social:durable:1",
+        relationship_fact=relationship_fact,
+        knowledge_fact=knowledge_fact,
+        expected_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+        read_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+    )
+    first_request = _request(
+        registry,
+        request_id="request:p5:social:durable:1",
+        relationship_fact=relationship_fact,
+        knowledge_fact=knowledge_fact,
+        expected_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+        read_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+    )
+    first = authority.resolve(command=first_command, request=first_request, now="2026-08-11T00:00:00Z")
+    assert first.receipt is not None and first.receipt.committed
+    first_receipt = first.receipt
+
+    checkpoint_path = tmp_path / "p5-social-checkpoint.sqlite3"
+    store.save_snapshot(checkpoint_path)
+    before_reopen = store.export_snapshot()
+    store.close()
+    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_closed"):
+        store.read_events()
+
+    reopened = DurableGameplayEventStore(path)
+    reopened_authority = SocialFactAuthority(registry=registry, store=reopened)
+    duplicate = reopened_authority.resolve(command=first_command, request=first_request, now="2026-08-11T00:00:00Z")
+    assert duplicate.receipt is not None
+    assert duplicate.receipt.transaction_id == first_receipt.transaction_id
+    assert duplicate.receipt.committed_event_ids == first_receipt.committed_event_ids
+    assert duplicate.receipt.idempotency_status == "duplicate_replayed"
+    assert duplicate.resolution.result_kind == "committed_success"
+    assert reopened.export_snapshot() == before_reopen
+
+    changed_command = first_command.model_copy(update={"payload": {**first_command.payload, "knowledge_fact": {**knowledge_fact, "confidence": 0.1}}})
+    changed = reopened_authority.resolve(command=changed_command, request=first_request, now="2026-08-11T00:00:00Z")
+    assert changed.resolution.result_kind == "rejected_zero_write"
+    assert changed.resolution.failure_code == "idempotency_key_reused"
+    assert reopened.export_snapshot() == before_reopen
+
+    checkpoint_store = DurableGameplayEventStore(checkpoint_path)
+    checkpoint_authority = SocialFactAuthority(registry=registry, store=checkpoint_store)
+    revocation = {
+        "fact_ref": str(knowledge_fact["fact_ref"]),
+        "knower_ref": str(knowledge_fact["knower_ref"]),
+        "recipient_ref": "character:baker:beta",
+        "prior_visibility": str(knowledge_fact["visibility"]),
+    }
+    revoke_command = _revoke_command(
+        request_id="request:p5:social:durable:2",
+        fact_ref=str(knowledge_fact["fact_ref"]),
+        knower_ref=str(knowledge_fact["knower_ref"]),
+        recipient_ref="character:baker:beta",
+        prior_visibility=str(knowledge_fact["visibility"]),
+        expected_revisions={knowledge_stream: 1},
+        read_revisions={knowledge_stream: 1},
+    )
+    revoke_request = _request(
+        registry,
+        request_id="request:p5:social:durable:2",
+        relationship_ref=str(relationship_fact["relationship_ref"]),
+        revocation=revocation,
+        expected_revisions={knowledge_stream: 1},
+        read_revisions={knowledge_stream: 1},
+    )
+    full_revoke = reopened_authority.resolve(command=revoke_command, request=revoke_request, now="2026-08-11T01:00:00Z")
+    tail_revoke = checkpoint_authority.resolve(command=revoke_command, request=revoke_request, now="2026-08-11T01:00:00Z")
+    assert full_revoke.receipt is not None and full_revoke.receipt.committed
+    assert tail_revoke.receipt is not None and tail_revoke.receipt.committed
+
+    final_snapshot = reopened.export_snapshot()
+    reopened.close()
+    checkpoint_store.close()
+    reopened = DurableGameplayEventStore(path)
+    checkpoint_store = DurableGameplayEventStore(checkpoint_path)
+    reopened_authority = SocialFactAuthority(registry=registry, store=reopened)
+    checkpoint_authority = SocialFactAuthority(registry=registry, store=checkpoint_store)
+
+    full_view = reopened_authority.view_for(recipient_ref="character:baker:beta", now="2026-08-11T01:00:00Z")
+    tail_view = checkpoint_authority.view_for(recipient_ref="character:baker:beta", now="2026-08-11T01:00:00Z")
+    outsider_full = reopened_authority.view_for(recipient_ref="character:outsider", now="2026-08-11T01:00:00Z")
+    outsider_tail = checkpoint_authority.view_for(recipient_ref="character:outsider", now="2026-08-11T01:00:00Z")
+    assert full_view.knowledge_facts == tail_view.knowledge_facts == ()
+    assert full_view == tail_view
+    assert outsider_full == outsider_tail
+    assert len(outsider_full.knowledge_facts) == (1 if visibility == "public" else 0)
+    assert reopened.export_snapshot() == checkpoint_store.export_snapshot() == final_snapshot
+    assert reopened.get_idempotency_record("authority:p5:social", first_command.idempotency_key) is not None
+    assert reopened.get_by_idempotency("authority:p5:social", first_command.idempotency_key) is not None
+    revoke_duplicate = reopened_authority.resolve(command=revoke_command, request=revoke_request, now="2026-08-11T01:00:00Z")
+    assert revoke_duplicate.receipt is not None
+    assert revoke_duplicate.receipt.idempotency_status == "duplicate_replayed"
+    assert revoke_duplicate.receipt.committed_event_ids == full_revoke.receipt.committed_event_ids
+    assert reopened.export_snapshot() == final_snapshot
+    reopened.close()
+    checkpoint_store.close()
+
+
+def test_social_replay_participant_captures_real_projection_and_source_refs(registry: P5PolicyRegistry) -> None:
+    from app.gameplay.p5.social_knowledge import SocialFactAuthority
+    from app.world_runtime.replay_participants import _social_participant
+
+    store = GameplayEventStore()
+    authority = SocialFactAuthority(registry=registry, store=store)
+    relationship_fact = _relationship_payload()
+    knowledge_fact = _knowledge_payload(
+        visibility="actor:character:baker:beta",
+        knower_ref="character:guard:alpha",
+        subject_ref="character:baker:beta",
+    )
+    knowledge_stream = _knowledge_stream_ref(
+        knower_ref=str(knowledge_fact["knower_ref"]), fact_ref=str(knowledge_fact["fact_ref"])
+    )
+    command = _record_command(
+        request_id="request:p5:social:participant",
+        relationship_fact=relationship_fact,
+        knowledge_fact=knowledge_fact,
+        expected_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+        read_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+    )
+    request = _request(
+        registry,
+        request_id="request:p5:social:participant",
+        relationship_fact=relationship_fact,
+        knowledge_fact=knowledge_fact,
+        expected_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+        read_revisions={str(relationship_fact["relationship_ref"]): 0, knowledge_stream: 0},
+    )
+    result = authority.resolve(command=command, request=request, now="2026-08-11T00:00:00Z")
+    assert result.receipt is not None and result.receipt.committed
+
+    participant = _social_participant(
+        store,
+        authority,
+        recipient_ref="character:baker:beta",
+        now="2026-08-11T00:00:00Z",
+    )
+    assert participant["schema_version"] == 1
+    assert participant["event_refs"]
+    assert participant["projection"]["knowledge_facts"]
+    assert participant["projection_hash"] == authority.view_for(
+        recipient_ref="character:baker:beta", now="2026-08-11T00:00:00Z"
+    ).projection_hash
+
+
+def test_social_replay_participant_captures_declared_empty_scope(registry: P5PolicyRegistry) -> None:
+    from app.gameplay.p5.social_knowledge import SocialFactAuthority
+    from app.world_runtime.replay_participants import _social_participant
+
+    store = GameplayEventStore()
+    authority = SocialFactAuthority(registry=registry, store=store)
+    saved = _social_participant(
+        store, authority, recipient_ref="character:baker:beta", now="2026-08-11T00:00:00Z"
+    )
+    assert saved["event_refs"] == []
+    assert saved["projection_hash"] == authority.view_for(
+        recipient_ref="character:baker:beta", now="2026-08-11T00:00:00Z"
+    ).projection_hash
+
+
+@pytest.mark.parametrize("fault", [
+    "stream", "visibility", "schema", "unknown_type", "principal", "persisted",
+    "payload_visibility", "payload_missing",
+])
+def test_social_replay_rejects_corrupt_owner_fact_without_write(
+    registry: P5PolicyRegistry, monkeypatch: pytest.MonkeyPatch, fault: str,
+) -> None:
+    from app.gameplay.p5.social_knowledge import SocialFactAuthority
+    from app.world_runtime.replay_participants import _social_participant
+
+    store = GameplayEventStore()
+    authority = SocialFactAuthority(registry=registry, store=store)
+    relationship_fact = _relationship_payload()
+    stream = str(relationship_fact["relationship_ref"])
+    command = _record_command(
+        request_id="request:p5:social:provenance",
+        relationship_fact=relationship_fact,
+        expected_revisions={stream: 0},
+        read_revisions={stream: 0},
+    )
+    request = _request(
+        registry,
+        request_id="request:p5:social:provenance",
+        relationship_fact=relationship_fact,
+        expected_revisions={stream: 0},
+        read_revisions={stream: 0},
+    )
+    assert authority.resolve(command=command, request=request, now="2026-08-11T00:00:00Z").receipt.committed
+    event = store.read_events()[-1]
+    before = store.export_snapshot()
+
+    if fault == "principal":
+        monkeypatch.setattr(store, "transaction_owns_event", lambda **kwargs: False)
+    elif fault == "persisted":
+        original = store.get_event
+        monkeypatch.setattr(store, "get_event", lambda event_id: (
+            event.model_copy(update={"visibility_policy": "authority_only" if event.visibility_policy == "public" else "public"})
+            if event_id == event.event_id else original(event_id)))
+    else:
+        update = {
+            "stream": {"stream_id": "gameplay:social:wrong"},
+            "visibility": {"visibility_policy": "public" if event.visibility_policy != "public" else "authority_only"},
+            "schema": {"schema_version": 2},
+            "unknown_type": {"event_type": "gameplay.social.relationship_fact_recorded@2"},
+            "payload_visibility": {"payload": {**event.payload, "visibility": {"invalid": True}}},
+            "payload_missing": {"payload": None},
+        }[fault]
+        original = store.read_events
+        monkeypatch.setattr(store, "read_events", lambda *args, **kwargs: [
+            item.model_copy(update=update) if item.event_id == event.event_id else item
+            for item in original(*args, **kwargs)])
+
+    with pytest.raises(ValueError, match="replay_social_event_provenance_invalid"):
+        _social_participant(
+            store, authority, recipient_ref="character:baker:beta", now="2026-08-11T00:00:00Z",
+        )
+    assert store.export_snapshot() == before

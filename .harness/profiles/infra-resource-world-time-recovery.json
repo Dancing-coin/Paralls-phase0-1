@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-resource-world-time-recovery",
+  "order": 160,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_resource_world_time_recovery.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 1800,
+  "result_artifact": ".harness/verification/infra-resource-world-time-recovery-report.json",
+  "description": "Population confirmed world-time resource recovery, Durable restart, and full/checkpoint-tail parity",
+  "success_key": "overall_passed"
+}

@@ -27,6 +27,7 @@ class CharacterMindAffordanceAdapter:
         self,
         *,
         effective_profile: dict[str, object] | None = None,
+        stable_ability_snapshot: object | None = None,
         supplied_skill_affordance_summary: dict[str, object] | None = None,
         supplied_action_affordance_summary: dict[str, object] | None = None,
         environment_affordance_summary: dict[str, object] | None = None,
@@ -37,6 +38,23 @@ class CharacterMindAffordanceAdapter:
         capability_constraints = _mapping(profile.get("capability_constraint_layer"))
         skill_summary = _mapping(supplied_skill_affordance_summary)
         skill_summary.pop("registry", None)
+
+        if stable_ability_snapshot is not None:
+            snapshot = stable_ability_snapshot
+            if hasattr(snapshot, "model_dump"):
+                snapshot = snapshot.model_dump(mode="json")
+            snapshot_mapping = _mapping(snapshot)
+            for key in (
+                "digest",
+                "capability_revision",
+                "registry_revision",
+                "allowed_action_families",
+                "blocked_action_families",
+                "source_refs",
+                "diagnostics",
+            ):
+                if key in snapshot_mapping:
+                    skill_summary[f"stable_{key}"] = snapshot_mapping[key]
 
         profile_skill_ids = _string_list(capability_constraints.get("skills"))
         profile_limits = _string_list(capability_constraints.get("limits"))

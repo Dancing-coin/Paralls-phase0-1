@@ -134,11 +134,27 @@ def _agents_md_is_short_entry_map(project_root: Path) -> bool:
     )
 
 
+def _stage3_closure_current_markers(project_root: Path) -> tuple[bool, list[str]]:
+    closure = project_root / "docs" / "10月分析" / "回写" / "stage3-closure-20261016.md"
+    if not closure.is_file():
+        return False, ["stage3-closure-20261016.md"]
+    text = read_text(closure)
+    required = {
+        "top_status": "active stage3 acceptance ledger / stage3 incomplete",
+        "policy_correction": "当前授权与 Social validity 勘误（后续更正）",
+        "manifest_count": "participant_count=36",
+        "global_gate": "global_gate_status=incomplete",
+    }
+    missing = [name for name, marker in required.items() if marker not in text]
+    return not missing, missing
+
+
 def evaluate_docs(project_root: Path) -> dict[str, object]:
     missing_index_refs = _missing_index_refs(project_root)
     specs_without_plans = _specs_without_plans(project_root)
     undocumented_profiles = _undocumented_profiles(project_root)
     missing_registry_doc_refs = _missing_registry_doc_refs(project_root)
+    closure_ok, missing_closure_markers = _stage3_closure_current_markers(project_root)
 
     results = [
         _result(
@@ -174,6 +190,13 @@ def evaluate_docs(project_root: Path) -> dict[str, object]:
             "AGENTS.md points to docs and harness workflow entry points",
             _agents_md_is_short_entry_map(project_root),
             ["AGENTS.md", "docs/INDEX.md", "docs/harness.md"],
+        ),
+        _result(
+            "stage3_closure_current_markers",
+            "Stage-three closure keeps current status, policy correction, participant manifest, and global gate markers",
+            closure_ok,
+            ["docs/10月分析/回写/stage3-closure-20261016.md"],
+            "\n".join(missing_closure_markers),
         ),
     ]
     return {

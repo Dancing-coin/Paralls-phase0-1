@@ -1,0 +1,203 @@
+{
+  "schema_version": "independent_calibration_sources.v1",
+  "recorded_at_utc": "2026-10-13T13:55:49.732638+00:00",
+  "read_time_note": "Reads occurred in this subagent session before this ledger timestamp; exact per-read clock was not captured, so no invented per-read time is asserted.",
+  "entries": [
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\AGENTS.md",
+      "revision": "sha256:555285df00a6f7cc67be3a20dd44a1c8dee6c1ae6f994f61776ee715b8b46272",
+      "sha256": "555285df00a6f7cc67be3a20dd44a1c8dee6c1ae6f994f61776ee715b8b46272",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\docs\\10月分析\\审查\\AGENTS.md",
+      "revision": "sha256:bf5d467cba47507525f70e77925d298f23d0eaa9fad826293bd94efc5615a0cc",
+      "sha256": "bf5d467cba47507525f70e77925d298f23d0eaa9fad826293bd94efc5615a0cc",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\docs\\ai-engineering-workflow.md",
+      "revision": "sha256:f34a5a1f6c3241904659a062790747ea955e220ae9a2314295db6f3cfc162d34",
+      "sha256": "f34a5a1f6c3241904659a062790747ea955e220ae9a2314295db6f3cfc162d34",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\assets\\characters\\profiles\\char_a.yaml",
+      "revision": "sha256:8e8f3292519a7879f2f16eca2d64be7b90467010dc7641689a8e6b9821879463",
+      "sha256": "8e8f3292519a7879f2f16eca2d64be7b90467010dc7641689a8e6b9821879463",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full command output requested; aggregate output for first profiles/dossiers/design read was truncated"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\assets\\characters\\profiles\\char_b.yaml",
+      "revision": "sha256:98b4386dbcdb90d466c698426f14fc951e22cf244021ec5f1b7c6d7e488065bc",
+      "sha256": "98b4386dbcdb90d466c698426f14fc951e22cf244021ec5f1b7c6d7e488065bc",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full command output requested; aggregate output for first profiles/dossiers/design read was truncated"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\assets\\characters\\profiles\\char_c.yaml",
+      "revision": "sha256:e30497f952b6c2c3fa780271cbf4c8f07030bceb289ed5790d7e9166ae168ce7",
+      "sha256": "e30497f952b6c2c3fa780271cbf4c8f07030bceb289ed5790d7e9166ae168ce7",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full command output requested; aggregate output for first profiles/dossiers/design read was truncated"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\assets\\characters\\dossiers\\char_a.yaml",
+      "revision": "sha256:55e76f6ffcd698d4fe427181c115d90ae99abf9ce897df5a2de38ad9644a5db2",
+      "sha256": "55e76f6ffcd698d4fe427181c115d90ae99abf9ce897df5a2de38ad9644a5db2",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full command output requested; aggregate output for first profiles/dossiers/design read was truncated"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\assets\\characters\\dossiers\\char_b.yaml",
+      "revision": "sha256:8e96be37e92f562175a4c113e55fe7b6c6c31bf4add38414e287fa073b1739a2",
+      "sha256": "8e96be37e92f562175a4c113e55fe7b6c6c31bf4add38414e287fa073b1739a2",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full command output requested; aggregate output for first profiles/dossiers/design read was truncated"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\docs\\10月分析\\角色\\13-角色能力图谱、认知包络与动态算力设计.md",
+      "revision": "sha256:85da495a16e46ef1f1e5b750f555b1b7233f92eb18abbf5123902ba23fa44c54",
+      "sha256": "85da495a16e46ef1f1e5b750f555b1b7233f92eb18abbf5123902ba23fa44c54",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full command output requested; aggregate output for first profiles/dossiers/design read was truncated"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\backend\\app\\character_agent\\planning\\l3_planner.py",
+      "revision": "sha256:ed3013c95fc4653a9cd1c7169298304739ae1b7ed02c5f244edc25a4ecff0b43",
+      "sha256": "ed3013c95fc4653a9cd1c7169298304739ae1b7ed02c5f244edc25a4ecff0b43",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "selected sections for source contracts"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\backend\\app\\character_agent\\models\\mind_frame.py",
+      "revision": "sha256:eb7889e62eb52511b66f6f974ddfec7879105c199e352ac99961e3befa8f91ed",
+      "sha256": "eb7889e62eb52511b66f6f974ddfec7879105c199e352ac99961e3befa8f91ed",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "selected sections for source contracts"
+    },
+    {
+      "path": "C:/Users/User/.codex/plugins/cache/claude-plugins-official/superpowers/6.4.1/skills/using-superpowers/SKILL.md",
+      "revision": "sha256:82c5c8866ad7f5dd4440ce66bd7806ba48a2f13771beae5cf112e53f08fe36ba",
+      "sha256": "82c5c8866ad7f5dd4440ce66bd7806ba48a2f13771beae5cf112e53f08fe36ba",
+      "read_observed_before_utc": "2026-10-13T13:55:49.732638+00:00",
+      "read_extent": "full"
+    }
+  ],
+  "authored_fixture_events": [
+    {
+      "reference": "authored_fixture:preclosure_20261013_indicator_gap",
+      "revision": "preclosure-20261013:v1",
+      "source_kind": "authored_fixture",
+      "runtime_truth": false,
+      "authorship": "independent bounded input-authoring subagent during this session"
+    },
+    {
+      "reference": "authored_fixture:preclosure_20261013_reply_slips",
+      "revision": "preclosure-20261013:v1",
+      "source_kind": "authored_fixture",
+      "runtime_truth": false,
+      "authorship": "independent bounded input-authoring subagent during this session"
+    },
+    {
+      "reference": "authored_fixture:preclosure_20261013_timeline_check",
+      "revision": "preclosure-20261013:v1",
+      "source_kind": "authored_fixture",
+      "runtime_truth": false,
+      "authorship": "independent bounded input-authoring subagent during this session"
+    },
+    {
+      "reference": "authored_fixture:preclosure_20261013_muted_bell",
+      "revision": "preclosure-20261013:v1",
+      "source_kind": "authored_fixture",
+      "runtime_truth": false,
+      "authorship": "independent bounded input-authoring subagent during this session"
+    },
+    {
+      "reference": "authored_fixture:preclosure_20261013_message_channel",
+      "revision": "preclosure-20261013:v1",
+      "source_kind": "authored_fixture",
+      "runtime_truth": false,
+      "authorship": "independent bounded input-authoring subagent during this session"
+    },
+    {
+      "reference": "authored_fixture:preclosure_20261013_shared_reminder",
+      "revision": "preclosure-20261013:v1",
+      "source_kind": "authored_fixture",
+      "runtime_truth": false,
+      "authorship": "independent bounded input-authoring subagent during this session"
+    }
+  ],
+  "source_gaps": [
+    "No char_c dossier discovered in assets/characters/dossiers file listing.",
+    "char_d source not supplied/read; personality, cognition, compute, capability, relationship and permissions remain unknown.",
+    "General cognition/hard limits/compute defaults are not inferred from personality for any actor.",
+    "No runtime legality, owner permission, actual speech or execution receipt evidence.",
+    "Relationship seeds do not establish identity of anonymous fixture contacts."
+  ],
+  "contamination": {
+    "old_question_files_read": false,
+    "historical_provider_responses_read": false,
+    "calibration_final_holdout_labels_read": false,
+    "acceptable_action_sets_read": false,
+    "allowed_design_document_exposure": "Design 13 includes narrative mentions of older development/calibration history and diagnostic action aliases; no scenario files, labels, response artifacts or answers were accessed.",
+    "full_parent_conversation_inherited": false,
+    "parent_task_exposure": "Bounded task constraints and permitted source paths only; no labels supplied.",
+    "cannot_certify_global_nonoverlap": "No old questions were read for comparison; fresh event authorship and new trajectory IDs do not independently prove semantic nonoverlap."
+  },
+  "generated_artifact_reads": [
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\backend\\tests\\fixtures\\character_evaluation\\calibration_preclosure_20261013\\inputs.json",
+      "read_observed_before_utc": "2026-10-13T13:57:14.880567+00:00",
+      "sha256": "6c69b40e412d03765de7d333cb49a29dcaacd0748dd786407b3c7891df074deb",
+      "purpose": "bounded structural validation; newly generated artifacts only"
+    },
+    {
+      "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\backend\\tests\\fixtures\\character_evaluation\\calibration_preclosure_20261013\\metadata-manifest.json",
+      "read_observed_before_utc": "2026-10-13T13:57:14.880567+00:00",
+      "sha256": "b846a3d457e6834701efb0b57e7d0b5b130bab0da4f9f248889c52b886a8dadd",
+      "purpose": "bounded structural validation; newly generated artifacts only"
+    }
+  ],
+  "ledger_self_read": {
+    "path": "D:\\Users\\User\\Documents\\paralls-phase-0-demo\\backend\\tests\\fixtures\\character_evaluation\\calibration_preclosure_20261013\\sources.json",
+    "read_observed_before_utc": "2026-10-13T13:57:14.880567+00:00",
+    "purpose": "append provenance of validation; self digest omitted to avoid recursion"
+  },
+  "validation": {
+    "observed_at_utc": "2026-10-13T13:57:14.880567+00:00",
+    "records": 24,
+    "tracks": {
+      "autonomous_decision": 2,
+      "explicit_instruction_diagnostic": 2,
+      "role_sensitive_decision": 2
+    },
+    "candidate_compiler_method": "Execute actual CandidateCompilation/CandidateCompiler class AST nodes with standard-library globals only; no backend imports or provider call.",
+    "all_scenario_universe_sizes": [
+      3,
+      4
+    ],
+    "manifest_exact_fields": true,
+    "answers_or_acceptable_sets_created": false,
+    "runtime_verification": false,
+    "independent_approval": false
+  },
+  "v2_authoring": {
+    "at_utc": "2026-10-13T14:13:08.461108+00:00",
+    "revision": "authored_fixture:preclosure-20261013:v2",
+    "v1_inputs_file_sha256": "sha256:6c69b40e412d03765de7d333cb49a29dcaacd0748dd786407b3c7891df074deb",
+    "basis": "Aggregate source-discrimination deficiency only; no reviewer judgments, action sets or labels accessed.",
+    "changes": "Freshness and specificity of observed evidence, direct-current-source availability, and 30-second information goal/constraint are new authored_fixture events, not personality, permission or runtime facts.",
+    "preserved_v1_external": "D:/Users/User/Documents/paralls-evidence/october-calibration-preclosure-20261013/preparation",
+    "read_paths": [
+      "inputs.json",
+      "metadata-manifest.json",
+      "sources.json"
+    ],
+    "unknown_role_policy": "char_d remains unknown; scenario information choices do not assert a role-conditioned denominator."
+  }
+}

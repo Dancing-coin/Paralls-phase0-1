@@ -27,6 +27,7 @@ from .owner_adapters import (
 )
 from .inventory_owner_adapter import InventoryOutputCustodyOwnerExecutor
 from .social_owner_adapter import SocialPopulationSignalOwnerExecutor
+from .activation_presence import ActivationPresenceResult, PopulationActivationPresenceService
 
 __all__ = [
     "ProfileActivationAuthority",
@@ -67,6 +68,8 @@ __all__ = [
     "OrganizationProductionWorkContributionOwnerExecutor",
     "InventoryOutputCustodyOwnerExecutor",
     "SocialPopulationSignalOwnerExecutor",
+    "ActivationPresenceResult",
+    "PopulationActivationPresenceService",
 ]
 
 

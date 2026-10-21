@@ -1573,14 +1573,27 @@ class GovernmentAuthority:
         causation_id: str,
         correlation_id: str,
         submitted_at: str,
+        effective_from: int,
+        effective_to: int,
     ) -> AppendBatchResult:
         """Publish one project notice for the exact completed milling activity."""
-        if not activity_event_id or expected_activity_revision < 1 or expected_government_revision < 0:
+        if (not activity_event_id or expected_activity_revision < 1 or expected_government_revision < 0
+                or type(effective_from) is not int or type(effective_to) is not int
+                or effective_from < 0 or effective_to <= effective_from):
             return self._rejected_append(command_id, "public_milling_notice_reference_invalid")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
             prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
-            if prior is not None and prior.event_type == "gameplay.government.public_milling_notice_recorded" and prior.payload.get("source_activity_event_id") == activity_event_id and prior.causation_id == causation_id and prior.correlation_id == correlation_id:
+            if (
+                prior is not None
+                and prior.event_type == "gameplay.government.public_milling_notice_recorded"
+                and prior.command_id == command_id
+                and prior.payload.get("source_activity_event_id") == activity_event_id
+                and prior.payload.get("effective_from") == effective_from
+                and prior.payload.get("effective_to") == effective_to
+                and prior.causation_id == causation_id
+                and prior.correlation_id == correlation_id
+            ):
                 return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
             return self._rejected_append(command_id, "public_milling_notice_idempotency_key_reused")
         try:
@@ -1615,7 +1628,7 @@ class GovernmentAuthority:
         stream_id = f"gameplay:government:public-notice:{jurisdiction_ref}"
         if self._store.get_stream_head(stream_id) != expected_government_revision:
             return self._rejected_append(command_id, "public_milling_notice_revision_conflict")
-        canonical_key = f"government:public-milling-notice:{activity_event_id}:{expected_activity_revision}:{expected_government_revision}:v1"
+        canonical_key = f"government:public-milling-notice:{activity_event_id}:{expected_activity_revision}:{expected_government_revision}:{effective_from}:{effective_to}:v2"
         if idempotency_key != canonical_key:
             return self._rejected_append(command_id, "public_milling_notice_idempotency_key_invalid")
         if any(event.event_type == "gameplay.government.public_milling_notice_recorded" and event.payload.get("source_activity_event_id") == activity_event_id for event in self._store.read_stream(stream_id)):
@@ -1625,7 +1638,7 @@ class GovernmentAuthority:
         except GovernedAuthorityContractError as error:
             return self._rejected_append(command_id, str(error))
         notice_ref = f"notice:public-milling-session:{activity_event_id}"
-        command = GameplayCommandEnvelope(command_id=command_id, command_type="gameplay.government.record_public_milling_notice", command_version=1, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=project_ref, transaction_id=f"transaction:{command_id}", idempotency_key=idempotency_key, expected_revisions={stream_id: expected_government_revision}, read_set_revisions={activity.stream_id: expected_activity_revision, "gameplay:contracts": self._store.get_stream_head("gameplay:contracts")}, causation_id=causation_id, correlation_id=correlation_id, source_ref=activity_event_id, submitted_at=submitted_at, pinned_revisions={"activity": expected_activity_revision, "government": expected_government_revision, "contract_created": created.stream_revision, "contract_fulfilled": fulfilled.stream_revision, "acquisition": acquisition.stream_revision}, payload={"stream_ref": stream_id, "event_type": "gameplay.government.public_milling_notice_recorded", "visibility_policy": "project", "notice_ref": notice_ref, "notice_kind": "public_milling_session_completed", "status": "completed", "jurisdiction_ref": jurisdiction_ref, "organization_ref": "organization:district-milling-cooperative", "facility_ref": facility_ref, "project_ref": project_ref, "source_activity_event_id": activity_event_id, "source_activity_revision": expected_activity_revision, "source_contract_created_event_id": created.event_id, "source_contract_created_revision": created.stream_revision, "source_contract_fulfilled_event_id": fulfilled.event_id, "source_contract_fulfilled_revision": fulfilled.stream_revision, "policy_revision": "policy:government-public-milling-notice@1", "descriptor_ref": "descriptor:government-public-milling-notice@1", "descriptor_revision": "descriptor:government-public-milling-notice@1", "catalog_ref": "inf:government-public-milling-notice@1"})
+        command = GameplayCommandEnvelope(command_id=command_id, command_type="gameplay.government.record_public_milling_notice", command_version=2, principal_ref=self._PRINCIPAL, actor_ref=None, project_ref=project_ref, transaction_id=f"transaction:{command_id}", idempotency_key=idempotency_key, expected_revisions={stream_id: expected_government_revision}, read_set_revisions={activity.stream_id: expected_activity_revision, "gameplay:contracts": self._store.get_stream_head("gameplay:contracts")}, causation_id=causation_id, correlation_id=correlation_id, source_ref=activity_event_id, submitted_at=submitted_at, pinned_revisions={"activity": expected_activity_revision, "government": expected_government_revision, "contract_created": created.stream_revision, "contract_fulfilled": fulfilled.stream_revision, "acquisition": acquisition.stream_revision}, payload={"stream_ref": stream_id, "event_type": "gameplay.government.public_milling_notice_recorded", "visibility_policy": "project", "notice_ref": notice_ref, "notice_kind": "public_milling_session_completed", "status": "completed", "jurisdiction_ref": jurisdiction_ref, "organization_ref": "organization:district-milling-cooperative", "facility_ref": facility_ref, "project_ref": project_ref, "effective_from": effective_from, "effective_to": effective_to, "validity_policy_revision": "policy:government-public-milling-validity@1", "source_activity_event_id": activity_event_id, "source_activity_revision": expected_activity_revision, "source_contract_created_event_id": created.event_id, "source_contract_created_revision": created.stream_revision, "source_contract_fulfilled_event_id": fulfilled.event_id, "source_contract_fulfilled_revision": fulfilled.stream_revision, "policy_revision": "policy:government-public-milling-notice@1", "descriptor_ref": "descriptor:government-public-milling-notice@1", "descriptor_revision": "descriptor:government-public-milling-notice@1", "catalog_ref": "inf:government-public-milling-notice@1"})
         batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
         event = batch.events[0]
         batch = batch.model_copy(update={"outbox_entries": [GameplayOutboxEntry(outbox_id=f"outbox:{event.event_id}", transaction_id=batch.transaction_id, event_id=event.event_id, global_sequence=0, topic="world.government.public_milling_notice_projection", audience="project", payload_projection={"notice_ref": notice_ref, "notice_kind": "public_milling_session_completed", "jurisdiction_ref": jurisdiction_ref, "organization_ref": "organization:district-milling-cooperative", "facility_ref": facility_ref, "project_ref": project_ref, "status": "completed"})]}, deep=True)
@@ -3029,9 +3042,21 @@ class GovernmentAuthority:
     ):
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing.model_copy(
-                update={"idempotency_status": "duplicate_replayed"}, deep=True
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == len(event_specs)
+                and all(
+                    event.event_type == event_type
+                    and event.command_id == command_id
+                    and event.causation_id == causation_id
+                    and event.correlation_id == correlation_id
+                    and event.payload == payload
+                    for event, (event_type, payload) in zip(prior_events, event_specs)
+                )
             )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         batch = build_atomic_event_batch(
             command_id=command_id,
             principal_ref=self._PRINCIPAL,
@@ -4968,9 +4993,18 @@ class OrganizationAuthority:
         assigned = self.assign_role(role, existing_character_refs=existing_character_refs)
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing.model_copy(
-                update={"idempotency_status": "duplicate_replayed"}, deep=True
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.organization.role_assigned"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload == assigned.model_dump(mode="json")
             )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         stream_id = f"gameplay:organization:{assigned.organization_ref}"
         batch = build_atomic_event_batch(
             command_id=command_id,

@@ -24,6 +24,9 @@ from app.gameplay.patch_runtime import GameplayPatchRuntimeError, PackageDeclare
 from app.gameplay.settlement_plan import AppendDerivedSettlementRecipe, SettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObligation, SettlementReceipt
 from app.world_runtime.obligations import ObligationLifecycleRegistration
+from app.gameplay.economy_random_policy import EconomyRandomPolicy, validate_random_payload, validate_anchored_random_payload, random_payload_digest
+from app.gameplay.random_business_admission import RandomBusinessSource
+import secrets
 
 
 class EconomyRuntimeError(ValueError): pass
@@ -211,6 +214,7 @@ class EconomyProjection:
     dynamic_orders: Mapping[str, Mapping[str, object]] = MappingProxyType({})
     scheduled_transfer_policies: Mapping[str, ScheduledAccountTransferPolicyInstance] = MappingProxyType({})
     public_project_budget_consumptions: Mapping[str, PublicProjectBudgetConsumption] = MappingProxyType({})
+    random_results: Mapping[str, Mapping[str, object]] = MappingProxyType({})
 
 class EconomyProjector:
     def rebuild(self, events: Sequence[GameplayEvent]) -> EconomyProjection:
@@ -221,6 +225,8 @@ class EconomyProjector:
         dynamic_orders: dict[str, Mapping[str, object]] = {}
         scheduled_transfer_policies: dict[str, ScheduledAccountTransferPolicyInstance] = {}
         public_project_budget_consumptions: dict[str, PublicProjectBudgetConsumption] = {}
+        random_results: dict[str, Mapping[str, object]] = {}
+        random_anchors: dict[str, bytes] = {}
         revisions: dict[str, int] = {}
         for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
             if event.stream_id == "gameplay:economy":
@@ -297,6 +303,38 @@ class EconomyProjector:
                     facility_ref=_text(event.payload, "facility_ref"),
                 )
                 continue
+            if event.event_type == "gameplay.economy.random_result_committed@1":
+                if event.stream_id != "gameplay:economy" or event.schema_version != 1:
+                    raise EconomyRuntimeError("economy_random_result_invalid")
+                anchor_ref = event.payload.get("anchor_ref")
+                if anchor_ref is not None and anchor_ref in random_anchors:
+                    validate_anchored_random_payload(event.payload, anchor_seed=random_anchors[str(anchor_ref)])
+                elif anchor_ref is not None:
+                    raise EconomyRuntimeError("economy_random_anchor_missing")
+                elif "candidate_policy" in event.payload:
+                    validate_random_payload(event.payload)
+                else:
+                    raise EconomyRuntimeError("economy_random_result_invalid")
+                operation_ref = _text(event.payload, "operation_ref")
+                if operation_ref in random_results or event.visibility_policy != "authority_only":
+                    raise EconomyRuntimeError("economy_random_result_invalid")
+                random_results[operation_ref] = MappingProxyType(dict(event.payload))
+                continue
+            if event.event_type == "gameplay.economy.random_entropy_anchor_created@1":
+                if (event.stream_id != "gameplay:economy" or event.schema_version != 1
+                        or event.visibility_policy != "authority_only"):
+                    raise EconomyRuntimeError("economy_random_anchor_invalid")
+                try:
+                    seed = bytes.fromhex(str(event.payload["seed"]))
+                    if len(seed) != 32 or event.payload.get("seed_digest") != "sha256:" + sha256(seed).hexdigest():
+                        raise ValueError
+                    anchor_ref = _text(event.payload, "anchor_digest")
+                    if anchor_ref in random_anchors:
+                        raise ValueError
+                    random_anchors[anchor_ref] = seed
+                except (KeyError, TypeError, ValueError) as exc:
+                    raise EconomyRuntimeError("economy_random_anchor_invalid") from exc
+                continue
             if event.event_type not in {"gameplay.economy.account_opened", "gameplay.economy.account_debited", "gameplay.economy.account_credited"}: continue
             p = event.payload; account_id = _text(p, "account_id")
             if event.event_type == "gameplay.economy.account_opened":
@@ -322,6 +360,7 @@ class EconomyProjector:
             MappingProxyType(dict(sorted(dynamic_orders.items()))),
             MappingProxyType(dict(sorted(scheduled_transfer_policies.items()))),
             MappingProxyType(dict(sorted(public_project_budget_consumptions.items()))),
+            MappingProxyType(dict(sorted(random_results.items()))),
         )
 
 
@@ -356,6 +395,244 @@ class EconomyAuthorityService:
             else OwnershipAuthorityService(store=store)
         )
         self._contract_authority = contract_authority
+
+    def settle_random_business(
+        self, *, operation_ref: str, kind: str, target_ref: str,
+        world_ref: str, timeline_ref: str,
+        source: RandomBusinessSource, policy: EconomyRandomPolicy,
+        world_tick: int, idempotency_key: str, command_id: str,
+        causation_id: str = "economy-random-caller",
+        correlation_id: str = "economy-random",
+        effect_ref: str | None = None,
+        draw_index: int = 0,
+        window_ref: str | None = None,
+        read_stream_revisions: Mapping[str, int] | None = None,
+    ) -> AppendBatchResult:
+        """Commit an Economy-owned lottery, loot, or event-choice result."""
+        if not operation_ref or not target_ref or not idempotency_key or not command_id:
+            return self._rejected_append(command_id or "economy-random", "economy_random_request_invalid")
+        if type(world_tick) is not int or world_tick < 0:
+            return self._rejected_append(command_id, "economy_random_world_tick_invalid")
+        if type(draw_index) is not int or draw_index < 0:
+            return self._rejected_append(command_id, "economy_random_draw_index_invalid")
+        temporal_read_set = dict(read_stream_revisions or {})
+        if any(not isinstance(stream, str) or not stream or type(revision) is not int or revision < 0
+               for stream, revision in temporal_read_set.items()) or "gameplay:economy" in temporal_read_set:
+            return self._rejected_append(command_id, "economy_random_read_set_invalid")
+        effect_ref = effect_ref or operation_ref
+        window_ref = window_ref or source.demand_ref
+        if kind != source.kind or kind != policy.kind:
+            return self._rejected_append(command_id, "economy_random_kind_conflict")
+        if world_tick < source.valid_from_world_tick or (source.valid_until_world_tick is not None and world_tick > source.valid_until_world_tick):
+            return self._rejected_append(command_id, "economy_random_expired")
+        if self._PRINCIPAL not in source.read_principals:
+            return self._rejected_append(command_id, "economy_random_read_denied")
+        if source.fact_owner_ref != self._PRINCIPAL:
+            return self._rejected_append(command_id, "economy_random_owner_denied")
+        if source.candidate_registry_revision != policy.policy_revision:
+            return self._rejected_append(command_id, "economy_random_candidate_revision_conflict")
+        if source.candidate_registry_ref != policy.policy_ref:
+            return self._rejected_append(command_id, "economy_random_candidate_registry_conflict")
+        if target_ref not in source.actor_scope:
+            return self._rejected_append(command_id, "economy_random_scope_denied")
+        if world_ref not in source.world_scope or timeline_ref not in source.timeline_scope:
+            return self._rejected_append(command_id, "economy_random_scope_denied")
+        prior = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        anchor_scope = {
+            "world_ref": world_ref, "timeline_ref": timeline_ref,
+            "window_ref": window_ref, "seed_policy_revision": source.seed_policy_revision,
+        }
+        anchor_digest = "sha256:" + sha256(json.dumps(anchor_scope, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        request_digest = "sha256:" + sha256(json.dumps({
+            "operation_ref": operation_ref, "kind": kind, "target_ref": target_ref,
+            "world_ref": world_ref, "timeline_ref": timeline_ref,
+            "source_digest": source.source_digest, "demand_revision": source.demand_revision,
+            "candidate_registry_ref": source.candidate_registry_ref,
+            "candidate_registry_revision": source.candidate_registry_revision,
+            "candidate_registry_digest": policy.candidate_registry_digest,
+            "algorithm_revision": source.algorithm_revision,
+            "seed_policy_revision": source.seed_policy_revision,
+            "effect_ref": effect_ref, "draw_index": draw_index, "window_ref": window_ref,
+            "anchor_digest": anchor_digest,
+            "source": source.model_dump(mode="json"),
+            "causation_id": causation_id, "correlation_id": correlation_id,
+        }, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        if prior is not None:
+            if not prior.committed or len(prior.committed_event_ids) != 1:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            try:
+                event = self._store.get_event(prior.committed_event_ids[0])
+            except KeyError:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            if not self._random_transaction_valid(prior, event):
+                return self._rejected_append(command_id, "economy_random_receipt_invalid")
+            payload = event.payload
+            try:
+                validate_random_payload(payload)
+            except ValueError:
+                return self._rejected_append(command_id, "economy_random_receipt_invalid")
+            expected = {"operation_ref": operation_ref, "kind": kind, "target_ref": target_ref,
+                        "world_ref": world_ref, "timeline_ref": timeline_ref,
+                        "source_digest": source.source_digest,
+                        "request_digest": request_digest,
+                        "candidate_registry_digest": policy.candidate_registry_digest,
+                        "policy_revision": policy.policy_revision}
+            if any(payload.get(key) != value for key, value in expected.items()) or event.command_id != command_id:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        if operation_ref in self._projector.rebuild(self._store.read_events()).random_results:
+            return self._rejected_append(command_id, "economy_random_operation_reused")
+        anchor = next((event for event in self._store.read_events()
+                       if event.event_type == "gameplay.economy.random_entropy_anchor_created@1"
+                       and event.payload.get("anchor_digest") == anchor_digest), None)
+        if anchor is None:
+            anchor_command = f"random-anchor:{anchor_digest[7:23]}"
+            anchor_key = f"random-anchor:{anchor_digest}"
+            anchor_seed = secrets.token_bytes(32)
+            anchor_payload = {**anchor_scope, "anchor_digest": anchor_digest,
+                              "seed": anchor_seed.hex(), "seed_digest": "sha256:" + sha256(anchor_seed).hexdigest(),
+                              "visibility_policy": "authority_only"}
+            anchor_event = self._event(anchor_command, "gameplay.economy.random_entropy_anchor_created@1", 0, anchor_payload, causation_id, correlation_id)
+            anchor_revision = self._store.get_stream_head("gameplay:economy")
+            anchor_append = self._store.append_batch({
+                "transaction_id": f"tx:{anchor_command}", "command_id": anchor_command,
+                "expected_stream_revisions": {"gameplay:economy": anchor_revision},
+                "read_stream_revisions": {"gameplay:economy": anchor_revision, **temporal_read_set},
+                "pinned_revisions": {"gameplay:economy": anchor_revision, **temporal_read_set}, "events": [anchor_event],
+                "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": anchor_key,
+                                        "payload_digest": _digest([anchor_event])},
+                "outbox_entries": [], "result_digest": _digest([anchor_event]), "projection_refresh_hints": [],
+            })
+            if not anchor_append.committed:
+                anchor = next((event for event in self._store.read_events()
+                               if event.event_type == "gameplay.economy.random_entropy_anchor_created@1"
+                               and event.payload.get("anchor_digest") == anchor_digest), None)
+                if anchor is None:
+                    return self._rejected_append(command_id, "economy_random_anchor_conflict")
+            else:
+                anchor = self._store.get_event(anchor_append.committed_event_ids[0])
+        try:
+            anchor_seed = self._random_anchor_seed(anchor)
+        except (KeyError, ValueError):
+            return self._rejected_append(command_id, "economy_random_anchor_invalid")
+        context = {"timeline_ref": timeline_ref, "window_ref": window_ref, "operation_ref": operation_ref,
+                   "effect_ref": effect_ref, "target_ref": target_ref, "draw_index": draw_index,
+                   "source_digest": source.source_digest, "demand_revision": source.demand_revision,
+                   "world_ref": world_ref, "candidate_registry_digest": policy.candidate_registry_digest,
+                   "candidate_registry_ref": policy.policy_ref,
+                   "candidate_registry_revision": source.candidate_registry_revision,
+                   "algorithm_revision": source.algorithm_revision, "seed_policy_revision": source.seed_policy_revision}
+        seed = policy.derive_draw_seed(anchor_seed=anchor_seed, context=context)
+        candidate = policy.choose(seed=seed)
+        payload = {
+            "operation_ref": operation_ref, "kind": kind, "target_ref": target_ref,
+            "world_ref": world_ref, "timeline_ref": timeline_ref,
+            "effect_ref": effect_ref, "draw_index": draw_index, "window_ref": window_ref,
+            "context_digest": "sha256:" + sha256(json.dumps(context, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+            "context": context,
+            "anchor_ref": anchor.payload.get("anchor_digest"), "anchor_seed_digest": anchor.payload.get("seed_digest"),
+            "candidate_ref": candidate.candidate_ref, "result_ref": candidate.result_ref,
+            "seed": seed.hex(), "seed_digest": "sha256:" + sha256(seed).hexdigest(),
+            "source_digest": source.source_digest, "demand_revision": source.demand_revision,
+            "request_digest": request_digest,
+            "candidate_registry_ref": source.candidate_registry_ref,
+            "candidate_registry_revision": source.candidate_registry_revision,
+            "candidate_registry_digest": policy.candidate_registry_digest,
+            "policy_revision": policy.policy_revision,
+            "algorithm_revision": source.algorithm_revision, "seed_policy_revision": source.seed_policy_revision,
+            "world_tick": world_tick, "receipt_ref": f"receipt:{command_id}",
+            "visibility_policy": "authority_only",
+            "candidate_policy": policy.model_dump(mode="json"),
+        }
+        payload["result_digest"] = random_payload_digest(payload)
+        stream = "gameplay:economy"
+        revision = self._store.get_stream_head(stream)
+        event = self._event(command_id, "gameplay.economy.random_result_committed@1", 0, payload, causation_id, correlation_id)
+        digest = _digest([event])
+        return self._store.append_batch({
+            "transaction_id": f"tx:{command_id}", "command_id": command_id,
+            "expected_stream_revisions": {stream: revision},
+            "read_stream_revisions": {stream: revision, **temporal_read_set},
+            "pinned_revisions": {stream: revision, **temporal_read_set, "random_source": 1}, "events": [event],
+            "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest},
+            "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": [],
+        })
+
+    def random_business_receipt_for(self, *, result: AppendBatchResult | None, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("economy_random_receipt_scope_denied")
+        if result is None:
+            raise EconomyRuntimeError("economy_random_receipt_missing")
+        return SettlementReceipt.from_append_result(result=result, audit_refs=(f"economy_random_transaction:{result.transaction_id}",))
+
+    def lookup_random_business_receipt(self, *, idempotency_key: str, scope: str) -> SettlementReceipt:
+        if scope != "authority":
+            raise EconomyRuntimeError("economy_random_receipt_scope_denied")
+        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if result is None or not result.committed or len(result.committed_event_ids) != 1:
+            raise EconomyRuntimeError("economy_random_receipt_missing")
+        event = self._store.get_event(result.committed_event_ids[0])
+        if event.event_type != "gameplay.economy.random_result_committed@1" or not self._random_transaction_valid(result, event):
+            raise EconomyRuntimeError("economy_random_receipt_invalid")
+        try:
+            validate_random_payload(event.payload)
+        except ValueError as exc:
+            raise EconomyRuntimeError("economy_random_receipt_invalid") from exc
+        return self.random_business_receipt_for(result=result, scope=scope)
+
+    def _random_transaction_valid(self, result: AppendBatchResult, event: GameplayEvent) -> bool:
+        transaction = self._store.get_transaction(result.transaction_id)
+        valid = bool(
+            transaction is not None
+            and transaction.idempotency_record.principal_ref == self._PRINCIPAL
+            and transaction.transaction_id == result.transaction_id == event.transaction_id
+            and event.event_id in result.committed_event_ids
+            and event.event_type == "gameplay.economy.random_result_committed@1"
+            and event.stream_id == "gameplay:economy"
+            and event.visibility_policy == "authority_only"
+            and len(transaction.events) == 1
+            and transaction.events[0] == event
+            and tuple(result.committed_event_ids) == tuple(item.event_id for item in transaction.events)
+            and result.command_id == event.command_id == transaction.command_id
+            and self._store.transaction_owns_event(
+                transaction_id=result.transaction_id, event_id=event.event_id, principal_ref=self._PRINCIPAL
+            )
+        )
+        if not valid:
+            return False
+        anchor_ref = event.payload.get("anchor_ref")
+        if anchor_ref is None:
+            return True
+        anchor_event = next((item for item in self._store.read_events()
+                             if item.event_type == "gameplay.economy.random_entropy_anchor_created@1"
+                             and item.payload.get("anchor_digest") == anchor_ref), None)
+        if anchor_event is None:
+            return False
+        try:
+            anchor_seed = self._random_anchor_seed(anchor_event)
+            validate_anchored_random_payload(event.payload, anchor_seed=anchor_seed)
+        except (KeyError, TypeError, ValueError):
+            return False
+        return anchor_event.global_sequence < event.global_sequence
+
+    def _random_anchor_seed(self, event: GameplayEvent) -> bytes:
+        transaction = self._store.get_transaction(event.transaction_id)
+        scope = {key: event.payload[key] for key in (
+            "world_ref", "timeline_ref", "window_ref", "seed_policy_revision"
+        )}
+        digest = "sha256:" + sha256(json.dumps(scope, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        seed = bytes.fromhex(str(event.payload["seed"]))
+        if (len(seed) != 32 or event.payload.get("anchor_digest") != digest
+                or event.payload.get("seed_digest") != "sha256:" + sha256(seed).hexdigest()
+                or event.event_type != "gameplay.economy.random_entropy_anchor_created@1"
+                or event.stream_id != "gameplay:economy" or event.visibility_policy != "authority_only"
+                or transaction is None or len(transaction.events) != 1 or transaction.events[0] != event
+                or transaction.idempotency_record.principal_ref != self._PRINCIPAL
+                or not self._store.transaction_owns_event(
+                    transaction_id=event.transaction_id, event_id=event.event_id, principal_ref=self._PRINCIPAL
+                )):
+            raise EconomyRuntimeError("economy_random_anchor_invalid")
+        return seed
     def commit_obligation_batch(self, batch: AtomicEventBatch) -> AppendBatchResult:
         """Commit only an Economy-ledger scheduled-transfer plan."""
         if not batch.owner_fragments or any(
@@ -364,6 +641,26 @@ class EconomyAuthorityService:
             for fragment in batch.owner_fragments
         ):
             return self._rejected_append(batch.command_id, "economy_owner_commit_scope_denied")
+        expected_events = [
+            (stream_id, event_type, payload, visibility)
+            for fragment in batch.owner_fragments
+            for stream_id, event_specs in fragment.event_specs.items()
+            for index, (event_type, payload) in enumerate(event_specs)
+            for visibility in (
+                fragment.event_visibility_policies.get(stream_id, ("project",) * len(event_specs))[index],
+            )
+        ]
+        submitted_events = [
+            (event.stream_id, event.event_type, event.payload, event.visibility_policy)
+            for event in batch.events
+        ]
+        if (
+            len(expected_events) != len(submitted_events)
+            or expected_events != submitted_events
+            or {stream: revision for fragment in batch.owner_fragments for stream, revision in fragment.expected_revisions.items()}
+            != batch.expected_stream_revisions
+        ):
+            return self._rejected_append(batch.command_id, "economy_owner_commit_fragment_mismatch")
         return self._store.append_batch(batch)
 
     @staticmethod
@@ -1022,17 +1319,40 @@ class EconomyAuthorityService:
         causation_id: str,
         correlation_id: str,
         expected_revision: int,
+        due_calendar_ref: str | None = None,
+        calendar_source_revision: str | None = None,
+        calendar_source_digest: str | None = None,
+        calendar_timeline_id: str | None = None,
+        temporal_pins: Mapping[str, object] | None = None,
+        temporal_read_set_revisions: Mapping[str, int] | None = None,
+        cadence_id: str | None = None,
     ) -> TaxObligationResult:
+        if isinstance(due_tick, bool) or not isinstance(due_tick, int) or due_tick < 0:
+            return TaxObligationResult(False, None, self._rejected_append(command_id, "economy_tax_due_tick_invalid"))
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None and existing.committed:
-            prior = next(
-                (
-                    self._store.get_event(event_id)
-                    for event_id in existing.committed_event_ids
-                    if self._store.get_event(event_id).event_type == "gameplay.economy.tax_obligation_opened"
-                ),
-                None,
-            )
+            prior = None
+            if existing.committed_event_ids and len(set(existing.committed_event_ids)) == len(existing.committed_event_ids):
+                batch = self._store.get_transaction(existing.transaction_id)
+                if batch is not None and tuple(event.event_id for event in batch.events) == tuple(existing.committed_event_ids):
+                    try:
+                        replay_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+                    except KeyError:
+                        replay_events = ()
+                    if replay_events and all(
+                        event.transaction_id == existing.transaction_id
+                        and event.command_id == command_id
+                        and event.causation_id == causation_id
+                        and event.correlation_id == correlation_id
+                        and event.stream_id == "gameplay:economy"
+                        and event.visibility_policy == "authority_only"
+                        for event in replay_events
+                    ):
+                        prior = next(
+                            (event for event in replay_events
+                             if event.event_type == "gameplay.economy.tax_obligation_opened"),
+                            None,
+                        )
             if (
                 prior is not None
                 and prior.payload.get("source_tax_due_event_id") == tax_due_event_id
@@ -1044,8 +1364,6 @@ class EconomyAuthorityService:
                     existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
                 )
             return TaxObligationResult(False, None, self._rejected_append(command_id, "idempotency_key_reused"))
-        if isinstance(due_tick, bool) or not isinstance(due_tick, int) or due_tick < 0:
-            return TaxObligationResult(False, None, self._rejected_append(command_id, "economy_tax_due_tick_invalid"))
         try:
             source = self._store.get_event(tax_due_event_id)
         except KeyError:
@@ -1079,6 +1397,20 @@ class EconomyAuthorityService:
             "source_digest": _text(source.payload, "source_digest"),
             "evidence_refs": _text_tuple(source.payload, "evidence_refs"),
         }
+        if due_calendar_ref is not None:
+            if (due_calendar_ref != source.payload.get("due_calendar_ref")
+                    or not isinstance(calendar_source_revision, str)
+                    or not isinstance(calendar_timeline_id, str)
+                    or not isinstance(temporal_pins, Mapping)):
+                return TaxObligationResult(False, None, self._rejected_append(command_id, "economy_due_calendar_binding_invalid"))
+            payload.update({
+                "due_calendar_ref": due_calendar_ref,
+                    "calendar_source_revision": calendar_source_revision,
+                    "calendar_source_digest": calendar_source_digest,
+                    "calendar_timeline_id": calendar_timeline_id,
+                    "temporal_pins": dict(temporal_pins),
+                    "population_cadence_id": cadence_id,
+            })
         source_admission_fields = (
             _optional_text(source.payload, "jurisdiction_ref"),
             _optional_text(source.payload, "currency_ref"),
@@ -1148,6 +1480,7 @@ class EconomyAuthorityService:
             owner_principal_ref=self._PRINCIPAL,
             source_rule_ref="economy:tax-obligation:open",
             expected_revisions={"gameplay:economy": expected_revision},
+            read_set_revisions=dict(temporal_read_set_revisions or {"gameplay:economy": expected_revision}),
             pinned_revisions={"economy": expected_revision},
             event_specs={"gameplay:economy": event_specs},
             event_visibility_policies={"gameplay:economy": tuple("authority_only" for _ in event_specs)},
@@ -1300,7 +1633,7 @@ class EconomyAuthorityService:
             transaction_id=f"transaction:{command_id}",
             idempotency_key=idempotency_key,
             expected_revisions=dict(fragment.expected_revisions),
-            read_set_revisions=dict(fragment.expected_revisions),
+            read_set_revisions=dict(fragment.read_set_revisions or fragment.expected_revisions),
             causation_id=causation_id,
             correlation_id=correlation_id,
             source_ref=fragment.fragment_id,
@@ -1843,6 +2176,19 @@ class EconomyAuthorityService:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is None:
             return self._rejected_append(command_id, "idempotency_record_missing_result")
+        if not existing.committed or not existing.committed_event_ids or existing.command_id != command_id:
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        try:
+            events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+        except KeyError:
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        if any(
+            event.command_id != existing.command_id
+            or event.stream_id != "gameplay:economy"
+            or event.visibility_policy != "authority_only"
+            for event in events
+        ):
+            return self._rejected_append(command_id, "idempotency_key_reused")
         return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
 
     def _append_commerce_delivery_payment(
@@ -2194,7 +2540,22 @@ class EconomyAuthorityService:
         if record is None: return None
         if record.payload_digest != request_digest: return self._rejected_append(command_id, "idempotency_key_reused")
         result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True) if result is not None else self._rejected_append(command_id, "idempotency_record_missing_result")
+        if result is None:
+            return self._rejected_append(command_id, "idempotency_record_missing_result")
+        if not result.committed or not result.committed_event_ids or result.command_id != command_id:
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        try:
+            events = tuple(self._store.get_event(event_id) for event_id in result.committed_event_ids)
+        except KeyError:
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        if any(
+            event.command_id != result.command_id
+            or event.stream_id != "gameplay:economy"
+            or event.visibility_policy != "authority_only"
+            for event in events
+        ):
+            return self._rejected_append(command_id, "idempotency_key_reused")
+        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
 
     def _append_tax_payment(self, *, command_id: str, command_type: str, submitted_at: str, source_ref: str, idempotency_key: str, causation_id: str, correlation_id: str, fragment: OwnerAuthorizedFragment, request_digest: str) -> AppendBatchResult:
         stream = "gameplay:economy"; specs = fragment.event_specs[stream]
@@ -2272,6 +2633,19 @@ class EconomyAuthorityService:
         result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if result is None:
             return self._rejected_append(command_id, f"{error_prefix}_idempotency_record_missing_result")
+        if not result.committed or not result.committed_event_ids:
+            return self._rejected_append(command_id, f"{error_prefix}_idempotency_key_reused")
+        try:
+            events = tuple(self._store.get_event(event_id) for event_id in result.committed_event_ids)
+        except KeyError:
+            return self._rejected_append(command_id, f"{error_prefix}_idempotency_key_reused")
+        if any(
+            event.command_id != result.command_id
+            or event.stream_id != "gameplay:economy"
+            or event.visibility_policy != "authority_only"
+            for event in events
+        ):
+            return self._rejected_append(command_id, f"{error_prefix}_idempotency_key_reused")
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
 
     def _append_budget_event(
@@ -3954,7 +4328,9 @@ class EconomyAuthorityService:
             or credit is None
             or debit_account_id == credit_account_id
             or debit.currency_ref != credit.currency_ref
+            or type(amount) is not int
             or amount <= 0
+            or type(due_tick) is not int
             or due_tick < 0
             or debit.balance < amount
         ):
@@ -4189,14 +4565,15 @@ class EconomyAuthorityService:
         if existing is not None and existing.committed:
             if len(existing.committed_event_ids) == 1:
                 event = self._store.get_event(existing.committed_event_ids[0])
-                if event.event_type == "gameplay.economy.dynamic_quote_published" and event.payload == event_payload:
+                if (
+                    event.event_type == "gameplay.economy.dynamic_quote_published"
+                    and event.command_id == command_id
+                    and event.causation_id == causation_id
+                    and event.correlation_id == correlation_id
+                    and event.payload == event_payload
+                ):
                     return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
-            return AppendBatchResult(
-                committed=False,
-                transaction_id=f"transaction:{command_id}",
-                command_id=command_id,
-                idempotency_status="rejected",
-            )
+            return self._rejected_append(command_id, "idempotency_key_reused")
         previous = p.dynamic_quotes.get(quote_ref)
         if previous is not None and version <= _positive(previous, "version"):
             raise EconomyRuntimeError("economy_dynamic_quote_version_invalid")
@@ -4624,7 +5001,12 @@ class EconomyAuthorityService:
         if not existing.committed or len(existing.committed_event_ids) != 1:
             return self._rejected_append(command_id, "idempotency_key_reused")
         event = self._store.get_event(existing.committed_event_ids[0])
-        if event.event_type != event_type or event.visibility_policy != "authority_only" or event.payload != payload:
+        if (
+            event.event_type != event_type
+            or event.visibility_policy != "authority_only"
+            or event.command_id != command_id
+            or event.payload != payload
+        ):
             return self._rejected_append(command_id, "idempotency_key_reused")
         return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
     def _append_scheduled_transfer_policy_event(self, *, command_id: str, idempotency_key: str, causation_id: str, correlation_id: str, expected_revision: int, event_type: str, payload: dict[str, object], fragment_id: str, source_rule_ref: str, outbox_audience: str) -> AppendBatchResult:
@@ -4698,6 +5080,40 @@ class EconomyAuthorityService:
     def _append_account_settlement(self, *, command_id:str, command_type:str, idempotency_key:str, causation_id:str, correlation_id:str, current_revision:int, supplied_revision:int|None, source_ref:str, event_specs:tuple[tuple[str,dict[str,object]],...])->AppendBatchResult:
         stream="gameplay:economy"
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
+        if existing is not None:
+            batch = self._store.get_transaction(existing.transaction_id)
+            if (
+                not existing.committed
+                or not existing.committed_event_ids
+                or len(set(existing.committed_event_ids)) != len(existing.committed_event_ids)
+                or len(existing.committed_event_ids) != len(event_specs)
+                or batch is None
+                or tuple(event.event_id for event in batch.events) != tuple(existing.committed_event_ids)
+            ):
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            try:
+                prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            except KeyError:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            exact = (
+                existing.committed
+                and len(prior_events) == len(event_specs)
+                and existing.command_id == command_id
+                and all(
+                    event.event_type == event_type
+                    and event.command_id == command_id
+                    and event.transaction_id == existing.transaction_id
+                    and event.causation_id == causation_id
+                    and event.correlation_id == correlation_id
+                    and event.stream_id == stream
+                    and event.visibility_policy == "authority_only"
+                    and event.payload == payload
+                    for event, (event_type, payload) in zip(prior_events, event_specs)
+                )
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if supplied_revision is None and existing is not None and existing.committed:
             expected_revision = existing.resulting_stream_revisions.get(stream, 0) - len(event_specs)
         else:

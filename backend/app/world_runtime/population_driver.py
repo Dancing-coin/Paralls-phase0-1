@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 from fractions import Fraction
 from typing import Awaitable, Callable
@@ -13,7 +14,9 @@ from app.population_continuity.siming_contracts import PopulationCadenceInput
 from app.population_continuity.world import WorldContinuityRuntime
 
 from .simulation_clock import SimulationClock, calculate_window_bounds
-from .temporal_contracts import ClockMapping, SimulationTimeline, TemporalProfile
+from .temporal_contracts import (ClockMapping, ScheduledWork, SimulationTime, SimulationTimeline,
+                                  TemporalAuthorization, TemporalProfile)
+from .scheduling import select_temporal_work
 
 
 @dataclass(frozen=True)
@@ -37,11 +40,16 @@ class PopulationCadenceDriver:
         catch_up_limit: int,
         initial_tick: int = 0,
         wall_period_seconds: float | None = None,
+        mapping_revision: str = "population-seconds:v1",
     ) -> None:
         if window_size <= 0 or catch_up_limit < 0 or initial_tick < 0:
             raise ValueError("population_driver_invalid")
         if wall_period_seconds is not None and (not isfinite(wall_period_seconds) or wall_period_seconds <= 0):
             raise ValueError("population_driver_invalid")
+        if not mapping_revision:
+            raise ValueError("population_time_mapping_missing")
+        self.on_confirmed_time = None
+        self.migration_pending = False
         self.world_runtime = world_runtime
         self.publish_window = publish_window
         self.window_size = window_size
@@ -50,8 +58,11 @@ class PopulationCadenceDriver:
         world_ref = world_runtime.mode.world_ref
         confirmed = int(getattr(publish_window, "confirmed_tick",
                         max(initial_tick, getattr(world_runtime, "_population_driver_confirmed_tick", initial_tick))))
+        if hasattr(publish_window, "confirmed_tick") and initial_tick > confirmed:
+            raise ValueError("population_time_cursor_stale")
+        self._pinned_publisher = getattr(publish_window, "publish_pinned", None)
         self.mapping = ClockMapping(
-            mapping_id=f"population-seconds:{world_ref}", revision="population-seconds:v1",
+            mapping_id=f"population-seconds:{world_ref}", revision=mapping_revision,
             source_clock_ref=f"population-driver:{world_ref}", source_unit_ref="second",
             target_timeline_ref=f"population:{world_ref}", target_profile_revision="population-seconds:v1",
             source_origin=0, target_origin=0, ratio=Fraction(1), rounding_policy="exact",
@@ -81,13 +92,111 @@ class PopulationCadenceDriver:
             temporal_profile=profile,
             timeline=timeline,
         )
+        if self._pinned_publisher is not None and confirmed:
+            saved = getattr(publish_window, "confirmed_time_pins", None)
+            if callable(saved):
+                saved = saved()
+            if saved is None:
+                raise ValueError("population_time_mapping_missing")
+            if saved.get("window_ticks") != window_size or saved.get("canonical_unit_ref") != "second":
+                raise ValueError("population_time_migration_required")
+            if saved.get("step_duration") == "1/1":
+                if any(saved.get(key) != value for key, value in self._time_pins(confirmed).items()):
+                    raise ValueError("population_time_mapping_stale")
+            elif not self.world_runtime.store.read_stream(f"temporal-activation:{self.clock.timeline.timeline_id}"):
+                raise ValueError("population_time_migration_required")
+
+    def _time_pins(self, window_end: int) -> dict[str, str | int]:
+        pins: dict[str, str | int] = {
+            "timeline_id": self.clock.timeline.timeline_id,
+            "profile_revision": self.clock.temporal_profile.revision,
+            "mapping_id": self.mapping.mapping_id,
+            "mapping_revision": self.mapping.revision,
+            "source_clock_ref": self.mapping.source_clock_ref,
+            "source_unit_ref": self.mapping.source_unit_ref,
+            "source_revision": self.mapping.revision,
+            "sampled_at": window_end,
+            "received_at": window_end,
+            "freshness": 0,
+            "activation_revision": f"population-window:{self.window_size}:v1",
+            # Persist both boundaries.  Consumers must not reconstruct the
+            # opening boundary from an operational deadline or wall clock.
+            "window_start": window_end - self.window_size,
+            "window_ticks": self.window_size,
+            "canonical_unit_ref": self.clock.temporal_profile.canonical_unit_ref,
+            "step_duration": f"{self.clock.temporal_profile.step_duration.numerator}/{self.clock.temporal_profile.step_duration.denominator}",
+            # Population -> Inventory custody is the currently admitted
+            # settlement participant. These pins are issued with the durable
+            # cadence authority record and rechecked by the Inventory owner.
+            "settlement_participant_scope": "actor_gameplay.inventory_domain",
+            "input_cutoff": window_end,
+            "late_input_policy_ref": "reject_after_cutoff",
+            "confirmation_boundary": window_end,
+            "ordering_policy_ref": "source_revision_then_event_ref",
+            "temporal_authorization_ref": "authorization:population-inventory-output-custody@1",
+            "temporal_authorization_revision": "authorization:population-inventory-output-custody@1",
+            "temporal_authorization_issuer_ref": f"world_runtime.population_cadence:{self.world_runtime.mode.world_ref}",
+            "temporal_authorization_valid_until": window_end,
+        }
+        authorization = TemporalAuthorization(
+            authorization_ref=str(pins["temporal_authorization_ref"]),
+            revision=str(pins["temporal_authorization_revision"]),
+            issuer_ref=str(pins["temporal_authorization_issuer_ref"]),
+            timeline_id=str(pins["timeline_id"]),
+            participant_scope=(str(pins["settlement_participant_scope"]),),
+            input_cutoff=int(pins["input_cutoff"]),
+            confirmation_boundary=int(pins["confirmation_boundary"]),
+            late_input_policy_ref=str(pins["late_input_policy_ref"]),
+            ordering_policy_ref=str(pins["ordering_policy_ref"]),
+            valid_until=int(pins["temporal_authorization_valid_until"]),
+        )
+        pins["temporal_authorization_digest"] = authorization.digest
+        # Each admitted temporal consumer receives its own bounded grant. The
+        # cadence event remains the sole durable issuer and revocation source.
+        grants = {}
+        for key, participant in (
+            ("economy", "actor_gameplay.economy_domain"),
+            ("ecology", "actor_gameplay.ecology_domain"),
+            ("status", "actor_gameplay.status_domain"),
+            # Character background cognition is an admitted cadence consumer.
+            # Its grant authorizes wake admission only; it never authorizes
+            # cognition writeback or world-fact mutation.
+            ("character", "actor_gameplay.character_cognition"),
+            ("social", "authority:p5:social-delivery"),
+            # Resource recovery is a distinct admitted participant.  It uses
+            # the same Population cadence issuer, but never inherits custody
+            # or another domain's grant.
+            ("resource", "actor_gameplay.resource_domain"),
+        ):
+            grant = TemporalAuthorization(
+                authorization_ref=f"authorization:population-{key}-temporal@1",
+                revision="authorization:population-temporal@1",
+                issuer_ref=str(pins["temporal_authorization_issuer_ref"]),
+                timeline_id=str(pins["timeline_id"]),
+                participant_scope=(participant,),
+                input_cutoff=int(pins["input_cutoff"]),
+                confirmation_boundary=int(pins["confirmation_boundary"]),
+                late_input_policy_ref=str(pins["late_input_policy_ref"]),
+                ordering_policy_ref=str(pins["ordering_policy_ref"]),
+                valid_until=int(pins["temporal_authorization_valid_until"]),
+            )
+            grants[key] = {**grant.payload(), "digest": grant.digest}
+        pins["temporal_authorizations"] = json.dumps(grants, sort_keys=True, separators=(",", ":"))
+        return pins
 
     @property
     def current_tick(self) -> int:
-        return self.clock.tick
+        return int(self.clock.tick * self.clock.temporal_profile.step_duration)
+
+    def activate_migration(self, profile: TemporalProfile, mapping: ClockMapping, *, boundary: str) -> None:
+        self.clock.activate_temporal_profile(profile, advancement_owner_ref=self.clock.timeline.advancement_owner_ref,
+                                             boundary=boundary, migration_mapping=mapping)
+        self.mapping = mapping
 
     def tick(self, target_tick: int) -> PopulationDriverTickResult:
-        previous_tick = self.clock.tick
+        if self.migration_pending:
+            raise ValueError("temporal_migration_pending")
+        previous_tick = self.current_tick
         try:
             windows = calculate_window_bounds(previous_tick, target_tick, self.window_size)
         except ValueError as exc:
@@ -95,38 +204,49 @@ class PopulationCadenceDriver:
             return PopulationDriverTickResult(
                 rejected_windows=((cadence_id, str(exc)),)
             )
-        window_items = [
-            (f"cadence:{self.world_runtime.mode.world_ref}:{start}", start, end)
-            for start, end in windows
-        ]
+        window_items = [(f"cadence:{self.world_runtime.mode.world_ref}:{start}", start, end)
+                        for start, end in windows]
         if self.world_runtime.is_paused():
             return PopulationDriverTickResult(
                 deferred_windows=tuple(item[0] for item in window_items)
             )
         confirmed_tick = previous_tick
-        selected = window_items[: self.catch_up_limit]
-        deferred = tuple(item[0] for item in window_items[self.catch_up_limit :])
+        work = tuple(ScheduledWork(work_ref=item[0], domain_ref="population",
+                                    due_time=SimulationTime(self.clock.timeline.timeline_id, item[2], Fraction(item[2])),
+                                    trigger_ref=item[0], ordering_key=(f"{item[1]:020d}",),
+                                    expected_revision_vector=(), owner_contract_ref="world_runtime.cadence",
+                                    time_pins=tuple(sorted(self._time_pins(item[2]).items())))
+                     for item in window_items)
+        selected_work, deferred_work = select_temporal_work(
+            work, now=SimulationTime(self.clock.timeline.timeline_id, target_tick, Fraction(target_tick)),
+            budget=self.catch_up_limit)
+        by_ref = {item[0]: item for item in window_items}
+        selected = [by_ref[item.work_ref] for item in selected_work]
+        deferred = tuple(item.work_ref for item in deferred_work)
         published: list[str] = []
         rejected: list[tuple[str, str]] = []
         advanced_count = due_count = deferred_count = rejected_count = 0
         for index, (cadence_id, window_start, window_end) in enumerate(selected):
             try:
                 if (self.mapping.source_unit_ref != "second"
-                        or self.mapping.source_clock_ref != self.clock.timeline.advancement_owner_ref
-                        or self.mapping.ratio != Fraction(1)):
+                        or self.mapping.source_clock_ref != f"population-driver:{self.world_runtime.mode.world_ref}"
+                        or self.mapping.target_timeline_ref != self.clock.timeline.timeline_id
+                        or self.mapping.ratio != 1 / self.clock.temporal_profile.step_duration):
                     raise ValueError("population_time_unit_mismatch")
-                mapped = self.clock.map_source_time(
-                    mapping=self.mapping, source_clock_ref=self.clock.timeline.advancement_owner_ref,
-                    source_unit_ref="second", source_revision="population-seconds:v1",
-                    expected_source_revision="population-seconds:v1", mapping_revision="population-seconds:v1",
-                    sampled_at=window_end, received_at=window_end)
                 with self.world_runtime.store.group_commit():
                     cadence = self.world_runtime.build_population_cadence(
                         window_start=window_start,
                         window_end=window_end,
                         cadence_id=cadence_id,
                     )
-                event = self.publish_window(cadence)
+                pins = self._time_pins(window_end)
+                mapped = self.clock.map_source_time(
+                    mapping=self.mapping, source_clock_ref=pins["source_clock_ref"],
+                    source_unit_ref=pins["source_unit_ref"], source_revision=pins["source_revision"],
+                    expected_source_revision=self.mapping.revision, mapping_revision=pins["mapping_revision"],
+                    sampled_at=window_end, received_at=window_end)
+                event = (self._pinned_publisher(cadence, pins) if self._pinned_publisher is not None
+                         else self.publish_window(cadence))
             except Exception as exc:
                 rejected.append(
                     (cadence_id, f"publisher_exception:{type(exc).__name__}:{exc}")
@@ -141,7 +261,7 @@ class PopulationCadenceDriver:
                 break
             published.append(cadence_id)
             confirmed_tick = window_end
-            self.clock.advance_mapped(mapped, advancement_owner_ref=self.clock.timeline.advancement_owner_ref,
+            self.clock.advance_mapped(mapped, advancement_owner_ref=self.mapping.source_clock_ref,
                                       source_mapping=self.mapping)
             receipt = getattr(self.world_runtime, "last_population_confirmation", None)
             if receipt is not None and receipt.cadence_id == cadence_id:
@@ -150,6 +270,8 @@ class PopulationCadenceDriver:
                 deferred_count += receipt.deferred_count
                 rejected_count += receipt.rejected_count
         self.world_runtime._population_driver_confirmed_tick = confirmed_tick
+        if self.on_confirmed_time is not None:
+            self.on_confirmed_time(self)
         return PopulationDriverTickResult(
             published_cadence_ids=tuple(published),
             deferred_windows=deferred,
@@ -199,6 +321,9 @@ class PopulationCadenceDriver:
             target = (current if self.wall_period_seconds is not None else
                       advance_clock(current, self.window_size) if advance_clock else current + self.window_size)
             if not paused:
+                if target < cursor + self.window_size or not self.catch_up_limit:
+                    # Retry recoverable owner work at the already confirmed boundary.
+                    await command(lambda: self.tick(self.current_tick))
                 for _ in range(self.catch_up_limit):
                     if stop_event.is_set():
                         break

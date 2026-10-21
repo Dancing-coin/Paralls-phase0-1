@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field, JsonValue, field_serializer, 
 EpisodeFailureClass = Literal[
     "perception", "localization", "precondition", "unreachable", "contact",
     "wrong_target", "stale_scene", "timeout", "authority_rejected",
-    "observation_mismatch", "strategy",
+    "observation_mismatch", "feedback_missing", "actor_interrupted", "expired", "strategy",
 ]
 EmbodiedEpisodeOutcome = Literal["in_progress", "confirmed_success", "recovery_required"]
 

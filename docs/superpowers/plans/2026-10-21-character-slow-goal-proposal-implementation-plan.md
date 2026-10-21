@@ -113,3 +113,16 @@ provider dispatch, full Laya/domain closure, formal quality and Godot remain
 open.
 
 Same-actor fast-admission seam (2026-10-21): a new driver-level regression holds a slow goal proposal at `provider_pending`, verifies the proposal lease is released, and advances a same-actor fast cognition admission to its L2 provider boundary. The focused selection passed **71 tests**. This uses controlled coordinator/admission collaborators and proves the scheduling seam, not real delayed-provider coexistence, unchanged-pin acceptance, original goal receipt/recovery, downstream Laya, model quality or Godot. No provider call or formal evaluation was made.
+
+Recovery probe diagnosis (2026-10-21): the saved `goal_proposal` crash probe also
+leaves an earlier `percept:100` canonical turn with completed execution stage
+but no real authority receipt/settlement. Startup recovery correctly records
+`recovery_required`; that transition changes the proposal's captured actor pin,
+and the proposal is then rejected as stale without a resumed provider call or
+goal write. This confirms the stale guard, but the setup cannot establish
+whether a valid proposal can resume and receive its original goal-owner receipt.
+Do not weaken pin checks or synthesize a receipt. Rebuild the probe around a
+proposal source with no unrelated unsettled turn, or settle that turn through
+the real authority boundary before the crash. Probe artifacts are on D: and
+remain pending cleanup because the available cleanup command was rejected by
+execution policy; no cleanup fallback was attempted.

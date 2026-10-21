@@ -10,6 +10,8 @@ from app.character_agent.models.cognition_delta import (
     CharacterSocialDelta,
 )
 from app.character_agent.models.mind_frame import MindDeltaLedger
+from app.character_agent.models.mind_frame import CharacterMindFrame
+from app.character_agent.models.turn_context import CharacterTurnContext
 from app.models.character_agent_runtime import CharacterInterpretation
 
 
@@ -42,7 +44,21 @@ class MindWritebackPolicyRouter:
         actor_id: str,
         producer_ts: int,
         ledger: MindDeltaLedger,
+        frame: CharacterMindFrame | None = None,
+        turn_context: CharacterTurnContext | None = None,
     ) -> None:
+        if frame is not None or turn_context is not None:
+            if frame is None or turn_context is None:
+                raise ValueError("writeback frame and turn context are required together")
+            frame.validate_turn(turn_context)
+            if turn_context.lifecycle in {"rejected", "recovery_required", "abandoned", "failed"}:
+                raise ValueError("writeback frame lifecycle is not eligible")
+            if frame.mind_turn_id != ledger.mind_turn_id:
+                raise ValueError("writeback frame turn mismatch")
+        for candidate in ledger.memory_write_candidates:
+            if isinstance(candidate, dict) and candidate.get("event_type") == "outcome_fact":
+                if not str(candidate.get("owner_receipt", "") or ""):
+                    raise ValueError("outcome fact requires owner receipt")
         interpretation = self._interpretation_from_ledger(actor_id=actor_id, ledger=ledger)
         if (
             interpretation.belief_deltas

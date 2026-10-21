@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult
 from app.gameplay.life_state_runtime import CanonicalLifeStateAuthority
+
+if TYPE_CHECKING:
+    from app.gameplay.resource_materialization import CharacterResourceMaterializationCaller
 
 from .activation import ProfileActivationAuthority
 from .models import ActivationProposal, ActivationReceipt
@@ -20,6 +24,8 @@ class ActivationPresenceResult:
     recovery_required: bool = False
     life_state: AppendBatchResult | None = None
     life_state_stop_reason: str | None = None
+    resources: AppendBatchResult | None = None
+    resource_stop_reason: str | None = None
 
 
 class PopulationActivationPresenceService:
@@ -38,6 +44,7 @@ class PopulationActivationPresenceService:
         activation_authority: ProfileActivationAuthority,
         presence_authority: PopulationPresenceAuthority,
         producer_ref: str,
+        resource_materialization_caller: CharacterResourceMaterializationCaller | None = None,
     ) -> None:
         if activation_authority.store is not store or presence_authority.store is not store:
             raise ValueError("activation_presence_store_mismatch")
@@ -50,6 +57,9 @@ class PopulationActivationPresenceService:
         self.presence_authority = presence_authority
         self.producer_ref = producer_ref
         self.life_state_authority = CanonicalLifeStateAuthority(store=store)
+        if resource_materialization_caller is not None and resource_materialization_caller.authority.store is not store:
+            raise ValueError("activation_resource_store_mismatch")
+        self.resource_materialization_caller = resource_materialization_caller
 
     def commit_and_spawn(
         self,
@@ -57,6 +67,8 @@ class PopulationActivationPresenceService:
         *,
         presence_idempotency_key: str,
         presence_expected_revision: int,
+        resource_timeline_ref: str | None = None,
+        resource_world_tick: int | None = None,
     ) -> ActivationPresenceResult:
         # The authority's empty-grant mode is useful for legacy lifecycle locks,
         # but it cannot authorize a population candidate for entity creation.
@@ -131,6 +143,52 @@ class PopulationActivationPresenceService:
                     recovery_required=True, life_state=life_state,
                     life_state_stop_reason=life_state_stop_reason,
                 )
+        if presence.committed and self.resource_materialization_caller is not None:
+            try:
+                if (not resource_timeline_ref or type(resource_world_tick) is not int
+                        or resource_world_tick < 0):
+                    raise ValueError("activation_resource_temporal_source_missing")
+                pins = self._resource_source_pins(proposal, presence)
+                resource_key = f"resources:initial:{presence.committed_event_ids[0]}"
+                # A retry may occur after the Population clock advances. Reuse
+                # the durable resource receipt captured at the first attempt;
+                # do not reinterpret the retry as a new temporal admission.
+                prior = self.resource_materialization_caller.authority.store.get_by_idempotency(
+                    "resource-template-consumer", resource_key
+                )
+                if prior is not None:
+                    if not self._resource_receipt_matches(prior, proposal, presence, resource_timeline_ref):
+                        raise ValueError("resource_idempotency_key_reused")
+                    return ActivationPresenceResult(
+                        activation=activation, presence=presence,
+                        life_state=life_state, life_state_stop_reason=life_state_stop_reason,
+                        resources=prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                        recovery_required=not prior.committed,
+                        resource_stop_reason=(prior.failure.error_code if prior.failure else None),
+                    )
+                resources = self.resource_materialization_caller.materialize(
+                    actor_ref=proposal.profile_ref,
+                    world_ref=proposal.world_ref,
+                    timeline_ref=resource_timeline_ref,
+                    world_tick=resource_world_tick,
+                    idempotency_key=resource_key,
+                    expected_revision=self.store.get_stream_head(
+                        f"gameplay:resources:{proposal.profile_ref.removeprefix('character:')}"
+                    ),
+                    read_stream_revisions=pins,
+                )
+            except ValueError as exc:
+                return ActivationPresenceResult(
+                    activation=activation, presence=presence,
+                    life_state=life_state, life_state_stop_reason=life_state_stop_reason,
+                    recovery_required=True, resource_stop_reason=str(exc),
+                )
+            return ActivationPresenceResult(
+                activation=activation, presence=presence, life_state=life_state,
+                life_state_stop_reason=life_state_stop_reason, resources=resources,
+                recovery_required=not resources.committed,
+                resource_stop_reason=(resources.failure.error_code if resources.failure else None),
+            )
         return ActivationPresenceResult(
             activation=activation,
             presence=presence,
@@ -180,5 +238,65 @@ class PopulationActivationPresenceService:
             correlation_id=activation_event.correlation_id,
         )
         return result
+
+    def _resource_source_pins(self, proposal: ActivationProposal, presence: PresenceReceipt) -> dict[str, int]:
+        """Revalidate domain facts before first resource write, atomically pinned at append."""
+        activation_stream = f"population:{proposal.world_ref}"
+        presence_stream = self.presence_authority.stream_id(proposal.world_ref)
+        life_stream = f"gameplay:character:life:{proposal.profile_ref}"
+        pins = {stream: self.store.get_stream_head(stream)
+                for stream in (activation_stream, presence_stream, life_stream)}
+        activations = [event for event in self.store.read_stream(activation_stream)
+                       if event.payload.get("profile_ref") == proposal.profile_ref
+                       and event.event_type.startswith("population.activation.")]
+        presences = [event for event in self.store.read_stream(presence_stream)
+                     if event.payload.get("character_ref") == proposal.profile_ref]
+        if (not activations or activations[-1].event_type != "population.activation.committed"
+                or activations[-1].event_id != presence.source_activation_event_id):
+            raise ValueError("activation_resource_source_inactive")
+        if (not presences or len(presence.committed_event_ids) != 1
+                or presences[-1].event_type != "population.presence.spawned"
+                or presences[-1].event_id != presence.committed_event_ids[0]):
+            raise ValueError("activation_resource_presence_inactive")
+        if any(event.payload.get("to_state") == "dead" for event in self.store.read_stream(life_stream)):
+            raise ValueError("character_confirmed_dead")
+        if any(self.store.get_stream_head(stream) != revision for stream, revision in pins.items()):
+            raise ValueError("revision_conflict")
+        return pins
+
+    def _resource_receipt_matches(self, receipt, proposal: ActivationProposal,
+                                  presence: PresenceReceipt, timeline_ref: str) -> bool:
+        if not receipt.committed or receipt.failure is not None or len(receipt.committed_event_ids) != 3:
+            return False
+        tx = self.store.get_transaction(receipt.transaction_id)
+        if (tx is None or tx.idempotency_record.principal_ref != "resource-template-consumer"
+                or tx.idempotency_record.idempotency_key != f"resources:initial:{presence.committed_event_ids[0]}"):
+            return False
+        # Reuse the owner's transaction/event/revision/sequence verification.
+        # Preserve the original temporal admission rather than freezing the retry tick.
+        expected = tx.model_copy(update={"events": [
+            event.model_copy(update={"stream_revision": 0, "global_sequence": 0})
+            for event in tx.events
+        ]}, deep=True)
+        if not self.resource_materialization_caller.authority._receipt_is_complete(receipt, expected):
+            return False
+        try:
+            events = [self.store.get_event(event_id) for event_id in receipt.committed_event_ids]
+        except KeyError:
+            return False
+        actor = proposal.profile_ref.removeprefix("character:")
+        return {event.payload.get("resource_id") for event in events} == {
+            "core.stamina", "core.mana", "core.action_points",
+        } and all(
+            event.event_type == "gameplay.resource.materialized"
+            and event.schema_version == 1
+            and event.visibility_policy == "authority_only"
+            and event.stream_id == f"gameplay:resources:{actor}"
+            and event.payload.get("actor_ref") == actor
+            and event.payload.get("world_ref") == proposal.world_ref
+            and event.payload.get("timeline_ref") == timeline_ref
+            for event in events
+        )
+
 
 __all__ = ["ActivationPresenceResult", "PopulationActivationPresenceService"]

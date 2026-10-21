@@ -412,3 +412,31 @@ def test_survival_state_public_projection_redacts_effect_and_obligation_details(
     assert public == {"character:ava": ({"state_ref": "state:cold", "stacks": 1},)}
     assert authority_only["character:ava"][0]["effect_ref"] == "effect:cold_exposure"
     assert authority_only["character:ava"][0]["expiry_obligation_id"] == "obligation:survival:state:character:ava:state:cold"
+
+
+def test_survival_owner_rejects_batch_events_diverging_from_fragment() -> None:
+    store = GameplayEventStore(); authority = SurvivalAuthority(store=store)
+    authority.apply_effect_state(command=_command(), application=_application(), resistance=_resistance(), definition=_state())
+    obligation = SurvivalStateExpiryPolicy().build_obligation(actor_ref="character:ava", state_ref="state:cold", due_tick=8, expected_revision=2, status="due")
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(ObligationLifecycleRegistration(policy_ref="policy:survival_state_expiry", policy_revision="1", owner_ref=SurvivalAuthority._PRINCIPAL, stream_pattern="gameplay:survival:{actor_ref}", opened_event_type="gameplay.survival.obligation_opened", settled_event_type="gameplay.survival.obligation_settled", cancelled_event_type="gameplay.survival.obligation_cancelled", visibility_scope="project"),))
+    fragment = authority.build_state_expiry_fragment(obligation=obligation, actor_ref="character:ava", state_ref="state:cold", expected_revision=2)
+    plan = coordinator.plan_settle(obligation=obligation, fragments=(fragment,), principal_ref="world_runtime.caller")
+    assert plan.ready and plan.owner_commit_batch is not None
+    forged = plan.owner_commit_batch.model_copy(update={"events": [plan.owner_commit_batch.events[0].model_copy(update={"payload": {"tampered": True}}), *plan.owner_commit_batch.events[1:]]}, deep=True)
+    result = authority.commit_obligation_batch(forged)
+    assert not result.committed and result.failure and result.failure.error_code == "survival_owner_commit_fragment_mismatch"
+    assert len(store.read_events()) == 2
+
+
+def test_survival_owner_rejects_batch_event_order_change() -> None:
+    store = GameplayEventStore(); authority = SurvivalAuthority(store=store)
+    authority.apply_effect_state(command=_command(), application=_application(), resistance=_resistance(), definition=_state())
+    obligation = SurvivalStateExpiryPolicy().build_obligation(actor_ref="character:ava", state_ref="state:cold", due_tick=8, expected_revision=2, status="due")
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(ObligationLifecycleRegistration(policy_ref="policy:survival_state_expiry", policy_revision="1", owner_ref=SurvivalAuthority._PRINCIPAL, stream_pattern="gameplay:survival:{actor_ref}", opened_event_type="gameplay.survival.obligation_opened", settled_event_type="gameplay.survival.obligation_settled", cancelled_event_type="gameplay.survival.obligation_cancelled", visibility_scope="project"),))
+    fragment = authority.build_state_expiry_fragment(obligation=obligation, actor_ref="character:ava", state_ref="state:cold", expected_revision=2)
+    plan = coordinator.plan_settle(obligation=obligation, fragments=(fragment,), principal_ref="world_runtime.caller")
+    assert plan.ready and plan.owner_commit_batch is not None
+    reversed_batch = plan.owner_commit_batch.model_copy(update={"events": list(reversed(plan.owner_commit_batch.events))}, deep=True)
+    result = authority.commit_obligation_batch(reversed_batch)
+    assert not result.committed and result.failure and result.failure.error_code == "survival_owner_commit_fragment_mismatch"
+    assert len(store.read_events()) == 2

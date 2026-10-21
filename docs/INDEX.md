@@ -14,6 +14,8 @@
 - `PHASE0_README.md`：工作区简要说明和验证入口。
 - `docs/character/character-mind-core-status.md`：用中文定义“完整 character mind core”在当前仓库中的含义，并区分 authored profile truth、runtime state 与 long-term drift。
 - `docs/harness.md`：可重复验证的 Harness Engineering 命令面。
+- `docs/10月分析/回写/stage3-closure-20261016.md`：阶段三 Task1–Task6 统一需求—来源—实现—证据矩阵、产品决策包、当前/计划/延期边界及外部证据索引；状态仍以文件顶部 `stage3 incomplete` 为准。
+- `docs/10月分析/回写/october-stages-1-3-acceptance-20261020.md`：当前扩大目标的统一验收矩阵；阶段一至三、完整 Laya/角色/owner 闭环与正式质量验收，Godot A/B/C 最后集中执行，整体未完成。
 - `docs/架构/运行时/运行时命名边界审计.md`：运行时命名边界审计和迁移表。
 - `docs/架构/整体架构.md`：仓库级整体架构总纲，内含手绘式 Markdown 架构图，覆盖 Godot、后端、世界运行时、Gameplay Foundation、System L6 事件总线、角色智能体、ESM、Siming、模型服务、Harness 和非运行时支撑面。
 - `docs/架构/感知输入对齐层.md`：双感知链并存时的统一时空 envelope 设计，定义 fact 链和 provider/PQF 链如何在输入阶段对齐。
@@ -37,6 +39,7 @@
 - `docs/8月分析/README.md`：基于当前实现、正式 spec/plan 与 Harness 证据的增量设计指导；其中第二阶段推进目录定义已有角色的多智能体协作边界。
 - `docs/9月分析/README.md`：初代产品初稿入口，记录小镇、个人区域、锚点朋友、朋友圈桌游和剧本角色增量方向；该目录是提议性分析材料，不授权实现。
 - `docs/10月分析/README.md`：模型驱动的角色心智、Laya 快慢循环、协同作战、语音表达和玩法思考模式分析；该目录是提议性架构材料，不授权实现。
+- `docs/10月中旬分析/README.md`：全体角色社会生命、MiroFish 式派生社会图谱、B0-B3 混合群体模拟、Laya 快循环和局部活化的中旬整合方案；规格、计划、审查和回写分目录维护，仍不授权实现。
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/art-asset-production-repository.md`：独立 `paralls-art-assets` 美术生产仓库的职责、交接流程、旧资源参考和资格门禁。
@@ -48,6 +51,8 @@
 - `docs/knowledge-graph-future-optimization.md`：当前运行时可用领域知识图谱的通用化、规模化、运维和治理后期优化项。
 
 ## 活跃设计与计划
+
+- [模拟预测底座 fork 设计入口](fork项目/模拟预测底座/README.md)：独立于游戏主线的设计分析；[数据结构、金融数据类别与时间口径合同](fork项目/模拟预测底座/03-数据结构、金融数据类别与时间口径合同设计.md)细化金融数据与三部分底座，新增能力尚未实现。
 
 - [千人六项闭环最终执行补充](superpowers/plans/2026-09-20-population-final-closure-implementation-plan.md)：激活回执提交证据与显式审计分离、同版正式验收和外机交接；整体仍在进行中，Godot 未验证。
 - [角色、群体与社会因果运行时整合规格](superpowers/specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)：整合连续性、社会模型、具身因果与阵营边界；模型首期为日供给分片可行性计算，八类为计算维度；两份计划共用一套合同。

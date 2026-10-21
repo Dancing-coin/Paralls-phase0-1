@@ -272,6 +272,20 @@ class SurvivalAuthority:
             for fragment in batch.owner_fragments
         ):
             return self._rejected_append(batch.command_id, "survival_owner_commit_scope_denied")
+        expected_events = [
+            (stream_id, event_type, payload, visibility)
+            for fragment in batch.owner_fragments
+            for stream_id, event_specs in fragment.event_specs.items()
+            for index, (event_type, payload) in enumerate(event_specs)
+            for visibility in (fragment.event_visibility_policies.get(stream_id, ("project",) * len(event_specs))[index],)
+        ]
+        submitted_events = [(event.stream_id, event.event_type, event.payload, event.visibility_policy) for event in batch.events]
+        if (
+            len(expected_events) != len(submitted_events)
+            or expected_events != submitted_events
+            or {stream: revision for fragment in batch.owner_fragments for stream, revision in fragment.expected_revisions.items()} != batch.expected_stream_revisions
+        ):
+            return self._rejected_append(batch.command_id, "survival_owner_commit_fragment_mismatch")
         try:
             GovernedAuthorityContractCatalog.require_operation(
                 contract_ref="inf:survival-state-expiry@1",
@@ -1640,7 +1654,22 @@ class SurvivalAuthority:
             raise ValueError("survival_mode_no_authority_tick")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.survival.need_tick"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload.get("actor_ref") == actor_ref
+                and prior_events[0].payload.get("need_ref") == state.need_ref
+                and prior_events[0].payload.get("last_tick") == tick
+                and prior_events[0].payload.get("policy_ref") == policy.policy_ref
+                and prior_events[0].payload.get("policy_revision") == policy.revision
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         next_state, plan = self.tick(policy=policy, definition=definition, state=state, tick=tick)
         stream_id = f"gameplay:survival:{actor_ref}"
         plan_payload = None
@@ -1691,7 +1720,22 @@ class SurvivalAuthority:
             raise ValueError("reservation_required")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.survival.consumption_accepted"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload.get("actor_ref") == actor_ref
+                and prior_events[0].payload.get("need_ref") == plan.need_ref
+                and prior_events[0].payload.get("item_ref") == plan.item_ref
+                and prior_events[0].payload.get("quantity") == plan.quantity
+                and tuple(prior_events[0].payload.get("accepted_reservation_refs", ())) == tuple(accepted_reservation_refs)
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         stream_id = f"gameplay:survival:{actor_ref}"
         batch = build_atomic_event_batch(
             command_id=command_id,

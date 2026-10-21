@@ -61,6 +61,13 @@ def test_hazard_duplicate_replays_and_chain_budget_rejection_is_zero_write() -> 
     duplicate = authority.settle_frost(hazard=_hazard(), crop=crop, resistance=ResistanceProfile(effect_ref="effect:frost", source_ref="crop:wheat:1", modifier_basis_points=0, revision=1))
     assert first.committed and duplicate.idempotency_status == "duplicate_replayed"
     assert len(store.read_events()) == 1
+    changed = authority.settle_frost(
+        hazard=_hazard().model_copy(update={"hazard_ref": "hazard:frost:changed"}),
+        crop=crop,
+        resistance=ResistanceProfile(effect_ref="effect:frost", source_ref="crop:wheat:1", modifier_basis_points=0, revision=1),
+    )
+    assert not changed.committed and changed.error_code == "idempotency_key_reused"
+    assert len(store.read_events()) == 1
     rejected = authority.settle_frost(hazard=_hazard().model_copy(update={"hazard_ref": "hazard:budget", "idempotency_key": "hazard:budget", "chain_depth": 1}), crop=crop.model_copy(update={"revision": 1}), resistance=ResistanceProfile(effect_ref="effect:frost", source_ref="crop:wheat:1", modifier_basis_points=0, revision=1))
     assert rejected.error_code == "hazard_chain_budget_exhausted"
     assert len(store.read_events()) == 1

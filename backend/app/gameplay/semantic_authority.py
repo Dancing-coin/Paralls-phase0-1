@@ -265,6 +265,18 @@ class SemanticSettlementAuthority:
     def settle(self, command: SemanticEffectCommand, *, lifecycle_payload: dict[str, object] | None = None) -> AppendBatchResult:
         existing = self.store.get_by_idempotency(command.principal_ref, command.idempotency_key)
         if existing is not None and existing.committed:
+            prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.command_id == command.command_id
+                and event.causation_id == command.command_id
+                and event.correlation_id == f"semantic:{command.target_ref}"
+                and event.payload.get("entity_ref") == command.target_ref
+                and event.payload.get("effect_ref") == command.effect_ref
+                and event.payload.get("semantic_snapshot_digest") == command.semantic_snapshot.digest
+                for event in prior_events
+            )
+            if not exact:
+                return self._failure(command, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"})
         try:
             if command.semantic_snapshot.digest != command.expected_snapshot_digest:
@@ -1094,6 +1106,19 @@ class SemanticSettlementAuthority:
         """Map one closed semantic proposal through the production owner's fragment."""
         existing = self.store.get_by_idempotency(command.principal_ref, command.idempotency_key)
         if existing is not None and existing.committed:
+            prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.command_id == command.command_id
+                and event.causation_id == command.causal_chain_id
+                and event.correlation_id == f"semantic-production:{command.run.run_ref}"
+                and event.payload.get("run_ref") == command.run.run_ref
+                and event.payload.get("facility_ref") == command.run.facility_ref
+                and event.payload.get("effect_ref") == command.effect_ref
+                and event.payload.get("trace_digest") == command.trace_digest
+                for event in prior_events
+            )
+            if not exact:
+                return self._production_failure(command, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"})
         stream_id = f"gameplay:construction_production:{command.run.facility_ref}"
         try:

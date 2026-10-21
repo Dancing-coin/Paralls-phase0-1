@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-task5-private-affect",
+  "order": 171,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_task5_private_affect.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 600,
+  "result_artifact": ".harness/verification/infra-task5-private-affect-report.json",
+  "description": "Actor-private Fear/Morale estimate admission boundary",
+  "success_key": "overall_passed"
+}

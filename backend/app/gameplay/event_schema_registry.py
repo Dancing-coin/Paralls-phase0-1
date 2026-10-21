@@ -42,6 +42,19 @@ INF4AO_P5_ACTOR_PRIVATE_EVENT_SCHEMAS = (
     ),
 )
 
+SOCIAL_DELIVERY_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.social.delivery_recorded@1",
+        1,
+        "sha256:social:delivery-recorded:v1",
+    ),
+    EventSchemaRegistration(
+        "gameplay.social.delivery_expired@1",
+        1,
+        "sha256:social:delivery-expired:v1",
+    ),
+)
+
 
 INF3_GRAIN_HARVEST_EVENT_SCHEMAS = (
     EventSchemaRegistration(
@@ -163,6 +176,21 @@ CONSTRUCTION_MAINTENANCE_EVENT_SCHEMAS = (
     EventSchemaRegistration("gameplay.construction_production.maintenance_state_expired", 1, "sha256:construction:maintenance-state-expired:v1"),
     EventSchemaRegistration("gameplay.construction_production.maintenance_state_dispelled", 1, "sha256:construction:maintenance-state-dispelled:v1"),
     EventSchemaRegistration("gameplay.construction_production.maintenance_state_obligation_cancelled", 1, "sha256:construction:maintenance-state-obligation-cancelled:v1"),
+)
+
+POPULATION_PRESENCE_EVENT_SCHEMAS = (
+    EventSchemaRegistration(
+        "gameplay.character.life_state_changed", 2,
+        "sha256:character-life-state-presence-admission-v2",
+    ),
+    EventSchemaRegistration(
+        "population.presence.spawned", 1,
+        "sha256:population:presence-spawned:v1",
+    ),
+    EventSchemaRegistration(
+        "population.presence.despawned", 1,
+        "sha256:population:presence-despawned:v1",
+    ),
 )
 
 
@@ -371,8 +399,12 @@ def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegi
 
 
 def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
+    from app.services.economy_random_command_service import ECONOMY_RANDOM_COMMAND_SCHEMAS
     registry = EventSchemaRegistry()
+    for registration in ECONOMY_RANDOM_COMMAND_SCHEMAS:
+        registry.register(registration)
     register_stormnight_scripted_mystery_event_schemas(registry)
+    register_population_presence_event_schemas(registry)
     for event_type, digest in (
         ("gameplay.social.knowledge_observed", "sha256:stormnight-social-knowledge-v1"),
         ("gameplay.quest.evidence_registered", "sha256:stormnight-quest-evidence-v1"),
@@ -384,6 +416,9 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
         ("gameplay.conflict.action_window_resolved", "sha256:stormnight-conflict-window-v1"),
         ("gameplay.conflict.control_changed", "sha256:stormnight-conflict-control-v1"),
         ("gameplay.conflict.terminal_outcome_recorded", "sha256:stormnight-conflict-terminal-v1"),
+        ("gameplay.conflict.world_death_commit_confirmed", "sha256:stormnight-conflict-world-death-confirmed-v1"),
+        ("gameplay.conflict.world_death_commit_rejected", "sha256:stormnight-conflict-world-death-rejected-v1"),
+        ("gameplay.character.life_state_changed", "sha256:character-life-state-case-death-v1"),
         ("gameplay.conflict.encounter_closed", "sha256:stormnight-conflict-closed-v1"),
     ):
         try:
@@ -392,6 +427,16 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
             if registry.get(event_type, 1).schema_digest != digest:
                 raise
     return registry
+
+
+def register_population_presence_event_schemas(registry: EventSchemaRegistry) -> None:
+    for registration in POPULATION_PRESENCE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
 
 
 def register_phase2a_work_intent_event_schemas(registry: EventSchemaRegistry) -> None:
@@ -420,6 +465,16 @@ def register_inf4ao_p5_actor_private_event_schemas(registry: EventSchemaRegistry
     """Install the exact INF-4AO social acknowledgment schema."""
 
     for registration in INF4AO_P5_ACTOR_PRIVATE_EVENT_SCHEMAS:
+        try:
+            registry.register(registration)
+        except EventSchemaRegistryError as exc:
+            existing = registry.get(registration.event_type, registration.schema_version)
+            if existing != registration:
+                raise exc
+
+
+def register_social_delivery_event_schemas(registry: EventSchemaRegistry) -> None:
+    for registration in SOCIAL_DELIVERY_EVENT_SCHEMAS:
         try:
             registry.register(registration)
         except EventSchemaRegistryError as exc:

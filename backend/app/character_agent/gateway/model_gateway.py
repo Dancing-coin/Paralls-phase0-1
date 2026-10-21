@@ -48,6 +48,16 @@ class CharacterModelGateway:
             request["prompt"] = self._prompt_policy.build_goal_proposal_prompt(request["context"])
             request["policy"] = self._prompt_policy.build_policy(task_kind=task_kind, route=request["route"])
             return request
+        frame = context.get("frame")
+        if frame is not None:
+            from app.character_agent.models.mind_frame import CharacterMindFrame
+            if not isinstance(frame, CharacterMindFrame) or not frame.frame_digest or not frame.turn_id:
+                raise ValueError("gateway requires a frozen mind frame")
+            evidence_refs = context.get("evidence_refs", [])
+            if not isinstance(evidence_refs, list) or any(
+                str(ref) not in set(frame.source_refs) for ref in evidence_refs
+            ):
+                raise ValueError("gateway evidence refs are outside frozen frame")
         route = self._router.resolve_route(route_override)
         recall = prepared_recall if prepared_recall is not None else self._memory_recall.select(
             dict(context.get("memory", {}) or {}),

@@ -692,6 +692,7 @@ class SocialFactAuthority:
             if (
                 len(previous_events) == 2
                 and all(event.event_type == _HANDSHAKE_SHARED_EXPERIENCE_EVENT for event in previous_events)
+                and all(event.command_id == command_id for event in previous_events)
                 and all(event.payload.get("session_event_id") == session_event_id for event in previous_events)
                 and all(event.causation_id == causation_id and event.correlation_id == correlation_id for event in previous_events)
             ):
@@ -903,6 +904,7 @@ class SocialFactAuthority:
             if (
                 len(previous_events) == 2
                 and all(event.event_type == _PUBLIC_MILLING_ACK_EVENT for event in previous_events)
+                and all(event.command_id == command_id for event in previous_events)
                 and all(event.payload.get("source_notice_event_id") == notice_event_id for event in previous_events)
                 and all(
                     event.causation_id == causation_id and event.correlation_id == correlation_id
@@ -1078,7 +1080,12 @@ class SocialFactAuthority:
                 _PRINCIPAL,
                 prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
             )
-            if prior_result is not None and prior_event.correlation_id == typed_intent.correlation_id:
+            if (
+                prior_result is not None
+                and prior_event.command_id == typed_intent.command_id
+                and prior_event.causation_id == notice.event_id
+                and prior_event.correlation_id == typed_intent.correlation_id
+            ):
                 receipt = SettlementReceipt.from_append_result(
                     result=prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
                     audit_refs=(f"private_follow_on:{prior_result.transaction_id}",),
@@ -1219,7 +1226,12 @@ class SocialFactAuthority:
                 _PRINCIPAL,
                 prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
             )
-            if prior_result is not None and prior_event.correlation_id == correlation_id:
+            if (
+                prior_result is not None
+                and prior_event.command_id == command_id
+                and prior_event.causation_id == notice.event_id
+                and prior_event.correlation_id == correlation_id
+            ):
                 receipt = SettlementReceipt.from_append_result(
                     result=prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
                     audit_refs=(f"private_follow_on:{prior_result.transaction_id}",),
@@ -1678,7 +1690,10 @@ class SocialFactAuthority:
         if existing is not None:
             if existing.payload_digest == digest:
                 receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
-                return self._committed_result(receipt, settlement_plan=None)
+                return self._committed_result(
+                    receipt.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                    settlement_plan=None,
+                )
             return self._rejected("idempotency_key_reused")
 
         try:

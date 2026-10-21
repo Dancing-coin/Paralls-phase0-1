@@ -13,6 +13,7 @@ from app.character_agent.models.mind_frame import (
     CharacterMindFrame,
     CharacterMindFrameTrigger,
     CognitionWorkspace,
+    FrozenMindFrameEnvelope,
     L2InterpretationView,
     L3PlanningView,
     L4ExecutionView,
@@ -31,13 +32,29 @@ from app.character_agent.models.turn_context import (
     CharacterTurnStageEvent,
     TurnLifecycleError,
 )
-from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.character_agent.models.character_execution import (
+    CharacterExecutionContract,
+    CharacterExecutionFeedback,
+    ExecutionAdmission,
+    ExecutionFeedbackAdmission,
+    ExecutionLifecycleReceipt,
+)
+from app.character_agent.models.self_state_snapshot import SelfStateSnapshot
+from app.character_agent.models.external_percept_snapshot import ExternalPerceptSnapshot
+from app.character_agent.models.action_execution_state import ActionExecutionState
 
 __all__ = [
     "CharacterActiveGoalFrame",
     "CharacterCognitionUpdate",
     "CharacterDynamicState",
     "CharacterExecutionContract",
+    "CharacterExecutionFeedback",
+    "ExecutionAdmission",
+    "ExecutionFeedbackAdmission",
+    "ExecutionLifecycleReceipt",
+    "SelfStateSnapshot",
+    "ExternalPerceptSnapshot",
+    "ActionExecutionState",
     "CharacterEventMemoryRecord",
     "CharacterGoalHint",
     "CharacterGoalStateRecord",
@@ -54,6 +71,7 @@ __all__ = [
     "CharacterTurnStageEvent",
     "CharacterWorkingMemoryState",
     "CognitionWorkspace",
+    "FrozenMindFrameEnvelope",
     "L2InterpretationView",
     "L3PlanningView",
     "L4ExecutionView",

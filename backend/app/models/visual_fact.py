@@ -60,6 +60,7 @@ class VisualFactEvent(RawFactEvent):
             "subject_ref",
             "target_ref",
             "source_ref_lineage",
+            "coordination_signal",
         ):
             if capture_key in payload:
                 normalized[capture_key] = payload[capture_key]

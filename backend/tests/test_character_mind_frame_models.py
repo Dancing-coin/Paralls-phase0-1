@@ -1,4 +1,5 @@
 import pytest
+from types import MappingProxyType
 from pydantic import ValidationError
 
 from app.character_agent import models as character_models
@@ -15,6 +16,7 @@ from app.character_agent.models.mind_frame import (
     MindFrameProvenance,
     WritebackView,
 )
+from app.character_agent.models.turn_context import CharacterTurnContext
 
 
 def _card(
@@ -153,6 +155,61 @@ def test_mind_frame_accepts_equipment_affordance_in_affordances() -> None:
     assert frame.affordances.cards[0].factor_type == "equipment_affordance"
 
 
+def test_mind_frame_can_be_frozen_to_one_turn_with_digest_and_source_refs() -> None:
+    frame = CharacterMindFrame(
+        actor_id="char_a",
+        mind_turn_id="mind_turn:char_a:123",
+        provenance=MindFrameProvenance(source_refs=["profile:char_a", "event:1"]),
+    )
+    turn = CharacterTurnContext.begin(
+        actor_id="char_a",
+        source_event_ref="event:1",
+        producer_ts=123,
+        causation_id="cause:1",
+        correlation_id="corr:1",
+        input_revision_vector={"l1": 4},
+        memory_revision_vector={"memory": 9},
+        policy_revision="policy:char_a:1",
+        snapshot_revision=12,
+        branch_id="branch:main",
+    )
+
+    frozen = frame.bind_to_turn(turn)
+
+    assert frozen.turn_id == turn.turn_id
+    assert frozen.branch_id == "branch:main"
+    assert frozen.input_revision_vector == {"l1": 4}
+    assert frozen.memory_revision_vector == {"memory": 9}
+    assert frozen.frame_digest
+    assert frozen.source_refs == ("event:1", "profile:char_a")
+    with pytest.raises(TypeError):
+        frozen.input_revision_vector["l1"] = 8
+
+
+def test_mind_frame_rejects_rebinding_to_another_actor_or_turn() -> None:
+    frame = CharacterMindFrame(actor_id="char_a", mind_turn_id="mind_turn:char_a:1")
+    turn = CharacterTurnContext.begin(
+        actor_id="char_b",
+        source_event_ref="event:1",
+        producer_ts=1,
+        causation_id="cause:1",
+        correlation_id="corr:1",
+        input_revision_vector={"l1": 1},
+        memory_revision_vector={"memory": 1},
+        policy_revision="policy:1",
+        snapshot_revision=1,
+        branch_id="branch:main",
+    )
+
+    with pytest.raises(ValueError, match="actor"):
+        frame.bind_to_turn(turn)
+
+    bound = frame.bind_to_turn(turn.model_copy(update={"actor_id": "char_a"}))
+    other = turn.model_copy(update={"source_event_ref": "event:2", "turn_id": "turn:char_a:event:2"})
+    with pytest.raises(ValueError, match="turn"):
+        bound.bind_to_turn(other)
+
+
 def test_cognition_workspace_is_turn_local_not_memory() -> None:
     workspace = CognitionWorkspace(
         active_anchors=["B once saved A"],
@@ -161,10 +218,16 @@ def test_cognition_workspace_is_turn_local_not_memory() -> None:
         decision_biases=["avoid_direct_deception"],
         hard_constraints=["cannot_falsify_authority_report"],
         candidate_questions=["Is the emergency real?"],
+        self_state={"uncertainty": "unknown", "source": "body:1"},
+        external_state=[{"subject_ref": "box", "uncertainty": "conflicting"}],
+        event_inbox=[{"source": "l1:event:1"}],
+        uncertainty=[{"subject_ref": "box", "state": "conflicting"}],
     )
 
     assert workspace.active_anchors == ["B once saved A"]
     assert "order_vs_loyalty" in workspace.active_conflicts
+    assert workspace.self_state["uncertainty"] == "unknown"
+    assert workspace.external_state[0]["uncertainty"] == "conflicting"
 
 
 def test_layer_views_have_distinct_payloads() -> None:

@@ -114,6 +114,11 @@ def test_semantic_production_finish_duplicate_is_idempotent() -> None:
     assert duplicate.idempotency_status == "duplicate_replayed"
     assert len(store.read_events()) == 1
 
+    changed = authority.settle_production_finish(command.model_copy(update={"command_id": "semantic:production:changed"}))
+    assert not changed.committed
+    assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
+    assert len(store.read_events()) == 1
+
 
 def test_semantic_production_finish_revision_conflict_is_zero_write() -> None:
     registry, command = _command(expected_revision=1)

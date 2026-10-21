@@ -254,3 +254,76 @@ def test_websocket_cancelled_dialogue_stream_does_not_write_partial_text(monkeyp
     assert terminal["payload"]["status"] == "cancelled"
     bundle = main.character_agent_runtime.get_memory_bundle("char_a")
     assert not any(entry["event_type"] == "character_agent_dialogue_response" for entry in bundle["working_memory"])
+
+
+@pytest.mark.parametrize("activation_kind,accepted", [("background", True), ("siming", True), ("foreground", False)])
+def test_dialogue_conflict_classification_survives_lease_release_before_delivery(
+    monkeypatch, activation_kind, accepted
+) -> None:
+    """Release the real conflicting lease between owner admission and delivery."""
+    monkeypatch.setattr(settings, "dialogue_mode", "stub")
+    main.reset_runtime_state()
+    conflict = Event()
+    trace = []
+
+    with TestClient(main.component_app) as client:
+        execution = main.runtime_execution
+        instance = main.character_agent_runtime
+        handle, receipt = execution.submit(
+            lambda: instance.begin_actor_activation(
+                "char_a", active_dialogue_decision(), producer_ts=90209,
+                activation_kind=activation_kind
+            )
+        ).result(2)
+        assert handle is not None and receipt.committed
+        original_begin = instance.begin_actor_activation
+        original_non_player = instance.activation_is_non_player
+        original_owner_call = main._dialogue_owner_call
+
+        def begin(*args, **kwargs):
+            result = original_begin(*args, **kwargs)
+            if result[0] is None and result[1].stop_reason == "activation_lock_conflict":
+                trace.append(("conflict", instance.activation_lock_is_active("char_a")))
+                conflict.set()
+            return result
+
+        def non_player(actor_id):
+            result = original_non_player(actor_id)
+            trace.append(("non_player", result))
+            return result
+
+        def release():
+            receipt = instance.finish_actor_activation(handle, reason="completed")
+            trace.append(("release", receipt.lock_released))
+            return receipt
+
+        async def deliver_after_release(owner, command):
+            result = await original_owner_call(owner, command)
+            if conflict.is_set():
+                conflict.clear()
+                receipt = await original_owner_call(owner, release)
+                assert receipt.lock_released
+            return result
+
+        monkeypatch.setattr(instance, "begin_actor_activation", begin)
+        monkeypatch.setattr(instance, "activation_is_non_player", non_player)
+        monkeypatch.setattr(main, "_dialogue_owner_call", deliver_after_release)
+        try:
+            with client.websocket_connect("/ws") as websocket:
+                websocket.send_json(_dialogue_envelope(f"dialogue-release-before-delivery-{activation_kind}"))
+                first = websocket.receive_json()
+                assert first["message_type"] == "ack"
+                assert first["payload"]["accepted"] is accepted, trace
+                messages = [first]
+                while messages[-1]["message_type"] != "dialogue_stream_end":
+                    messages.append(websocket.receive_json())
+                assert messages[-1]["payload"]["status"] == ("completed" if accepted else "requeued"), trace
+                assert sum(message["message_type"] == "dialogue_response" for message in messages) == int(accepted)
+            def response_count():
+                return sum(entry["event_type"] == "character_agent_dialogue_response"
+                           for entry in instance.get_session_timeline("char_a"))
+            assert execution.submit(response_count).result(2) == int(accepted)
+            assert execution.submit(lambda: instance.activation_lock_is_active("char_a")).result(2) is False
+            print(f"controlled {activation_kind} schedule: {trace}; accepted={accepted}")
+        finally:
+            execution.submit(lambda: instance.finish_actor_activation(handle, reason="completed")).result(2)

@@ -8,7 +8,7 @@
 - 战斗系统与角色技能、状态和资源目录负责 `Method`、`Technique`、资源、状态、效果、动作、空间和结算的领域消费合同。
 - `08-对象标签、编辑与版本治理设计.md` 是标签和元标签唯一 owner。本目录不得重新定义 `TagDefinition`、`TagAssignment`、`SemanticSnapshot` 或标签生命周期。
 - 领域 authority 是运行时事实的唯一提交 owner。编辑器预览、角色 typed intent、司命 catalyst 和 `direct` grant 都必须经过 authority 校验。
-- `../16-通用玩法时序模型与编辑器设计.md` 唯一负责时间语义、TemporalProfile 及专项校验；本目录提供它复用的草稿、权限、发布和激活治理，不另建时间模型。
+- `../角色/16-通用玩法时序模型与编辑器设计.md` 唯一负责时间语义、TemporalProfile 及专项校验；本目录提供它复用的草稿、权限、发布和激活治理，不另建时间模型。
 - `04-十月分析领域接入与编辑器同步矩阵.md` 负责登记十月分析各领域如何接入编辑器控制面；它只保存引用、owner、revision、权限和同步边界，不复制领域真值模型。
 
 ## 编辑规则

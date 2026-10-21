@@ -1,0 +1,56 @@
+status: source_authored_diagnostic_only
+source_refs:
+  - docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12
+  - docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#22
+scenario_id: lock-event
+trajectory_group: lock-event:dev:01
+split: dev
+source_event: 档案室门锁被动过；乔任要求封锁；沈墨紧张；无人知道是谁动的
+visible_evidence:
+  status: authored_scenario_not_runtime_projection
+  facts: [档案室门锁被动过, 乔任要求封锁, 沈墨紧张, 无人知道是谁动的]
+target_state:
+  target_refs: {}
+  visibility: unknown
+  legality: unknown
+frozen_mind_frame: null
+private_projection: null
+dynamic_state: null
+complete_u: []
+controlled_p: []
+candidate_status: not_compiled
+acceptable_action_set: null
+quality_denominator_eligible: false
+unresolved:
+  - frozen_mind_frame
+  - private_projection
+  - dynamic_state
+  - lawful_visible_target
+  - registered_candidates_with_admission_evidence
+  - reviewed_acceptable_action_set
+  - per_actor_capability_envelope
+  - controlled_candidate_policy
+actor_expectations:
+  char_a:
+    status: source_semantics_not_runtime_caps
+    preferred_path: [查记录, 保留责任假设, 延迟归责]
+  char_b:
+    status: source_semantics_not_runtime_caps
+    preferred_path: [封锁, 隔离, 确认授权]
+    excluded_claims: [解释复杂动机]
+  char_c:
+    status: source_semantics_not_runtime_caps
+    preferred_path: [识别关系压力, 调解, 询问]
+    excluded_claims: [把情绪当事实]
+  char_d:
+    status: source_semantics_not_runtime_caps
+    preferred_path: [执行清单, 停用入口, 通知主管]
+    preferred_effort: fast
+    maximum_effort: balanced
+    max_active_hypotheses: 1
+    max_reasoning_hops: 1
+    cap_source_refs:
+      - docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#6
+      - docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#22
+    unresolved_caps: [max_context_items, max_candidate_intents, max_concurrent_goals, planning_horizon, confidence_ceiling_without_evidence]
+    cognitive_semantics: [low_working_memory, low_causal_reasoning, low_metacognition, reliable_fixed_procedure]

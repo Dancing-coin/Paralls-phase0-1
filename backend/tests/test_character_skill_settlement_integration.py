@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 from app.character_agent.skills.models import PrimitiveActionPlan, SkillEvaluationResult
+from app.character_agent.skills.evidence import LearningEpisode
+from app.character_agent.skills.learning import LearningProposal
+from app.character_agent.skills.settlement import SkillLearningSettlement
+from app.character_agent.skills.store import SkillEvidenceStore
 from app.services.interaction_orchestration_service import InteractionOrchestrationService, StructuredInteractionRequest
 from app.world_runtime.intelligence_upgrade import InteractionIntentFrame
 
@@ -121,3 +125,59 @@ def test_orchestration_records_policy_allowed_skill_evidence_without_changing_au
     assert result.skill_evidence is not None
     assert result.skill_evidence.eligible_for_promotion is False
     assert service.skill_evidence_store.query(actor_id="char_a") == [result.skill_evidence]
+
+
+def test_learning_owner_settlement_replays_exact_duplicate_and_rejects_changed_duplicate() -> None:
+    store = SkillEvidenceStore()
+    service = SkillLearningSettlement(store=store)
+    proposal = LearningProposal(
+        proposal_id="proposal:1",
+        idempotency_key="learn:char_a:first_aid:1",
+        actor_id="char_a",
+        skill_id="first_aid",
+        object_id="first_aid.basic_bandage@2",
+        episode_id="episode:1",
+        stage="practiced",
+        operation="upgrade",
+        evidence_refs=["evidence:1"],
+        source_revision="teacher:medic@2",
+    )
+
+    accepted = service.settle(proposal, authority_event_id="authority:learn:1")
+    duplicate = service.settle(proposal, authority_event_id="authority:learn:1")
+    changed = service.settle(
+        proposal.model_copy(update={"stage": "operational"}),
+        authority_event_id="authority:learn:1",
+    )
+
+    assert accepted.status == "accepted"
+    assert duplicate.status == "duplicate_replayed"
+    assert duplicate.revision == accepted.revision
+    assert changed.status == "changed_duplicate"
+    assert changed.revision == accepted.revision
+    assert store.skill_revision(actor_id="char_a", skill_id="first_aid") == accepted.revision
+
+
+def test_failed_learning_settlement_retains_failure_evidence_without_profile_mutation() -> None:
+    store = SkillEvidenceStore()
+    service = SkillLearningSettlement(store=store)
+    proposal = LearningProposal(
+        proposal_id="proposal:failed",
+        idempotency_key="learn:char_a:first_aid:failed",
+        actor_id="char_a",
+        skill_id="first_aid",
+        object_id="first_aid.basic_bandage@2",
+        episode_id="episode:failed",
+        stage="practiced",
+        operation="upgrade",
+        evidence_refs=["evidence:failure"],
+        source_revision="teacher:medic@2",
+        failure_refs=["failure:physical_failure"],
+    )
+
+    rejected = service.settle(proposal, authority_event_id="", accepted=False, reason="owner_rejected")
+
+    assert rejected.status == "rejected"
+    assert rejected.revision == 0
+    assert store.skill_revision(actor_id="char_a", skill_id="first_aid") == 0
+    assert store.failure_evidence(actor_id="char_a", skill_id="first_aid") == ["failure:physical_failure"]

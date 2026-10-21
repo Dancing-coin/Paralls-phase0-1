@@ -34,6 +34,39 @@ def test_instantiation_and_move_are_event_derived_and_atomic() -> None:
     assert [event.event_type for event in store.read_events()][-1] == "gameplay.inventory.item_moved"
 
 
+def test_generic_inventory_exact_retry_rejects_corrupt_receipt_without_writes() -> None:
+    store, _, service = _service()
+    _create(service, "container:bag")
+    _create(service, "container:hand")
+    assert service.instantiate(
+        command_id="cmd:item", actor_ref=ACTOR, item_id="item:stone:1", definition_id="item:stone",
+        quantity=1, container_id="container:bag", idempotency_key="item", causation_id="cause",
+        correlation_id="corr",
+    ).committed
+    first = service.move(
+        command_id="cmd:move", actor_ref=ACTOR, item_id="item:stone:1", from_container_id="container:bag",
+        to_container_id="container:hand", idempotency_key="move", causation_id="cause", correlation_id="corr",
+    )
+    assert first.committed
+    exact = service.move(
+        command_id="cmd:move", actor_ref=ACTOR, item_id="item:stone:1", from_container_id="container:bag",
+        to_container_id="container:hand", idempotency_key="move", causation_id="cause", correlation_id="corr",
+    )
+    assert exact.committed and exact.idempotency_status == "duplicate_replayed"
+    key = (service._PRINCIPAL, f"{ACTOR}:move")
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+    duplicate = service.move(
+        command_id="cmd:move", actor_ref=ACTOR, item_id="item:stone:1", from_container_id="container:bag",
+        to_container_id="container:hand", idempotency_key="move", causation_id="cause", correlation_id="corr",
+    )
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "inventory_idempotency_receipt_invalid"
+    assert store.export_snapshot() == before
+
+
 def test_sealed_and_capacity_fail_before_event_append() -> None:
     store, _, service = _service()
     _create(service, "container:sealed", sealed=True)
@@ -49,12 +82,16 @@ def test_sealed_and_capacity_fail_before_event_append() -> None:
     assert len(store.read_events()) == event_count
 
 
-def test_duplicate_container_rejects_before_event_append() -> None:
+def test_exact_container_retry_replays_without_event_append() -> None:
     store, _, service = _service()
     _create(service, "container:bag")
     event_count = len(store.read_events())
-    with pytest.raises(InventoryRuntimeError, match="inventory_container_invalid"):
-        _create(service, "container:bag")
+    duplicate = service.create_container(
+        command_id="cmd:container:bag", actor_ref=ACTOR,
+        spec=ContainerSpec("container:bag", 10, 10, 2, False),
+        idempotency_key="container:bag", causation_id="cause", correlation_id="corr",
+    )
+    assert duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
     assert len(store.read_events()) == event_count
 
 

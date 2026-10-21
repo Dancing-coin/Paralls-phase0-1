@@ -116,6 +116,16 @@ def test_ecology_retirement_is_owner_fragment_event_derived_and_idempotent() -> 
 
     assert first.committed is True
     assert duplicate.idempotency_status == "duplicate_replayed"
+    before = store.export_snapshot()
+    changed = authority.retire_record(
+        envelope=retirement.model_copy(update={"command_id": "command:ecology:valley:retire-hazard:changed"}),
+        region_ref=region.region_ref,
+        record_kind="hazard",
+        record_ref=hazard.hazard_ref,
+    )
+    assert not changed.committed
+    assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
     assert store.read_events()[-1].event_type == "gameplay.ecology.hazard.retired"
     assert hazard.hazard_ref not in authority.regional_projection(scope="authority")["hazards"]
 

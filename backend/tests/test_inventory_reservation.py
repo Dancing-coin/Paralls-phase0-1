@@ -270,3 +270,56 @@ def test_output_receipt_materializes_the_produced_item_in_inventory_projection()
     projection = InventoryProjector(registry).rebuild(ACTOR, store.read_events())
     assert projection.items["item:bread:1"].quantity == 1
     assert projection.locations["item:bread:1"] == "container:bag"
+
+
+def test_output_receipt_exact_retry_replays_after_item_is_materialized() -> None:
+    store, registry, service = _service()
+    _create(service, "container:bag")
+    registry.register_item(ItemDefinition("item:bread", "1", 1, 1))
+    request = dict(
+        command_id="cmd:output",
+        actor_ref=ACTOR,
+        source_ref="run:bakery:1",
+        item_ref="bread",
+        item_id="item:bread:1",
+        definition_id="item:bread",
+        container_id="container:bag",
+        quantity=1,
+        idempotency_key="output",
+        causation_id="cause",
+        correlation_id="corr",
+    )
+    first = service.record_output_receipt(**request)
+    assert first.committed
+    before = store.read_events()
+
+    duplicate = service.record_output_receipt(**request)
+
+    assert duplicate.committed
+    assert duplicate.idempotency_status == "duplicate_replayed"
+    assert duplicate.transaction_id == first.transaction_id
+    assert store.read_events() == before
+
+
+def test_commerce_capacity_exact_retry_replays_after_reservation_exists() -> None:
+    store, _, service = _service()
+    _create(service, "container:bag")
+    request = dict(
+        command_id="cmd:capacity",
+        actor_ref=ACTOR,
+        capacity_reservation_ref="capacity:delivery:1",
+        available_quantity=2,
+        idempotency_key="capacity",
+        causation_id="cause",
+        correlation_id="corr",
+    )
+    first = service.reserve_commerce_capacity(**request)
+    assert first.committed
+    before = store.read_events()
+
+    duplicate = service.reserve_commerce_capacity(**request)
+
+    assert duplicate.committed
+    assert duplicate.idempotency_status == "duplicate_replayed"
+    assert duplicate.transaction_id == first.transaction_id
+    assert store.read_events() == before

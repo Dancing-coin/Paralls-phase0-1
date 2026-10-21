@@ -156,6 +156,18 @@ class PostP5Authority:
     def submit_f1a(self, proposal: F1AProposal) -> ContractResult:
         existing = self.store.get_by_idempotency(proposal.owner, proposal.idempotency_key)
         if existing is not None and existing.committed:
+            prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.command_id == proposal.proposal_id
+                and event.causation_id == f"causation:{proposal.proposal_id}"
+                and event.correlation_id == f"correlation:{proposal.proposal_id}"
+                and event.payload.get("proposal_id") == proposal.proposal_id
+                and event.payload.get("entity_ref") == proposal.entity_ref
+                and event.payload.get("effect_type") == proposal.effect_type
+                for event in prior_events
+            )
+            if not exact:
+                return ContractResult(accepted=False, error_code="idempotency_key_reused")
             return ContractResult(accepted=True, committed=True, idempotency_status="duplicate_replayed", transaction_id=existing.transaction_id, committed_event_ids=tuple(existing.committed_event_ids), audit={"contract": "f1a", "duplicate": True})
         head = self.store.get_stream_head(proposal.stream_id)
         if proposal.owner not in self._F1A_OWNERS:
@@ -210,6 +222,18 @@ class PostP5Authority:
     def submit_f1b(self, proposal: F1BProjectionProposal) -> ContractResult:
         existing = self.store.get_by_idempotency(proposal.actor_ref, proposal.idempotency_key)
         if existing is not None and existing.committed:
+            prior_events = tuple(self.store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.command_id == proposal.proposal_id
+                and event.causation_id == proposal.source_event_id
+                and event.correlation_id == f"correlation:{proposal.proposal_id}"
+                and event.payload.get("actor_ref") == proposal.actor_ref
+                and event.payload.get("subject_ref") == proposal.subject_ref
+                and event.payload.get("operation") == proposal.operation
+                for event in prior_events
+            )
+            if not exact:
+                return ContractResult(accepted=False, error_code="idempotency_key_reused")
             return ContractResult(accepted=True, committed=True, idempotency_status="duplicate_replayed", transaction_id=existing.transaction_id, committed_event_ids=tuple(existing.committed_event_ids), audit={"contract": "f1b", "duplicate": True})
         if proposal.jurisdiction_scope != proposal.requester_scope:
             return ContractResult(accepted=False, error_code="cross_scope_denied")

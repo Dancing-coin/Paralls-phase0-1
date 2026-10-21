@@ -73,6 +73,23 @@ def test_remove_and_authority_mismatch_are_explicit_and_idempotency_does_not_rep
         service.apply(_command("apply", "wet", "cmd:untrusted", authority_principal="godot_client"))
 
 
+def test_status_tag_duplicate_rejects_corrupt_receipt_event_reference() -> None:
+    registry = StatusTagRegistry()
+    registry.register(StatusTagDefinition(tag_id="wet", definition_version="1"))
+    store = GameplayEventStore()
+    service = StatusTagAuthorityService(store=store, registry=registry)
+    command = _command("apply", "wet", "cmd:corrupt")
+    first = service.apply(command)
+    assert first.accepted
+    assert first.append_result is not None
+    store._idempotency_results[(service._PRINCIPAL, "actor:a:cmd:corrupt")] = first.append_result.model_copy(
+        update={"committed_event_ids": (*first.append_result.committed_event_ids, "missing:event")},
+        deep=True,
+    )
+    with pytest.raises(StatusTagError, match="idempotency_receipt_invalid"):
+        service.apply(command)
+
+
 def test_status_tag_checkpoint_plus_tail_rebuild_matches_full_projection() -> None:
     registry = StatusTagRegistry()
     registry.register(StatusTagDefinition(tag_id="wet", definition_version="1"))

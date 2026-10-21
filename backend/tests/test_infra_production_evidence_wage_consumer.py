@@ -165,3 +165,24 @@ def test_inf4z_wage_consumer_changed_duplicate_is_zero_write() -> None:
     assert result.committed is False
     assert result.stop_reason == "idempotency_key_reused"
     assert len(store.read_events()) == 5
+
+
+def test_inf4z_wage_consumer_corrupt_duplicate_receipt_is_rejected_without_write() -> None:
+    store, _, source = _source()
+    planned = _plan(store, source)
+    merge = ContinuityMergeAuthority(store=store, registry=CharacterProfileRegistry(profiles_by_actor_id={}), mode=_mode())
+    first = merge.merge_production_evidence_wage(planned.plan)
+    key = (EconomyAuthority._PRINCIPAL, f"merge:{planned.plan.batch_ref}")
+    original = store.get_by_idempotency(*key)
+    store._idempotency_results[key] = original.model_copy(
+        update={"committed_event_ids": [*original.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before = len(store.read_events())
+
+    duplicate = merge.merge_production_evidence_wage(planned.plan)
+
+    assert first.committed is True
+    assert duplicate.committed is False
+    assert duplicate.stop_reason == "idempotency_key_reused"
+    assert len(store.read_events()) == before

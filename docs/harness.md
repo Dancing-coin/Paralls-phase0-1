@@ -13,6 +13,14 @@ python scripts/verification/harness.py --suite release --export-evidence D:\Harn
 
 `smoke` 是少量离线故障测试，`contract` 是静态契约，`runtime` 要求真实运行环境，`release` 是 contract 与 runtime 的组合；精确成员以 `.harness/suites.json` 为准。完整 release 门禁仍以 `.harness/ci/release-gate.json` 的 all 与额外主线 profile 为准。`--profile all` 保留原有选集与顺序，smoke/contract 不替代广泛或 runtime 验收。`harness-smoke` 不加入默认 all。
 
+阶段三群体连续性聚合必须使用显式 suite，确保 phase3a/3b/3c/3d 的 fresh 报告先于聚合与 Siming population profiles 生成：
+
+```powershell
+python scripts/verification/harness.py --suite stage3-population-continuity --export-evidence D:\HarnessEvidence\stage3-population-continuity-<UTC>
+```
+
+该 suite 只串行消费本轮生成的 predecessor reports，不读取或复制仓库外旧报告；它不启动 Godot、calibration/evaluation 或训练流程。
+
 默认运行输出位于系统临时目录，正常、失败及可捕获取消后由顶层清理；必要证据在清理前用 `--export-evidence` 导出到仓库外不存在或为空的目录。保留契约见 `.harness/retention-policy.json`。最终摘要必须区分验证失败、环境缺失和清理失败；已有 backend 的生命周期不属于本轮。
 
 ## Population runtime correctness

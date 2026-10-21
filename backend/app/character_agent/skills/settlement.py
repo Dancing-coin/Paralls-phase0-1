@@ -1,8 +1,115 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Mapping, Sequence
 
+from typing import Literal
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.character_agent.skills.learning import LearningProposal
 from app.character_agent.skills.models import ActionSettlementResult, PrimitiveActionPlan, SkillEvaluationResult
+from app.character_agent.skills.store import SkillEvidenceStore
+
+
+class LearningSettlementReceipt(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    idempotency_key: str
+    actor_id: str
+    skill_id: str
+    status: Literal["accepted", "rejected", "duplicate_replayed", "changed_duplicate"]
+    revision: int = 0
+    authority_event_id: str = ""
+    reason: str = ""
+    failure_refs: list[str] = Field(default_factory=list)
+
+
+class SkillLearningSettlement:
+    """The sole owner boundary for projecting learning progress to skill revision."""
+
+    def __init__(self, *, store: SkillEvidenceStore | None = None) -> None:
+        self._store = store or SkillEvidenceStore()
+        self._receipts: dict[str, tuple[str, LearningSettlementReceipt]] = {}
+
+    def settle(
+        self,
+        proposal: LearningProposal,
+        *,
+        authority_event_id: str,
+        accepted: bool = True,
+        reason: str = "",
+    ) -> LearningSettlementReceipt:
+        digest = self._digest(proposal)
+        previous = self._receipts.get(proposal.idempotency_key)
+        if previous is not None:
+            previous_digest, receipt = previous
+            if previous_digest == digest:
+                return receipt.model_copy(deep=True, update={"status": "duplicate_replayed"})
+            return receipt.model_copy(deep=True, update={"status": "changed_duplicate", "reason": "idempotency_payload_changed"})
+
+        if not accepted:
+            receipt = LearningSettlementReceipt(
+                proposal_id=proposal.proposal_id,
+                idempotency_key=proposal.idempotency_key,
+                actor_id=proposal.actor_id,
+                skill_id=proposal.skill_id,
+                status="rejected",
+                reason=reason or "owner_rejected",
+                failure_refs=list(proposal.failure_refs),
+            )
+            self._store.record_failure_evidence(
+                actor_id=proposal.actor_id,
+                skill_id=proposal.skill_id,
+                refs=proposal.failure_refs,
+            )
+            self._receipts[proposal.idempotency_key] = (digest, receipt)
+            return receipt.model_copy(deep=True)
+
+        if not authority_event_id:
+            receipt = LearningSettlementReceipt(
+                proposal_id=proposal.proposal_id,
+                idempotency_key=proposal.idempotency_key,
+                actor_id=proposal.actor_id,
+                skill_id=proposal.skill_id,
+                status="rejected",
+                reason="authority_required",
+                failure_refs=list(proposal.failure_refs),
+            )
+            self._store.record_failure_evidence(
+                actor_id=proposal.actor_id,
+                skill_id=proposal.skill_id,
+                refs=proposal.failure_refs,
+            )
+            self._receipts[proposal.idempotency_key] = (digest, receipt)
+            return receipt.model_copy(deep=True)
+
+        revision = self._store.record_skill_revision(
+            actor_id=proposal.actor_id,
+            skill_id=proposal.skill_id,
+        )
+        receipt = LearningSettlementReceipt(
+            proposal_id=proposal.proposal_id,
+            idempotency_key=proposal.idempotency_key,
+            actor_id=proposal.actor_id,
+            skill_id=proposal.skill_id,
+            status="accepted",
+            revision=revision,
+            authority_event_id=authority_event_id,
+            failure_refs=list(proposal.failure_refs),
+        )
+        self._store.record_failure_evidence(
+            actor_id=proposal.actor_id,
+            skill_id=proposal.skill_id,
+            refs=proposal.failure_refs,
+        )
+        self._receipts[proposal.idempotency_key] = (digest, receipt)
+        return receipt.model_copy(deep=True)
+
+    def _digest(self, proposal: LearningProposal) -> str:
+        payload = json.dumps(proposal.model_dump(), sort_keys=True, separators=(",", ":"))
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def map_action_settlement_result(

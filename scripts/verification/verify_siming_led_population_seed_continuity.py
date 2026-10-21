@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 try:
-    from .common import artifact_path, verification_dir
+    from .common import same_run_profile_report, verification_dir
 except ImportError:
-    from common import artifact_path, verification_dir
+    from common import same_run_profile_report, verification_dir
 
 import os
 import subprocess
@@ -37,7 +37,7 @@ def run_focused() -> tuple[bool, str]:
 
 
 def _predecessor_report(name: str) -> bool:
-    path = artifact_path(root(), f".harness/verification/{name}-report.json")
+    path = same_run_profile_report(root(), f"{name}-report.json")
     if not path.exists():
         return False
     try:

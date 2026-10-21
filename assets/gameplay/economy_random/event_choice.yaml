@@ -1,0 +1,25 @@
+policy_ref: policy:economy_event_choice@1
+policy_revision: "1"
+kind: event_choice
+issuer_ref: authored:economy_random_stage3
+fact_owner_ref: actor_gameplay.economy_domain
+actor_scope: [char_a, char_b]
+world_scope: [world:main]
+timeline_scope: [timeline:main]
+valid_from_world_tick: 0
+valid_until_world_tick: null
+algorithm_revision: algorithm:sha256-weighted-v1
+seed_policy_revision: seed:anchor-hmac-sha256-v1
+read_principals: [actor_gameplay.economy_domain, gameplay_scheduler]
+receipt_lookup_ref: gameplay.receipts.economy_random
+revocation_owner_ref: actor_gameplay.economy_domain
+candidates:
+  - candidate_ref: event_choice:continue
+    result_ref: result:event_choice:continue
+    weight: 60
+  - candidate_ref: event_choice:branch
+    result_ref: result:event_choice:branch
+    weight: 30
+  - candidate_ref: event_choice:withdraw
+    result_ref: result:event_choice:withdraw
+    weight: 10

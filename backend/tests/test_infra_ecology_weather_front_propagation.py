@@ -128,6 +128,30 @@ def test_weather_front_is_idempotent() -> None:
     assert duplicate.idempotency_status == "duplicate_replayed"
 
 
+def test_weather_front_changed_command_identity_cannot_replay_receipt() -> None:
+    store = GameplayEventStore()
+    authority = _record_regions(store)
+    command = _front_envelope(authority, store)
+    first = authority.propagate_weather_front(
+        envelope=command,
+        policy=EcologyWeatherFrontPropagationPolicy(),
+        source_region_ref="region:front:source",
+        target_region_ref="region:front:target",
+    )
+    assert first.committed
+
+    changed = authority.propagate_weather_front(
+        envelope=command.model_copy(update={"command_id": "ecology:front:changed-command"}),
+        policy=EcologyWeatherFrontPropagationPolicy(),
+        source_region_ref="region:front:source",
+        target_region_ref="region:front:target",
+    )
+
+    assert not changed.committed
+    assert changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"
+
+
 def test_weather_front_rejects_nonproject_scope_without_writes() -> None:
     store = GameplayEventStore()
     authority = _record_regions(store)

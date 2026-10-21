@@ -1,6 +1,7 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, SerializerFunctionWrapHandler, model_serializer, model_validator
+from app.character_agent.models.local_coordination import LocalCoordinationSignal
 
 from app.models.capture_clock import (
     DEFAULT_CLOCK_DOMAIN,
@@ -52,6 +53,7 @@ class RawFactAcoustics(BaseModel):
 
 
 class RawFactEvent(BaseModel):
+    coordination_signal: LocalCoordinationSignal | None = None
     event_type: str = "raw_fact_event"
     fact_family: str
     fact_type: str
@@ -81,6 +83,13 @@ class RawFactEvent(BaseModel):
     ttl_ms: int | None = None
     causation_id: str = ""
     correlation_id: str = ""
+
+    @model_serializer(mode="wrap")
+    def serialize_optional_signal(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        payload = handler(self)
+        if self.coordination_signal is None:
+            payload.pop("coordination_signal", None)
+        return payload
 
     @model_validator(mode="after")
     def populate_capture_clock_contract(self) -> "RawFactEvent":

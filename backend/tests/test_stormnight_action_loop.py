@@ -47,6 +47,7 @@ def test_case_open_then_existing_p5_action_window_commits_on_same_store() -> Non
     result = InvestigationConflictAuthority(registry=action_registry(), store=store).resolve_action_window(command=action_command(), intent=action_intent(), graph=action_graph(), spatial_snapshot=action_snapshot(), role_ref="role:survivor@1", now="now")
     assert result.committed
     assert len([event for event in store.read_events() if event.event_type == "gameplay.conflict.action_window_resolved"]) == 1
+    assert not [event for event in store.read_events() if event.event_type == "gameplay.conflict.terminal_outcome_recorded"]
 
 
 def test_stormnight_graph_is_the_case_action_graph_input() -> None:

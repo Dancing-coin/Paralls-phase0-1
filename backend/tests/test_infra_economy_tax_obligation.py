@@ -102,6 +102,86 @@ def test_tax_obligation_open_replays_exact_duplicate_and_rejects_changed_duplica
     assert changed.append_result.failure.error_code == "idempotency_key_reused"
     assert store.export_snapshot() == before
 
+    changed_identity = service.open_tax_obligation(
+        command_id="tax:obligation:changed-command",
+        tax_due_event_id=source_event_id,
+        due_tick=10,
+        idempotency_key="tax:obligation:dup",
+        causation_id=source_event_id,
+        correlation_id="corr:tax:obligation:open",
+        expected_revision=1,
+    )
+    assert not changed_identity.committed
+    assert changed_identity.append_result.failure is not None
+    assert changed_identity.append_result.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
+@pytest.mark.parametrize("invalid_tick", [True, 10.0, "10", -1])
+def test_tax_obligation_open_rejects_invalid_tick_before_duplicate_replay(
+    invalid_tick: object,
+) -> None:
+    store, service, source_event_id = _seed_tax_due()
+    first = service.open_tax_obligation(
+        command_id="tax:obligation:strict-dup",
+        tax_due_event_id=source_event_id,
+        due_tick=10,
+        idempotency_key="tax:obligation:strict-dup",
+        causation_id=source_event_id,
+        correlation_id="corr:tax:obligation:strict-dup",
+        expected_revision=1,
+    )
+    assert first.committed
+    before = store.export_snapshot()
+
+    replayed = service.open_tax_obligation(
+        command_id="tax:obligation:strict-dup",
+        tax_due_event_id=source_event_id,
+        due_tick=invalid_tick,  # type: ignore[arg-type]
+        idempotency_key="tax:obligation:strict-dup",
+        causation_id=source_event_id,
+        correlation_id="corr:tax:obligation:strict-dup",
+        expected_revision=1,
+    )
+
+    assert not replayed.committed
+    assert replayed.append_result.failure is not None
+    assert replayed.append_result.failure.error_code == "economy_tax_due_tick_invalid"
+    assert store.export_snapshot() == before
+
+
+def test_tax_obligation_open_rejects_corrupt_committed_event_refs_without_write() -> None:
+    store, service, source_event_id = _seed_tax_due()
+    first = service.open_tax_obligation(
+        command_id="tax:obligation:corrupt",
+        tax_due_event_id=source_event_id,
+        due_tick=10,
+        idempotency_key="tax:obligation:corrupt",
+        causation_id=source_event_id,
+        correlation_id="corr:tax:obligation:corrupt",
+        expected_revision=1,
+    )
+    assert first.committed and first.append_result is not None
+    key = (EconomyAuthorityService._PRINCIPAL, "tax:obligation:corrupt")
+    store._idempotency_results[key] = first.append_result.model_copy(
+        update={"committed_event_ids": [*first.append_result.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+
+    replayed = service.open_tax_obligation(
+        command_id="tax:obligation:corrupt",
+        tax_due_event_id=source_event_id,
+        due_tick=10,
+        idempotency_key="tax:obligation:corrupt",
+        causation_id=source_event_id,
+        correlation_id="corr:tax:obligation:corrupt",
+        expected_revision=1,
+    )
+
+    assert not replayed.committed
+    assert replayed.append_result.failure is not None
+    assert replayed.append_result.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
 
 def test_tax_obligation_open_rejects_forged_source_and_stale_revision_without_write() -> None:
     store, service, _source_event_id = _seed_tax_due()

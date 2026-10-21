@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-admitted-participant-matrix",
+  "order": 159,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_admitted_participant_matrix.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 3600,
+  "result_artifact": ".harness/verification/infra-admitted-participant-matrix-report.json",
+  "description": "Bounded matrix for admitted Inventory, Character, Economy, Ecology, Social, Equipment, LifeState and Presence contracts; excludes missing Population grant issuer and global cut",
+  "success_key": "overall_passed"
+}

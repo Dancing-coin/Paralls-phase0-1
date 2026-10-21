@@ -1,0 +1,14 @@
+actor_id: char_d
+status: isolated_fixture_only
+sources:
+  - ref: docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12
+    claims:
+      - low_working_memory
+      - low_causal_reasoning
+      - low_metacognition
+      - reliable_fixed_procedure
+  - ref: docs/10月分析/审查/05-第三项阿博评估档案与四角色夹具.md#4
+    claims:
+      - no_runtime_profile_discovery
+      - no_default_roster
+      - no_actor_or_active_control

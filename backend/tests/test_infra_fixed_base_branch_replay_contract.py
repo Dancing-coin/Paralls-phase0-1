@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.population_continuity.branch_preview import (
     BranchPreviewAuthority,
@@ -311,3 +311,54 @@ def test_c5_unregistered_promotion_remains_zero_write() -> None:
     assert result.accepted is False
     assert result.error_code == "branch_promotion_unsupported"
     assert store.export_snapshot() == before
+
+
+def test_c5_fixed_base_contract_survives_real_durable_close_reopen(tmp_path: Path) -> None:
+    path = tmp_path / "fixed-base-branch.sqlite3"
+    store = DurableGameplayEventStore(path)
+    try:
+        authority = _authority(store)
+        assert authority.preview(
+            request=_request(),
+            dataset=_dataset(),
+            calibration=_calibration(),
+            family_inputs=(),
+            candidates=(
+                _candidate(intent_ref="intent:c5:a", priority=1),
+                _candidate(intent_ref="intent:c5:b", priority=2),
+            ),
+            mode=_mode(),
+        ).accepted
+        snapshot = authority.record_isolated_branch_snapshot(
+            branch_ref="branch:c5",
+            expected_revision=0,
+            idempotency_key="snapshot:c5:durable-reopen",
+            privacy_scope="creator_debug",
+        )
+        assert snapshot.committed
+        before_projection = authority.durable_branch_projection("branch:c5")
+        before_events = store.read_events()
+        before_receipt = store.get_by_idempotency(
+            authority._PRINCIPAL, "snapshot:c5:durable-reopen"
+        )
+    finally:
+        store.close()
+
+    reopened = DurableGameplayEventStore(path)
+    try:
+        restored = _authority(reopened)
+        assert restored._buffers == {}
+        full = restored.durable_branch_projection("branch:c5")
+        tail = restored.durable_branch_projection("branch:c5", checkpoint_at=3)
+        assert full == tail == before_projection
+        assert full["candidate_intent_refs"] == ("intent:c5:b", "intent:c5:a")
+        assert full["projection_hash"] == full["replay_contract_projection_digest"]
+        assert reopened.read_events() == before_events
+        assert reopened.get_by_idempotency(
+            restored._PRINCIPAL, "snapshot:c5:durable-reopen"
+        ) == before_receipt
+        assert [event.event_id for event in reopened.read_stream(
+            restored.admission_stream_id(branch_ref="branch:c5")
+        )] == snapshot.committed_event_ids
+    finally:
+        reopened.close()

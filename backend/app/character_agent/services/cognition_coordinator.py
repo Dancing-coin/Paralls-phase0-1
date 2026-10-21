@@ -57,7 +57,13 @@ class CharacterCognitionCoordinator:
         frame = dict(actor_id=entry.actor_id, stage='goal_proposal', source_kind=entry.source_kind,
             producer_ts=entry.producer_ts, source_pins=entry.source_pins,
             request_id=context.request_id, trigger_kind=context.trigger_kind,
-            trigger_source_ref=context.trigger_source_ref, actor_pin=[list(pair) for pair in self.runtime._capture_cognition_pin(entry.actor_id)])
+            trigger_source_ref=context.trigger_source_ref,
+            turn_id=context.frame.turn_id,
+            capability_envelope=context.capability_envelope.model_dump(mode='json'),
+            cognition_policy=context.cognition_policy.model_dump(mode='json'),
+            envelope_digest=context.capability_envelope.envelope_digest,
+            policy_digest=context.cognition_policy.policy_digest,
+            actor_pin=[list(pair) for pair in self.runtime._capture_cognition_pin(entry.actor_id)])
         return self.admissions.advance_progress(key=key, expected_revision=0, stage='goal_proposal',
             status='provider_pending', frame=frame, request_json=request_json, now=now)
 

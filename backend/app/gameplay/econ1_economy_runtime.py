@@ -113,6 +113,20 @@ class EconomyAuthority:
             for fragment in batch.owner_fragments
         ):
             return self._rejected_append(batch.command_id, "economy_wage_owner_commit_scope_denied")
+        expected_events = [
+            (stream_id, event_type, payload, visibility)
+            for fragment in batch.owner_fragments
+            for stream_id, event_specs in fragment.event_specs.items()
+            for index, (event_type, payload) in enumerate(event_specs)
+            for visibility in (fragment.event_visibility_policies.get(stream_id, ("project",) * len(event_specs))[index],)
+        ]
+        submitted_events = [(event.stream_id, event.event_type, event.payload, event.visibility_policy) for event in batch.events]
+        if (
+            len(expected_events) != len(submitted_events)
+            or expected_events != submitted_events
+            or {stream: revision for fragment in batch.owner_fragments for stream, revision in fragment.expected_revisions.items()} != batch.expected_stream_revisions
+        ):
+            return self._rejected_append(batch.command_id, "economy_wage_owner_commit_fragment_mismatch")
         try:
             GovernedAuthorityContractCatalog.require_operation(
                 contract_ref="inf:economy-wage-accrual-obligation@1",

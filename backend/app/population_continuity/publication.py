@@ -66,6 +66,7 @@ def publish_authorized_population_cadence(
     legacy_projections: tuple[PopulationProjection, ...] = (),
     population_projections: tuple[PopulationProjection, ...] = (),
     population_owner_receipt: PopulationOwnerReceipt | None = None,
+    temporal_pins: Mapping[str, str | int] | None = None,
     event_bus: AuthorityEventBusPort,
     legacy_projection_authorizer: Callable[..., bool] | None = None,
     publish_event: bool = True,
@@ -216,6 +217,7 @@ def publish_authorized_population_cadence(
         correlation_id=correlation_id,
         payload={
             "population_cadence": cadence.model_dump(mode="json"),
+            **({"temporal_pins": dict(temporal_pins)} if temporal_pins is not None else {}),
             "world_mode_projection": world_mode_projection,
             "activation_projection": {},
             "activation_pending_projection": {},

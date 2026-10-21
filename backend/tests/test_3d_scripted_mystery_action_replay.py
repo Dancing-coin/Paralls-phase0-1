@@ -29,7 +29,7 @@ def _window_command(index: int) -> GameplayCommandEnvelope:
         project_ref="project:action-window",
         transaction_id=f"transaction:action-window:{index}",
         idempotency_key=f"idempotency:action-window:{index}",
-        expected_revisions={EVENT_STREAM: index * 5},
+        expected_revisions={EVENT_STREAM: index * 4},
         read_set_revisions={SOURCE_STREAM: 1},
         causation_id=f"causation:action-window:{index}",
         correlation_id="correlation:action-window:replay",
@@ -134,3 +134,47 @@ def test_explicit_world_death_confirmation_accept_and_reject_are_separate() -> N
         else:
             assert not result.committed
             assert result.error_code == "world_death_source_revision_stale"
+
+
+def test_world_death_duplicate_rejects_corrupt_receipt_reference_without_write() -> None:
+    store = GameplayEventStore()
+    source_stream = "gameplay:conflict:encounter:death-replay"
+    source = store.append_batch(
+        build_atomic_event_batch(
+            command_id="case-death-replay",
+            principal_ref="authority:p5:investigation-conflict",
+            stream_id=source_stream,
+            expected_revision=0,
+            event_specs=(("gameplay.conflict.terminal_outcome_recorded", {"actor_ref": "character:survivor:alpha", "terminal_kind": "case_death"}),),
+            idempotency_key="case-death-replay",
+            causation_id="case-death-replay",
+            correlation_id="case-death-replay",
+        )
+    )
+    source_event = store.get_event(source.committed_event_ids[0])
+    authority = InvestigationConflictAuthority(registry=_registry(), store=store)
+    command = _window_command(91).model_copy(update={
+        "command_id": "death-replay",
+        "command_type": "gameplay.conflict.confirm_world_death",
+        "transaction_id": "transaction:death-replay",
+        "idempotency_key": "death-replay",
+        "expected_revisions": {source_stream: 1},
+        "source_ref": source_event.event_id,
+    }, deep=True)
+    intent = WorldDeathConfirmationIntent(
+        source_event_id=source_event.event_id,
+        target_actor_ref="character:survivor:alpha",
+        expected_source_revision=1,
+        confirmation_ref="confirmation:case:replay",
+        confirmed=True,
+        policy_revision="policy:death@1",
+    )
+    first = authority.confirm_world_death(command=command, intent=intent)
+    assert first.committed and first.receipt is not None
+    key = ("authority:p5:investigation-conflict", command.idempotency_key)
+    store._idempotency_results[key] = first.receipt.model_copy(update={"committed_event_ids": ["missing:event"]}, deep=True)
+    before = store.export_snapshot()
+    duplicate = authority.confirm_world_death(command=command, intent=intent)
+    assert not duplicate.committed
+    assert duplicate.error_code == "world_death_idempotency_reused"
+    assert store.export_snapshot() == before

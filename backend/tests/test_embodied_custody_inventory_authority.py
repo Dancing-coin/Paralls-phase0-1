@@ -95,6 +95,38 @@ def test_stow_from_custody_replays_the_committed_transaction_before_custody_vali
     assert custody.drop_target_projection("character:char_c:hand")["occupied_by_ref"] == ""
 
 
+def test_stow_from_custody_rejects_corrupt_duplicate_receipt_without_write() -> None:
+    store, custody, service, _projector = _services()
+    command = {
+        "command_id": "stow-corrupt-receipt",
+        "actor_ref": ACTOR_REF,
+        "asset_ref": "item:archive_token_01",
+        "item_id": "item:archive_token_01",
+        "definition_id": "archive_token",
+        "quantity": 1,
+        "source_holder_ref": "character:char_c:hand",
+        "destination_container_id": CONTAINER_ID,
+        "idempotency_key": "stow-corrupt-receipt-1",
+        "causation_id": "pickup:corrupt-receipt",
+        "correlation_id": "pickup:corrupt-receipt",
+    }
+    first = service.stow_from_custody(**command)
+    custody_after_first = custody.possession_projection("item:archive_token_01")["custody_holder_ref"]
+    key = (service._PRINCIPAL, command["idempotency_key"])
+    store._idempotency_results[key] = first.append_result.model_copy(
+        update={"committed_event_ids": ["missing:event"]}, deep=True
+    )
+    transaction_count = len(store.read_transactions())
+
+    replayed = service.stow_from_custody(**command)
+
+    assert first.accepted is True
+    assert replayed.accepted is False
+    assert replayed.error_code == "inventory_idempotency_receipt_invalid"
+    assert len(store.read_transactions()) == transaction_count
+    assert custody.possession_projection("item:archive_token_01")["custody_holder_ref"] == custody_after_first
+
+
 def test_retrieve_to_custody_commits_inventory_out_custody_and_receiver_occupancy_in_one_batch() -> None:
     store, custody, service, projector = _services()
     stowed = service.stow_from_custody(
@@ -222,3 +254,47 @@ def test_retrieve_to_custody_replays_before_mutable_source_checks() -> None:
     assert replayed.transaction_id == first.transaction_id
     assert len(store.read_transactions()) == 3
     assert custody.possession_projection("item:archive_token_01")["custody_holder_ref"] == "character:char_c:hand"
+
+
+def test_retrieve_to_custody_rejects_corrupt_duplicate_receipt_without_write() -> None:
+    store, custody, service, _projector = _services()
+    service.stow_from_custody(
+        command_id="stow-before-corrupt-retrieve",
+        actor_ref=ACTOR_REF,
+        asset_ref="item:archive_token_01",
+        item_id="item:archive_token_01",
+        definition_id="archive_token",
+        quantity=1,
+        source_holder_ref="character:char_c:hand",
+        destination_container_id=CONTAINER_ID,
+        idempotency_key="stow-before-corrupt-retrieve-1",
+        causation_id="pickup:before-corrupt-retrieve",
+        correlation_id="pickup:before-corrupt-retrieve",
+    )
+    command = {
+        "command_id": "retrieve-corrupt-receipt",
+        "actor_ref": ACTOR_REF,
+        "asset_ref": "item:archive_token_01",
+        "item_id": "item:archive_token_01",
+        "source_container_id": CONTAINER_ID,
+        "destination_receiver_ref": "character:char_c:hand",
+        "expected_definition_id": "archive_token",
+        "idempotency_key": "retrieve-corrupt-receipt-1",
+        "causation_id": "stow:before-corrupt-retrieve",
+        "correlation_id": "stow:before-corrupt-retrieve",
+    }
+    first = service.retrieve_to_custody(**command)
+    custody_after_first = custody.possession_projection("item:archive_token_01")["custody_holder_ref"]
+    key = (service._RETRIEVE_PRINCIPAL, command["idempotency_key"])
+    store._idempotency_results[key] = first.append_result.model_copy(
+        update={"committed_event_ids": ["missing:event"]}, deep=True
+    )
+    transaction_count = len(store.read_transactions())
+
+    replayed = service.retrieve_to_custody(**command)
+
+    assert first.accepted is True
+    assert replayed.accepted is False
+    assert replayed.error_code == "inventory_idempotency_receipt_invalid"
+    assert len(store.read_transactions()) == transaction_count
+    assert custody.possession_projection("item:archive_token_01")["custody_holder_ref"] == custody_after_first

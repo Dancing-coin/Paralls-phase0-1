@@ -1,0 +1,11 @@
+status: pending_source_review
+scenario_id: lock-event
+actions:
+  - action_id: follow_room_protocol
+    target_refs: {target: obj:door}
+    source_refs: [backend/app/character_agent/skills/catalog.py]
+    review_reason: fixed_procedure_path_requires_registered_owner
+  - action_id: assess_visible_threat
+    target_refs: {target: obj:door}
+    source_refs: [backend/app/character_agent/skills/catalog.py]
+    review_reason: visible_evidence_only

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.population_continuity.branch_preview import (
     BranchPreviewAuthority,
     BranchPreviewRequest,
@@ -163,3 +163,57 @@ def test_durable_branch_evolution_rejects_changed_duplicate_without_write() -> N
     )
     assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
     assert store.export_snapshot() == before
+
+
+def test_branch_evolution_real_durable_reopen_recovers_receipt_and_full_tail(tmp_path: Path) -> None:
+    path = tmp_path / "branch-evolution.sqlite3"
+    store = DurableGameplayEventStore(path)
+    try:
+        authority = _authority(store)
+        committed = authority.record_isolated_branch_evolution(
+            branch_ref="branch:evolution",
+            intent_ref="intent:evolution:one",
+            expected_revision=1,
+            idempotency_key="evolution:durable-reopen",
+            privacy_scope="creator_debug",
+        )
+        assert committed.committed
+        before_projection = authority.durable_branch_projection("branch:evolution")
+        before_events = store.read_events()
+        before_receipt = store.get_by_idempotency(
+            authority._PRINCIPAL, "evolution:durable-reopen"
+        )
+    finally:
+        store.close()
+
+    reopened = DurableGameplayEventStore(path)
+    try:
+        restored = BranchPreviewAuthority(
+            store=reopened,
+            registry=CharacterProfileRegistry.from_directory(PROFILE_DIR),
+        )
+        assert restored._buffers == {}
+        full = restored.durable_branch_projection("branch:evolution")
+        tail = restored.durable_branch_projection("branch:evolution", checkpoint_at=1)
+        assert full == tail == before_projection
+        assert full["applied_owner_consequence_intent_refs"] == ("intent:evolution:one",)
+        assert reopened.read_events() == before_events
+        assert reopened.get_by_idempotency(
+            restored._PRINCIPAL, "evolution:durable-reopen"
+        ) == before_receipt
+
+        duplicate = restored.record_isolated_branch_evolution(
+            branch_ref="branch:evolution",
+            intent_ref="intent:evolution:one",
+            expected_revision=1,
+            idempotency_key="evolution:durable-reopen",
+            privacy_scope="creator_debug",
+        )
+        assert duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
+        assert duplicate.committed_event_ids == committed.committed_event_ids
+        assert reopened.read_events() == before_events
+        assert restored.production_replay().projection_hash == restored.production_replay(
+            checkpoint_at=0
+        ).projection_hash
+    finally:
+        reopened.close()

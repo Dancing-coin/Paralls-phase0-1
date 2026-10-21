@@ -117,6 +117,8 @@ def test_main_assembly_uses_same_profile_for_mode_and_driver(profile, period, mo
         assert driver.window_size == 1 and driver.wall_period_seconds == period
         assert driver.world_runtime.mode == main._bakery_population_mode()
         assert driver.world_runtime.mode.revision.startswith("mode:bakery-district:v1:clock:sha256:")
+        assert callable(driver.publish_window.publish_pinned)
+        assert driver.mapping.source_unit_ref == "second"
     finally:
         main.close_runtime_resources()
 

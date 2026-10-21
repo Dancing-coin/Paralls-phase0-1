@@ -383,7 +383,7 @@ def test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_un
     assert packets
     assert packets[0].planning_status == "continuity_floor"
     assert packets[0].fallback_mode == "continuity_floor"
-    assert packets[0].recommended_intents[0] == "observe_target"
+    assert packets[0].recommended_intents[0] == "observe"
 
 
 def test_character_agent_runtime_passes_typed_working_memory_state_into_l2_reasoning_path() -> None:
@@ -801,9 +801,9 @@ def test_character_agent_runtime_feeds_previous_goal_portfolio_back_into_next_mo
             self.l3_calls += 1
             if self.l3_calls == 1:
                 return {
-                    "candidate_intents": ["share_info", "observe"],
-                    "selected_intent": "share_info",
-                    "recommended_intents": ["share_info"],
+                    "candidate_intents": ["observe", "ask_probe"],
+                    "selected_intent": "observe",
+                    "recommended_intents": ["observe"],
                     "risk_notes": [],
                     "why_this_now": "controlled disclosure keeps several motives aligned",
                     "role_consistency_hint": "speak narrowly",

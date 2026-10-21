@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "infra-life-state-case-death-caller",
+  "order": 212,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_life_state_case_death_caller.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-life-state-case-death-caller-report.json",
+  "description": "Explicit case-death confirmation to canonical LifeState dead owner",
+  "success_key": "overall_life_state_case_death_passed"
+}

@@ -265,6 +265,174 @@ def test_production_output_custody_reader_rejects_checkpoint_beyond_store_head()
         inventory.production_output_custody_view_for(checkpoint_at=1)
 
 
+def test_production_output_custody_changed_duplicate_after_commit_is_zero_write() -> None:
+    store, construction, finished_event_id = _setup()
+    certification = construction.settle_production_output_certification(
+        intent=certification_intent(finished_event_id)
+    )
+    assert certification.committed
+    certification_event = store.get_event(certification.committed_event_ids[0])
+    custody_manifest = _custody_manifest(
+        package_id="production-output-custody-bread",
+        package_revision="package:production-output-custody:bread@1",
+        definition_ref="definition:production-output-custody-bread@1",
+        output_item_ref="item:bread@1",
+        holder_binding_ref="binding:holder:organization:bakery@1",
+        container_binding_ref="binding:container:container:organization:bakery:production-output@1",
+        policy_revision="policy:inventory-production-output-custody@1",
+    )
+    registry = _family_registry(load_manifest("production-output-certification-demo-v1"), custody_manifest)
+    inventory = _inventory_for_certification(
+        store,
+        package_registry=registry,
+        holder_ref="organization:bakery",
+        item_ref="item:bread@1",
+        container_id="container:organization:bakery:production-output",
+    )
+    command_id = "custody:changed-after-commit"
+    first = inventory.settle_production_output_custody(
+        intent=ProductionOutputCustodyIntent(
+            certification_event_id=certification_event.event_id,
+            expected_certification_revision=certification_event.stream_revision,
+            expected_inventory_stream_revision=store.get_stream_head(
+                "gameplay:inventory:organization:bakery"
+            ),
+            command_id=command_id,
+            correlation_id=command_id,
+            submitted_at="2026-08-31T00:00:00Z",
+        )
+    )
+    assert first.committed, first.failure
+    head = store.get_stream_head("gameplay:inventory:organization:bakery")
+    changed = inventory.settle_production_output_custody(
+        intent=ProductionOutputCustodyIntent(
+            certification_event_id=certification_event.event_id,
+            expected_certification_revision=certification_event.stream_revision,
+            expected_inventory_stream_revision=head,
+            command_id=command_id,
+            correlation_id=command_id,
+            submitted_at="2026-08-31T00:00:00Z",
+            content_digest_pin="sha256:" + "0" * 64,
+        )
+    )
+    assert not changed.committed
+    assert changed.failure is not None
+    assert changed.failure.error_code in {
+        "production_output_custody_intent_conflict",
+        "production_output_custody_read_source_stale",
+    }
+    assert store.get_stream_head("gameplay:inventory:organization:bakery") == head
+
+
+def test_production_output_custody_changed_command_identity_rejects_existing_receipt() -> None:
+    store, construction, finished_event_id = _setup()
+    certification = construction.settle_production_output_certification(intent=certification_intent(finished_event_id))
+    assert certification.committed
+    certification_event = store.get_event(certification.committed_event_ids[0])
+    registry = _family_registry(load_manifest("production-output-certification-demo-v1"), _custody_manifest(
+        package_id="production-output-custody-bread", package_revision="package:production-output-custody:bread@1",
+        definition_ref="definition:production-output-custody-bread@1", output_item_ref="item:bread@1",
+        holder_binding_ref="binding:holder:organization:bakery@1",
+        container_binding_ref="binding:container:container:organization:bakery:production-output@1",
+        policy_revision="policy:inventory-production-output-custody@1"))
+    inventory = _inventory_for_certification(store, package_registry=registry, holder_ref="organization:bakery",
+                                             item_ref="item:bread@1", container_id="container:organization:bakery:production-output")
+    kwargs = dict(certification_event_id=certification_event.event_id,
+                  expected_certification_revision=certification_event.stream_revision,
+                  expected_inventory_stream_revision=store.get_stream_head("gameplay:inventory:organization:bakery"),
+                  correlation_id="corr:custody", submitted_at="2026-08-31T00:00:00Z")
+    first = inventory.settle_production_output_custody(intent=ProductionOutputCustodyIntent(command_id="cmd:custody", **kwargs))
+    assert first.committed
+    before = store.export_snapshot()
+    changed = inventory.settle_production_output_custody(intent=ProductionOutputCustodyIntent(command_id="cmd:custody:changed", **kwargs))
+    assert not changed.committed
+    assert changed.failure is not None and changed.failure.error_code == "production_output_custody_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
+def test_production_output_custody_rejects_corrupt_receipt_event_reference_without_write() -> None:
+    store, construction, finished_event_id = _setup()
+    certification = construction.settle_production_output_certification(intent=certification_intent(finished_event_id))
+    assert certification.committed
+    certification_event = store.get_event(certification.committed_event_ids[0])
+    registry = _family_registry(load_manifest("production-output-certification-demo-v1"), _custody_manifest(
+        package_id="production-output-custody-bread", package_revision="package:production-output-custody:bread@1",
+        definition_ref="definition:production-output-custody-bread@1", output_item_ref="item:bread@1",
+        holder_binding_ref="binding:holder:organization:bakery@1",
+        container_binding_ref="binding:container:container:organization:bakery:production-output@1",
+        policy_revision="policy:inventory-production-output-custody@1"))
+    inventory = _inventory_for_certification(store, package_registry=registry, holder_ref="organization:bakery",
+                                             item_ref="item:bread@1", container_id="container:organization:bakery:production-output")
+    intent = ProductionOutputCustodyIntent(
+        certification_event_id=certification_event.event_id,
+        expected_certification_revision=certification_event.stream_revision,
+        expected_inventory_stream_revision=store.get_stream_head("gameplay:inventory:organization:bakery"),
+        command_id="cmd:custody", correlation_id="corr:custody", submitted_at="2026-08-31T00:00:00Z",
+    )
+    first = inventory.settle_production_output_custody(intent=intent)
+    assert first.committed
+    key = (inventory._PRINCIPAL, next(k for k in store._idempotency_results if k[1].startswith("organization:bakery:inventory:production-output-custody:"))[1])
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+    duplicate = inventory.settle_production_output_custody(intent=intent)
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "production_output_custody_receipt_invalid"
+    assert store.export_snapshot() == before
+
+
+def test_production_output_custody_rejects_changed_expected_revision_with_same_correlation() -> None:
+    store, construction, finished_event_id = _setup()
+    certification = construction.settle_production_output_certification(
+        intent=certification_intent(finished_event_id)
+    )
+    assert certification.committed
+    certification_event = store.get_event(certification.committed_event_ids[0])
+    custody_manifest = _custody_manifest(
+        package_id="production-output-custody-bread",
+        package_revision="package:production-output-custody:bread@1",
+        definition_ref="definition:production-output-custody-bread@1",
+        output_item_ref="item:bread@1",
+        holder_binding_ref="binding:holder:organization:bakery@1",
+        container_binding_ref="binding:container:container:organization:bakery:production-output@1",
+        policy_revision="policy:inventory-production-output-custody@1",
+    )
+    registry = _family_registry(load_manifest("production-output-certification-demo-v1"), custody_manifest)
+    inventory = _inventory_for_certification(
+        store, package_registry=registry, holder_ref="organization:bakery",
+        item_ref="item:bread@1", container_id="container:organization:bakery:production-output",
+    )
+    stream_id = "gameplay:inventory:organization:bakery"
+    expected_revision = store.get_stream_head(stream_id)
+    first = inventory.settle_production_output_custody(
+        intent=ProductionOutputCustodyIntent(
+            certification_event_id=certification_event.event_id,
+            expected_certification_revision=certification_event.stream_revision,
+            expected_inventory_stream_revision=expected_revision,
+            command_id="custody:changed-expected-revision",
+            correlation_id="custody:stable-correlation",
+            submitted_at="2026-08-31T00:00:00Z",
+        )
+    )
+    assert first.committed, first.failure
+    head_after_commit = store.get_stream_head(stream_id)
+    changed = inventory.settle_production_output_custody(
+        intent=ProductionOutputCustodyIntent(
+            certification_event_id=certification_event.event_id,
+            expected_certification_revision=certification_event.stream_revision,
+            expected_inventory_stream_revision=head_after_commit,
+            command_id="custody:changed-expected-revision-retry",
+            correlation_id="custody:stable-correlation",
+            submitted_at="2026-08-31T00:00:00Z",
+        )
+    )
+    assert not changed.committed
+    assert changed.failure is not None
+    assert changed.failure.error_code == "production_output_custody_idempotency_key_reused"
+    assert store.get_stream_head(stream_id) == head_after_commit
+
+
 def test_production_output_custody_rejects_certification_without_provenance_before_append() -> None:
     store, construction, finished_event_id = _setup()
     certification = construction.settle_production_output_certification(

@@ -37,6 +37,13 @@ def test_settle_tick_and_consumption_append_survival_events_only_after_acceptanc
         causation_id="cause:survival:tick:1", correlation_id="corr:survival:1",
     )
     assert result is not None and result.committed is True
+    changed = authority.settle_tick(
+        actor_ref="character:survivor", policy=policy, definition=definition, state=state, tick=1,
+        command_id="command:survival:tick:changed", idempotency_key="idem:survival:tick:1",
+        causation_id="cause:survival:tick:1", correlation_id="corr:survival:1",
+    )
+    assert not changed.committed and changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"
     assert store.read_events()[-1].event_type == "gameplay.survival.need_tick"
     plan = authority.projector().latest_plan
     assert plan is not None
@@ -47,3 +54,16 @@ def test_settle_tick_and_consumption_append_survival_events_only_after_acceptanc
             correlation_id="corr:survival:1", accepted_reservation_refs=(),
         )
     assert len(store.read_events()) == 1
+    accepted = authority.settle_consumption(
+        actor_ref="character:survivor", plan=plan, accepted_reservation_refs=tuple(plan.required_owner_refs),
+        command_id="command:survival:consume:1", idempotency_key="idem:survival:consume:1",
+        causation_id="cause:survival:consume:1", correlation_id="corr:survival:1",
+    )
+    changed = authority.settle_consumption(
+        actor_ref="character:survivor", plan=plan, accepted_reservation_refs=tuple(plan.required_owner_refs),
+        command_id="command:survival:consume:changed", idempotency_key="idem:survival:consume:1",
+        causation_id="cause:survival:consume:1", correlation_id="corr:survival:1",
+    )
+    assert accepted.committed
+    assert not changed.committed and changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"

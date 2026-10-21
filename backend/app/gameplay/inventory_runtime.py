@@ -64,6 +64,44 @@ class ProductionOutputCustodyBindingContract:
     mapping_revision: str
 
 
+@dataclass(frozen=True)
+class ProductionOutputCustodyReadBinding:
+    package_revision: str
+    content_digest: str
+    declaration_ref: str
+    declaration_digest: str
+    binding_ref: str
+    active_set_digest: str
+    mapping_revision: str
+
+    def revision_pins(self) -> dict[str, str]:
+        return {
+            "package_revision_pin": self.package_revision,
+            "content_digest_pin": self.content_digest,
+            "declaration_ref_pin": self.declaration_ref,
+            "declaration_digest_pin": self.declaration_digest,
+            "binding_ref_pin": self.binding_ref,
+            "active_set_digest_pin": self.active_set_digest,
+            "mapping_revision_pin": self.mapping_revision,
+        }
+
+
+@dataclass(frozen=True)
+class ProductionOutputCustodyReadSet:
+    source_certification_event_id: str
+    source_certification_revision: int
+    source_stream_ref: str
+    active_patch_set_revision: str
+    holder_ref: str
+    inventory_stream_ref: str
+    inventory_stream_revision: int
+    bindings: tuple[ProductionOutputCustodyReadBinding, ...]
+
+    def __post_init__(self) -> None:
+        if not self.bindings or len(self.bindings) != len({item.binding_ref for item in self.bindings}):
+            raise ValueError("inventory_custody_read_binding_invalid")
+
+
 _HARVEST_CUSTODY_BINDING_CONTRACTS: tuple[HarvestCustodyBindingContract, ...] = (
     HarvestCustodyBindingContract(
         species="grain:wheat",
@@ -416,6 +454,7 @@ class InventoryProjector:
                     "binding_ref": payload.get("binding_ref"),
                     "active_patch_set_revision": payload.get("active_patch_set_revision"),
                     "mapping_revision": payload.get("mapping_revision"),
+                    "source_certification_provenance": payload.get("source_certification_provenance"),
                 }
                 if (
                     event.visibility_policy != "project"
@@ -698,6 +737,55 @@ class InventoryAuthorityService:
         self._package_registry = package_registry
         self._inventory_cache: OrderedDict[str, tuple[InventoryProjection, int]] = OrderedDict()
 
+    def _replay_matches_serialized_events(
+        self,
+        *,
+        result: AppendBatchResult,
+        serialized: Sequence[Mapping[str, object]],
+        expected_event_count: int,
+    ) -> bool:
+        if not result.committed or len(result.committed_event_ids) != expected_event_count or len(serialized) != expected_event_count:
+            return False
+        if len(set(result.committed_event_ids)) != expected_event_count:
+            return False
+        batch = self._store.get_transaction(result.transaction_id)
+        if batch is None or tuple(event.event_id for event in batch.events) != tuple(result.committed_event_ids):
+            return False
+        try:
+            events = tuple(self._store.get_event(event_id) for event_id in result.committed_event_ids)
+        except (KeyError, ValueError):
+            return False
+        return all(
+            event.event_type == expected["event_type"]
+            and event.command_id == expected["command_id"]
+            and event.transaction_id == expected["transaction_id"]
+            and event.causation_id == expected["causation_id"]
+            and event.correlation_id == expected["correlation_id"]
+            and event.stream_id == expected["stream_id"]
+            and event.visibility_policy == expected["visibility_policy"]
+            and event.payload == expected["payload"]
+            for event, expected in zip(events, serialized, strict=True)
+        )
+
+    def _existing_append_result(
+        self, *, command_id: str, actor_ref: str,
+        events: Sequence[tuple[str, Mapping[str, object]]], idempotency_key: str,
+        causation_id: str, correlation_id: str,
+    ) -> AppendBatchResult | None:
+        serialized = self._serialize_events(command_id, actor_ref, events, causation_id, correlation_id)
+        key = f"{actor_ref}:{idempotency_key}"
+        record = self._store.get_idempotency_record(self._PRINCIPAL, key)
+        if record is None:
+            return None
+        if record.payload_digest != _digest(serialized):
+            return self._rejected_append(command_id, "inventory_idempotency_key_reused")
+        result = self._store.get_by_idempotency(self._PRINCIPAL, key)
+        if result is None or not self._replay_matches_serialized_events(
+            result=result, serialized=serialized, expected_event_count=len(serialized)
+        ):
+            return self._rejected_append(command_id, "inventory_idempotency_receipt_invalid")
+        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
     def _current_inventory(self, actor_ref: str, *, through_sequence: int | None = None) -> InventoryProjection:
         """单 Owner 内追平已提交尾部；读失败不安装半成品，也不预装待提交命令。"""
         cut = self._store.get_last_global_sequence() if through_sequence is None else through_sequence
@@ -732,6 +820,129 @@ class InventoryAuthorityService:
         while len(self._inventory_cache) > 32:
             self._inventory_cache.popitem(last=False)
         return projection
+
+    def freeze_production_output_custody_read(
+        self, *, certification_event_id: str, command_id: str | None = None,
+        correlation_id: str | None = None,
+    ) -> ProductionOutputCustodyReadSet:
+        """Freeze active custody pins; exact command retries retain their original write revision."""
+        from app.gameplay.closed_generic_gameplay_families import ProductionOutputCustodyContent, family_binding_is_valid
+
+        registry = self._package_registry
+        active = getattr(registry, "active_patch_set", None) if registry is not None else None
+        if active is None:
+            raise InventoryRuntimeError("inventory_custody_package_inactive")
+        try:
+            certification = self._store.get_event(certification_event_id)
+            manifests = registry.active_manifests(active.active_patch_set_revision)
+        except (AttributeError, KeyError, TypeError, ValueError):
+            raise InventoryRuntimeError("inventory_custody_read_source_missing") from None
+        if (
+            certification.event_type != "gameplay.construction_production.production_output_certified@1"
+            or certification.visibility_policy != "project"
+            or self._store.get_stream_head(certification.stream_id) != certification.stream_revision
+            or certification.payload.get("family_ref") != "production_output_certification@1"
+        ):
+            raise InventoryRuntimeError("inventory_custody_source_stale")
+        source = certification.payload
+        acquisitions = [
+            event for event in self._store.read_stream(certification.stream_id)
+            if event.event_type == "gameplay.construction_production.facility_acquired"
+            and event.visibility_policy == "project"
+            and event.payload.get("facility_ref") == source.get("facility_ref")
+        ]
+        if len(acquisitions) != 1:
+            raise InventoryRuntimeError("inventory_custody_holder_mapping_invalid")
+        holder_ref = acquisitions[0].payload.get("owner_ref")
+        if not isinstance(holder_ref, str) or not holder_ref:
+            raise InventoryRuntimeError("inventory_custody_holder_mapping_invalid")
+
+        bindings: list[ProductionOutputCustodyReadBinding] = []
+        for manifest in manifests:
+            extension = manifest.platform_extension
+            if extension is None:
+                continue
+            declarations = {item.declaration_ref: item for item in extension.outcome_declarations}
+            for request in extension.capability_binding_requests:
+                if request.capability_ref != "capability:production-output-custody@1":
+                    continue
+                declaration = declarations.get(request.declaration_ref)
+                if declaration is None or declaration.outcome_family_ref != "outcome:production-output-custody@1":
+                    continue
+                definitions = tuple(item for item in extension.package_definitions if item.definition_ref in declaration.definition_refs)
+                active_bindings = tuple(
+                    item for item in active.capability_bindings
+                    if item.binding_ref == request.binding_ref
+                    and item.package_revision == manifest.patch_revision_id
+                    and item.content_digest == manifest.content_digest
+                    and item.declaration_digest == declaration.declaration_digest
+                    and item.active_patch_set_revision == active.active_patch_set_revision
+                )
+                if len(definitions) != 1 or len(active_bindings) != 1:
+                    continue
+                try:
+                    content = ProductionOutputCustodyContent.model_validate(definitions[0].typed_content)
+                except Exception:
+                    continue
+                if content.output_item_definition_ref != source.get("output_item"):
+                    continue
+                binding = active_bindings[0]
+                mapping = next((item for item in _PRODUCTION_OUTPUT_CUSTODY_BINDING_CONTRACTS
+                    if item.facility_kind == acquisitions[0].payload.get("facility_kind")
+                    and item.recipe_ref == source.get("recipe_ref")
+                    and item.output_item_ref == source.get("output_item")
+                    and item.holder_binding_ref == content.holder_binding_ref
+                    and item.container_binding_ref == content.container_binding_ref
+                    and item.holder_ref == holder_ref), None)
+                if mapping is None:
+                    continue
+                if not family_binding_is_valid(
+                    family_ref="production_output_custody@1", manifest=manifest,
+                    declaration=declaration,
+                    declaration_payload=declaration.model_dump(mode="json", exclude={"declaration_digest"}),
+                    request=request, definition=definitions[0], binding=binding,
+                    active_set_revision=active.active_patch_set_revision, typed_content=content,
+                ):
+                    continue
+                bindings.append(ProductionOutputCustodyReadBinding(
+                    package_revision=manifest.patch_revision_id, content_digest=manifest.content_digest,
+                    declaration_ref=declaration.declaration_ref, declaration_digest=declaration.declaration_digest,
+                    binding_ref=binding.binding_ref, active_set_digest=active.active_patch_set_revision,
+                    mapping_revision=mapping.mapping_revision,
+                ))
+        if len(bindings) != 1:
+            raise InventoryRuntimeError("inventory_custody_read_binding_ambiguous" if bindings else "inventory_custody_read_binding_missing")
+        inventory_stream_ref = f"gameplay:inventory:{holder_ref}"
+        inventory_stream_revision = self._store.get_stream_head(inventory_stream_ref)
+        if command_id and correlation_id:
+            prior_events = [
+                event for event in self._store.read_stream(inventory_stream_ref)
+                if event.event_type == "gameplay.inventory.production_output_received@1"
+                and event.payload.get("source_certification_event_id") == certification.event_id
+                and event.command_id == command_id
+                and event.correlation_id == correlation_id
+            ]
+            if len(prior_events) == 1:
+                prior = prior_events[0]
+                prior_batch = next(
+                    (batch for batch in self._store.read_transactions()
+                     if any(item.event_id == prior.event_id for item in batch.events)),
+                    None,
+                )
+                if prior_batch is not None:
+                    original_revision = prior_batch.expected_stream_revisions.get(inventory_stream_ref)
+                    if isinstance(original_revision, int) and not isinstance(original_revision, bool):
+                        inventory_stream_revision = original_revision
+        return ProductionOutputCustodyReadSet(
+            source_certification_event_id=certification.event_id,
+            source_certification_revision=certification.stream_revision,
+            source_stream_ref=certification.stream_id,
+            active_patch_set_revision=active.active_patch_set_revision,
+            holder_ref=holder_ref,
+            inventory_stream_ref=inventory_stream_ref,
+            inventory_stream_revision=inventory_stream_revision,
+            bindings=tuple(bindings),
+        )
 
     def build_commerce_custody_fragment(
         self,
@@ -842,6 +1053,25 @@ class InventoryAuthorityService:
         ))
 
     def create_container(self, *, command_id: str, actor_ref: str, spec: ContainerSpec, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        planned_events = [(
+            "gameplay.inventory.container_created",
+            {
+                "container_id": spec.container_id,
+                "capacity_weight": spec.capacity_weight,
+                "capacity_volume": spec.capacity_volume,
+                "capacity_slots": spec.capacity_slots,
+                "sealed": spec.sealed,
+                "carrier_item_id": spec.carrier_item_id,
+                "content_weight_propagation": spec.content_weight_propagation,
+                "allows_living_items": spec.allows_living_items,
+            },
+        )]
+        duplicate = self._existing_append_result(
+            command_id=command_id, actor_ref=actor_ref, events=planned_events,
+            idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+        )
+        if duplicate is not None:
+            return duplicate
         projection = self._current_inventory(actor_ref)
         if not spec.container_id or spec.container_id in projection.containers:
             raise InventoryRuntimeError("inventory_container_invalid")
@@ -854,27 +1084,23 @@ class InventoryAuthorityService:
         return self._append(
             command_id,
             actor_ref,
-            [
-                (
-                    "gameplay.inventory.container_created",
-                    {
-                        "container_id": spec.container_id,
-                        "capacity_weight": spec.capacity_weight,
-                        "capacity_volume": spec.capacity_volume,
-                        "capacity_slots": spec.capacity_slots,
-                        "sealed": spec.sealed,
-                        "carrier_item_id": spec.carrier_item_id,
-                        "content_weight_propagation": spec.content_weight_propagation,
-                        "allows_living_items": spec.allows_living_items,
-                    },
-                )
-            ],
+            planned_events,
             idempotency_key,
             causation_id,
             correlation_id,
         )
 
     def instantiate(self, *, command_id: str, actor_ref: str, item_id: str, definition_id: str, quantity: int, container_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        planned_events = [
+            ("gameplay.inventory.item_instantiated", {"item_id": item_id, "definition_id": definition_id, "quantity": quantity}),
+            ("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": "inventory:unplaced", "to_container_id": container_id}),
+        ]
+        duplicate = self._existing_append_result(
+            command_id=command_id, actor_ref=actor_ref, events=planned_events,
+            idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+        )
+        if duplicate is not None:
+            return duplicate
         self._registry.item(definition_id)
         projection = self._current_inventory(actor_ref)
         if container_id not in projection.containers:
@@ -887,9 +1113,16 @@ class InventoryAuthorityService:
             raise InventoryRuntimeError("inventory_item_invalid")
         item = InventoryItem(item_id, definition_id, quantity, "pending")
         self._require_capacity(projection, container_id, item)
-        return self._append(command_id, actor_ref, [("gameplay.inventory.item_instantiated", {"item_id": item_id, "definition_id": definition_id, "quantity": quantity}), ("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": "inventory:unplaced", "to_container_id": container_id})], idempotency_key, causation_id, correlation_id)
+        return self._append(command_id, actor_ref, planned_events, idempotency_key, causation_id, correlation_id)
 
     def move(self, *, command_id: str, actor_ref: str, item_id: str, from_container_id: str, to_container_id: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
+        planned_events = [("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": from_container_id, "to_container_id": to_container_id})]
+        duplicate = self._existing_append_result(
+            command_id=command_id, actor_ref=actor_ref, events=planned_events,
+            idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+        )
+        if duplicate is not None:
+            return duplicate
         projection = self._current_inventory(actor_ref)
         item = projection.items.get(item_id)
         target = projection.containers.get(to_container_id)
@@ -903,7 +1136,7 @@ class InventoryAuthorityService:
         if target.carrier_item_id or (source is not None and source.carrier_item_id):
             raise InventoryRuntimeError("inventory_container_access_requires_equipment")
         self._require_capacity(projection, to_container_id, item, excluding_item_id=item_id)
-        return self._append(command_id, actor_ref, [("gameplay.inventory.item_moved", {"item_id": item_id, "from_container_id": from_container_id, "to_container_id": to_container_id})], idempotency_key, causation_id, correlation_id)
+        return self._append(command_id, actor_ref, planned_events, idempotency_key, causation_id, correlation_id)
 
     def reserve_item(
         self,
@@ -930,7 +1163,10 @@ class InventoryAuthorityService:
             if existing_record.payload_digest != _digest(serialized):
                 raise InventoryRuntimeError("inventory_idempotency_key_reused")
             result = self._store.get_by_idempotency(self._PRINCIPAL, key)
-            assert result is not None
+            if result is None or not self._replay_matches_serialized_events(
+                result=result, serialized=serialized, expected_event_count=1
+            ):
+                raise InventoryRuntimeError("inventory_reservation_receipt_invalid")
             return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         projection = self._current_inventory(actor_ref)
         item = projection.items.get(item_id)
@@ -969,6 +1205,25 @@ class InventoryAuthorityService:
         correlation_id: str,
     ) -> AppendBatchResult:
         """Record a narrow Inventory/Production-owned capacity reservation."""
+        planned_events = [
+            (
+                "gameplay.inventory.commerce_capacity_reserved",
+                {
+                    "capacity_reservation_ref": capacity_reservation_ref,
+                    "available_quantity": available_quantity,
+                },
+            )
+        ]
+        duplicate = self._existing_append_result(
+            command_id=command_id,
+            actor_ref=actor_ref,
+            events=planned_events,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+        if duplicate is not None:
+            return duplicate
         projection = self._current_inventory(actor_ref)
         if (
             not capacity_reservation_ref.startswith("capacity:")
@@ -976,22 +1231,7 @@ class InventoryAuthorityService:
             or capacity_reservation_ref in projection.capacity_reservations
         ):
             raise InventoryRuntimeError("inventory_capacity_reservation_invalid")
-        return self._append(
-            command_id,
-            actor_ref,
-            [
-                (
-                    "gameplay.inventory.commerce_capacity_reserved",
-                    {
-                        "capacity_reservation_ref": capacity_reservation_ref,
-                        "available_quantity": available_quantity,
-                    },
-                )
-            ],
-            idempotency_key,
-            causation_id,
-            correlation_id,
-        )
+        return self._append(command_id, actor_ref, planned_events, idempotency_key, causation_id, correlation_id)
 
     def consume_reservation(
         self,
@@ -1016,7 +1256,10 @@ class InventoryAuthorityService:
             if existing_record.payload_digest != _digest(serialized):
                 raise InventoryRuntimeError("inventory_idempotency_key_reused")
             result = self._store.get_by_idempotency(self._PRINCIPAL, key)
-            assert result is not None
+            if result is None or not self._replay_matches_serialized_events(
+                result=result, serialized=serialized, expected_event_count=1
+            ):
+                raise InventoryRuntimeError("inventory_reservation_receipt_invalid")
             return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         projection = self._current_inventory(actor_ref)
         if reservation_ref not in projection.reservations:
@@ -1058,7 +1301,10 @@ class InventoryAuthorityService:
             if existing_record.payload_digest != _digest(serialized):
                 raise InventoryRuntimeError("inventory_idempotency_key_reused")
             result = self._store.get_by_idempotency(self._PRINCIPAL, key)
-            assert result is not None
+            if result is None or not self._replay_matches_serialized_events(
+                result=result, serialized=serialized, expected_event_count=1
+            ):
+                raise InventoryRuntimeError("inventory_reservation_receipt_invalid")
             return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         projection = self._current_inventory(actor_ref)
         if reservation_ref not in projection.reservations:
@@ -1101,6 +1347,29 @@ class InventoryAuthorityService:
         if not source_ref or not item_ref or not item_id or not definition_id or not container_id or quantity <= 0:
             raise InventoryRuntimeError("inventory_output_invalid")
         self._registry.item(definition_id)
+        planned_events = [
+            (
+                "gameplay.inventory.output_received",
+                {
+                    "source_ref": source_ref,
+                    "item_ref": item_ref,
+                    "item_id": item_id,
+                    "definition_id": definition_id,
+                    "container_id": container_id,
+                    "quantity": quantity,
+                },
+            )
+        ]
+        duplicate = self._existing_append_result(
+            command_id=command_id,
+            actor_ref=actor_ref,
+            events=planned_events,
+            idempotency_key=idempotency_key,
+            causation_id=causation_id,
+            correlation_id=correlation_id,
+        )
+        if duplicate is not None:
+            return duplicate
         projection = self._current_inventory(actor_ref)
         if container_id not in projection.containers:
             raise InventoryRuntimeError("inventory_container_unknown")
@@ -1109,26 +1378,7 @@ class InventoryAuthorityService:
         if item_id in projection.items:
             raise InventoryRuntimeError("inventory_output_invalid")
         self._require_capacity(projection, container_id, InventoryItem(item_id, definition_id, quantity, "pending"))
-        return self._append(
-            command_id,
-            actor_ref,
-            [
-                (
-                    "gameplay.inventory.output_received",
-                    {
-                        "source_ref": source_ref,
-                        "item_ref": item_ref,
-                        "item_id": item_id,
-                        "definition_id": definition_id,
-                        "container_id": container_id,
-                        "quantity": quantity,
-                    },
-                )
-            ],
-            idempotency_key,
-            causation_id,
-            correlation_id,
-        )
+        return self._append(command_id, actor_ref, planned_events, idempotency_key, causation_id, correlation_id)
 
     def record_reinforced_mill_flour_output_receipt(
         self,
@@ -1178,6 +1428,25 @@ class InventoryAuthorityService:
                     command_id,
                     "inventory_mill_flour_output_receipt_missing",
                 )
+            if not replay.committed or len(replay.committed_event_ids) != 1:
+                return self._rejected_append(command_id, "inventory_mill_flour_output_receipt_invalid")
+            batch = self._store.get_transaction(replay.transaction_id)
+            if batch is None or tuple(event.event_id for event in batch.events) != tuple(replay.committed_event_ids):
+                return self._rejected_append(command_id, "inventory_mill_flour_output_receipt_invalid")
+            try:
+                replay_event = self._store.get_event(replay.committed_event_ids[0])
+            except KeyError:
+                return self._rejected_append(command_id, "inventory_mill_flour_output_receipt_invalid")
+            if (
+                replay_event.event_type != _REINFORCED_MILL_FLOUR_OUTPUT_EVENT
+                or replay_event.command_id != replay.command_id
+                or replay_event.causation_id != causation_id
+                or replay_event.correlation_id != correlation_id
+                or replay_event.transaction_id != replay.transaction_id
+                or replay_event.stream_id != provider_stream
+                or replay_event.visibility_policy != "project"
+            ):
+                return self._rejected_append(command_id, "inventory_mill_flour_output_receipt_invalid")
             return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         try:
             certification = self._store.get_event(certification_event_id)
@@ -1320,6 +1589,21 @@ class InventoryAuthorityService:
             replay = self._store.get_by_idempotency(self._PRINCIPAL, key)
             if replay is None:
                 return self._rejected_append(command_id, "inventory_grain_harvest_receipt_missing")
+            if not replay.committed or len(replay.committed_event_ids) != 1:
+                return self._rejected_append(command_id, "inventory_grain_harvest_receipt_invalid")
+            try:
+                event = self._store.get_event(replay.committed_event_ids[0])
+            except KeyError:
+                return self._rejected_append(command_id, "inventory_grain_harvest_receipt_invalid")
+            if (
+                event.event_type != _GRAIN_HARVEST_EVENT
+                or event.command_id != command_id
+                or event.causation_id != causation_id
+                or event.correlation_id != correlation_id
+                or event.stream_id != provider_stream
+                or event.visibility_policy != "project"
+            ):
+                return self._rejected_append(command_id, "inventory_grain_harvest_receipt_invalid")
             return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         try:
             harvest = self._store.get_event(harvest_event_id)
@@ -1555,6 +1839,23 @@ class InventoryAuthorityService:
             replay = self._store.get_by_idempotency(self._PRINCIPAL, f"{holder_ref}:{key}")
             if replay is None:
                 return self._rejected_append(typed_intent.command_id, "harvest_to_custody_receipt_missing")
+            if not replay.committed or len(replay.committed_event_ids) != 1:
+                return self._rejected_append(typed_intent.command_id, "harvest_to_custody_receipt_invalid")
+            batch = self._store.get_transaction(replay.transaction_id)
+            if batch is None or tuple(event.event_id for event in batch.events) != tuple(replay.committed_event_ids):
+                return self._rejected_append(typed_intent.command_id, "harvest_to_custody_receipt_invalid")
+            try:
+                replay_event = self._store.get_event(replay.committed_event_ids[0])
+            except KeyError:
+                return self._rejected_append(typed_intent.command_id, "harvest_to_custody_receipt_invalid")
+            if (
+                replay_event.event_type != _HARVEST_TO_CUSTODY_EVENT
+                or replay_event.command_id != replay.command_id
+                or replay_event.transaction_id != replay.transaction_id
+                or replay_event.stream_id != provider_stream
+                or replay_event.visibility_policy != "project"
+            ):
+                return self._rejected_append(typed_intent.command_id, "harvest_to_custody_receipt_invalid")
             return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if self._store.get_stream_head(provider_stream) != typed_intent.expected_inventory_stream_revision:
             return self._rejected_append(typed_intent.command_id, "revision_conflict")
@@ -1664,13 +1965,14 @@ class InventoryAuthorityService:
             typed = intent if isinstance(intent, ProductionOutputCustodyIntent) else ProductionOutputCustodyIntent.model_validate(intent)
         except Exception:
             return self._rejected_append(str(getattr(intent, "command_id", "production-output-custody")), "production_output_custody_intent_invalid")
-        if temporal_read_set is not None and (
-            not isinstance(temporal_read_set, dict) or any(
-                not isinstance(stream, str)
-                or not stream.startswith(("population-cadence:", "population-cadence-revocation:"))
-                or type(revision) is not int or revision < 0
-                for stream, revision in temporal_read_set.items()
-            )
+        if temporal_read_set is not None and not isinstance(temporal_read_set, dict):
+            return self._rejected_append(typed.command_id, "production_output_custody_temporal_read_set_invalid")
+        if temporal_read_set is not None and any(
+            not isinstance(stream, str)
+            or not stream.startswith(("population-cadence:", "population-cadence-revocation:"))
+            or type(revision) is not int
+            or revision < 0
+            for stream, revision in temporal_read_set.items()
         ):
             return self._rejected_append(typed.command_id, "production_output_custody_temporal_read_set_invalid")
         registry = self._package_registry
@@ -1694,6 +1996,24 @@ class InventoryAuthorityService:
             or certification.payload.get("quantity", 0) <= 0
         ):
             return self._rejected_append(typed.command_id, "production_output_custody_source_invalid")
+        if any(getattr(typed, name) is not None for name in (
+            "package_revision_pin", "content_digest_pin", "declaration_ref_pin",
+            "declaration_digest_pin", "binding_ref_pin", "active_set_digest_pin",
+            "mapping_revision_pin",
+        )):
+            try:
+                frozen = self.freeze_production_output_custody_read(
+                    certification_event_id=typed.certification_event_id,
+                    command_id=typed.command_id,
+                    correlation_id=typed.correlation_id,
+                )
+                expected = frozen.bindings[0].revision_pins()
+                if any(getattr(typed, key) != value for key, value in expected.items()):
+                    return self._rejected_append(typed.command_id, "production_output_custody_read_source_stale")
+                if typed.expected_inventory_stream_revision != frozen.inventory_stream_revision:
+                    return self._rejected_append(typed.command_id, "production_output_custody_read_revision_conflict")
+            except (InventoryRuntimeError, IndexError):
+                return self._rejected_append(typed.command_id, "production_output_custody_read_source_missing")
         source_certification_provenance = {
             key: certification.payload.get(key)
             for key in (
@@ -1782,6 +2102,22 @@ class InventoryAuthorityService:
         )
         if mapping is None:
             return self._rejected_append(typed.command_id, "production_output_custody_holder_mapping_invalid")
+        current_read_pins = {
+            "package_revision_pin": manifest.patch_revision_id,
+            "content_digest_pin": manifest.content_digest,
+            "declaration_ref_pin": declaration.declaration_ref,
+            "declaration_digest_pin": declaration.declaration_digest,
+            "binding_ref_pin": binding.binding_ref,
+            "active_set_digest_pin": active.active_patch_set_revision,
+            "mapping_revision_pin": mapping.mapping_revision,
+        }
+        supplied_read_pins = any(
+            getattr(typed, name) is not None for name in current_read_pins
+        )
+        if supplied_read_pins and any(
+            getattr(typed, name) != value for name, value in current_read_pins.items()
+        ):
+            return self._rejected_append(typed.command_id, "production_output_custody_read_source_stale")
         holder_stream = f"gameplay:inventory:{mapping.holder_ref}"
         prior_events = [
             event for event in self._store.read_stream(holder_stream)
@@ -1801,9 +2137,43 @@ class InventoryAuthorityService:
                 prior_result = self._store.get_by_idempotency(
                     self._PRINCIPAL, prior_batch.idempotency_record.idempotency_key
                 )
-                if prior_result is not None and prior_event.correlation_id == typed.correlation_id:
-                    return prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
                 if prior_result is not None:
+                    expected_idempotency_key = (
+                        f"{mapping.holder_ref}:inventory:production-output-custody:"
+                        f"{binding.binding_ref}:{manifest.patch_revision_id}:"
+                        f"{certification.event_id}:{certification.stream_revision}:"
+                        f"{typed.expected_inventory_stream_revision}:v1"
+                    )
+                    expected_request_digest = _canonical_digest({
+                        "certification_event_id": certification.event_id,
+                        "expected_certification_revision": certification.stream_revision,
+                        "expected_inventory_stream_revision": typed.expected_inventory_stream_revision,
+                        "correlation_id": typed.correlation_id,
+                    })
+                    expected_command_id = f"{typed.command_id.rsplit(':replay', 1)[0]}" if typed.command_id.endswith(":replay") else typed.command_id
+                    prior_record = self._store.get_idempotency_record(
+                        self._PRINCIPAL, expected_idempotency_key
+                    )
+                    if (
+                        prior_event.correlation_id == typed.correlation_id
+                        and prior_event.command_id == expected_command_id
+                        and prior_result.command_id == expected_command_id
+                        and prior_batch.idempotency_record.idempotency_key == expected_idempotency_key
+                        and prior_record is not None
+                        and prior_record.payload_digest == expected_request_digest
+                    ):
+                        if not prior_result.committed or len(prior_result.committed_event_ids) != 1:
+                            return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+                        prior_batch_result = self._store.get_transaction(prior_result.transaction_id)
+                        if prior_batch_result is None or tuple(event.event_id for event in prior_batch_result.events) != tuple(prior_result.committed_event_ids):
+                            return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+                        try:
+                            replay_event = self._store.get_event(prior_result.committed_event_ids[0])
+                        except KeyError:
+                            return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+                        if replay_event.event_type != "gameplay.inventory.production_output_received@1" or replay_event.stream_id != holder_stream or replay_event.visibility_policy != "project":
+                            return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+                        return prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
                     return self._rejected_append(typed.command_id, "production_output_custody_idempotency_key_reused")
         if self._store.get_stream_head(holder_stream) != typed.expected_inventory_stream_revision:
             return self._rejected_append(typed.command_id, "production_output_custody_revision_conflict")
@@ -1829,7 +2199,28 @@ class InventoryAuthorityService:
             if existing.payload_digest != request_digest:
                 return self._rejected_append(typed.command_id, "production_output_custody_idempotency_key_reused")
             prior = self._store.get_by_idempotency(self._PRINCIPAL, key)
-            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True) if prior is not None else self._rejected_append(typed.command_id, "production_output_custody_receipt_missing")
+            if prior is None:
+                return self._rejected_append(typed.command_id, "production_output_custody_receipt_missing")
+            if prior.command_id != typed.command_id:
+                return self._rejected_append(typed.command_id, "production_output_custody_idempotency_key_reused")
+            if not prior.committed or len(prior.committed_event_ids) != 1:
+                return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+            batch = self._store.get_transaction(prior.transaction_id)
+            if batch is None or tuple(event.event_id for event in batch.events) != tuple(prior.committed_event_ids):
+                return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+            try:
+                prior_event = self._store.get_event(prior.committed_event_ids[0])
+            except KeyError:
+                return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+            if (
+                prior_event.event_type != "gameplay.inventory.production_output_received@1"
+                or prior_event.command_id != prior.command_id
+                or prior_event.transaction_id != prior.transaction_id
+                or prior_event.stream_id != holder_stream
+                or prior_event.visibility_policy != "project"
+            ):
+                return self._rejected_append(typed.command_id, "production_output_custody_receipt_invalid")
+            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if item_id in projection.items or any(
             event.event_type == "gameplay.inventory.production_output_received@1"
             and event.payload.get("source_certification_event_id") == certification.event_id
@@ -2447,6 +2838,12 @@ class InventoryAuthorityService:
         stream_id = f"gameplay:inventory:{actor_ref}"
         transaction_id = f"tx:{command_id}"
         serialized = self._serialize_events(command_id, actor_ref, events, causation_id, correlation_id)
+        duplicate = self._existing_append_result(
+            command_id=command_id, actor_ref=actor_ref, events=events,
+            idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+        )
+        if duplicate is not None:
+            return duplicate
         return self._store.append_batch({"transaction_id": transaction_id, "command_id": command_id, "expected_stream_revisions": {stream_id: self._store.get_stream_head(stream_id)}, "pinned_revisions": {"inventory": self._store.get_stream_head(stream_id)}, "events": serialized, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": f"{actor_ref}:{idempotency_key}", "payload_digest": _digest(serialized)}, "outbox_entries": [], "result_digest": _digest(serialized), "projection_refresh_hints": []})
 
     @staticmethod

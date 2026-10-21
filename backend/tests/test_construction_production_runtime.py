@@ -33,3 +33,17 @@ def test_facility_acquisition_is_an_event_sourced_construction_fact() -> None:
     )
     assert result.committed
     assert store.read_events()[0].event_type == "gameplay.construction_production.facility_acquired"
+
+    before_changed = len(store.read_events())
+    changed = authority.settle_facility_acquisition(
+        plot=plot,
+        facility=facility,
+        command_id="construction:acquire:bakery:changed",
+        idempotency_key="construction:acquire:bakery:1",
+        causation_id="cause:acquire:changed",
+        correlation_id="corr:acquire:changed",
+    )
+    assert changed.committed is False
+    assert changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"
+    assert len(store.read_events()) == before_changed

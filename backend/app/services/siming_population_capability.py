@@ -132,7 +132,10 @@ def default_population_read_set_builder(event: AuthorityEvent, cadence: Populati
                     break
         except (KeyError, TypeError, ValueError):
             pass
-    return PopulationReadSet.from_inputs(cadence, projections)
+    temporal_pins = event.payload.get("temporal_pins")
+    if temporal_pins is not None and not isinstance(temporal_pins, dict):
+        raise ValueError("population_temporal_pins_invalid")
+    return PopulationReadSet.from_inputs(cadence, projections, temporal_pins=temporal_pins)
 
 
 class PopulationSimulationCapability:
@@ -388,7 +391,7 @@ class PopulationSimulationCapability:
             and projection.ref not in admitted_projection_refs
         )
         decision_read_set = PopulationReadSet.from_inputs(
-            cadence_input, decision_projections
+            cadence_input, decision_projections, temporal_pins=read_set.temporal_pins
         )
         result = self._run_decision_cycle(
             cadence_input, decision_read_set, policy, capabilities
@@ -662,7 +665,9 @@ class PopulationSimulationCapability:
                     else projection
                     for projection in selected_projections
                 )
-                selected_read_set = PopulationReadSet.from_inputs(cadence_input, settled_projections)
+                selected_read_set = PopulationReadSet.from_inputs(
+                    cadence_input, settled_projections, temporal_pins=read_set.temporal_pins
+                )
                 core_refs = {
                     candidate.actor_ref
                     for candidate in decision.selected_candidates
@@ -760,7 +765,9 @@ class PopulationSimulationCapability:
                 decision=decision,
                 production_append_count=0,
             )
-        selected_read_set = PopulationReadSet.from_inputs(cadence_input, selected_projections)
+        selected_read_set = PopulationReadSet.from_inputs(
+            cadence_input, selected_projections, temporal_pins=read_set.temporal_pins
+        )
         allowed_core_refs = {
             candidate.actor_ref
             for candidate in decision.selected_candidates
@@ -877,7 +884,9 @@ class PopulationSimulationCapability:
         if read_set.cadence != cadence_input:
             return self._requeue(batch_ref, read_set, "stale_read_set")
         try:
-            canonical = PopulationReadSet.from_inputs(cadence_input, read_set.projections)
+            canonical = PopulationReadSet.from_inputs(
+                cadence_input, read_set.projections, temporal_pins=read_set.temporal_pins
+            )
         except Exception:
             return self._requeue(batch_ref, read_set, "stale_read_set")
         if (

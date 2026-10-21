@@ -1,0 +1,10 @@
+trajectory_group: lock-event:dev:01
+splits:
+  train: []
+  dev: [lock-event:dev:01]
+  calibration: []
+  final: []
+  independent_holdout: []
+leakage_rules:
+  same_authority_trajectory_single_split: true
+  role_variants_same_split: true

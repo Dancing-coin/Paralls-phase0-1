@@ -115,6 +115,27 @@ def artifact_path(project_root: Path, reference: str | Path) -> Path:
     return path
 
 
+def same_run_profile_report(project_root: Path, filename: str) -> Path:
+    """Locate a predecessor report produced earlier in this Harness run.
+
+    A profile runs in its own attempt directory.  Aggregators must consume
+    only sibling profile artifacts from the current run, never repository
+    leftovers or an older exported evidence package.
+    """
+    if not filename or Path(filename).name != filename:
+        raise ValueError("profile_report_filename_invalid")
+    local = verification_dir(project_root) / filename
+    if local.is_file():
+        return local
+    run_root = current_run(project_root).evidence_root
+    matches = sorted(run_root.glob(f"profiles/*/1/{filename}"))
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        raise ValueError(f"profile_report_ambiguous:{filename}")
+    return local
+
+
 def artifact_ref(project_root: Path, path: Path) -> str:
     path = path.resolve()
     if path.is_relative_to(project_root.resolve()):

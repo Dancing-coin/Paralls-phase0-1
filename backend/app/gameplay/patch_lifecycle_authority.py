@@ -675,8 +675,20 @@ class GameplayPatchLifecycleAuthorityService:
         try:
             self._state_group_registry.resolve("core.resources", migration.from_definition_version)
             self._state_group_registry.resolve("core.resources", migration.to_definition_version)
+            target_definition = self._resource_definition_registry.resolve(migration.resource_id, migration.to_definition_version)
         except Exception as exc:
             raise GameplayPatchLifecycleAuthorityError("patch_resource_migration_definition_invalid") from exc
+        target_policy = migration.target_resource_definition
+        if target_definition.resource_schema == "resource.v2":
+            if target_policy is None or target_policy.model_dump(mode="json") != {
+                "resource_schema": target_definition.resource_schema,
+                "capacity": target_definition.capacity,
+                "base_capacity": target_definition.base_capacity,
+                "debt_ceiling": target_definition.debt_ceiling,
+            }:
+                raise GameplayPatchLifecycleAuthorityError("patch_resource_migration_target_definition_mismatch")
+        elif target_policy is not None:
+            raise GameplayPatchLifecycleAuthorityError("patch_resource_migration_target_definition_mismatch")
         state_contexts = {item.actor_ref: item for item in context.state_group_contexts}
         resource_contexts = {item.actor_ref: item for item in context.resource_bounds_migration_contexts}
         if (

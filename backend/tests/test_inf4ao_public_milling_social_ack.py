@@ -74,7 +74,7 @@ def _social_registry() -> P5PolicyRegistry:
     )
 
 
-def _notice() -> tuple[GameplayEventStore, object]:
+def _notice(*, effective_from: int = 5, effective_to: int = 10) -> tuple[GameplayEventStore, object]:
     store, _economy, fulfilled = _economy_setup()
     activity = _activity(store)
     from app.gameplay.organization_government_runtime import GovernmentAuthority
@@ -84,10 +84,12 @@ def _notice() -> tuple[GameplayEventStore, object]:
         expected_activity_revision=activity.stream_revision,
         expected_government_revision=0,
         command_id="inf4ao:notice",
-        idempotency_key=f"government:public-milling-notice:{activity.event_id}:{activity.stream_revision}:0:v1",
+        idempotency_key=f"government:public-milling-notice:{activity.event_id}:{activity.stream_revision}:0:{effective_from}:{effective_to}:v2",
         causation_id=activity.event_id,
         correlation_id="corr:inf4ao:notice",
         submitted_at="2026-08-28T00:30:00Z",
+        effective_from=effective_from,
+        effective_to=effective_to,
     )
     assert result.committed
     return store, store.get_event(result.committed_event_ids[0])
@@ -206,7 +208,7 @@ def test_inf4ao_duplicate_and_changed_duplicate_do_not_write() -> None:
     before = store.export_snapshot()
     duplicate = authority.record_public_milling_notice_social_acknowledgment(**request)
     changed = authority.record_public_milling_notice_social_acknowledgment(
-        **_request(store, notice, correlation_id="corr:inf4ao:changed")
+        **{**request, "command_id": "command:inf4ao:changed"}
     )
     assert duplicate.resolution.result_kind == "committed_success"
     assert duplicate.receipt is not None and duplicate.receipt.idempotency_status == "duplicate_replayed"

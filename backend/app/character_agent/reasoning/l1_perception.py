@@ -33,6 +33,14 @@ class CharacterAgentL1Service:
         return self._ask_store
 
     def apply_character_perceived_event(self, event: CharacterPerceivedEvent) -> CharacterPrivateWorldSnapshot:
+        signal = event.coordination_signal
+        # Current preconditions are admitted by the recipient filter. L1 only
+        # retains that recipient's attributed, unexpired observation.
+        if signal is not None and (
+            signal.target != event.actor_id or signal.source != event.source_actor_id
+            or signal.expires_at <= event.producer_ts
+        ):
+            raise ValueError("coordination signal outside receiver perception scope")
         snapshot = self._get_or_create_snapshot(
             actor_id=event.actor_id,
             room_id=event.room_id,
@@ -108,6 +116,12 @@ class CharacterAgentL1Service:
         snapshot.attention_pressure = max(snapshot.attention_pressure, min(1.0, max(event.clarity_score, event.certainty_score)))
         snapshot.updated_at = event.producer_ts
         snapshot.producer_ts = event.producer_ts
+        snapshot.local_coordination_signals = [
+            signal for signal in snapshot.local_coordination_signals
+            if int(signal["expires_at"]) > event.producer_ts
+        ]
+        if event.coordination_signal is not None:
+            snapshot.local_coordination_signals.append(event.coordination_signal.model_dump(mode="json"))
         return self._refresh_target_catalog(snapshot)
 
     def apply_self_body_perceived_event(self, event: SelfBodyPerceivedEvent) -> CharacterPrivateWorldSnapshot:

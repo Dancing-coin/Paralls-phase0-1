@@ -8,11 +8,13 @@ from frozen case content and committed stream heads.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Callable, Literal
 
 from pydantic import ConfigDict, Field
 
-from app.gameplay.action_window_runtime import ActionWindowIntent, SpatialSnapshotRef
+from app.gameplay.action_window_runtime import (
+    ActionTemporalContext, ActionWindowIntent, SpatialSnapshotRef, freeze_action_time_binding,
+)
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
 from app.gameplay.models import StrictGameplayModel
@@ -63,11 +65,28 @@ class StormnightRealtimeResponse(StrictGameplayModel):
     npc_proposal: dict[str, object] | None = None
 
 
+@dataclass(frozen=True)
+class StormnightActionTimeSample:
+    """Explicit server admission; local window coordinates belong to its source."""
+
+    context: ActionTemporalContext
+    window_start_tick: int
+    window_end_tick: int
+    submitted_at: str
+
+
 @dataclass
 class StormnightRealtimeSessionService:
     """Owner-bound realtime facade over the application's shared store."""
 
     store: GameplayEventStore
+    action_time_provider: Callable[[StormnightPlayerIntent], StormnightActionTimeSample] | None = None
+    legacy_action_time_compatibility: bool = False
+
+    def activate_action_time_provider(self, provider) -> None:
+        """No Action migration contract is admitted by this atomic caller."""
+        if provider is not self.action_time_provider:
+            raise ValueError("action_time_consumer_migration_required")
 
     def __post_init__(self) -> None:
         self.case = ScriptedMysteryCaseAuthority.create(self.store)
@@ -79,9 +98,28 @@ class StormnightRealtimeSessionService:
         registry.register_item(ItemDefinition(_CLUE_ITEM_DEFINITION, "1", 1, 1))
         self.inventory = InventoryAuthorityService(store=self.store, registry=registry)
         self._request_digests: dict[str, str] = {}
+        self._action_time_admission: str | None = None
+        for event in self.store.read_stream("gameplay:conflict:encounter:stormnight"):
+            binding = event.payload.get("time_binding")
+            if isinstance(binding, dict):
+                fingerprint = self._time_admission_fingerprint(binding)
+                if self._action_time_admission not in {None, fingerprint}:
+                    raise ValueError("action_time_consumer_migration_required")
+                self._action_time_admission = fingerprint
+
+    @staticmethod
+    def _time_admission_fingerprint(binding: dict[str, object]) -> str:
+        window = binding["settlement_window"]
+        return canonical_sha256_digest({
+            key: binding[key] for key in ("timeline_id", "temporal_profile", "clock_mapping", "source_revision")
+        } | {key: window[key] for key in ("late_input_policy_ref", "ordering_policy_ref")})
 
     def handle(self, intent: StormnightPlayerIntent) -> StormnightRealtimeResponse:
         digest = canonical_sha256_digest(intent.model_dump(mode="json"))
+        # The owner receipt is durable; process-local request caches are not recovery.
+        replay = self._replay_action(intent, digest)
+        if replay is not None:
+            return replay
         prior = self._request_digests.get(intent.request_id)
         if prior is not None:
             if prior != digest:
@@ -229,6 +267,14 @@ class StormnightRealtimeSessionService:
     def _action(self, intent: StormnightPlayerIntent) -> StormnightRealtimeResponse:
         if not self.case.project().opened:
             return self._rejected("case_not_open")
+        sample = None
+        if self.action_time_provider is not None:
+            try:
+                sample = self.action_time_provider(intent)
+            except ValueError as exc:
+                return self._rejected(str(exc))
+        elif not self.legacy_action_time_compatibility:
+            return self._rejected("action_time_binding_missing")
         action_count = self.case.project().action_window_count
         nodes = ("arrival", "investigate", "recover")
         if action_count >= len(nodes):
@@ -238,7 +284,9 @@ class StormnightRealtimeSessionService:
         contact = intent.kind == "pursue"
         window = ActionWindowIntent(
             attempt_ref=f"attempt:stormnight:player:{action_count}", encounter_ref="encounter:stormnight", actor_ref=PLAYER_REF,
-            window_index=action_count, window_start_tick=action_count, window_end_tick=action_count + 1,
+            window_index=action_count,
+            window_start_tick=sample.window_start_tick if sample else action_count,
+            window_end_tick=sample.window_end_tick if sample else action_count + 1,
             graph_ref=graph.graph_ref, graph_revision=graph.graph_revision, node_ref=nodes[action_count], target_refs=(target_ref,),
             expected_revision_vector={_SOURCE_STREAM: self.store.get_stream_head(_SOURCE_STREAM)}, local_position_sample=(0.0, 0.0, 0.0),
             facing_sample=(0.0, 0.0, 1.0), visibility_sample={"visible": True}, sound_sample={"heard": False}, contact_sample={"in_contact": contact},
@@ -253,14 +301,68 @@ class StormnightRealtimeSessionService:
         command = GameplayCommandEnvelope(
             command_id=f"stormnight:player:{intent.request_id}:action", command_type="gameplay.conflict.resolve_action_window", command_version=1,
             principal_ref="authority:p5:investigation-conflict", actor_ref=PLAYER_REF, project_ref="project:stormnight", transaction_id=f"stormnight:player:{intent.request_id}:action",
-            idempotency_key=f"stormnight:player:{intent.request_id}:action", expected_revisions={conflict_stream: self.store.get_stream_head(conflict_stream)}, read_set_revisions={_SOURCE_STREAM: self.store.get_stream_head(_SOURCE_STREAM)}, causation_id=intent.request_id, correlation_id=SESSION_REF, source_ref=_SOURCE_STREAM, submitted_at="2026-09-06T00:00:00Z",
+            idempotency_key=f"stormnight:player:{intent.request_id}:action", expected_revisions={conflict_stream: self.store.get_stream_head(conflict_stream)}, read_set_revisions={_SOURCE_STREAM: self.store.get_stream_head(_SOURCE_STREAM)}, causation_id=intent.request_id, correlation_id=SESSION_REF, source_ref=_SOURCE_STREAM, submitted_at=sample.submitted_at if sample else "2026-09-06T00:00:00Z",
         )
+        if sample is not None:
+            try:
+                binding = freeze_action_time_binding(window, sample.context,
+                    idempotency_key=command.idempotency_key,
+                    expected_authority_revisions=dict(command.expected_revisions))
+            except ValueError as exc:
+                return self._rejected(str(exc))
+            fingerprint = self._time_admission_fingerprint(binding.model_dump(mode="json"))
+            if self._action_time_admission not in {None, fingerprint}:
+                return self._rejected("action_time_consumer_migration_required")
+            window = window.model_copy(update={"time_binding": binding})
         result = InvestigationConflictAuthority(registry=stormnight_action_registry(), store=self.store).resolve_action_window(
-            command=command, intent=window, graph=graph, spatial_snapshot=snapshot, role_ref="role:survivor@1", now="2026-09-06T00:00:00Z"
+            command=command, intent=window, graph=graph, spatial_snapshot=snapshot, role_ref="role:survivor@1", now=command.submitted_at,
+            temporal_context=sample.context if sample else None,
+            require_temporal_binding=not self.legacy_action_time_compatibility,
+            caller_request_digest=canonical_sha256_digest(intent.model_dump(mode="json")) if sample else None,
         )
         if not result.committed:
             return self._rejected(result.error_code or "stormnight_action_rejected")
+        if sample is not None:
+            self._action_time_admission = fingerprint
         return self._response(accepted=True, status="committed", event_ids=tuple(result.receipt.committed_event_ids) if result.receipt else ())
+
+    def _replay_action(self, intent: StormnightPlayerIntent, digest: str) -> StormnightRealtimeResponse | None:
+        receipt = self.store.get_by_idempotency("authority:p5:investigation-conflict",
+            f"stormnight:player:{intent.request_id}:action")
+        if receipt is None or not receipt.committed_event_ids:
+            return None
+        event = self.store.get_event(receipt.committed_event_ids[0])
+        frozen = event.payload.get("frozen_action_request") if event is not None else None
+        if not isinstance(frozen, dict):
+            # Legacy commits have no unified temporal evidence or recoverable request.
+            prior = self._request_digests.get(intent.request_id)
+            if self.legacy_action_time_compatibility and prior == digest:
+                return self._response(accepted=True, status="duplicate_replayed",
+                    event_ids=tuple(receipt.committed_event_ids))
+            return self._rejected("action_time_legacy_request_unbound")
+        if frozen.get("caller_request_digest") != digest:
+            return self._rejected("stormnight_player_idempotency_reused")
+        window = ActionWindowIntent.model_validate(frozen["intent"])
+        command = GameplayCommandEnvelope.model_validate(frozen["command"])
+        snapshot = SpatialSnapshotRef(
+            snapshot_ref="snapshot:stormnight:realtime@1",
+            navigation_revision=window.navigation_revision, collision_revision=window.collision_revision,
+            occlusion_revision=window.occlusion_revision, sound_zone_revision=window.sound_zone_revision,
+            source_revision_vector=dict(window.expected_revision_vector),
+            visibility_by_target={target: True for target in window.target_refs},
+            sound_by_target={target: False for target in window.target_refs},
+            contact_by_target={target: bool(window.contact_sample.get("in_contact")) for target in window.target_refs},
+            distance_band_by_target={target: "near" for target in window.target_refs},
+        )
+        result = InvestigationConflictAuthority(registry=stormnight_action_registry(), store=self.store).resolve_action_window(
+            command=command, intent=window, graph=stormnight_action_graph(), spatial_snapshot=snapshot,
+            role_ref=str(frozen["role_ref"]), now=command.submitted_at,
+            require_temporal_binding=True, caller_request_digest=digest,
+        )
+        if not result.committed:
+            return self._rejected(result.error_code or "stormnight_action_replay_rejected")
+        return self._response(accepted=True, status="duplicate_replayed",
+            event_ids=tuple(result.receipt.committed_event_ids) if result.receipt else ())
 
     def _accuse(self, intent: StormnightPlayerIntent) -> StormnightRealtimeResponse:
         if intent.target_ref not in self.content.actor_refs:
@@ -326,4 +428,4 @@ class StormnightRealtimeSessionService:
         return StormnightRealtimeResponse(accepted=False, session_ref=SESSION_REF, player_ref=PLAYER_REF, idempotency_status="rejected", error_code=error_code, projection={})
 
 
-__all__ = ["PLAYER_REF", "SESSION_REF", "StormnightPlayerIntent", "StormnightRealtimeResponse", "StormnightRealtimeSessionService"]
+__all__ = ["PLAYER_REF", "SESSION_REF", "StormnightActionTimeSample", "StormnightPlayerIntent", "StormnightRealtimeResponse", "StormnightRealtimeSessionService"]

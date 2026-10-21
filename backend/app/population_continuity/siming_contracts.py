@@ -4,7 +4,7 @@ import hashlib
 import json
 from typing import Any, Literal, Sequence
 
-from pydantic import Field, TypeAdapter, model_validator
+from pydantic import Field, StrictInt, StrictStr, TypeAdapter, model_validator
 
 from app.models.authority_event import AuthorityEvent
 from app.population_continuity.models import ContinuityModel
@@ -23,9 +23,9 @@ class PopulationCadenceInput(ContinuityModel):
     world_mode_ref: str = Field(min_length=1)
     world_mode_revision: str = Field(min_length=1)
     cadence_source_ref: str = ""
-    cadence_source_revision: int = Field(default=0, ge=0)
-    window_start: int = Field(ge=0)
-    window_end: int = Field(ge=0)
+    cadence_source_revision: StrictInt = Field(default=0, ge=0)
+    window_start: StrictInt = Field(ge=0)
+    window_end: StrictInt = Field(ge=0)
     base_checkpoint_ref: str = Field(min_length=1)
     base_checkpoint_digest: str = Field(min_length=1)
     base_revision_vector: dict[str, int] = Field(min_length=1)
@@ -33,8 +33,8 @@ class PopulationCadenceInput(ContinuityModel):
     selector_revision: str = Field(min_length=1)
     ruleset_revision: str = Field(min_length=1)
     deterministic_seed: str = Field(min_length=1)
-    catch_up_limit: int = Field(ge=0)
-    budget: int = Field(ge=0)
+    catch_up_limit: StrictInt = Field(ge=0)
+    budget: StrictInt = Field(ge=0)
     report_scope: str = Field(min_length=1)
 
     @model_validator(mode="before")
@@ -206,12 +206,36 @@ class PopulationReadSet(ContinuityModel):
     cadence: PopulationCadenceInput
     projections: tuple[PopulationProjection, ...] = ()
     read_set_digest: str = Field(min_length=1)
+    # Temporal pins are authority inputs.  A normal ``str | int`` union can
+    # coerce ``True`` to ``1`` before validation, turning a forged timestamp
+    # into a valid world tick.  Preserve scalar types exactly on this boundary.
+    temporal_pins: dict[str, StrictStr | StrictInt] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_projection_refs(self) -> "PopulationReadSet":
         refs = [projection.ref for projection in self.projections]
         if len(refs) != len(set(refs)):
             raise ValueError("read_set_projection_duplicate")
+        if self.temporal_pins:
+            required = {
+                "timeline_id", "profile_revision", "mapping_id", "mapping_revision",
+                "source_clock_ref", "source_revision", "sampled_at", "received_at",
+                "freshness", "activation_revision", "window_start", "window_ticks", "canonical_unit_ref",
+                "step_duration",
+            }
+            if not required.issubset(self.temporal_pins):
+                raise ValueError("read_set_temporal_pins_incomplete")
+            for key in ("timeline_id", "profile_revision", "mapping_id", "mapping_revision", "source_clock_ref", "source_revision", "activation_revision", "canonical_unit_ref", "step_duration"):
+                if self.temporal_pins[key] == "":
+                    raise ValueError("read_set_temporal_pin_identity_missing")
+            if self.temporal_pins["sampled_at"] != self.cadence.window_end or self.temporal_pins["received_at"] != self.cadence.window_end:
+                raise ValueError("read_set_temporal_boundary_mismatch")
+            if self.temporal_pins["window_start"] != self.cadence.window_start:
+                raise ValueError("read_set_temporal_start_mismatch")
+            if self.temporal_pins["window_ticks"] != self.cadence.window_end - self.cadence.window_start:
+                raise ValueError("read_set_temporal_window_mismatch")
+            if not all(isinstance(self.temporal_pins[key], (str, int)) for key in required):
+                raise ValueError("read_set_temporal_pin_type_invalid")
         return self
 
     @classmethod
@@ -219,6 +243,7 @@ class PopulationReadSet(ContinuityModel):
         cls,
         cadence: PopulationCadenceInput,
         projections: Sequence[PopulationProjection],
+        temporal_pins: dict[str, str | int] | None = None,
     ) -> "PopulationReadSet":
         ordered = tuple(sorted(projections, key=lambda item: item.ref))
         refs = tuple(item.ref for item in ordered)
@@ -228,13 +253,16 @@ class PopulationReadSet(ContinuityModel):
             "cadence": cadence.model_dump(mode="json"),
             "projections": dump_population_projections(ordered),
         }
+        if temporal_pins:
+            canonical["temporal_pins"] = dict(temporal_pins)
         encoded = json.dumps(
             canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True,
             allow_nan=False,
         ).encode()
-        return cls.model_construct(
+        return cls(
             cadence=cadence,
             projections=ordered,
+            temporal_pins=dict(temporal_pins or {}),
             read_set_digest="sha256:" + hashlib.sha256(encoded).hexdigest(),
         )
 

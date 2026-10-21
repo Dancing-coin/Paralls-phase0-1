@@ -110,6 +110,8 @@ def test_f1a_duplicate_is_idempotent_and_revision_conflict_is_zero_write() -> No
     duplicate = authority.submit_f1a(proposal)
     assert first.idempotency_status == "new_commit"
     assert duplicate.idempotency_status == "duplicate_replayed"
+    changed = authority.submit_f1a(proposal.model_copy(update={"proposal_id": "f1a:changed"}))
+    assert not changed.accepted and changed.error_code == "idempotency_key_reused"
     stale = authority.submit_f1a(proposal.model_copy(update={"proposal_id": "f1a:stale", "idempotency_key": "idem:f1a:stale"}))
     assert stale.accepted is False and stale.error_code == "stale_revision"
     assert len(store.read_events()) == 1
@@ -168,6 +170,8 @@ def test_f1b_duplicate_replay_and_expiry_are_deterministic() -> None:
     duplicate = authority.submit_f1b(proposal)
     assert first.idempotency_status == "new_commit"
     assert duplicate.idempotency_status == "duplicate_replayed"
+    changed = authority.submit_f1b(proposal.model_copy(update={"proposal_id": "f1b:changed"}))
+    assert not changed.accepted and changed.error_code == "idempotency_key_reused"
     full, tail = authority.replay_f1b()
     assert full.succeeded is True and tail.succeeded is True and full.projection_hash == tail.projection_hash
 

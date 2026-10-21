@@ -6,7 +6,10 @@ from typing import Any
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayFailure, OwnerAuthorizedFragment, ReplayResult
 from app.gameplay.action_graph_content import ActionGraphDefinition
-from app.gameplay.action_window_runtime import ActionWindowIntent, ActionWindowResult, ActionWindowValidator, SpatialSnapshotRef
+from app.gameplay.action_window_runtime import (
+    ActionTemporalContext, ActionWindowIntent, ActionWindowResult, ActionWindowValidator,
+    PerceptionResolution, SpatialSnapshotRef, action_intent_payload, freeze_action_time_binding,
+)
 from app.gameplay.p5.contracts import (
     P5ResolutionRequest,
     P5ResolutionResult,
@@ -28,7 +31,6 @@ _ACTION_WINDOW_EVENTS = (
     "gameplay.conflict.encounter_started",
     "gameplay.conflict.action_window_resolved",
     "gameplay.conflict.control_changed",
-    "gameplay.conflict.terminal_outcome_recorded",
     "gameplay.conflict.encounter_closed",
 )
 
@@ -107,6 +109,9 @@ class InvestigationConflictAuthority:
         spatial_snapshot: SpatialSnapshotRef,
         role_ref: str,
         now: str,
+        temporal_context: ActionTemporalContext | None = None,
+        require_temporal_binding: bool = False,
+        caller_request_digest: str | None = None,
     ) -> ActionWindowConflictResult:
         """Persist one validated window using the existing conflict event spine.
 
@@ -115,6 +120,40 @@ class InvestigationConflictAuthority:
         window validator must run before this method is called.
         """
         del now
+        # Committed requests keep historical pins even after clock/profile changes.
+        existing = self._store.get_idempotency_record(_PRINCIPAL, command.idempotency_key)
+        if existing is not None:
+            receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
+            prior = self._store.get_event(receipt.committed_event_ids[0]) if receipt and receipt.committed_event_ids else None
+            intent_digest = canonical_sha256_digest(action_intent_payload(intent))
+            if (prior is None or prior.payload.get("intent_digest") != intent_digest
+                    or prior.payload.get("command_digest") != canonical_sha256_digest(command.model_dump(mode="json"))
+                    or prior.payload.get("role_ref") != role_ref
+                    or prior.payload.get("frozen_action_request", {}).get("caller_request_digest") != caller_request_digest):
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_idempotency_reused")
+            prior_result = ActionWindowResult(
+                accepted=True, attempt_ref=intent.attempt_ref, window_index=intent.window_index,
+                intent_digest=intent_digest, perception=PerceptionResolution.model_validate(prior.payload["perception"]),
+            )
+            return ActionWindowConflictResult(
+                True, "duplicate_replayed",
+                receipt=receipt.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+                window_result=prior_result,
+            )
+        if require_temporal_binding or temporal_context is not None or intent.time_binding is not None:
+            if intent.time_binding is None:
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_time_binding_missing")
+            if temporal_context is None:
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_temporal_context_missing")
+            try:
+                expected_binding = freeze_action_time_binding(
+                    intent, temporal_context, idempotency_key=command.idempotency_key,
+                    expected_authority_revisions=command.expected_revisions,
+                )
+            except ValueError as exc:
+                return ActionWindowConflictResult(False, "rejected", error_code=str(exc))
+            if intent.time_binding != expected_binding:
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_time_binding_stale")
         if not role_ref:
             return ActionWindowConflictResult(False, "rejected", error_code="action_window_scope_invalid")
         graph_value = graph
@@ -162,7 +201,7 @@ class InvestigationConflictAuthority:
             "graph_ref": intent.graph_ref,
             "graph_revision": intent.graph_revision,
             "node_ref": intent.node_ref,
-            "intent_digest": canonical_sha256_digest(intent.model_dump(mode="json")),
+            "intent_digest": canonical_sha256_digest(action_intent_payload(intent)),
             "command_digest": canonical_sha256_digest(command.model_dump(mode="json")),
             "deterministic_seed": intent.deterministic_seed,
             "outcome": "resolved",
@@ -177,16 +216,12 @@ class InvestigationConflictAuthority:
             "evidence_refs": tuple(intent.evidence_refs),
             "visibility_policy": "project",
         }
-        digest = canonical_sha256_digest(payload)
-        existing = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
-        if existing is not None:
-            receipt = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
-            prior = self._store.get_event(receipt.committed_event_ids[0]) if receipt and receipt.committed_event_ids else None
-            expected_prior = {**payload, "event_kind": "encounter_started"}
-            if prior is None or canonical_sha256_digest(prior.payload) != canonical_sha256_digest(expected_prior):
-                return ActionWindowConflictResult(False, "rejected", error_code="action_window_idempotency_reused", window_result=window_result)
-            duplicate_receipt = receipt.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True) if receipt is not None else None
-            return ActionWindowConflictResult(True, "duplicate_replayed", receipt=duplicate_receipt, window_result=window_result)
+        if intent.time_binding is not None:
+            payload["time_binding"] = intent.time_binding.model_dump(mode="json")
+            payload["frozen_action_request"] = {
+                "intent": intent.model_dump(mode="json"), "command": command.model_dump(mode="json"),
+                "role_ref": role_ref, "caller_request_digest": caller_request_digest,
+            }
         if any(self._store.get_stream_head(source_stream) != revision for source_stream, revision in command.read_set_revisions.items()):
             return ActionWindowConflictResult(False, "rejected", error_code="action_window_source_revision_stale", window_result=window_result)
         if self._store.get_stream_head(stream_id) != expected_revision:
@@ -197,7 +232,6 @@ class InvestigationConflictAuthority:
                 {
                     **payload,
                     "event_kind": event_type.rsplit(".", 1)[-1],
-                    **({"terminal_kind": "case_death"} if event_type.endswith("terminal_outcome_recorded") else {}),
                 },
             )
             for event_type in _ACTION_WINDOW_EVENTS
@@ -239,6 +273,68 @@ class InvestigationConflictAuthority:
         """Commit an explicit world-death decision from a case-death event."""
         from app.gameplay.action_consequence_runtime import ActionConsequenceBoundary
 
+        if (
+            command.principal_ref != _PRINCIPAL
+            or command.command_type != "gameplay.conflict.confirm_world_death"
+            or command.command_version != 1
+            or command.source_ref != intent.source_event_id
+        ):
+            return ActionWindowConflictResult(
+                False, "rejected", error_code="world_death_command_boundary_invalid"
+            )
+        try:
+            source_event = self._store.get_event(intent.source_event_id)
+        except KeyError:
+            source_event = None
+        if source_event is not None:
+            if set(command.expected_revisions) != {source_event.stream_id}:
+                return ActionWindowConflictResult(
+                    False, "rejected", error_code="world_death_command_boundary_invalid"
+                )
+            if command.expected_revisions[source_event.stream_id] != intent.expected_source_revision:
+                return ActionWindowConflictResult(
+                    False, "rejected", error_code="world_death_source_revision_stale"
+                )
+        existing = self._store.get_idempotency_record(_PRINCIPAL, command.idempotency_key)
+        if existing is not None:
+            receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
+            expected_type = (
+                "gameplay.conflict.world_death_commit_confirmed"
+                if intent.confirmed
+                else "gameplay.conflict.world_death_commit_rejected"
+            )
+            expected_payload = {
+                "source_event_id": intent.source_event_id,
+                "target_actor_ref": intent.target_actor_ref,
+                "confirmation_ref": intent.confirmation_ref,
+                "confirmed": intent.confirmed,
+                "policy_revision": intent.policy_revision,
+                "source_revision": intent.expected_source_revision,
+                "visibility_policy": "project",
+            }
+            prior = None
+            if receipt is not None and receipt.committed and len(receipt.committed_event_ids) == 1:
+                batch = self._store.get_transaction(receipt.transaction_id)
+                if batch is not None and tuple(event.event_id for event in batch.events) == tuple(receipt.committed_event_ids):
+                    try:
+                        prior = self._store.get_event(receipt.committed_event_ids[0])
+                    except KeyError:
+                        prior = None
+            if (
+                prior is None
+                or prior.event_type != expected_type
+                or prior.payload != expected_payload
+                or prior.command_id != command.command_id
+                or prior.transaction_id != command.transaction_id
+                or prior.causation_id != command.causation_id
+                or prior.correlation_id != command.correlation_id
+            ):
+                return ActionWindowConflictResult(False, "rejected", error_code="world_death_idempotency_reused")
+            return ActionWindowConflictResult(
+                True,
+                "duplicate_replayed",
+                receipt=receipt.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
+            )
         validation = ActionConsequenceBoundary(self._store).validate_world_death(intent)
         if not validation.accepted:
             return ActionWindowConflictResult(False, "rejected", error_code=validation.error_code)

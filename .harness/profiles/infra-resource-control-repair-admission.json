@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "name": "infra-resource-control-repair-admission",
+  "order": 161,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_resource_control_repair_admission.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "timeout_seconds": 900,
+  "result_artifact": ".harness/verification/infra-resource-control-repair-admission-report.json",
+  "description": "Durable resource migration control and fail-closed facility repair admission",
+  "success_key": "overall_passed"
+}

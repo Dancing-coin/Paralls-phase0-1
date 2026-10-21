@@ -100,11 +100,18 @@ class EquipmentProjector:
         "gameplay.equipment.activation_ended",
     }
 
-    def rebuild(self, actor_ref: str, events: Sequence[GameplayEvent]) -> EquipmentProjection:
-        activations: dict[str, EquipmentActivation] = {}
-        active_by_slot: dict[str, str] = {}
-        ended: list[str] = []
-        revisions: dict[str, int] = {}
+    def rebuild(self, actor_ref: str, events: Sequence[GameplayEvent], *,
+                checkpoint: EquipmentProjection | None = None) -> EquipmentProjection:
+        if checkpoint is not None:
+            if checkpoint.actor_ref != actor_ref:
+                raise EquipmentRuntimeError("equipment_checkpoint_actor_mismatch")
+            expected = f"equipment:{_digest([actor_ref, checkpoint.activations, checkpoint.active_by_slot, list(checkpoint.ended_activation_ids), checkpoint.source_revision_vector])[:16]}"
+            if checkpoint.projection_revision != expected:
+                raise EquipmentRuntimeError("equipment_checkpoint_digest_invalid")
+        activations: dict[str, EquipmentActivation] = dict(checkpoint.activations) if checkpoint else {}
+        active_by_slot: dict[str, str] = dict(checkpoint.active_by_slot) if checkpoint else {}
+        ended: list[str] = list(checkpoint.ended_activation_ids) if checkpoint else []
+        revisions: dict[str, int] = dict(checkpoint.source_revision_vector) if checkpoint else {}
         for event in sorted(events, key=lambda item: (item.global_sequence, item.event_id)):
             if event.event_type not in self._EVENT_TYPES:
                 continue
@@ -180,12 +187,20 @@ class EquipmentAuthorityService:
         ability_registry: AbilityDefinitionRegistry,
         modifier_registry: ModifierDefinitionRegistry,
         slots: Sequence[EquipmentSlotDefinition],
+        resource_modifier_mappings=None,
     ) -> None:
         self._store = store
         self._inventory_registry = inventory_registry
         self._equipment_registry = equipment_registry
         self._ability_registry = ability_registry
         self._modifier_registry = modifier_registry
+        self._resource_modifier_bridge = None
+        if resource_modifier_mappings is not None:
+            # Optional stage-three bridge: Equipment remains the canonical source owner.
+            from app.gameplay.resource_modifier_admission import ResourceModifierBridgeOwner
+            self._resource_modifier_bridge = ResourceModifierBridgeOwner(
+                store=store, mappings=resource_modifier_mappings, modifiers=modifier_registry
+            )
         self._inventory_projector = InventoryProjector(inventory_registry)
         self._equipment_projector = EquipmentProjector()
         slot_definitions = tuple(slots)
@@ -219,7 +234,7 @@ class EquipmentAuthorityService:
             "slot_key": slot_key,
         }
         digest = _digest(command)
-        duplicate = self._duplicate(actor_ref, idempotency_key, digest)
+        duplicate = self._duplicate(actor_ref, idempotency_key, digest, command_id=command_id, causation_id=causation_id, correlation_id=correlation_id)
         if duplicate is not None:
             return duplicate
         inventory, equipment = self._projections(actor_ref)
@@ -349,7 +364,7 @@ class EquipmentAuthorityService:
             "destination_container_id": destination_container_id,
         }
         digest = _digest(command)
-        duplicate = self._duplicate(actor_ref, idempotency_key, digest)
+        duplicate = self._duplicate(actor_ref, idempotency_key, digest, command_id=command_id, causation_id=causation_id, correlation_id=correlation_id)
         if duplicate is not None:
             return duplicate
         inventory, equipment = self._projections(actor_ref)
@@ -449,7 +464,7 @@ class EquipmentAuthorityService:
             "outgoing_destination_container_id": outgoing_destination_container_id,
         }
         digest = _digest(command)
-        duplicate = self._duplicate(actor_ref, idempotency_key, digest)
+        duplicate = self._duplicate(actor_ref, idempotency_key, digest, command_id=command_id, causation_id=causation_id, correlation_id=correlation_id)
         if duplicate is not None:
             return duplicate
         inventory, equipment = self._projections(actor_ref)
@@ -572,7 +587,7 @@ class EquipmentAuthorityService:
         events = self._store.read_events()
         return self._inventory_projector.rebuild(actor_ref, events), self._equipment_projector.rebuild(actor_ref, events)
 
-    def _duplicate(self, actor_ref: str, idempotency_key: str, digest: str) -> AppendBatchResult | None:
+    def _duplicate(self, actor_ref: str, idempotency_key: str, digest: str, *, command_id: str, causation_id: str, correlation_id: str) -> AppendBatchResult | None:
         key = f"{actor_ref}:{idempotency_key}"
         record = self._store.get_idempotency_record(self._PRINCIPAL, key)
         if record is None:
@@ -582,7 +597,57 @@ class EquipmentAuthorityService:
         result = self._store.get_by_idempotency(self._PRINCIPAL, key)
         if result is None:
             raise EquipmentRuntimeError("equipment_idempotency_missing_result")
+        self._validate_replay_receipt(result, actor_ref=actor_ref, command_id=command_id, causation_id=causation_id, correlation_id=correlation_id)
+        if self._resource_modifier_bridge is not None and result.committed:
+            self._resource_modifier_bridge.sync_equipment_transaction(result.transaction_id)
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+    def _validate_replay_receipt(self, result: AppendBatchResult, *, actor_ref: str, command_id: str, causation_id: str, correlation_id: str) -> None:
+        allowed_streams = {
+            _inventory_stream(actor_ref), _equipment_stream(actor_ref),
+            _ability_stream(actor_ref), _modifier_stream(actor_ref),
+        }
+        if not result.committed or not result.committed_event_ids or result.command_id != command_id:
+            raise EquipmentRuntimeError("equipment_idempotency_receipt_invalid")
+        if len(set(result.committed_event_ids)) != len(result.committed_event_ids):
+            raise EquipmentRuntimeError("equipment_idempotency_receipt_invalid")
+        batch = self._store.get_transaction(result.transaction_id)
+        if batch is None or tuple(event.event_id for event in batch.events) != tuple(result.committed_event_ids):
+            raise EquipmentRuntimeError("equipment_idempotency_receipt_invalid")
+        try:
+            events = tuple(self._store.get_event(event_id) for event_id in result.committed_event_ids)
+        except KeyError as exc:
+            raise EquipmentRuntimeError("equipment_idempotency_receipt_invalid") from exc
+        allowed_event_types = {
+            _inventory_stream(actor_ref): {
+                "gameplay.inventory.item_equipped",
+                "gameplay.inventory.item_unequipped",
+                "gameplay.inventory.item_moved",
+            },
+            _equipment_stream(actor_ref): {
+                "gameplay.equipment.activation_started",
+                "gameplay.equipment.activation_ended",
+            },
+            _ability_stream(actor_ref): {
+                "gameplay.ability.grant_activated",
+                "gameplay.ability.grant_revoked",
+            },
+            _modifier_stream(actor_ref): {
+                "gameplay.modifier.source_activated",
+                "gameplay.modifier.source_deactivated",
+            },
+        }
+        if any(
+            event.command_id != command_id
+            or event.causation_id != causation_id
+            or event.correlation_id != correlation_id
+            or event.transaction_id != result.transaction_id
+            or event.stream_id not in allowed_streams
+            or event.event_type not in allowed_event_types.get(event.stream_id, set())
+            or event.visibility_policy != "authority_only"
+            for event in events
+        ):
+            raise EquipmentRuntimeError("equipment_idempotency_receipt_invalid")
 
     def _validate_body(self, actor_ref: str, body: BodyRuntimeProjection) -> None:
         if body.actor_ref != actor_ref:
@@ -645,7 +710,7 @@ class EquipmentAuthorityService:
         equipment_stream = _equipment_stream(actor_ref)
         ability_stream = _ability_stream(actor_ref)
         modifier_stream = _modifier_stream(actor_ref)
-        return self._store.append_batch(
+        result = self._store.append_batch(
             {
                 "transaction_id": transaction_id,
                 "command_id": command_id,
@@ -674,6 +739,9 @@ class EquipmentAuthorityService:
                 "projection_refresh_hints": [],
             }
         )
+        if self._resource_modifier_bridge is not None and result.committed:
+            self._resource_modifier_bridge.sync_equipment_transaction(result.transaction_id)
+        return result
 
 
 class EquipmentContainerAccessAuthority:
@@ -715,7 +783,7 @@ class EquipmentContainerAccessAuthority:
             "to_container_id": to_container_id,
         }
         digest = _digest(command)
-        duplicate = self._duplicate(actor_ref, idempotency_key, digest)
+        duplicate = self._duplicate(actor_ref, idempotency_key, digest, command_id=command_id, causation_id=causation_id, correlation_id=correlation_id)
         if duplicate is not None:
             return duplicate
 
@@ -782,7 +850,7 @@ class EquipmentContainerAccessAuthority:
             }
         )
 
-    def _duplicate(self, actor_ref: str, idempotency_key: str, digest: str) -> AppendBatchResult | None:
+    def _duplicate(self, actor_ref: str, idempotency_key: str, digest: str, *, command_id: str, causation_id: str, correlation_id: str) -> AppendBatchResult | None:
         key = f"{actor_ref}:{idempotency_key}"
         record = self._store.get_idempotency_record(self._PRINCIPAL, key)
         if record is None:
@@ -792,6 +860,26 @@ class EquipmentContainerAccessAuthority:
         result = self._store.get_by_idempotency(self._PRINCIPAL, key)
         if result is None:
             raise EquipmentRuntimeError("equipment_container_idempotency_missing_result")
+        if (not result.committed or len(result.committed_event_ids) != 1
+                or result.command_id != command_id or result.transaction_id != f"tx:{command_id}"):
+            raise EquipmentRuntimeError("equipment_container_idempotency_receipt_invalid")
+        batch = self._store.get_transaction(result.transaction_id)
+        if batch is None or tuple(event.event_id for event in batch.events) != tuple(result.committed_event_ids):
+            raise EquipmentRuntimeError("equipment_container_idempotency_receipt_invalid")
+        try:
+            event = self._store.get_event(result.committed_event_ids[0])
+        except KeyError as exc:
+            raise EquipmentRuntimeError("equipment_container_idempotency_receipt_invalid") from exc
+        if (
+            event.command_id != result.command_id
+            or event.causation_id != causation_id
+            or event.correlation_id != correlation_id
+            or event.transaction_id != result.transaction_id
+            or event.stream_id != _inventory_stream(actor_ref)
+            or event.event_type != "gameplay.inventory.item_moved"
+            or event.visibility_policy != "authority_only"
+        ):
+            raise EquipmentRuntimeError("equipment_container_idempotency_receipt_invalid")
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
 
     def _require_destination_capacity(

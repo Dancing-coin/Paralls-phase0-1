@@ -265,6 +265,13 @@ def test_canonical_hazard_edge_is_idempotent_and_source_revision_conflicts_after
     assert duplicate.idempotency_status == "duplicate_replayed"
     assert len(store.read_events()) == 8
 
+    changed = intent.command.model_copy(update={"hazard_ref": "hazard:propagation:changed"})
+    before_changed = len(store.read_events())
+    changed_result = construction.settle_canonical_frost_due_finish(changed, admission=intent.admission)
+    assert changed_result.committed is False
+    assert changed_result.error_code == "canonical_hazard_source_revision_conflict"
+    assert len(store.read_events()) == before_changed
+
     stale_store = GameplayEventStore()
     stale_construction = _start_due_run(stale_store)
     stale_intent = _intent(stale_store)

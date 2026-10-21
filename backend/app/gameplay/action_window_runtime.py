@@ -9,12 +9,123 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+from dataclasses import asdict, dataclass
+from fractions import Fraction
 from typing import Mapping
 
 from pydantic import ConfigDict, Field, model_validator
 
 from app.gameplay.action_graph_content import ActionGraphDefinition
 from app.gameplay.models import StrictGameplayModel
+from app.world_runtime.simulation_clock import SimulationClock
+from app.world_runtime.temporal_contracts import ClockMapping, SettlementWindow
+
+
+class ActionTimeBinding(StrictGameplayModel):
+    """Historical source coordinates and exact, domain-neutral settlement pins."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    timeline_id: str
+    profile_ref: str
+    profile_revision: str
+    mapping_id: str
+    mapping_revision: str
+    source_clock_ref: str
+    source_unit_ref: str
+    source_revision: str
+    sampled_at: int
+    received_at: int
+    cutoff_tick: int
+    temporal_profile: dict[str, object]
+    clock_mapping: dict[str, object]
+    sampled_time: dict[str, object]
+    received_time: dict[str, object]
+    settlement_window: dict[str, object]
+
+
+@dataclass(frozen=True)
+class ActionTemporalContext:
+    """Trusted caller binding; never constructed from the action's claimed pins."""
+
+    clock: SimulationClock
+    mapping: ClockMapping
+    source_revision: str
+    sampled_at: int
+    received_at: int
+    cutoff_tick: int
+    late_input_policy_ref: str
+    ordering_policy_ref: str
+
+
+def _temporal_json(value: object) -> object:
+    if isinstance(value, Fraction):
+        return {"numerator": value.numerator, "denominator": value.denominator}
+    if isinstance(value, dict):
+        return {key: _temporal_json(item) for key, item in value.items()}
+    if isinstance(value, (tuple, list)):
+        return [_temporal_json(item) for item in value]
+    return value
+
+
+def freeze_action_time_binding(
+    intent: "ActionWindowIntent", context: ActionTemporalContext, *,
+    idempotency_key: str, expected_authority_revisions: Mapping[str, int],
+) -> ActionTimeBinding:
+    """Map source coordinates without advancing time or writing domain facts."""
+    clock, mapping = context.clock, context.mapping
+    if clock.timeline is None or clock.temporal_profile is None:
+        raise ValueError("action_window_temporal_context_missing")
+    if not all((context.source_revision, context.late_input_policy_ref, context.ordering_policy_ref, idempotency_key)):
+        raise ValueError("action_window_temporal_policy_missing")
+
+    def mapped(source: int, received: int | None = None):
+        return clock.map_source_time(
+            mapping=mapping, source_clock_ref=mapping.source_clock_ref,
+            source_unit_ref=mapping.source_unit_ref, source_revision=context.source_revision,
+            expected_source_revision=context.source_revision, mapping_revision=mapping.revision,
+            sampled_at=source, received_at=source if received is None else received,
+        )
+
+    start, end = mapped(intent.window_start_tick), mapped(intent.window_end_tick)
+    sample = mapped(context.sampled_at, context.received_at)
+    received, cutoff = mapped(context.received_at), mapped(context.cutoff_tick)
+    if not intent.window_start_tick <= context.sampled_at <= intent.window_end_tick:
+        raise ValueError("action_window_sample_outside_window")
+    if not start.canonical_time_value <= sample.canonical_time_value <= end.canonical_time_value:
+        raise ValueError("action_window_sample_outside_window")
+    if (context.received_at > context.cutoff_tick or received.canonical_time_value > cutoff.canonical_time_value
+            or clock.tick > cutoff.step_index or clock.timeline.current_step > cutoff.step_index):
+        raise ValueError("action_window_cutoff_exceeded")
+    if cutoff.canonical_time_value < end.canonical_time_value:
+        raise ValueError("action_window_cutoff_before_window_end")
+    window = SettlementWindow(
+        window_ref=f"action-window:{intent.attempt_ref}:{intent.window_index}",
+        timeline_id=clock.timeline.timeline_id, from_time=start, to_time=end,
+        participant_scope=(intent.actor_ref, *intent.target_refs), phase_ref=None,
+        input_cutoff=cutoff, late_input_policy_ref=context.late_input_policy_ref,
+        confirmation_boundary=cutoff, frozen_read_set=tuple(sorted(intent.expected_revision_vector.items())),
+        evidence_refs=intent.evidence_refs, ordering_policy_ref=context.ordering_policy_ref,
+        expected_authority_revisions=tuple(sorted(expected_authority_revisions.items())),
+        settlement_idempotency_key=idempotency_key,
+    )
+    return ActionTimeBinding(
+        timeline_id=clock.timeline.timeline_id, profile_ref=clock.temporal_profile.profile_id,
+        profile_revision=clock.temporal_profile.revision, mapping_id=mapping.mapping_id,
+        mapping_revision=mapping.revision, source_clock_ref=mapping.source_clock_ref,
+        source_unit_ref=mapping.source_unit_ref, source_revision=context.source_revision,
+        sampled_at=context.sampled_at, received_at=context.received_at, cutoff_tick=context.cutoff_tick,
+        temporal_profile=_temporal_json(asdict(clock.temporal_profile)),
+        clock_mapping=_temporal_json(asdict(mapping)), sampled_time=_temporal_json(asdict(sample)),
+        received_time=_temporal_json(asdict(received)), settlement_window=_temporal_json(asdict(window)),
+    )
+
+
+def action_intent_payload(intent: "ActionWindowIntent") -> dict[str, object]:
+    """Keep historical unbound intent digests byte-compatible."""
+    payload = intent.model_dump(mode="json")
+    if intent.time_binding is None:
+        payload.pop("time_binding", None)
+    return payload
 
 
 class SpatialSnapshotRef(StrictGameplayModel):
@@ -57,6 +168,7 @@ class ActionWindowIntent(StrictGameplayModel):
     sound_zone_revision: str = Field(min_length=1)
     deterministic_seed: str = Field(min_length=1)
     evidence_refs: tuple[str, ...] = Field(min_length=1)
+    time_binding: ActionTimeBinding | None = None
 
     @model_validator(mode="after")
     def validate_window(self) -> "ActionWindowIntent":
@@ -107,7 +219,7 @@ class ActionWindowValidator:
         prior_intent_digest: str | None = None,
         prior_result: ActionWindowResult | None = None,
     ) -> ActionWindowResult:
-        digest = _digest(intent.model_dump(mode="json"))
+        digest = _digest(action_intent_payload(intent))
         if intent.graph_ref != graph.graph_ref or intent.graph_revision != graph.graph_revision:
             return cls._reject(intent, digest, "action_window_graph_revision_conflict")
         if previous_window_index is not None and intent.window_index != previous_window_index + 1:
@@ -202,6 +314,9 @@ def _digest(value: object) -> str:
 
 
 __all__ = [
+    "ActionTimeBinding",
+    "ActionTemporalContext",
+    "freeze_action_time_binding",
     "ActionWindowIntent",
     "ActionWindowResult",
     "ActionWindowValidator",

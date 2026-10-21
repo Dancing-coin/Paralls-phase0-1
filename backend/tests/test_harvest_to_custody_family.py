@@ -329,6 +329,34 @@ def test_harvest_to_custody_replays_duplicate_and_preserves_grain_row_replay() -
     assert full == tail
 
 
+def test_harvest_to_custody_rejects_corrupt_receipt_event_reference_without_write() -> None:
+    manifest = _manifest(
+        package_revision="package:harvest-wheat-family@1",
+        definition_ref="definition:harvest-wheat-family@1",
+        crop_definition_ref="definition:grain:wheat@1",
+        item_definition_ref="item:grain:wheat@1",
+        holder_binding_ref=_holder_binding("organization:district-milling-cooperative"),
+        container_binding_ref=_container_binding("container:district-milling-cooperative:grain-intake"),
+        policy_revision_ref="policy:inventory-grain-harvest-custody@1",
+    )
+    store, source = _source()
+    inventory = _inventory(store, manifest, runtime_item_definitions=("grain:wheat@1",),
+                           holder_ref="organization:district-milling-cooperative",
+                           container_id="container:district-milling-cooperative:grain-intake")
+    intent = _intent(source, store)
+    first = inventory.settle_harvest_to_custody(intent=intent)
+    assert first.committed
+    key = (inventory._PRINCIPAL, next(k for k in store._idempotency_results if k[1].startswith("organization:district-milling-cooperative:inventory:harvest-to-custody:"))[1])
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+    duplicate = inventory.settle_harvest_to_custody(intent=intent)
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "harvest_to_custody_receipt_invalid"
+    assert store.export_snapshot() == before
+
+
 def test_harvest_to_custody_replay_rejects_tampered_family_provenance() -> None:
     manifest = _manifest(
         package_revision="package:harvest-wheat-replay-provenance@1",

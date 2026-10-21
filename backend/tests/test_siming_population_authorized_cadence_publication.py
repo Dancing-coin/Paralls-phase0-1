@@ -616,7 +616,7 @@ def _inventory_runtime_fixture() -> tuple[object, GameplayEventStore, Population
     return main, store, cadence, organization_projection, certification_event_id
 
 
-def test_certified_output_enters_authorized_cadence_and_uses_inventory_owner() -> None:
+def test_unpinned_authorized_cadence_does_not_settle_inventory_output() -> None:
     main, store, cadence, organization_projection, _ = _inventory_runtime_fixture()
     event = main.publish_authorized_population_cadence(
         cadence=cadence,
@@ -636,13 +636,16 @@ def test_certified_output_enters_authorized_cadence_and_uses_inventory_owner() -
     audits = main.siming_audit_writer.find_by_correlation(
         room_id="room:task4", correlation_id="population:task4:inventory"
     )
-    assert any("status=accepted" in audit.reason and "owners=1" in audit.reason for audit in audits)
+    # This helper publishes a projection event, but it does not persist the
+    # RuntimeCadencePublisher temporal grant required by the Inventory owner.
+    # A projection is not settlement authorization.
+    assert any("status=requeue" in audit.reason for audit in audits)
     owner_events = [
         item
         for item in store.read_events()
         if item.event_type == "gameplay.inventory.production_output_received@1"
     ]
-    assert len(owner_events) == 1
+    assert owner_events == []
 
 
 def _social_runtime_fixture(*, private: bool = False) -> tuple[object, GameplayEventStore, PopulationCadenceInput, dict[str, object]]:

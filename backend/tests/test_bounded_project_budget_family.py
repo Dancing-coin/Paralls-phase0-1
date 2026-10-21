@@ -64,6 +64,30 @@ def test_bounded_project_budget_replays_duplicate_and_rejects_changed_duplicate(
     assert tuple(store.read_events()) == before
 
 
+def test_bounded_project_budget_rejects_corrupt_receipt_event_reference() -> None:
+    store, economy, source, _ = _prepared_budget_case()
+    intent = BoundedProjectBudgetIntent(
+        source_event_id=source.event_id,
+        command_id="command:bounded-budget-corrupt-receipt",
+        correlation_id="corr:bounded-budget-corrupt-receipt",
+        submitted_at="2026-08-30T00:00:00Z",
+    )
+    first = economy.settle_bounded_project_budget(intent=intent)
+    assert first.committed
+    key = f"economy:bounded-project-budget:{source.event_id}:{source.stream_revision}:v1"
+    store._idempotency_results[("actor_gameplay.economy_domain", key)] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    duplicate = economy.settle_bounded_project_budget(intent=intent)
+
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "bounded_project_budget_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_bounded_project_budget_intent_rejects_caller_amount_currency_account_and_stream() -> None:
     with pytest.raises(Exception):
         BoundedProjectBudgetIntent.model_validate(

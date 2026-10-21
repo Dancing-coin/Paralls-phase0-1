@@ -4,6 +4,16 @@
     "smoke": ["harness-smoke"],
     "contract": ["docs", "boundaries", "backend-contract", "godot-project", "harness-lifecycle"],
     "runtime": ["phase0", "mainline-unified-runtime"],
-    "release": ["docs", "boundaries", "backend-contract", "godot-project", "harness-lifecycle", "phase0", "mainline-unified-runtime"]
+    "release": ["docs", "boundaries", "backend-contract", "godot-project", "harness-lifecycle", "phase0", "mainline-unified-runtime"],
+    "stage3-population-continuity": [
+      "phase3a-profile-activation",
+      "phase3b-world-mode-continuity",
+      "phase3c-batch-intent-merge",
+      "phase3d-bakery-district-population",
+      "phase3-population-continuity",
+      "siming-led-population-seed-continuity",
+      "siming-governed-three-actor-cohort-continuity-v1",
+      "siming-generalized-population-decision"
+    ]
   }
 }

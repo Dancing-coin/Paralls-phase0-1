@@ -474,6 +474,21 @@ class RuleDefinition(StrictPatchModel):
     capability_calls: tuple[RuleCapabilityCall, ...] = ()
 
 
+class ResourceMigrationTargetDefinition(StrictPatchModel):
+    """Manifest-pinned v2 capacity policy; omitted for legacy migrations."""
+
+    resource_schema: Literal["resource.v2"]
+    capacity: int = Field(ge=0)
+    base_capacity: int = Field(ge=0)
+    debt_ceiling: int = Field(default=0, ge=0)
+
+    @model_validator(mode="after")
+    def _validate_capacity(self) -> "ResourceMigrationTargetDefinition":
+        if self.base_capacity > self.capacity:
+            raise ValueError("resource_target_definition_capacity_invalid")
+        return self
+
+
 class StateGroupMigration(StrictPatchModel):
     """A manifest-declared state-group migration gate for one target revision."""
 
@@ -488,6 +503,7 @@ class StateGroupMigration(StrictPatchModel):
     input_event_schema: PatchEventSchema | None = None
     output_event_schema: PatchEventSchema | None = None
     rollback_mode: Literal["identity_rebind", "forward_fix_only"] | None = None
+    target_resource_definition: ResourceMigrationTargetDefinition | None = None
 
     def expected_migration_digest(self) -> str:
         """Return the digest of the immutable manifest-declared descriptor."""
@@ -507,6 +523,7 @@ class StateGroupMigration(StrictPatchModel):
                         self.input_event_schema,
                         self.output_event_schema,
                         self.rollback_mode,
+                        self.target_resource_definition,
                     )
                 )
             ):
@@ -522,7 +539,11 @@ class StateGroupMigration(StrictPatchModel):
             or self.from_definition_version == self.to_definition_version
         ):
             raise ValueError("resource_bounds_clamp_migration_contract_invalid")
+        if self.target_resource_definition is not None and self.target_resource_definition.resource_schema != "resource.v2":
+            raise ValueError("resource_target_definition_schema_invalid")
         return self
+
+
 
 
 class GameplayPatchManifest(StrictPatchModel):

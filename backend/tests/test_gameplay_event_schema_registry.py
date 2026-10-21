@@ -50,6 +50,15 @@ def test_stormnight_case_schema_bundle_is_registered() -> None:
         registry.require(event_type, 1)
 
 
+def test_stormnight_explicit_world_death_confirmation_schemas_are_registered() -> None:
+    registry = create_stormnight_event_schema_registry()
+    for event_type in (
+        "gameplay.conflict.world_death_commit_confirmed",
+        "gameplay.conflict.world_death_commit_rejected",
+    ):
+        registry.require(event_type, 1)
+
+
 def test_durable_snapshot_restores_opt_in_write_gate(tmp_path) -> None:
     path = tmp_path / "guarded-store.json"
     registry = EventSchemaRegistry()

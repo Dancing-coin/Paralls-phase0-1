@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.character_agent.skills.evidence import LEARNING_STAGES, LearningEpisode
 from app.character_agent.skills.models import (
     SkillCandidate,
     SkillDefinition,
@@ -12,10 +15,110 @@ from app.character_agent.skills.models import (
 from app.character_agent.skills.registry import CharacterSkillRegistry
 
 
+class LearningProposal(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    proposal_id: str
+    idempotency_key: str
+    actor_id: str
+    skill_id: str
+    object_id: str
+    episode_id: str
+    stage: str
+    operation: Literal["upgrade", "branch", "mutation", "fusion", "evolution"] = "upgrade"
+    evidence_refs: list[str] = Field(default_factory=list)
+    source_revision: str = ""
+    failure_refs: list[str] = Field(default_factory=list)
+
+
+class LearningGateResult(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    accepted: bool = False
+    stage: str
+    reasons: list[str] = Field(default_factory=list)
+    proposal: LearningProposal | None = None
+
+
+class SkillLearningGate:
+    """Validates progress without mutating authored or learned skill state."""
+
+    def evaluate(
+        self,
+        episode: LearningEpisode,
+        *,
+        prerequisites_met: bool = True,
+        allowed_privacy_scopes: set[str] | None = None,
+        current_source_revision: str = "",
+        current_context_revision: str = "",
+        authority_settled: bool = False,
+        operation: Literal["upgrade", "branch", "mutation", "fusion", "evolution"] = "upgrade",
+    ) -> LearningGateResult:
+        reasons: list[str] = []
+        if not prerequisites_met:
+            reasons.append("missing_prerequisite")
+        allowed = set(allowed_privacy_scopes or set())
+        if episode.source_privacy_scope and episode.source_privacy_scope not in allowed:
+            reasons.append("privacy_mismatch")
+        if current_source_revision and episode.source_revision and episode.source_revision != current_source_revision:
+            reasons.append("stale_source")
+        elif episode.expected_source_revision and episode.expected_source_revision != current_source_revision:
+            reasons.append("stale_source")
+        if current_context_revision and episode.context_revision and episode.context_revision != current_context_revision:
+            reasons.append("stale_context")
+        if not episode.source_refs:
+            reasons.append("missing_source_evidence")
+        if operation not in {"upgrade", "branch", "mutation", "fusion", "evolution"}:
+            reasons.append("unknown_learning_operation")
+        if episode.stage == "evolved" and not authority_settled:
+            reasons.append("authority_required")
+        if reasons:
+            return LearningGateResult(accepted=False, stage=episode.stage, reasons=_unique(reasons))
+        proposal = LearningProposal(
+            proposal_id=f"learning:{episode.episode_id}",
+            idempotency_key=f"learning:{episode.learner_id}:{episode.object_id}:{episode.episode_id}",
+            actor_id=episode.learner_id,
+            skill_id=episode.skill_id,
+            object_id=episode.object_id,
+            episode_id=episode.episode_id,
+            stage=episode.stage,
+            operation=operation,
+            evidence_refs=list(dict.fromkeys(episode.source_refs + episode.evidence_refs)),
+            source_revision=episode.source_revision,
+        )
+        return LearningGateResult(accepted=True, stage=episode.stage, proposal=proposal)
+
+    def transition(
+        self,
+        episode: LearningEpisode,
+        target_stage: str,
+        *,
+        authority_settled: bool = False,
+        operation: Literal["upgrade", "branch", "mutation", "fusion", "evolution"] = "upgrade",
+    ) -> LearningGateResult:
+        if target_stage not in LEARNING_STAGES:
+            return LearningGateResult(accepted=False, stage=episode.stage, reasons=["unknown_learning_stage"])
+        if target_stage == "evolved" and not authority_settled:
+            return LearningGateResult(accepted=False, stage=episode.stage, reasons=["authority_required"])
+        updated = episode.model_copy(update={"stage": target_stage})
+        return self.evaluate(updated, authority_settled=authority_settled, operation=operation)
+
+
+def _unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
 class SkillCandidateStore:
     def __init__(self, *, registry: CharacterSkillRegistry | None = None) -> None:
         self._registry = registry or CharacterSkillRegistry()
         self._candidates: dict[tuple[str, str], SkillCandidate] = {}
+        self._progress: dict[tuple[str, str], dict[str, Any]] = {}
 
     def observe(self, evidence: SkillEvidence) -> SkillCandidate | None:
         if not evidence.eligible_for_candidate:
@@ -58,6 +161,17 @@ class SkillCandidateStore:
             deep=True,
         )
         self._candidates[key] = updated
+        progress = self._progress.setdefault(
+            key,
+            {"stage": "available", "mastery": {}, "evidence_refs": []},
+        )
+        stage = evidence.evidence_channels.get("stage")
+        if isinstance(stage, str) and stage in LEARNING_STAGES:
+            progress["stage"] = stage
+        mastery = evidence.evidence_channels.get("mastery")
+        if isinstance(mastery, dict):
+            progress["mastery"] = dict(mastery)
+        progress["evidence_refs"] = list(evidence_refs)
         return updated.model_copy(deep=True)
 
     def candidate(self, *, actor_id: str, skill_id: str) -> SkillCandidate | None:
@@ -70,6 +184,10 @@ class SkillCandidateStore:
             for (candidate_actor_id, _), candidate in self._candidates.items()
             if candidate_actor_id == actor_id
         ]
+
+    def progress(self, *, actor_id: str, skill_id: str) -> dict[str, Any] | None:
+        value = self._progress.get((actor_id, skill_id))
+        return dict(value) if value is not None else None
 
     def _safe_skill(self, skill_id: str) -> SkillDefinition | None:
         try:

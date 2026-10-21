@@ -13,6 +13,7 @@ import pytest
 from app.gameplay.event_store import DurableGameplayEventStore
 from app.population_continuity.runtime_publication import RuntimeCadencePublisher
 from app.population_continuity.roster import PopulationRoster
+from app.population_continuity.siming_contracts import PopulationCadenceInput
 from app.population_continuity.world import WorldContinuityRuntime
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.world_runtime.population_driver import PopulationCadenceDriver
@@ -30,6 +31,97 @@ def _runtime(path, actors=("one", "two")):
 def _publisher(world, bus):
     return RuntimeCadencePublisher(world_runtime=world, event_bus=bus,
                                    room_id="room", scene_id="scene", zone_id="zone")
+
+
+def test_runtime_pinned_publication_carries_time_pins_into_population_event(tmp_path):
+    world = _runtime(tmp_path / "pinned.json", ("one",))
+    bus = InMemoryAuthorityEventBus()
+    publisher = _publisher(world, bus)
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+    pins = {
+        "timeline_id": "timeline:world",
+        "profile_revision": "profile:world:v1",
+        "mapping_id": "mapping:world:v1",
+        "mapping_revision": "mapping:world:v1",
+        "source_clock_ref": "population-driver:world",
+        "source_revision": 1,
+        "sampled_at": 60,
+        "received_at": 60,
+        "freshness": 0,
+        "activation_revision": "population-window:60:v1",
+        "window_start": 0,
+        "window_ticks": 60,
+        "canonical_unit_ref": "second",
+        "step_duration": "1/1",
+    }
+    event = publisher.publish_pinned(cadence, pins)
+    assert event is not None
+    assert event.payload["temporal_pins"] == pins
+    from app.services.siming_population_capability import default_population_read_set_builder
+    read_set = default_population_read_set_builder(event, PopulationCadenceInput.from_authority_event(event))
+    assert read_set.temporal_pins == pins
+
+
+def test_driver_persists_inventory_temporal_grant_in_durable_cadence_record(tmp_path):
+    world = _runtime(tmp_path / "driver-grant.json", ("one",))
+    bus = InMemoryAuthorityEventBus()
+    publisher = _publisher(world, bus)
+    driver = PopulationCadenceDriver(
+        world_runtime=world,
+        publish_window=publisher,
+        window_size=60,
+        catch_up_limit=1,
+        initial_tick=0,
+    )
+
+    result = driver.tick(60)
+    assert result.published_cadence_ids == ("cadence:world:0",)
+    committed = world.store.get_by_idempotency(
+        "world_runtime.cadence", "population-runtime:cadence:world:0"
+    )
+    assert committed is not None and committed.committed and committed.committed_event_ids
+    record = world.store.get_event(committed.committed_event_ids[0]).payload
+    pins = record["time_pins"]
+    assert pins["settlement_participant_scope"] == "actor_gameplay.inventory_domain"
+    assert pins["input_cutoff"] == 60
+    assert pins["confirmation_boundary"] == 60
+    assert pins["temporal_authorization_issuer_ref"] == "world_runtime.population_cadence:world"
+    assert pins["temporal_authorization_digest"].startswith("sha256:")
+    grants = json.loads(pins["temporal_authorizations"])
+    assert grants["economy"]["authorization_ref"] == "authorization:population-economy-temporal@1"
+    assert grants["status"]["valid_until"] == 60
+
+
+def test_world_admin_revocation_uses_durable_entry_and_exact_replay(tmp_path):
+    world = _runtime(tmp_path / "revoke.json", ("one",))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                      window_size=60, catch_up_limit=1, initial_tick=0)
+    assert driver.tick(60).published_cadence_ids == ("cadence:world:0",)
+    first = publisher.revoke_cadence(cadence_id="cadence:world:0", reason_code="administrator_cancelled", caller_principal_ref="world_admin")
+    assert first.committed and first.idempotency_status == "new_commit"
+    event = world.store.get_event(first.committed_event_ids[0])
+    assert event.payload["issuer_ref"] == "world_admin"
+    assert event.payload["authority_contract_ref"] == "world-admin:population-cadence-revocation@1"
+    replay = publisher.revoke_cadence(cadence_id="cadence:world:0", reason_code="administrator_cancelled", caller_principal_ref="world_admin")
+    assert replay.committed and replay.idempotency_status == "duplicate_replayed"
+    changed = publisher.revoke_cadence(cadence_id="cadence:world:0", reason_code="different_reason", caller_principal_ref="world_admin")
+    assert not changed.committed
+    assert changed.idempotency_status == "rejected"
+    assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
+    assert len(world.store.read_stream("population-cadence-revocation:world")) == 1
+
+
+def test_cadence_revocation_requires_world_admin_caller_principal(tmp_path):
+    world = _runtime(tmp_path / "revoke-principal.json", ("one",))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                      window_size=60, catch_up_limit=1, initial_tick=0)
+    assert driver.tick(60).published_cadence_ids == ("cadence:world:0",)
+    with pytest.raises(ValueError, match="population_cadence_revocation_principal_invalid"):
+        publisher.revoke_cadence(cadence_id="cadence:world:0", reason_code="administrator_cancelled",
+                                 caller_principal_ref="character:forged")
+    assert not world.store.read_stream("population-cadence-revocation:world")
 
 
 @pytest.mark.parametrize("population", [2, 1000])
@@ -291,6 +383,79 @@ def test_driver_reports_real_b0_and_due_processing(tmp_path):
     assert result.due_item_count == 2
     assert result.deferred_item_count == result.rejected_item_count == 0
     assert not world.due_population_work(21600)
+
+
+def test_driver_persists_time_pins_and_rejects_stale_mapping_on_restore(tmp_path):
+    path = tmp_path / "gameplay.json"
+    world = _runtime(path)
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                     window_size=60, catch_up_limit=1)
+    assert driver.tick(60).published_cadence_ids == ("cadence:world:0",)
+    record = world.store.read_stream("population-cadence:world")[0].payload
+    pins = record["time_pins"]
+    assert pins["timeline_id"] == "population:world"
+    assert pins["mapping_revision"] == "population-seconds:v1"
+    assert pins["source_clock_ref"] == "population-driver:world"
+    assert pins["source_unit_ref"] == "second"
+    assert pins["sampled_at"] == pins["received_at"] == 60
+    assert pins["window_ticks"] == 60
+
+    restored_world = _runtime(path)
+    restored = _publisher(restored_world, InMemoryAuthorityEventBus())
+    rebuilt = PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                      window_size=60, catch_up_limit=1)
+    assert rebuilt.current_tick == 60
+    assert rebuilt.tick(60).published_cadence_ids == ()
+    assert len(restored_world.store.read_stream("population-cadence:world")) == 1
+    with pytest.raises(ValueError, match="population_time_mapping_stale"):
+        PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                window_size=60, catch_up_limit=1,
+                                mapping_revision="population-seconds:v2")
+    with pytest.raises(ValueError, match="population_time_migration_required"):
+        PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                window_size=120, catch_up_limit=1)
+    with pytest.raises(ValueError, match="population_time_cursor_stale"):
+        PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                window_size=60, catch_up_limit=1, initial_tick=120)
+
+
+def test_driver_requires_mapping_and_keeps_unconfirmed_window_after_restart(tmp_path):
+    path = tmp_path / "gameplay.json"
+    world = _runtime(path)
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    with pytest.raises(ValueError, match="population_time_mapping_missing"):
+        PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                window_size=60, catch_up_limit=1, mapping_revision="")
+    failing_bus = InMemoryAuthorityEventBus()
+    failing_bus.subscribe("population_cadence_event", lambda _: (_ for _ in ()).throw(RuntimeError("crash")))
+    pending = _publisher(world, failing_bus)
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=pending,
+                                     window_size=60, catch_up_limit=1)
+    assert driver.tick(60).rejected_windows
+    assert driver.current_tick == 0
+    assert len(world.store.read_stream("population-cadence:world")) == 1
+    restored_world = _runtime(path)
+    restored = _publisher(restored_world, InMemoryAuthorityEventBus())
+    rebuilt = PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                      window_size=60, catch_up_limit=1)
+    assert rebuilt.current_tick == 0
+    assert rebuilt.tick(60).published_cadence_ids == ("cadence:world:0",)
+    assert len(restored_world.store.read_stream("population-cadence:world")) == 1
+
+
+def test_driver_rejects_wrong_mapping_unit_before_owner_append(tmp_path):
+    from dataclasses import replace
+
+    world = _runtime(tmp_path / "gameplay.json")
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                     window_size=60, catch_up_limit=1)
+    driver.mapping = replace(driver.mapping, source_unit_ref="turn")
+    result = driver.tick(60)
+    assert result.rejected_windows[0][1] == "population_time_unit_mismatch"
+    assert driver.current_tick == 0
+    assert not world.store.read_stream("population-cadence:world")
 
 
 def test_real_process_crash_recovers_committed_pending_window(tmp_path):

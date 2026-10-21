@@ -6,6 +6,7 @@ from collections.abc import Mapping
 from typing import Any, Callable
 
 from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.mind_frame import CharacterMindFrame
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.models.behavior_turn import BehaviorTurnStage, CharacterTurnStageEvent
 
@@ -122,6 +123,11 @@ class CharacterTurnCoordinator:
             },
             producer_ts=producer_ts,
         )
+
+    def freeze_frame(self, *, context: CharacterTurnContext, frame: CharacterMindFrame) -> CharacterMindFrame:
+        if frame.actor_id != context.actor_id:
+            raise ValueError("mind frame actor mismatch")
+        return frame.bind_to_turn(context)
 
     def _load_context(
         self, actor_id: str, turn_id: str

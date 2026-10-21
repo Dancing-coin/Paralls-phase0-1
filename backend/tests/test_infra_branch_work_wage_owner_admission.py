@@ -301,6 +301,28 @@ def test_inf4t_exact_duplicate_replays_changed_duplicate_is_zero_write_and_repla
     assert replay.full_replay(store.read_events()).projection_hash == replay.checkpoint_plus_tail_replay(replay.create_checkpoint(store.read_events()[:4]), store.read_events()[4:]).projection_hash
 
 
+def test_inf4t_branch_duplicate_rejects_corrupt_receipt_refs_without_write() -> None:
+    store, _, source = _source()
+    plan = _plan(store, source)
+    branch_authority, snapshot = _branch(store, plan.candidates[0])
+    merge = ContinuityMergeAuthority(store=store, registry=CharacterProfileRegistry(profiles_by_actor_id={}), mode=_mode())
+    request = _request(plan, snapshot)
+    first = merge.merge_branch_work_wage(request=request, wage_plan=plan)
+    key = (EconomyAuthority._PRINCIPAL, f"branch-wage:{plan.batch_ref}")
+    original = store.get_by_idempotency(*key)
+    store._idempotency_results[key] = original.model_copy(
+        update={"committed_event_ids": [*original.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = len(store.read_events())
+
+    duplicate = merge.merge_branch_work_wage(request=request, wage_plan=plan)
+
+    assert first.committed is True
+    assert duplicate.committed is False
+    assert duplicate.stop_reason == "idempotency_key_reused"
+    assert len(store.read_events()) == before
+
+
 def test_inf4t_branch_scope_is_creator_debug_and_no_combined_or_compensation_surface_exists() -> None:
     store, _, source = _source()
     plan = _plan(store, source)

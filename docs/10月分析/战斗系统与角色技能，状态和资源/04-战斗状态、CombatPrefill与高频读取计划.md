@@ -266,4 +266,33 @@ visibility_policy_revision
 
 所有角色可感知的外部状态经 L1 授权投影后才进入 L2/L3/Laya；不能用 cache builder 作为隐藏事实查询通道。authority 使用 authority_evaluation_view，创作者预览使用 creator_debug_view。可见性过滤先于缓存写入；权限撤销或视图政策变化清除相关缓存，不能向角色透露被移除的秘密标签旧值。静态公开内容可共享，角色私有 prefix 不能跨 actor 复用。
 
+
 验收：流血 tick 仅产生 hot delta；技能学会或标签绑定新版本改变 stable key；权限撤销后旧 prefix 不再命中；低算力候选集收缩不会扩大读取范围或能力上限。
+
+## 14. 本批规格与计划回写（2026-10-10）
+
+本批保留 Stable/Hot/Delta 三层读取目标，但明确它们是规划中的投影合同，不是当前完整 `CombatPrefill` API。稳定字段、热状态、Delta、隐私和失效按规格09及角色 L1 输入边界映射；资源容量、装备、状态、空间和动作阶段仍从各 owner 读取，不能由自然语言或模型补造。Combat 命名不限制其在开门、交互、生产、移动和社交等开放世界消费中的复用。
+
+映射：规格03、04、09；计划01 Task2A/3、计划04 Task2–3/6、计划05 Task5。统一 projector、缓存版本和真实 replay 仍为 planned/blocked。
+
+
+## 本批规格与计划回写：Status 时间 consumer（2026-10-16）
+
+Status hot snapshot 的 `expires_at_tick` 现在只能来自 owner 接纳时冻结的 `StatusTagExpiry`；scheduler 选择不等于过期，owner receipt 才是事实。旧 status event 没有 expiry 时保持永久，不从 freshness 或当前 tick 推导期限。实现入口为 `backend/app/gameplay/status_tags.py`，复用 `SimulationTime`、`ClockMapping`、`ScheduledWork` 与 `GameplayEventStore`。
+
+### 本批规格与计划回写：Task3 前置审查（2026-10-16，RW-39）
+
+[current] Stable 禁 current，Hot/Delta 和资源级隐私仍 planned；现 Phase3 顶层过滤与未接线 mind_frame_view 不能登记为完整角色私有投影。 逐对象 owner、consumer、持久版本和兼容入口见[本轮矩阵与三图](../回写/stage3-task3-20261016.md)，对应规格10与计划04 Task3。
+
+[planned/blocked] 集中迁移仍缺已审定目标字段/schema、完整pause/drain与真实非战斗核心资源caller。本轮只完成审查和迁移夹具设计，没有新增资源切片；D17不取消动作、不清reservation、不伪造退款，失败保留旧事实、关闭新admission。[deferred] prediction、随机、Godot及评估/训练不在本轮。
+
+
+## RW-41 资源投影与撤权接口边界（2026-10-16）
+
+本次为 Task3 文档设计，不实现投影。来源定位、实际 consumer 与 A/B/C 解除条件见[Task3 §8](../回写/stage3-task3-20261016.md#8-task3-资源切片-abc-准入矩阵2026-10-16rw-41)，正式接口见[规格10 B5](../规格/10-通用资源状态效果影响源与装备领域规格.md#b5-资源级授权与-stablehotdelta)，本节架构/时序/数据流共同见[伴随三图](../回写/stage3-task3-20261016.md#84-rw-41-共同伴随三图)。
+
+[current/A] Phase3 composer/mirror 是现有读路径；StateGroupViewProjector 仅顶层 allowlist，不等于 entries 内资源授权。composer 资源条目未携 definition_version，现有 version/revision/checksum 也不是完整 Stable/Hot/Delta 契约。equipment/ability grant 撤销不构成资源可见性撤权。
+
+[planned/B] §2 的基础定义/低频政策进入授权 Stable；临时或有效 capacity、恢复修正和实例数值进入 Hot，不能笼统把所有 capacity 视为 Stable。Hot 按 owner revision/freshness/visibility 使用；Delta 含 from/to、event refs、invalidation 和原 pins，缺段/乱序拉授权完整 snapshot。先作 owner 授权过滤，再进入角色 cache/L1；撤权先清 cache/affordance/pending intent/active binding，失效通知不带已撤销值，replay/重连不能恢复秘密。
+
+[deferred/C7] 具体 resource/field policy、issuer、撤权来源和 consumer 用途未明确，不能默认 self/public；三类资源投影和撤权闭环仍 not_verified。真实非战斗 Resource caller 另为 C8，现有 godot_view/population_view 只读消费与 verifier live probe 不构成生产资源动作验收。保持零新增实施准入，不启动 Godot、模型质量验收或 prediction；Laya 仍只记录 choice 输出类型。

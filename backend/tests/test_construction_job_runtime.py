@@ -210,7 +210,9 @@ def test_construction_job_completion_is_terminal_and_idempotent() -> None:
     )
 
     assert result.committed
-    assert duplicate.idempotency_status == "duplicate_replayed"
+    assert not duplicate.committed
+    assert duplicate.failure is not None and duplicate.failure.error_code == "idempotency_key_reused"
+    assert len(store.read_events()) == 2
     assert authority.projector().jobs["job:mill:1"].status == "completed"
 
 

@@ -1,7 +1,7 @@
-from dataclasses import dataclass
 import hashlib
 import json
 import re
+from dataclasses import dataclass
 
 from app.models.character_agent_runtime import (
     CharacterGoalCommand,
@@ -9,7 +9,13 @@ from app.models.character_agent_runtime import (
     CharacterInterpretation,
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
-from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.character_agent.models.character_execution import (
+    CharacterExecutionContract,
+    CharacterExecutionFeedback,
+    ExecutionAdmission,
+    ExecutionFeedbackAdmission,
+    ExecutionLifecycleReceipt,
+)
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
 from app.character_agent.profile.registry import CharacterProfileRegistry
@@ -26,6 +32,7 @@ from app.gameplay.shared_contracts import (
     StructuredFailure,
 )
 from app.models.siming_character_bridge import CharacterSemanticIntentProposal
+from app.models.embodied_interaction import ActionAttempt, AuthorityRoute
 
 
 _WORK_INTENT_COMMANDS = {
@@ -60,6 +67,16 @@ class LegacyExecutionTranslation:
     legacy_translation: bool = True
 
 
+@dataclass(frozen=True, slots=True)
+class ActionIngressResult:
+    """L4 diagnostic/admission result before the existing owner ingress."""
+
+    status: str
+    reason: str = ""
+    diagnostic: dict[str, object] | None = None
+    action_attempt: ActionAttempt | None = None
+
+
 class CharacterAgentL4Adapter:
     def __init__(
         self,
@@ -74,6 +91,8 @@ class CharacterAgentL4Adapter:
         self._compat_work_digests: dict[str, str] = {}
         self._legacy_execution_digests: dict[str, str] = {}
         self._legacy_execution_contracts: dict[str, CharacterExecutionContract] = {}
+        self._execution_digests: dict[str, str] = {}
+        self._execution_lifecycle: dict[str, str] = {}
 
     def build_intent_proposal(
         self, message: dict[str, object] | CharacterSemanticIntentProposal
@@ -82,6 +101,189 @@ class CharacterAgentL4Adapter:
         if isinstance(message, CharacterSemanticIntentProposal):
             return message
         return CharacterSemanticIntentProposal.model_validate(message)
+
+    @staticmethod
+    def _execution_digest(contract: CharacterExecutionContract) -> str:
+        payload = contract.model_dump(mode="json")
+        return "sha256:" + hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
+        ).hexdigest()
+
+    def admit_execution_contract(
+        self,
+        contract: CharacterExecutionContract,
+        *,
+        now_ts: int | None = None,
+        current_target_refs: tuple[str, ...] | None = None,
+        current_target_revision_vector: dict[str, int] | None = None,
+        current_revision_vector: dict[str, int] | None = None,
+        current_snapshot_revision: int | None = None,
+        revoked_grants: set[str] | None = None,
+    ) -> ExecutionAdmission:
+        """Admit one frozen contract idempotently before actor/authority ingress."""
+        admission = contract.admission(
+            now_ts=now_ts,
+            current_target_refs=current_target_refs,
+            current_target_revision_vector=current_target_revision_vector,
+            current_revision_vector=current_revision_vector,
+            current_snapshot_revision=current_snapshot_revision,
+            revoked_grants=revoked_grants,
+        )
+        if not admission.accepted:
+            return admission
+        observation = contract.expected_observation
+        if observation.get("candidate_digest"):
+            owner_route = str(observation.get("owner_route", "") or "")
+            if not owner_route:
+                return ExecutionAdmission(False, "owner_admission_missing")
+        digest = self._execution_digest(contract)
+        prior = self._execution_digests.get(contract.idempotency_key)
+        if prior is not None:
+            lifecycle = self._execution_lifecycle.get(contract.idempotency_key, "")
+            if lifecycle in {"cancelled", "expired"}:
+                return ExecutionAdmission(False, lifecycle)
+            if prior != digest:
+                return ExecutionAdmission(False, "payload_mismatch")
+            return ExecutionAdmission(True, "duplicate", duplicate=True)
+        self._execution_digests[contract.idempotency_key] = digest
+        self._execution_lifecycle[contract.idempotency_key] = "accepted"
+        return admission
+
+    def cancel_execution_contract(
+        self, contract: CharacterExecutionContract, *, reason: str = "cancelled"
+    ) -> ExecutionLifecycleReceipt:
+        return self._close_execution_contract(contract, lifecycle="cancelled", reason=reason)
+
+    def _close_execution_contract(
+        self, contract: CharacterExecutionContract, *, lifecycle: str, reason: str
+    ) -> ExecutionLifecycleReceipt:
+        current = self._execution_lifecycle.get(contract.idempotency_key)
+        digest = self._execution_digest(contract)
+        prior = self._execution_digests.get(contract.idempotency_key)
+        if prior is not None and prior != digest:
+            return ExecutionLifecycleReceipt(contract.idempotency_key, current or "", "payload_mismatch")
+        if current in {"cancelled", "expired", "completed", "failed", "interrupted", "blocked"}:
+            return ExecutionLifecycleReceipt(contract.idempotency_key, current, "already_terminal")
+        self._execution_digests[contract.idempotency_key] = digest
+        self._execution_lifecycle[contract.idempotency_key] = lifecycle
+        return ExecutionLifecycleReceipt(contract.idempotency_key, lifecycle, reason)
+
+    def expire_execution_contract(
+        self, contract: CharacterExecutionContract, *, reason: str = "expired"
+    ) -> ExecutionLifecycleReceipt:
+        return self._close_execution_contract(contract, lifecycle="expired", reason=reason)
+
+    def accept_execution_feedback(
+        self,
+        contract: CharacterExecutionContract,
+        feedback: CharacterExecutionFeedback,
+    ) -> ExecutionFeedbackAdmission:
+        if feedback.execution_contract_ref != contract.idempotency_key or feedback.turn_id != contract.turn_id:
+            return ExecutionFeedbackAdmission(False, "contract_mismatch", feedback.lifecycle)
+        if feedback.actor_ref != contract.actor_ref:
+            return ExecutionFeedbackAdmission(False, "actor_mismatch", feedback.lifecycle)
+        current = self._execution_lifecycle.get(contract.idempotency_key)
+        if current is None:
+            return ExecutionFeedbackAdmission(False, "not_admitted", feedback.lifecycle)
+        if self._execution_digests.get(contract.idempotency_key) != self._execution_digest(contract):
+            return ExecutionFeedbackAdmission(False, "payload_mismatch", current)
+        if current in {"cancelled", "expired", "completed", "failed", "interrupted", "blocked"}:
+            return ExecutionFeedbackAdmission(False, "late_result", current)
+        if feedback.producer_ts >= contract.expires_at and feedback.lifecycle not in {"cancelled", "expired"}:
+            return ExecutionFeedbackAdmission(False, "late_result", "expired")
+        if feedback.lifecycle == "completed" and not feedback.authority_receipt_ref:
+            return ExecutionFeedbackAdmission(False, "feedback_missing", feedback.lifecycle)
+        self._execution_lifecycle[contract.idempotency_key] = feedback.lifecycle
+        return ExecutionFeedbackAdmission(
+            True,
+            lifecycle=feedback.lifecycle,
+            authority_receipt_ref=feedback.authority_receipt_ref,
+        )
+
+    def build_action_attempt(
+        self,
+        contract: CharacterExecutionContract,
+        *,
+        owner_admitted: bool = False,
+        contact_marker_id: str = "",
+        physics_tick: int = 0,
+        connection_epoch: int = 1,
+        client_sequence: int = 1,
+        physics_evidence_refs: list[str] | None = None,
+        physics_evidence_digest: str = "",
+        action_descriptor_digest: str = "",
+        authority_route: AuthorityRoute = "esm",
+        collider_refs: list[str] | None = None,
+        hit_sensor_refs: list[str] | None = None,
+        contact_points: list[dict[str, object]] | None = None,
+    ) -> ActionIngressResult:
+        """Prepare ActionAttempt only after the existing owner admits it."""
+        observation = contract.expected_observation
+        owner_route = str(observation.get("owner_route", "") or "")
+        if not owner_admitted or not owner_route:
+            return ActionIngressResult(
+                status="blocked",
+                reason="owner_admission_missing",
+                diagnostic={
+                    "execution_contract_ref": contract.idempotency_key,
+                    "semantic_action_id": contract.semantic_action_id,
+                    "target_refs": list(contract.target_refs),
+                    "owner_route": owner_route,
+                },
+            )
+        if not contact_marker_id or not physics_evidence_refs or not physics_evidence_digest:
+            return ActionIngressResult(
+                status="blocked",
+                reason="physics_evidence_missing",
+                diagnostic={"owner_route": owner_route, "target_refs": list(contract.target_refs)},
+            )
+        descriptor_digest = action_descriptor_digest or self._sha256_digest(
+            {"semantic_action_id": contract.semantic_action_id, "context_revision": contract.context_revision}
+        )
+        try:
+            attempt = ActionAttempt(
+                attempt_id=f"attempt:{contract.idempotency_key}",
+                actor_ref=contract.actor_ref,
+                action_instance_id=contract.idempotency_key,
+                semantic_action_id=contract.semantic_action_id,
+                target_refs=list(contract.target_refs),
+                contact_marker_id=contact_marker_id,
+                physics_tick=physics_tick,
+                connection_epoch=connection_epoch,
+                client_sequence=client_sequence,
+                physics_evidence_refs=list(physics_evidence_refs),
+                physics_evidence_digest=physics_evidence_digest,
+                action_descriptor_digest=descriptor_digest,
+                authority_route=authority_route,
+                owner_contract_ref=contract.idempotency_key,
+                expected_revisions=dict(contract.expected_revision_vector),
+                idempotency_key=contract.idempotency_key,
+                command_version="character-agent-action-attempt.v1",
+                causation_id=contract.causation_id,
+                correlation_id=contract.correlation_id,
+                source="character_agent_l4",
+                privacy_scope=contract.privacy_scope,
+                collider_refs=list(collider_refs or []),
+                hit_sensor_refs=list(hit_sensor_refs or []),
+                contact_points=list(contact_points or []),
+                submitted_at=contract.producer_ts,
+            )
+        except ValueError as exc:
+            return ActionIngressResult(
+                status="blocked",
+                reason="action_attempt_invalid",
+                diagnostic={"error": str(exc), "owner_route": owner_route},
+            )
+        return ActionIngressResult(status="admitted", action_attempt=attempt)
+
+    def prepare_action_attempt(self, contract: CharacterExecutionContract, **kwargs: object) -> ActionIngressResult:
+        """Descriptive alias used by execution callers."""
+        return self.build_action_attempt(contract, **kwargs)
+
+    @staticmethod
+    def _sha256_digest(value: object) -> str:
+        encoded = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+        return "sha256:" + hashlib.sha256(encoded).hexdigest()
 
     def from_legacy_command(
         self,

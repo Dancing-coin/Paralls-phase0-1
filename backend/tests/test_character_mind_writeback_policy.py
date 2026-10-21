@@ -5,6 +5,9 @@ from app.character_agent.models.cognition_delta import (
 )
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from app.models.character_agent_runtime import CharacterInterpretation
+import pytest
+from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+from app.character_agent.models.turn_context import CharacterTurnContext
 
 
 def test_runtime_applies_ledger_writeback_through_existing_store_boundaries() -> None:
@@ -48,6 +51,36 @@ def test_runtime_applies_ledger_writeback_through_existing_store_boundaries() ->
     assert "dynamic_state_event" in event_types
     assert "character_mind_turn_summary_event" in event_types
     assert runtime.get_dynamic_state("char_a")["stress_load"] == 0.5
+
+
+def test_writeback_requires_owner_receipt_for_outcome_fact() -> None:
+    runtime = CharacterAgentRuntime()
+    ledger = MindDeltaLedgerBuilder().build(
+        actor_id="char_a", mind_turn_id="mind_turn:char_a:receipt", interpretation=None,
+        evidence_refs=["event:source"],
+    )
+    ledger.memory_write_candidates = [{"event_type": "outcome_fact", "value": "succeeded"}]
+    with pytest.raises(ValueError, match="owner receipt"):
+        runtime.apply_mind_delta_ledger(actor_id="char_a", producer_ts=123, ledger=ledger)
+
+
+def test_writeback_rejects_frame_from_recovery_lifecycle() -> None:
+    runtime = CharacterAgentRuntime()
+    turn = CharacterTurnContext.begin(
+        actor_id="char_a", source_event_ref="event:1", producer_ts=1,
+        causation_id="cause:1", correlation_id="corr:1",
+        input_revision_vector={"l1": 1}, memory_revision_vector={"memory": 1},
+        policy_revision="policy:1", snapshot_revision=1, branch_id="branch:main",
+    )
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a", producer_ts=1, turn_context=turn, snapshot={}, memory_bundle={}
+    )
+    ledger = MindDeltaLedgerBuilder().build(actor_id="char_a", mind_turn_id=frame.mind_turn_id, interpretation=None)
+    with pytest.raises(ValueError, match="lifecycle"):
+        runtime.apply_mind_delta_ledger(
+            actor_id="char_a", producer_ts=1, ledger=ledger, frame=frame,
+                turn_context=turn.transition("failed", transition_ref="failed:1", idempotency_key="failed:1", producer_ts=1, payload={}),
+        )
 
 
 def test_ledger_writeback_does_not_mutate_authored_profile_or_treat_social_graph_as_truth() -> None:

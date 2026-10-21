@@ -309,6 +309,30 @@ def test_tax_payment_duplicate_receipt_privacy_and_changed_duplicate_are_zero_wr
     assert store.list_outbox() == before_outbox
 
 
+def test_tax_payment_rejects_corrupt_receipt_event_reference() -> None:
+    store, service, _treasury, _payer_account_opened, _tax_due_event, obligation_opened = _seed_current_tax_obligation()
+    intent = TaxPaymentIntentV1(
+        obligation_id=obligation_opened.payload["obligation_id"],
+        command_id="command:tax-payment:corrupt-receipt",
+        idempotency_key="tax-payment:obligation:economy:tax:organization:citizen-a:period:2026-q3:account:citizen-a:v1",
+        causation_id="cause:tax-payment:corrupt-receipt",
+        correlation_id="corr:tax-payment:corrupt-receipt",
+    )
+    first = service.settle_tax_payment(intent)
+    assert first.committed
+    store._idempotency_results[("actor_gameplay.economy_domain", intent.idempotency_key)] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    duplicate = service.settle_tax_payment(intent)
+
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_tax_payment_rejects_a_stale_collector_stream_revision_without_writes() -> None:
     store, service, treasury, _payer_account_opened, _tax_due_event, obligation_opened = _seed_current_tax_obligation()
     assert service.open_account(

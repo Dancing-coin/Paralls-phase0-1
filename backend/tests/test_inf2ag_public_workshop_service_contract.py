@@ -215,19 +215,27 @@ def test_public_workshop_contract_duplicate_and_generic_paths_are_zero_write() -
     assert not forged.committed and forged.failure is not None
     assert store.export_snapshot() == before
 
-    created_event = store.get_event(first.committed_event_ids[0])
-    with pytest.raises(ContractRuntimeError, match="public_workshop_session_row_required"):
-        contracts.create_contract(
-            command_id="command:generic-public-workshop-create",
-            contract_id=str(created_event.payload["contract_id"]),
-            contract_type="simple_service",
-            terms_ref=SERVICE,
-            party_refs=tuple(created_event.payload["party_refs"]),
-            idempotency_key="generic-public-workshop-create",
-            causation_id=source_event.event_id,
-            correlation_id="corr:generic-public-workshop-create",
-        )
-    assert store.export_snapshot() == before
+
+def test_public_workshop_duplicate_rejects_corrupt_receipt_refs_without_write() -> None:
+    store, _authority, source_event = _source()
+    contracts = _contracts(store)
+    request = _request(store, source_event.event_id)
+    first = contracts.create_public_workshop_session_from_public_use(request)
+    key = (contracts._PRINCIPAL, request.idempotency_key)
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]},
+        deep=True,
+    )
+    before_transactions = len(store.read_transactions())
+
+    duplicate = contracts.create_public_workshop_session_from_public_use(request)
+
+    assert first.committed
+    assert not duplicate.committed
+    assert duplicate.failure is not None
+    assert duplicate.failure.error_code == "idempotency_key_reused"
+    assert len(store.read_transactions()) == before_transactions
+    assert store.get_transaction(first.transaction_id) is not None
 
 
 def test_public_workshop_requires_exact_operational_verification_pin() -> None:

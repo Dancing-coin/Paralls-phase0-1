@@ -1,4 +1,8 @@
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.self_state_snapshot import SelfStateSnapshot
+from app.character_agent.models.external_percept_snapshot import ExternalPerceptSnapshot
+from app.character_agent.models.action_execution_state import ActionExecutionState
 
 
 def _dossier_projection() -> dict[str, object]:
@@ -20,6 +24,56 @@ def _dossier_projection() -> dict[str, object]:
         },
         "source_refs": ["dossier:char_a"],
     }
+
+
+def test_builder_binds_frame_once_to_canonical_turn_pins() -> None:
+    turn = CharacterTurnContext.begin(
+        actor_id="char_a", source_event_ref="event:1", producer_ts=123,
+        causation_id="cause:1", correlation_id="corr:1",
+        input_revision_vector={"l1": 4}, memory_revision_vector={"memory": 9},
+        policy_revision="policy:1", snapshot_revision=12, branch_id="branch:main",
+    )
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a", producer_ts=123, turn_context=turn,
+        snapshot={}, memory_bundle={},
+    )
+    again = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a", producer_ts=123, turn_context=turn,
+        snapshot={}, memory_bundle={},
+    )
+
+    assert frame.turn_id == turn.turn_id
+    assert frame.frame_digest == again.frame_digest
+
+
+def test_builder_projects_actor_private_self_external_and_execution_workspaces() -> None:
+    self_state = SelfStateSnapshot(
+        actor_id="char_a", source="body:1", captured_at=10, producer_ts=11,
+        revision="body@1", freshness="stale", visibility="actor_private",
+        uncertainty="stale", body_state_class="fatigue",
+    )
+    external = ExternalPerceptSnapshot(
+        actor_id="char_a", subject_ref="box", source="l1:box:1", captured_at=10,
+        producer_ts=11, revision="l1@1", freshness="unknown", visibility="actor_private",
+        uncertainty="conflicting", summary="conflicting observations", conflict_refs=("conflict:1",),
+    )
+    execution = ActionExecutionState(
+        actor_id="char_a", source="turn:1", captured_at=11, producer_ts=11,
+        revision="turn@1", freshness="current", visibility="actor_private",
+        uncertainty="unknown", intent_ref="intent:observe", request_ref="request:1", status="requested",
+    )
+
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a", producer_ts=11, self_state_snapshot=self_state,
+        external_percepts=[external], action_execution_state=execution,
+        event_inbox=[{"source": "event:1", "visibility": "actor_private"}],
+    )
+
+    assert frame.cognition_workspace.self_state["freshness"] == "stale"
+    assert frame.cognition_workspace.external_state[0]["uncertainty"] == "conflicting"
+    assert frame.cognition_workspace.event_inbox[0]["source"] == "event:1"
+    assert frame.cognition_workspace.uncertainty
+    assert frame.cognition_workspace.self_state["action_execution"]["request_ref"] == "request:1"
 
 
 def test_builder_places_profile_memory_state_goal_and_affordance_cards_in_separate_layers() -> None:

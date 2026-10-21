@@ -4,6 +4,8 @@ from app.character_agent.models.working_memory_state import CharacterWorkingMemo
 from app.character_agent.gateway.output_validator import CharacterStructuredOutputValidator
 from app.character_agent.gateway.prompt_policy import CharacterPromptPolicy
 from app.character_agent.gateway.model_router import CharacterModelRouter
+from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+from app.character_agent.models.turn_context import CharacterTurnContext
 from app.config import settings
 import pytest
 
@@ -199,6 +201,28 @@ def test_model_gateway_prepares_structured_run_request(monkeypatch) -> None:
     assert "evidence_tags" in request["prompt"]["system_instruction"]
     assert 'dynamic_state_delta may contain only ["vigilance_level", "distraction_level", "stress_load", "social_pressure", "masking_pressure", "affect_valence", "fear", "anger", "shame", "sadness", "relief", "curiosity", "affection", "joy", "calm", "trust", "gratitude", "pride", "confidence", "hope"]' in request["prompt"]["system_instruction"]
     assert "Do not emit any other dynamic_state_delta key; use {} when no allowed delta applies." in request["prompt"]["system_instruction"]
+
+
+def test_gateway_rejects_unfrozen_frame_or_evidence_outside_frame_refs() -> None:
+    gateway = CharacterModelGateway()
+    with pytest.raises(ValueError, match="frozen mind frame"):
+        gateway.prepare_run_request(task_kind="l2_reasoning", context={"actor_id": "char_a", "frame": {}})
+
+    turn = CharacterTurnContext.begin(
+        actor_id="char_a", source_event_ref="event:1", producer_ts=1,
+        causation_id="cause:1", correlation_id="corr:1", input_revision_vector={"l1": 1},
+        memory_revision_vector={"memory": 1}, policy_revision="policy:1", snapshot_revision=1,
+        branch_id="branch:main",
+    )
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a", producer_ts=1, turn_context=turn,
+        snapshot={}, memory_bundle={},
+    )
+    with pytest.raises(ValueError, match="evidence"):
+        gateway.prepare_run_request(
+            task_kind="l2_reasoning",
+            context={"actor_id": "char_a", "frame": frame, "evidence_refs": ["secret:not-visible"]},
+        )
 
 
 def test_model_router_supports_environment_default_override(monkeypatch) -> None:

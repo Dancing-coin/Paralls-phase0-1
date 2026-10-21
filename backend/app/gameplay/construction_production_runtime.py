@@ -2136,6 +2136,20 @@ class ConstructionProductionAuthority:
             for fragment in batch.owner_fragments
         ):
             return self._rejected_append(batch.command_id, "construction_owner_commit_scope_denied")
+        expected_events = [
+            (stream_id, event_type, payload, visibility)
+            for fragment in batch.owner_fragments
+            for stream_id, event_specs in fragment.event_specs.items()
+            for index, (event_type, payload) in enumerate(event_specs)
+            for visibility in (fragment.event_visibility_policies.get(stream_id, ("project",) * len(event_specs))[index],)
+        ]
+        submitted_events = [(event.stream_id, event.event_type, event.payload, event.visibility_policy) for event in batch.events]
+        if (
+            len(expected_events) != len(submitted_events)
+            or expected_events != submitted_events
+            or {stream: revision for fragment in batch.owner_fragments for stream, revision in fragment.expected_revisions.items()} != batch.expected_stream_revisions
+        ):
+            return self._rejected_append(batch.command_id, "construction_owner_commit_fragment_mismatch")
         event_types = tuple(event.event_type for event in batch.events)
         if any(".maintenance_state_" in event_type for event_type in event_types):
             try:
@@ -2269,6 +2283,19 @@ class ConstructionProductionAuthority:
             return self._rejected_append(command_id, "construction_job_idempotency_key_invalid")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.construction_production.construction_job_started@1"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload.get("job_ref") == job_ref
+                and prior_events[0].payload.get("plot_ref") == plot.plot_ref
+                and prior_events[0].payload.get("blueprint_ref") == blueprint.blueprint_ref
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         projection = self.projector()
         if job_ref in projection.jobs:
@@ -2494,6 +2521,19 @@ class ConstructionProductionAuthority:
             return self._rejected_append(command_id, "construction_job_idempotency_key_invalid")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.construction_production.construction_job_completed@1"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload.get("job_ref") == job_ref
+                and prior_events[0].payload.get("plot_ref") == job.plot_ref
+                and prior_events[0].payload.get("plot_revision") == job.plot_revision
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if job.status != "started":
             return self._rejected_append(command_id, "construction_job_terminal")
@@ -5029,6 +5069,19 @@ class ConstructionProductionAuthority:
             return FrostFinishSettlementResult(committed=False, error_code="canonical_hazard_source_revision_conflict")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, command.idempotency_key)
         if existing is not None:
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.event_type == "gameplay.construction_production.run_finished"
+                and event.causation_id == command.hazard_event_id
+                and isinstance(event.payload.get("canonical_hazard_propagation"), dict)
+                and event.payload["canonical_hazard_propagation"].get("hazard_ref") == command.hazard_ref
+                and event.payload["canonical_hazard_propagation"].get("hazard_event_id") == command.hazard_event_id
+                and event.payload["canonical_hazard_propagation"].get("crop_event_id") == command.crop_event_id
+                and event.command_id == f"command:{command.idempotency_key}:{event.payload.get('run_ref')}"
+                for event in prior_events
+            )
+            if not exact:
+                return FrostFinishSettlementResult(committed=False, idempotency_status="rejected", error_code="idempotency_key_reused")
             return FrostFinishSettlementResult(committed=existing.committed, idempotency_status="duplicate_replayed", error_code=existing.failure.error_code if existing.failure else None, committed_event_ids=tuple(existing.committed_event_ids))
         selection = self.select_due_run_for_plot(plot_ref=command.plot_ref, due_tick=command.due_tick)
         if not selection.accepted or selection.target is None:
@@ -5499,7 +5552,23 @@ class ConstructionProductionAuthority:
             raise ValueError("facility_acquisition_lifecycle_invalid")
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.construction_production.facility_acquired"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].stream_id == f"gameplay:construction_production:{facility.facility_ref}"
+                and prior_events[0].payload.get("facility_ref") == facility.facility_ref
+                and prior_events[0].payload.get("plot_ref") == plot.plot_ref
+                and prior_events[0].payload.get("plot_revision") == plot.revision
+                and prior_events[0].payload.get("owner_ref") == plot.owner_ref
+                and prior_events[0].payload.get("jurisdiction_ref") == plot.jurisdiction_ref
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if facility.facility_ref in self.projector().facilities:
             raise ValueError("facility_duplicate")
         stream_id = f"gameplay:construction_production:{facility.facility_ref}"
@@ -5546,6 +5615,20 @@ class ConstructionProductionAuthority:
     ) -> AppendBatchResult:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.construction_production.run_started"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload.get("run_ref") == run_ref
+                and prior_events[0].payload.get("facility_ref") == facility.facility_ref
+                and prior_events[0].payload.get("recipe_ref") == recipe.recipe_ref
+                and prior_events[0].payload.get("started_tick") == tick
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if facility.condition <= 0:
             raise ValueError("facility_unavailable")
@@ -6260,7 +6343,21 @@ class ConstructionProductionAuthority:
     ) -> AppendBatchResult:
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
-            return existing
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = (
+                len(prior_events) == 1
+                and prior_events[0].event_type == "gameplay.construction_production.run_finished"
+                and prior_events[0].command_id == command_id
+                and prior_events[0].causation_id == causation_id
+                and prior_events[0].correlation_id == correlation_id
+                and prior_events[0].payload.get("run_ref") == run.run_ref
+                and prior_events[0].payload.get("facility_ref") == run.facility_ref
+                and prior_events[0].payload.get("completed_tick") == tick
+                and prior_events[0].payload.get("recipe_ref") == recipe.recipe_ref
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
+            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         current_run = self.projector().runs.get(run.run_ref)
         if current_run is not None and current_run.model_dump(mode="json") != run.model_dump(mode="json"):
             return self._rejected_append(command_id, "production_run_source_conflict")
@@ -6841,6 +6938,19 @@ class ConstructionProductionAuthority:
         stream_id = f"gameplay:construction_production:{run.facility_ref}"
         existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if existing is not None:
+            prior_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+            exact = bool(prior_events) and all(
+                event.event_type == "gameplay.construction_production.maintenance_obligation_created"
+                and event.command_id == command_id
+                and event.causation_id == causation_id
+                and event.correlation_id == correlation_id
+                and event.payload.get("run_ref") == run.run_ref
+                and event.payload.get("obligation_ref") == obligation_ref
+                and event.payload.get("seasonal_ecology_propagation", {}).get("process_event_id") == command.process_event_id
+                for event in prior_events
+            )
+            if not exact:
+                return self._rejected_append(command_id, "idempotency_key_reused")
             return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if self._store.get_stream_head(stream_id) != expected_revision:
             return self._rejected_append(command_id, "revision_conflict")

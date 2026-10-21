@@ -608,7 +608,7 @@ class CharacterAgentSessionStore:
 
     def save_runtime_state(self, actor_id: str, *, expected_head: int, snapshot: dict, field_versions: dict | None = None) -> None:
         # 这些字段在原 flush 成功边界保存；绝不覆盖 event reducer 的当前态。
-        allowed = {'continuity_state', 'supervision_state', 'dynamic_state'}
+        allowed = {'continuity_state', 'supervision_state', 'dynamic_state', 'last_cognition_tick'}
         if set(snapshot) - allowed:
             raise ValueError('character_session_runtime_fields_invalid')
         with self.transaction():

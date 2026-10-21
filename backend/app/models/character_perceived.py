@@ -1,9 +1,11 @@
 from pydantic import BaseModel, Field, model_validator
 
 from app.character_agent.models.memory_consistency import MemoryFactClaim
+from app.character_agent.models.local_coordination import LocalCoordinationSignal
 
 
 class CharacterPerceivedEvent(BaseModel):
+    coordination_signal: LocalCoordinationSignal | None = None
     event_type: str = "character_perceived_event"
     actor_id: str
     percept_channel: str

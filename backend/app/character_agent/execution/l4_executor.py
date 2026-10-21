@@ -4,6 +4,7 @@ from app.models.character_agent_runtime import (
 )
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 from app.character_agent.models.character_execution import CharacterExecutionContract
+from app.character_agent.models.expression_regulation import DeviationEpisode, ExpressionRegulationFrame
 from app.character_agent.models.turn_context import CharacterTurnContext
 from app.character_agent.skills.models import (
     ActionSettlementResult,
@@ -184,6 +185,8 @@ class CharacterAgentL4Executor:
         *,
         skill_evaluation_result: SkillEvaluationResult | None = None,
         action_settlement_result: ActionSettlementResult | None = None,
+        expression_regulation: ExpressionRegulationFrame | None = None,
+        deviation_episode: DeviationEpisode | None = None,
     ) -> CharacterExecutionContract:
         """Build the sole production-shaped L4 output for a canonical turn.
 
@@ -198,6 +201,8 @@ class CharacterAgentL4Executor:
             raise ValueError("execution contract actor does not match canonical turn")
         if turn_context.lifecycle not in {"prepared", "running", "awaiting_settlement"}:
             raise ValueError("execution contract requires an active canonical turn")
+        if expression_regulation is not None and expression_regulation.intent != decision.selected_intent:
+            raise ValueError("expression frame cannot change selected intent")
 
         plan = self.build_execution_plan(
             snapshot=snapshot,
@@ -244,6 +249,16 @@ class CharacterAgentL4Executor:
         # Keep the hint vocabulary intentionally local/presentation-safe.  The
         # contract scanner rejects any accidental body/world authority fields.
         allowed_hints: dict[str, object] = {
+            "expression_regulation": (expression_regulation or ExpressionRegulationFrame(
+                intent=decision.selected_intent,
+                body_constraints=tuple(snapshot.body_state_hints),
+                source_revisions=(("snapshot", str(turn_context.snapshot_revision)),),
+            )).model_dump(mode="json"),
+            "expression_plan": {
+                channel: deepcopy(plan[channel])
+                for channel in ("speech_channel", "face_channel", "body_channel",
+                                "social_spatial_channel", "physiology_channel")
+            },
             "presentation": {
                 "motion_state": presentation.get("motion_state", {}),
                 "focus_state": presentation.get("focus_state", {}),
@@ -258,6 +273,13 @@ class CharacterAgentL4Executor:
                 "primitive_realization_keys": primitive_keys,
             },
         }
+        if deviation_episode is not None:
+            allowed_hints["deviation_episode"] = deviation_episode.model_dump(mode="json")
+        # Presentation may not reintroduce L2 attention as a choice target.
+        allowed_hints["expression_plan"]["social_spatial_channel"]["target_ref"] = (
+            target_refs[0] if target_refs else ""
+        )
+        frozen_semantic_action_id = str(getattr(decision, "semantic_action_id", "") or "")
         candidate_pins = dict(getattr(decision, "candidate_revision_pins", {}) or {})
         target_revision_vector = candidate_pins.get("target_revision_vector", {})
         if not isinstance(target_revision_vector, dict):
@@ -265,7 +287,8 @@ class CharacterAgentL4Executor:
         expected_observation: dict[str, object] = {
             "semantic_intent_id": decision.selected_intent,
             "semantic_action_id": str(
-                plan.get("composite_action_proposal", {}).get("action_id", decision.selected_intent)
+                frozen_semantic_action_id
+                or plan.get("composite_action_proposal", {}).get("action_id", decision.selected_intent)
                 if isinstance(plan.get("composite_action_proposal"), dict)
                 else decision.selected_intent
             ),
@@ -292,7 +315,11 @@ class CharacterAgentL4Executor:
             target_refs=tuple(target_refs),
             target_ref=target_refs[0] if len(target_refs) == 1 else None,
             semantic_intent_id=decision.selected_intent,
-            semantic_action_id=str(semantic_proposal.semantic_action_id or expected_observation["semantic_action_id"]),
+            semantic_action_id=str(
+                getattr(decision, "semantic_action_id", None)
+                or semantic_proposal.semantic_action_id
+                or expected_observation["semantic_action_id"]
+            ),
             source_id=semantic_proposal.source_id,
             intent_tags=tuple(semantic_proposal.intent_tags),
             context_tags=tuple(semantic_proposal.context_tags),
@@ -303,6 +330,11 @@ class CharacterAgentL4Executor:
             expected_memory_revision_vector=dict(turn_context.memory_revision_vector),
             expected_snapshot_revision=turn_context.snapshot_revision,
             expected_target_revision_vector={str(key): int(value) for key, value in target_revision_vector.items()},
+            context_revision=str(
+                getattr(decision, "candidate_digest", "")
+                or candidate_pins.get("frame_digest", "")
+                or turn_context.policy_revision
+            ),
             idempotency_key=f"execution:{turn_context.turn_id}",
             causation_id=turn_context.causation_id,
             correlation_id=turn_context.correlation_id,

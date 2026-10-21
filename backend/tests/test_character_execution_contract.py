@@ -159,6 +159,49 @@ def test_executor_contract_keeps_realization_hints_advisory() -> None:
     assert contract.expected_observation
 
 
+def test_executor_contract_preserves_frozen_action_and_target_choice() -> None:
+    decision = _decision().model_copy(
+        update={
+            "semantic_action_id": "action:speak.private",
+            "target_refs": ["char_c"],
+        }
+    )
+    contract = CharacterAgentL4Executor().build_execution_contract(
+        _snapshot(), _interpretation(), decision, _turn()
+    )
+
+    assert contract.semantic_action_id == "action:speak.private"
+    assert contract.target_refs == ("char_c",)
+    assert contract.target_ref == "char_c"
+    assert tuple(contract.expected_observation["target_refs"]) == ("char_c",)
+
+
+def test_executor_contract_rejects_targeted_choice_without_frozen_target_ref() -> None:
+    decision = _decision().model_copy(update={
+        "selected_intent": "approach",
+        "semantic_action_id": "action:approach",
+        "target_refs": [],
+    })
+    with pytest.raises(ValueError, match="target_ref required"):
+        CharacterAgentL4Executor().build_execution_contract(
+            _snapshot(), _interpretation(), decision, _turn()
+        )
+
+
+def test_execution_adapter_blocks_action_attempt_admission_without_owner_route() -> None:
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate({
+        **_valid_contract(),
+        "expected_observation": {
+            "candidate_digest": "sha256:candidates",
+            "owner_route": "",
+        },
+    })
+    result = adapter.admit_execution_contract(contract)
+    assert result.accepted is False
+    assert result.reason == "owner_admission_missing"
+
+
 def test_contract_revalidates_runtime_hint_augmentation_and_default_dump_is_plain() -> None:
     contract = CharacterExecutionContract.model_validate(_valid_contract())
 
@@ -360,3 +403,180 @@ def test_contract_pins_reach_social_dialogue_settlement(monkeypatch: pytest.Monk
     assert response["expected_snapshot_revision"] == contract[
         "expected_snapshot_revision"
     ]
+
+
+def test_execution_commitment_expires_and_rejects_stale_target_or_revision() -> None:
+    contract = CharacterExecutionContract.model_validate(
+        _valid_contract(
+            commitment_ms=50,
+            preconditions=("target_visible",),
+            abort_conditions=("target_missing",),
+            fallback="retreat",
+            context_revision="snapshot:5",
+            expected_target_revision_vector={"object:obj_letter": 2},
+        )
+    )
+
+    assert contract.expires_at == 60
+    assert contract.admission(now_ts=59).accepted is True
+    assert contract.admission(now_ts=60).reason == "expired"
+    assert contract.admission(current_target_refs=("character:other",)).reason == "stale_target"
+    assert contract.admission(current_target_revision_vector={"object:obj_letter": 3}).reason == "stale_revision"
+
+
+def test_execution_adapter_rejects_changed_retry_and_late_feedback_after_cancel() -> None:
+    from app.character_agent.models.character_execution import CharacterExecutionFeedback
+
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(_valid_contract())
+
+    first = adapter.admit_execution_contract(contract)
+    duplicate = adapter.admit_execution_contract(contract)
+    changed = adapter.admit_execution_contract(
+        contract.model_copy(update={"semantic_action_id": "different_action"})
+    )
+    assert first.accepted is True
+    assert duplicate.accepted is True and duplicate.duplicate is True
+    assert changed.accepted is False and changed.reason == "payload_mismatch"
+
+    cancelled = adapter.cancel_execution_contract(contract, reason="target_changed")
+    assert cancelled.lifecycle == "cancelled"
+    assert adapter.admit_execution_contract(contract).reason == "cancelled"
+    late = adapter.accept_execution_feedback(
+        contract,
+        CharacterExecutionFeedback(
+            execution_contract_ref=contract.idempotency_key,
+            turn_id=contract.turn_id,
+            actor_ref=contract.actor_ref,
+            producer_ts=11,
+            lifecycle="completed",
+            authority_receipt_ref="authority:late",
+            authority_status="accepted",
+        ),
+    )
+    assert late.accepted is False and late.reason == "late_result"
+
+
+def test_execution_feedback_without_admission_is_rejected() -> None:
+    from app.character_agent.models.character_execution import CharacterExecutionFeedback
+
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(_valid_contract())
+    feedback = CharacterExecutionFeedback(
+        execution_contract_ref=contract.idempotency_key,
+        turn_id=contract.turn_id,
+        actor_ref=contract.actor_ref,
+        producer_ts=11,
+        lifecycle="active",
+    )
+    assert adapter.accept_execution_feedback(contract, feedback).reason == "not_admitted"
+
+
+@pytest.mark.parametrize("operation", ["feedback", "cancel", "expire"])
+def test_execution_lifecycle_rejects_changed_admitted_contract(operation: str) -> None:
+    from app.character_agent.models.character_execution import CharacterExecutionFeedback
+
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(_valid_contract())
+    assert adapter.admit_execution_contract(contract).accepted
+    changed = contract.model_copy(update={"producer_ts": 10000, "semantic_action_id": "different_action"})
+    if operation == "feedback":
+        result = adapter.accept_execution_feedback(changed, CharacterExecutionFeedback(
+            execution_contract_ref=changed.idempotency_key, turn_id=changed.turn_id,
+            actor_ref=changed.actor_ref, producer_ts=10001, lifecycle="completed",
+            authority_receipt_ref="authority:changed", authority_status="accepted",
+        ))
+        assert result.accepted is False
+    elif operation == "cancel":
+        result = adapter.cancel_execution_contract(changed)
+    else:
+        result = adapter.expire_execution_contract(changed)
+    assert result.reason == "payload_mismatch"
+    original_feedback = adapter.accept_execution_feedback(contract, CharacterExecutionFeedback(
+        execution_contract_ref=contract.idempotency_key, turn_id=contract.turn_id,
+        actor_ref=contract.actor_ref, producer_ts=11, lifecycle="active",
+    ))
+    assert original_feedback.accepted is True
+
+
+def test_expiry_before_admission_pins_original_contract_identity() -> None:
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(_valid_contract())
+    assert adapter.expire_execution_contract(contract).lifecycle == "expired"
+    changed = contract.model_copy(update={"semantic_action_id": "different_action"})
+    result = adapter.cancel_execution_contract(changed)
+    assert result.reason == "payload_mismatch"
+    assert result.lifecycle == "expired"
+
+
+@pytest.mark.parametrize("operation", ["cancel", "expire"])
+def test_terminal_execution_cannot_be_rewritten_by_later_lifecycle_request(operation: str) -> None:
+    from app.character_agent.models.character_execution import CharacterExecutionFeedback
+
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(_valid_contract())
+    assert adapter.admit_execution_contract(contract).accepted
+    assert adapter.accept_execution_feedback(contract, CharacterExecutionFeedback(
+        execution_contract_ref=contract.idempotency_key, turn_id=contract.turn_id,
+        actor_ref=contract.actor_ref, producer_ts=11, lifecycle="completed",
+        authority_receipt_ref="authority:completed",
+    )).accepted
+    result = adapter.cancel_execution_contract(contract) if operation == "cancel" else adapter.expire_execution_contract(contract)
+    assert result.lifecycle == "completed"
+    assert result.reason == "already_terminal"
+
+
+def test_l4_owner_gap_returns_blocked_diagnostic_without_action_attempt() -> None:
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(
+        _valid_contract(
+            semantic_action_id="action:melee.unarmed_punch",
+            expected_observation={"candidate_digest": "sha256:candidate", "target_refs": ["character:char_a"]},
+        )
+    )
+
+    result = adapter.build_action_attempt(contract)
+
+    assert result.status == "blocked"
+    assert result.reason == "owner_admission_missing"
+    assert result.action_attempt is None
+    assert result.diagnostic["target_refs"] == ["character:char_a"]
+
+
+def test_l4_action_attempt_requires_owner_and_physics_evidence() -> None:
+    adapter = CharacterAgentL4Adapter()
+    contract = CharacterExecutionContract.model_validate(
+        _valid_contract(
+            semantic_action_id="action:melee.unarmed_punch",
+            expected_observation={
+                "candidate_digest": "sha256:candidate",
+                "owner_route": "esm",
+                "target_refs": ["character:char_a"],
+            },
+        )
+    )
+    missing = adapter.build_action_attempt(contract, owner_admitted=True)
+    assert missing.status == "blocked"
+    assert missing.reason == "physics_evidence_missing"
+    assert missing.action_attempt is None
+
+    admitted = adapter.build_action_attempt(
+        contract,
+        owner_admitted=True,
+        contact_marker_id="punch_contact_window",
+        physics_tick=12,
+        connection_epoch=1,
+        client_sequence=1,
+        physics_evidence_refs=["contact:12"],
+        physics_evidence_digest="sha256:" + "a" * 64,
+    )
+    assert admitted.status == "admitted"
+    assert admitted.action_attempt is not None
+    assert admitted.action_attempt.semantic_action_id == "action:melee.unarmed_punch"
+
+
+def test_contract_admission_rejects_revoked_grant() -> None:
+    contract = CharacterExecutionContract.model_validate(
+        _valid_contract(expected_observation={"grant_ref": "grant:combat", "target_refs": ["character:char_a"]})
+    )
+    assert contract.admission(revoked_grants={"grant:combat"}).reason == "revoked_grant"

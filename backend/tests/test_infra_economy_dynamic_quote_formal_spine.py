@@ -32,10 +32,13 @@ def test_dynamic_quote_idempotency_revision_and_invalid_payload_are_zero_write()
     first = authority.publish_dynamic_quote(command_id="command:quote", quote_payload=_quote(), idempotency_key="quote", causation_id="cause", correlation_id="corr")
     before = store.export_snapshot()
     duplicate = authority.publish_dynamic_quote(command_id="command:quote", quote_payload=_quote(), idempotency_key="quote", causation_id="cause", correlation_id="corr")
+    changed_identity = authority.publish_dynamic_quote(command_id="command:quote:changed", quote_payload=_quote(), idempotency_key="quote", causation_id="cause", correlation_id="corr")
     with pytest.raises(Exception):
         authority.publish_dynamic_quote(command_id="command:quote:bad", quote_payload={"quote_ref": "quote:weather:flour", "version": 1, "status": "active"}, idempotency_key="quote:bad", causation_id="cause", correlation_id="corr")
     changed = authority.publish_dynamic_quote(command_id="command:quote", quote_payload=_quote(version=2), idempotency_key="quote", causation_id="cause", correlation_id="corr")
     assert first.committed and duplicate.idempotency_status == "duplicate_replayed"
+    assert not changed_identity.committed
+    assert changed_identity.failure is not None and changed_identity.failure.error_code in {"idempotency_key_reused", "rejected"}
     assert store.export_snapshot() == before
     assert not changed.committed
 

@@ -1186,6 +1186,11 @@ class DurableGameplayEventStore(GameplayEventStore):
         try:
             return [model.model_validate_json(decode_durable_json(row[0]))
                     for row in self._rows(sql, parameters)]
+        except GameplayEventStoreSnapshotError:
+            # Preserve store lifecycle/read failures raised by _rows.  These
+            # are not malformed persisted rows and callers rely on the exact
+            # closed/read-failed diagnostic when recovering a Durable store.
+            raise
         except (ValueError, TypeError) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
 

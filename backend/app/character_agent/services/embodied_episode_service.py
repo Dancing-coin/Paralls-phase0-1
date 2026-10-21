@@ -44,6 +44,11 @@ class EmbodiedEpisodeService:
         authority_ref = self._authority_ref(authority)
         authority_status = self._authority_status(authority)
         evidence_refs = tuple(dict.fromkeys((*episode.evidence_refs, authority_ref, post_capture_ref)))
+        if authority_result is None or (not authority_ref and not authority_status):
+            return self._failure(
+                episode, "feedback_missing", authority_ref, authority_status,
+                post_capture_ref, observed_state, evidence_refs,
+            )
         if not self._is_accepted(authority_status) or not authority_ref:
             return self._failure(
                 episode, "authority_rejected", authority_ref, authority_status,
@@ -77,6 +82,22 @@ class EmbodiedEpisodeService:
             "reobserve_required": False,
             "completion_idempotency_key": self.completion_identity(episode, authority_ref, post_capture_ref),
         })
+
+    def interrupt(self, episode: EmbodiedEpisodeRecord, *, reason: str = "actor_interrupted") -> EmbodiedEpisodeRecord:
+        return self._failure(
+            episode, "actor_interrupted", episode.authority_result_ref,
+            episode.authority_status, episode.post_capture_ref, episode.observed_state,
+            episode.evidence_refs,
+            reason=reason,
+        )
+
+    def expire(self, episode: EmbodiedEpisodeRecord, *, reason: str = "expired") -> EmbodiedEpisodeRecord:
+        return self._failure(
+            episode, "expired", episode.authority_result_ref,
+            episode.authority_status, episode.post_capture_ref, episode.observed_state,
+            episode.evidence_refs,
+            reason=reason,
+        )
 
     @staticmethod
     def completion_identity(
@@ -142,6 +163,7 @@ class EmbodiedEpisodeService:
         post_capture_ref: str,
         observed_state: str,
         evidence_refs: tuple[str, ...],
+        reason: str = "",
     ) -> EmbodiedEpisodeRecord:
         return episode.model_copy(update={
             "authority_result_ref": authority_ref,
@@ -150,7 +172,7 @@ class EmbodiedEpisodeService:
             "observed_state": observed_state,
             "outcome": "recovery_required",
             "failure_class": failure_class,
-            "recovery_candidate": self.recovery_candidate(episode, failure_class),
+            "recovery_candidate": self.recovery_candidate(episode, failure_class, reason=reason),
             "evidence_refs": evidence_refs,
             "reobserve_required": failure_class in {"perception", "localization", "wrong_target", "stale_scene", "timeout", "observation_mismatch"},
             "completion_idempotency_key": self.completion_identity(episode, authority_ref, post_capture_ref),
@@ -160,9 +182,11 @@ class EmbodiedEpisodeService:
     def recovery_candidate(
         episode: EmbodiedEpisodeRecord,
         failure_class: EpisodeFailureClass,
+        *,
+        reason: str = "",
     ) -> dict[str, object]:
         reobserve = failure_class in {"perception", "localization", "wrong_target", "stale_scene", "timeout", "observation_mismatch"}
-        return {
+        candidate = {
             "policy_type": "recovery",
             "failure_class": failure_class,
             "target_ref": episode.candidate.target_ref,
@@ -170,6 +194,9 @@ class EmbodiedEpisodeService:
             "next_observation_required": reobserve,
             "evidence_refs": list(episode.evidence_refs),
         }
+        if reason:
+            candidate["reason"] = reason
+        return candidate
 
 
 __all__ = ["EmbodiedEpisodeService"]

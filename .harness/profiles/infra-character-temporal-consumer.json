@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "infra-character-temporal-consumer",
+  "order": 156,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_character_temporal_consumer.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/infra-character-temporal-consumer-report.json",
+  "description": "Character cognition wake admission consumes the existing cadence temporal grant",
+  "success_key": "overall_passed"
+}

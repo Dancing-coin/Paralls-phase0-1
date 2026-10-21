@@ -1,0 +1,21 @@
+provenance: 本次设计并实现
+revision: resource-equipment:mana-focus-charm@1
+item:
+  definition_id: item:mana-focus-charm@1
+  definition_version: '1'
+  unit_weight: 1
+  unit_volume: 1
+equipment:
+  profile_id: equipment-profile:mana-focus-charm@1
+  slot_key: charm
+modifier:
+  template_id: modifier-template:mana-focus-recovery@1
+  stat_id: resource.core.mana.recovery
+  operation: additive
+  value: '1'
+  stacking_key: mana-focus-recovery@1
+mapping:
+  revision: resource-modifier-mapping:mana-focus-recovery@1
+  resource_id: core.mana
+  operation: recovery_delta
+  amount: 1

@@ -3,10 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 from types import MappingProxyType
-from typing import Literal, Mapping
+from typing import Any, Literal, Mapping
 
 from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator, model_validator
-
 
 from app.character_agent.models.turn_context import CharacterTurnContext
 
@@ -39,6 +38,7 @@ _FACTOR_LAYER_OWNERSHIP: dict[str, str] = {
     "perception_context": "runtime_state",
     "need_pressure": "runtime_state",
     "affective_body_state": "runtime_state",
+    "mental_regulation": "runtime_state",
     "goal_context": "runtime_state",
     "unresolved_tension": "runtime_state",
     "supervision": "runtime_state",
@@ -96,6 +96,57 @@ class MindFrameProvenance(StrictMindFrameModel):
     builder_version: str = "mind_frame_builder.v1"
 
 
+class FrozenMindFrameEnvelope(StrictMindFrameModel):
+    """Turn pins carried with a frame after coordinator admission."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    turn_id: str
+    actor_id: str
+    branch_id: str | None = None
+    input_revision_vector: Mapping[str, int] = {}
+    memory_revision_vector: Mapping[str, int] = {}
+    policy_revision: str = ""
+    snapshot_revision: int = 0
+    frame_digest: str
+    source_refs: tuple[str, ...] = ()
+
+    @field_validator("input_revision_vector", "memory_revision_vector", mode="after")
+    @classmethod
+    def freeze_revision_vectors(cls, value: Mapping[str, int]) -> Mapping[str, int]:
+        return MappingProxyType({str(key): int(revision) for key, revision in value.items()})
+
+    @classmethod
+    def from_turn(cls, frame: "CharacterMindFrame", turn: Any) -> "FrozenMindFrameEnvelope":
+        if frame.turn_id and frame.turn_id != turn.turn_id:
+            raise ValueError("mind frame turn mismatch")
+        if frame.actor_id != turn.actor_id:
+            raise ValueError("mind frame actor mismatch")
+        refs = tuple(sorted(set(frame.provenance.source_refs)))
+        payload = frame.model_dump(mode="json", exclude={"frame_digest"})
+        payload["turn_id"] = turn.turn_id
+        payload["branch_id"] = turn.branch_id
+        payload["input_revision_vector"] = dict(turn.input_revision_vector)
+        payload["memory_revision_vector"] = dict(turn.memory_revision_vector)
+        payload["policy_revision"] = turn.policy_revision
+        payload["snapshot_revision"] = turn.snapshot_revision
+        payload["source_refs"] = refs
+        digest = hashlib.sha256(
+            json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        ).hexdigest()
+        return cls(
+            turn_id=turn.turn_id,
+            actor_id=turn.actor_id,
+            branch_id=turn.branch_id,
+            input_revision_vector=MappingProxyType(dict(turn.input_revision_vector)),
+            memory_revision_vector=MappingProxyType(dict(turn.memory_revision_vector)),
+            policy_revision=turn.policy_revision,
+            snapshot_revision=turn.snapshot_revision,
+            frame_digest=digest,
+            source_refs=refs,
+        )
+
+
 class CognitionWorkspace(StrictMindFrameModel):
     active_anchors: list[str] = Field(default_factory=list)
     dominant_drivers: list[str] = Field(default_factory=list)
@@ -104,6 +155,10 @@ class CognitionWorkspace(StrictMindFrameModel):
     hard_constraints: list[str] = Field(default_factory=list)
     candidate_questions: list[str] = Field(default_factory=list)
     notes: list[str] = Field(default_factory=list)
+    self_state: dict[str, object] = Field(default_factory=dict)
+    external_state: list[dict[str, object]] = Field(default_factory=list)
+    event_inbox: list[dict[str, object]] = Field(default_factory=list)
+    uncertainty: list[dict[str, object]] = Field(default_factory=list)
 
 
 class CharacterMindFrame(StrictMindFrameModel):
@@ -143,7 +198,6 @@ class CharacterMindFrame(StrictMindFrameModel):
         if value is None:
             return ()
         return tuple(str(ref) for ref in value)  # type: ignore[arg-type]
-
 
     @model_validator(mode="after")
     def validate_layer_buckets(self) -> CharacterMindFrame:

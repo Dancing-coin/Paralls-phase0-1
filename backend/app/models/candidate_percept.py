@@ -1,7 +1,10 @@
 from pydantic import BaseModel, Field
+from app.character_agent.models.local_coordination import LocalCoordinationSignal
 
 
 class CandidatePerceptEvent(BaseModel):
+    coordination_signal: LocalCoordinationSignal | None = None
+    auditory_reachability: str = ""
     event_type: str = "candidate_percept_event"
     percept_channel: str
     source_fact_family: str

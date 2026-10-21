@@ -667,6 +667,7 @@ class ObligationSettlementCoordinator:
                 result=existing,
                 obligation=obligation,
                 key=obligation.idempotency_key,
+                batch=batch,
             )
         if (
             registration is not None
@@ -738,7 +739,7 @@ class ObligationSettlementCoordinator:
         if existing is not None and existing.committed:
             if not self._idempotency_payload_matches(principal_ref=principal_ref, key=key, batch=batch):
                 return self._plan_failed("idempotency_key_reused")
-            return self._planned_duplicate(result=existing, obligation=obligation, key=key)
+            return self._planned_duplicate(result=existing, obligation=obligation, key=key, batch=batch)
         if any(self.store.get_stream_head(stream) != revision for stream, revision in obligation.expected_revisions.items()):
             return self._plan_failed("revision_conflict")
         return ObligationSettlementPlan(
@@ -794,7 +795,7 @@ class ObligationSettlementCoordinator:
         if existing is not None and existing.committed:
             if not self._idempotency_payload_matches(principal_ref=principal_ref, key=key, batch=batch):
                 return self._plan_failed("idempotency_key_reused")
-            return self._planned_duplicate(result=existing, obligation=obligation, key=key)
+            return self._planned_duplicate(result=existing, obligation=obligation, key=key, batch=batch)
         lifecycle = ObligationLifecycleProjection(tuple(self._registrations.values())).rebuild(self.store.read_events())
         committed = lifecycle.terminal.get(obligation.obligation_id)
         if (
@@ -900,7 +901,7 @@ class ObligationSettlementCoordinator:
         if existing is not None and existing.committed:
             if not self._idempotency_payload_matches(principal_ref=principal_ref, key=cancellation_key, batch=batch):
                 return self._plan_failed("idempotency_key_reused")
-            return self._planned_duplicate(result=existing, obligation=obligation, key=cancellation_key)
+            return self._planned_duplicate(result=existing, obligation=obligation, key=cancellation_key, batch=batch)
         if any(self.store.get_stream_head(stream) != revision for stream, revision in obligation.expected_revisions.items()):
             return self._plan_failed("revision_conflict")
         if not self._has_cancellable_source_event(obligation, registration):
@@ -985,7 +986,7 @@ class ObligationSettlementCoordinator:
         if existing is not None and existing.committed:
             if not self._idempotency_payload_matches(principal_ref=principal_ref, key=expiry_key, batch=batch):
                 return self._plan_failed("idempotency_key_reused")
-            return self._planned_duplicate(result=existing, obligation=obligation, key=expiry_key)
+            return self._planned_duplicate(result=existing, obligation=obligation, key=expiry_key, batch=batch)
         if any(self.store.get_stream_head(stream) != revision for stream, revision in obligation.expected_revisions.items()):
             return self._plan_failed("revision_conflict")
         if not self._has_cancellable_source_event(obligation, registration):
@@ -1051,13 +1052,42 @@ class ObligationSettlementCoordinator:
         result: AppendBatchResult,
         obligation: ScheduledObligation,
         key: str,
+        batch: AtomicEventBatch,
     ) -> ObligationSettlementPlan:
+        if not self._duplicate_result_matches_batch(result=result, batch=batch):
+            return self._plan_failed("obligation_idempotency_receipt_invalid")
+        receipt = self._receipts.get(key) or self._receipt(result, obligation)
+        self._receipts[key] = receipt
         return ObligationSettlementPlan(
             ready=False,
             idempotency_status="duplicate_replayed",
             duplicate_result=result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
-            receipt=self._receipts.get(key) or self._receipt(result, obligation),
+            receipt=receipt,
         )
+
+    def _duplicate_result_matches_batch(self, *, result: AppendBatchResult, batch: AtomicEventBatch) -> bool:
+        """Bind an exact retry to the committed transaction and generated batch."""
+        if not result.committed or result.transaction_id != batch.transaction_id or result.command_id != batch.command_id:
+            return False
+        expected_ids = tuple(event.event_id for event in batch.events)
+        if not expected_ids or tuple(result.committed_event_ids) != expected_ids:
+            return False
+        try:
+            events = tuple(self.store.get_event(event_id) for event_id in expected_ids)
+        except KeyError:
+            return False
+        for actual, expected in zip(events, batch.events):
+            actual_data = actual.model_dump(mode="json")
+            expected_data = expected.model_dump(mode="json")
+            # Store-assigned stream/global revisions are intentionally absent from
+            # the caller batch; all identity, routing, visibility and payload
+            # fields remain bound to the generated owner batch.
+            for field in ("stream_revision", "global_sequence"):
+                actual_data.pop(field, None)
+                expected_data.pop(field, None)
+            if actual_data != expected_data:
+                return False
+        return True
 
     def _compatibility_plan_result(
         self,
@@ -1285,10 +1315,15 @@ class ObligationSettlementCoordinator:
 
     @staticmethod
     def _receipt(result: AppendBatchResult, obligation: ScheduledObligation) -> SettlementReceipt:
+        policy_pin: dict[str, int] = {}
+        # Only expose a numeric policy revision when the admitted contract has
+        # one. Never fabricate `policy=1` for opaque/versioned string refs.
+        if obligation.policy_revision.isdigit():
+            policy_pin["policy"] = int(obligation.policy_revision)
         return SettlementReceipt.from_append_result(
             result=result,
             audit_refs=(f"obligation:{obligation.obligation_id}",),
-            pinned_revisions={"policy": 1},
+            pinned_revisions=policy_pin,
         )
 
 

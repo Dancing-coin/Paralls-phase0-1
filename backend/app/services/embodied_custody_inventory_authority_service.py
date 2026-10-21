@@ -89,6 +89,22 @@ class EmbodiedCustodyInventoryAuthorityService:
                     transaction_id=duplicate.transaction_id,
                     append_result=duplicate,
                 )
+            if not self._valid_duplicate_receipt(
+                duplicate,
+                principal_ref=self._PRINCIPAL,
+                expected_event_types=(
+                    "inventory.custody_changed",
+                    "gameplay.inventory.item_transferred_in",
+                    "scene.occupancy.changed",
+                    "embodied.inventory.stowed",
+                ),
+            ):
+                return CustodyInventoryStowResult(
+                    accepted=False,
+                    error_code="inventory_idempotency_receipt_invalid",
+                    transaction_id=duplicate.transaction_id,
+                    append_result=duplicate,
+                )
             return self._replay_committed_result(
                 append_result=duplicate.model_copy(
                     update={"idempotency_status": "duplicate_replayed"},
@@ -243,6 +259,22 @@ class EmbodiedCustodyInventoryAuthorityService:
                 return CustodyInventoryRetrieveResult(
                     accepted=False,
                     error_code="idempotency_key_reused",
+                    transaction_id=duplicate.transaction_id,
+                    append_result=duplicate,
+                )
+            if not self._valid_duplicate_receipt(
+                duplicate,
+                principal_ref=self._RETRIEVE_PRINCIPAL,
+                expected_event_types=(
+                    "inventory.custody_changed",
+                    "gameplay.inventory.item_transferred_out",
+                    "scene.occupancy.changed",
+                    "embodied.inventory.retrieved",
+                ),
+            ):
+                return CustodyInventoryRetrieveResult(
+                    accepted=False,
+                    error_code="inventory_idempotency_receipt_invalid",
                     transaction_id=duplicate.transaction_id,
                     append_result=duplicate,
                 )
@@ -645,6 +677,37 @@ class EmbodiedCustodyInventoryAuthorityService:
     @staticmethod
     def _append_error(append_result: AppendBatchResult) -> str:
         return append_result.failure.error_code if append_result.failure else "append_batch_failed"
+
+    def _valid_duplicate_receipt(
+        self,
+        result: AppendBatchResult,
+        *,
+        principal_ref: str,
+        expected_event_types: tuple[str, ...],
+    ) -> bool:
+        if not result.committed or not result.transaction_id or not result.command_id:
+            return False
+        transactions = [tx for tx in self._store.read_transactions() if tx.transaction_id == result.transaction_id]
+        if len(transactions) != 1:
+            return False
+        transaction = transactions[0]
+        if transaction.command_id != result.command_id:
+            return False
+        if tuple(result.committed_event_ids) != tuple(event.event_id for event in transaction.events):
+            return False
+        if len(transaction.events) not in {len(expected_event_types), len(expected_event_types) - 1}:
+            return False
+        actual_types = tuple(event.event_type for event in transaction.events)
+        if actual_types != expected_event_types and actual_types != expected_event_types[:2] + expected_event_types[3:]:
+            return False
+        if any(
+            event.transaction_id != transaction.transaction_id
+            or event.command_id != transaction.command_id
+            or not event.visibility_policy
+            for event in transaction.events
+        ):
+            return False
+        return True
 
     @staticmethod
     def _event(index: int, event_type: str, stream_id: str, transaction_id: str, command_id: str, causation_id: str, correlation_id: str, payload: dict[str, object]) -> dict[str, object]:

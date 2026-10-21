@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import tempfile
+from pathlib import Path
 
 from common import artifact_ref, evidence_revision, repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
@@ -22,10 +24,19 @@ def main() -> int:
     checks: dict[str, bool] = {}
     evidence: list[str] = []
     for check, test_name in cases.items():
-        log_path = verification_dir(root) / f"infra-isolated-branch-owner-consequence-projection-{check}.log"
+        # Keep child logs outside the Harness attempt.  The attempt is an
+        # export boundary, while pytest may clean inherited temporary paths;
+        # publishing those paths made an otherwise passing run unexportable.
+        log_path = Path(tempfile.gettempdir()) / f"paralls-branch-consequence-{check}.log"
         result = run_command([python, "-m", "pytest", "-q", str(test_path), "-k", test_name], root, log_path)
-        checks[check] = result.returncode == 0
-        evidence.append(artifact_ref(root, log_path).replace("\\", "/"))
+        log_path.unlink(missing_ok=True)
+        # A passing subprocess without bounded output is not admissible evidence.
+        checks[check] = result.returncode == 0 and bool(result.stdout.strip())
+    # The enclosing Harness owns the durable command log; per-case logs remain
+    # outside the exported attempt by design.
+    command_log = verification_dir(root) / "command.log"
+    if command_log.is_file():
+        evidence.append(artifact_ref(root, command_log).replace("\\", "/"))
     report = {
         "profile": "infra-isolated-branch-owner-consequence-projection",
         "overall_passed": all(checks.values()),

@@ -1,0 +1,7 @@
+calendar_ref: calendar:monthly
+calendar_revision: calendar-monthly@1
+period_ref: period:2026-10
+due_tick: 60
+timeline_id: population:world
+valid_from_tick: 0
+valid_until_tick: 1000000

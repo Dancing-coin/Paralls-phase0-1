@@ -19,6 +19,7 @@ from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.self_body_perceived import SelfBodyPerceivedEvent
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.mind_frame import CharacterMindFrame
 from app.character_agent.services.character_semantic_recall import CharacterSemanticRecallService
 from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
 from app.character_agent.cognition.cognition_policy import CognitionPolicy
@@ -55,6 +56,7 @@ class CharacterAgentL2Service:
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         turn_context: CharacterTurnContext | None = None,
+        frame: CharacterMindFrame | None = None,
         capability_envelope: dict[str, object] | None = None,
         cognition_policy: dict[str, object] | None = None,
     ) -> dict[str, object]:
@@ -109,7 +111,7 @@ class CharacterAgentL2Service:
             context["frame"] = mind_frame.bind_to_turn(turn_context)
         return self._gateway.prepare_run_request(
             task_kind="l2_reasoning",
-            context=context,
+            context={**context, **({"frame": frame} if frame is not None else {})},
         )
 
     def map_reasoning_output(

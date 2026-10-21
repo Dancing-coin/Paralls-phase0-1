@@ -2,6 +2,7 @@ from app.character_agent.mind.affordances import CharacterMindAffordanceAdapter
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.view_builder import LayerContextViewBuilder
 from app.character_agent.models.mind_frame import CognitionWorkspace
+from app.character_agent.skills.models import StableAbilitySnapshot
 
 
 def test_affordance_adapter_summarizes_profile_skills_without_exposing_registry() -> None:
@@ -44,6 +45,22 @@ def test_affordance_adapter_emits_empty_profile_capability_lists_when_missing() 
     assert summary["skill_affordance"]["profile_limits"] == []
 
 
+def test_affordance_adapter_projects_stable_snapshot_digest_and_revisions() -> None:
+    snapshot = StableAbilitySnapshot(
+        actor_id="char_a",
+        capability_revision="capability:char_a:1",
+        registry_revision="skills:1",
+        digest="sha256:stable",
+    )
+    summary = CharacterMindAffordanceAdapter().build_summary(
+        stable_ability_snapshot=snapshot,
+    )
+
+    assert summary["skill_affordance"]["stable_digest"] == "sha256:stable"
+    assert summary["skill_affordance"]["stable_capability_revision"] == "capability:char_a:1"
+    assert summary["skill_affordance"]["stable_registry_revision"] == "skills:1"
+
+
 def test_frame_builder_places_all_affordance_cards_in_affordance_layer() -> None:
     frame = CharacterMindFrameBuilder().build_frame(
         actor_id="char_a",
@@ -77,6 +94,23 @@ def test_frame_builder_places_all_affordance_cards_in_affordance_layer() -> None
         "authority_protocol"
     ]
     assert cards_by_type["skill_affordance"].source_refs == ["skill_affordance:summary"]
+
+
+def test_frame_builder_exposes_stable_snapshot_digest_in_skill_card() -> None:
+    snapshot = StableAbilitySnapshot(
+        actor_id="char_a",
+        capability_revision="capability:char_a:1",
+        registry_revision="skills:1",
+        digest="sha256:stable",
+    )
+    frame = CharacterMindFrameBuilder().build_frame(
+        actor_id="char_a",
+        producer_ts=1,
+        stable_ability_snapshot=snapshot,
+    )
+
+    cards_by_type = {card.factor_type: card for card in frame.affordances.cards}
+    assert cards_by_type["skill_affordance"].payload["stable_digest"] == "sha256:stable"
 
 
 def test_l3_and_l4_views_consume_affordance_summaries_without_settlement_authority() -> None:

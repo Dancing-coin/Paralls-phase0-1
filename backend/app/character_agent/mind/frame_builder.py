@@ -22,10 +22,17 @@ from app.character_agent.mind.projectors import (
 from app.character_agent.models.mind_frame import (
     CharacterMindFrame,
     CharacterMindFrameTrigger,
+    CognitionWorkspace,
     MentalFactorProjectionCard,
     MindFrameLayer,
     MindFrameProvenance,
 )
+from app.character_agent.models.turn_context import CharacterTurnContext
+from app.character_agent.models.self_state_snapshot import SelfStateSnapshot
+from app.character_agent.models.external_percept_snapshot import ExternalPerceptSnapshot
+from app.character_agent.models.action_execution_state import ActionExecutionState
+from app.character_agent.skills.models import StableAbilitySnapshot
+from app.character_agent.mind.regulation_projection import project_mental_regulation
 
 
 class CharacterMindFrameBuilder:
@@ -54,6 +61,11 @@ class CharacterMindFrameBuilder:
         *,
         actor_id: str,
         producer_ts: int,
+        turn_context: CharacterTurnContext | None = None,
+        self_state_snapshot: SelfStateSnapshot | None = None,
+        external_percepts: list[ExternalPerceptSnapshot] | None = None,
+        action_execution_state: ActionExecutionState | None = None,
+        event_inbox: list[dict[str, object]] | None = None,
         trigger_event: dict[str, object] | None = None,
         snapshot: dict[str, object] | None = None,
         effective_profile: dict[str, object] | None = None,
@@ -65,11 +77,13 @@ class CharacterMindFrameBuilder:
         unresolved_tensions: list[dict[str, object]] | None = None,
         supervision_state: dict[str, object] | None = None,
         skill_affordance_summary: dict[str, object] | None = None,
+        stable_ability_snapshot: StableAbilitySnapshot | dict[str, object] | None = None,
         action_affordance_summary: dict[str, object] | None = None,
         environment_affordance_summary: dict[str, object] | None = None,
         equipment_affordance_summary: dict[str, object] | None = None,
         physical_feasibility_summary: dict[str, object] | None = None,
         dossier_projection: dict[str, object] | None = None,
+        source_refs: list[str] | None = None,
     ) -> CharacterMindFrame:
         trigger_payload = trigger_event or {}
         normalized_memory = self._snapshot_mapping(
@@ -92,7 +106,14 @@ class CharacterMindFrameBuilder:
         dossier_projection_payload = self._snapshot_mapping(dossier_projection)
         mind_turn_id = f"mind_turn:{actor_id}:{producer_ts}"
 
-        return CharacterMindFrame(
+        workspace = self._working_workspace(
+            actor_id=actor_id,
+            self_state=self_state_snapshot,
+            external_percepts=external_percepts or [],
+            action_execution=action_execution_state,
+            event_inbox=event_inbox or [],
+        )
+        frame = CharacterMindFrame(
             actor_id=actor_id,
             mind_turn_id=mind_turn_id,
             producer_ts=producer_ts,
@@ -121,6 +142,7 @@ class CharacterMindFrameBuilder:
                 dossier_projection_payload,
             ),
             runtime_state=self._runtime_state_layer(
+                actor_id=actor_id,
                 snapshot=snapshot_payload,
                 need_tension_state=need_payload,
                 dynamic_state=dynamic_payload,
@@ -132,21 +154,27 @@ class CharacterMindFrameBuilder:
             affordances=self._affordance_layer(
                 effective_profile=effective_profile_payload,
                 skill_affordance_summary=skill_affordance_summary,
+                stable_ability_snapshot=stable_ability_snapshot,
                 action_affordance_summary=action_affordance_summary,
                 environment_affordance_summary=environment_affordance_summary,
                 equipment_affordance_summary=equipment_affordance_summary,
                 physical_feasibility_summary=physical_feasibility_summary,
                 dossier_projection=dossier_projection_payload,
             ),
+            cognition_workspace=workspace,
             provenance=MindFrameProvenance(
                 source_refs=self._source_refs(
                     actor_id,
                     normalized_memory,
                     goal_payload,
                     dossier_projection_payload,
+                    source_refs=source_refs,
                 ),
             ),
         )
+        if turn_context is not None:
+            return frame.bind_to_turn(turn_context)
+        return frame
 
     def _enduring_truth_layer(
         self,
@@ -207,6 +235,7 @@ class CharacterMindFrameBuilder:
     def _runtime_state_layer(
         self,
         *,
+        actor_id: str,
         snapshot: dict[str, object],
         need_tension_state: dict[str, object],
         dynamic_state: dict[str, object],
@@ -231,6 +260,14 @@ class CharacterMindFrameBuilder:
         ]
         cards.extend(self._need_pressure_projector.project(need_tension_state))
         cards.extend(self._affective_body_state_projector.project(dynamic_state))
+        regulation = project_mental_regulation(actor_id=actor_id, snapshot=snapshot, dynamic_state=dynamic_state)
+        cards.append(MentalFactorProjectionCard(
+            factor_type="mental_regulation", layer="runtime_state", scope="actor_private",
+            summary=regulation.rationality_band or "unknown: regulation policy unregistered",
+            payload=regulation.model_dump(mode="json"),
+            source_refs=[f"{name}:{revision}" for name, revision in regulation.source_revisions],
+            risk_notes=list(regulation.diagnostics),
+        ))
         cards.extend(
             self._goal_context_projector.project(
                 current_goal_state=current_goal_state,
@@ -254,6 +291,7 @@ class CharacterMindFrameBuilder:
         *,
         effective_profile: dict[str, object],
         skill_affordance_summary: dict[str, object],
+        stable_ability_snapshot: StableAbilitySnapshot | dict[str, object] | None = None,
         action_affordance_summary: dict[str, object],
         environment_affordance_summary: dict[str, object] | None = None,
         equipment_affordance_summary: dict[str, object] | None = None,
@@ -263,6 +301,7 @@ class CharacterMindFrameBuilder:
         summaries = self._affordance_adapter.build_summary(
             effective_profile=effective_profile,
             supplied_skill_affordance_summary=skill_affordance_summary,
+            stable_ability_snapshot=stable_ability_snapshot,
             supplied_action_affordance_summary=action_affordance_summary,
             environment_affordance_summary=environment_affordance_summary,
             equipment_affordance_summary=equipment_affordance_summary,
@@ -290,6 +329,8 @@ class CharacterMindFrameBuilder:
         memory: dict[str, list[dict[str, object]]],
         current_goal_state: dict[str, object],
         dossier_projection: dict[str, object],
+        *,
+        source_refs: list[str] | None = None,
     ) -> list[str]:
         refs = [f"profile:{actor_id}"]
         refs.extend(self._memory_refs("event_memory", memory.get("event_memories", [])))
@@ -309,7 +350,52 @@ class CharacterMindFrameBuilder:
         raw_dossier_refs = dossier_projection.get("source_refs", [])
         if isinstance(raw_dossier_refs, list):
             refs.extend(str(ref) for ref in raw_dossier_refs if str(ref))
+        refs.extend(str(ref) for ref in (source_refs or []) if str(ref))
         return refs
+
+    def _working_workspace(
+        self,
+        *,
+        actor_id: str,
+        self_state: SelfStateSnapshot | None,
+        external_percepts: list[ExternalPerceptSnapshot],
+        action_execution: ActionExecutionState | None,
+        event_inbox: list[dict[str, object]],
+    ) -> CognitionWorkspace:
+        self_payload: dict[str, object] = {}
+        uncertainty: list[dict[str, object]] = []
+        if self_state is not None:
+            if self_state.actor_id != actor_id or self_state.visibility != "actor_private":
+                raise ValueError("self state projection is outside actor-private scope")
+            self_payload = self_state.model_dump(mode="json")
+            if self_state.uncertainty != "known" or self_state.freshness in {"stale", "expired", "unknown"}:
+                uncertainty.append({"source": self_state.source, "state": self_state.uncertainty,
+                                    "freshness": self_state.freshness, "revision": self_state.revision})
+        if action_execution is not None:
+            if action_execution.actor_id != actor_id or action_execution.visibility != "actor_private":
+                raise ValueError("action execution projection is outside actor-private scope")
+            self_payload["action_execution"] = action_execution.model_dump(mode="json")
+        external_payloads: list[dict[str, object]] = []
+        for percept in external_percepts:
+            if percept.actor_id != actor_id or percept.visibility != "actor_private":
+                raise ValueError("external percept projection is outside actor-private scope")
+            payload = percept.model_dump(mode="json")
+            external_payloads.append(payload)
+            if percept.uncertainty != "known" or percept.freshness in {"stale", "expired", "unknown"}:
+                uncertainty.append({"subject_ref": percept.subject_ref, "source": percept.source,
+                                    "state": percept.uncertainty, "freshness": percept.freshness,
+                                    "revision": percept.revision, "conflict_refs": list(percept.conflict_refs)})
+        normalized_events = []
+        for event in event_inbox:
+            if event.get("visibility", "actor_private") != "actor_private":
+                continue
+            normalized_events.append(deepcopy(event))
+        return CognitionWorkspace(
+            self_state=self_payload,
+            external_state=external_payloads,
+            event_inbox=normalized_events,
+            uncertainty=uncertainty,
+        )
 
     @staticmethod
     def _snapshot_mapping(value: object) -> dict[str, object]:

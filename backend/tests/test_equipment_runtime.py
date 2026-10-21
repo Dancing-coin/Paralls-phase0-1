@@ -315,6 +315,86 @@ def test_equip_replays_the_same_idempotency_result_without_second_batch() -> Non
     assert len(store.read_events()) == event_count
 
 
+def test_equip_duplicate_rejects_corrupt_event_reference_without_writes() -> None:
+    store, inventory_registry, service = _service()
+    _create_sword(store, inventory_registry)
+    first = service.equip(
+        command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+        source_container_id="container:bag", slot_key="right_hand", body=_body(),
+        idempotency_key="equip", causation_id="cause", correlation_id="corr",
+    )
+    assert first.committed
+    key = (service._PRINCIPAL, f"{ACTOR}:equip")
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:event"]}, deep=True
+    )
+    before = store.export_snapshot()
+    with pytest.raises(EquipmentRuntimeError, match="equipment_idempotency_receipt_invalid"):
+        service.equip(
+            command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+            source_container_id="container:bag", slot_key="right_hand", body=_body(),
+            idempotency_key="equip", causation_id="cause", correlation_id="corr",
+        )
+    assert store.export_snapshot() == before
+
+
+def test_equip_duplicate_rejects_changed_causal_identity_without_writes() -> None:
+    store, inventory_registry, service = _service()
+    _create_sword(store, inventory_registry)
+    assert service.equip(
+        command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+        source_container_id="container:bag", slot_key="right_hand", body=_body(),
+        idempotency_key="equip", causation_id="cause", correlation_id="corr",
+    ).committed
+    before = store.export_snapshot()
+    with pytest.raises(EquipmentRuntimeError, match="equipment_idempotency_receipt_invalid"):
+        service.equip(
+            command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+            source_container_id="container:bag", slot_key="right_hand", body=_body(),
+            idempotency_key="equip", causation_id="cause:changed", correlation_id="corr",
+        )
+    assert store.export_snapshot() == before
+
+
+def test_equip_duplicate_rejects_event_type_moved_to_wrong_stream_contract() -> None:
+    store, inventory_registry, service = _service()
+    _create_sword(store, inventory_registry)
+    first = service.equip(
+        command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+        source_container_id="container:bag", slot_key="right_hand", body=_body(),
+        idempotency_key="equip", causation_id="cause", correlation_id="corr",
+    )
+    assert first.committed
+    event_id = first.committed_event_ids[0]
+    original = store.get_event(event_id)
+    forged = original.model_copy(update={"event_type": "gameplay.equipment.activation_ended"}, deep=True)
+    store._events_by_id[event_id] = forged
+    store._events[store._events.index(original)] = forged
+    before = store.export_snapshot()
+    with pytest.raises(EquipmentRuntimeError, match="equipment_idempotency_receipt_invalid"):
+        service.equip(
+            command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+            source_container_id="container:bag", slot_key="right_hand", body=_body(),
+            idempotency_key="equip", causation_id="cause", correlation_id="corr",
+        )
+    assert store.export_snapshot() == before
+
+    before = store.export_snapshot()
+    with pytest.raises(EquipmentRuntimeError, match="idempotency_key_reused"):
+        service.equip(
+            command_id="cmd:equip",
+            actor_ref=ACTOR,
+            item_id="item:sword:1",
+            source_container_id="container:bag",
+            slot_key="left_hand",
+            body=_body(),
+            idempotency_key="equip",
+            causation_id="cause",
+            correlation_id="corr",
+        )
+    assert store.export_snapshot() == before
+
+
 def test_stale_body_revision_rejects_before_any_stream_changes() -> None:
     store, inventory_registry, service = _service()
     _create_sword(store, inventory_registry)

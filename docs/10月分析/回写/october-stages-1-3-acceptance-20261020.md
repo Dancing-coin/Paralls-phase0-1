@@ -6,6 +6,16 @@
 
 **本轮目标扩展确认（2026-10-21）：** 阶段一至三的统一收口同时包含完整 Laya 真实 backend 链路（完整输入与候选、action+target、L4、真实领域 owner、receipt、恢复与回放）以及正式模型质量 Q01–Q04；Godot G-A/G-B/G-C 仍是后端与角色闭环收口后的最后门禁。服务可调用、choice 接纳、合同测试或单 owner slice 均不能替代这些闭环。Goal 保持 active；由于 Goal API 没有 objective 更新参数，扩展目标由本矩阵和执行计划承载，未将旧阶段目标错误标记为完成。
 
+### 2026-10-21 goal_proposal 跨进程有效恢复复验
+
+在 D 盘临时目录下重跑窄探针：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_population_process_cognition_recovery.py::test_original_owner_provider_pending_survives_hard_kill_without_reingest[goal_proposal] --tb=short`
+→ **1 passed in 11.53s**。
+
+本次探针将感知写入限定为 L1 snapshot apply，避免创建与慢目标无关的未结 canonical turn。第一进程冻结原始 `goal_proposal:v1` provider 请求并硬杀；第二进程从同一 admission 恢复，保持 admission key、request bytes 和 source/evidence 绑定，provider 重新调用且 request digest 一致，随后由原 Character goal owner 写入恰好一条 `goal_state_event` 与 `cognition_goal_terminal` receipt；第三进程重开后保持 `completed`，没有新的 provider 调用。该证据关闭的是有效 goal-proposal provider resume/terminal receipt/reopen 子项；它不关闭完整 R09，因为尚未覆盖生产 Laya action+target→L4→多领域 owner、完整 replay matrix、正式 Q01–Q04 或 Godot G-A/G-B/G-C。
+
+**后端**：慢目标有效跨进程恢复子项新增通过；R09 仍为局部。**模型质量**：Q01–Q04 无新增验收。**角色闭环**：goal proposal receipt/reopen 子项已验证，完整 Laya、多领域 owner 与回放仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，仍是最后门禁。
+
 ### 2026-10-21 窄恢复复验与证据边界
 
 Settlement 私有 L1 snapshot 的 SQLite close/reopen、exact retry 零重复追加和跨 actor snapshot 拒绝仍由定向选择稳定通过：
@@ -51,7 +61,15 @@ registration, accepted choice, or owner unit test is counted as that missing
 production boundary. No model evaluation, training, full pytest, Harness all,
 or Godot operation was performed in this refresh.
 
-### 2026-10-21 慢目标新进程恢复复现
+### 2026-10-21 慢目标新进程恢复诊断（历史失败，已由下方有效恢复复验更新）
+
+早期探针将一次通过 `ingest_character_perceived_event` 写入的感知建模为
+canonical turn，但没有经过真实 authority settlement。硬杀后 session recovery
+正确地将该 turn 标为 `recovery_required`，导致慢目标 pin 变化并被 stale guard
+拒绝；另一次观测过早/错过 provider pending。这些样本只证明 stale 防护，不能
+证明有效慢目标恢复。没有生产 pin 语义改动，也没有放宽 stale 检查。后续探针
+移除这条无关未结 turn 并通过真实慢目标 owner path，结果见本文件
+“goal_proposal 跨进程有效恢复复验”。
 
 为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和终态 owner 边界可恢复；重开诊断发现 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 不同，安全校验返回 `cognition_provider_stale_pin`，没有新 goal event，拒绝终态仍经原 owner 回执保存。随后 session recovery 已加入 settlement 私有 L1 projection 与 cognition cadence 恢复；这修复了已隔离出的 projection 缺失，但尚未证明真实自动轮询启动时 `actor_pin`/timeline 与 session head 一致。差异仍需在启动轮询前后分段采样，不能假定私有 projection 修复同时解决 timeline。`actor_pin` 在 coordinator prepare 中采集，晚于 trigger 入库，不存在已证实的 pre-trigger 采集问题。测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成；下一步隔离启动自动轮询和历史原始输入，复验原 entry/private projection 与 session head，保留 stale 防护。
 
@@ -888,3 +906,55 @@ provider_calls=0、空 split/缺失运行输入 fail-closed。
 漂移文件属于用户已有修改集合，本轮未修改。Q01–Q04 仍未验收，正式 calibration /
 final / independent_holdout 仍未运行。此批只新增来源漂移证据，不提升后端、角色闭环
 或 Godot A/B/C 状态。
+
+### 2026-10-21 Laya evaluation/object-owner narrow refresh
+
+The narrow selection `test_character_laya_evaluation_contract.py`,
+`test_character_object_execution.py`, and `test_worktable_process_recovery.py`
+returned **31 passed, 2 failed**. Object-owner and worktable recovery tests
+passed. The two evaluation failures are preflight boundary failures: the
+worktree source is reported as `source_changed_or_incomplete`, and the CLI test
+uses a repository-local evidence destination rejected by the safety gate. This
+does not provide formal Q01–Q04 evidence or close the real Laya
+action+target→L4→domain-owner receipt path. No final/holdout labels were read,
+no model call or training was started, and Godot remains deferred.
+
+### 2026-10-21 goal proposal hard-kill probe follow-up
+
+The isolated `goal_proposal` case of
+`test_original_owner_provider_pending_survives_hard_kill_without_reingest`
+now passes (**1 passed in 12.89s**) with a dedicated D-drive pytest base. It
+observes the restored admission and byte-identical frozen request before
+releasing startup polling; polling then terminates the proposal as `stale`
+because the captured actor pin no longer matches. The original `goal_state_event`
+set is unchanged, and the stale path makes no resumed provider call. The test
+previously expected every non-commit family to call the provider after resume;
+that expectation contradicted fail-closed stale handling and is now explicitly
+split for `goal_proposal`.
+
+This proves safe stale rejection and zero goal writes after process restart; it
+does not prove valid proposal completion, successful provider resume, exact-once
+goal owner acceptance, or R09 recovery closure. The other parameterized families
+were not rerun in this focused invocation. A preceding all-family invocation
+ran out of space in its temporary filesystem and its downstream process/file
+failures are not counted as product regressions. Backend, role closure, Q01-Q04,
+and Godot A/B/C states otherwise remain unchanged.
+
+### 2026-10-21 goal proposal recovery probe validity diagnosis
+
+The saved probe timeline shows `percept:100` created a canonical turn with
+`context`, `interpretation`, `goal`, `intent`, and `execution` stages, but no
+authority receipt/settlement for that turn. The probe then created the separate
+slow-goal trigger from later settlement events. On restart, recovery correctly
+fails closed for the unrelated awaiting turn because its authority receipt is
+missing; the appended lifecycle transition changes the captured actor pin, so
+the proposal is safely rejected as stale before provider resumption. This is a
+valid stale-safety result, not evidence of a broken production owner recovery
+path or a successful goal-proposal resume. Do not relax pin validation or
+fabricate a receipt. A valid R09 probe must create the proposal source without
+leaving an unrelated unsettled canonical turn, or must complete that turn via
+its real authority boundary before taking the proposal crash snapshot. The
+current probe is not yet sufficient to prove either valid resume or R09
+recovery closure. The probe artifacts remain under the D-drive temporary root
+because the available cleanup command was rejected by execution policy; no C:
+drive scan or cleanup was performed.

@@ -1,0 +1,25 @@
+policy_ref: policy:economy_lottery@1
+policy_revision: "1"
+kind: lottery
+issuer_ref: authored:economy_random_stage3
+fact_owner_ref: actor_gameplay.economy_domain
+actor_scope: [char_a, char_b]
+world_scope: [world:main]
+timeline_scope: [timeline:main]
+valid_from_world_tick: 0
+valid_until_world_tick: null
+algorithm_revision: algorithm:sha256-weighted-v1
+seed_policy_revision: seed:anchor-hmac-sha256-v1
+read_principals: [actor_gameplay.economy_domain, gameplay_scheduler]
+receipt_lookup_ref: gameplay.receipts.economy_random
+revocation_owner_ref: actor_gameplay.economy_domain
+candidates:
+  - candidate_ref: lottery:common
+    result_ref: result:lottery:common
+    weight: 70
+  - candidate_ref: lottery:rare
+    result_ref: result:lottery:rare
+    weight: 25
+  - candidate_ref: lottery:jackpot
+    result_ref: result:lottery:jackpot
+    weight: 5

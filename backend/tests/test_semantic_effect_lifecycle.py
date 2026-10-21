@@ -249,6 +249,27 @@ def test_lifecycle_resolution_reaches_existing_authority_append_path() -> None:
     assert store.read_events()[0].payload["effective_magnitude"] == 75
     assert store.read_events()[0].payload["expiry_obligation"]["due_tick"] == 12
 
+    changed = authority.settle_lifecycle(
+        SemanticEffectCommand(
+            command_id="effect:frost:changed",
+            idempotency_key="effect:frost:1",
+            principal_ref="authority:ecology",
+            owner_ref="authority:crop",
+            stream_id="crop:wheat:1",
+            expected_revision=0,
+            effect_ref="effect:frost",
+            target_ref="crop:wheat:1",
+            semantic_snapshot=snapshot,
+            expected_snapshot_digest=snapshot.digest,
+        ),
+        application=EffectApplication(effect_ref="effect:frost", target_component_ref="crop:wheat:1", magnitude=100, stack_key="frost", expires_at_tick=12, causal_chain_id="chain:frost:1"),
+        resistance=ResistanceProfile(effect_ref="effect:frost", source_ref="crop:wheat:1", modifier_basis_points=2500, revision=1),
+        state=StateDefinition(state_ref="state:frosted", stack_policy="refresh", stack_limit=1, expiry_policy="scheduled"),
+        existing_stacks=0,
+    )
+    assert not changed.committed
+    assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
+
 
 def test_closed_cold_proposal_delegates_to_survival_owner_and_opens_replayable_obligation() -> None:
     registry = SemanticRegistry()

@@ -66,7 +66,9 @@ class CharacterCognitionAdmissionService:
         self._owner()
         if type(producer_ts) is not int:
             raise ValueError('cognition_admission_business_tick_required')
-        source = source_event.model_dump(mode='json')
+        source = (source_event.model_dump(mode='json')
+                  if hasattr(source_event, 'model_dump')
+                  else dict(source_event))
         key = self.key_for(source_event_id=source['event_id'], actor_id=actor_id, delivery_id=delivery_id)
         inputs = dict(actor_id=actor_id, delivery_id=delivery_id, source_kind=source_kind,
             source_event=source, payload=payload, source_pins=source_pins,
@@ -306,3 +308,4 @@ class CharacterCognitionAdmissionService:
         self._owner()
         return tuple(self._validated(raw)
             for raw in self.store.list_cognition_admissions(limit=limit, cursor=cursor))
+

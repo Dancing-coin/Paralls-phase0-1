@@ -6,6 +6,7 @@ from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from test_population_conflict_source import setup as source_setup
 from test_population_conflict_activation import conflict
 from test_population_durable_cadence_recovery import _runtime
+from app.world_runtime.population_driver import PopulationCadenceDriver
 
 
 def setup(tmp_path, *, budget=1):
@@ -121,5 +122,46 @@ def test_dual_database_reopen_keeps_original_child_ttl_and_admits_only_unhandled
         assert rows[0] == original and rows[0].expires_at == 130.
         assert len(rows) == 2 and rows[1].actor_id == "char_b" and rows[1].expires_at == 230.
         assert source.read().wakes == ()
+    finally:
+        archive.close()
+
+
+def test_driver_pinned_cadence_issues_character_temporal_grant(tmp_path):
+    world, owner, source, archive, admissions, pump, bus, publisher = setup(tmp_path)
+    try:
+        conflict(owner)
+        driver = PopulationCadenceDriver(
+            world_runtime=world, publish_window=publisher, window_size=60,
+            catch_up_limit=1, initial_tick=0,
+        )
+        result = driver.tick(60)
+        assert result.published_cadence_ids == ("cadence:world:0",)
+        rows = admissions.list_pending()
+        assert len(rows) == 1
+        pins = rows[0].source_pins["temporal_pins"]
+        assert "character" in __import__("json").loads(pins["temporal_authorizations"])
+        assert pins["input_cutoff"] == 60
+    finally:
+        archive.close()
+
+
+def test_driver_pinned_cadence_rejects_changed_character_grant(tmp_path):
+    world, owner, source, archive, admissions, pump, bus, publisher = setup(tmp_path)
+    try:
+        conflict(owner)
+        driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher, window_size=60, catch_up_limit=1)
+        assert driver.tick(60).published_cadence_ids == ("cadence:world:0",)
+        entry = admissions.list_pending()[0]
+        pins = dict(entry.source_pins["temporal_pins"])
+        grants = __import__("json").loads(pins["temporal_authorizations"])
+        grants["character"]["input_cutoff"] = 59
+        pins["temporal_authorizations"] = __import__("json").dumps(grants, sort_keys=True, separators=(",", ":"))
+        tampered = entry.model_copy(update={"source_pins": {**entry.source_pins, "temporal_pins": pins}})
+        try:
+            pump.validate_admission(tampered)
+        except ValueError as error:
+            assert str(error) == "conflict_cognition_temporal_authorization_rejected"
+        else:
+            raise AssertionError("changed character temporal grant was admitted")
     finally:
         archive.close()

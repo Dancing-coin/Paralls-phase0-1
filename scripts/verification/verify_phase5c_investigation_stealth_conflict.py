@@ -17,6 +17,8 @@ TEST_FILES = (
     "backend/tests/test_p5_quest_evidence.py",
     "backend/tests/test_p5_contracts.py",
     "backend/tests/test_gameplay_p5_batch_contract.py",
+    "backend/tests/test_action_consequence_boundaries.py",
+    "backend/tests/test_3d_scripted_mystery_action_replay.py",
 )
 
 

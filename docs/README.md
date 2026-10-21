@@ -75,6 +75,10 @@
 - [7月分析/](/d:/Users/User/Documents/paralls-phase-0-demo/docs/7月分析/README.md)
   - 历史分析与修复方案（分析性质，带状态头，不作为实现事实声明）
   - 当前收录：角色智能体断点分析、七月 spec 需求分析与具身/VLA 差距分析
+- [10月分析/](/d:/Users/User/Documents/paralls-phase-0-demo/docs/10月分析/README.md)
+  - 角色心智、Laya、ThoughtMode、能力包络、表达和通用玩法/编辑器来源分析
+- [10月中旬分析/](/d:/Users/User/Documents/paralls-phase-0-demo/docs/10月中旬分析/README.md)
+  - 全体角色社会生命、派生社会图谱、B0-B3 与 Laya 协同的整合规格；含独立计划、实现审查和回写登记，状态为 proposed/non-authorizing
 
 ---
 
@@ -95,6 +99,8 @@
 ---
 
 ## 4. 设计规范
+
+模拟 fork 的分析与草案见[模拟预测底座设计入口](fork项目/模拟预测底座/README.md)；金融数据结构、专业类别及时间口径见[数据合同设计](fork项目/模拟预测底座/03-数据结构、金融数据类别与时间口径合同设计.md)。该目录不属于游戏主线执行规格。
 
 目录：
 

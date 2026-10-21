@@ -28,7 +28,8 @@ def test_current_scene_shape_matches_the_frozen_host_choice() -> None:
     assert '[node name="CharacterBase" type="CharacterBody3D"]' in character_base_scene
     assert '[node name="CharacterActor" parent="." instance=ExtResource("2_character")]' in character_base_scene
     assert '[node name="CharacterMotor" type="Node" parent="."]' not in character_base_scene
-    assert '[node name="CharacterActor" type="CharacterBody3D"]' in character_actor_scene
+    # Godot serializes the control-group membership on the root node.
+    assert '[node name="CharacterActor" type="CharacterBody3D"' in character_actor_scene
     assert '[node name="CharacterMotor" type="Node" parent="."]' in character_actor_scene
     assert 'res://scripts/character/CharacterActor.gd' in character_actor_scene
     assert '[node name="PlayerCharacter" parent="." instance=ExtResource("2_player")]' in validation_scene

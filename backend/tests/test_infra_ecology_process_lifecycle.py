@@ -103,6 +103,25 @@ def test_seasonal_process_is_idempotent_revisioned_private_rejected_and_replayab
     assert authority.regional_replay().projection_hash == authority.regional_replay(checkpoint_at=6).projection_hash
 
 
+def test_seasonal_process_changed_command_identity_cannot_replay_receipt() -> None:
+    store = GameplayEventStore()
+    authority = _record(store)
+    command = _envelope(command_id="command:advance", key="ecology:process:advance:3", expected_revision=5, tick=3)
+    first = authority.advance_seasonal_process(
+        envelope=command, policy=EcologySeasonalProcessPolicy(), region_ref="region:process"
+    )
+    assert first.committed
+
+    changed = authority.advance_seasonal_process(
+        envelope=command.model_copy(update={"command_id": "command:advance:changed"}),
+        policy=EcologySeasonalProcessPolicy(), region_ref="region:process",
+    )
+
+    assert not changed.committed
+    assert changed.failure is not None
+    assert changed.failure.error_code == "idempotency_key_reused"
+
+
 def test_seasonal_process_proposes_only_one_admitted_construction_maintenance_fragment() -> None:
     store = GameplayEventStore()
     ecology = _record(store)
@@ -193,6 +212,13 @@ def test_seasonal_maintenance_is_idempotent() -> None:
         command_id="command:one", idempotency_key="seasonal:one", causation_id="cause", correlation_id="corr", expected_revision=0,
     )
     assert first.committed and duplicate.idempotency_status == "duplicate_replayed"
+    changed = construction.settle_canonical_seasonal_maintenance(
+        command=intent.command, admission=intent.admission, run=run, obligation_ref="obligation:one",
+        command_id="command:changed", idempotency_key="seasonal:one", causation_id="cause", correlation_id="corr", expected_revision=0,
+    )
+    assert not changed.committed
+    assert changed.failure is not None and changed.failure.error_code == "idempotency_key_reused"
+    assert len(store.read_stream(f"gameplay:construction_production:{run.facility_ref}")) == 1
 
 
 def test_seasonal_maintenance_rejects_stale_target_revision_without_writes() -> None:

@@ -5,6 +5,27 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
+MASTERY_DIMENSIONS = (
+    "familiarity",
+    "conceptual_understanding",
+    "procedural_fluency",
+    "motor_precision",
+    "pressure_stability",
+    "transfer_capacity",
+    "insight",
+    "personalization",
+)
+DIFFICULTY_FACTORS = (
+    "complexity",
+    "novelty",
+    "precision",
+    "pressure",
+    "resource_load",
+    "world_binding",
+    "transfer_gap",
+)
+
+
 SettlementCategory = Literal["cognitive", "social", "physical", "tool", "authority", "special"]
 ActionKind = Literal["composite", "primitive"]
 Learnability = Literal["natural", "trained", "granted", "locked"]
@@ -164,7 +185,12 @@ class SkillEvidence(StrictSkillModel):
     skill_id: str
     action_id: str
     binding_id: str = ""
-    source_settlement_id: str
+    source_settlement_id: str = Field(min_length=1)
+    source_refs: list[str] = Field(default_factory=list)
+    source_revision: str = ""
+    context_revision: str = ""
+    privacy_scope: str = ""
+    expires_at: int | None = Field(default=None, ge=0)
     outcome_band: OutcomeBand
     primary_failure_domain: FailureDomain
     failure_domains: list[FailureDomain] = Field(default_factory=list)
@@ -270,3 +296,117 @@ class StableAbilitySnapshot(StrictSkillModel):
     @property
     def snapshot_digest(self) -> str:
         return self.digest
+
+
+class LearningEpisode(StrictSkillModel):
+    """Evidence-backed progress proposal; never writes skill state itself."""
+
+    episode_id: str
+    actor_id: str = ""
+    learner_id: str = ""
+    skill_id: str
+    object_id: str = ""
+    source_id: str = ""
+    source_revision: str = ""
+    expected_source_revision: str = ""
+    source_privacy_scope: str = ""
+    expires_at: int | None = Field(default=None, ge=0)
+    context_revision: str = ""
+    stage: Literal[
+        "available", "noticed", "observed", "imitated", "structured", "practiced",
+        "operational", "stable", "integrated", "personalized", "complete", "evolved",
+    ]
+    source_refs: list[str] = Field(default_factory=list)
+    prerequisite_refs: list[str] = Field(default_factory=list)
+    prerequisites: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    visible_context: dict[str, object] = Field(default_factory=dict)
+    learning_method: str = ""
+    feedback: list[str] = Field(default_factory=list)
+    authority_status: str = "pending"
+    mastery: dict[str, dict[str, object]] = Field(default_factory=dict)
+    difficulty: dict[str, float] = Field(default_factory=dict)
+    owner_settlement_id: str = ""
+    status: Literal["proposal", "accepted", "rejected"] = "proposal"
+
+    @model_validator(mode="after")
+    def validate_learning_projection_keys(self) -> "LearningEpisode":
+        unknown_mastery = set(self.mastery) - set(MASTERY_DIMENSIONS)
+        unknown_difficulty = set(self.difficulty) - set(DIFFICULTY_FACTORS)
+        if unknown_mastery:
+            raise ValueError(f"unknown mastery dimension: {sorted(unknown_mastery)[0]}")
+        if unknown_difficulty:
+            raise ValueError(f"unknown difficulty factor: {sorted(unknown_difficulty)[0]}")
+        return self
+
+    @model_validator(mode="after")
+    def normalize_actor_identity(self) -> "LearningEpisode":
+        if not self.actor_id and self.learner_id:
+            self.actor_id = self.learner_id
+        if not self.learner_id and self.actor_id:
+            self.learner_id = self.actor_id
+        return self
+
+
+class ImitationEpisode(StrictSkillModel):
+    episode_id: str
+    actor_id: str = ""
+    learner_id: str = ""
+    skill_id: str
+    object_id: str = ""
+    source_id: str = ""
+    source_revision: str = ""
+    expected_source_revision: str = ""
+    source_privacy_scope: str = ""
+    expires_at: int | None = Field(default=None, ge=0)
+    context_revision: str = ""
+    stage: Literal[
+        "available", "noticed", "observed", "imitated", "structured", "practiced",
+        "operational", "stable", "integrated", "personalized", "complete", "evolved",
+    ] = "available"
+    source_refs: list[str] = Field(default_factory=list)
+    prerequisite_refs: list[str] = Field(default_factory=list)
+    evidence_refs: list[str] = Field(default_factory=list)
+    prerequisites: list[str] = Field(default_factory=list)
+    visible_context: dict[str, object] = Field(default_factory=dict)
+    learning_method: str = ""
+    feedback: list[str] = Field(default_factory=list)
+    authority_status: str = "pending"
+    mastery: dict[str, dict[str, object]] = Field(default_factory=dict)
+    difficulty: dict[str, float] = Field(default_factory=dict)
+    source_observation_refs: list[str] = Field(default_factory=list)
+    visible_context_refs: list[str] = Field(default_factory=list)
+    imitation_mode: str = ""
+    mode: str = ""
+    action_error: dict[str, object] = Field(default_factory=dict)
+    resource_error: dict[str, object] = Field(default_factory=dict)
+    pressure: float | dict[str, object] = 0.0
+    interruptions: int = Field(default=0, ge=0)
+    interrupted: bool = False
+    feedback_refs: list[str] = Field(default_factory=list)
+    authority_accepted: bool | None = None
+    review_refs: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_imitation_projection_keys(self) -> "ImitationEpisode":
+        unknown_mastery = set(self.mastery) - set(MASTERY_DIMENSIONS)
+        unknown_difficulty = set(self.difficulty) - set(DIFFICULTY_FACTORS)
+        if unknown_mastery:
+            raise ValueError(f"unknown mastery dimension: {sorted(unknown_mastery)[0]}")
+        if unknown_difficulty:
+            raise ValueError(f"unknown difficulty factor: {sorted(unknown_difficulty)[0]}")
+        return self
+
+    @model_validator(mode="after")
+    def normalize_episode_identity(self) -> "ImitationEpisode":
+        if not self.actor_id and self.learner_id:
+            self.actor_id = self.learner_id
+        if not self.learner_id and self.actor_id:
+            self.learner_id = self.actor_id
+        if not self.imitation_mode and self.mode:
+            self.imitation_mode = self.mode
+        if not self.mode and self.imitation_mode:
+            self.mode = self.imitation_mode
+        if self.interruptions and not self.interrupted:
+            self.interrupted = True
+        return self

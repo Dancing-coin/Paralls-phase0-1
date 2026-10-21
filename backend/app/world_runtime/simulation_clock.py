@@ -118,6 +118,34 @@ class SimulationClock:
                                 authoritative_revision=self.timeline.authoritative_revision + 1)
         return result
 
+    def activate_temporal_profile(self, profile: TemporalProfile, *,
+                                  advancement_owner_ref: str, boundary: str,
+                                  migration_mapping: ClockMapping | None = None) -> None:
+        if self.timeline is None or advancement_owner_ref != self.timeline.advancement_owner_ref:
+            raise ValueError("simulation_clock_advancement_owner_mismatch")
+        if boundary != self.temporal_profile.activation_boundary or boundary != profile.activation_boundary:
+            raise ValueError("temporal_activation_boundary_mismatch")
+        self._check_profile_admission(profile)
+        if profile.canonical_unit_ref != self.temporal_profile.canonical_unit_ref:
+            raise ValueError("temporal_consumer_migration_required")
+        new_step = self.tick
+        if profile.step_duration != self.temporal_profile.step_duration:
+            if migration_mapping is None or migration_mapping.target_timeline_ref != self.timeline.timeline_id \
+                    or migration_mapping.target_profile_revision != profile.revision \
+                    or migration_mapping.mapping_id not in profile.supported_clock_mappings:
+                raise ValueError("temporal_consumer_migration_required")
+            canonical = self.tick * self.temporal_profile.step_duration
+            coordinate: Fraction = canonical / profile.step_duration
+            if coordinate.denominator != 1:
+                raise ValueError("temporal_activation_precision_invalid")
+            new_step = int(coordinate)
+        self.temporal_profile = profile
+        self.tick = new_step
+        self.timeline = replace(self.timeline, profile_ref=profile.profile_id,
+                                profile_revision=profile.revision,
+                                current_step=new_step,
+                                authoritative_revision=self.timeline.authoritative_revision + 1)
+
     def advance(self, target_tick: int, obligations: tuple[ScheduledObligation, ...] = ()) -> ClockAdvance:
         if self.timeline is not None:
             raise ValueError("simulation_clock_mapped_advance_required")

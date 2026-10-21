@@ -12,6 +12,7 @@ from uuid import uuid4
 from app.models.ai_output import DialogueResponse
 from app.models.dialogue_audio import DialogueAudio
 from app.models.player_input import DialogueSubmit
+from app.character_agent.models.speech_lease import SpeechLease
 
 
 _MAX_COGNITION_PROVIDER_ATTEMPTS = 4
@@ -28,6 +29,7 @@ class PreparedDialogueJob:
     stage: str
     actor_id: str
     request_json: bytes
+    speech_lease: SpeechLease | None = None
 
 
 @dataclass(frozen=True)
@@ -47,6 +49,7 @@ class _PendingDialogue:
     handle: object
     connection_ref: str
     binding_pin: tuple
+    speech_deadline_monotonic: float
     job: PreparedDialogueJob | None = None
     cognition_job: object = None
     pin: tuple = ()
@@ -110,7 +113,8 @@ class DialogueCoordinator:
         if handle is None:
             return DialogueAdvance('requeued', reason=receipt.stop_reason if receipt else 'activation_not_owned')
         ticket_id = uuid4().hex
-        turn = _PendingDialogue(event, handle, connection_ref, pin, context_actor_ids=(handle.actor_id,))
+        turn = _PendingDialogue(event, handle, connection_ref, pin, deadline_monotonic,
+                                context_actor_ids=(handle.actor_id,))
         self._pending[ticket_id] = turn
         try:
             def cognition_finished(_turn_id, reason):
@@ -131,7 +135,15 @@ class DialogueCoordinator:
                 if turn.cognition_context_json and turn.cognition_context_json != contract:
                     raise ValueError('dialogue_cognition_contract_changed')
                 turn.cognition_context_json = contract
-        job = PreparedDialogueJob(ticket_id, uuid4().hex, stage, turn.handle.actor_id, request_json)
+        speaker = turn.handle.actor_id
+        lease = None
+        if stage != 'cognition':
+            speaker = (turn.response.actor_id if turn.response is not None else
+                       turn.event.actor_id if turn.event.player_id == 'character_agent' else turn.event.target_actor_id)
+            target = (turn.response.target_actor_id if turn.response is not None else
+                      turn.event.target_actor_id if turn.event.player_id == 'character_agent' else turn.event.actor_id)
+            lease = SpeechLease(turn.event.request_id, speaker, target, turn.speech_deadline_monotonic)
+        job = PreparedDialogueJob(ticket_id, uuid4().hex, stage, speaker, request_json, lease)
         turn.job = job
         turn.pin = self._capture_pin(turn)
         return DialogueAdvance('pending', job=job, provider=provider, fallback_used=turn.fallback_used)
@@ -216,7 +228,9 @@ class DialogueCoordinator:
         if turn is None or turn.job != job:
             return DialogueAdvance('zero_write', reason='dialogue_token_invalid')
         reason = ''
-        if not self._connection_current(turn.connection_ref, turn.binding_pin):
+        if job.speech_lease is not None and not job.speech_lease.permits(now_monotonic=monotonic(), actor_id=job.actor_id):
+            reason = 'speech_lease_expired'
+        elif not self._connection_current(turn.connection_ref, turn.binding_pin):
             reason = 'connection_invalid'
         elif not self.runtime.activation_is_current(turn.handle.lock_ref, turn.handle.token):
             reason = 'activation_invalid'
@@ -315,12 +329,29 @@ class DialogueCoordinator:
 def run_dialogue_provider(job: PreparedDialogueJob, provider, cancelled, emit) -> bytes:
     """不接收 runtime、会话、generator 或 owner closure；异常只作为 JSON 文本返回。"""
     try:
+        def no_longer_permitted():
+            return cancelled.is_set() or (job.speech_lease is not None and not
+                job.speech_lease.permits(now_monotonic=monotonic(), actor_id=job.actor_id))
+
+        if no_longer_permitted():
+            return _json({'cancelled': True})
         if job.stage == 'cognition':
             return _json({'output': provider.complete_prepared_request(job.request_json)})
         if job.stage == 'tts':
             request = json.loads(job.request_json)
-            return _json({'output': provider.synthesize(request['actor_id'], request['content']).model_dump(mode='json')})
-        for item in provider.stream_prepared_request(job.request_json, cancelled=cancelled.is_set):
+            audio = provider.synthesize(request['actor_id'], request['content'])
+            if no_longer_permitted():
+                return _json({'cancelled': True})
+            return _json({'output': audio.model_dump(mode='json')})
+        for item in provider.stream_prepared_request(job.request_json, cancelled=no_longer_permitted):
+            if job.speech_lease is not None and not job.speech_lease.permits(now_monotonic=monotonic(), actor_id=job.actor_id):
+                return _json({'cancelled': True})
+            if cancelled.is_set():
+                # An uncooperative provider still owns its slot until it exits.
+                # Drop its chunks without pretending the remote work stopped.
+                if item['event'] in {'completed', 'cancelled'}:
+                    return _json({'cancelled': True})
+                continue
             if item['event'] == 'delta':
                 emit(str(item['delta']))
             elif item['event'] == 'completed':

@@ -154,6 +154,13 @@ class ProductionOutputCustodyIntent(StrictGameplayModel):
     command_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
     submitted_at: str = Field(min_length=1)
+    package_revision_pin: str | None = None
+    content_digest_pin: str | None = None
+    declaration_ref_pin: str | None = None
+    declaration_digest_pin: str | None = None
+    binding_ref_pin: str | None = None
+    active_set_digest_pin: str | None = None
+    mapping_revision_pin: str | None = None
 
 
 class DeclaredExchangeContent(ClosedFamilyContent):
