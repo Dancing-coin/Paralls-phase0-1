@@ -1,4 +1,4 @@
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.social_spatial_owner import SocialSpatialOwner
 
 
@@ -36,3 +36,20 @@ def test_social_spatial_owner_rejects_unauthorized_caller():
     result = owner.submit(**_kwargs(authorized_caller="godot"))
     assert not result.committed
     assert result.failure.error_code == "social_spatial_caller_not_authorized"
+
+
+def test_social_spatial_owner_receipt_replays_after_store_reopen(tmp_path):
+    path = tmp_path / "social-spatial.json"
+    first_store = DurableGameplayEventStore(path)
+    first = SocialSpatialOwner(store=first_store)
+    receipt = first.submit(**_kwargs())
+    assert receipt.committed
+    first_store.close()
+
+    restored_store = DurableGameplayEventStore(path)
+    restored = SocialSpatialOwner(store=restored_store)
+    replay = restored.submit(**_kwargs())
+    assert replay.idempotency_status == "duplicate_replayed"
+    assert replay.committed_event_ids == receipt.committed_event_ids
+    assert len(restored.replay("character:char_b")) == 1
+    restored_store.close()
