@@ -1,6 +1,8 @@
 import hashlib
 import json
+import ssl
 import time
+from threading import Lock
 from typing import Protocol
 
 import httpx
@@ -184,6 +186,8 @@ class HttpSimingLlmCandidateProvider:
         self._endpoint = endpoint
         self._model = model
         self._timeout_seconds = timeout_seconds
+        self._ssl_context: ssl.SSLContext | None = None
+        self._ssl_context_lock = Lock()
 
     @property
     def route_id(self) -> str:
@@ -254,6 +258,13 @@ class HttpSimingLlmCandidateProvider:
             ),
         )
 
+    def _verify_context(self) -> ssl.SSLContext:
+        # 仅复用信任上下文；CA 环境变更在 provider 重建后生效。
+        with self._ssl_context_lock:
+            if self._ssl_context is None:
+                self._ssl_context = httpx.create_ssl_context(verify=True, trust_env=True)
+            return self._ssl_context
+
     def _post_json(self, payload: dict[str, object]) -> tuple[dict[str, object], str, int, str]:
         started = time.monotonic()
         try:
@@ -262,6 +273,7 @@ class HttpSimingLlmCandidateProvider:
                 headers={"Authorization": f"Bearer {self._api_key}"},
                 json=payload,
                 timeout=self._timeout_seconds,
+                verify=self._verify_context(),
             )
             response.raise_for_status()
         except httpx.TimeoutException as exc:

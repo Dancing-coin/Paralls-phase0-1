@@ -210,7 +210,8 @@ class OrganizationWindowDueSource:
             if current is not None and self._owner_event(current):
                 self._apply(current, schedules, windows)
         projections, diagnostics = project_organization_due(schedules, windows, current_windows,
-            {event.stream_id: self._store.get_stream_head(event.stream_id) for event in schedules.values()},
+            {stream_id: self._store.get_stream_head(stream_id)
+             for stream_id in dict.fromkeys(event.stream_id for event in schedules.values())},
             window_end=window_end, observed_at=observed_at, scope=scope)
         pending_windows = {event.payload["operating_window_ref"] for event in schedules.values()}
         events = sorted((*schedules.values(), *(event for window, event in windows.items() if window in pending_windows)),

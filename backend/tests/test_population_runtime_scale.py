@@ -1,16 +1,54 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
+import pytest
 
 
 def _load_scale():
     path = Path(__file__).parents[2] / "scripts" / "verification" / "verify_population_runtime_scale.py"
-    spec = importlib.util.spec_from_file_location("population_runtime_scale", path)
+    spec = importlib.util.spec_from_file_location("scripts.verification.population_runtime_scale", path)
     assert spec and spec.loader
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+@pytest.mark.parametrize("abort_after_core", [False, True])
+def test_real_scale_releases_owned_sqlite_handles_on_success_and_failure(tmp_path, monkeypatch, abort_after_core):
+    scale = _load_scale()
+    owned = []
+    def capture(factory):
+        def construct(*args, **kwargs):
+            resource = factory(*args, **kwargs)
+            row = {"resource": resource, "closed": False}
+            close = resource.close
+            def tracked_close():
+                close()
+                row["closed"] = True
+            resource.close = tracked_close
+            owned.append(row)
+            return resource
+        return construct
+    monkeypatch.setattr(scale, "CharacterAgentRuntime", capture(scale.CharacterAgentRuntime))
+    monkeypatch.setattr(scale, "DurableGameplayEventStore", capture(scale.DurableGameplayEventStore))
+    if abort_after_core:
+        def fail_graph(*args, **kwargs):
+            raise OSError("injected graph opening failure")
+        monkeypatch.setattr(scale, "SQLiteHeavenlyGraphAdapter", fail_graph)
+    try:
+        result = scale.measure_scenario(population=3, window_count=2, wall_budget_seconds=1.0,
+            storage_path=tmp_path / "gameplay.sqlite3")
+        assert result["status"] == ("failed" if abort_after_core else "completed")
+        assert owned and all(item["closed"] for item in owned)
+        if os.name == "nt":
+            # 原生文件改名验证句柄释放，不能靠 GC 时机或忽略删除错误伪装清理成功。
+            for path in tmp_path.rglob("*.sqlite3"):
+                path.rename(path.with_suffix(".released"))
+    finally:
+        for item in owned:
+            item["resource"].close()
 
 
 def test_scale_matrix_uses_required_populations_windows_and_independent_budgets() -> None:

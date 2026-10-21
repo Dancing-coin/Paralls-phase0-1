@@ -2,7 +2,13 @@
 
 当前整体状态：**进行中，Godot 未验证（godot_unverified）**。本文件不是六项验收通过声明。2026-09-19 用户要求先忽略 Godot 表现，继续其余缺口；当前仍只验收100／1,000人，保留万人参数。当前工作目录为`D:/Paralls-phase0-1`的`main`，历史隔离工作树不再作为续作入口；不要将静态测试或合成证据测试记为引擎通过。
 
+2026-09-27 `02931e06`干净源码的真实模型短矩阵见`D:/HarnessEvidence/population-short-02931e06-20260927/manifest.json`，采集器退出1，独立离线复验同样判定`passed=false`。100人与1,000人各30窗的完整性均通过，真实provider各有2次合格调用；千人性能通过，最大lag为0.266窗；100人性能失败，最大lag为3.672窗。100人第23窗认知准备owner命令耗时约1,703ms，第24窗fixture耗时约1,675ms，其中`slow_group_exit`精确记录gameplay `group_commit()`退出阶段1,588.8ms；第24窗结束时owner队列深度12，至第29窗恢复。同期owner CPU从第22窗的7.11秒至第24窗仅增约0.41秒，说明这段墙钟延迟不能按CPU计算量解释。源码核对gameplay写连接已在启动时由`SqliteWalCheckpointWorker`关闭自动checkpoint，独立线程做PASSIVE checkpoint；不能把这次慢提交直接归因为提交线程自动checkpoint，更不能在没有文件级I/O证据时断言物理盘、同步写或其他进程是唯一根因。短矩阵失败且只有30秒，不代替正式soak或容量。
+
+2026-09-27 [CI #257](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/36308824257)后来结束：静态成功，`harness`在`phase0`的对话/observatory结果仍为`missing`，`population-correctness`新增一项非Godot失败，参数为`test_ws_perception_wait_does_not_hold_owner_and_disconnect_preserves_prefix[True-1-0]`。公开annotation仅给出子进程断言行号，未公开异常正文；本地同版单组通过。测试夹具中provider固定等待10秒自行退出，与owner独立5秒健康检查存在时序竞争；仅将夹具等待上限延长至30秒，owner响应预算及断线后的持久前缀断言不变。该文件7个参数化场景本地通过；远端复验尚未取得，不能将CI #257改记通过。Godot按约定暂不处理。
+
 2026-09-27 远端[CI #255](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/36302919031)按job页面核对：静态契约成功（1分32秒）、`population-correctness`成功（29分21秒），`harness`失败（36分30秒）；本次push的两个专用runner job按条件跳过。`harness`的`ci-all`因首个`phase0` profile失败而退出1，公开结构化报告将对话和observatory各结果标为`missing`；后续profile未执行，不能把`all`或mainline视为通过。公开annotation仅给出失败结果，没有证明是Godot导入、资产还是其他运行时原因；Godot外机验证和导入提前退出仍按用户约定另行处理。该CI源码为`2e6a4b11`，不能为其后的本地提交改签通过。
+
+后续[CI #256](https://github.com/Dancing-coin/Paralls-phase0-1/actions/runs/36306641816)对应`f8ba99ed`：静态契约、`population-correctness`、Harness工具测试和change-lifecycle步骤均成功；`Capture full harness evidence`仍在`phase0`报告同一批对话及observatory结果`missing`并退出1，mainline步骤跳过，两个专用runner job因push条件跳过。已按结构化job状态和公开annotations核对，不将重复失败归因于尚未取得的Godot日志；本轮`all`及总门禁继续未通过。
 
 2026-09-27 原`65f9b33b`同版2／4局真实provider容量采集与离线复验完成，证据见`D:/HarnessEvidence/population-multi-game-65f9b33b-20260927/manifest.json`，采集器退出0、六局各600测量窗、最终backlog均为0、每局46次provider调用，原报告`status=passed`。但原复验器虽然报告最大推进延迟，却未把计划规定的`max_lag_windows <= 1`纳入性能判定：两局峰值4.781—4.797窗，四局6.156—6.203窗，故该报告只能证明采集与完整性，**不能按原计划认定容量性能通过**。同版soak中100人／千人30分钟及千人2小时1×的最大lag分别为4.031／5.515／6.047窗，也不能沿用旧版的`performance_passed=true`。隔离工作树已将单窗门槛补入共享复验器，先复现RED、再通过160项mixed／容量相关测试；原证据不改签为新源码通过。四局第253窗同时停顿约6秒，fixture与cadence耗时分布不同，尚不能确认SQLite、磁盘或主机级原因。下一步需定位并消除这些真实峰值和千人2小时RSS超限，再冻结新SHA重采全部正式门禁；外机Godot仍为`godot_unverified`。
 
@@ -31,6 +37,8 @@
 `b3b0e122`干净源码的千人600秒`local_probe`诊断见`D:/HarnessEvidence/population-memory-metrics-b3b0e122-1000p600s`：采集退出0、60次owner心跳齐全、无采集错误，但manifest为`offline_verification_required`、`passed=false`，且未调用真实provider，不是正式门禁。首末分钟心跳中位数RSS约136.98／148.54MiB、private约123.27／135.74MiB、已分配块数约607,507／634,856；10分钟未证明平台化，也不能直接将private增长归为存活Python对象。第436—438窗的最大lag为4.328窗；同期记录一次`gameplay_durable_append`约578ms、连续两次`heavenly_graph_batch`各约1,660ms，三个owner窗口服务时间约2,484／1,891／1,937ms，而第435至438窗结束时的进程CPU总计仅增长约0.99秒。单局也会出现写入等待峰值，下一步需在可归属到文件／进程的I/O与checkpoint时序下区分SQLite、存储和主机等待；不因这组时间相关性改持久性策略或放宽最大1窗阈值。
 
 `02d30f3b`仅为上述诊断增加混合采集器的`graph_plan`与`graph_persist`慢阶段记录，业务图谱、SQLite设置和验收阈值未改；相关12项回归通过。干净源码的千人480秒同配方复跑见`D:/HarnessEvidence/population-graph-stage-02d30f3b-1000p480s`：采集退出0、48次心跳及480个测量窗完整，无慢写或慢图谱阶段，最大lag约0.641窗，仅一次约641ms的owner窗口命令。该反例表明前次写入峰值不是同一输入在第436窗稳定触发的；仍为`local_probe`、`offline_verification_required`，不计正式门禁，也不以无峰值证明修复。停止重复本机短跑，后续需要在可采集文件级I/O与checkpoint时序的固定机器追查偶发等待。
+
+进一步源码核对发现每窗合法due fixture的`group_commit()`在`with`退出后才执行SQLite `connection.commit()`；原`slow_writer`只计内部`append_batch`，因此不能解释第438窗约1.75秒fixture时间中未出现慢单笔写入的部分。混合采集器现增加独立`slow_group_exit`记录，只计退出阶段超过250ms的耗时；异常回滚也按退出耗时记录，不标记为成功提交。该变更不改业务事务或门槛，包含成功和异常路径的定向13项测试通过；尚无新峰值证明该盲区就是此前停顿根因，需待后续真实测量对时。
 
 后续同日稳态诊断保留于`D:/HarnessEvidence/population-rss-steady-trace-65f9b33b-100p-300s`：100人`local_probe`在130秒空闲截面和排空末态的owner队列均为0、provider活跃数均为0；两截面间`tracemalloc`存活分配净增1,037,243字节，其中含追踪器自身分配，心跳RSS中位数约增20MiB。它表明本次插桩运行的RSS变化不能直接归为存活Python对象增长，但不证明原生分配或碎片化就是正式2小时超限根因。`D:/HarnessEvidence/population-rss-model-census-65f9b33b-100p-120s`与上述300秒计数显示`WebSocketSessionLifecycleRecord`先升至218，随后达到代码既有的256条上限；不得据此再做无意义的关闭记录截断。正式2小时原始心跳按10分钟分箱，owner RSS中位数从约149.72MiB持续升至210.39MiB，父进程约115至118MiB，未呈平台化。两个新探针均为隔离脏源码的诊断，不能替代正式千人负载或重签旧报告。
 
@@ -106,7 +114,7 @@ python -m uvicorn app.main:app --ws websockets --host 127.0.0.1 --port 8000
 
 ## 外机准备
 
-使用包含本文及 `scripts/verification/verify_population_godot_runtime.py` 最新改动的同一代码版本。保持原仓库/原 Godot project，执行 `git lfs pull`，不要另建项目。真实验证机需要 Python **3.12.14**、Godot **4.6.3 stable**、支持 Vulkan Forward+ 的 GPU，以及可见桌面。机器可保持离线模型配置：本 profile 显式使用 local fixture，不调用真实模型，真实 Character/Siming 模型验收属于另一项门禁。
+使用包含本文及 `scripts/verification/verify_population_godot_runtime.py` 最新改动的同一代码版本。保持原仓库/原 Godot project，执行 `git lfs pull`，不要另建项目。真实验证机需记录实际 Python 版本及依赖快照；Python 升级后重跑原始证据门禁，不因版本号变化直接拒收。Godot 仍需 **4.6.3 stable**、支持 Vulkan Forward+ 的 GPU，以及可见桌面。机器可保持离线模型配置：本 profile 显式使用 local fixture，不调用真实模型，真实 Character/Siming 模型验收属于另一项门禁。
 
 ```powershell
 python -m venv .runtime/godot-verification-venv
@@ -144,7 +152,7 @@ GitHub Actions 的 Harness 手动入口提供 `run_population_godot`，默认关
 .runtime/godot-verification-venv/Scripts/python.exe scripts/verification/verify_population_godot_runtime.py --verify-artifacts 'D:/verification/population-godot-external-001'
 ```
 
-返回0且总 `godot_status=runtime_verified` 才能更新 Godot 门禁；缺任一档、错误版本、缺原始文件、帧超预算、authority变化、无恢复链或进程异常均返回2，保持未验证。不要用旧成功结果补本次缺失文件，不要改 CSV 或删除慢帧。
+返回0且总 `godot_status=runtime_verified` 才能更新 Godot 门禁；缺任一档、Godot 版本不符、Python 版本元数据缺失或无效、缺原始文件、帧超预算、authority变化、无恢复链或进程异常均返回2，保持未验证。不要用旧成功结果补本次缺失文件，不要改 CSV 或删除慢帧。
 
 ## 继续执行的入口
 
@@ -312,3 +320,38 @@ ASK 恢复格式从 `recovery_version=1` 升为 `2`。首次打开旧库在同�
 该提交的本地 change-lifecycle、correctness（focused 1704项）、真实模型short两档通过。100人30分钟混合场景也通过独立复验，p95约119.6ms、max lag约0.735、最终backlog0，SQLite锁释放后约0.96秒恢复；长测矩阵其余case为诊断CI而未启动，不计矩阵通过，千人2小时内存门禁仍待验证。
 
 CI #207失败定位到两项scheduled cognition的子进程断言；本地原场景双核通过，但10秒合法模型延迟确定触发原固定次数等待提前失败。仅测试改为有界条件等待，保留所有最终正确性与owner响应断言，四参数回归通过。新增CI诊断只提供内置异常类型、真实仓库路径行号及内嵌子进程数值行号；Phase0缺报告的实际原因和远端修复效果仍待新CI。Godot继续标记未验证。
+
+## 6a03a0fd 本机容量验收
+
+最新本机四局各 600 秒已完成并通过原 verifier，标记该项处理完成：cadence p95 169.831--172.163ms，max lag 0.872--0.877，最终 backlog 0。证据为 `D:/ParallsEvidence/paralls-hotpath-goal-20260930T164708Z/live-capacity-round2-artifacts/matrix/4-games`，绑定提交 `6a03a0fdcbba66096b2756a1a500442209af48eb`。后续源码改动的覆盖须单独判断，不能把此结果改写为新提交验收。
+
+该结果仅适用于当前机器。原机器 `D:/ParallsEvidence/paralls-six-closure-20260929T020900Z` 的失败记录保留，未证明原机器性能问题解决。千人完整两小时的 RSS/lag 与两档各 30 窗 10× 仍未通过；Godot 按用户要求暂停，Archive Door 与 VLA 保持各自真实阻塞，六项闭环尚未完成。
+
+## 2026-10-10 计划 A 候选的完整 soak 与帧生命周期修复
+
+候选 HEAD `bc016b8ea1c7d6c5e52fd426f34f6b88506457d7` 的 dirty 源码摘要 `sha256:7b6ead4096f66d015472f4fddb81f0c43f8ff9d50f5fada3c6d9c62ee8640a52` 完成真实 provider 千人、1×、7200 个测量窗口及 9 个 drain 窗口。采集退出 0，486 次合格真实调用，原 verifier 的完整性和性能均未通过：cadence p95 149.286 ms 低于 800 ms 预算，但稳态最大 lag 1.215131 超过 1 窗；6236、6237 两窗超限，6238 窗追平。owner RSS 首末 30 分钟中位数增长 34,017,280 字节，超过 33,554,432 上限；父进程与 owner 配对合计增长 33,964,032 字节，同样超限。恢复、单 writer、provider 隔离和 drain 检查通过，不能替代 RSS/lag 门。
+
+证据 `D:/ParallsEvidence/paralls-plan-a-soak-20261010T131122Z` 已封存，seal SHA-256 `dad74780b9268410449ceb4c37bb0958c763391bad6a00edf1e8ba8a7a0ce067`；187 个绑定、14 个命令、14 个拥有 TEMP 已清理、无拥有进程残留。正式 clean-source 门独立 blocked；旧报告和原机器失败保留。
+
+随后修复 `population_frame_scope` 退出时的借用撤销：复制 context 共享的记录现在标记已消费并释放 event/frame，保留入口快照撤销和外层 token 恢复。正常/异常、已消费/未消费四种真实回归先全部失败，修复后通过；原 prepared delivery、ingress snapshot、durable cadence recovery 合计 62 项通过。证据 `D:/ParallsEvidence/paralls-frame-lifetime-20261010T152828Z`。这是可复现的生命周期缺陷，尚未证明其在默认 soak 实际触发或造成 RSS 增长；修复后的源码须形成新身份并完成必要全套验证，不能继承上述旧源码的性能结论。两档 10× 和 FULL 写入长尾仍未闭合。
+
+
+## 2026-10-11 未投递队列历史扫描修复
+
+候选source `sha256:38d6e64fe36ac5e7ec04035c40b6dabf9ccdfbf4cc9196729e1656e61b4f5890` 在既有持久账本中将无transaction定向过滤的pending列表约束到已有pending索引，并在旧库装配清单补齐这两项索引。保留原delivery_state筛选、topic/transaction/keyset/high-water/limit、返回隔离、FULL、单Owner、幂等/CAS和恢复；不改投递/ACK批次或增添异步writer。
+
+实际晚期组件探针原64次pending topic查询误选完整topic索引，累计1880.378ms（58.762ms/窗）。四个有界SQLite VM步骤回归：正确复现为旧版3failed/1passed，修复4passed；首次测试夹具command_id不一致的失败独立保留，不能算根因RED。原outbox/持久账本/人口进程恢复等106项通过。晚期恢复组件SQL边界65.553→9.379ms/窗、cadence中位147.628→90.325ms，只是显式省略startup全历史补发后的组件诊断，不证明完整生产恢复、474ms FULL提交长尾或两小时RSS已解决。
+
+本源原10×两档各3秒/30测量窗完整性均通过、性能均失败：百人cadence p95 45.601ms，lag1.033422>1/最终积压1；千人p95 89.7479ms>80，lag7.914538/最终积压7。实际provider调用0，formal仍被dirty源码门拒绝。首次千人verifier于wrapper最终manifest时间前约51ms启动，原采集终态后另复验得到完全相同失败结果，记录保留。
+
+完整回归/后端profile及进一步真实provider结果以仓库外本轮报告为准：`D:/ParallsEvidence/paralls-pending-outbox-index-20261010T170540Z/reports/report.md`。前轮定位证据已封存 `D:/ParallsEvidence/paralls-late-path-diagnosis-20261010T161443Z`，seal93ddde0ebb90fe6ebbe84d6150a9381247a62bf72dc5ad9b3deb123ed02a7c56；15所属TEMP已清，旧证据保留。
+
+原CG完整7200秒失败、CH生命周期修复和原机器限制不改写。本机main6a四局各600秒completed只绑定其原证据；本候选整体Goal未完成，当前源长窗未签。计划A公共后端/最小B/BM1与HM1/HM2真实来源门分别处理，Godot/all用户暂停，ArchiveDoor/VLA独立blocked；不提前打开active/E/F。
+
+## 2026-10-12 合入与换机验收
+
+用户明确要求先合入 main，暂不在本机继续验证；按此授权提交当前候选，完整交接见 [计划 A 换机验收](plan-a-machine-handoff.md)。这不是全部验收通过声明，旧 dirty 证据不能因后来提交而改签。
+
+最近候选生产源码 `sha256:bc9c12b6caf9f67709a76f0d7e69f220ad8ab50d2b73ba36e2bd21418c121081` 的既有全量为 8086 passed/2 skipped；14 后端 profile 执行通过，但 scale 性能字段 false。百人原 10× 30 窗完整性/性能通过；千人 10× p95 80.6232ms、lag 7.081314、最终积压 7，仍失败。完整千人 7200 秒原离线复验完整性/性能子门通过，481 次合格真实调用；p95 110.8878ms、lag 0.6180254、最终/最大积压 0，RSS 增长 32,626,688 B（上限 33,554,432 B）。正式 clean-source 门保持其采集时的 blocked，单次通过不抹除历史 RSS/刷盘长尾失败。
+
+证据为 `D:/ParallsEvidence/paralls-correlation-prefix-qualification-20261011T020530Z`。本次合并不再运行测试；新机器须对合入后的固定干净提交重做正式矩阵、2/4 局容量、Godot/all 与真实来源门验收，原机器限制、Archive Door/VLA、HM1/HM2 和 C3/active/E/F 的状态分别保留。

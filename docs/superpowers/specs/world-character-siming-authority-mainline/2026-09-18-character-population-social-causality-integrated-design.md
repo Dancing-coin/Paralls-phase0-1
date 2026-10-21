@@ -2,6 +2,8 @@
 
 日期：2026-09-18。
 
+实施适配（2026-10-10）：用户已授权计划A及其必需最小依赖完整落地，当前candidate实现和验证入口见两份计划的最新进度。下文此前“未接线/仅共享合同”是对应批次的历史说明。本轮添加选择性B0准入/V2恢复、新Core锚点重新入组、实际洪灾公共Owner/Core纵切和固定日供给纯计算/模式旁路；不改变原世界时钟、事实Owner、性能门槛或Godot职责。HM1/HM2完整真实来源及生产grant、C3安全分摊、M-active/E/F仍分别保留门禁。
+
 组织修订：`2026-09-18-r3`。复审保留两份计划与甲乙分工；M 首期收敛为固定的“日供给分片可行性计算器”，明确现有关系读取、B0 读侧汇总和 shadow/advisory 分阶段边界。
 
 状态：`draft_for_review`。本文件是本次文档整合产生的主 spec 草案，不是实现完成记录，不授权运行时代码变更，也不自动取代原有已确认基线。正文中“必须”表示拟议验收合同；新增裁决在第 18 节单独列出，不能当作用户此前已批准的决定。
@@ -171,6 +173,12 @@ impact 索引、失效通知与缓存作废用于及时反应。即使通知延�
 
 `module_states` 使用已登记模块 schema；`typed_payload` 必须受版本化 proposal schema 限定，不能成为自由 JSON 写入口。群体请求只引用获权聚合帧/分片输入，不能为了使用共享帧而在每个 B0 窗口展开所有个人档案。
 
+**2026-10-08 A1 接口适配：** 当前用户授权实施计划 A；本说明不将 B 业务算法或后继门禁视为已交付。新建议 V1 使用 `kind` 判别的五个封闭载荷：continuity_delta 含 `expected_group_revision` 和仅允许已登记模块字段的 `state_delta`；activity_candidate 含 `activity_ref`；action_candidate 含 `intent_ref` 和 `capability_ref`（只引用既有请求）；upgrade_request 含 `trigger_ref` 和 B1/B2/B3 `target_fidelity`；decision_conflict 含非空 `constraint_refs`。每种载荷有固定 `schema_revision`，外层 proposal_kind 必须一致；不携带任意 Owner payload。`validate_module_proposal` 在原推进主体选择前复核模块/version、frame digest、完整来源向量、字段、许可精度和到期 tick；这不替代 Owner 实际提交时的 read-set/CAS 验证。
+
+新 `SimulationCommitPacket` 的个人路径携带完整的 `expected_character_revision`、`lock_ref`/`lock_revision` 和原 `read_set_digest`；群体路径不能冒用个人凭据。`IntersectionPacket` 同时携带原 authority 的 `lock_revision`，不另造代次。新增窗口必须满足 `from_tick < to_tick`。这些合同只传递原提交链的请求/凭据，不自行执行写入。无凭据的历史 CharacterContinuityCommand 保持原 wire/digest，新凭据严格成对且在 Core 实际接纳处复核。
+
+`validate_module_proposal(...) -> ModuleProposal` 返回经过 schema 复核、嵌套隔离和声明校验的建议，消费者使用返回值；不能以输入曾构造为 frozen 模型代替接纳检查，Pydantic model_copy/model_construct 可绕过构造校验。按需 frame 在 builder 处构建一次，建议接纳不再次展开完整角色帧，也不在 schema validator 查询世界。
+
 ### 6.2 参与策略
 
 原型默认 + 个体覆盖 + 情境预设 + 已确认承诺与锁 → 一份 ParticipationResolution。个体覆盖默认只能收紧或细化；放宽需要明确、获批的玩法规则和迁移版本。Siming 与角色智能体消费同一结果，不能各自解释另一份进入/退出规则。
@@ -197,6 +205,8 @@ impact 索引、失效通知与缓存作废用于及时反应。即使通知延�
 
 ### 7.2 分摊边界
 
+2026-10-10 A2 V1后端适配：成员锚点、读取许可、保护引用与实际确认结果引用沿原World Owner/GameplayEventStore保存。入组一次记录cohort锚点，后续确认和消费写对应member流，使用原CAS、幂等与checkpoint/replay；不写一份人口/库存/记忆库。新封闭schema为 `population.world.member_ledger_recorded@1`，authority_only；旧事件不追溯改义。首期只消费Organization真实班表中明确recipient的确认；必须校验实际transaction的Owner、原事件digest与Owner提交revision vector。缺来源、组织总量或模型报告不能生成个人pending结果。消费使用原Core持久化receipt和原幂等键，并核验来源版本；联合receipt以明确actor的实际来源版本上界核验，不能借当前head替换旧pin。成员消费cursor是原来源事件的global sequence，不能覆盖Core simulation_tick_cursor。尚无合法群体协议时group_cursor=0，distribution_policy=none；其他领域适配和A5公共消费者仍需后继交付。
+
 S1 保留未来“已登记 distribution policy 提出允许字段个人增量”的架构能力，不代表当前代码已实现或本轮首期已准入。本轮 A2/B3/BM1 均不从群体平均值生成个人连续性增量；distribution_policy 使用 `none`。成员账本记录身份锚点、保护引用、分片与交接进度，不消费模型报告为个人状态。
 
 现有按 actor 的连续积分，以及 B4/B5 根据明确 actor 和真实 Owner receipt 接纳的结果，可沿原路径继续；这两者都不是把分片均值分给个人。后续如需安全分摊，须另列字段归属、个人基准、分配规则、守恒/保护条件、确定性、幂等和 replay 的独立任务；不能由模型成功或账本 replay 通过自动打开。
@@ -206,6 +216,8 @@ S2 编译器的 B0 输出限定为 cohort/shard/pool/route/process batch 总量�
 角色退出 B0 时，交接路径使用入组锚点、保护约束、可归因到该 actor 的确认结果与版本化规则构造最小上下文。获权群体报告最多作为情境摘要，无法安全归因到个人的结果返回 unknown 或升级请求，不能把群体平均值写成个人损失、获救或记忆事实。
 
 ### 7.3 交接过程
+
+2026-10-10 A3 V1后端适配：原authority从持久activation流补尾恢复锁代次和pending；普通lease折叠自己的实际提交，不扫描历史。仅fresh生产启动取得原RuntimeStorageLease独占存档后，正式释放旧进程锁，再恢复原认知admission/frozen request；普通重建不释放、存活handle拒绝恢复、release失败终止启动，不按PID或timeout猜测接管。World在原member流追加独立 `member_handoff_recorded@1` 事件并保留原A2 schema；纯包只保留当前actor保护/获权引用及未接纳Core的确认来源refs，不含私有正文、均值分摊或自动执行。World接纳须当前authority和Core实际绑定world的同一锁凭据、Core revision/tick及原store CAS，返回原append结果；包存在或幂等重放不能授予新锁。后来Owner来源只更新原member pending，新帧再消费，不改旧包。A5公共/B业务消费者尚未接线，回B0的新解析/锚点与生产总验收未由focused回归替代。
 
 ```text
 触发交集
@@ -261,6 +273,8 @@ Owner receipt → CharacterContinuityCommand → Character Core 校验与接纳 
 
 历史回放必须能从原有事件/连续性/获权证据存储重建当时输入，并核对来源 digest。grant 或内容已失效时，普通运行读取失败；历史审计由当前有效的专用审计权限读取已保留历史，不把旧授权自动恢复给普通消费者。历史内容确实缺失时返回 replay_input_unavailable，不得声称精确重放成功。
 
+**2026-10-10 A4 V1适配：** `CodebookReadService`仅由可信Owner装配读取函数，调用者不能给`read`传入自签policy或正文。纯`expand_codebook`不证明policy的来源认证，只消费同一原Owner读边界产生的封闭`CodebookReadPolicy`；未来A5接线须维持该信任边界，不能把它直接暴露为任意JSON授权端点。新policy固定包含读者/角色、目的/范围/层级字段、当前policy revision/有效区间、来源ref/type/revision/digest及安全摘要digest，索引不能自行扩权。新source revision为非空字符串标识，digest为SHA256；无历史来源可用None表达。历史purpose固定`history_audit`且需要当前独立historical授权。正文先冻结为独立快照，摘要校验和字段过滤使用同一内容；服务交付前再核对完整授权内容，撤销或同revision下字段变化均拒绝。该通用只读端口不新建存储、writer或router，也不自行授予Owner权限。
+
 不为模型新增独立事件库。必要的只读审计输入和运行决定沿既有获权持久化路径保存；如果该路径无法满足保留合同，相关模板不能通过回放验收。
 
 ## 10. 社会模型编译器
@@ -313,6 +327,8 @@ V1 的固定运算顺序由源码定义；它可作为 S2 封闭 IR 的单一已
 CandidateEnvelope 的扩展目录允许 prediction、action_candidate、continuity_or_state_delta_candidate、conflict、risk、expansion_request、protocol_call_request；这不是首期全部实现清单。日供给 V1 仅输出下述 DailySupplyReport 及获权复核/升级类别，不生成个人 continuity delta 或协议调用。后续连续性候选须使用已登记 ModuleProposal schema，且受 ParticipationResolution 约束。
 
 ModelRunGrant 由司命在既有 tick 中按获权范围签发。B0 由已批准群体策略选择是否采纳；B1/B2 由既有脚本规则选择；B3 由角色智能体在合法私有上下文内选择。Owner 收到协议请求后只按领域规则验证和结算，不因接到模型候选而获得一般角色决策权。
+
+**2026-10-10 AM1 V1共享契约适配：** 固定daily-shard-supply@1与八维目录，grant显式policy_revision；FactCard/Proof包含原Owner实际source_revision_vector，原source_digest和获权过滤content_digest分开。vector绑定名单查询/分片、来源读集、内容/规则/模板/算子、原观察标识及仿真窗口；深层冻结，model_copy须重验，稳定卡顺序纳入input_digest。数量为非负63位整数，V1倍率0–10000bps、单日86400 tick、最多100工作单位。纯校验不认证客户端自签grant/card；可信治理签发、真实Owner窄读取和使用前当前pins/权限/expiry复核仍属HM1。receipt只含refs/pins，pins_checked不提升为Owner已认证。共享契约profile通过不代表BM1数值算法、shadow/advisory或A5接线完成。
 
 ### 10.3 图谱、预算与确定性
 

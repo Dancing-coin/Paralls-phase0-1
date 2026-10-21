@@ -52,6 +52,26 @@ class CharacterCognitionDriver:
                 raise RuntimeError('cognition_activation_cleanup_pending')
             self._handles.pop(key)
 
+    def preempt_actor(self, actor_id: str, *, reason: str = "player_priority_preempted") -> tuple[str, ...]:
+        """Release scheduled cognition so a focused player turn can own the actor.
+
+        This is an admission handoff, not a lock bypass: the scheduled entry is
+        marked stale and its lease is released before the player activation is
+        attempted. Provider work is cancelled and its slot is returned.
+        """
+        preempted = []
+        for key, handle in tuple(self._handles.items()):
+            if handle.actor_id != actor_id:
+                continue
+            active = self._active.pop(key, None)
+            if active is not None:
+                _, _, slot, cancelled = active
+                cancelled.set()
+                slot.close()
+            self._stale(key, ValueError(reason))
+            preempted.append(key)
+        return tuple(preempted)
+
     def _stale(self, key, error):
         admissions = self.coordinator.admissions
         entry, progress = admissions.read(key), admissions.read_progress(key)

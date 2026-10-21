@@ -106,8 +106,8 @@ class PopulationRecoveryState(_RecoveryModel):
                 entry.due_tick != actor.next_due_tick or entry.revision != actor.revision
             ):
                 raise ValueError("population_recovery_due_revision_invalid")
-        if any(actor.last_update_tick != (self.confirmed_tick or 0) for actor in self.actors):
-            raise ValueError("population_recovery_actor_tick_invalid")
+        self._validate_actor_ticks()
+        confirmed_ids = self._confirmed_actor_ids()
         if self.confirmed_tick is None:
             if any(value is not None for value in (self.rule_identity, self.last_receipt, self.last_fingerprint)):
                 raise ValueError("population_recovery_confirmation_invalid")
@@ -117,10 +117,40 @@ class PopulationRecoveryState(_RecoveryModel):
                     or not all(self.rule_identity) or self.rule_identity[-1] != "public"
                     or receipt.status != "committed" or not receipt.cadence_id
                     or receipt.window_start < 0 or receipt.window_start >= receipt.window_end
-                    or receipt.window_end != self.confirmed_tick or receipt.advanced_count != len(self.actors)):
+                    or receipt.window_end != self.confirmed_tick or receipt.advanced_count != len(confirmed_ids)):
                 raise ValueError("population_recovery_confirmation_invalid")
             _validate_receipt_binding(receipt, self.last_fingerprint)
         return self
+
+    def _confirmed_actor_ids(self) -> tuple[str, ...]:
+        return tuple(actor.actor_id for actor in self.actors)
+
+    def _validate_actor_ticks(self) -> None:
+        if any(actor.last_update_tick != (self.confirmed_tick or 0) for actor in self.actors):
+            raise ValueError("population_recovery_actor_tick_invalid")
+
+
+class SelectivePopulationRecoveryState(PopulationRecoveryState):
+    """显式参与策略下保存各角色真实游标；不弱化既有 V1 全人口合同。"""
+
+    schema_version: Literal[2]
+    active_b0_actor_ids: tuple[str, ...]
+    participation_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    cohort_ref: str = Field(min_length=1)
+
+    def _confirmed_actor_ids(self) -> tuple[str, ...]:
+        ids = self.active_b0_actor_ids
+        if (ids != tuple(sorted(set(ids))) or not set(ids).issubset(actor.actor_id for actor in self.actors)
+                or (self.confirmed_tick is None and ids)):
+            raise ValueError("population_recovery_active_actors_invalid")
+        return ids
+
+    def _validate_actor_ticks(self) -> None:
+        active = set(self._confirmed_actor_ids())
+        tick = self.confirmed_tick or 0
+        if any(actor.last_update_tick > tick or (actor.actor_id in active and actor.last_update_tick != tick)
+               for actor in self.actors):
+            raise ValueError("population_recovery_actor_tick_invalid")
 
 
 class PopulationRecoveryCheckpoint(_RecoveryModel):
@@ -135,7 +165,7 @@ class PopulationRecoveryCheckpoint(_RecoveryModel):
     record_digest: str
     receipt: PopulationCadenceConfirmationReceipt
     fingerprint: str
-    recovery_state: PopulationRecoveryState | None = None
+    recovery_state: PopulationRecoveryState | SelectivePopulationRecoveryState | None = None
 
     @model_validator(mode="after")
     def bound_receipt(self) -> PopulationRecoveryCheckpoint:
@@ -164,7 +194,8 @@ def parse_population_checkpoint(world: WorldContinuityRuntime, checkpoint) -> Po
             or data.context_digest != world._recovery_context_digest()
             or data.kernel_digest != kernel_digest
             or data.cadence.world_ref != world.mode.world_ref or data.cadence.world_mode_revision != world.mode.revision
-            or data.receipt.advanced_count != len(world.roster.actor_ids)):
+            or (data.receipt.advanced_count != len(world.roster.actor_ids)
+                if world._character_participation is None else not 0 <= data.receipt.advanced_count <= len(world.roster.actor_ids))):
         raise ValueError("population_recovery_checkpoint_context")
     stream = f"population-cadence:{world.mode.world_ref}"
     expected_projector = ("population-recovery:" if data.recovery_state is not None else "population-receipt:") + world.mode.world_ref

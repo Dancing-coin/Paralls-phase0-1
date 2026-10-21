@@ -1,5 +1,6 @@
 """混合负载的服务端启动装配与故障；不新增生产 HTTP 写入口。"""
 import asyncio
+from inspect import getclosurevars
 from contextlib import closing
 from time import perf_counter, sleep
 import sqlite3
@@ -40,13 +41,7 @@ class MixedWindowProbe:
 
     def install(self, stack):
         from unittest.mock import patch
-        from app.population_continuity.runtime_publication import RuntimeCadencePublisher
         from app.world_runtime import population_driver
-        original = RuntimeCadencePublisher.__call__
-        def publish(publisher, cadence):
-            self.publisher = publisher
-            return original(publisher, cadence)
-        stack.enter_context(patch.object(RuntimeCadencePublisher, "__call__", publish))
         clock = population_driver.monotonic
         self._driver_clock = clock
         def observe_clock():
@@ -63,6 +58,8 @@ class MixedWindowProbe:
         from dataclasses import asdict
         from scripts.verification.population_mixed_fixture import prepare_due_fixture
         driver = self.main._population_runtime_driver
+        # 读取默认装配的实际 owner，避免包装发布绑定使原生首发资格失效。
+        self.publisher = getclosurevars(driver.publish_window).nonlocals["publisher"]
         original = driver.tick
         def tick(target):
             if self.origin is None or self.driver_origin is None or target != driver.current_tick + 1:

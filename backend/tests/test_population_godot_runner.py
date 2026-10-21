@@ -93,10 +93,13 @@ def test_self_reported_capture_cannot_pass_without_raw_evidence(tmp_path):
 def test_missing_external_engine_writes_failed_manifest_without_running_godot(tmp_path, monkeypatch):
     from scripts.verification import population_godot_runner as runner
     monkeypatch.setattr(runner, "source_manifest", lambda: dict(source_sha256="sha256:test", files={}))
-    monkeypatch.setattr(runner.platform, "python_version", lambda: "3.12.14")
+    monkeypatch.setattr(runner, "_runtime_resource_paths", lambda: [])
+    monkeypatch.setattr(runner.platform, "python_version", lambda: "3.13.9")
     output = tmp_path / "capture"
     result = runner.collect(output, tmp_path / "not-installed-godot.exe")
     assert result["status"] == "failed" and result["godot_status"] == "godot_unverified"
+    assert "fixed_python" not in result["error"]
+    assert result["environment"]["python"] == "3.13.9"
     assert json.loads((output / "manifest.json").read_text())["cases"] == {}
     assert result["collector_pid"] == runner.os.getpid()
 
@@ -106,6 +109,11 @@ def test_harness_cli_uses_unique_external_capture_and_preserves_status(tmp_path,
     import sys
     from scripts.verification import population_godot_runner as runner
     from scripts.verification import verify_population_godot_runtime as verify
+
+    # 此用例验证直接 CLI；由 monkeypatch 在结束后恢复外层 profile 的上下文。
+    for key in ('HARNESS_RUN_ID', 'HARNESS_PROJECT_ROOT', 'HARNESS_EVIDENCE_ROOT',
+                'HARNESS_ATTEMPT_ROOT', 'HARNESS_ATTEMPT_ID'):
+        monkeypatch.delenv(key, raising=False)
 
     called = []
     def capture(output, godot):

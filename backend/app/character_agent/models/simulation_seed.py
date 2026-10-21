@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SerializerFunctionWrapHandler, model_serializer, model_validator
 
 from app.population_continuity.models import ContinuityModel
 
@@ -111,9 +111,13 @@ class CharacterContinuityCommand(ContinuityModel):
     policy_revision: str = Field(min_length=1)
     idempotency_key: str = Field(min_length=1)
     world_effect_required: bool = False
+    activation_lock_ref: str | None = Field(default=None, min_length=1, strict=True)
+    activation_lock_revision: int | None = Field(default=None, ge=0, strict=True)
 
     @model_validator(mode="after")
     def validate_command(self) -> "CharacterContinuityCommand":
+        if (self.activation_lock_ref is None) != (self.activation_lock_revision is None):
+            raise ValueError("command_activation_credential_incomplete")
         if self.to_tick < self.from_tick or self.simulation_tick_cursor < self.to_tick:
             raise ValueError("command_tick_range_invalid")
         if len(set(self.source_owner_receipt_refs)) != len(self.source_owner_receipt_refs):
@@ -127,6 +131,15 @@ class CharacterContinuityCommand(ContinuityModel):
             raise ValueError("owner_settlement_required")
         _check_vector(self.source_revision_vector)
         return self
+
+    @model_serializer(mode="wrap")
+    def serialize_command(self, handler: SerializerFunctionWrapHandler) -> dict[str, Any]:
+        data = handler(self)
+        # 旧命令的规范载荷和已持久化摘要不能因新增可选凭据改变。
+        if self.activation_lock_ref is None and self.activation_lock_revision is None:
+            data.pop("activation_lock_ref", None)
+            data.pop("activation_lock_revision", None)
+        return data
 
 
 class CharacterContinuityReceipt(ContinuityModel):

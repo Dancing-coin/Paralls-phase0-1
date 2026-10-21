@@ -73,6 +73,18 @@ def test_live_proof_report_redacts_inline_image_payloads_recursively() -> None:
     assert redacted == {"source_ref_lineage": ["redacted_data_image"], "nested": {"value": "safe"}}
 
 
+def test_live_proof_image_handles_unset_optional_config(tmp_path: Path) -> None:
+    image = resolve_live_proof_image(
+        tmp_path,
+        configured_url=None,
+        configured_path=None,
+        use_godot_runtime_capture=False,
+        max_godot_capture_age_seconds=60,
+    )
+    assert image.source == ""
+    assert image.failure_reason == "missing_live_proof_image"
+
+
 def test_annotation_sample_capture_uses_its_own_scope_and_runtime_report(tmp_path: Path) -> None:
     capture = tmp_path / "capture.png"
     capture.write_bytes(b"\x89PNG\r\n\x1a\n")

@@ -86,12 +86,15 @@ is historical and predates the final contract projection tightening.
 - [ ] 复用原 Durable store/idempotency/session stages，不造平行 outbox truth。
 - [ ] 同一实际 owner 的 full/checkpoint+tail 与零重复写证据；定向验证后更新 R09 并提交。
 
-**2026-10-21 goal proposal recovery probe:** the restored frozen request and
-admission are observed before startup polling; polling safely terminates as
-`stale` on actor-pin drift, with no goal event write and no provider call. The
-focused test is green after asserting this fail-closed outcome. This is a
-negative safety result only; valid provider resume, original goal-owner
-acceptance, exact-once replay, and R09 remain open.
+**2026-10-21 goal proposal recovery probe:** the valid probe now creates its
+percept as an L1 snapshot, avoiding an unrelated unsettled canonical turn. The
+first process freezes the original provider request and is hard-killed; the
+second resumes the same admission and byte-identical request, then the original
+goal owner writes one `goal_state_event` and terminal receipt; a third process
+reopens the completed admission without another provider call. The focused
+cross-process test passed (1 passed, 11.53s). This closes only the valid
+goal-proposal provider-resume/receipt/reopen subitem; full replay coverage and
+R09 remain open.
 
 ## Task 4: 按实际依赖交错收口角色与领域
 

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "name": "social-model-compiler-contract",
+  "order": 2100,
+  "include_in_profile_order": false,
+  "include_in_all": false,
+  "script": "scripts/verification/verify_social_model_compiler_contract.py",
+  "requires_godot": false,
+  "max_attempts": 1,
+  "result_artifact": ".harness/verification/social-model-compiler-contract-report.json",
+  "description": "AM1/BM1固定纯计算与只读模式边界；完整真实来源和生产授权仍保留门禁",
+  "success_key": "overall_passed"
+}

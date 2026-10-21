@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sqlite3
 import sys
-from threading import Lock
+from threading import Lock, get_native_id
 from dataclasses import dataclass
 import json
 from time import perf_counter
@@ -251,12 +251,37 @@ def percentile(values: list[float], fraction: float = .95) -> float:
 class SqliteReadMeter:
     """冷启动子进程内统计实际返回行/字节和 VM 步数，不记录 SQL 参数或数据。"""
 
-    def __init__(self, *, vm_interval: int = 100) -> None:
+    def __init__(self, *, vm_interval: int = 100, slow_record=None) -> None:
         if vm_interval < 1:
             raise ValueError("invalid_vm_interval")
         self.vm_interval = vm_interval
         self.databases: dict[str, dict[str, int]] = {}
         self._lock = Lock()
+        self.slow_record = slow_record
+        self._slow_record_failure: str | None = None
+
+    def _timed(self, connection, operation, invoke, *args, **kwargs):
+        if self.slow_record is None:
+            return invoke(*args, **kwargs)
+        started_at = perf_counter()
+        error_type = None
+        try:
+            return invoke(*args, **kwargs)
+        except BaseException as error:
+            error_type = type(error).__name__
+            raise
+        finally:
+            finished_at = perf_counter()
+            if finished_at - started_at >= .25:
+                try:
+                    self.slow_record(dict(type='slow_sqlite', database=connection.database_name,
+                        operation=operation, thread_id=get_native_id(), started_at=started_at,
+                        finished_at=finished_at, duration_ms=(finished_at - started_at) * 1000,
+                        error_type=error_type))
+                except Exception as error:
+                    # 诊断错误留给采集边界，不能改变原 SQL 异常或已提交事务的返回。
+                    with self._lock:
+                        self._slow_record_failure = self._slow_record_failure or type(error).__name__
 
     def __enter__(self):
         self._original_connect = sqlite3.connect
@@ -273,40 +298,65 @@ class SqliteReadMeter:
             def execute(self, *args, **kwargs):
                 with meter._lock:
                     self.connection.measurements["statements"] += 1
-                return super().execute(*args, **kwargs)
+                if meter.slow_record is None:
+                    return super().execute(*args, **kwargs)
+                return meter._timed(self.connection, 'execute', super().execute, *args, **kwargs)
 
             def executemany(self, *args, **kwargs):
                 with meter._lock:
                     self.connection.measurements["statements"] += 1
-                return super().executemany(*args, **kwargs)
+                if meter.slow_record is None:
+                    return super().executemany(*args, **kwargs)
+                return meter._timed(self.connection, 'executemany', super().executemany, *args, **kwargs)
 
             def executescript(self, *args, **kwargs):
                 with meter._lock:
                     self.connection.measurements["scripts"] += 1
-                return super().executescript(*args, **kwargs)
+                if meter.slow_record is None:
+                    return super().executescript(*args, **kwargs)
+                return meter._timed(self.connection, 'executescript', super().executescript, *args, **kwargs)
 
             def fetchone(self):
-                row = super().fetchone()
+                row = (super().fetchone() if meter.slow_record is None else
+                       meter._timed(self.connection, 'fetchone', super().fetchone))
                 if row is not None:
                     self._record([row])
                 return row
 
             def fetchmany(self, size=None):
-                rows = super().fetchmany() if size is None else super().fetchmany(size)
+                if meter.slow_record is None:
+                    rows = super().fetchmany() if size is None else super().fetchmany(size)
+                else:
+                    rows = (meter._timed(self.connection, 'fetchmany', super().fetchmany) if size is None else
+                            meter._timed(self.connection, 'fetchmany', super().fetchmany, size))
                 self._record(rows)
                 return rows
 
             def fetchall(self):
-                rows = super().fetchall()
+                rows = (super().fetchall() if meter.slow_record is None else
+                        meter._timed(self.connection, 'fetchall', super().fetchall))
                 self._record(rows)
                 return rows
 
             def __next__(self):
-                row = super().__next__()
+                row = (super().__next__() if meter.slow_record is None else
+                       meter._timed(self.connection, 'next', super().__next__))
                 self._record([row])
                 return row
 
         class Connection(sqlite3.Connection):
+            def commit(self):
+                if meter.slow_record is None:
+                    return super().commit()
+                return meter._timed(self, 'commit', super().commit)
+
+            def __exit__(self, exc_type, exc_value, traceback):
+                # SQLite 的隐式提交绕过 commit override，需单独观察事务退出。
+                if meter.slow_record is None or not self.in_transaction:
+                    return super().__exit__(exc_type, exc_value, traceback)
+                operation = 'context_commit' if exc_type is None else 'context_rollback'
+                return meter._timed(self, operation, super().__exit__, exc_type, exc_value, traceback)
+
             def cursor(self, factory=Cursor):
                 if factory is not Cursor:
                     raise ValueError("unmetered_sqlite_cursor_factory")
@@ -331,6 +381,7 @@ class SqliteReadMeter:
                     "rows": 0, "payload_bytes": 0, "statements": 0, "scripts": 0, "vm_steps_sampled": 0,
                 })
             connection.measurements = measurements
+            connection.database_name = Path(str(database)).name
 
             def progress():
                 with meter._lock:
@@ -348,8 +399,11 @@ class SqliteReadMeter:
 
     def snapshot(self) -> dict[str, object]:
         with self._lock:
-            return {"vm_interval": self.vm_interval, "vm_steps_are_sampled": True,
-                    "databases": {key: dict(value) for key, value in self.databases.items()}}
+            value = {"vm_interval": self.vm_interval, "vm_steps_are_sampled": True,
+                     "databases": {key: dict(value) for key, value in self.databases.items()}}
+            if self._slow_record_failure is not None:
+                value['slow_record_failure'] = self._slow_record_failure
+            return value
 
 
 def implementation_digest(root: Path) -> str:

@@ -38,7 +38,9 @@ func _get_state() -> Node:
 
 
 func _compact_value(value: Variant, fallback: String) -> String:
-	var text := str(value or "")
+	if value == null:
+		return fallback
+	var text := str(value)
 	if text.is_empty():
 		return fallback
 	if text.length() > 72:
@@ -47,16 +49,16 @@ func _compact_value(value: Variant, fallback: String) -> String:
 
 
 func _resolve_action_summary(payload: Dictionary) -> String:
-	var decision := str(payload.get("decision_summary", "") or "")
-	var execution := str(payload.get("execution_summary", "") or "")
+	var decision := str(payload.get("decision_summary", ""))
+	var execution := str(payload.get("execution_summary", ""))
 	if not execution.is_empty():
 		return execution
 	return decision
 
 
 func _resolve_feedback_summary(payload: Dictionary) -> String:
-	var outcome := str(payload.get("latest_outcome_summary", "") or "")
-	var siming := str(payload.get("latest_siming_summary", "") or "")
+	var outcome := str(payload.get("latest_outcome_summary", ""))
+	var siming := str(payload.get("latest_siming_summary", ""))
 	if not outcome.is_empty() and not siming.is_empty():
 		return "%s | %s" % [outcome, siming]
 	if not outcome.is_empty():

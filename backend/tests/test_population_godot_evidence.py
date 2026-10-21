@@ -280,7 +280,7 @@ def test_resync_control_does_not_clear_another_actors_delta_base(tmp_path):
     assert result['applied_delta_count'] == 1 and result['gap_count'] == 1
 
 
-@pytest.mark.parametrize("fault", [None, "missing", "unrestored", "pid", "extra", "collector_wrong", "collector_missing", "collector_bool", "collector_zero", "collector_string"])
+@pytest.mark.parametrize("fault", [None, "missing", "unrestored", "pid", "extra", "collector_wrong", "collector_missing", "collector_bool", "collector_zero", "collector_string", "python_missing", "python_malformed"])
 def test_qos_artifact_contract(tmp_path, monkeypatch, fault):
     # 仅控制证据接线；截图/帧专用校验替身不代表实际 Godot 验收。
     from scripts.verification import population_godot_runner as runner
@@ -312,14 +312,16 @@ def test_qos_artifact_contract(tmp_path, monkeypatch, fault):
     if fault == "pid": write(tmp_path / "100/owner-qos.json", qos(99))
     if fault == "extra": write(tmp_path / "extra.json", {})
     manifest = dict(schema_version=1, status="passed", source=source, collector_pid=10,
-        environment=dict(python="3.12.14", godot_version="4.6.3.stable"), cases={str(n): {} for n in (100,1000)},
+        environment=dict(python="3.13.9", godot_version="4.6.3.stable"), cases={str(n): {} for n in (100,1000)},
         artifacts={p.relative_to(tmp_path).as_posix(): digest(p.read_bytes()) for p in tmp_path.rglob("*") if p.is_file()})
     if fault == "collector_missing": manifest.pop("collector_pid")
     if fault in {"collector_wrong", "collector_bool", "collector_zero", "collector_string"}:
         manifest["collector_pid"] = {"collector_wrong":11, "collector_bool":True, "collector_zero":0, "collector_string":"10"}[fault]
+    if fault == "python_missing": manifest["environment"].pop("python")
+    if fault == "python_malformed": manifest["environment"]["python"] = "unknown"
     write(tmp_path / "manifest.json", manifest)
     if fault:
-        with pytest.raises(ValueError, match={"missing":"artifact_missing", "unrestored":"process_qos_lifecycle_invalid", "pid":"process_qos_pid_mismatch", "extra":"unexpected_artifact", **{key:"process_qos_pid_mismatch" for key in ("collector_wrong", "collector_missing", "collector_bool", "collector_zero", "collector_string")}}[fault]):
+        with pytest.raises(ValueError, match={"missing":"artifact_missing", "unrestored":"process_qos_lifecycle_invalid", "pid":"process_qos_pid_mismatch", "extra":"unexpected_artifact", **{key:"process_qos_pid_mismatch" for key in ("collector_wrong", "collector_missing", "collector_bool", "collector_zero", "collector_string")}, "python_missing":"manifest_environment_invalid", "python_malformed":"manifest_environment_invalid"}[fault]):
             gate.verify_artifacts(tmp_path)
     else:
         assert gate.verify_artifacts(tmp_path)["status"] == "passed"

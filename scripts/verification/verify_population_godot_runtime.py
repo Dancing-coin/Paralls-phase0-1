@@ -5,6 +5,7 @@ import csv
 from hashlib import sha256
 import json
 import math
+import os
 import re
 from pathlib import Path
 import sys
@@ -410,7 +411,9 @@ def verify_artifacts(directory: Path) -> dict:
     if type(collector_pid) is not int or collector_pid <= 0 or collector_qos["pid"] != collector_pid:
         raise ValueError("process_qos_pid_mismatch")
     environment = manifest["environment"]
-    if environment.get("python") != "3.12.14" or not environment.get("godot_version", "").startswith("4.6.3.stable"):
+    python_version = environment.get("python")
+    if (not isinstance(python_version, str) or re.fullmatch(r"\d+\.\d+\.\d+", python_version) is None
+            or not environment.get("godot_version", "").startswith("4.6.3.stable")):
         raise ValueError("manifest_environment_invalid")
     for population in (100, 1000):
         case = directory / str(population)
@@ -450,6 +453,7 @@ def main() -> int:
     import asyncio
     from datetime import datetime, timezone
     from scripts.verification.population_godot_runner import backend_child, collect, write_json
+    from scripts.verification.common import verification_dir
     parser = argparse.ArgumentParser(description=__doc__)
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--collect", type=Path, metavar="NEW_OUTPUT_DIRECTORY")
@@ -479,7 +483,17 @@ def main() -> int:
         except Exception as error:
             result = dict(status="failed", godot_status="godot_unverified", error=f"{type(error).__name__}:{error}")
     if profile_run:
-        write_json(ROOT / ".harness/verification/population-godot-runtime-report.json", dict(
+        # Harness profiles run in an isolated attempt directory. Resolve the
+        # logical verification path through the current run scope so the
+        # profile runner can consume and export the report it just produced.
+        if os.environ.get("HARNESS_PROJECT_ROOT"):
+            report_root = verification_dir(ROOT)
+        else:
+            # Preserve direct CLI behavior for local callers that do not wrap
+            # the command in a Harness run_scope.
+            report_root = ROOT / ".harness" / "verification"
+            report_root.mkdir(parents=True, exist_ok=True)
+        write_json(report_root / "population-godot-runtime-report.json", dict(
             schema_version=1, profile="population-godot-runtime", status=result["status"],
             godot_status=result["godot_status"], manifest=str(args.collect.resolve() / "manifest.json"),
             overall_population_godot_runtime_passed=result["status"] == "passed" and result["godot_status"] == "runtime_verified"))

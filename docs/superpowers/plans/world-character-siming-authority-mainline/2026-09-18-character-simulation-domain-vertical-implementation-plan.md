@@ -10,7 +10,9 @@
 
 **Spec:** [整合规格](../../specs/world-character-siming-authority-mainline/2026-09-18-character-population-social-causality-integrated-design.md)，组织修订 `2026-09-18-r3`。配套为[计划 A](2026-09-18-population-continuity-runtime-implementation-plan.md)。
 
-**Status:** `planned; implementation_not_started`。本文件是本轮要求的第二份计划。甲、乙为人员角色占位；下列新增函数、类型、文件、测试和 profile 是拟实施内容，不声称已在仓库存在。
+**Status (2026-10-10):** `minimum_dependencies_implemented; integrated_verification_in_evidence_report`。用户已授权计划A及必需的最小B依赖；八类共享模块、洪灾受信参与内容、实际班表/组织承诺/Core回流、成员消费与交接恢复、固定八维日供给算法及只读模式边界已实现。完整验证以 `D:/ParallsEvidence/paralls-plan-a-integrated-20261010T072557Z/reports/report.md` 为准。本文后续复选框是原实施验收清单，不将尚缺的真实来源或暂停Godot自动勾选。甲、乙是职责分界，本轮在同一candidate顺序执行共享合同与必要业务接线。
+
+**本轮适配及保留门禁：** `FloodPopulationFixture`复用原持久World、公共Siming、ScheduleGatedSupplyOwnerExecutor、ContinuityMergeAuthority和Core；`evaluate_modules`生成的实际action引用进入供应候选，Owner实际append检查原完整读集。组织commerce_commitment仅是承诺；另一份actor归因的membership_recorded才进入成员消费，cursor使用原来源global sequence。B0只统计/推进允许成员，零预算不虚构个人成功，重启重投复用冻结输入与Owner receipt。B0→B3→B0保留同身份和旧handoff记录，以新的策略解析/Core锚点重新入组。情境退场仅卸载受信内容，不伪造天气Owner结束事实或重置个人。BM1纯计算/合成完整输入证明数值和模式，不证明真实路线/流程/承诺优先级/完整名单或生产grant已齐备；HM1/HM2实际报告继续blocked，active关闭。Godot/all按用户暂停，C3安全分摊deferred，原P合同和历史机器记录保留。
 
 **核查基线:** `D:/Paralls-phase0-1`，本轮复审 HEAD `d9b810f3`。执行前核对最终整合提交及 A 的交接版本，保留其他任务的工作区变更。
 
@@ -71,6 +73,10 @@ def evaluate_modules(
 ```
 
 定义固定 identity、needs、schedule、household、supply、situation、affect、behavior 八种职责，放一组受信声明与纯函数中。每个声明填写 spec 6.3 全部字段；state_schema 只能引用已登记固定 schema，禁止从 JSON 生成自由可执行 schema。提议类别固定为 continuity_delta、activity_candidate、action_candidate、upgrade_request、decision_conflict，由甲写入共同类型。
+
+2026-10-08 消费者适配：A1 的 `state_schema` 复用已有 StateGroupDefinition；装配非空 module_states 时给 build_simulation_frame 传入同一 tuple 的 module_definitions。五类 typed_payload 使用 spec 6.1 的固定 V1 模型，模块选择前调用 validate_module_proposal 校验字段、完整来源向量、精度、frame digest 与期限。`state_delta` 仅是模块候选，后续仍由 B5 按真实 Owner receipt 转换并交 Core；action_candidate 仅携带既有 intent/capability 引用。新个人提交与交接携带原锁 held_revision；不另设锁、时钟或 writer。本条只记录共享接口变化，不表示 B 规则及联调已经实现。
+
+选择/提交链使用 `validate_module_proposal` 返回的隔离后 ModuleProposal，不再传递原 model_copy 副本或调用方的可变 state_delta。函数只复核候选 schema 和帧/声明匹配；Owner 实际提交时继续重验原 read-set。
 
 | 模块 | 首个样板规则 | 不得改写 |
 | --- | --- | --- |

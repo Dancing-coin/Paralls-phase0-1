@@ -17,12 +17,15 @@ class GameplayOutboxDispatcher:
         after_transaction_dispatched: Callable[[AtomicEventBatch], None] | None = None,
         event_transform: Callable[[AuthorityEvent], AuthorityEvent] | None = None,
         delivery_validator: Callable[[AuthorityEvent], None] | None = None,
+        event_publisher: Callable[[AuthorityEvent], None] | None = None,
     ) -> None:
         self._store = store
         self._bus = bus
         self._after_transaction_dispatched = after_transaction_dispatched
         self._event_transform = event_transform
         self._delivery_validator = delivery_validator
+        self._event_publisher = event_publisher
+        self._delivery_callbacks = None
 
     def dispatch_pending(self, *, limit: int | None = None, topic: str | None = None) -> DispatchResult:
         if limit is not None and limit < 0:
@@ -45,9 +48,20 @@ class GameplayOutboxDispatcher:
                 try:
                     event = self._store.get_event(entry.event_id)
                     outgoing = self._authority_event_for(entry, event)
-                    if self._event_transform is not None:
-                        outgoing = self._event_transform(outgoing)
-                    self._bus.publish(outgoing)
+                    transform = self._event_transform
+                    if transform is not None:
+                        outgoing = transform(outgoing)
+                    publisher = self._event_publisher
+                    # 保存实际执行者；扩展回调恢复原绑定不能让旧帧重新获得首发资格。
+                    previous_callbacks = self._delivery_callbacks
+                    self._delivery_callbacks = (transform, publisher)
+                    try:
+                        if publisher is None:
+                            self._bus.publish(outgoing)
+                        else:
+                            publisher(outgoing)
+                    finally:
+                        self._delivery_callbacks = previous_callbacks
                     if self._delivery_validator is not None:
                         self._delivery_validator(outgoing)
                 except Exception as exc:

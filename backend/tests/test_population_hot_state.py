@@ -3,6 +3,7 @@ from collections.abc import Iterator, Mapping
 import pytest
 
 from app.population_continuity.hot_state import PopulationDueIndex, PopulationHotState
+from app.population_continuity.continuous import advance_b0_row
 from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupRegistry
 from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
 
@@ -83,6 +84,37 @@ def test_atomic_batch_copies_every_mapping_before_any_actor_is_written() -> None
     assert state.read("actor_a")["revision"] == 0
     assert state.read("actor_a")["fatigue"] == 0.2
     assert state.read("actor_b")["revision"] == 0
+
+
+@pytest.mark.parametrize("method", ("apply_batch_atomic", "commit_batch_atomic"))
+def test_b0_atomic_batch_preserves_registered_module_fields(method: str) -> None:
+    state = PopulationHotState(("actor_a",), additional_fields=("character.commitments.pressure",))
+    state.upsert("actor_a", {"character.commitments.pressure": 0.7}, 1)
+    advanced = advance_b0_row(actor_id="actor_a", row=state.read("actor_a"), window_start=0, window_end=10)
+
+    getattr(state, method)((("actor_a", advanced.values, 1, 2),))
+
+    row = state.read("actor_a")
+    assert row["character.commitments.pressure"] == 0.7
+    assert row["last_update_tick"] == 10
+    assert row["fatigue"] == advanced.values["fatigue"]
+    assert row["revision"] == 2
+
+
+@pytest.mark.parametrize("method", ("apply_batch_atomic", "commit_batch_atomic"))
+def test_atomic_batch_with_six_fields_preserves_omitted_hot_field(method: str) -> None:
+    state = PopulationHotState(("actor_a",), additional_fields=("character.commitments.pressure",))
+    state.upsert("actor_a", {"fatigue": 0.4, "character.commitments.pressure": 0.7}, 1)
+    values = dict(last_update_tick=10, activity_phase="rest", need_pressure=0.2,
+                  next_due_tick=100, starvation_credit=0.1)
+    values["character.commitments.pressure"] = 0.8
+
+    getattr(state, method)((("actor_a", values, 1, 2),))
+
+    row = state.read("actor_a")
+    assert row["fatigue"] == 0.4
+    assert row["character.commitments.pressure"] == 0.8
+    assert row["revision"] == 2
 
 
 def test_due_index_is_stable_and_cancellation_is_revision_safe() -> None:
@@ -203,3 +235,68 @@ def test_readonly_map_detects_remove_and_reinsert_at_the_same_revision() -> None
 
     with pytest.raises(ValueError, match="hot_state_revision_conflict"):
         state.map_readonly(("actor_a",), replaced)
+
+
+def test_b0_reuses_fatigue_integration_for_identical_numeric_inputs(monkeypatch) -> None:
+    from app.population_continuity import continuous
+
+    cache = getattr(continuous, "_cached_fatigue_after", None)
+    if cache is not None:
+        cache.cache_clear()
+    original_phase = continuous._phase_at
+    phase_calls = 0
+
+    def observed_phase(tick):
+        nonlocal phase_calls
+        phase_calls += 1
+        return original_phase(tick)
+
+    monkeypatch.setattr(continuous, "_phase_at", observed_phase)
+    try:
+        results = [advance_b0_row(actor_id=f"actor_{index}", row={"fatigue": .2},
+                                  window_start=0, window_end=1) for index in range(1000)]
+        assert all(result.values["fatigue"] == .199988889 for result in results)
+        assert len({id(result.values) for result in results}) == 1000
+        # 每行仍读取展示阶段，但相同数值输入只积分一次。
+        assert phase_calls == 1001
+    finally:
+        if cache is not None:
+            cache.cache_clear()
+
+
+@pytest.mark.parametrize("start,end,fatigue,expected", [
+    (21599, 21601, .2, .199994444),
+    (64799, 64801, .2, .200002778),
+    (86399, 86401, .2, .199986111),
+    (0, 86400, .2, .18),
+    (0, 21600, .01, 0.),
+    (21600, 64800, .99, 1.),
+])
+def test_b0_fatigue_integrates_phase_boundaries_and_clamps(start, end, fatigue, expected) -> None:
+    row = {"last_update_tick": start, "revision": 1, "fatigue": fatigue}
+    first = advance_b0_row(actor_id="first", row=row, window_start=start, window_end=end)
+    repeated = advance_b0_row(actor_id="second", row=row, window_start=start, window_end=end)
+    assert first.values["fatigue"] == repeated.values["fatigue"] == expected
+
+
+def test_b0_keeps_unhashable_integer_window_on_original_numeric_path() -> None:
+    class UnhashableInt(int):
+        __hash__ = None
+
+    result = advance_b0_row(actor_id="actor", row={"fatigue": .2},
+                            window_start=0, window_end=UnhashableInt(1))
+    assert result.values["fatigue"] == .199988889
+
+
+def test_b0_fatigue_cache_stays_bounded_across_distinct_windows() -> None:
+    from app.population_continuity import continuous
+
+    cache = continuous._cached_fatigue_after
+    cache.cache_clear()
+    try:
+        for tick in range(2048):
+            advance_b0_row(actor_id="actor", row={"last_update_tick": tick, "revision": 1},
+                           window_start=tick, window_end=tick + 1)
+        assert cache.cache_info().currsize == cache.cache_info().maxsize == 1024
+    finally:
+        cache.cache_clear()

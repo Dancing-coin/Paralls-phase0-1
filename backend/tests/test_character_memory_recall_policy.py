@@ -10,6 +10,116 @@ import pytest
 from copy import deepcopy
 
 
+@pytest.mark.parametrize("pool", ["event_memories", "relational_memories"])
+def test_recall_only_copies_payloads_returned_within_the_budget(pool) -> None:
+    copied = []
+
+    class TrackedPayload(dict):
+        def __deepcopy__(self, memo):
+            copied.append(self["marker"])
+            return TrackedPayload(deepcopy(dict(self), memo))
+
+    entries = [
+        {"memory_id": f"memory:{index}", "world_ts": index,
+         "entity_id": f"actor_{index}", "belief_type": "trust", "value": "neutral",
+         "summary": "unrelated weather", "payload": TrackedPayload(marker=index, values=[1])}
+        for index in range(32)
+    ]
+    entries[-1]["summary"] = "letter " + "x" * 2000
+    policy = CharacterMemoryRecallPolicy(pool_limit=2, token_budget=120)
+
+    result = policy.select({pool: entries}, context={"attention_targets": ["letter"]})
+
+    output_pool = "knowledge_memories" if pool == "relational_memories" else pool
+    assert [entry["memory_id"] for entry in result.memory[output_pool]] == ["memory:30"]
+    assert copied == [30]
+    assert result.metadata["truncated"] is True
+    result.memory[output_pool][0]["payload"]["values"].append(2)
+    assert entries[30]["payload"]["values"] == [1]
+
+
+def test_recall_preserves_equal_rank_duplicate_ids_and_independent_aliases() -> None:
+    memory = {
+        "event_memories": [
+            {"memory_id": "b", "world_ts": 10, "summary": "weather", "payload": {"marker": [0]}},
+            {"memory_id": "a", "world_ts": 10, "summary": "weather", "payload": {"marker": [1]}},
+            {"memory_id": "a", "world_ts": 10, "summary": "weather", "payload": {"marker": [2]}},
+        ],
+        "episodic_memories": [],
+        "relational_memories": [
+            {"entity_id": "actor_b", "belief_type": "trust", "value": "neutral", "payload": {"marker": [3]}}
+        ],
+    }
+    original = deepcopy(memory)
+
+    result = CharacterMemoryRecallPolicy(pool_limit=2, token_budget=1000).select(memory, context={})
+
+    assert [entry["payload"]["marker"] for entry in result.memory["event_memories"]] == [[1], [2]]
+    assert result.metadata["selected_memory_refs"] == ["event:a", "event:a", "knowledge:relation:actor_b:trust"]
+    result.memory["event_memories"][0]["payload"]["marker"].append(9)
+    assert result.memory["episodic_memories"][0]["payload"]["marker"] == [1]
+    assert result.memory["event_memories"][1]["payload"]["marker"] == [2]
+    result.memory["relational_memories"][0]["value"] = "changed"
+    assert result.memory["knowledge_memories"][0]["value"] == "neutral"
+    assert memory == original
+
+
+def test_recall_preserves_duplicate_id_token_selection_and_row_isolation() -> None:
+    memory = {"event_memories": [
+        {"memory_id": "same", "world_ts": 1, "summary": "short", "payload": {"marker": [1]}},
+        {"memory_id": "same", "world_ts": 1, "summary": "x" * 2000, "payload": {"marker": [2]}},
+    ]}
+    result = CharacterMemoryRecallPolicy(pool_limit=2, token_budget=30).select(memory, context={})
+
+    # 既有按 ID 保留语义会保留同 ID 的两行，不能在排序优化中改成逐行去重。
+    assert [entry["payload"]["marker"] for entry in result.memory["event_memories"]] == [[1], [2]]
+    assert result.metadata["selected_memory_refs"] == ["event:same", "event:same"]
+    assert result.metadata["estimated_tokens"] == 19
+    assert result.metadata["truncated"] is True
+    result.memory["event_memories"][1]["payload"]["marker"].append(9)
+    assert memory["event_memories"][1]["payload"]["marker"] == [2]
+
+
+def test_recall_preserves_stable_cutoff_when_one_entry_occurs_twice() -> None:
+    repeated = {"memory_id": "a", "world_ts": 1, "payload": {"marker": [1]}}
+    entries = [repeated, repeated, {"memory_id": "a", "world_ts": 1, "payload": {"marker": [2]}}]
+    result = CharacterMemoryRecallPolicy(pool_limit=2, token_budget=1000).select(
+        {"event_memories": entries}, context={},
+    )
+
+    assert [entry["payload"]["marker"] for entry in result.memory["event_memories"]] == [[1], [1]]
+    result.memory["event_memories"][0]["payload"]["marker"].append(9)
+    assert result.memory["event_memories"][1]["payload"]["marker"] == [1]
+    assert repeated["payload"]["marker"] == [1]
+
+
+def test_strong_recall_preserves_required_ref_order_across_pool_and_token_truncation() -> None:
+    memory = {
+        "knowledge_memories": [
+            {"memory_id": "k_a", "source_event_id": "e_a", "world_ts": 1,
+             "claim": {"subject_ref": "obj_letter", "predicate": "a", "source_ref": "e_a"}},
+            {"memory_id": "k_b", "source_event_id": "e_b", "world_ts": 2,
+             "claim": {"subject_ref": "obj_letter", "predicate": "b", "source_ref": "e_b"}},
+            {"memory_id": "k_c", "source_event_id": "e_c", "world_ts": 3,
+             "claim": {"subject_ref": "obj_letter", "predicate": "c", "source_ref": "e_c"}},
+        ],
+        "event_memories": [
+            {"memory_id": f"e_{name}", "world_ts": index, "summary": "x" * 1000}
+            for index, name in enumerate(("a", "b", "c"), 1)
+        ],
+    }
+    result = CharacterMemoryRecallPolicy(pool_limit=1, token_budget=1).select(memory, context={
+        "attention_targets": ["obj_letter"],
+        "profile": {"capability_constraint_layer": {"memory_retention": "strong"}},
+    })
+
+    assert result.metadata["missing_required_refs"] == [
+        "event:e_b", "event:e_a", "knowledge:k_b", "knowledge:k_a", "knowledge:k_c", "event:e_c",
+    ]
+    assert result.metadata["selected_memory_refs"] == []
+    assert result.metadata["estimated_tokens"] == 0
+
+
 @pytest.mark.parametrize("history_size", [128, 1024])
 def test_recall_timestamp_work_is_linear_in_retained_history(history_size, monkeypatch):
     policy = CharacterMemoryRecallPolicy(pool_limit=2, token_budget=1200)

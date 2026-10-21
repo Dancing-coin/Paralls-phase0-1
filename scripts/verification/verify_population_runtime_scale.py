@@ -6,6 +6,7 @@ except ImportError:
     from common import verification_dir
 
 import hashlib
+from contextlib import ExitStack
 import json
 import platform
 import subprocess
@@ -423,7 +424,7 @@ def measure_scenario(
     result = empty_scenario(
         population=population, window_count=window_count, wall_budget_seconds=wall_budget_seconds,
     )
-    graph: SQLiteHeavenlyGraphAdapter | None = None
+    owned_resources = ExitStack()
     original_advance_b0_row = world_module.advance_b0_row
     capture_kernel = False
     kernel_window_ms = 0.0
@@ -431,6 +432,7 @@ def measure_scenario(
         roster = _roster(population)
         mode = _mode(population)
         store = DurableGameplayEventStore(storage_path)
+        owned_resources.callback(store.close)
         world = WorldContinuityRuntime(store=store, mode=mode, roster=roster)
         if store.get_stream_head(f"world:{mode.world_ref}") == 0 and not world.resume().committed:
             raise RuntimeError("world_resume_failed")
@@ -439,6 +441,7 @@ def measure_scenario(
             storage_root=storage_path.parent / f"character-{storage_path.stem}",
             continuity_actor_ids=set(roster.actor_ids),
         )
+        owned_resources.callback(character_runtime.close)
         result["character_registration_verified"] = all(
             character_runtime.supports_continuity_actor(actor_id) for actor_id in roster.actor_ids
         )
@@ -450,6 +453,7 @@ def measure_scenario(
         capability = _MeasuredCapability()
         graph_path = storage_path.with_suffix(".authority.sqlite3")
         graph = SQLiteHeavenlyGraphAdapter(graph_path)
+        owned_resources.callback(graph.close)
         pipeline = SimingEventPipeline(
             bus=bus, consumer=SimingEventConsumer(),
             runtime=SimingRuntime(
@@ -620,6 +624,7 @@ def measure_scenario(
         committed_hash = _hot_state_hash(world)
         recovery_started = perf_counter()
         recovered_store = DurableGameplayEventStore(storage_path)
+        owned_resources.callback(recovered_store.close)
         recovered_world = WorldContinuityRuntime(store=recovered_store, mode=mode, roster=roster)
         recovered_publisher = RuntimeCadencePublisher(
             world_runtime=recovered_world, event_bus=InMemoryAuthorityEventBus(),
@@ -732,8 +737,7 @@ def measure_scenario(
         result["error"] = f"{type(exc).__name__}:{exc}"
     finally:
         world_module.advance_b0_row = original_advance_b0_row
-        if graph is not None:
-            graph.close()
+        owned_resources.close()
     result["passed"] = scenario_passed(result)
     return result
 

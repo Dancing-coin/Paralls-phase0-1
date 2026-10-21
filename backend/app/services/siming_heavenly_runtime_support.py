@@ -1258,9 +1258,9 @@ class SimingHeavenlyRuntimeSupport:
             "resources": [package.model_dump(mode="json") for _, package in sorted(self._resources._packages.items())],
             "fatigue": list(self._resources._recent_signatures),
             # 核对完整读结果的内容摘要，避免每次入站转移重复持久化全部角色记忆。
-            "actors": {actor: digest(self._actor_memory.read(ActorMemoryReadRequest(
+            "actors": {actor: self._actor_memory.read_digest(ActorMemoryReadRequest(
                 actor_id=actor, story_branch_id=request.scope.story_branch_id, valid_at=request.valid_at,
-            )).model_dump(mode="json")) for actor in self.prepared_actor_ids(frame)},
+            )) for actor in self.prepared_actor_ids(frame)},
             "mode": self.mode,
             "staging": [entry.model_dump(mode="json") for entry in self._memory.list_domain(
                 request.scope, "intervention_outcome", valid_at=request.valid_at)
