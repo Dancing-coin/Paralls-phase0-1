@@ -96,6 +96,12 @@ cross-process test passed (1 passed, 11.53s). This closes only the valid
 goal-proposal provider-resume/receipt/reopen subitem; full replay coverage and
 R09 remain open.
 
+The first D-drive rerun of the full parameterized group was blocked for two
+cases by an unresolved merge marker at `backend/app/gameplay/event_store.py:1324`.
+After that marker disappeared through concurrent worktree activity, the same
+full group passed fresh: 4 passed in 64.17s. No change to the conflicted file
+was made in this batch.
+
 ## Task 4: 按实际依赖交错收口角色与领域
 
 **Files:** 原计划02/03/04各 task 指定文件；统一矩阵 D03–D11/R10–R14。

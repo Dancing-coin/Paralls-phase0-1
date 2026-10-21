@@ -16,6 +16,8 @@
 
 **后端**：慢目标有效跨进程恢复子项新增通过；R09 仍为局部。**模型质量**：Q01–Q04 无新增验收。**角色闭环**：goal proposal receipt/reopen 子项已验证，完整 Laya、多领域 owner 与回放仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，仍是最后门禁。
 
+本轮复验说明（2026-10-21）：第一次按 D 盘专用临时目录重跑时，`siming` 与 `character` 通过（2 passed），另两例因当时 `backend/app/gameplay/event_store.py:1324` 的未解决 merge marker 未进入断言。随后并行工作区变化使该标记消失；未修改该用户文件。再次运行相同全组命令，fresh 结果 **4 passed in 64.17s**。探针目录仅在 D 盘，已删除本轮专用目录。此前 1 passed/11.53s 仍属于独立历史结果。
+
 ### 2026-10-21 窄恢复复验与证据边界
 
 Settlement 私有 L1 snapshot 的 SQLite close/reopen、exact retry 零重复追加和跨 actor snapshot 拒绝仍由定向选择稳定通过：
