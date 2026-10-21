@@ -1094,3 +1094,9 @@ drive scan or cleanup was performed.
 这证明 canonical social ingress 与 durable owner 的重开边界一致，且重复消息不新增 world ledger 写入；仍不证明 authenticated production registration、Laya 正式模型输入、跨多 owner common cut、旧 worker 迟到或 Godot 场景结果。R08/R09 和 Q01–Q04 继续保持局部/未验收。
 
 **后端**：canonical social ingress durable reopen 子项已验证。**模型质量**：Q01–Q04 未验收。**角色闭环**：single-owner durable ingress/replay 已验证，完整 Laya 多域链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 social spatial owner runtime composition
+
+运行时组装现在在同一 `gameplay_event_store` 上默认创建 `SocialSpatialOwner`，因此正常 backend reset/启动后的 canonical social contract 不再依赖手工测试注入；无 owner 的 fail-closed 负例改为显式清空注册。定向选择 **4 passed**（默认 runtime composition、registered ingress、exact replay 和 fail-closed）。这只接通单 owner canonical social action 的 backend durable path；尚未接入 authenticated production source/candidate admission，也没有完成多域 common cut、旧 worker 迟到、完整 Laya 模型验收或 Godot。
+
+**后端**：social spatial owner 已纳入正常 backend runtime composition，canonical ingress 可产生 durable owner receipt。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner action+target→L4 contract→owner receipt/replay 已验证，多域与完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
