@@ -390,6 +390,16 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 
 该静态交接不升级 R07–R09 或 G-A/B/C。Godot 仍留到后端与领域 owner 收口后修改及运行；届时应先验证上述回传和 receipt 往返，再按 G-A、G-B、G-C 顺序采集真实 boundary、owner 与可见场景证据。
 
+### 2026-10-22 canonical social-spatial action fail-closed
+
+审查发现 `_actor_target_action_settlement()` 只是构造内存字典并返回
+`settlement_status="accepted"`，没有对应的社交空间领域 owner、持久事件、owner receipt 或恢复路径。它不能支撑 R07/R08，也不能作为双角色 G-C 的协同事实。现在带 canonical `CharacterExecutionContract` 的
+`approach`、`follow_target`、`seek_private_distance`、`withdraw` 和
+`break_contact` 在没有注册 owner 时返回 `route=social_spatial_owner`、
+`error_code=owner_unavailable`，不产生 `social_spatial_runtime_result` 或角色结算写入；旧 action-request bundle 兼容分支仍保留，不能计作正式 Laya 闭环。
+
+RED 首次复现了原先 canonical `approach` 的 `accepted` 假结算；最小修复后定向回归为 **51 passed, 2 deselected**（包含新的 fail-closed 断言、对象 owner 合同及 action-request routing），pytest 临时目录位于 `D:\codex-temp\social-owner-green2\pytest`。这只关闭误报风险，不实现社交空间 owner；后续若要收口 R12/G-C，必须先提供可信空间/参与者来源、注册 owner、提交前重验、持久 receipt、恢复/回放和双角色真实边界证据。
+
 ## D06／D10 来源依赖：正式采用静态资源 genesis（2026-10-20）
 
 - 提交 `8af22a6a`：经审查采用已有 authored resource template、三角色资源块、v2 projector／有限 reservation／migration planner 及聚焦测试，未重建第二套 Resource owner。materialization 原 source snapshot 随真实 owner 事务持久化；无当前模板的新进程可恢复原 receipt，changed request、跨 world 重物化、非法 read-set 零写拒绝。修复容量边界、孤立 lock、完整 action 原事务校验及校验后重读 head 的竞态。

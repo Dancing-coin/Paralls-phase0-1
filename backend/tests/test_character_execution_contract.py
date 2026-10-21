@@ -282,7 +282,6 @@ def test_execution_ingress_rejects_non_contract_body_authority_payload() -> None
 @pytest.mark.parametrize(
     ("requested_action", "target_ref", "semantic_action_id"),
     [
-        ("approach", "character:char_a", "approach"),
         ("interact", "object:obj_letter", "inspect"),
     ],
 )
@@ -403,6 +402,35 @@ def test_contract_pins_reach_social_dialogue_settlement(monkeypatch: pytest.Monk
     assert response["expected_snapshot_revision"] == contract[
         "expected_snapshot_revision"
     ]
+
+
+def test_social_spatial_contract_fails_closed_without_registered_owner() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    contract = _valid_contract(
+        target_refs=("character:char_a",),
+        semantic_intent_id="approach",
+        semantic_action_id="action:approach",
+        expected_observation={"requested_action": "approach"},
+    )
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10,
+        payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
+    )
+
+    messages = main._handle_envelope(
+        main.Envelope(message_type="character_agent_execution", payload=contract)
+    )
+
+    assert messages[0]["message_type"] == "ack"
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["route"] == "social_spatial_owner"
+    assert messages[0]["payload"]["error_code"] == "owner_unavailable"
+    assert not any(
+        message.get("message_type") == "social_spatial_runtime_result"
+        for message in messages
+    )
 
 
 def test_execution_commitment_expires_and_rejects_stale_target_or_revision() -> None:

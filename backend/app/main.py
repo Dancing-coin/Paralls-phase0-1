@@ -5465,6 +5465,23 @@ def _handle_envelope(
                 }), _as_envelope("action_request", request.model_dump(mode="json"))]
                 messages.extend(_publish_world_result_authority_event(result, source_event=event))
                 return _finalize_outbound_messages(messages)
+            if any(
+                str(action.get("request_type", "") or "") in {
+                    "approach", "follow_target", "seek_private_distance", "withdraw", "break_contact",
+                }
+                for action in requested_actions
+                if isinstance(action, dict)
+            ):
+                # The compatibility social-spatial result below is not a domain
+                # owner: it has no durable state, receipt or recovery path.
+                # Canonical contracts therefore remain fail-closed until a
+                # registered owner is wired.
+                return [_as_envelope("ack", {
+                    "accepted": False,
+                    "source_type": envelope.message_type,
+                    "route": "social_spatial_owner",
+                    "error_code": "owner_unavailable",
+                })]
         route_name = "esm_service"
         if str(requested_actions[0].get("request_type", "") or "") in {
             "speak_public", "speak_private", "share_info", "withhold"
