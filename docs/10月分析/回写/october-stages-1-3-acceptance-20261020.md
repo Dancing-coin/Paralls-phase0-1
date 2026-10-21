@@ -2,6 +2,18 @@
 
 状态：**执行中，整体未完成**。授权：用户 2026-10-20 明确要求整体完成阶段一至三；先收尾管理员生产入口，再扩大目标，后端先行，Godot 最后集中验收。本文件是统一剩余工作索引，不替代原规格或原始证据。
 
+### 2026-10-22 Threat encounter lifecycle gate
+
+`CanonicalCombatThreatAuthority.record_confirmed_hit()` now rejects a new hit unless the encounter projection is `active`; an unstarted encounter returns `encounter_not_active` with no Threat row. This prevents confirmed-hit writes from creating Threat state while the encounter projection is unavailable. The consumer fixtures now begin the encounter explicitly before recording hits, and the canonical Threat source fixture uses the same trusted `ActivationSourceReader` composition as production.
+
+Focused verification, with pytest temporary storage under `D:\codex-temp\combat-fix`, ran:
+`python -m pytest -q -p no:cacheprovider backend/tests/test_canonical_combat_lifecycle.py backend/tests/test_combat_settlement_threat_consumer.py backend/tests/test_canonical_combat_authority.py --basetemp=D:\codex-temp\combat-fix\pytest --tb=short`
+→ **33 passed in 2.47s**. The first run exposed the fixture's missing activation-source composition (9 failures before the source tests reached their assertions); after matching the established production pattern, the same narrow selection passed.
+
+Evidence boundary: this closes the Threat owner's active-encounter lifecycle gate only. `street_combat_attempt` still does not compose authenticated Presence/Life/Faction source context and route a real L4 contact through the canonical Threat owner. D08 production ingress, complete Laya action+target→L4→multi-domain owner receipts and replay, formal Q01–Q04 model quality, and Godot G-A/G-B/G-C remain open. No model evaluation, training, full pytest, Harness all, or Godot operation was performed.
+
+**后端**：Threat lifecycle gate 已实现并由定向回归验证；D08 生产入口仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整真实 Laya/L4/多领域 owner 回执与恢复/回放未验收。**最终 Godot**：G-A/B/C 未操作，仍最后集中验收。
+
 **当前执行目标：整体完成十月主线阶段一至三的实现与验收。** Goal ledger objective 已正式扩展到本范围且仍 active；本文件及[执行计划](../../superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md)承载统一执行矩阵与批次记录。
 
 **本轮目标扩展确认（2026-10-21）：** 阶段一至三的统一收口同时包含完整 Laya 真实 backend 链路（完整输入与候选、action+target、L4、真实领域 owner、receipt、恢复与回放）以及正式模型质量 Q01–Q04；Godot G-A/G-B/G-C 仍是后端与角色闭环收口后的最后门禁。服务可调用、choice 接纳、合同测试或单 owner slice 均不能替代这些闭环。Goal 已正式扩展并保持 active，没有将目标标记为完成。

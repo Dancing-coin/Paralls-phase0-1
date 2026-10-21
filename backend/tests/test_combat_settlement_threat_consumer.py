@@ -9,6 +9,7 @@ from app.gameplay.canonical_combat_authority import (
     THREAT_PRINCIPAL,
 )
 from app.gameplay.combat_durable_adapter import CombatSourceContext, DurableEmbodiedCombatAdapter
+from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority
 from app.gameplay.event_store import DurableGameplayEventStore
 from app.models.embodied_interaction import ActionAttempt, AuthorityResult
 from app.population_continuity.activation import ProfileActivationAuthority
@@ -112,6 +113,22 @@ def _owner(store: DurableGameplayEventStore) -> EmbodiedAuthoritySettlementServi
     return owner
 
 
+def _begin_encounter(store, source, attempt, receipt):
+    return CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",)).begin_encounter(
+        attempt=attempt, authority_result=receipt,
+        presence_event_ids=source.presence_source_event_ids,
+        life_event_ids=source.life_state_source_event_ids,
+        faction_event_id=source.faction_source_event_id,
+        world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+        encounter_ref=source.encounter_ref,
+        actor_incarnation_ref=source.actor_incarnation_ref,
+        target_incarnation_ref=source.target_incarnation_ref,
+        command_id=f"begin:{attempt.attempt_id}",
+        idempotency_key=f"begin:{attempt.attempt_id}",
+        authorized_caller="backend:combat",
+    )
+
+
 def test_real_embodied_settlement_is_consumed_by_canonical_threat_owner(tmp_path: Path) -> None:
     store = DurableGameplayEventStore(tmp_path / "combat-threat.db")
     source = _sources(store)
@@ -119,6 +136,7 @@ def test_real_embodied_settlement_is_consumed_by_canonical_threat_owner(tmp_path
     attempt = _attempt()
     receipt = owner.settle_street_combat(attempt)
     assert receipt.outcome == "committed"
+    assert _begin_encounter(store, source, attempt, receipt).committed
     adapter = DurableEmbodiedCombatAdapter(authority=owner, store=store)
 
     result = adapter.consume_committed_hit(
@@ -144,6 +162,7 @@ def test_one_hit_is_consumed_once_even_when_caller_retry_key_changes(tmp_path: P
     attempt = _attempt("once")
     receipt = owner.settle_street_combat(attempt)
     assert receipt.outcome == "committed"
+    assert _begin_encounter(store, source, attempt, receipt).committed
     adapter = DurableEmbodiedCombatAdapter(authority=owner, store=store)
     first = adapter.consume_committed_hit(attempt, source=source, command_id="transport:1", idempotency_key="transport:1")
     retry = adapter.consume_committed_hit(attempt, source=source, command_id="transport:2", idempotency_key="transport:2")
@@ -155,7 +174,7 @@ def test_one_hit_is_consumed_once_even_when_caller_retry_key_changes(tmp_path: P
     )
     assert not changed.committed and changed.failure.error_code == "threat_idempotency_key_reused"
     assert store.read_stream("gameplay:combat:encounter:encounter:other") == []
-    assert len(store.read_stream("gameplay:combat:encounter:encounter:real-1")) == 1
+    assert len(store.read_stream("gameplay:combat:encounter:encounter:real-1")) == 2
     store.close()
 
 
@@ -166,6 +185,7 @@ def test_threat_consumer_duplicate_replays_after_durable_reopen(tmp_path: Path) 
     owner = _owner(store)
     attempt = _attempt("reopen")
     assert owner.settle_street_combat(attempt).outcome == "committed"
+    assert _begin_encounter(store, source, attempt, owner.query_street_combat_receipt(attempt)).committed
     first = DurableEmbodiedCombatAdapter(authority=owner, store=store).consume_committed_hit(
         attempt, source=source, command_id="threat:reopen", idempotency_key="threat:reopen",
     )
@@ -179,7 +199,7 @@ def test_threat_consumer_duplicate_replays_after_durable_reopen(tmp_path: Path) 
         attempt, source=source, command_id="threat:reopen", idempotency_key="threat:reopen",
     )
     assert duplicate.committed and duplicate.idempotency_status == "duplicate_replayed"
-    assert len(reopened.read_stream("gameplay:combat:encounter:encounter:real-1")) == 1
+    assert len(reopened.read_stream("gameplay:combat:encounter:encounter:real-1")) == 2
     reopened.close()
 
 
@@ -231,11 +251,25 @@ def test_canonical_owner_cannot_consume_same_hit_with_another_request_key(tmp_pa
                     encounter_ref=source.encounter_ref,
                     actor_incarnation_ref=source.actor_incarnation_ref,
                     target_incarnation_ref=source.target_incarnation_ref)
+        lifecycle_owner = CanonicalCombatThreatAuthority(store=with_store, authorized_callers=("backend:combat",))
+        begun = lifecycle_owner.begin_encounter(
+            attempt=attempt, authority_result=receipt,
+            presence_event_ids=source.presence_source_event_ids,
+            life_event_ids=source.life_state_source_event_ids,
+            faction_event_id=source.faction_source_event_id,
+            world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+            encounter_ref=source.encounter_ref,
+            actor_incarnation_ref=source.actor_incarnation_ref,
+            target_incarnation_ref=source.target_incarnation_ref,
+            command_id="begin:direct-repeat", idempotency_key="begin:direct-repeat",
+            authorized_caller="backend:combat",
+        )
+        assert begun.committed
         first = threat.record_confirmed_hit(**args, command_id="direct:1", idempotency_key="direct:1")
         assert first.committed
         repeated = threat.record_confirmed_hit(**args, command_id="direct:2", idempotency_key="direct:2")
         assert repeated.committed and repeated.idempotency_status == "duplicate_replayed"
         assert repeated.transaction_id == first.transaction_id
-        assert len(with_store.read_stream(f"gameplay:combat:encounter:{source.encounter_ref}")) == 1
+        assert len(with_store.read_stream(f"gameplay:combat:encounter:{source.encounter_ref}")) == 2
     finally:
         with_store.close()

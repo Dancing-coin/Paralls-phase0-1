@@ -71,6 +71,23 @@ def test_encounter_end_clears_projection_and_rejects_new_hit_after_durable_resta
     store.close()
 
 
+def test_threat_rejects_hit_before_encounter_is_begun(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "unstarted.db")
+    source, attempt = _sources(store), _attempt()
+    receipt = _owner(store).settle_street_combat(attempt)
+    owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+
+    result = _hit(owner, source, attempt, receipt)
+
+    assert not result.committed
+    assert result.failure.error_code == "encounter_not_active"
+    projection = owner.encounter_projection(world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+                                            encounter_ref=source.encounter_ref)
+    assert projection["state"] == "unavailable"
+    assert projection["rows"] == []
+    store.close()
+
+
 @pytest.mark.parametrize("change", ["caller", "world", "timeline", "incarnation", "receipt"])
 def test_encounter_begin_rejects_untrusted_or_changed_sources_zero_write(tmp_path, change):
     store = DurableGameplayEventStore(tmp_path / f"{change}.db")

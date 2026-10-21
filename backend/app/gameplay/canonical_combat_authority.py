@@ -482,6 +482,8 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
                                                   encounter_ref=encounter_ref)
             if lifecycle["state"] == "ended":
                 return self._reject(command_id, "encounter_ended")
+            if lifecycle["state"] != "active":
+                return self._reject(command_id, "encounter_not_active")
             payload = {"actor_ref": attempt.actor_ref, "target_ref": attempt.target_refs[0], "encounter_ref": encounter_ref,
                        "damage": damage, "source_event_ids": [event.event_id for event in sources],
                        "policy_revision": "threat:confirmed-hit-1to1@1",

@@ -12,6 +12,7 @@ from app.gameplay.canonical_combat_authority import (
 from app.gameplay.event_store import DurableGameplayEventStore
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.models.embodied_interaction import AuthorityResult
+from app.population_continuity.activation_sources import ActivationSourceReader
 
 
 def _request(caller: str = "combat:policy-caller") -> FactionRelationRequest:
@@ -180,11 +181,18 @@ def _real_population_sources(store):
     actors = ("character:char_a", "character:char_b")
     policy = dict(world_ref="world:demo", package_revision="package:bakery-authored-agents:v1",
                   policy_revision="policy:population:v1", scope_grant=("actor:self",))
+    activation = ProfileActivationAuthority(
+        registry=CharacterProfileRegistry.from_directory(Path(__file__).resolve().parents[2] / "assets/characters/profiles"),
+        store=store, grants=tuple(ActivationGrant(profile_ref=actor, **policy) for actor in actors))
+    producer_ref = "population:siming"
     service = PopulationActivationPresenceService(
-        store=store, presence_authority=PopulationPresenceAuthority(store=store),
-        activation_authority=ProfileActivationAuthority(
-            registry=CharacterProfileRegistry.from_directory(Path(__file__).resolve().parents[2] / "assets/characters/profiles"),
-            store=store, grants=tuple(ActivationGrant(profile_ref=actor, **policy) for actor in actors)),
+        store=store,
+        presence_authority=PopulationPresenceAuthority(
+            store=store,
+            activation_sources=ActivationSourceReader(authority=activation, producer_ref=producer_ref),
+        ),
+        activation_authority=activation,
+        producer_ref=producer_ref,
     )
     presence = []
     for actor in actors:
