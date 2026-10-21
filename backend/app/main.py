@@ -1959,9 +1959,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     )
     character_agent_runtime.set_target_catalog_resolver(character_object_execution.project_character_targets)
     unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(store=gameplay_event_store)
-    # No implicit production caller: canonical social actions remain closed
-    # until an authenticated composition layer registers this owner.
-    social_spatial_owner = None
+    # The character execution contract has already been source-verified before
+    # reaching this owner.  Compose the durable owner on the same gameplay
+    # store so the normal backend path emits receipts and can recover them.
+    social_spatial_owner = SocialSpatialOwner(store=gameplay_event_store)
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
         esm_service=esm_service,

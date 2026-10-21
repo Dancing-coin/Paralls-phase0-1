@@ -408,6 +408,7 @@ def test_social_spatial_contract_fails_closed_without_registered_owner() -> None
     import app.main as main
 
     main.reset_runtime_state()
+    main.social_spatial_owner = None
     contract = _valid_contract(
         target_refs=("character:char_a",),
         semantic_intent_id="approach",
@@ -463,6 +464,14 @@ def test_social_spatial_contract_uses_registered_durable_owner() -> None:
     assert replay_messages[0]["payload"]["accepted"] is True
     assert replay_messages[0]["payload"]["owner_receipt"]["idempotency_status"] == "duplicate_replayed"
     assert len(main.social_spatial_owner.replay("char_b")) == 1
+
+
+def test_runtime_composition_registers_social_spatial_owner_by_default() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    assert main.social_spatial_owner is not None
+    assert main.social_spatial_owner.store is main.gameplay_event_store
 
 
 def test_social_spatial_ingress_reopens_durable_owner_receipt(tmp_path) -> None:
