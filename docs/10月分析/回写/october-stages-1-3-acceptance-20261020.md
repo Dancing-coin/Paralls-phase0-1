@@ -1116,3 +1116,11 @@ drive scan or cleanup was performed.
 这关闭了 owner 仅凭字符串 target 即可产生 receipt 的完整性缺口；候选来源、空间可达性、authenticated physics/contact、跨域 common cut 和真实 Laya 模型输入仍未完成。R08/R09、Q01–Q04、G-A/G-B/G-C 继续开放。
 
 **后端**：social owner ingress 增加已接纳 actor target gate。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner action+target 目标完整性与 replay 已验证，多域与完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 social target frozen-pin validation
+
+补充 social canonical ingress 的冻结目标校验：当 `expected_observation.target_refs` 存在时，必须与 `CharacterExecutionContract.target_refs` 和实际 action target 完全一致且为单一 actor；不一致在 owner 写入前返回 `target_contract_mismatch`，ledger 零写。定向选择 **6 passed**，覆盖默认 runtime owner、registered ingress/replay、未知目标和冻结 target pin mismatch。
+
+这关闭了 action payload 改写目标后仍能提交 owner receipt 的合同缺口；候选 digest/source provenance、空间可达性、physics/contact、跨域 common cut、正式模型质量与 Godot 验收仍开放。
+
+**后端**：social ingress 已接入 actor admission 与 frozen target pin 校验。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner action+target 来源完整性和 replay 已验证，多域与完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
