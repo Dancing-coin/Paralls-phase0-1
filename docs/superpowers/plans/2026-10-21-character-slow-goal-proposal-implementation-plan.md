@@ -126,3 +126,18 @@ proposal source with no unrelated unsettled turn, or settle that turn through
 the real authority boundary before the crash. Probe artifacts are on D: and
 remain pending cleanup because the available cleanup command was rejected by
 execution policy; no cleanup fallback was attempted.
+
+Valid recovery follow-up (2026-10-22): current exact HEAD
+`e00f575ad705f9ee86054f597e17668b17d79c83` passed the complete four-family
+`test_original_owner_provider_pending_survives_hard_kill_without_reingest`
+selection (**4 passed, 60.20s**) using a dedicated D-drive pytest base. The
+`goal_proposal` setup now applies its private L1 snapshot directly and derives
+the trigger from committed settlement results, avoiding an unrelated
+unsettled canonical turn. A controlled provider resumes in the second backend
+process with the identical frozen request, the original Character goal owner
+commits one event and terminal receipt, and a third process reopens the same
+completed state without another provider call. This closes the valid
+cross-process provider/goal-owner receipt subitem only; live Laya action+target
+→ L4 → domain-owner closure, formal quality, and Godot remain open. The new
+pytest base was removed and verified absent. Historical probe artifacts noted
+above were not created by this follow-up and were left untouched.

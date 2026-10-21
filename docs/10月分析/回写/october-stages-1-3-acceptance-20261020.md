@@ -972,3 +972,15 @@ current probe is not yet sufficient to prove either valid resume or R09
 recovery closure. The probe artifacts remain under the D-drive temporary root
 because the available cleanup command was rejected by execution policy; no C:
 drive scan or cleanup was performed.
+
+### 2026-10-22 goal proposal 有效跨进程恢复复验
+
+在当前精确 HEAD `e00f575ad705f9ee86054f597e17668b17d79c83` 上，重新运行完整 crash/reopen 参数化选择：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_population_process_cognition_recovery.py::test_original_owner_provider_pending_survives_hard_kill_without_reingest --basetemp=D:\codex-temp\goal-recovery-audit\pytest --tb=long`
+→ **4 passed in 60.20s**。本次 pytest 临时目录位于 D 盘，结束后由本轮清理并确认不存在；上段提及的旧探针目录不是本轮创建，未触碰。
+
+`goal_proposal` case 由原 backend 子进程写入 actor-private L1 snapshot 和三个 settlement-derived trigger source；没有通过 `ingest_character_perceived_event` 留下无 authority receipt 的 canonical turn。第一进程在 frozen provider request 处被硬杀；第二进程从相同持久 admission 自动恢复，保持 admission key/source/evidence 及 `request_json` 字节一致，重新调用受控 provider，并由原 Character goal owner 提交恰好一条 `goal_state_event` 和 terminal receipt。第三个全新进程重开后保留相同完成态，未再次调用 provider。上段 stale 诊断对应的是旧 probe setup；当前合法来源 setup 的 fresh recovery case 通过，无需放宽 pin validation 或构造虚假 receipt。
+
+证据边界：这是受控 provider 的生产进程组合与 Character goal owner receipt/reopen 子项，不是实时 Laya 模型质量，也不是完整角色闭环。真实 Laya goal→action+target→L4→多领域 owner receipt/recovery/replay、Q01–Q04 和 Godot G-A/B/C 仍开放。
+
+**后端**：goal proposal provider resume、原 owner terminal receipt 与新进程 reopen 子项已验证。**模型质量**：Q01–Q04 未验收。**角色闭环**：goal 子项有跨进程证据，完整 Laya 多领域链仍未验收。**最终 Godot**：A/B/C 未操作，仍最后集中验收。
