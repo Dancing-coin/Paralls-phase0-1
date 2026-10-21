@@ -869,3 +869,22 @@ provider dispatch、完整 Laya/领域 owner 闭环、Q01–Q04 或 Godot A/B/C�
 - 根因定位与修复（2026-10-21）：普通 `ingest_siming_output` 的 L2/L3 请求在 gateway 校验前把 `CharacterMindFrame` 提前转成 JSON dict，导致 `gateway requires a frozen mind frame`，provider 未启动。保留 MindFrame 实例到 gateway，交由冻结序列化处理；driver 回归 `python -m pytest -q backend/tests/test_character_cognition_driver.py` 为 **9 passed**，与慢目标 coordinator/store/transition 合并为 **41 passed**。这只恢复 driver 基线，不代表生产 trigger、快慢并行、完整 Laya、正式模型质量或 Godot 已验收。
 - 复验 owner 接纳相关范围：`python -m pytest -q backend/tests/test_character_slow_goal_coordinator.py backend/tests/test_character_slow_goal_atomic_acceptance.py backend/tests/test_character_slow_goal_transition.py`，32 passed。无本批运行产物需保留；没有运行全量 pytest、Harness all、真实模型、正式质量拆分、训练或 Godot。
 - 矩阵状态：后端 coordinator/store owner acceptance 子项已完成，普通 cognition driver 基线已恢复并通过 9 项回归；生产 trigger、快慢并行与真实 provider dispatch 仍未验收。Q01–Q04 未验收；角色完整慢目标→Laya action+target→L4→domain receipt/recovery 未验证；最终 Godot G-A/B/C 未操作，仍排最后。
+
+## 2026-10-21 formal Laya evaluation preflight drift audit
+
+按正式模型质量门的 fail-closed 预检运行：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_laya_evaluation_contract.py`
+结果为 **1 failed, 11 passed**。唯一失败是
+`test_source_freeze_does_not_release_unprepared_four_role_quality`：预期
+`source_frozen`，实际为 `source_changed_or_incomplete`。逐项 SHA256 核对确认
+漂移来自既有工作区源文件，而非评估脚本读取 sealed split 或调用模型：
+`assets/characters/profiles/char_a.yaml`、`char_b.yaml`、`char_c.yaml`、
+`backend/app/character_agent/gateway/laya_provider.py` 和
+`docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md` 均与 verifier
+内声明的旧 pin 不同。其余 11 项契约测试通过，仍保持 final/holdout 不读取、
+provider_calls=0、空 split/缺失运行输入 fail-closed。
+
+该结果不能刷新冻结 pin，也不能把现有 development fixture 升级为正式质量来源；
+漂移文件属于用户已有修改集合，本轮未修改。Q01–Q04 仍未验收，正式 calibration /
+final / independent_holdout 仍未运行。此批只新增来源漂移证据，不提升后端、角色闭环
+或 Godot A/B/C 状态。
