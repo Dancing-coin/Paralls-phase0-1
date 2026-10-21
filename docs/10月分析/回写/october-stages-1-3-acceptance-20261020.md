@@ -14,6 +14,25 @@ Settlement 私有 L1 snapshot 的 SQLite close/reopen、exact retry 零重复追
 `python -m pytest -q -p no:cacheprovider backend/tests/test_character_slow_goal_main.py` → **1 passed**。
 这两项只证明已修复的 snapshot projection 和单进程 provider/owner 事务边界；provider_pending 后新进程启动轮询仍因 actor pin/timeline/l1 差异保持未完成，不能升级 R09，也不能替代完整 Laya action+target→L4→多领域 owner、正式 Q01–Q04 或 Godot A/B/C。
 
+### 2026-10-21 无 profile 进程恢复复验
+
+使用无 PowerShell profile 的同一窄入口复验既有真实硬杀恢复合同，排除了本机 profile
+在子进程启动前触发的 Conda 初始化错误（该错误曾表现为外层
+`GameplayEventStoreSnapshotError`，未进入应用恢复断言）。
+
+- `python -m pytest -q -p no:cacheprovider backend/tests/test_population_process_cognition_recovery.py::test_original_owner_provider_pending_survives_hard_kill_without_reingest[character] --tb=long`
+  → **1 passed in 12.80s**。
+- `python -m pytest -q -p no:cacheprovider backend/tests/test_population_process_cognition_recovery.py::test_original_owner_provider_pending_survives_hard_kill_without_reingest[character_commit] --tb=short`
+  → **1 passed in 12.74s**。
+- `python -m pytest -q -p no:cacheprovider backend/tests/test_character_slow_goal_main.py`
+  → **1 passed in 4.42s**。
+
+这三项证明普通 Character L2 provider pending、Character commit-started 和单进程生产
+slow-goal lifespan 的现有边界；它们没有证明 `goal_proposal` 在新进程启动自动轮询下的
+actor pin/timeline/private-L1 一致性，也没有证明慢目标 exact-once recovery、完整 Laya
+action+target→L4→多 owner receipt、Q01–Q04 或 Godot G-A/G-B/G-C。R09 仍保持未完成；
+stale protection 不放宽。
+
 ### 2026-10-21 Soul owner source audit refresh
 
 The current Soul source, anchor, fact, vulnerability and bounded effect owner
