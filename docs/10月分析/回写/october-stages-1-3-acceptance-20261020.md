@@ -18,6 +18,15 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 
 ## D08 当前生产接线决策包：encounter identity 与 contact authority
 
+### 执行建议（2026-10-22）
+
+基于当前规格的 authority 边界与 G-B 验收要求，本轮建议采用以下组合：
+
+1. **普通街战 encounter owner：A**。由已认证 backend scene/session admission 创建唯一且持久的 `encounter_ref`，写入 begin/end receipt，并在重连、并发和结束条件中保持同一 encounter 身份。不得按 actor-target 或单次 attempt 临时合成 encounter。
+2. **confirmed hit contact source：A**。只接受 Godot physics owner 通过认证 boundary 提交的 contact receipt；receipt 至少绑定 actor identity、connection epoch、attempt id、physics tick、目标 incarnation、动作合同和 source digest。当前 client token/pose 只保留为开发联调输入，不能写 canonical Threat。
+
+这两项是推荐实现方向，不是已有实现证据；在正式 owner/API 落地前，D08 生产入口保持 fail-closed。推荐 A/A 的依赖顺序是：先实现 backend encounter admission 与持久 begin/end receipt，再实现 authenticated physics-contact receipt adapter，最后接 `street_combat_attempt` 到 Presence/Life/Faction read-set、L4 contract、Threat owner 和 replay participant。Godot B 场景只在这些 backend 边界具备后执行。
+
 ### 已核实的实现边界
 
 - 规格12 §4/§9 与计划04 Task5 已固定 Threat 数值政策：只消费受信 confirmed hit，damage 按整数 1:1 累计、不衰减、不跨 encounter、encounter 结束清零；TargetEligibility 基于 canonical Presence、LifeState、方向性 faction，并在写入前核对 source heads/incarnation。
@@ -399,6 +408,8 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 `error_code=owner_unavailable`，不产生 `social_spatial_runtime_result` 或角色结算写入；旧 action-request bundle 兼容分支仍保留，不能计作正式 Laya 闭环。
 
 RED 首次复现了原先 canonical `approach` 的 `accepted` 假结算；最小修复后定向回归为 **51 passed, 2 deselected**（包含新的 fail-closed 断言、对象 owner 合同及 action-request routing），pytest 临时目录位于 `D:\codex-temp\social-owner-green2\pytest`。这只关闭误报风险，不实现社交空间 owner；后续若要收口 R12/G-C，必须先提供可信空间/参与者来源、注册 owner、提交前重验、持久 receipt、恢复/回放和双角色真实边界证据。
+
+Legacy `action_request_bundle` 仍保留历史兼容分支，当前测试和调用方把其中的社交动作映射到 `_actor_target_action_settlement()` 的内存 `accepted` 结果。该分支没有正式 receipt/recovery 语义，不能进入 Laya 正式质量分母、R08/R09 或 G-C 验收；后续迁移必须一次性改为与 canonical 路径相同的 `social_spatial_owner` fail-closed，并同步更新旧兼容测试，不能只改一半。
 
 ## D06／D10 来源依赖：正式采用静态资源 genesis（2026-10-20）
 
