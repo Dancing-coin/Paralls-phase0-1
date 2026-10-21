@@ -53,7 +53,7 @@ or Godot operation was performed in this refresh.
 
 ### 2026-10-21 慢目标新进程恢复复现
 
-为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和终态 owner 边界可恢复；重开诊断发现 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 不同，安全校验返回 `cognition_provider_stale_pin`，没有新 goal event，拒绝终态仍经原 owner 回执保存。已确认私有 projection 缺失，但 timeline 差异需在启动轮询前继续隔离，尚不能认定三项都是同一恢复缺陷。`actor_pin` 在 coordinator prepare 中采集，晚于 trigger 入库，不存在已证实的 pre-trigger 采集问题。测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成；下一步隔离启动自动轮询和历史原始输入，复验原 entry/private projection 与 session head，保留 stale 防护。
+为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和终态 owner 边界可恢复；重开诊断发现 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 不同，安全校验返回 `cognition_provider_stale_pin`，没有新 goal event，拒绝终态仍经原 owner 回执保存。随后 session recovery 已加入 settlement 私有 L1 projection 与 cognition cadence 恢复；这修复了已隔离出的 projection 缺失，但尚未证明真实自动轮询启动时 `actor_pin`/timeline 与 session head 一致。差异仍需在启动轮询前后分段采样，不能假定私有 projection 修复同时解决 timeline。`actor_pin` 在 coordinator prepare 中采集，晚于 trigger 入库，不存在已证实的 pre-trigger 采集问题。测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成；下一步隔离启动自动轮询和历史原始输入，复验原 entry/private projection 与 session head，保留 stale 防护。
 
 ### 2026-10-21 canonical context 私有快照恢复增量
 
@@ -836,6 +836,16 @@ training, or Godot operation was run.
 admission、owner acceptance、runtime trigger 组合选择共 **77 passed**。
 这只是 fail-closed 生命周期边界，不代表同角色快慢并行的真实延迟运行、真实
 provider dispatch、完整 Laya/领域 owner 闭环、Q01–Q04 或 Godot A/B/C。
+
+### 2026-10-21 本轮慢目标定向复验
+
+本轮重跑完整慢目标合同、transition、atomic acceptance、coordinator、driver dispatch/terminal、runtime trigger、trigger producer 与生产 lifespan 选择：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_slow_goal_contract.py backend/tests/test_character_slow_goal_transition.py backend/tests/test_character_slow_goal_atomic_acceptance.py backend/tests/test_character_slow_goal_coordinator.py backend/tests/test_character_slow_goal_driver_dispatch.py backend/tests/test_character_slow_goal_driver_terminal.py backend/tests/test_character_slow_goal_runtime_trigger.py backend/tests/test_slow_goal_trigger_producer.py backend/tests/test_character_slow_goal_main.py`
+→ **77 passed in 7.36s**。私有 L1 恢复选择
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_session_recovery.py -k "settlement_recovery_restores_private_l1_outcome_projection or ready_restores_private_l1_snapshot_from_committed_context_stage"`
+→ **2 passed, 53 deselected in 0.96s**。
+
+以上是慢目标合同、owner 事务、driver seam、单进程生产 composition 和私有 snapshot reducer 的定向回归；没有重跑 goal-proposal 硬杀恢复复现。因此不能关闭 R09，也不能证明新进程启动自动轮询不改变恢复 pin。下一步应复用已有真实 SQLite crash runner，增加 `goal_proposal` 家族，并分别采集第二进程初始化后、首轮 driver poll 前后、provider dispatch 前的原 request/admission、actor pin 分量、timeline/session head、private snapshot 和 goal terminal receipt。provider request 必须保持原 bytes；若 pin 确有外部更新则继续 stale/零写，不放宽校验。后端完成状态仍为局部实现；Q01–Q04 未验收；角色完整 Laya action+target→L4→领域 owner receipt/recovery 未完成；Godot G-A/B/C 未操作，仍最后集中验收。
 
 ### Driver batch 4 diagnostic (2026-10-21)
 
