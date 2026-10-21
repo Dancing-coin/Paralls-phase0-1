@@ -4,6 +4,16 @@
 
 **当前执行目标：整体完成十月主线阶段一至三的实现与验收。** Goal ledger 仍 active；当前工具 `update_goal` 仅支持 status，无法修改 objective，不能以虚报旧目标 complete 的方式替换。本文件及[执行计划](../../superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md)承载扩展后的权威执行范围。
 
+**本轮目标扩展确认（2026-10-21）：** 阶段一至三的统一收口同时包含完整 Laya 真实 backend 链路（完整输入与候选、action+target、L4、真实领域 owner、receipt、恢复与回放）以及正式模型质量 Q01–Q04；Godot G-A/G-B/G-C 仍是后端与角色闭环收口后的最后门禁。服务可调用、choice 接纳、合同测试或单 owner slice 均不能替代这些闭环。Goal 保持 active；由于 Goal API 没有 objective 更新参数，扩展目标由本矩阵和执行计划承载，未将旧阶段目标错误标记为完成。
+
+### 2026-10-21 窄恢复复验与证据边界
+
+Settlement 私有 L1 snapshot 的 SQLite close/reopen、exact retry 零重复追加和跨 actor snapshot 拒绝仍由定向选择稳定通过：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_session_recovery.py -k "settlement_recovery_restores_private_l1_outcome_projection or ready_restores_private_l1_snapshot_from_committed_context_stage"` → **2 passed, 53 deselected**。
+生产组合的单进程 slow-goal lifespan dispatch→provider→Character owner terminal receipt 也通过：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_slow_goal_main.py` → **1 passed**。
+这两项只证明已修复的 snapshot projection 和单进程 provider/owner 事务边界；provider_pending 后新进程启动轮询仍因 actor pin/timeline/l1 差异保持未完成，不能升级 R09，也不能替代完整 Laya action+target→L4→多领域 owner、正式 Q01–Q04 或 Godot A/B/C。
+
 ### 2026-10-21 Soul owner source audit refresh
 
 The current Soul source, anchor, fact, vulnerability and bounded effect owner

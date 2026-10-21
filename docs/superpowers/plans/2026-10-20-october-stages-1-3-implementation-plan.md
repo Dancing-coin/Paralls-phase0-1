@@ -4,6 +4,8 @@
 
 **Goal:** 整体完成十月主线阶段一至三的实现与验收，包含完整 Laya、角色与真实领域 owner 闭环，以及最后集中完成的 Godot A/B/C。
 
+**目标扩展确认（2026-10-21）：** 完整 Laya 的验收必须覆盖真实 backend 运行、输入与候选完整性、完整 action+target、L4 执行、真实领域 owner 提交、receipt、恢复与回放；正式模型质量必须按 calibration/final/holdout 隔离完成 Q01–Q04。服务可调用、choice 接纳、合同测试和单 owner slice 只能作为局部证据。Godot A/B/C 在上述后端与角色依赖收口后集中执行；阶段四、通用编辑器、AD/Blender 动作工具链和自走棋继续排除。Goal API 当前只能更新 status，因此扩展目标由本计划和统一矩阵承载，Goal 保持 active。
+
 **Architecture:** 复用现有 CharacterTurnContext、MindFrame、L1–L4、gateway/Laya、RuntimeExecution 和 GameplayEventStore。角色缺少领域能力时先完成对应 owner，再返回角色；模型与 Godot 只提交结构化 intent，不成为世界 authority。
 
 **Tech Stack:** Existing Python/Pydantic/pytest/Harness backend, official Laya adapter, existing Godot actors and qualified motion assets; no new dependencies.
