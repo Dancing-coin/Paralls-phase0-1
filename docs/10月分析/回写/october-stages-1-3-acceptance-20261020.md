@@ -16,16 +16,16 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 
 **当前执行目标：整体完成十月主线阶段一至三的实现与验收。** Goal ledger objective 已正式扩展到本范围且仍 active；本文件及[执行计划](../../superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md)承载统一执行矩阵与批次记录。
 
-## D08 当前生产接线决策包：encounter identity 与 contact authority
+## D08 当前生产接线决策：encounter identity 与 contact authority
 
-### 执行建议（2026-10-22）
+### 已选实现决策（2026-10-22）
 
-基于当前规格的 authority 边界与 G-B 验收要求，本轮建议采用以下组合：
+按当前规格的 authority 边界与 G-B 验收要求，采用以下组合：
 
 1. **普通街战 encounter owner：A**。由已认证 backend scene/session admission 创建唯一且持久的 `encounter_ref`，写入 begin/end receipt，并在重连、并发和结束条件中保持同一 encounter 身份。不得按 actor-target 或单次 attempt 临时合成 encounter。
 2. **confirmed hit contact source：A**。只接受 Godot physics owner 通过认证 boundary 提交的 contact receipt；receipt 至少绑定 actor identity、connection epoch、attempt id、physics tick、目标 incarnation、动作合同和 source digest。当前 client token/pose 只保留为开发联调输入，不能写 canonical Threat。
 
-这两项是推荐实现方向，不是已有实现证据；在正式 owner/API 落地前，D08 生产入口保持 fail-closed。推荐 A/A 的依赖顺序是：先实现 backend encounter admission 与持久 begin/end receipt，再实现 authenticated physics-contact receipt adapter，最后接 `street_combat_attempt` 到 Presence/Life/Faction read-set、L4 contract、Threat owner 和 replay participant。Godot B 场景只在这些 backend 边界具备后执行。
+这是目标内的已选实现方向，不是已有实现证据。A/A 的依赖顺序是：先接入真实、已认证的 backend scene/session admission issuer 与持久 begin/end receipt，再定义并接入 authenticated physics-contact receipt adapter，最后接 `street_combat_attempt` 到 Presence/Life/Faction read-set、L4 contract、Threat owner 和 replay participant。Godot B 场景只在这些 backend 边界具备后执行。当前审查没有找到可复用的生产 scene/session admission issuer；不得用任意 transport caller、client-provided encounter id 或按 actor-target/attempt 合成的 id 代替。confirmed hit 入口在 issuer 和 contact receipt 均可验证前继续 fail-closed。
 
 ### 已核实的实现边界
 
@@ -35,16 +35,16 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 - 当前 street pose/contact 输入只通过 controller binding、epoch、tick、digest、范围与距离约束。Attempt 自身不携带 backend-issued encounter lifecycle receipt；client contact ref/digest 和 bounded pose projection 不能单独证明 Godot physics contact。
 - 仓库里已有 `gameplay.conflict.encounter_started` 仅属于 P5 action-window conflict slice；它不具备普通 main street combat 的完整 world/timeline/Presence/Life/faction/contact binding，不能直接升格为此入口的 encounter authority。
 
-### 必须先决的产品选择
+### 已选决策与验收约束
 
 | 决策项 | 选项 | 影响 |
 |---|---|---|
-| 普通生产 encounter 的身份与 lifecycle owner | A. 由已认证 backend scene/session admission 创建唯一 `encounter_ref`，持久 begin/end receipt；B. 由既有具名 conflict/boss scenario owner 创建并将其原 receipt 绑定到 combat scope；C. 继续 fail-closed，直到某个正式 gameplay owner 提供 lifecycle source | A 可覆盖一般街战但需确定 issuer、并发/重连及结束条件；B 复用 owner 但只覆盖其获准场景，不能假装通用；C 不启用 Threat 生产写入，G-B 继续阻塞。不得按 actor-target 或单个 attempt 临时合成 ref，否则分别导致跨遭遇污染或每击清零。 |
-| contact evidence 可否用于 confirmed hit | A. 只接受 Godot physics owner 通过认证 boundary 提交、与 actor binding/epoch/attempt/tick/目标 incarnation 绑定的 contact receipt；B. 先采用现有 bounded street owner 的 contact contract 作为非正式开发 slice，Threat production 保持禁用；C. 放宽为当前 client token/pose check | A 才支持最终 G-B 的真实接触验收；B 可用于开发联调但不能提升 canonical hit/正式验收；C 会把可伪造的 transport 观察误作 world truth，拒绝。 |
+| 普通生产 encounter 的身份与 lifecycle owner | **已选 A**：由已认证 backend scene/session admission 创建唯一 `encounter_ref`，持久 begin/end receipt；B 仅适用于既有具名 conflict/boss scenario，不能充当通用街战 owner；C 是 admission issuer 落地前的运行状态 | 当前尚缺真实 issuer。实现必须说明创建、并发、重连、结束、重开恢复的唯一性和原 receipt；不得按 actor-target 或 attempt 合成 ref。issuer 缺失期间维持 fail-closed。 |
+| confirmed hit 的 contact evidence | **已选 A**：只接受 Godot physics owner 通过认证 boundary 提交、与 actor binding/epoch/attempt/tick/目标 incarnation/动作合同绑定的 contact receipt；现有 bounded street contract 仅可作联调；client token/pose 不得写 canonical Threat | contact receipt adapter 必须验证 source identity、digest、单次 attempt 绑定、目标 incarnation 和动作合同，并作为 durable hit 事务的来源读集。真实 Godot 边界与可见结果只在最后 G-B 验收。 |
 
-推荐顺序：在 backend 中实现明确的 encounter admission owner/接口与真实 source adapter 后，再由 Godot 最后提供 physics owner 边界并验收 G-B；在这两项确定前，不接通会对生产 target 暴露的 Threat write route。现有 owner/lifecycle 测试继续有效，但不代替该 owner 来源与真实边界。
+执行顺序：先从现有 backend/session 架构找到或补齐受信 admission issuer，复用 Threat owner 的 durable begin/end receipt；然后确定 contact receipt 的认证 boundary 和回放身份，再接通生产 ingress。现有 owner/lifecycle 测试继续作为 owner 子项证据，但不代替 issuer、真实 L4 输入、真实 contact 来源或完整角色闭环。
 
-**当前状态**：矩阵已有的 D08 authenticated faction source、Presence/Life target reader、Threat owner 与 owner lifecycle gate 均保留各自已验证子项；D08 生产入口仍为**未实现**，完整战斗角色链仍为**局部实现**。模型 Q01–Q04 未验收；Godot G-A/B/C 尚未开始。上述两个决策是把 D08 推向真实生产 hit 的前置，不阻塞与它无依赖的其他 owner/角色任务。
+**当前状态**：矩阵已有的 D08 authenticated faction source、Presence/Life target reader、Threat owner 与 owner lifecycle gate 均保留各自已验证子项；D08 生产入口仍为**未实现**，完整战斗角色链仍为**局部实现**。模型 Q01–Q04 未验收；Godot G-A/B/C 尚未开始。两项产品方向已选；剩余的是找到/实现可认证 issuer 和 contact boundary，并交付真实端到端证据。
 
 **本轮目标扩展确认（2026-10-21）：** 阶段一至三的统一收口同时包含完整 Laya 真实 backend 链路（完整输入与候选、action+target、L4、真实领域 owner、receipt、恢复与回放）以及正式模型质量 Q01–Q04；Godot G-A/G-B/G-C 仍是后端与角色闭环收口后的最后门禁。服务可调用、choice 接纳、合同测试或单 owner slice 均不能替代这些闭环。Goal 已正式扩展并保持 active，没有将目标标记为完成。
 
