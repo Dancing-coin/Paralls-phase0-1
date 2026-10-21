@@ -1108,3 +1108,11 @@ drive scan or cleanup was performed.
 这消除了 canonical 与 legacy 社交动作在默认 backend 上分叉到两套结算真相的问题；仍不代表 legacy 输入已经具备正式 Laya 来源完整性、authenticated candidate admission、多 owner common cut 或 Godot 物理证据。R08/R09/Q01–Q04/G-A/G-B/G-C 继续开放。
 
 **后端**：默认 runtime 下 canonical 与 legacy social actor-target action 共用 durable owner。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner 社交动作 receipt/replay 覆盖扩展到 legacy 路径，多域和完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 social target admission guard
+
+补充 canonical 和 legacy social owner ingress 的 target admission：目标必须是当前 `CharacterAgentRuntime` 已接纳且不是自身的 actor；未知、未接纳或 self-target 在 owner 调用前返回 `target_unavailable`，不会写入 social ledger。定向选择 **5 passed**，覆盖默认 runtime composition、registered ingress/replay、无 owner fail-closed 和未知目标零写拒绝。
+
+这关闭了 owner 仅凭字符串 target 即可产生 receipt 的完整性缺口；候选来源、空间可达性、authenticated physics/contact、跨域 common cut 和真实 Laya 模型输入仍未完成。R08/R09、Q01–Q04、G-A/G-B/G-C 继续开放。
+
+**后端**：social owner ingress 增加已接纳 actor target gate。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner action+target 目标完整性与 replay 已验证，多域与完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
