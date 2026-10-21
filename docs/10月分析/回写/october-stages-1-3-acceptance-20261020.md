@@ -4,6 +4,33 @@
 
 **当前执行目标：整体完成十月主线阶段一至三的实现与验收。** Goal ledger 仍 active；当前工具 `update_goal` 仅支持 status，无法修改 objective，不能以虚报旧目标 complete 的方式替换。本文件及[执行计划](../../superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md)承载扩展后的权威执行范围。
 
+### 2026-10-21 Soul owner source audit refresh
+
+The current Soul source, anchor, fact, vulnerability and bounded effect owner
+selection was rerun against the shared worktree:
+`python -m pytest -q -p no:cacheprovider backend/tests/test_soul_anchor_owner.py backend/tests/test_soul_fact_owner.py backend/tests/test_soul_vulnerability.py backend/tests/test_soul_effect_owner.py backend/tests/test_soul_presence_sources.py backend/tests/test_soul_resource_sources.py`.
+Result: **97 passed in 20.03s**.
+
+This is a fresh regression result for the existing owner slices only. It does
+not promote D10 to production: `app/main.py` still has no trusted Soul package
+composition or original-action/L4 caller, `Settings` has no Soul registration
+surface, and no production message route issues or consumes Soul facts/effects.
+The design requires an explicit trusted composition issuer, real Presence and
+Resource source cuts, registered life/mind semantics, and a shared durable
+receipt before R14 or the final Godot gates can advance. No fixture-only
+registration, accepted choice, or owner unit test is counted as that missing
+production boundary. No model evaluation, training, full pytest, Harness all,
+or Godot operation was performed in this refresh.
+
+### 2026-10-21 慢目标新进程恢复复现
+
+为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和 terminal owner 边界均可恢复，但当前生产 runtime 重建后 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 与冻结值漂移，安全校验按设计返回 `cognition_provider_stale_pin`，不会写入 goal event 或 terminal receipt。该复现确认缺口在原 cognition entry/private projection 的恢复契约，而不是放宽 provider pin；测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成，后续需先补完整 entry-after/session-head rehydration，再重跑新进程端到端闭环。
+
+**后端**：D10 既有 source/anchor/fact/vulnerability/effect 局部 owner 回归
+97 项通过；生产 composition 与 L4 caller 仍未实现。**模型质量**：Q01–Q04
+无新增验收。**角色闭环**：R07–R09/R14 未升级。**最终 Godot**：G-A/B/C
+未操作，仍为最后门禁。
+
 ## 当前优先缺口：完整动作与目标来源审查（2026-10-20）
 
 ### 2026-10-21 combat owner production-ingress audit
@@ -253,7 +280,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 - 精确 `77fd4bb`＋13 个源码快照隔离：110 passed，run `70500ea8636946ef8b8d955d6a65071d`；backend-contract `0d23b439fe2647f8a80b5f161de1159e` passed；docs 修正后 `bb056c07e2cf40578f7a855b9c5904c8` passed；均 cleanup passed。证据根 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/` 下 `resource-genesis-final/`、`resource-genesis-contract/`、`resource-genesis-docs-corrected/`。stage 的归一化源码 SHA 与隔离 manifest 逐项一致。
 - 保留真实失败：恢复 RED `00d135e3ef6f48b6b08c192e0603607f` 两项失败；caller/profile/别名 RED `32fc8c045d7040299b669ab2e6aaa60d` 三项失败；owner 审查 RED `584e730c527547268be08b0c14c4eaf0` 七项失败（工作树，非 HEAD 隔离）。首次 docs `7d98ed7c5e9849288e21599eeb1e8d23` 缺同名计划，已添加关联主计划的 Soul 实施计划后通过，不以盲重试消除失败。
 - 范围：新 materialization 仅接受无时限静态 authored 模板；registry 深拷贝按服务 composition 冻结，重新部署更换内容，不声称热更新撤权原子性。调用方 tick 不是 confirmed world time；模板内 issuer/publication key 是内容元数据，不能当 publisher receipt 或 Soul grant。actor-global Resource stream 绑定首个 world/timeline，迁移未验收。三种 core 资源不自动代表 life/mind vulnerability。
-- D06 仍局部实现：生产 caller、confirmed time、恢复／转换／modifier 等对应独立 owner 与全域共同 cut 仍按原矩阵验收。D10 完整 owner 仍未实现；已补闭合 source adapter 映射、有限操作／反制、incarnation、absence CAS、时间与隐私设计，见 [Soul 设计](../../superpowers/specs/2026-10-20-bounded-soul-owner-design.md)。下一步为真实来源适配器与 Presence 依赖，随后四 gate／owner／角色回验。
+- D06 仍局部实现：生产 caller、confirmed time、恢复／转换／modifier 等对应独立 owner 与全域共同 cut 仍按原矩阵验收。D10 完整 owner 仍未实现；source/Presence/anchor/fact/vulnerability/bind-unbind 窄片已有独立证据，见 [Soul 设计](../../superpowers/specs/2026-10-20-bounded-soul-owner-design.md)。下一步为生产 composition、真实 life/mind 语义来源、confirmed-time/common-cut/private projection 与角色回验。
 - 模型质量：没有新增评分或质量通过证据，Q01–Q04 保持原状态。角色闭环：没有新增完整 Laya／L4／Soul receipt 链，R14 不升级。Godot：未修改、启动或操作，G-A/B/C 均未验证。没有全量 pytest／Harness all、模型调用或训练。历史工作区和 `.harness` 内容保留。
 
 **Soul Resource 来源适配器提交 `0d10856a`：**固定接受已准入 materialization、action settlement、reservation 三类 owner 的原完整事务；核验原事件、schema、receipt、companion、摘要与 world/timeline 绑定，拒绝 probe／fixture、伪造单事件和未支持 producer。读取冻结 canonical head（含空 head0）并返回完整事务证据/cut 上界；资源不存在保持 unavailable，版本不匹配拒绝，不从 stamina/mana 推 life/mind。实际 genesis→action 与 reservation consume、SQLite reopen 均通过；适配器没有 Soul 写入、授权或生产 L4 接线。精确 HEAD＋两源码隔离84 passed，run `764fb9d4323b48da8c0eb19347bbc102`；backend-contract `b026b0f62dbf46789649be6f25b8bd03`、docs `4ebd081316884873a6d6e5b58d265325` passed；均 cleanup passed。外部同根 `soul-resource-sources-final/`、`soul-resource-sources-contract/`、`soul-resource-sources-docs/`。缓存后 membership RED `70855409cd7a4a63b51320d045325ca0`、版本／摘要 RED `e7b12dadb8a643e3b28024da25ffaecc` 已修复；最初缺适配器 RED `2b05aab008ca4952a280a7f7742f8807` 保留。D10 完整 owner 仍未实现；下一项是 Population/Presence anchor source，随后真正的规则事实 owner 与 gate，避免继续扩展此局部测试。
@@ -500,7 +527,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 - HEAD `a28eac5b`＋两份精确源码隔离 **48 passed**，run `9c62f6b8f6914426bb16655e7b4806b3`，外部根 `soul-presence-final/`，cleanup passed。RED缺模块9失败/37通过；固定cut竞态、SQLite reopen、旧incarnation、撤grant和坏原receipt均覆盖。独立只读审查无阻断；最初review模型503未产生结论，随后使用可用代理完成。
 - **后端**：Presence/Resource来源与anchor provenance局部完成，D10完整Soul owner仍未实现；生产composition、Life adapter、link/grant/protection/four gates与共同cut继续开放。**模型质量**：Q01–Q04无新增评分。**角色闭环**：R14/Laya完整动作验收未升级。**Godot**：A/B/C未操作或验证。
 - Anchor最终隔离56 passed，run `ab4eaf39aa294f558d81a5a40d9d36bf`（`soul-anchor-handoff-final/`）；包含 projection 副本隔离与 despawn 后原receipt恢复；此前55项由此结果取代。backend-contract `4b8cc088d2b44d6db7280e91cf2dc2e1` passed；cleanup passed。真实Presence incarnation与Resource cut进入authority-only原子anchor receipt，重开后只恢复原receipt，不授予gate。提交 `03f200ed` 及 `9d25d89b` timeline 内部scope恢复校验。
-- 无全量pytest/Harness all、模型调用/训练或Godot；run_scope本轮产物已回收，历史工作区保留。Goal仍active，扩展范围以本矩阵与执行计划为准。下一步实现Soul自有link/grant/protection与四门owner；缺失Life/mind语义保持fail-closed。
+- 无全量pytest/Harness all、模型调用/训练或Godot；run_scope本轮产物已回收，历史工作区保留。Goal仍active，扩展范围以本矩阵与执行计划为准。Soul link/grant/protection 与四门已有 bounded bind/unbind 窄片，但生产 composition、Life/mind 语义、其余 effect/value、confirmed-time/common-cut、L4 仍开放；缺失Life/mind语义保持fail-closed。
 - Soul fact lifecycle基础实现于 `soul_fact_runtime.py`：事件冻结完整注册快照；投影按 world/actor/target/incarnation/package/version/rule 分区；撤销必须匹配原 fact 和完全相同策略快照；完整历史重放验证注册类型、策略键、事务、receipt 与原 anchor source cut。新增 version隔离、策略重部署、伪造快照和缺 anchor cut回归。最终精确隔离 **73 passed**，run `f657afeff55e49809db846799b80bc96`，cleanup passed；外部证据 `soul-fact-review-final/`。RED分别确认缺注册快照/版本混合、伪造自洽注册快照、缺anchor cut；期间错误复验因重复导出目录未执行；最终仅引用新目录绿色结果。
 - 本批仍是局部 owner 基础：`operations` 尚未绑定真实 effect/value 转换；Life/mind、四门 admission、counterplay、schema registry/生产 composition、replay participant/common cut 与 L4 未完成。测试使用隔离 `GameplayEventStore`，不作为生产接入证据。未运行 backend-contract/docs/Harness all/全量pytest、模型评估或Godot；本轮 runner cleanup通过，`.harness` 只有历史用户修改，未触碰。
 
