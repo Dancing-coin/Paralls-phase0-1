@@ -46,6 +46,32 @@ No external Harness archive was generated for this narrow regression batch.
 未新增验收。**角色闭环**：慢目标→Laya→多领域 owner→恢复仍未验收。
 **最终 Godot**：A/B/C 未操作，继续最后集中验收。
 
+### 2026-10-21 production slow-goal lifespan composition
+
+The production lifespan composition now has a fresh controlled-provider
+regression in `backend/tests/test_character_slow_goal_main.py`. It constructs a
+committed actor-private repeated-failure trigger, dispatches through the
+production cognition driver while the provider is delayed, then releases the
+provider and observes the original Character goal owner commit one
+`goal_state_event` at producer timestamp 103 plus the completed terminal
+receipt. The test passed **1 passed in 4.54s** with
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_slow_goal_main.py`.
+
+This closes only the production composition/terminal-receipt subitem of the
+slow-goal path. The provider is controlled, the model is not scored, and the
+run does not prove same-actor fast work under real Laya load, fresh-process
+replay, downstream Laya action+target→L4→domain-owner closure, formal Q01–Q04,
+or Godot A/B/C. The broader slow-goal selection also passed **138 tests in
+13.78s**; its known MindFrame rebinding assertion is excluded from this count
+and remains an unrelated pre-existing mismatch when actor and turn are changed
+together. No full pytest, Harness all, model evaluation, training, or Godot
+operation was performed.
+
+**后端**：慢目标 production lifespan dispatch→Character owner terminal receipt
+子项已通过；完整后端闭环仍局部。**模型质量**：Q01–Q04 未新增验收。
+**角色闭环**：R01/R07/R08/R09 仍缺真实 Laya 原动作、跨领域 owner、回放与
+完整输入质量门。**最终 Godot**：A/B/C 未操作，仍为最后门禁。
+
 ### 2026-10-21 same-actor fast admission seam
 
 Added a driver-level regression that leaves a slow goal proposal at

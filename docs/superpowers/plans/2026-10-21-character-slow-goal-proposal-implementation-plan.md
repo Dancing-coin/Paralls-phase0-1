@@ -14,6 +14,16 @@ expiry/source-revocation cleanup, genuine delayed-provider fast coexistence,
 live goal receipt/recovery and downstream Laya closure remain open. Historical
 batch notes below describe their original evidence boundaries.
 
+Production lifespan follow-up (2026-10-21): `backend/tests/test_character_slow_goal_main.py`
+now exercises the composed runtime with a delayed controlled provider. A committed
+repeated-failure trigger is dispatched by the production driver, the provider is
+released, and the original Character goal owner writes one `goal_state_event`
+(`producer_ts=103`) with a completed terminal receipt. Focused result: **1 passed
+in 4.54s**. This is a composition/terminal subitem only; it does not establish
+real Laya action selection, downstream L4/domain-owner execution, fast/slow
+coexistence under a real provider, fresh-process replay, formal model quality, or
+Godot evidence.
+
 ## Batch 1: explicit generative proposal contract
 
 Own `gateway/model_gateway.py`, `gateway/model_provider.py`, `gateway/prompt_policy.py`, `gateway/output_validator.py`, the adjacent `gateway/goal_proposal.py` contract and `backend/tests/test_character_slow_goal_contract.py`. Provider dispatch must bypass ordinary L3 action coercion for this explicit contract. Preserve existing dirty hunks using a clean HEAD overlay for verification and selective staging. Do not alter global goal models or action-choice behavior for this batch.
