@@ -757,6 +757,28 @@ Contract commit `063b29a0`; docs first failed (`7dae8ac4ffd64e03a0462d5d6e259412
 - **后端**：慢目标持久请求准备局部实现；已补每 actor 一个 pending 的原子 admission guard，但合格 trigger 与 frozen frame 绑定、owner 接纳时原始 pins/session head 重验、goal event+terminal receipt+CAS 原子提交、取消/失败/恢复仍未完成。**模型质量**：Q01–Q04 未验收。**角色闭环**：仍缺真实慢提案与完整 Laya action+target→L4→领域 owner 回执/恢复。**最终 Godot**：A/B/C 未操作、未验证，保持最后。
 - Goal objective-edit API unavailable; the user-authorized expanded objective remains authoritative in the matrix and main implementation plan, with Goal status active. `.harness` registry/profile modifications and prior evidence remain untouched. Next: derive trigger exclusively from an eligible committed actor outcome and its frozen frame, then implement coordinator terminal acceptance before driver work.
 
+### 2026-10-21 settlement outcome private projection recovery
+
+Settlement events now persist the runtime-derived private L1 snapshot after
+recording the outcome projection. Session recovery validates the snapshot
+schema and actor identity before restoring it; replay comparison excludes the
+derived projection so an exact substantive settlement retry remains
+idempotent. Focused recovery regression verifies SQLite close/reopen parity,
+exact retry without a duplicate event, and rejection of a cross-actor snapshot.
+The combined command
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_session_recovery.py backend/tests/test_character_slow_goal_main.py`
+passed **56 tests**, exit 0 (4 existing FastAPI lifespan deprecation warnings).
+
+This closes only settlement-event private snapshot projection recovery. It does
+not prove provider-worker recovery, actor-pin/timeline equivalence during
+startup polling, slow-goal exactly-once recovery, sourced Laya action+target to
+L4/domain receipt, formal Q01–Q04, or Godot G-A/B/C. Backend remains partial;
+model quality remains unverified; role closure remains partial; final Godot
+acceptance remains untouched. The implementation touches a `runtime_loop.py`
+with extensive pre-existing worktree changes, so no path-level commit was made
+to avoid staging user changes. No full pytest, Harness all, model evaluation,
+training, or Godot operation was run.
+
 ## R01/R07 slow proposal source eligibility binding (2026-10-21)
 
 - `cognition_admission` no longer treats any same-actor committed event as sufficient for slow-goal admission. A source event must carry eligible trigger metadata with an allowed kind, frame digest and non-negative goal revision. Caller-supplied `source_contract` and trigger kind must match those committed fields; ineligible, changed or missing metadata rejects before admission/index writes. No production trigger producer currently creates this metadata, so this is a fail-closed admission guard, not a live trigger path.

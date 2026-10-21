@@ -55,7 +55,22 @@ def reduce_session_event(
     if not isinstance(payload, dict):
         raise ValueError("session_event_invalid")
     kind = event["event_type"]
-    if kind == "goal_state_event":
+    if kind == "character_turn_stage_recorded":
+        stage = payload.get("stage_event", {})
+        stage_payload = stage.get("payload", {}) if isinstance(stage, dict) else {}
+        if payload.get("stage") == "context" and isinstance(stage_payload, dict) and "l1_snapshot" in stage_payload:
+            from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
+            snapshot = CharacterPrivateWorldSnapshot.model_validate(stage_payload["l1_snapshot"])
+            if snapshot.actor_id != actor_id:
+                raise ValueError("cognition_private_snapshot_actor_mismatch")
+            state["private_snapshot"] = snapshot.model_dump(mode="json")
+    elif kind == "character_agent_settlement_result" and "private_snapshot" in payload:
+        from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
+        snapshot = CharacterPrivateWorldSnapshot.model_validate(payload["private_snapshot"])
+        if snapshot.actor_id != actor_id:
+            raise ValueError("character_private_snapshot_actor_mismatch")
+        state["private_snapshot"] = snapshot.model_dump(mode="json")
+    elif kind == "goal_state_event":
         store = CharacterGoalStateStore()
         for goal in state.get("goal_history", []):
             store.write(actor_id, goal)

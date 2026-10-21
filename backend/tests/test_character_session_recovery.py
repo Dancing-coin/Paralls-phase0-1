@@ -100,6 +100,73 @@ def test_ready_uses_compact_state_and_preserves_explicit_history(tmp_path, monke
     restored.close()
 
 
+def test_ready_restores_private_l1_snapshot_from_committed_context_stage(tmp_path):
+    from app.models.character_perceived import CharacterPerceivedEvent
+
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    snapshot = runtime._l1.apply_character_perceived_event(CharacterPerceivedEvent(
+        actor_id="char_a", percept_channel="visual", producer_ts=100,
+        room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",
+        perceived_summary="a failed task is visible", source_candidate_event_id="percept:100",
+        clarity_score=1.0, certainty_score=1.0,
+    ))
+    turn = runtime._begin_canonical_turn(
+        actor_id="char_a", source_event_ref="percept:100", producer_ts=100,
+        causation_id="cause:100", correlation_id="corr:100",
+    )
+    runtime._turn_coordinator.append_stage(
+        context=turn, stage="context", payload={"l1_snapshot": snapshot.model_dump(mode="json")}, producer_ts=100,
+    )
+    expected = snapshot.model_dump(mode="json")
+    runtime._should_defer_cognition("char_a", 100)
+    runtime._persist_graph_continuity(actor_id="char_a", producer_ts=100)
+    runtime.close()
+
+    restored = CharacterAgentRuntime(storage_root=tmp_path)
+    actual = restored._l1.get_snapshot("char_a")
+    assert actual is not None
+    assert actual.model_dump(mode="json") == expected
+    assert restored._last_cognition_tick_ms.get("char_a") == 100
+    restored.close()
+
+
+def test_settlement_recovery_restores_private_l1_outcome_projection(tmp_path):
+    from app.models.character_perceived import CharacterPerceivedEvent
+
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    runtime._l1.apply_character_perceived_event(CharacterPerceivedEvent(
+        actor_id="char_a", percept_channel="visual", producer_ts=100,
+        room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",
+        perceived_summary="a blocked worktable is visible", source_candidate_event_id="percept:100",
+        clarity_score=1.0, certainty_score=1.0,
+    ))
+    runtime.record_settlement_result(actor_id="char_a", producer_ts=101, payload={
+        "result_id": "settlement:blocked:101", "result_type": "constraint_state_result",
+        "settlement_status": "rejected", "constraint_summary": "the worktable is occupied",
+    })
+    expected = runtime.get_private_snapshot("char_a").model_dump(mode="json")
+    settlement = next(event for event in runtime.get_session_timeline("char_a")
+                      if event["event_type"] == "character_agent_settlement_result")
+    before_replay = len(runtime.get_session_timeline("char_a"))
+    runtime.record_settlement_result(actor_id="char_a", producer_ts=102, payload={
+        key: value for key, value in settlement["payload"].items()
+        if key not in {"private_snapshot", "action_settlement_result"}
+    })
+    assert len(runtime.get_session_timeline("char_a")) == before_replay
+    invalid_event = deepcopy(settlement)
+    invalid_event["event_index"] = 1
+    invalid_event["payload"]["private_snapshot"]["actor_id"] = "char_b"
+    with pytest.raises(ValueError, match="character_private_snapshot_actor_mismatch"):
+        reduce_session_event(None, invalid_event)
+    runtime.close()
+
+    restored = CharacterAgentRuntime(storage_root=tmp_path)
+    actual = restored.get_private_snapshot("char_a")
+    assert actual is not None
+    assert actual.model_dump(mode="json") == expected
+    restored.close()
+
+
 def test_recovery_state_and_cold_facts_commit_atomically(tmp_path):
     store = CharacterAgentSessionStore(tmp_path)
     store.initialize_recovery()
