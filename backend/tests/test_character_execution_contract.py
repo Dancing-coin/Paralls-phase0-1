@@ -465,6 +465,35 @@ def test_social_spatial_contract_uses_registered_durable_owner() -> None:
     assert len(main.social_spatial_owner.replay("char_b")) == 1
 
 
+def test_social_spatial_ingress_reopens_durable_owner_receipt(tmp_path) -> None:
+    import app.main as main
+    from app.gameplay.event_store import DurableGameplayEventStore
+    from app.gameplay.social_spatial_owner import SocialSpatialOwner
+
+    main.reset_runtime_state()
+    path = tmp_path / "social-ingress.json"
+    store = DurableGameplayEventStore(path)
+    main.social_spatial_owner = SocialSpatialOwner(store=store)
+    contract = _valid_contract(
+        target_refs=("character:char_a",), semantic_intent_id="approach",
+        semantic_action_id="action:approach", expected_observation={"requested_action": "approach"},
+    )
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10,
+        payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
+    )
+    first = main._handle_envelope(main.Envelope(message_type="character_agent_execution", payload=contract))
+    assert first[0]["payload"]["owner_receipt"]["committed"] is True
+    store.close()
+
+    restored_store = DurableGameplayEventStore(path)
+    main.social_spatial_owner = SocialSpatialOwner(store=restored_store)
+    replay = main._handle_envelope(main.Envelope(message_type="character_agent_execution", payload=contract))
+    assert replay[0]["payload"]["owner_receipt"]["idempotency_status"] == "duplicate_replayed"
+    assert len(main.social_spatial_owner.replay("char_b")) == 1
+    restored_store.close()
+
+
 def test_execution_commitment_expires_and_rejects_stale_target_or_revision() -> None:
     contract = CharacterExecutionContract.model_validate(
         _valid_contract(
