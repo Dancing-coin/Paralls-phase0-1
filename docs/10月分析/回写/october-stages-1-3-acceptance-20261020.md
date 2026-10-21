@@ -78,6 +78,14 @@ or Godot operation was performed in this refresh.
 
 该选择确认 DialogueSubmit 到对象动作分发、执行来源准入和候选编译的现有 fail-closed 约束仍稳定：缺少有效来源、条件为 blocked/unknown/unavailable 或合同/目标不匹配时不进入执行。它仍是合同与边界回归，不是新的真实 Laya 调用、完整 action+target→L4→领域 owner receipt、恢复/回放或正式 Q01–Q04 证据；没有升级 R07–R09、模型质量或 Godot A/B/C。下一步继续消费真实、来源明确的动作/目标输入，接入尚缺的领域 owner caller 和共享回执，而不重复扩展同一局部 parser/compiler 测试。
 
+### 2026-10-21 Character object owner vertical recheck
+
+复验现有无需 physics 的 Character→L4→ESM owner 纵切：
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_object_execution.py backend/tests/test_worktable_process_recovery.py`
+→ **21 passed in 6.99s**（4 条既有 FastAPI deprecation warnings）。
+
+这组证据覆盖当前真实组合中的对象目标投影、执行时 actor/scope/action/target/source 重验、原 ESM durable receipt、重复请求零新增 world/session 写入、角色侧 writeback 丢失后的 SQLite 重开修复，以及 worktable use→finish 两个原始 owner receipt 的新进程 exact retry；改变合同和无 live dispatch/pose 的重发仍被拒绝。它证明的是已有 ESM owner 子项和 worktable recovery 子项，测试夹具不含在线 Laya 模型调用，不能升级为完整真实 Laya 输入质量、连续多动作、多领域 owner、慢目标恢复、正式 Q01–Q04 或 Godot A/B/C。R07/R08/R09 仍保持局部，后续必须在不重复该 ESM slice 的前提下补真实 Laya action+target 来源、多领域 caller 和共同回放证据。
+
 ### 2026-10-21 combat owner production-ingress audit
 
 The canonical faction/Threat/encounter owners and the durable embodied combat
