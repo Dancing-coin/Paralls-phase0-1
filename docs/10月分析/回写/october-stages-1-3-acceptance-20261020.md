@@ -6,6 +6,29 @@
 
 ## 当前优先缺口：完整动作与目标来源审查（2026-10-20）
 
+### 2026-10-21 combat owner production-ingress audit
+
+The canonical faction/Threat/encounter owners and the durable embodied combat
+adapter remain an API and focused-owner slice. `street_combat_attempt` in
+`backend/app/main.py` still settles only through the existing embodied owner
+and publishes a perception event; it does not construct an authenticated
+`CombatSourceContext` or consume the committed hit through the canonical
+Threat owner. `CharacterCombatTargetCatalog` therefore keeps combat targets
+fail-closed (`supported_intents=[]`, no owner route). This is the correct
+boundary until a real L4 contact evidence path and production Presence,
+LifeState, and Faction source composition exist; no physics or faction fact is
+fabricated to close R07/R08 or D08.
+
+Focused verification of the existing dirty owner slice was attempted with:
+`python -m pytest -q -p no:cacheprovider backend/tests/test_combat_durable_adapter.py backend/tests/test_combat_settlement_threat_consumer.py backend/tests/test_street_combat_durable_owner.py`.
+The adapter/owner portion produced 13 passes and the street owner tests remain
+green, while four existing Threat consumer tests fail during setup because
+their untracked fixture constructs `PopulationActivationPresenceService`
+without the current required `producer_ref` argument. The fixture was not
+modified because it is user-owned worktree state. This run is diagnostic only,
+not acceptance evidence. The production ingress and the fixture compatibility
+repair remain open; Godot remains deferred to the final A/B/C gate.
+
 ### 2026-10-21 slow-goal stale owner receipt follow-up
 
 Driver stale handling now uses `terminate_goal_proposal` for an existing

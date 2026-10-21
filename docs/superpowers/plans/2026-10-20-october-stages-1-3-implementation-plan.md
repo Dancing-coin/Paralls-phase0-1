@@ -89,6 +89,7 @@ is historical and predates the final contract projection tightening.
 **Files:** 原计划02/03/04各 task 指定文件；统一矩阵 D03–D11/R10–R14。
 
 - [ ] 逐个真实角色 consumer 冻结需求来源、owner、权限、时间、receipt、恢复；已有 owner 优先复用。
+- [ ] Combat/Laya 纵切必须先有真实 L4 contact evidence、Presence/LifeState/Faction source composition 和 authenticated caller，再把 `street_combat_attempt` 接到 `DurableEmbodiedCombatAdapter`/Threat owner；owner API、choice acceptance 或 contract tests alone do not close R07/R08/D08.
 - [ ] 正式 Resource capability/modifier/debt/conversion、学习、Soul、canonical faction/target、协同可信 clock、语音三路径按依赖逐项实现；每批沿原规格先 RED，再最小代码和定向验收。
 - [ ] 正式准入 owner 加入同一 global cut，验证迁移/权限/隐私 parity；独立 participant 数量不代替共同 cut。
 - [ ] 每个可审查批次提交并更新矩阵，历史证据按实际受影响路径失效。
