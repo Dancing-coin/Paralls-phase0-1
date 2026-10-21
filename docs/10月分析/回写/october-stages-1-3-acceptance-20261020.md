@@ -26,6 +26,14 @@ or Godot operation was performed in this refresh.
 
 为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和终态 owner 边界可恢复；重开诊断发现 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 不同，安全校验返回 `cognition_provider_stale_pin`，没有新 goal event，拒绝终态仍经原 owner 回执保存。已确认私有 projection 缺失，但 timeline 差异需在启动轮询前继续隔离，尚不能认定三项都是同一恢复缺陷。`actor_pin` 在 coordinator prepare 中采集，晚于 trigger 入库，不存在已证实的 pre-trigger 采集问题。测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成；下一步隔离启动自动轮询和历史原始输入，复验原 entry/private projection 与 session head，保留 stale 防护。
 
+### 2026-10-21 canonical context 私有快照恢复增量
+
+本轮只验证已提交 session current-state projection 的恢复边界：`character_turn_stage_recorded` 的 canonical `context` stage 现在校验并保存 `private_snapshot`，runtime-state flush 允许保存 `last_cognition_tick`，重开 runtime 时恢复二者。定向命令
+`python -m pytest -q -p no:cacheprovider backend/tests/test_character_session_recovery.py backend/tests/test_character_slow_goal_main.py`
+结果为 **55 passed, 4 warnings**。
+
+这证明 canonical turn context 的私有 L1 快照和 cognition cadence 可从同一 session 目录恢复；它不证明慢目标生产 worker 的 actor pin、timeline、provider pending 或终态 owner receipt 在自动启动轮询下完整一致。R09、完整 Laya/领域 owner 回执、模型质量和 Godot 门继续未完成。相关 runtime 改动与测试仍混在用户已有 `runtime_loop.py` 历史修改中，本批未形成独立提交；不得将其视为已关闭的生产恢复批次。
+
 **后端**：D10 既有 source/anchor/fact/vulnerability/effect 局部 owner 回归
 97 项通过；生产 composition 与 L4 caller 仍未实现。**模型质量**：Q01–Q04
 无新增验收。**角色闭环**：R07–R09/R14 未升级。**最终 Godot**：G-A/B/C
