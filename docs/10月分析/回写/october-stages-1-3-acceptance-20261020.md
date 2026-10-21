@@ -24,7 +24,7 @@ or Godot operation was performed in this refresh.
 
 ### 2026-10-21 慢目标新进程恢复复现
 
-为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和 terminal owner 边界均可恢复，但当前生产 runtime 重建后 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 与冻结值漂移，安全校验按设计返回 `cognition_provider_stale_pin`，不会写入 goal event 或 terminal receipt。该复现确认缺口在原 cognition entry/private projection 的恢复契约，而不是放宽 provider pin；测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成，后续需先补完整 entry-after/session-head rehydration，再重跑新进程端到端闭环。
+为验证 Task 3/R09 的新进程恢复，构造了真实 `configure` + SQLite 持久目录：第一进程提交合格 `goal_proposal_trigger` 并冻结 `provider_pending` 请求，第二进程安装 provider 后从同一 admission 继续处理。冻结 `request_json`、admission key 和终态 owner 边界可恢复；重开诊断发现 `actor_pin` 的 `l1`、`last_cognition` 和 `timeline` 不同，安全校验返回 `cognition_provider_stale_pin`，没有新 goal event，拒绝终态仍经原 owner 回执保存。已确认私有 projection 缺失，但 timeline 差异需在启动轮询前继续隔离，尚不能认定三项都是同一恢复缺陷。`actor_pin` 在 coordinator prepare 中采集，晚于 trigger 入库，不存在已证实的 pre-trigger 采集问题。测试草稿已撤回，未计为绿色证据。R09 及慢目标 production recovery 保持未完成；下一步隔离启动自动轮询和历史原始输入，复验原 entry/private projection 与 session head，保留 stale 防护。
 
 **后端**：D10 既有 source/anchor/fact/vulnerability/effect 局部 owner 回归
 97 项通过；生产 composition 与 L4 caller 仍未实现。**模型质量**：Q01–Q04
