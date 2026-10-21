@@ -21,9 +21,18 @@ def evaluator():
     return module
 
 
-def test_source_freeze_does_not_release_unprepared_four_role_quality():
+def test_committed_source_drift_keeps_unprepared_four_role_quality_blocked():
     report = evaluator().audit_fixture(REPO, FIXTURE)
-    assert report["source_status"] == "source_frozen"
+    assert report["source_status"] == "source_changed_or_incomplete"
+    assert {
+        blocker for blocker in report["blockers"] if blocker.startswith("source_changed:")
+    } == {
+        "source_changed:assets/characters/profiles/char_a.yaml",
+        "source_changed:assets/characters/profiles/char_b.yaml",
+        "source_changed:assets/characters/profiles/char_c.yaml",
+        "source_changed:backend/app/character_agent/gateway/laya_provider.py",
+        "source_changed:docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md",
+    }
     assert report["status"] == "evaluation_blocked"
     assert report["provider_calls"] == 0
     assert report["fine_tuning"] == "not_assessable"

@@ -921,6 +921,14 @@ provider_calls=0、空 split/缺失运行输入 fail-closed。
 final / independent_holdout 仍未运行。此批只新增来源漂移证据，不提升后端、角色闭环
 或 Godot A/B/C 状态。
 
+### 2026-10-22 formal preflight test correction
+
+Fresh rerun of `backend/tests/test_character_laya_evaluation_contract.py` initially returned **1 failed, 11 passed**: the fixture's historical pin was asserted as `source_frozen` although five committed source files had changed. Current SHA256 values were compared with the frozen manifest; drift is limited to `char_a.yaml`, `char_b.yaml`, `char_c.yaml`, `gateway/laya_provider.py`, and the character capability design document, whose changes are present in committed history. The verifier correctly returns `source_changed_or_incomplete` and keeps evaluation blocked.
+
+The stale assertion was corrected to require that exact five-file source drift and continued blocked quality status. The old manifest pins and evaluation inputs were left untouched. The focused selection now returns **12 passed in 1.13s** with pytest base under `D:\codex-temp\laya-preflight-audit`, which was removed and verified absent. No provider call was made and no calibration, final, or independent-holdout labels were read. This repairs the test expectation only; it does not refresh source freeze, authorize a new quality run, or satisfy Q01–Q04. A separately reviewed, newly versioned source package and freeze remain prerequisites.
+
+**后端**：正式预检的来源漂移负例现与当前提交一致，12 项合同通过；无运行时改动。**模型质量**：Q01–Q04 仍未验收，旧包继续 fail-closed。**角色闭环**：无新增 Laya/owner 证据。**最终 Godot**：A/B/C 未操作，仍最后集中验收。
+
 ### 2026-10-21 Laya evaluation/object-owner narrow refresh
 
 The narrow selection `test_character_laya_evaluation_contract.py`,
