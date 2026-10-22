@@ -1,5 +1,18 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 Laya 本地模型单次推理复验
+
+回答“Laya 模型是否本地跑通”：是。本次启动本地服务后向 `127.0.0.1:8765/v1/systemone` 发出真实请求，HTTP 200；响应标记 `model=laya-rl-agent`，路由 `multilingual`，权重仓库为 `/mnt/d/laya-probe-cache/laya-multilingual`，实际 choice 为 `observe_boss`。输入 89 tokens，未截断。响应原件保存在 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-local-inference-20261022\response.json`。
+
+这证明当前环境中的本地权重可完成一次推理；`LAYA_API_KEY=paralls-local-smoke` 是本地服务访问认证，不是外部模型 API。输入复用了开发诊断样本，不是正式评估样本；单次调用不证明生产 backend→Laya 输入与候选完整性、完整动作+目标、L4、真实 owner receipt、恢复/回放或 Q01–Q04 模型质量。未读取 calibration/final/holdout，未训练或微调。运行结束后 `8765` 已释放；本批 evidence 不改变整体 Goal 的 active 状态。
+
+| 验收面 | 状态与边界 |
+|---|---|
+| 后端 | 本地 Laya model service 单请求可运行；生产 backend→Laya 完整链路仍局部，独立于本次 service smoke |
+| 模型质量 | Q01–Q04 未验收；此开发输入及单次 choice 不计正式质量证据 |
+| 角色闭环 | 本地 Laya 已返回 choice；完整输入/候选→action+target→L4→多领域 owner receipt→恢复/回放仍开放 |
+| 最终 Godot | G-A/G-B/G-C 未操作，继续最后集中验收 |
+
 ### 2026-10-22 D10 Life reader injection boundary
 
 `SoulPresenceSourceReader` 的 Life reader 注入此前只比较 `_store` 属性，任意同 store 对象即可伪造 `alive`。新增回归先确认该实现未拒绝伪 reader（RED），随后将注入约束为实际 `SoulLifeSourceReader`，并继续验证 store identity。Life/Presence source 两文件定向回归 **16 passed**，命令：`python -B -m pytest -q -p no:cacheprovider backend/tests/test_soul_life_sources.py backend/tests/test_soul_presence_sources.py --basetemp D:/codex-temp/soul-life-reader-final`。
