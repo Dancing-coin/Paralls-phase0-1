@@ -5335,7 +5335,9 @@ def _handle_envelope(
             envelope.message_type,
             _build_visual_fact_handler_context(),
         )
-        messages.extend(_character_agent_messages_from_fact_candidates(event))
+        messages.extend(_character_agent_messages_from_fact_candidates(
+            event, now_ts=connection_context.observed_at
+        ))
         _publish_route_event(event, messages)
         return _finalize_outbound_messages(messages)
 
@@ -5365,14 +5367,20 @@ def _handle_envelope(
             )
         )
         projected_facts = _ingest_l1_world_fact_foundation(event)
-        character_agent_messages = _character_agent_messages_from_fact_candidates(event)
+        character_agent_messages = _character_agent_messages_from_fact_candidates(
+            event, now_ts=connection_context.observed_at
+        )
         messages = route_raw_fact_event(
             event,
             source_type=envelope.message_type,
             context=_build_visual_fact_handler_context(),
         )
         messages.extend(character_agent_messages)
-        messages.extend(_messages_from_projected_l1_facts(projected_facts, provider_refs=provider_refs))
+        messages.extend(_messages_from_projected_l1_facts(
+            projected_facts,
+            provider_refs=provider_refs,
+            now_ts=connection_context.observed_at,
+        ))
         _publish_route_event(event, messages)
         return _finalize_outbound_messages(messages)
 
@@ -5407,7 +5415,10 @@ def _handle_envelope(
         messages.extend(_publish_world_result_authority_event(resolution, source_event=event))
         if environment_result is not None:
             l1_occupancy_service.apply_environment_result(environment_result)
-            messages.extend(_messages_from_projected_l1_facts(_project_l1_facts_for_dirty_zones(environment_result.producer_ts)))
+            messages.extend(_messages_from_projected_l1_facts(
+                _project_l1_facts_for_dirty_zones(environment_result.producer_ts),
+                now_ts=connection_context.observed_at,
+            ))
             transition_trigger_type = "environment_request.light_level_drop"
             transition_from_state = "stable"
             if event.requested_change_type == "thermal_level_rise":
@@ -6231,7 +6242,10 @@ def _handle_envelope(
                     correlation_id=world_result.correlation_id,
                 )
                 l1_occupancy_service.apply_environment_result(environment_result)
-                messages.extend(_messages_from_projected_l1_facts(_project_l1_facts_for_dirty_zones(environment_result.producer_ts)))
+                messages.extend(_messages_from_projected_l1_facts(
+                    _project_l1_facts_for_dirty_zones(environment_result.producer_ts),
+                    now_ts=connection_context.observed_at,
+                ))
                 event_trace.record(environment_result.result_type)
                 messages.extend(_publish_world_result_authority_event(environment_result, source_event=event))
 
@@ -8257,6 +8271,7 @@ def _messages_from_projected_l1_facts(
     projected_facts: list[RawFactEvent],
     *,
     provider_refs: dict[str, list[dict[str, object]]] | None = None,
+    now_ts: int | None = None,
 ) -> list[dict[str, object]]:
     messages: list[dict[str, object]] = []
     projected_by_actor: dict[str, list[RawFactEvent]] = {}
@@ -8278,7 +8293,7 @@ def _messages_from_projected_l1_facts(
                 context=_build_visual_fact_handler_context(),
             )
         )
-        messages.extend(_character_agent_messages_from_fact_candidates(fact))
+        messages.extend(_character_agent_messages_from_fact_candidates(fact, now_ts=now_ts))
         actor_id = fact.source.actor_id or fact.targets.actor_id
         if actor_id:
             projected_by_actor.setdefault(actor_id, []).append(fact)
@@ -8458,7 +8473,11 @@ def _projection_view_refs(
     }
 
 
-def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[dict[str, object]]:
+def _character_agent_messages_from_fact_candidates(
+    event: RawFactEvent,
+    *,
+    now_ts: int | None = None,
+) -> list[dict[str, object]]:
     character_agent_messages: list[dict[str, object]] = []
     candidates = compile_candidate_percepts(event)
     for candidate in candidates:
@@ -8484,7 +8503,10 @@ def _character_agent_messages_from_fact_candidates(event: RawFactEvent) -> list[
             perceived = filter_candidate_for_actor(
                 candidate,
                 actor_id=actor_id,
-                context={"is_facing_target": True},
+                context={
+                    "is_facing_target": True,
+                    **({"now_ts": now_ts} if isinstance(now_ts, int) else {}),
+                },
             )
             if perceived is None:
                 continue

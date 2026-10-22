@@ -82,3 +82,48 @@ def test_signal_requires_trusted_current_time_and_never_copies_private_memory_fi
     assert filter_candidate_for_actor(candidate, actor_id="char_b", context={}) is None
     with pytest.raises(ValidationError):
         _fact(private_memory={"secret": "sender only"})
+
+
+@pytest.mark.parametrize(("observed_at", "expected_latest"), [(15, True), (20, False)])
+def test_raw_fact_ingress_uses_server_receive_time_for_coordination_expiry(
+    monkeypatch, observed_at, expected_latest
+):
+    from app import main
+    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+
+    monkeypatch.setenv("SIMING_HEAVENLY_AUTOTEST_SETUP", "1")
+    main.reset_runtime_state()
+    event = _fact()
+    messages = main._handle_envelope(
+        main.Envelope(message_type="raw_fact_event", payload=event.model_dump()),
+        connection_context=WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=observed_at),
+    )
+
+    assert isinstance(messages, list)
+    received = main.character_perceived_input_service.get_latest("char_b")
+    assert (received is not None) is expected_latest
+    if expected_latest:
+        assert received.coordination_signal.observation == "window observed"
+
+
+def test_raw_fact_ingress_keeps_short_contract_closed_without_owner_context(monkeypatch):
+    from app import main
+    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+
+    monkeypatch.setenv("SIMING_HEAVENLY_AUTOTEST_SETUP", "1")
+    main.reset_runtime_state()
+    event = _fact(contract=dict(
+        goal="observe window",
+        participants=["char_a", "char_b"],
+        responsibilities=[["char_a", "signal"], ["char_b", "observe"]],
+        expires_at=18,
+        failure_conditions=["window_closed"],
+        exit_conditions=["withdraw"],
+        context_revision="world@1",
+    ))
+    main._handle_envelope(
+        main.Envelope(message_type="raw_fact_event", payload=event.model_dump()),
+        connection_context=WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=15),
+    )
+
+    assert main.character_perceived_input_service.get_latest("char_b") is None
