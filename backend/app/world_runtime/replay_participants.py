@@ -1032,6 +1032,174 @@ def _validate_learning_participant(store, saved, *, boundary_sequence=None):
         raise ValueError("replay_saved_learning_projection_mismatch")
 
 
+_SOUL_STREAM_PREFIXES = (
+    "gameplay:soul:anchor:", "gameplay:soul:fact:", "gameplay:soul:effect:",
+)
+_SOUL_EVENT_TYPES = frozenset({
+    "soul.anchor.bound",
+    "soul.fact.link.issued", "soul.fact.link.revoked",
+    "soul.fact.grant.issued", "soul.fact.grant.revoked",
+    "soul.fact.protection.issued", "soul.fact.protection.revoked",
+    "soul.effect.binding.changed", "soul.effect.curse.changed",
+})
+_SOUL_PRINCIPALS = {
+    "gameplay:soul:anchor:": "soul.anchor_authority",
+    "gameplay:soul:fact:": "soul.fact_authority",
+    "gameplay:soul:effect:": "soul.effect_authority",
+}
+
+
+def _soul_explicit_event_refs(value, key=""):
+    if isinstance(value, Mapping):
+        for child_key, child in value.items():
+            yield from _soul_explicit_event_refs(child, str(child_key))
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _soul_explicit_event_refs(child, key)
+    elif isinstance(value, str) and ("event_id" in key or "event_ref" in key
+            or key in {"original_fact_ref", "original_effect_ref"}):
+        yield value
+
+
+def _soul_participant(store, *, boundary_sequence=None):
+    """Capture Soul projections, receipts and every pinned source prefix."""
+    events = [event for event in store.read_events()
+              if event.stream_id.startswith(_SOUL_STREAM_PREFIXES)
+              and (boundary_sequence is None or event.global_sequence <= boundary_sequence)]
+    grouped = {}
+    refs = []
+    source_refs = {}
+    explicit_refs = {}
+    for event in events:
+        expected_principal = next((principal for prefix, principal in _SOUL_PRINCIPALS.items()
+            if event.stream_id.startswith(prefix)), None)
+        if (event.event_type not in _SOUL_EVENT_TYPES or event.schema_version != 1
+                or event.visibility_policy != "authority_only" or expected_principal is None):
+            raise ValueError("replay_soul_event_scope_unsupported")
+        transaction = store.get_transaction(event.transaction_id)
+        if (transaction is None or len(transaction.events) != 1 or event not in transaction.events
+                or transaction.idempotency_record.principal_ref != expected_principal
+                or transaction.read_stream_revisions != transaction.pinned_revisions
+                or store.get_event(event.event_id) != event):
+            raise ValueError("replay_soul_original_missing")
+        record = transaction.idempotency_record
+        receipt = store.get_by_idempotency(record.principal_ref, record.idempotency_key)
+        if (receipt is None or not receipt.committed or receipt.failure is not None
+                or receipt.transaction_id != transaction.transaction_id
+                or receipt.idempotency_status != "new_commit"
+                or store.get_idempotency_record(record.principal_ref, record.idempotency_key) != record
+                or receipt.committed_event_ids != [item.event_id for item in transaction.events]
+                or receipt.global_sequence_range != (transaction.events[0].global_sequence,
+                    transaction.events[-1].global_sequence)):
+            raise ValueError("replay_soul_original_receipt_invalid")
+        refs.append(dict(event_id=event.event_id, global_sequence=event.global_sequence,
+            stream_id=event.stream_id, stream_revision=event.stream_revision,
+            transaction_id=event.transaction_id, event_digest=_digest(_json(event)),
+            transaction_digest=_digest(_json(transaction)),
+            receipt_digest=_digest(_json(receipt))))
+        grouped.setdefault(event.stream_id, []).append(event)
+        for ref in _soul_explicit_event_refs(event.payload):
+            explicit_refs[ref] = min(explicit_refs.get(ref, event.global_sequence), event.global_sequence)
+        for source_stream, revision in transaction.read_stream_revisions.items():
+            prefix = store.read_stream(source_stream, to_revision=revision)
+            if len(prefix) != revision or any(item.global_sequence >= event.global_sequence
+                                               or boundary_sequence is not None and item.global_sequence > boundary_sequence
+                                               for item in prefix):
+                raise ValueError("replay_soul_source_cut_invalid")
+            for source in prefix:
+                source_transaction = store.get_transaction(source.transaction_id)
+                source_record = source_transaction.idempotency_record if source_transaction else None
+                source_receipt = (store.get_by_idempotency(source_record.principal_ref,
+                    source_record.idempotency_key) if source_record else None)
+                if (source_transaction is None or source not in source_transaction.events
+                        or store.get_event(source.event_id) != source
+                        or source_receipt is None or not source_receipt.committed
+                        or source_receipt.failure is not None
+                        or source_receipt.idempotency_status != "new_commit"
+                        or store.get_idempotency_record(source_record.principal_ref,
+                            source_record.idempotency_key) != source_record
+                        or source_receipt.transaction_id != source_transaction.transaction_id
+                        or source_receipt.committed_event_ids != [item.event_id
+                            for item in source_transaction.events]
+                        or source_receipt.global_sequence_range != (
+                            source_transaction.events[0].global_sequence,
+                            source_transaction.events[-1].global_sequence)):
+                    raise ValueError("replay_soul_source_receipt_invalid")
+                source_refs[source.event_id] = dict(event_id=source.event_id,
+                    global_sequence=source.global_sequence, stream_id=source.stream_id,
+                    stream_revision=source.stream_revision, transaction_id=source.transaction_id,
+                    event_digest=_digest(_json(source)),
+                    transaction_digest=_digest(_json(source_transaction)),
+                    receipt_digest=_digest(_json(source_receipt)))
+
+    for ref, owner_sequence in explicit_refs.items():
+        source = store.get_event(ref)
+        if (source is None or source.global_sequence >= owner_sequence
+                or boundary_sequence is not None and source.global_sequence > boundary_sequence
+                or not any(row["event_id"] == ref for row in refs)
+                and ref not in source_refs):
+            raise ValueError("replay_soul_explicit_source_missing")
+
+    projections = {}
+    for stream, stream_events in sorted(grouped.items()):
+        ordered = sorted(stream_events, key=lambda item: item.stream_revision)
+        if [item.stream_revision for item in ordered] != list(range(1, len(ordered) + 1)):
+            raise ValueError("replay_soul_projection_revision_gap")
+        state = {}
+        transitions = []
+        for event in ordered:
+            payload = dict(event.payload)
+            if stream.startswith("gameplay:soul:anchor:"):
+                if event.event_type != "soul.anchor.bound" or state:
+                    raise ValueError("replay_soul_anchor_transition_invalid")
+                state = payload
+            elif stream.startswith("gameplay:soul:fact:"):
+                key = tuple(payload.get(field) for field in (
+                    "world_ref", "actor_ref", "target_ref", "actor_incarnation",
+                    "target_incarnation", "package_ref", "version", "rule_ref"))
+                previous = state.get(repr(key), {})
+                active = event.event_type.endswith(".issued")
+                if payload.get("active") is not active or active == bool(previous.get("active")):
+                    raise ValueError("replay_soul_fact_transition_invalid")
+                if not active and (not previous.get("active")
+                        or payload.get("original_fact_ref") != previous.get("original_fact_ref")
+                        or payload.get("registration") != previous.get("registration")):
+                    raise ValueError("replay_soul_fact_transition_invalid")
+                if active:
+                    payload["original_fact_ref"] = event.event_id
+                state = dict(state)
+                state[repr(key)] = payload
+            else:
+                active = payload.get("active") is True
+                if not isinstance(payload.get("active"), bool):
+                    raise ValueError("replay_soul_effect_transition_invalid")
+                previous = state.get("active") is True
+                if active == previous:
+                    raise ValueError("replay_soul_effect_transition_invalid")
+                if not active and payload.get("original_effect_ref") != state.get("original_effect_ref"):
+                    raise ValueError("replay_soul_effect_transition_invalid")
+                if active:
+                    payload["original_effect_ref"] = event.event_id
+                state = payload
+            transitions.append(dict(event_id=event.event_id, event_type=event.event_type,
+                projection_digest=_digest(_json(state))))
+        projections[stream] = dict(revision=len(ordered), transitions=transitions,
+            projection_digest=_digest(dict(stream_id=stream, transitions=transitions)))
+    state = dict(streams=projections, event_refs=refs,
+        source_refs=[source_refs[key] for key in sorted(source_refs)])
+    return dict(schema_version=1, scope="authority:soul:common-replay",
+        streams=projections, event_refs=refs, source_refs=state["source_refs"],
+        view_digest=_digest(state), reconstruction_api="Soul common-cut receipt and transition replay")
+
+
+def _validate_soul_participant(store, saved, *, boundary_sequence=None):
+    expected = _soul_participant(store, boundary_sequence=boundary_sequence)
+    if saved is None and not expected["event_refs"]:
+        return
+    if saved != expected:
+        raise ValueError("replay_saved_soul_projection_mismatch")
+
+
 def capture_participants(store, coordinator, driver, consumer, batch_refs, *, inventory_authority=None,
                          social_authority=None, social_recipient_ref=None, social_now=None,
                          social_delivery_authority=None, social_delivery_recipient_ref=None,
@@ -1161,6 +1329,7 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     presence = _presence_participant(store, presence_authority)
     life_state = _life_state_participant(store)
     learning = _learning_participant(store)
+    soul = _soul_participant(store)
     result = dict(schema_version=1, versions={"participant_manifest": 1, "batch_input": 1,
         "batch_operation": 1, "population_recovery": 1, "status_events": 1, "migration_events": 1,
         "economy_temporal": 1, "ecology_temporal": 1},
@@ -1221,6 +1390,8 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
         result["versions"]["life_state"] = 1
     result["learning"] = learning
     result["versions"]["learning"] = 1
+    result["soul"] = soul
+    result["versions"]["soul"] = 1
     return result
 
 
@@ -1231,6 +1402,7 @@ def validate_saved_participants(store, manifest, batch_refs, boundary_sequence=N
     _validate_resource_participant(store, manifest.get("resource"), boundary_sequence=boundary_sequence)
     _validate_life_state_participant(store, manifest.get("life_state"), boundary_sequence=boundary_sequence)
     _validate_learning_participant(store, manifest.get("learning"), boundary_sequence=boundary_sequence)
+    _validate_soul_participant(store, manifest.get("soul"), boundary_sequence=boundary_sequence)
     _validate_economy_random_participant(store, manifest.get("economy_random"),
         boundary_sequence=boundary_sequence)
     _validate_equipment_participant(store, manifest.get("equipment"), boundary_sequence=boundary_sequence)

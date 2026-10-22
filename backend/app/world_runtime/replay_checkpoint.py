@@ -127,7 +127,7 @@ def _manifest(value, batch_refs):
     allowed = _REQUIRED | {"schema_version", "timeline", "profile", "mapping",
         "confirmed_tick", "window_ticks", "owner_revisions", "random_context", "inventory", "social",
         "social_delivery", "presence", "economy_temporal", "ecology_temporal", "resource", "equipment",
-        "inventory_domain", "economy_random", "life_state", "learning"}
+        "inventory_domain", "economy_random", "life_state", "learning", "soul"}
     if set(value) - allowed:
         raise ValueError("replay_participant_scope_mismatch")
     versions = dict(participant_manifest=1, batch_input=1, batch_operation=1,
@@ -138,7 +138,7 @@ def _manifest(value, batch_refs):
     # carry its explicit decoder version.
     accepted_versions = []
     optional_versions = ("economy_temporal", "ecology_temporal", "social_delivery", "presence", "resource", "equipment",
-                         "inventory_domain", "economy_random", "life_state", "learning")
+                         "inventory_domain", "economy_random", "life_state", "learning", "soul")
     for mask in range(1 << len(optional_versions)):
         candidate = dict(versions)
         for index, key in enumerate(optional_versions):
@@ -159,6 +159,8 @@ def _manifest(value, batch_refs):
         raise ValueError("replay_life_state_participant_version_missing")
     if ("learning" in value) != ("learning" in actual_versions):
         raise ValueError("replay_learning_participant_version_missing")
+    if ("soul" in value) != ("soul" in actual_versions):
+        raise ValueError("replay_soul_participant_version_missing")
     if any(value[name].get("schema_version") != 1 for name in ("population", "status", "migration")):
         raise ValueError("replay_decoder_unsupported")
     if (not value["versions"] or not value["population"] or not value["status"]

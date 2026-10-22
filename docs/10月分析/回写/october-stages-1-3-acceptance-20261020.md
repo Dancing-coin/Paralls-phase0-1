@@ -1,5 +1,20 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 D10 Soul common-cut replay participant 基础
+
+新增 Soul anchor/fact/effect participant，按指定 global sequence 重建 owner stream transition digest；每个 Soul event 验证固定 event type/schema、authority-only visibility、owner principal、单事件原 transaction、idempotency receipt、stream revision 和 pinned/read revision 相等。participant 同时纳入每个原事务所 pin 的 source stream prefix，以及 payload 明确引用的原始 event；source event、transaction 和 receipt 均形成 digest。checkpoint 不保存完整 Soul payload，仅保存 projection/source/transaction/receipt digest、event 类型和引用。新 manifest 固定 `soul=1`；旧 manifest 可继续不带该 participant。
+
+RED 先因 `_soul_participant` 缺失而 7 项失败；随后 participant 测试覆盖空 cut、source/receipt 闭包、historical cut、projection/transaction/receipt/source 篡改、SQLite close/reopen、manifest version 和私有 payload 不进入 checkpoint。Soul/Presence/Resource/Life、learning 与 replay checkpoint 定向集合 **149 passed, 1 deselected**（5 既有 FastAPI/JUnit warnings）；JUnit：`D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\soul-replay-backend-contract-final2\soul-replay-junit.xml`。最终 Harness `backend-contract` run `e56b064edeed4cb9aebc9178b0d1dd72` 与 `docs` run `4fe9a9ae7aba4a11ab8737b13bde01b3` 均 passed、cleanup passed；报告位于 `soul-replay-backend-contract-final2/` 和 `soul-replay-docs-final-verify2/`。没有运行全量 pytest/Harness all、模型、Godot或训练。
+
+被 deselect 的既有 app fixture 单独复跑失败于 replay 前的 activation admission：它把 `population:contract-fixture` 当作 producer，当前 source authority 返回 `activation_source_unauthorized`。新尝试把独立临时 Presence authority 写入 app store 时，主 app 的 canonical Presence participant 同样拒绝该非生产来源；因此没有放宽 producer admission，也不把临时 owner fixture 当作生产 common-cut 证据。Soul owner production composition、真实 Laya→Soul L4 caller、checkpoint/tail 中实际 Soul commit 的 app 级闭环和完整 R14 仍未验证；本批只实现 common replay participant 基础。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | Soul projection transition digest、owner transaction/receipt 和 pinned source prefix 已进入 common manifest；隔离历史 cut 与 SQLite reopen 通过。实际 app 级 Soul checkpoint/tail 尚因生产 Soul/Presence composition 未接入而未验收。 |
+| 模型质量 | Q01–Q04 未验收；本批无正式模型调用或质量评分。 |
+| 角色闭环 | 没有 Laya→Soul L4 调用或 Soul owner outcome；D10/R14 保持开放。 |
+| 最终 Godot | G-A/G-B/G-C 未启动或验证，继续留到后端和角色闭环之后。 |
+
 ### 2026-10-22 移除 speech 合成回填的伪听见事实
 
 `_handle_character_agent_speech_action` 原先在 TTS 仅完成合成后，按 target/occupancy 直接构造 `clarity=1.0`、`certainty=1.0` 的 auditory `CharacterPerceivedEvent` 并写入接收角色 L1。此路径没有 Actor 播放、空间传播或接收角色声学判断证据，与角色语音设计中“CharacterActor 负责本地播放和空间传播，接收者是否听见由接收方 L1 决定”的边界冲突。已删除该 synthetic backfill 及其单独收件人推断；`dialogue_response`、TTS 输出和 speaker 侧对话记录保留，真实 player `DialogueSubmit` 输入路径不变。
