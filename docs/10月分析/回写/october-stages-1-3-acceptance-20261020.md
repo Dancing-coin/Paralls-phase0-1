@@ -1,5 +1,18 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 R12 coordination signal sender admission
+
+Backend raw/visual fact ingress now retains a coordination signal only when the current WebSocket session binding is active and unexpired, its fixed actor scope contains the source actor, the event source matches the signal source, and the producer is `character_actor`. An absent, stale, or out-of-scope binding strips only the local signal; ordinary fact ingestion remains available through its existing path. This reuses session identity and adds no Communication authority. Contract participant/context admission remains fail-closed because production owner context is still absent.
+
+TDD regression first reproduced both unauthenticated and wrong-scope forwarding (2 expected failures). Final focused verification: `test_character_local_coordination_contract.py`, `test_character_agent_inf_intent_boundary.py`, `test_candidate_percept_service.py`, `test_raw_fact_router.py`, and `test_visual_fact_pipeline.py`: **88 passed** with existing FastAPI lifecycle and Pydantic mappingproxy warnings. Basetemp: `D:\codex-temp\coordination-admission-final-20261022` (the initial RED run used `D:\codex-temp\coordination-admission-red-20261022`). No Godot or model-quality evaluation was run.
+
+| 验收面 | 状态与边界 |
+|---|---|
+| 后端 | Existing actor-scoped WebSocket binding now gates signal propagation at raw/visual ingress; focused ingress/filter regressions passed. Ordinary fact ingress remains compatible. |
+| 模型质量 | Q01–Q04 unchanged and unaccepted. |
+| 角色闭环 | R12 sender admission is verified; owner-backed short-contract state/context, per-recipient independent L1/Laya turns, action execution, owner receipts and replay remain open. |
+| 最终 Godot | G-A/G-B/G-C not started, as required by the backend-first order. |
+
 ### 2026-10-22 当前 HEAD Laya 真实后端复跑（本地服务与 worktable 单 owner 恢复通过）
 
 本轮拥有的 backend component app 经 authenticated WebSocket 接收 `visual_fact/object_available` 与玩家 `DialogueSubmit`，在线 DeepSeek L2 两次 transport 成功、`fallback_used=false`；生产 `LayaSystemOneProvider` 向本轮启动的本地权重服务 `127.0.0.1:18765/v1/systemone` 发出两次 POST，均 HTTP 200、transport 成功且无 fallback。服务以本轮专用本地 Bearer 配置启动；旧 listener `127.0.0.1:8765`（WSL PID 587）未接管或停止，backend 使用端口 18767。Laya 冻结候选分别为 `[observe, use_object:obj_worktable, ask_probe]` 与 `[observe, finish_use:obj_worktable, ask_probe]`，实际 choice 保留对应 `obj_worktable` target。状态输入预算 `6464 + 122 = 6587/8192 tokens`，`truncated=false`。这证明该 sourced worktable turn 的输入、冻结候选及完整动作/目标一致性，不证明其他来源的候选全集完整。
@@ -504,7 +517,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 | R09 中断／恢复／回放 | 局部验证（真实inspect及在线L2/Laya worktable两动作提交后新进程exact receipt恢复）；完整故障/回放未验证 | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
 | R10 学习／技能形成；规格06 | 局部实现（common replay cut子项、episode mastery/difficulty 数据合同已定向验证） | registered learning owner前置39项；owner→冻结能力/旧provider拒绝/生产读取176项；生产inspect个人动作披露与来源owner/consumer回归141项；2026-10-22 learning scoped cut/tail/reopen与损坏拒绝9项；2026-10-22 `LearningEpisode`/`ImitationEpisode` mastery/difficulty 合同 23 passed，见本文件末尾与 `backend/tests/test_character_skill_evidence_extractor.py` | 四学习路线仍缺已批准生产 source/episode/gate→owner 策略、时间/资源/teacher 与 grant 撤销准入、正式 mastery 更新语义。当前仅校验 proposal 数据形状，不提供 episode 持久 owner 或技能写权。common cut 按端点有界重建验证，不代表生产四路线恢复验收。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |
-| R12 协同／短契约；角色03 §3–6、规格08、计划03 Task3/6A | 局部实现（普通信号已接入生产 fact consumer；raw ingress 定向验证；完整协同未实现） | `models/local_coordination.py` 的 signal/contract 校验；`services/per_character_percept_filter.py` 的 audibility/recipient/privacy gate；`main.py::_handle_envelope` 传服务端 `connection_context.observed_at` 至 raw/visual 与投影 consumer；`reasoning/l1_perception.py` 的接收方私有投影 | 生产 raw-fact ingress 现以服务端接收时钟执行普通信号有效期 gate；没有可信时钟的直接 helper 仍 fail-closed。新回归验证接收方 L1 可见、过期拒绝，以及缺 owner context 的短契约仍拒绝：`backend/tests/test_character_local_coordination_contract.py`，报告 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\r12-raw-fact-ingress-20261022\pytest.xml`。visual ingress/投影链、短契约 owner/context revision 与参与者状态、source receipt/replay、双角色独立 L1/Laya、连续协同、owner receipt 和 G-C 可见结果仍待实现/验证；不得把本切片计作完整协同或用测试注入的 context 冒充生产接线 |
+| R12 协同／短契约；角色03 §3–6、规格08、计划03 Task3/6A | 局部实现（生产 sender admission、receiver-private L1 propagation 与过期过滤已定向验证；完整协同未实现） | `models/local_coordination.py` 的 signal/contract 校验；`services/per_character_percept_filter.py` 的 audibility/recipient/privacy gate；`main.py::_admit_local_coordination_signal` 复用当前 active WebSocket actor binding 对 raw/visual signal 做来源准入；`reasoning/l1_perception.py` 的接收方私有投影；本轮五个定向测试文件 88 passed，见本文件顶部 2026-10-22 记录 | 短契约 owner/context revision 与参与者状态、source receipt/replay、双角色独立 L1/Laya、连续协同、owner receipt 和 G-C 可见结果仍待实现/验证。普通事实 ingress 仍保留；不得把本切片计作完整协同或用测试注入 context 冒充生产接线 |
 | R13 SpeechLease／三路径语音 | 局部实现 | lease、dialogue continuation、TTS adapter | preset/catchphrase 目录、三路径 dispatch、取消/迟到；音频生成不等于空间 played/heard，听见证据最后验收 |
 | R14 精神资源／Soul 角色回验 | 局部实现 | Resource/L1 private projection 与缺 owner 拒绝 | D06/D10 就绪后回验；不能另造角色私有 Soul truth |
 

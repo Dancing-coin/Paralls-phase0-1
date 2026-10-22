@@ -4459,6 +4459,36 @@ def _handle_websocket_envelope(
     return _handle_envelope(envelope)
 
 
+def _admit_local_coordination_signal(
+    event: RawFactEvent | VisualFactEvent,
+    connection_context: WebSocketConnectionContext,
+) -> RawFactEvent | VisualFactEvent:
+    signal = getattr(event, "coordination_signal", None)
+    if signal is None:
+        return event
+    binding = connection_context.binding
+    source_actor_id = str(getattr(getattr(event, "source", None), "actor_id", "") or "")
+    source_actor_ref = (
+        source_actor_id
+        if source_actor_id.startswith("character:")
+        else f"character:{source_actor_id}" if source_actor_id else ""
+    )
+    current_binding = (
+        websocket_session_auth_service.resolve_binding(binding.session_ref)
+        if binding is not None else None
+    )
+    admitted = (
+        binding is not None
+        and current_binding == binding
+        and binding.binding_state == "bound_active"
+        and connection_context.observed_at < binding.lease_expires_at
+        and source_actor_ref in binding.allowed_actor_refs
+        and source_actor_id == signal.source
+        and getattr(getattr(event, "source", None), "system", "") == "character_actor"
+    )
+    return event if admitted else event.model_copy(update={"coordination_signal": None})
+
+
 def _player_activation_decision(
     event: DialogueSubmit | FocusTargetChange | InteractIntent,
     *,
@@ -5406,7 +5436,9 @@ def _handle_envelope(
         ]
 
     if envelope.message_type == "visual_fact_event":
-        event = VisualFactEvent(**envelope.payload)
+        event = _admit_local_coordination_signal(
+            VisualFactEvent(**envelope.payload), connection_context
+        )
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,
@@ -5441,7 +5473,9 @@ def _handle_envelope(
     if envelope.message_type == "raw_fact_event":
         raw_payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         provider_refs = _l1_provider_refs_from_payload(raw_payload)
-        event = RawFactEvent(**raw_payload)
+        event = _admit_local_coordination_signal(
+            RawFactEvent(**raw_payload), connection_context
+        )
         _publish_debug_event(
             build_debug_event(
                 producer_ts=event.producer_ts,

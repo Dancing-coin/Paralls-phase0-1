@@ -89,14 +89,28 @@ def test_raw_fact_ingress_uses_server_receive_time_for_coordination_expiry(
     monkeypatch, observed_at, expected_latest
 ):
     from app import main
-    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+    from app.services.websocket_session_auth_service import (
+        WebSocketConnectionContext,
+        WebSocketSessionBinding,
+    )
 
     monkeypatch.setenv("SIMING_HEAVENLY_AUTOTEST_SETUP", "1")
     main.reset_runtime_state()
+    binding = WebSocketSessionBinding(
+        session_ref="ws_session:coordination",
+        principal_ref="character:char_a",
+        allowed_actor_refs=("character:char_a",),
+        connection_epoch=1,
+        lease_expires_at=30,
+    )
+    monkeypatch.setattr(main.websocket_session_auth_service, "resolve_binding", lambda ref: binding)
     event = _fact()
     messages = main._handle_envelope(
         main.Envelope(message_type="raw_fact_event", payload=event.model_dump()),
-        connection_context=WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=observed_at),
+        connection_context=WebSocketConnectionContext(
+            remote_host="127.0.0.1", observed_at=observed_at,
+            connection_ref="coordination-test", binding=binding,
+        ),
     )
 
     assert isinstance(messages, list)
@@ -106,12 +120,79 @@ def test_raw_fact_ingress_uses_server_receive_time_for_coordination_expiry(
         assert received.coordination_signal.observation == "window observed"
 
 
-def test_raw_fact_ingress_keeps_short_contract_closed_without_owner_context(monkeypatch):
+@pytest.mark.parametrize("scope", [None, ("character:char_c",)])
+def test_raw_fact_ingress_does_not_forward_unbound_or_out_of_scope_coordination_signal(
+    monkeypatch, scope
+):
+    from app import main
+    from app.services.websocket_session_auth_service import (
+        WebSocketConnectionContext,
+        WebSocketSessionBinding,
+    )
+
+    monkeypatch.setenv("SIMING_HEAVENLY_AUTOTEST_SETUP", "1")
+    main.reset_runtime_state()
+    binding = None if scope is None else WebSocketSessionBinding(
+        session_ref="ws_session:wrong-scope",
+        principal_ref="character:char_c",
+        allowed_actor_refs=scope,
+        connection_epoch=1,
+        lease_expires_at=30,
+    )
+    monkeypatch.setattr(
+        main.websocket_session_auth_service,
+        "resolve_binding",
+        lambda ref: binding,
+    )
+    event = _fact()
+
+    main._handle_envelope(
+        main.Envelope(message_type="raw_fact_event", payload=event.model_dump()),
+        connection_context=WebSocketConnectionContext(
+            remote_host="127.0.0.1", observed_at=15,
+            connection_ref="coordination-test", binding=binding,
+        ),
+    )
+
+    received = main.character_perceived_input_service.get_latest("char_b")
+    assert received is not None
+    assert received.coordination_signal is None
+
+
+def test_raw_fact_without_coordination_signal_keeps_legacy_unbound_ingress(monkeypatch):
     from app import main
     from app.services.websocket_session_auth_service import WebSocketConnectionContext
 
     monkeypatch.setenv("SIMING_HEAVENLY_AUTOTEST_SETUP", "1")
     main.reset_runtime_state()
+    event = _fact()
+    event.coordination_signal = None
+
+    main._handle_envelope(
+        main.Envelope(message_type="raw_fact_event", payload=event.model_dump()),
+        connection_context=WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=15),
+    )
+
+    assert main.character_perceived_input_service.get_latest("char_b") is not None
+
+
+def test_raw_fact_ingress_keeps_short_contract_closed_without_owner_context(monkeypatch):
+    from app import main
+    from app.services.websocket_session_auth_service import (
+        WebSocketConnectionContext,
+        WebSocketSessionBinding,
+    )
+
+    monkeypatch.setenv("SIMING_HEAVENLY_AUTOTEST_SETUP", "1")
+    main.reset_runtime_state()
+    binding = WebSocketSessionBinding(
+        session_ref="ws_session:contract-without-owner-context",
+        principal_ref="character:char_a",
+        allowed_actor_refs=("character:char_a",),
+        connection_epoch=1,
+        lease_expires_at=30,
+    )
+    monkeypatch.setattr(main.websocket_session_auth_service, "resolve_binding", lambda ref: binding)
     event = _fact(contract=dict(
         goal="observe window",
         participants=["char_a", "char_b"],
@@ -123,7 +204,10 @@ def test_raw_fact_ingress_keeps_short_contract_closed_without_owner_context(monk
     ))
     main._handle_envelope(
         main.Envelope(message_type="raw_fact_event", payload=event.model_dump()),
-        connection_context=WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=15),
+        connection_context=WebSocketConnectionContext(
+            remote_host="127.0.0.1", observed_at=15,
+            connection_ref="coordination-test", binding=binding,
+        ),
     )
 
     assert main.character_perceived_input_service.get_latest("char_b") is None
