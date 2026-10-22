@@ -136,6 +136,7 @@ class Settings(BaseModel):
     gameplay_mirror_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     embodied_controller_trusted_local_launch_profiles: list[EmbodiedControllerTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
     embodied_spatial_scopes: list[EmbodiedSpatialScope] = Field(default_factory=list)
+    physics_contact_authority_secrets: dict[str, str] = Field(default_factory=dict, repr=False, exclude=True)
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     world_admin_credentials: list[WorldAdminCredentialSettings] = Field(default_factory=list, repr=False, exclude=True)
     gameplay_mirror_projection_queue_capacity: int = Field(default=160, ge=1, le=1024)
@@ -272,6 +273,19 @@ def _env_object_list(name: str) -> list[dict[str, object]]:
     return [dict(item) for item in parsed]
 
 
+def _env_secret_map(name: str) -> dict[str, str]:
+    value = _env_value(name)
+    if not value:
+        return {}
+    parsed = json.loads(value)
+    if not isinstance(parsed, dict) or not all(
+        isinstance(key, str) and key.strip() and isinstance(secret, str) and len(secret) >= 32
+        for key, secret in parsed.items()
+    ):
+        raise ValueError(f"{name} must map authority refs to secrets of at least 32 characters")
+    return parsed
+
+
 settings = Settings(
     dialogue_mode=_env_value("DIALOGUE_MODE", "stub") or "stub",
     tts_mode=_env_value("TTS_MODE", "stub") or "stub",
@@ -357,6 +371,7 @@ settings = Settings(
     embodied_controller_launcher_bootstrap_secret=_env_optional("EMBODIED_CONTROLLER_LAUNCHER_BOOTSTRAP_SECRET"),
     embodied_spatial_scopes=[EmbodiedSpatialScope.model_validate(item)
                              for item in _env_object_list("EMBODIED_SPATIAL_SCOPES_JSON")],
+    physics_contact_authority_secrets=_env_secret_map("PHYSICS_CONTACT_AUTHORITY_SECRETS_JSON"),
     population_activation_grants=[ActivationGrant.model_validate(item)
                                   for item in _env_object_list("POPULATION_ACTIVATION_GRANTS_JSON")],
     population_activation_producer_ref=_env_value("POPULATION_ACTIVATION_PRODUCER_REF", "population:siming"),

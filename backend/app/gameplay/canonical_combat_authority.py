@@ -503,6 +503,97 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
                 GameplayEventStoreSnapshotError):
             return self._reject(request.command_id, "encounter_source_unavailable")
 
+    def resolve_active_admitted_encounter(
+        self,
+        *,
+        session_ref: str,
+        principal_ref: str,
+        connection_epoch: int,
+        lease_expires_at: int,
+        now: int,
+        actor_ref: str,
+        target_ref: str,
+    ) -> dict[str, Any] | None:
+        """Resolve the unique active encounter admitted for this live binding.
+
+        Callers must supply values from the backend-resolved WebSocket binding;
+        the returned encounter identity always comes from an owned begin receipt.
+        """
+        if (
+            any(not isinstance(value, str) or not value.strip() for value in
+                (session_ref, principal_ref, actor_ref, target_ref))
+            or actor_ref == target_ref
+            or type(connection_epoch) is not int or connection_epoch < 1
+            or type(lease_expires_at) is not int or lease_expires_at < 1
+            or type(now) is not int or now < 0 or lease_expires_at < now
+        ):
+            return None
+        matches: list[dict[str, Any]] = []
+        try:
+            for event in self.store.read_events(event_type=ENCOUNTER_BEGUN):
+                payload = event.payload
+                if (
+                    event.schema_version != 1
+                    or event.visibility_policy != "project"
+                    or payload.get("session_ref") != session_ref
+                    or payload.get("principal_ref") != principal_ref
+                    or payload.get("connection_epoch") != connection_epoch
+                    or payload.get("lease_expires_at") != lease_expires_at
+                    or payload.get("actor_ref") != actor_ref
+                    or payload.get("target_ref") != target_ref
+                ):
+                    continue
+                world_ref, timeline_ref = payload.get("world_ref"), payload.get("timeline_ref")
+                encounter_ref = payload.get("encounter_ref")
+                source_ids = payload.get("source_event_ids")
+                if (
+                    not isinstance(world_ref, str) or not world_ref.strip()
+                    or not isinstance(timeline_ref, str) or not timeline_ref.strip()
+                    or not isinstance(encounter_ref, str) or not encounter_ref.strip()
+                    or not isinstance(source_ids, list) or len(source_ids) != 5
+                    or event.stream_id != f"gameplay:combat:encounter:{encounter_ref}"
+                    or not self.store.transaction_owns_event(
+                        transaction_id=event.transaction_id,
+                        event_id=event.event_id,
+                        principal_ref=ENCOUNTER_PRINCIPAL,
+                    )
+                ):
+                    continue
+                if self.encounter_projection(
+                    world_ref=world_ref, timeline_ref=timeline_ref, encounter_ref=encounter_ref,
+                )["state"] != "active":
+                    continue
+                sources = self.resolve_current_sources(
+                    actor_ref=actor_ref, target_ref=target_ref,
+                    world_ref=world_ref, timeline_ref=timeline_ref,
+                )
+                if (
+                    sources is None
+                    or sources["source_event_ids"] != source_ids
+                    or sources["actor_incarnation_ref"] != payload.get("actor_incarnation_ref")
+                    or sources["target_incarnation_ref"] != payload.get("target_incarnation_ref")
+                ):
+                    continue
+                matches.append({
+                    "world_ref": world_ref,
+                    "timeline_ref": timeline_ref,
+                    "encounter_ref": encounter_ref,
+                    "actor_ref": actor_ref,
+                    "target_ref": target_ref,
+                    "actor_incarnation_ref": sources["actor_incarnation_ref"],
+                    "target_incarnation_ref": sources["target_incarnation_ref"],
+                    "source_event_ids": list(source_ids),
+                    "source_revisions": dict(sources["source_revisions"]),
+                    "begin_event_id": event.event_id,
+                    "session_ref": session_ref,
+                    "principal_ref": principal_ref,
+                    "connection_epoch": connection_epoch,
+                    "lease_expires_at": lease_expires_at,
+                })
+        except (GameplayEventStoreSnapshotError, KeyError, TypeError, ValueError):
+            return None
+        return matches[0] if len(matches) == 1 else None
+
     def begin_encounter(self, *, attempt: ActionAttempt, authority_result: AuthorityResult,
                         presence_event_ids: tuple[str, str], life_event_ids: tuple[str, str],
                         faction_event_id: str, world_ref: str, timeline_ref: str, encounter_ref: str,
@@ -608,13 +699,19 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
         for event in events:
             if checkpoint_at is not None and event.global_sequence > checkpoint_at:
                 continue
-            principal = THREAT_PRINCIPAL if event.event_type == THREAT_EVENT else ENCOUNTER_PRINCIPAL
+            if event.event_type == THREAT_EVENT:
+                principal = THREAT_PRINCIPAL
+            elif event.event_type == "gameplay.combat.embodied_settlement_recorded":
+                principal = "authority:embodied:street-combat-settlement"
+            else:
+                principal = ENCOUNTER_PRINCIPAL
             if (event.schema_version != 1 or event.visibility_policy != "project"
                     or not self.store.transaction_owns_event(transaction_id=event.transaction_id,
                                                             event_id=event.event_id, principal_ref=principal)):
                 raise ValueError("combat_projection_source_invalid")
             p = event.payload
-            if p.get("encounter_ref") != encounter_ref:
+            if (event.event_type != "gameplay.combat.embodied_settlement_recorded"
+                    and p.get("encounter_ref") != encounter_ref):
                 raise ValueError("combat_projection_scope_invalid")
             if event.event_type in (ENCOUNTER_BEGUN, ENCOUNTER_ENDED):
                 if p.get("world_ref") != world_ref or p.get("timeline_ref") != timeline_ref:
@@ -627,6 +724,14 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
                     if state != "active":
                         raise ValueError("combat_projection_lifecycle_invalid")
                     state, totals = "ended", {}
+            elif event.event_type == "gameplay.combat.embodied_settlement_recorded":
+                source = p.get("source")
+                if (not isinstance(source, dict)
+                        or source.get("encounter_ref") != encounter_ref
+                        or source.get("world_ref") != world_ref
+                        or source.get("timeline_ref") != timeline_ref
+                        or state != "active"):
+                    raise ValueError("combat_projection_scope_invalid")
             elif event.event_type == THREAT_EVENT:
                 if state == "ended" or type(p.get("damage")) is not int or p["damage"] <= 0:
                     raise ValueError("combat_projection_lifecycle_invalid")

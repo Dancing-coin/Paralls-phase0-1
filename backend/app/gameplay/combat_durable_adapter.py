@@ -14,6 +14,7 @@ from app.gameplay.event_store import GameplayEventStore, GameplayEventStoreSnaps
 from app.gameplay.models import AppendBatchResult
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority
+from app.gameplay.canonical_combat_authority import FACTION_PRINCIPAL
 from app.models.embodied_interaction import ActionAttempt, AuthorityResult
 from app.services.embodied_authority_settlement_service import EmbodiedAuthoritySettlementService
 
@@ -25,7 +26,8 @@ LIFE_STATE_SOURCE_PRINCIPAL = "authority:character:life-state"
 # No canonical faction relation owner is registered in this repository.  Keep
 # this explicit so a fixture or arbitrary transaction principal cannot become
 # an implicit authority by merely containing the expected event type.
-FACTION_SOURCE_PRINCIPAL: str | None = None
+FACTION_SOURCE_PRINCIPAL: str | None = FACTION_PRINCIPAL
+LIFE_PRESENCE_ADMISSION_PRINCIPAL = "authority:character:life-state:presence-admission"
 
 
 @dataclass(frozen=True)
@@ -354,32 +356,44 @@ class DurableEmbodiedCombatAdapter:
             return False
         actor_ref = attempt.actor_ref.removeprefix("character:")
         target_ref = attempt.target_refs[0].removeprefix("character:") if len(attempt.target_refs) == 1 else ""
-        expected_presence = ((presence_events[0], actor_ref, source.actor_incarnation_ref),
-                             (presence_events[1], target_ref, source.target_incarnation_ref))
+        expected_presence = tuple(
+            (presence, expected_actor if life.schema_version == 2 else expected_actor.removeprefix("character:"), incarnation)
+            for presence, life, expected_actor, incarnation in (
+                (presence_events[0], life_events[0], attempt.actor_ref, source.actor_incarnation_ref),
+                (presence_events[1], life_events[1], attempt.target_refs[0], source.target_incarnation_ref),
+            )
+        )
         expected_life = ((life_events[0], attempt.actor_ref),
                          (life_events[1], attempt.target_refs[0] if attempt.target_refs else ""))
+        life_principals = tuple(
+            LIFE_PRESENCE_ADMISSION_PRINCIPAL if event.schema_version == 2 else LIFE_STATE_SOURCE_PRINCIPAL
+            for event in life_events
+        )
         return (
             self._event_has_committed_provenance(presence_events[0], PRESENCE_SOURCE_PRINCIPAL)
             and self._event_has_committed_provenance(presence_events[1], PRESENCE_SOURCE_PRINCIPAL)
-            and self._event_has_committed_provenance(life_events[0], LIFE_STATE_SOURCE_PRINCIPAL)
-            and self._event_has_committed_provenance(life_events[1], LIFE_STATE_SOURCE_PRINCIPAL)
+            and all(self._event_has_committed_provenance(event, principal)
+                    for event, principal in zip(life_events, life_principals))
             and FACTION_SOURCE_PRINCIPAL is not None
             and self._event_has_committed_provenance(faction, FACTION_SOURCE_PRINCIPAL)
-            and all(event.payload.get("timeline_ref") == source.timeline_ref for event in (*presence_events, *life_events, faction))
+            and faction.payload.get("timeline_ref") == source.timeline_ref
             and all(event.event_type == "population.presence.spawned" and event.visibility_policy == "project" for event in presence_events)
             and all(event.payload.get("world_ref") == source.world_ref for event in presence_events)
             and all(event.schema_version == 1 and event.stream_id == f"presence:{source.world_ref}" for event in presence_events)
             and all(
                 str(event.payload.get("character_ref")) == character_ref
-                and f"character:{event.payload.get('character_ref')}@{event.payload.get('incarnation')}" == incarnation_ref
+                and f"{event.payload.get('character_ref') if str(event.payload.get('character_ref')).startswith('character:') else 'character:' + str(event.payload.get('character_ref'))}@{event.payload.get('incarnation')}" == incarnation_ref
                 for event, character_ref, incarnation_ref in expected_presence
             )
-            and self._current_presence(source.world_ref, actor_ref, source.presence_source_event_ids[0])
-            and self._current_presence(source.world_ref, target_ref, source.presence_source_event_ids[1])
-            and all(event.event_type == "gameplay.character.life_state_changed" and event.visibility_policy == "project" and event.schema_version == 1 for event in life_events)
+            and all(self._current_presence(source.world_ref, character_ref, event.event_id)
+                    for event, character_ref, _ in expected_presence)
+            and all(event.event_type == "gameplay.character.life_state_changed" and event.visibility_policy == "project" and event.schema_version in {1, 2} for event in life_events)
+            and all(event.payload.get("timeline_ref") == source.timeline_ref for event in life_events if event.schema_version == 1)
             and all(str(event.payload.get("actor_ref")) == actor_ref for event, actor_ref in expected_life)
-            and life_events[0].stream_id == f"gameplay:character:life:{actor_ref}"
-            and life_events[1].stream_id == f"gameplay:character:life:{target_ref}"
+            and all(
+                event.stream_id == f"gameplay:character:life:{expected_actor if event.schema_version == 2 else expected_actor.removeprefix('character:')}"
+                for event, expected_actor in expected_life
+            )
             and all(event.payload.get("to_state") not in {"dead", "despawned"} for event in life_events)
             and all(self._store.read_stream(event.stream_id)[-1].event_id == event.event_id for event in life_events)
             and faction.visibility_policy == "project"

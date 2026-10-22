@@ -69,6 +69,12 @@ from app.gameplay.canonical_combat_authority import (
     CanonicalCombatThreatAuthority,
     EncounterAdmissionRequest,
 )
+from app.gameplay.combat_durable_adapter import CombatSourceContext, DurableEmbodiedCombatAdapter
+from app.gameplay.physics_contact_receipt import (
+    PhysicsContactReceipt,
+    PhysicsContactReceiptAuthority,
+    PhysicsContactReceiptVerifier,
+)
 from app.gameplay.p5.stormnight_realtime_session import (
     StormnightPlayerIntent,
     StormnightRealtimeSessionService,
@@ -308,6 +314,8 @@ resource_conversion_capability_resolver = None
 # tests and a future authenticated composition layer may inject the owner.
 social_spatial_owner: SocialSpatialOwner | None = None
 combat_threat_authority: CanonicalCombatThreatAuthority | None = None
+physics_contact_receipt_authority: PhysicsContactReceiptAuthority | None = None
+durable_embodied_combat_adapter: DurableEmbodiedCombatAdapter | None = None
 
 
 def _social_delivery_replay_binding():
@@ -1830,6 +1838,8 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global unified_character_action_settlement_service
     global social_spatial_owner
     global combat_threat_authority
+    global physics_contact_receipt_authority
+    global durable_embodied_combat_adapter
 
     checkpoint_close_failure = None
     try:
@@ -1977,6 +1987,13 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     social_spatial_owner = SocialSpatialOwner(store=gameplay_event_store)
     combat_threat_authority = CanonicalCombatThreatAuthority(
         store=gameplay_event_store, authorized_callers=("backend:street-combat",))
+    physics_contact_receipt_authority = PhysicsContactReceiptAuthority(
+        store=gameplay_event_store,
+        verifier=PhysicsContactReceiptVerifier(settings.physics_contact_authority_secrets),
+    )
+    durable_embodied_combat_adapter = DurableEmbodiedCombatAdapter(
+        authority=unified_character_action_settlement_service, store=gameplay_event_store,
+    )
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
         esm_service=esm_service,
@@ -4875,16 +4892,81 @@ def _handle_envelope(
             attempt = ActionAttempt.model_validate(payload.get("attempt"))
         except ValidationError as exc:
             return [_as_envelope("street_combat_result", {"accepted": False, "error_code": f"invalid_action_attempt:{exc.errors()[0]['type']}"})]
+        if len(attempt.target_refs) != 1:
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "single_target_required"})]
         binding_result = embodied_controller_auth_service.resolve_controller_binding(
             actor_id=attempt.actor_ref.removeprefix("character:"), connection_ref=connection_context.connection_ref)
         if not binding_result.accepted or binding_result.binding is None:
             return [_as_envelope("street_combat_result", {"accepted": False, "error_code": binding_result.error_code})]
         if attempt.connection_epoch != binding_result.binding.connection_epoch:
             return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "stale_connection_epoch"})]
-        # Client attempts remain presentation/development input until a
-        # backend-verified physics contact receipt is available.
+        binding = connection_context.binding
+        if binding is None or binding.binding_state != "bound_active":
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "websocket_session_required"})]
+        owner = combat_threat_authority
+        receipt_authority = physics_contact_receipt_authority
+        adapter = durable_embodied_combat_adapter
+        if owner is None or receipt_authority is None or adapter is None:
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "combat_owner_unavailable"})]
+        target_ref = attempt.target_refs[0]
+        encounter = owner.resolve_active_admitted_encounter(
+            session_ref=binding.session_ref, principal_ref=binding.principal_ref,
+            connection_epoch=binding.connection_epoch, lease_expires_at=binding.lease_expires_at,
+            now=connection_context.observed_at, actor_ref=attempt.actor_ref, target_ref=target_ref,
+        )
+        if encounter is None:
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "active_encounter_unavailable"})]
+        try:
+            sources = owner.resolve_current_sources(
+                actor_ref=attempt.actor_ref, target_ref=target_ref,
+                world_ref=encounter["world_ref"], timeline_ref=encounter["timeline_ref"],
+            )
+            contact_receipt = PhysicsContactReceipt.model_validate(payload.get("contact_receipt"))
+        except (ValidationError, KeyError, TypeError, ValueError):
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "contact_receipt_invalid"})]
+        if (sources is None or sources["source_event_ids"] != encounter["source_event_ids"]
+                or sources["actor_incarnation_ref"] != encounter["actor_incarnation_ref"]
+                or sources["target_incarnation_ref"] != encounter["target_incarnation_ref"]):
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "combat_truth_source_unavailable"})]
+        contact_result = receipt_authority.record(
+            contact_receipt, attempt=attempt,
+            target_incarnation_ref=encounter["target_incarnation_ref"],
+        )
+        if not contact_result.committed:
+            code = contact_result.failure.error_code if contact_result.failure else "contact_receipt_unverified"
+            return [_as_envelope("street_combat_result", {"accepted": False, "error_code": code})]
+        source = CombatSourceContext(
+            world_ref=encounter["world_ref"], timeline_ref=encounter["timeline_ref"],
+            encounter_ref=encounter["encounter_ref"],
+            actor_incarnation_ref=encounter["actor_incarnation_ref"],
+            target_incarnation_ref=encounter["target_incarnation_ref"],
+            presence_source_event_ids=tuple(encounter["source_event_ids"][:2]),
+            life_state_source_event_ids=tuple(encounter["source_event_ids"][2:4]),
+            faction_source_event_id=encounter["source_event_ids"][4],
+        )
+        durable = adapter.settle_and_record(
+            attempt, source=source, command_id=f"combat:{attempt.attempt_id}",
+            idempotency_key=f"combat:{attempt.attempt_id}",
+        )
+        if durable.error_code or durable.authority_result.outcome != "committed" or durable.append_result is None:
+            return [_as_envelope("street_combat_result", {
+                "accepted": False, "error_code": durable.error_code or durable.authority_result.failed_code or "combat_settlement_failed",
+                "action_receipt": durable.authority_result.model_dump(mode="json"),
+                "contact_receipt": contact_result.model_dump(mode="json"),
+            })]
+        threat_result = adapter.consume_committed_hit(
+            attempt, source=source, command_id=f"threat:{attempt.attempt_id}",
+            idempotency_key=f"threat:{attempt.attempt_id}",
+            authority_result=durable.authority_result,
+        )
         return [_as_envelope("street_combat_result", {
-            "accepted": False, "error_code": "contact_authority_unavailable"})]
+            "accepted": threat_result.committed,
+            "error_code": "" if threat_result.committed else (threat_result.failure.error_code if threat_result.failure else "threat_settlement_failed"),
+            "action_receipt": durable.authority_result.model_dump(mode="json"),
+            "settlement_receipt": durable.append_result.model_dump(mode="json"),
+            "threat_receipt": threat_result.model_dump(mode="json"),
+            "contact_receipt": contact_result.model_dump(mode="json"),
+        })]
     if envelope.message_type == "unified_character_action_recovery_snapshot_request":
         if "unified_character_action_settlement_service" not in globals():
             unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(

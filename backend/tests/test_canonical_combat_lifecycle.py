@@ -2,7 +2,12 @@ from dataclasses import replace
 
 import pytest
 
-from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority, EncounterAdmissionRequest
+from app.gameplay.canonical_combat_authority import (
+    CanonicalCombatThreatAuthority,
+    CombatFactionRelationAuthority,
+    EncounterAdmissionRequest,
+    FactionRelationRequest,
+)
 from app.gameplay.event_store import DurableGameplayEventStore
 from app.services.websocket_session_auth_service import WebSocketSessionAuthService, WebSocketSessionEnrollment
 from app.gameplay.settlement_plan import build_atomic_event_batch
@@ -88,6 +93,126 @@ def test_admitted_encounter_is_minted_from_session_and_replays_without_hit(tmp_p
     assert replay.committed and replay.idempotency_status == "duplicate_replayed"
     assert replay.committed_event_ids == first.committed_event_ids
     assert len(store.read_stream(f"gameplay:combat:encounter:{encounter_ref}")) == 1
+    store.close()
+
+
+def test_active_admitted_encounter_resolves_only_for_its_current_session_and_sources(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "active-admission.db")
+    source = _sources(store)
+    owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+    auth, binding = _session_auth()
+    admission = _admission(
+        source, session_ref=binding.session_ref,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+    )
+    result = owner.begin_admitted_encounter(
+        admission, authorized_caller="backend:combat", session_auth=auth,
+    )
+    assert result.committed
+
+    resolved = owner.resolve_active_admitted_encounter(
+        session_ref=binding.session_ref,
+        principal_ref=binding.principal_ref,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+        now=100,
+        actor_ref=admission.actor_ref,
+        target_ref=admission.target_ref,
+    )
+    assert resolved is not None
+    assert resolved["encounter_ref"] == store.get_event(result.committed_event_ids[0]).payload["encounter_ref"]
+    assert resolved["source_event_ids"] == [
+        *source.presence_source_event_ids,
+        *source.life_state_source_event_ids,
+        source.faction_source_event_id,
+    ]
+
+    assert owner.resolve_active_admitted_encounter(
+        session_ref=binding.session_ref,
+        principal_ref="player:other",
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+        now=100,
+        actor_ref=admission.actor_ref,
+        target_ref=admission.target_ref,
+    ) is None
+    assert owner.resolve_active_admitted_encounter(
+        session_ref=binding.session_ref,
+        principal_ref=binding.principal_ref,
+        connection_epoch=binding.connection_epoch + 1,
+        lease_expires_at=binding.lease_expires_at,
+        now=100,
+        actor_ref=admission.actor_ref,
+        target_ref=admission.target_ref,
+    ) is None
+    assert owner.resolve_active_admitted_encounter(
+        session_ref=binding.session_ref,
+        principal_ref=binding.principal_ref,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+        now=100,
+        actor_ref=admission.actor_ref,
+        target_ref="character:char_c",
+    ) is None
+    store.close()
+
+
+def test_active_admitted_encounter_resolution_rejects_ended_or_stale_source_cut(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "ended-admission.db")
+    source = _sources(store)
+    owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+    auth, binding = _session_auth()
+    admission = _admission(
+        source, session_ref=binding.session_ref,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+    )
+    result = owner.begin_admitted_encounter(
+        admission, authorized_caller="backend:combat", session_auth=auth,
+    )
+    assert result.committed
+    encounter = store.get_event(result.committed_event_ids[0])
+    encounter_ref = encounter.payload["encounter_ref"]
+
+    # A newer canonical faction owner event invalidates the admission source cut.
+    faction_owner = CombatFactionRelationAuthority(
+        store=store, authorized_callers=("backend:combat",),
+    )
+    changed = faction_owner.record(FactionRelationRequest(
+        world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+        actor_ref="character:char_a", target_ref="character:char_b", hostile=False,
+        command_id="faction:changed", idempotency_key="faction:changed",
+        causation_id="cause:faction:changed", correlation_id="corr:faction:changed",
+        authorized_caller="backend:combat",
+    ))
+    assert changed.committed
+    assert owner.resolve_active_admitted_encounter(
+        session_ref=binding.session_ref,
+        principal_ref=binding.principal_ref,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+        now=100,
+        actor_ref=admission.actor_ref,
+        target_ref=admission.target_ref,
+    ) is None
+
+    ended = owner.end_encounter(
+        world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+        encounter_ref=encounter_ref, command_id="end:admission",
+        idempotency_key="end:admission", authorized_caller="backend:combat",
+        expected_revision=encounter.stream_revision, reason="finished",
+    )
+    assert ended.committed
+    assert owner.resolve_active_admitted_encounter(
+        session_ref=binding.session_ref,
+        principal_ref=binding.principal_ref,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at,
+        now=100,
+        actor_ref=admission.actor_ref,
+        target_ref=admission.target_ref,
+    ) is None
     store.close()
 
 
