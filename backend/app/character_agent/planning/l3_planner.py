@@ -946,6 +946,8 @@ class CharacterAgentL3Service:
                 need_tension_state=normalized_need_tension_state,
                 dynamic_state=normalized_dynamic_state,
                 verification=verification,
+                frozen_target_refs=(candidate_mapping[candidate].get("target_refs", {})
+                                    if strict_mapping else None),
             )
             for candidate in candidates
         ]
@@ -1593,7 +1595,10 @@ class CharacterAgentL3Service:
             if not isinstance(descriptor, dict):
                 continue
             for intent in descriptor.get("supported_intents", []) if isinstance(descriptor.get("supported_intents", []), list) else []:
-                if intent in {"use_object", "finish_use"} and intent not in candidates:
+                if intent in {
+                    "use_object", "finish_use", "approach", "follow_target",
+                    "seek_private_distance", "withdraw", "break_contact",
+                } and intent not in candidates:
                     candidates.append(intent)
         return candidates
 
@@ -1611,6 +1616,7 @@ class CharacterAgentL3Service:
         need_tension_state: dict[str, object],
         dynamic_state: dict[str, object],
         verification: dict[str, object] | None = None,
+        frozen_target_refs: dict[str, str] | None = None,
     ) -> dict[str, object]:
         persona_ok = True
         persona_notes: list[str] = []
@@ -1622,6 +1628,7 @@ class CharacterAgentL3Service:
             profile=profile,
             control_mode=control_mode,
             working_memory_state=working_memory_state,
+            frozen_target_refs=frozen_target_refs,
         )
         gain_loss_score, gain_loss_notes = self._score_gain_loss(
             candidate,
@@ -1656,6 +1663,7 @@ class CharacterAgentL3Service:
         profile: dict[str, object],
         control_mode: str,
         working_memory_state: dict[str, object] | None = None,
+        frozen_target_refs: dict[str, str] | None = None,
     ) -> tuple[bool, list[str]]:
         notes: list[str] = []
         attention_target = str(interpretation.attention_target or "")
@@ -1677,18 +1685,12 @@ class CharacterAgentL3Service:
         elif candidate == "stay_silent":
             if control_mode != "player_priority_assisted":
                 notes.append("stay_silent requires assisted control")
-        elif candidate == "seek_private_distance":
-            if attention_target == "":
-                notes.append("seek_private_distance requires an attention target")
-        elif candidate == "break_contact":
-            if attention_target == "":
-                notes.append("break_contact requires an attention target")
-        elif candidate == "follow_target":
-            if attention_target == "":
-                notes.append("follow_target requires an attention target")
-        elif candidate == "approach":
-            if attention_target == "":
-                notes.append("approach requires an attention target")
+        elif candidate in {"seek_private_distance", "break_contact", "follow_target", "approach"}:
+            # Canonical choices bind their target in the frozen catalog record.
+            # Attention is only a legacy planning hint, never a replacement target.
+            has_target = any(frozen_target_refs.values()) if frozen_target_refs is not None else bool(attention_target)
+            if not has_target:
+                notes.append(f"{candidate} requires a target")
         elif candidate == "withhold":
             if attention_target == "":
                 notes.append("withhold requires someone or something to withhold around")

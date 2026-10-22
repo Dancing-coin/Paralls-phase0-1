@@ -1277,6 +1277,14 @@ TDD 定向验证：先以两个新断言观察旧实现 **2 failed**（客户端
 
 **后端**：client-attempt 已恢复为 authenticated contact receipt 前的 fail-closed 子项，encounter admission/Threat owner 仍为局部生产接线。**模型质量**：Q01–Q04 未验收。**角色闭环**：避免无 contact 证据的伪 embodied/L4 触发；完整真实 Laya action+target→L4→多领域 owner→回执/恢复/回放仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
 
+### 2026-10-22 social catalog → L3/L4 → owner receipt/replay
+
+此前正式 social catalog 虽在 L1 snapshot 和生产 ingress 接线，L3 `_generate_candidates()` 却只在 L2 attention 非空时提出社交动作，且 `_expand_domain_candidates()` 只扩展 worktable 动作。RED 测试以正式 social catalog、无 attention 的真实 L3 prepare 复现五动作均未进入冻结 candidate mapping。修复让 L3 从正式 catalog 扩展五种已注册 social intents；strict frozen choice 的本地逻辑过滤改用冻结 candidate target refs，而不再要求 attention 提供目标。无 catalog 时仍没有 targeted candidate；既有候选上限和 compiler visibility/affordance/owner gates 保持有效。Legacy non-frozen pathway 继续保留 attention 要求。
+
+新增纵切对五种动作逐一覆盖 attention 为空与指向无关角色：正式目录 → L3 frozen action+target → L4 contract → canonical backend ingress → `SocialSpatialOwner` durable source-pinned receipt → 目标消失且 spatial sample stale 后 exact retry 原 receipt、零新增写入。Fresh 选择 `test_character_social_target_catalog.py`、`test_character_candidate_compiler.py`、`test_character_laya_provider.py`、`test_character_execution_contract.py`、`test_character_worktable_vertical.py`：**165 passed, 4 existing FastAPI lifespan warnings**；含此前正确根因 RED。全部 pytest basetemp 在 `D:\codex-temp`。这是受控 L3 choice 和内部 handler 纵切，不是真实 Laya 生成/认证 WebSocket ingress 或跨领域 common cut；不能升级完整 Laya、模型质量、角色 movement/contact 或 Godot。
+
+**后端**：social catalog 到原 spatial owner 的完整 action+target 接线与 receipt exact-replay 子项已 fresh 验证；真实 Laya/WebSocket、多领域 owner common cut 仍局部。**模型质量**：Q01–Q04 未验收，没有模型调用。**角色闭环**：新增五动作 L3/L4/单 owner slice；完整输入生成、真实 Laya、跨域连续闭环仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，仍最后集中验收。未运行全量 pytest/Harness all、训练或 Godot。
+
 ### 2026-10-22 Laya development action-target inventory
 
 候选准备器新增 development-only `development_action_inventory`。它直接读取 `create_core_skill_registry()` 的六个已注册复合动作，并为当前场景每个可见目标生成动作—目标记录；每条记录保留 skill binding、来源引用和 skill registry revision。目标类型不匹配的组合显式 `blocked`，缺少认证领域 owner 的组合同样保持空 `owner_route`、`unverified_owner_admission` 和 `formal_quality_eligible=false`。该 inventory 只用于审查完整动作范围与缺口，不改变现有三项诊断候选，不进入正式模型质量分母，也没有调用模型或读取 sealed labels。

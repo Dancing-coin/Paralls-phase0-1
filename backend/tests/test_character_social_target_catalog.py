@@ -99,18 +99,61 @@ def test_social_catalog_pins_sources_for_owner_submission(social_catalog):
     assert event.payload["source_context"] == descriptor["social_source_context"]
 
 
+def _selected_social_contract(snapshot, action, attention_target):
+    from app.character_agent.execution.l4_executor import CharacterAgentL4Executor
+    from app.character_agent.models.turn_context import CharacterTurnContext
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+    from app.models.character_agent_runtime import CharacterInterpretation
+
+    snapshot.attention_targets = []
+    snapshot.current_attention_targets = []
+    interpretation = CharacterInterpretation(
+        actor_id="char_a", interpreted_summary="social context without a focused target",
+        interpretation_type="social", salience_score=0.5, ambiguity_level="low",
+        risk_level="low", opportunity_level="medium", attention_target=attention_target,
+    )
+    turn = CharacterTurnContext.begin(
+        actor_id="char_a", source_event_ref="percept:private:a:10", producer_ts=10,
+        causation_id="cause:social:l3", correlation_id="corr:social:l3",
+        input_revision_vector={"session:char_a": 1}, memory_revision_vector={},
+        policy_revision="policy:1", snapshot_revision=1, branch_id="main",
+    )
+    planner = CharacterAgentL3Service()
+    prepared = planner.prepare_intent_plan(
+        interpretation=interpretation, control_mode="agent_full_auto",
+        snapshot=snapshot.model_dump(mode="json"), turn_context=turn,
+        profile={"cognitive_capability_layer": {"hard_limits": {"max_candidate_intents": 8}}},
+    )
+    label = f"{action}:char_b"
+    assert label in prepared.candidate_mapping
+    plan = planner.finish_intent_plan(prepared, {
+        "candidate_intents": [label], "selected_intent": label,
+        "recommended_intents": [label], "candidate_digest": prepared.candidate_digest,
+    })
+    decision = planner.decision_from_plan(plan, interpretation=interpretation)
+    assert decision.selected_intent == action
+    assert decision.target_refs == ["char_b"]
+    contract = CharacterAgentL4Executor().build_execution_contract(snapshot, interpretation, decision, turn)
+    assert contract.semantic_action_id == (
+        "action:withdraw" if action in {"withdraw", "break_contact"} else "action:approach")
+    assert contract.expected_observation["requested_action"] == action
+    assert contract.target_refs == ("char_b",)
+    assert contract.expected_observation["owner_route"] == "social_spatial_owner"
+    return contract
+
+
 @pytest.mark.parametrize("social_catalog", [{"scene_instance_id": "s:other"}, {"scene_revision": 2}], indirect=True)
 def test_social_catalog_requires_same_scene_instance_and_revision(social_catalog):
     catalog, snapshot, *_ = social_catalog
     assert catalog.project_character_targets(snapshot) == []
 
 
-def test_production_social_source_receipt_recovers_without_current_catalog(social_catalog, monkeypatch):
+@pytest.mark.parametrize("action", ["approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"])
+@pytest.mark.parametrize("attention_target", [None, "char_unrelated"])
+def test_production_social_choice_l4_receipt_and_recovery(social_catalog, monkeypatch, action, attention_target):
     import app.main as main
     from app.character_agent.execution.object_execution import CharacterObjectExecution
-    from app.character_agent.models.character_execution import CharacterExecutionContract
     from app.gameplay.social_spatial_owner import SocialSpatialOwner
-    from test_character_execution_contract import _valid_contract
 
     catalog, snapshot, store, source, scopes, clock, auth, timeline = social_catalog
     main.reset_runtime_state()
@@ -119,12 +162,9 @@ def test_production_social_source_receipt_recovers_without_current_catalog(socia
         source=source, scopes=scopes, social_targets=catalog)
     monkeypatch.setattr(main, "character_object_execution", execution)
     main.character_agent_runtime._l1._snapshots["char_a"] = snapshot
-    descriptor = catalog.project_character_targets(snapshot)[0]
-    contract = CharacterExecutionContract.model_validate(_valid_contract(
-        actor_ref="character:char_a", target_refs=("character:char_b",), semantic_intent_id="approach",
-        semantic_action_id="action:approach", expected_observation={
-            "requested_action": "approach", "target_admission_digest": descriptor["target_admission_digest"]},
-    ))
+    snapshot.target_catalog = catalog.project_character_targets(snapshot)
+    descriptor = next(d for d in snapshot.target_catalog if action in d["supported_intents"])
+    contract = _selected_social_contract(snapshot, action, attention_target)
     main.character_agent_runtime.record_execution_request(
         actor_id="char_a", producer_ts=10, payload=contract.model_dump(mode="json"))
     envelope = main.Envelope(message_type="character_agent_execution", payload=contract.model_dump(mode="json"))
