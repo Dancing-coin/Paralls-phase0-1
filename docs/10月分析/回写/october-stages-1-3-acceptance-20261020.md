@@ -135,7 +135,7 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 1. **普通街战 encounter owner：A**。由已认证 backend scene/session admission 创建唯一且持久的 `encounter_ref`，写入 begin/end receipt，并在重连、并发和结束条件中保持同一 encounter 身份。不得按 actor-target 或单次 attempt 临时合成 encounter。
 2. **confirmed hit contact source：A**。只接受认证的 physics/runtime authority 通过 backend boundary 提交的 contact receipt；receipt 至少绑定 actor identity、connection epoch、attempt id、physics tick、目标 incarnation、动作合同和 source digest。Godot 可以作为最终可见场景和边界消息的参与方，但客户端 token/pose/contact 不能自行证明物理命中，也不能直接写 canonical Threat；当前 client token/pose 只保留为开发联调输入。
 
-这是目标内的已选实现方向，不是已有实现证据。A/A 的依赖顺序是：先接入真实、已认证的 backend scene/session admission issuer 与持久 begin/end receipt，再定义并接入 authenticated physics-contact receipt adapter，最后接 `street_combat_attempt` 到 Presence/Life/Faction read-set、L4 contract、Threat owner 和 replay participant。Godot B 场景只在这些 backend 边界具备后执行。当前审查没有找到可复用的生产 scene/session admission issuer；不得用任意 transport caller、client-provided encounter id 或按 actor-target/attempt 合成的 id 代替。confirmed hit 入口在 issuer 和 contact receipt 均可验证前继续 fail-closed。
+这是目标内的已选实现方向。后续核对发现 backend 已有配置驱动的 trusted-local scene/session admission issuer 与持久 encounter owner；它只覆盖服务端配置的本地启动 profile，不等同于通用外部 identity provider。A/A 的剩余依赖是接入 authenticated physics-contact receipt adapter，再接 `street_combat_attempt` 到 Presence/Life/Faction read-set、L4 contract、Threat owner 和 replay participant。Godot B 场景只在这些 backend 边界具备后执行。不得用任意 transport caller、client-provided encounter id 或按 actor-target/attempt 合成的 id 代替。confirmed hit 入口在 contact receipt 可验证前继续 fail-closed。
 
 ### 已核实的实现边界
 
@@ -149,12 +149,12 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 
 | 决策项 | 选项 | 影响 |
 |---|---|---|
-| 普通生产 encounter 的身份与 lifecycle owner | **已选 A**：由已认证 backend scene/session admission 创建唯一 `encounter_ref`，持久 begin/end receipt；B 仅适用于既有具名 conflict/boss scenario，不能充当通用街战 owner；C 是 admission issuer 落地前的运行状态 | 当前尚缺真实 issuer。实现必须说明创建、并发、重连、结束、重开恢复的唯一性和原 receipt；不得按 actor-target 或 attempt 合成 ref。issuer 缺失期间维持 fail-closed。 |
+| 普通生产 encounter 的身份与 lifecycle owner | **已选 A**：由已认证 backend scene/session admission 创建唯一 `encounter_ref`，持久 begin/end receipt；B 仅适用于既有具名 conflict/boss scenario，不能充当通用街战 owner；C 是 admission issuer 落地前的运行状态 | trusted-local launch profile 由 backend 内部 loopback issuer 签发一次性 enrollment；WebSocket binding 固定 principal/actor scope，encounter ref 由 Threat owner 从当前 canonical source 与原 admission receipt 创建。外部 authenticated-session resolver 仍未配置。不得按 actor-target 或 attempt 合成 ref。 |
 | confirmed hit 的 contact evidence | **已选 A**：只接受认证 physics/runtime authority 通过 backend boundary 提交、与 actor binding/epoch/attempt/tick/目标 incarnation/动作合同绑定的 contact receipt；现有 bounded street contract 仅可作联调；Godot client token/pose/contact 不得写 canonical Threat | contact receipt adapter 必须验证 authority source identity、digest、单次 attempt 绑定、目标 incarnation 和动作合同，并作为 durable hit 事务的来源读集。真实 Godot 边界与可见结果只在最后 G-B 验收；客户端表现不能替代 physics authority。 |
 
-执行顺序：先从现有 backend/session 架构找到或补齐受信 admission issuer，复用 Threat owner 的 durable begin/end receipt；然后确定 contact receipt 的认证 boundary 和回放身份，再接通生产 ingress。现有 owner/lifecycle 测试继续作为 owner 子项证据，但不代替 issuer、真实 L4 输入、真实 contact 来源或完整角色闭环。
+执行顺序：复用已存在的 trusted-local admission issuer 与 Threat owner durable begin/end receipt；随后实现可信 physics/runtime contact receipt 的认证 boundary 和回放身份，再接通生产 ingress。现有 owner/lifecycle 测试继续作为 owner 子项证据，但不代替真实 contact 来源、L4 输入或完整角色闭环。
 
-**当前状态**：矩阵已有的 D08 authenticated faction source、Presence/Life target reader、Threat owner 与 owner lifecycle gate 均保留各自已验证子项；D08 生产入口仍为**未实现**，完整战斗角色链仍为**局部实现**。模型 Q01–Q04 未验收；Godot G-A/B/C 尚未开始。两项产品方向已选；剩余的是找到/实现可认证 issuer 和 contact boundary，并交付真实端到端证据。
+**当前状态**：D08 authenticated faction source、Presence/Life target reader、durable Threat/encounter owner、trusted-local session issuer 和 encounter admission 均有实现及定向验证；外部 identity resolver 未配置，physics contact receipt adapter 与 `street_combat_attempt`→L4→Threat 生产接线仍未实现。完整战斗角色链仍为**局部实现**。模型 Q01–Q04 未验收；Godot G-A/B/C 尚未开始。
 
 **本轮目标扩展确认（2026-10-21）：** 阶段一至三的统一收口同时包含完整 Laya 真实 backend 链路（完整输入与候选、action+target、L4、真实领域 owner、receipt、恢复与回放）以及正式模型质量 Q01–Q04；Godot G-A/G-B/G-C 仍是后端与角色闭环收口后的最后门禁。服务可调用、choice 接纳、合同测试或单 owner slice 均不能替代这些闭环。Goal 已正式扩展并保持 active，没有将目标标记为完成。
 
@@ -439,7 +439,7 @@ RED run `7d1e5035224448de802e40fec2cc3056` 为缺少 resolver 方法的6项失�
 | D05 T09 prediction；计划04 Task2 | 局部实现 | Equipment command/prediction typed ingress、ledger、confirmation、Durable recovery | 正式 demand producer、确认/撤销/冲突与真实 owner receipt；不能把 preview promotion unsupported 改写为通过 |
 | D06 资源集中迁移；规格10、计划04 Task3 | 局部实现 | ResourceTemplate materialization、world-time recovery、reservation、modifier interval、v2→v2 migration、conversion；`infra-resource-world-time-recovery` | 正式 capability issuer、Modifier→Resource admission、debt/modifier/conversion 完整生命周期、统一 consumer pins 和集中切换；先复用现有 owner，禁止平行资源真相 |
 | D07 状态／效果／装备；规格10 | 局部实现 | Status lifecycle、equipment activation/command、effect/stat projection | 实际角色动作消费的权限/版本/失效链、效果与资源真实 owner 回执及恢复；全领域集中切换不能由装备单例代替 |
-| D08 技法／多 owner／物理；规格11、计划04 Task4 | 局部实现（authenticated faction HTTP 来源与进程重启已验证） | 已提交 ESM、street embodied owner、faction owner；Durable combat adapter、canonical Threat/encounter 仍为历史草稿 | target eligibility 与角色合同接线、encounter/Threat 实际 producer；真实 physics/contact 证据在最终 Godot 阶段取得，禁止伪造 |
+| D08 技法／多 owner／物理；规格11、计划04 Task4 | 局部实现（faction HTTP、durable Threat/encounter owner、trusted-local session issuer 与 encounter admission 均有定向验证） | ESM、street embodied owner、faction owner、`combat_durable_adapter.py`、`canonical_combat_authority.py`、backend launch-profile enrollment issuer；本轮复验覆盖 issuer→binding、canonical source admission、durable encounter receipt/reopen 与无 contact 时零写 | authenticated physics/runtime contact receipt adapter、`street_combat_attempt`→Presence/Life/Faction source cut→L4→Threat receipt/replay 的真实生产路径；Godot G-B 只提供最终可见结果，不能自行证明 contact authority；外部 identity provider 未配置 |
 | D09 LifeState／Presence；规格12、计划04 Task5 | 局部实现（初始 alive 生产组合与重启恢复已验证） | 既有 LifeState/case-death 草稿；本批采用初始 alive owner、显式 grant、绑定 producer 的 RuntimeExecution Activation→Presence→alive、incarnation/replay | 正式场景 source 与角色私有投影/target eligibility、迁移恢复；不从 HP 或 profile 推死亡事实 |
 | D10 Soul／identity；规格08/12 | 局部实现（来源、anchor、事实生命周期、vulnerability 与 bind/unbind 四门 CAS） | soul_sources.py、soul_presence_sources.py、soul_runtime.py、soul_fact_runtime.py、soul_vulnerability.py、soul_effect_runtime.py；本轮事实注册快照、版本隔离、原 anchor cut 与重开回执测试见下 | 完成生产 Life/mind 注册语义、其余有限 effect/value operation 与 counterplay、生产四门 admission、正式 schema/composition、checkpoint/common-cut/private projection 和生产角色/L4 接线；当前 issue/revoke 仅为事实生命周期基础，不代表效果执行权限 |
 | D11 全域 replay 与故障；计划04 Task6 | 局部实现 | 十领域 shared Durable cut、具名 participant matrix、Task6 fault allowlist | 全部本次正式准入 owner 的同一 global atomic cut，以及恢复/迁移/权限/隐私 parity；42 participant 独立测试不等于共同 cut |
@@ -1377,3 +1377,11 @@ TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注�
 `WebSocketSessionAuthService` 增加可注入的 deployment-owned authenticated-session resolver：仅由 resolver 返回的 verified principal、actor scope、advisory scope 与 lease 生成 backend binding，enrollment payload 不提供授权主体。resolver 缺失、返回错误类型/无效 scope、过期 lease 或抛出运行异常均 fail-closed。该 seam 不是实际 identity provider；当前 main composition 未注入 resolver，生产登录仍未实现。
 
 定向验证：`test_websocket_session_auth_service.py` 与 `test_canonical_combat_lifecycle.py` 在 D 盘 basetemp 复验。该项只属于后端 authenticated issuer 的“可注入边界已实现、production adapter 未实现”；不构成真实登录、Laya 调用或 combat ingress 验收。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作。
+
+### 2026-10-22 D08 trusted-local encounter issuer recheck
+
+复核更正：上一条只说明 `authenticated_session` 的 deployment resolver 尚未注入；它遗漏了已配置的 trusted-local Godot launch path。`main` 在配置 bootstrap secret 与固定 launch profiles 时创建 `TrustedLocalGameplayMirrorEnrollmentIssuer`，loopback 内部 HTTP route 按 profile 签发一次性 enrollment；WebSocket binding 固定服务端 principal/actor scope。`street_combat_encounter_admit` 从此 binding 和当前 canonical Presence/Life/Faction source 构造请求，Threat owner 生成 encounter ref 与 durable begin receipt；source、scope 或 binding 不匹配时拒绝。该路径不代表通用外部登录。
+
+定向复验 `test_trusted_local_gameplay_mirror_launcher.py`、`test_canonical_combat_lifecycle.py`、`test_street_combat_transport.py`：**49 passed, 4 existing FastAPI lifespan deprecation warnings in 7.09s**。测试覆盖受信 loopback/profile issuer、单次固定 scope binding、encounter owner receipt/reopen、canonical source admission，以及缺 authenticated contact receipt 时 `street_combat_attempt` fail-closed/零写。pytest basetemp 在 `D:\codex-temp\october-d08-issuer-20261022`。这是受控 backend evidence，不是 Godot 边界场景、真实登录 provider 或 physics contact runtime evidence。
+
+**后端**：D08 encounter session issuer/admission 与 durable begin receipt 子项已实现并定向验证；contact receipt adapter、L4→Threat production ingress/replay 仍未实现。**模型质量**：Q01–Q04 未验收。**角色闭环**：Laya action+target→多 owner receipts/recovery/replay 未验收。**最终 Godot**：G-A/G-B/G-C 未操作，仍最后集中验收。

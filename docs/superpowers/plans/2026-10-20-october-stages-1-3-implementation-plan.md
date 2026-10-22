@@ -57,6 +57,10 @@
 
 **已提交子项（不关闭 Task 1）：** `10de477f` / `4fa9d0ea` 修复 perceived/self-body 的 canonical turn→L2 recall 传递，精确暂存隔离分别 52 / 57 passed。`19078684` 已将同一冻结 envelope/policy 扩展到 perceived、self-body、同步 Siming 的 L2/L3，精确暂存隔离 95 passed（run `f462954ad3ca4669af07a4b511b61c30`）；background/dialogue/recall 硬预算及可信 revisions 仍待完成，不关闭本任务。
 
+### 2026-10-22 D08 trusted-local issuer recheck
+
+backend 已有配置驱动的 trusted-local launch enrollment issuer、固定 actor-scope WebSocket binding、canonical Presence/Life/Faction admission 和 durable encounter begin/end receipt；定向 `test_trusted_local_gameplay_mirror_launcher.py`、`test_canonical_combat_lifecycle.py`、`test_street_combat_transport.py` 为 **49 passed**，4 个既有 FastAPI lifespan 弃用告警。该路径只覆盖受控 loopback launch profile，不等同通用外部 identity provider。`street_combat_attempt` 在缺少 authenticated physics/runtime contact receipt 时保持 fail-closed；contact receipt adapter、`street_combat_attempt`→L4→Threat production ingress/replay、真实 Laya 多 owner common cut、Q01–Q04 与 Godot G-A/B/C 仍开放。完整证据与 basetemp 位置见统一验收矩阵。
+
 ## Task 2: 第一条真实 Laya→L4→owner 纵切
 
 **Task1 距离来源子项已补：** production resolver 连接当前 ESM 与已有可信空间来源；同 scope/新鲜/绑定有效且有位置映射时生成肯定 range，否则 unknown 或 blocked。typed L1→L3 验证、当前 source/owner 重启绑定、原执行及恢复共102项隔离通过（HEAD e3a5cf36 加4文件，run `1ff4684984624fe99ac3638bcc355b27`）；backend-contract passed，后续 cleanup passed。保留首次 RED 日志导出失败与首轮两项测试错误，详见统一矩阵。不关闭完整 R05/模型质量/角色/Godot。下一批返回正式 faction/target 与原角色 owner caller；本子项不继续扩测试。
