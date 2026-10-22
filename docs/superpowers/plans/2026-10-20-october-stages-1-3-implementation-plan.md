@@ -61,7 +61,7 @@
 
 ### 2026-10-22 D08 trusted-local issuer recheck
 
-backend 已有配置驱动的 trusted-local launch enrollment issuer、固定 actor-scope WebSocket binding、canonical Presence/Life/Faction admission 和 durable encounter begin/end receipt；定向 `test_trusted_local_gameplay_mirror_launcher.py`、`test_canonical_combat_lifecycle.py`、`test_street_combat_transport.py` 为 **49 passed**，4 个既有 FastAPI lifespan 弃用告警。该路径只覆盖受控 loopback launch profile，不等同通用外部 identity provider。`street_combat_attempt` 在缺少 authenticated physics/runtime contact receipt 时保持 fail-closed；contact receipt adapter、`street_combat_attempt`→L4→Threat production ingress/replay、真实 Laya 多 owner common cut、Q01–Q04 与 Godot G-A/B/C 仍开放。完整证据与 basetemp 位置见统一验收矩阵。
+backend 已有配置驱动的 trusted-local launch enrollment issuer、固定 actor-scope WebSocket binding、canonical Presence/Life/Faction admission 和 durable encounter begin/end receipt；定向 `test_trusted_local_gameplay_mirror_launcher.py`、`test_canonical_combat_lifecycle.py`、`test_street_combat_transport.py` 为 **49 passed**，4 个既有 FastAPI lifespan 弃用告警。该路径只覆盖受控 loopback launch profile，不等同通用外部 identity provider。后续 superseding evidence 已将 authenticated contact ingress 接入 contact-receipt owner→DurableEmbodiedCombatAdapter→Threat owner 与 authenticated recovery replay，详见统一矩阵 2026-10-22 D08 条目；这不代表真实 physics/runtime producer、Laya action+target→L4、跨进程 common cut 已完成。真实 Laya 多 owner common cut、Q01–Q04 与 Godot G-A/B/C 仍开放。
 
 ## Task 2: 第一条真实 Laya→L4→owner 纵切
 
@@ -125,7 +125,7 @@ was made in this batch.
 **Files:** 原计划02/03/04各 task 指定文件；统一矩阵 D03–D11/R10–R14。
 
 - [ ] 逐个真实角色 consumer 冻结需求来源、owner、权限、时间、receipt、恢复；已有 owner 优先复用。
-- [ ] Combat/Laya 纵切必须先有真实 L4 contact evidence、Presence/LifeState/Faction source composition 和 authenticated caller，再把 `street_combat_attempt` 接到 `DurableEmbodiedCombatAdapter`/Threat owner；owner API、choice acceptance 或 contract tests alone do not close R07/R08/D08.
+- [ ] Combat/Laya 纵切仍须提供真实 runtime physics contact producer 与 Laya 完整 action+target→L4 合同映射。已实现的 authenticated `street_combat_attempt`→contact receipt→`DurableEmbodiedCombatAdapter`→Threat owner/recovery 子项不代替跨进程 common cut、真实 Laya owner receipt、正式模型质量或 Godot G-B；详见统一矩阵。
 - [ ] Confirmed-hit contact evidence must come from an authenticated physics/runtime authority receipt. A Godot client pose/contact message is only a development or presentation input until the backend verifies the authority source, actor binding/epoch, attempt, physics tick, target incarnation, action contract and source digest; it cannot write canonical Threat by itself.
 - [ ] 正式 Resource capability/modifier/debt/conversion、学习、Soul、canonical faction/target、协同可信 clock、语音三路径按依赖逐项实现；每批沿原规格先 RED，再最小代码和定向验收。
 - [ ] 正式准入 owner 加入同一 global cut，验证迁移/权限/隐私 parity；独立 participant 数量不代替共同 cut。
@@ -242,6 +242,19 @@ Acceptance for this sub-batch: real SQLite reopen/exact retry, changed duplicate
 **Spatial production ingress committed:** `cafeaeed` (69 isolated tests, contract passed, cleanup passed) and `e7063bcc` (backend clock expiry regression, 70 isolated tests). Live run `2305abd50062465880574e1fc7e281c4` proves real HTTP enrollment/WebSocket sample original receipt and changed-duplicate rejection; cleanup failed and the subsequent exact-path cleanup was rejected by automatic approval policy. See matrix for owned residual paths. No Laya/Godot claim. Next: review existing dirty L4 lifecycle/model dependencies against HEAD, then production source admission and ESM owner/receipt recovery; do not extend spatial tests without a concrete new risk. Task2 remains open.
 
 **Combat fixture regression (2026-10-21):** corrected the dirty Threat-consumer fixture to compose the existing `ActivationSourceReader` with the same producer binding required by production Presence. The focused adapter, Threat consumer, and street owner selection passes **20 tests** (`71c6e223`). This is controlled backend owner/replay evidence. The production `street_combat_attempt` route remains disconnected from Threat: a production caller still needs an authenticated `CombatSourceContext` and an explicit encounter admission/lifecycle decision. Do not infer either from the incoming `ActionAttempt`; retain fail-closed combat admission until those sources and policy exist. This does not count as the real L4 contact/Laya/Godot vertical.
+
+**D08 source-current audit correction (2026-10-23):** the dated 2026-10-21
+combat fixture note above is historical. Current `main.py::street_combat_attempt`
+resolves the authenticated encounter, canonical Presence/Life/Faction pins,
+validates and persists the signed contact receipt, settles through the durable
+embodied adapter, consumes the original receipt in Threat, and exposes owner
+replay in the authenticated recovery snapshot. The corresponding current
+transport/replay evidence is recorded in the unified matrix's 2026-10-22 D08
+entries. The D08 decision summary and this plan's open-item checklist now match
+that state. Remaining gates are a real physics/runtime receipt producer and
+deployment credential source, Laya action+target→L4 mapping, and cross-process
+common-cut recovery. A focused docs Harness run `26e8fa6748714538ab317e2ab4cc89da`
+passed with cleanup passed; no backend behavior changed in this correction.
 
 ### Task2/3 bounded object execution continuation
 
