@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from typing import Any
+from typing import Any, get_args
 
 from app.character_agent.skills.models import (
+    ActionFamily,
     CharacterSkillState,
     EffectiveSkillStateProjection,
     PrimitiveActionPlan,
@@ -148,18 +149,18 @@ class CharacterSkillService:
                 projected[canonical_id] = candidate
 
         skills = [projected[key] for key in sorted(projected)]
-        active_ids = set(projected)
         allowed: set[str] = set()
-        blocked: set[str] = set()
-        for skill in self._registry.skills():
-            families = set(skill.domains or {skill.skill_id})
-            bindings = [binding for binding in self._registry.bindings() if binding.skill_id == skill.skill_id]
-            if not bindings:
+        blocked: set[str] = set(get_args(ActionFamily))
+        for binding in self._registry.bindings():
+            state = projected.get(binding.skill_id)
+            if state is None or self._rank_value(state.rank) <= 0:
                 continue
-            if skill.skill_id in active_ids:
-                allowed.update(families)
-            else:
-                blocked.update(families)
+            if not binding.action_families:
+                continue
+            required_rank = str(binding.eligibility.get("required_rank", "novice"))
+            if required_rank not in _RANK_ORDER or self._rank_value(state.rank) < self._rank_value(required_rank):
+                continue
+            allowed.update(binding.action_families)
         blocked -= allowed
         capability_pin = capability_revision or f"capability:{actor_id}:{self._state_revision(skills)}"
         registry_revision = self._registry.revision()

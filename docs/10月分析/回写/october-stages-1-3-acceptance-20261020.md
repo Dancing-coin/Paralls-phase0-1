@@ -1,5 +1,20 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 production stable action-family projection repair
+
+真实 Laya/WS development 诊断追到稳定包络：旧 compiler 把知识域 `social`、`boundary_enforcement` 等直接当作 L3 family，使 char_a 缺 movement/communication，char_b 无合法候选。现在由 `SkillActionBinding.action_families` 显式登记六条 core bindings；缺映射不猜测，必须满足 positive rank 与 registered required rank，撤销仍剔除。已知 family 的补集全部 blocked，空 allowed 不再意外放开动作。知识域仍保留在技能描述中；registry revision/snapshot digest 自然覆盖新增登记，未更新正式评估 frozen pins。
+
+TDD 首轮 **7 failed/4 passed**，命中缺字段、正式角色映射错误及 none/novice/blocked 被当 active 的根因。最终 char_a/char_b stable snapshot→真实 CandidateCompiler、missing-map、rank、revocation 与 capability/learning/social 相邻六文件 **104 passed, 4 existing FastAPI lifespan warnings in 9.08s**。命令使用 `python -B -m pytest -q -p no:cacheprovider`，basetemp `D:\codex-temp\family-projection-final-20261022`；没有全量 pytest/Harness all、模型、训练或 Godot。设计与三类图见 `docs/superpowers/specs/2026-10-22-registered-action-family-projection.md`。
+
+同批静态 `backend-contract` fresh passed，run `06a2ce2773dc4e859bab25e59574ceac`，显式证据导出到 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\registered-action-family-contract-20261022\`，Harness cleanup passed。真实候选 preflight另确认 char_a 呈现 observation/communication/movement/procedure，char_b 呈现以上及 protection，两者 combat 均被阻断。
+
+| 验收面 | 当前状态与本批边界 |
+|---|---|
+| 后端 | stable binding→L3 family 子项已实现并定向验证；真实 observer 的 dedicated Laya key、visual receiver/target 仍需新运行验证。本会话专用 key 未注入且 127.0.0.1:8765 未监听，故当前未启动真实请求 |
+| 模型质量 | Q01–Q04 未验收；本批未调用模型，未刷新 sealed source pins |
+| 角色闭环 | 正式角色候选包络阻塞已修；完整真实 Laya、多 owner、恢复/回放仍开放 |
+| 最终 Godot | G-A/G-B/G-C 未操作，继续最后集中验收 |
+
 ### 2026-10-22 social catalog fresh contract regression
 
 在提交 `9f8ceb30` 后，用 D 盘 basetemp fresh 重跑 social catalog、candidate compiler、execution contract、L4/owner 合同选择：`146 passed in 7.12s`，4 个既有 FastAPI lifespan deprecation warnings。该运行确认本批 social descriptor 的 owner route、admission digest、target revision vector、source context、生产 owner receipt 和 exact replay 没有回归；仍不代表真实 Laya provider、跨领域 owner common cut、正式质量或 Godot 验收。

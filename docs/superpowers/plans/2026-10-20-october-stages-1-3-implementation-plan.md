@@ -38,6 +38,8 @@
 
 ## Task 1: 真实私有输入、动作目标与同源能力
 
+2026-10-22 production Laya preflight repair：按 [registered action-family projection](../specs/2026-10-22-registered-action-family-projection.md) 将知识域与 L3 family 分离；正式 char_a/char_b 包络、rank/revocation/缺映射拒绝及相邻 capability/learning/social 回归 **104 passed**。下一步修正 development observer 的显式 visual receiver/target 与 dedicated Laya credential，再运行真实认证 WS→Laya→L4→owner slice；不替代 multi-owner、formal Q01–Q04 或 Godot。
+
 **2026-10-22 social admission ruling：** spatial-only 草稿撤除；中性 social target 必须组合 canonical Presence/Life、私有 visual lineage、当前 scope 与真实空间来源，不能从 combat hostile faction 推导社交权限。canonical ingress 已要求当前 owner 重投影的 action/target/route/digest；缺 catalog 零写拒绝。原 owner receipt 的精确恢复在当前 target 消失时仍可执行。旧 synthetic-success fixture 降为拒绝验证，owner durable replay/reopen 保留；三文件定向 47 passed。下一实现任务是正式中性 source catalog 与原 owner CAS/L4 接线，不继续扩展 synthetic contract success。R05/R07–R09、Q01–Q04、Godot A/B/C 均未关闭。
 
 **完整候选来源审查增量：** 统一矩阵顶部列明 ESM、其他目标动作、combat、协同/移动和质量准备来源的生产差距。旧三选项 authored 包不能替代完整动作/目标来源。本批先修复已复现的 CandidateCompiler 非视觉条件否定被忽略：RED30failed/1passed，typed L3准备与provider输入等精确 HEAD+两文件隔离110passed/4既有warnings（`db76736909f4435e84d5708c88cf6550`，cleanup passed）。保留延后核验的 `required` 及缺字段兼容，故不关闭规格05的肯定证据门槛。下批直接映射已有可信空间来源到 ESM 候选 range、再补原 faction/target 与角色 owner caller，不扩展此局部条件测试。Q01–Q04与完整角色/Godot门不升级。

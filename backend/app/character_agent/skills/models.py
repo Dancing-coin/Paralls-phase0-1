@@ -74,11 +74,15 @@ class ActionDefinition(StrictSkillModel):
     realization_keys: list[str] = Field(default_factory=list)
 
 
+ActionFamily = Literal["observation", "communication", "movement", "combat", "procedure", "protection"]
+
+
 class SkillActionBinding(StrictSkillModel):
     binding_id: str
     skill_id: str
     action_id: str
     skill_path_tags: list[str] = Field(default_factory=list)
+    action_families: list[ActionFamily] = Field(default_factory=list)
     eligibility: dict[str, object] = Field(default_factory=dict)
     quality: dict[str, object] = Field(default_factory=dict)
     learning: dict[str, object] = Field(default_factory=dict)

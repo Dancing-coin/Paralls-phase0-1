@@ -138,6 +138,7 @@ def test_stable_snapshot_resolves_aliases_and_has_stable_digest() -> None:
                 skill_id="skill:survey",
                 action_id="survey",
                 skill_path_tags=["observation"],
+                action_families=["observation"],
             )
         ],
     )
@@ -159,6 +160,20 @@ def test_stable_snapshot_resolves_aliases_and_has_stable_digest() -> None:
     assert "equipment" not in snapshot.model_dump()
 
 
+def test_stable_snapshot_does_not_guess_action_family_for_unmapped_binding() -> None:
+    registry = CharacterSkillRegistry(
+        skills=[SkillDefinition(skill_id="survey", domains=["observation"])],
+        actions=[ActionDefinition(action_id="survey", kind="composite")],
+        bindings=[SkillActionBinding(binding_id="survey_path", skill_id="survey", action_id="survey")],
+    )
+    snapshot = CharacterSkillService(registry=registry).compile_stable_snapshot(
+        actor_id="char_a",
+        skill_states=[CharacterSkillState(actor_id="char_a", skill_id="survey", source="authored", rank="basic")],
+    )
+    assert snapshot.allowed_action_families == []
+    assert "observation" in snapshot.blocked_action_families
+
+
 def test_stable_snapshot_fails_closed_for_unknown_skill_and_revoked_grant() -> None:
     registry = CharacterSkillRegistry(
         skills=[SkillDefinition(skill_id="skill:survey", domains=["observation"])],
@@ -169,6 +184,7 @@ def test_stable_snapshot_fails_closed_for_unknown_skill_and_revoked_grant() -> N
                 skill_id="skill:survey",
                 action_id="survey",
                 skill_path_tags=["observation"],
+                action_families=["observation"],
             )
         ],
     )
@@ -196,3 +212,30 @@ def test_stable_snapshot_fails_closed_for_unknown_skill_and_revoked_grant() -> N
     assert snapshot.skills == []
     assert "observation" in snapshot.blocked_action_families
     assert any("revoked" in reason for reason in snapshot.diagnostics)
+
+@pytest.mark.parametrize('actor_id, expected', [
+    ('char_a', {'observation', 'movement', 'communication', 'procedure'}),
+    ('char_b', {'observation', 'movement', 'communication', 'protection', 'procedure'}),
+])
+def test_authored_stable_snapshot_uses_registered_l3_action_families(actor_id, expected):
+    from app.character_agent.profile.loader import CharacterProfileLoader
+    from app.character_agent.planning.l3_planner import CandidateCompiler
+    service = CharacterSkillService(registry=create_runtime_skill_registry())
+    profile = CharacterProfileLoader().load(actor_id).model_dump(mode='json')
+    states = service.initial_skill_states(actor_id=actor_id, profile=profile)
+    snapshot = service.compile_stable_snapshot(actor_id=actor_id, skill_states=states)
+    assert set(snapshot.allowed_action_families) == expected
+    candidates = [dict(candidate_id=family, action_family=family) for family in expected | {'combat'}]
+    result = CandidateCompiler().compile(candidates=candidates, envelope=snapshot.model_dump())
+    assert {item['action_family'] for item in result.presented} == expected
+    assert 'combat' in snapshot.blocked_action_families
+
+
+@pytest.mark.parametrize('rank', ['none', 'novice', 'blocked'])
+def test_stable_binding_rank_cannot_open_registered_action_families(rank):
+    service = CharacterSkillService(registry=create_core_skill_registry())
+    snapshot = service.compile_stable_snapshot(actor_id='char_a', skill_states=[
+        CharacterSkillState(actor_id='char_a', skill_id='mediation', source='authored', rank=rank),
+    ])
+    assert snapshot.allowed_action_families == []
+    assert {'movement', 'communication'} <= set(snapshot.blocked_action_families)

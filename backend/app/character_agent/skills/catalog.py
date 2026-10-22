@@ -138,6 +138,7 @@ def create_core_skill_registry() -> CharacterSkillRegistry:
                 skill_id="observation",
                 action_id="survey_scene",
                 skill_path_tags=["observation", "baseline"],
+                action_families=["observation"],
                 eligibility={"required_rank": "basic"},
             ),
             SkillActionBinding(
@@ -145,6 +146,7 @@ def create_core_skill_registry() -> CharacterSkillRegistry:
                 skill_id="mediation",
                 action_id="defuse_social_tension",
                 skill_path_tags=["social", "de-escalation"],
+                action_families=["movement", "communication"],
                 eligibility={"required_rank": "basic"},
             ),
             SkillActionBinding(
@@ -152,6 +154,7 @@ def create_core_skill_registry() -> CharacterSkillRegistry:
                 skill_id="procedural recall",
                 action_id="follow_room_protocol",
                 skill_path_tags=["procedure", "routine"],
+                action_families=["procedure"],
                 eligibility={"required_rank": "basic"},
             ),
             SkillActionBinding(
@@ -159,6 +162,7 @@ def create_core_skill_registry() -> CharacterSkillRegistry:
                 skill_id="threat assessment",
                 action_id="assess_visible_threat",
                 skill_path_tags=["security", "risk", "observation"],
+                action_families=["observation", "protection"],
                 eligibility={"required_rank": "basic"},
             ),
             SkillActionBinding(
@@ -166,6 +170,7 @@ def create_core_skill_registry() -> CharacterSkillRegistry:
                 skill_id="command presence",
                 action_id="enforce_access_boundary",
                 skill_path_tags=["security", "boundary", "authority"],
+                action_families=["movement", "communication", "protection"],
                 eligibility={"required_rank": "basic"},
             ),
             SkillActionBinding(
@@ -173,6 +178,7 @@ def create_core_skill_registry() -> CharacterSkillRegistry:
                 skill_id="perimeter discipline",
                 action_id="secure_perimeter",
                 skill_path_tags=["security", "perimeter", "routine"],
+                action_families=["observation", "procedure", "protection"],
                 eligibility={"required_rank": "basic"},
             ),
         ],
