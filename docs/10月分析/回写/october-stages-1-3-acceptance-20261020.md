@@ -1142,3 +1142,11 @@ drive scan or cleanup was performed.
 证据边界：canonical social 仍是单 owner backend contract slice，不是 authenticated Laya production admission、完整候选/source provenance、多 owner common cut、真实边界进程、Q01–Q04 模型质量或 Godot 可见结果。对象 inspect stale fixture 在完整两文件选择中仍失败，原因是旧测试 contract 未满足现有 owner candidate/scope admission；未放宽 owner 准入，也未计入通过证据。
 
 **后端**：legacy synthetic spatial success 已 fail-closed；canonical 五动作 durable owner receipt/replay 与角色回写定向通过。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner social slice 已验证，完整 Laya action+target→L4→多领域 owner 及真实 backend 输入仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后验收。
+
+### 2026-10-22 object inspect stale contract fixture disposition
+
+删除 `backend/tests/test_character_execution_contract.py` 中旧 `obj_letter` inspect settlement 成功夹具。该夹具绕过了当前 `CharacterObjectExecution` 要求的已登记候选、owner route、target admission digest、execution scope 和空间来源准入，不能作为有效生产成功路径证据；不放宽对象 owner admission。成功与拒绝路径由 `backend/tests/test_character_object_execution.py` 的真实 owner vertical 覆盖，包括 committed receipt、精确重试、no-offer/过期/撤权/跨 scope/隐藏/摘要不匹配/被更新请求取代时零 owner 或角色结果写入，以及 SQLite 重开后的原回执恢复。
+
+移除旧测试后清除遗留的 `pytest.mark.parametrize` 装饰器，避免它错误绑定到后续 social dialogue 测试。定向验证命令：`python -m pytest -q -p no:cacheprovider backend/tests/test_character_execution_contract.py backend/tests/test_character_object_execution.py --basetemp=D:\codex-temp\stage13-contract-fix\pytest --tb=short`，`TEMP` 与 `TMP` 同样指向 `D:\codex-temp\stage13-contract-fix`；结果 **53 passed in 5.85s**，4 个既有 FastAPI `on_event` 弃用告警。未运行全量 pytest、Harness all、模型、训练或 Godot。测试临时目录只在 D 盘，但本轮完成后的删除被执行策略拒绝，目录仍保留，未尝试绕过。
+
+证据边界：这是对象 owner contract 旧夹具清理及定向 owner 测试证据，不提升完整 Laya authenticated admission、候选来源完整性、多领域 action+target→L4→owner/common-cut、Q01–Q04 模型质量或 Godot G-A/G-B/G-C 状态。**后端**：对象 owner admission、receipt/replay/reopen 子项已验证；Laya 生产输入仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 多域链仍开放。**最终 Godot**：A/B/C 未操作。
