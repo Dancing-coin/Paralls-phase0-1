@@ -1,5 +1,9 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 social catalog fresh contract regression
+
+在提交 `9f8ceb30` 后，用 D 盘 basetemp fresh 重跑 social catalog、candidate compiler、execution contract、L4/owner 合同选择：`146 passed in 7.12s`，4 个既有 FastAPI lifespan deprecation warnings。该运行确认本批 social descriptor 的 owner route、admission digest、target revision vector、source context、生产 owner receipt 和 exact replay 没有回归；仍不代表真实 Laya provider、跨领域 owner common cut、正式质量或 Godot 验收。
+
 ### 2026-10-22 正式中性 Social target catalog 与 owner source pins
 
 新增 `CharacterSocialTargetCatalog`，由私有 visual lineage、当前 Presence/Life participant source、同一 room/scene/zone scope 和 actor/target 两侧新鲜 `EmbodiedSpatialSource` 共同生成五类 social action descriptor：`approach`、`follow_target`、`seek_private_distance`、`withdraw`、`break_contact`。descriptor 固定 `owner_route=social_spatial_owner`、source refs、revision vector、execution scope、source context 和 action-specific admission digest；catalog 只读，不读取 `faction:*`，缺 visual lineage、当前参与者、scope、空间样本、timeline、绑定或 freshness 时返回空。`CharacterObjectExecution` 与生产 social ingress 已接入 catalog，并把 descriptor source pins/context 传入 `SocialSpatialOwner.submit()`；owner 仍只记录空间意图接纳，不宣称抵达或物理接触。
