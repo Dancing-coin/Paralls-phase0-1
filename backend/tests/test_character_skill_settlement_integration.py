@@ -14,7 +14,7 @@ def _request(**overrides: object) -> StructuredInteractionRequest:
         "intent": InteractionIntentFrame(
             intent_id="intent:inspect",
             actor_id="char_a",
-            target_refs={"object_ids": ["obj_box"]},
+            target_refs={"object_ids": ["obj_plaque"]},
             semantic_intent="inspect",
         ),
         "player_id": "player",
@@ -22,7 +22,8 @@ def _request(**overrides: object) -> StructuredInteractionRequest:
         "scene_id": "scene_demo",
         "zone_id": "zone_focus",
         "producer_ts": 1,
-        "target_object_id": "obj_box",
+        "target_object_id": "obj_plaque",
+        "actor_position": (-2.2, 1.2, -2.0),
     }
     payload.update(overrides)
     return StructuredInteractionRequest(**payload)
@@ -127,7 +128,7 @@ def test_orchestration_records_policy_allowed_skill_evidence_without_changing_au
     assert service.skill_evidence_store.query(actor_id="char_a") == [result.skill_evidence]
 
 
-def test_learning_owner_settlement_replays_exact_duplicate_and_rejects_changed_duplicate() -> None:
+def test_learning_projection_rejects_unverified_authority_string() -> None:
     store = SkillEvidenceStore()
     service = SkillLearningSettlement(store=store)
     proposal = LearningProposal(
@@ -150,12 +151,13 @@ def test_learning_owner_settlement_replays_exact_duplicate_and_rejects_changed_d
         authority_event_id="authority:learn:1",
     )
 
-    assert accepted.status == "accepted"
+    assert accepted.status == "rejected"
+    assert accepted.reason == "authority_required"
     assert duplicate.status == "duplicate_replayed"
     assert duplicate.revision == accepted.revision
     assert changed.status == "changed_duplicate"
     assert changed.revision == accepted.revision
-    assert store.skill_revision(actor_id="char_a", skill_id="first_aid") == accepted.revision
+    assert store.skill_revision(actor_id="char_a", skill_id="first_aid") == accepted.revision == 0
 
 
 def test_failed_learning_settlement_retains_failure_evidence_without_profile_mutation() -> None:

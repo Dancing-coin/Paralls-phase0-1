@@ -44,14 +44,16 @@ class SkillEvidenceStore:
     def all(self) -> list[SkillEvidence]:
         return [evidence.model_copy(deep=True) for evidence in self._evidence_by_id.values()]
 
-    def record_skill_revision(self, *, actor_id: str, skill_id: str) -> int:
-        key = (actor_id, skill_id)
-        revision = self._skill_revisions.get(key, 0) + 1
-        self._skill_revisions[key] = revision
-        return revision
-
     def skill_revision(self, *, actor_id: str, skill_id: str) -> int:
         return self._skill_revisions.get((actor_id, skill_id), 0)
+
+    def project_skill_revision(self, *, actor_id: str, skill_id: str, revision: int) -> int:
+        """Cache a validated owner revision without inventing a local transition."""
+        if type(revision) is not int or revision < 1:
+            raise ValueError("skill_owner_revision_invalid")
+        key = (actor_id, skill_id)
+        self._skill_revisions[key] = max(revision, self._skill_revisions.get(key, 0))
+        return revision
 
     def record_failure_evidence(self, *, actor_id: str, skill_id: str, refs: list[str]) -> None:
         if not refs:

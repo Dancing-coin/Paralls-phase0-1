@@ -58,6 +58,77 @@ def test_registered_learning_commits_real_receipt_and_compiles_learned_capabilit
     assert stable.capability_revision
 
 
+def _legacy_projection(store, owner, request):
+    from app.character_agent.skills.learning import LearningProposal
+    from app.character_agent.skills.settlement import SkillLearningSettlement
+    from app.character_agent.skills.store import SkillEvidenceStore
+
+    proposal = LearningProposal(proposal_id=request.command_id, idempotency_key=request.idempotency_key,
+        actor_id=request.actor_id, skill_id="observation", object_id=request.object_id,
+        episode_id=request.correlation_id, stage=request.stage, operation=request.operation,
+        evidence_refs=list(request.evidence_refs), source_revision=request.rule_digest)
+    cache = SkillEvidenceStore()
+    projection = SkillLearningSettlement(store=cache, authority=owner, world_ref=request.world_ref)
+    return projection, cache, proposal
+
+
+def test_legacy_projection_uses_original_owner_revision_and_exact_proof():
+    store, owner, _, request = setup()
+    original = owner.settle(request, caller_principal="service:learning")
+    event_id = original.committed_event_ids[0]
+    projection, cache, proposal = _legacy_projection(store, owner, request)
+    before = store.get_last_global_sequence()
+    first = projection.settle(proposal, authority_event_id=event_id)
+    assert first.status == "accepted" and first.revision == 1
+    assert projection.settle(proposal, authority_event_id=event_id).status == "duplicate_replayed"
+    changed = projection.settle(proposal, authority_event_id="forged")
+    assert changed.status == "changed_duplicate"
+    assert cache.skill_revision(actor_id="char_a", skill_id="observation") == 1
+    fresh, fresh_cache, _ = _legacy_projection(store, owner, request)
+    assert fresh.settle(proposal, authority_event_id=event_id) == first
+    assert fresh_cache.skill_revision(actor_id="char_a", skill_id="observation") == 1
+    assert store.get_last_global_sequence() == before
+
+
+def test_legacy_projection_revalidates_original_receipt_on_retry(monkeypatch):
+    store, owner, _, request = setup()
+    receipt = owner.settle(request, caller_principal="service:learning")
+    projection, cache, proposal = _legacy_projection(store, owner, request)
+    event_id = receipt.committed_event_ids[0]
+    assert projection.settle(proposal, authority_event_id=event_id).status == "accepted"
+    original = store.get_by_idempotency
+    monkeypatch.setattr(store, "get_by_idempotency", lambda principal, key:
+        None if principal == owner.PRINCIPAL else original(principal, key))
+    assert projection.settle(proposal, authority_event_id=event_id).status == "rejected"
+    assert cache.skill_revision(actor_id="char_a", skill_id="observation") == 1
+
+
+@pytest.mark.parametrize("fault", ["event", "actor", "world", "skill", "object", "stage", "operation",
+    "evidence", "registration", "command", "idempotency", "episode", "receipt"])
+def test_legacy_projection_rejects_unmatched_or_uncommitted_proof(fault, monkeypatch):
+    store, owner, _, request = setup()
+    receipt = owner.settle(request, caller_principal="service:learning")
+    event_id = receipt.committed_event_ids[0]
+    projection, cache, proposal = _legacy_projection(store, owner, request)
+    changes = {"actor": {"actor_id": "char_b"}, "skill": {"skill_id": "mediation"},
+        "object": {"object_id": "other"}, "stage": {"stage": "operational"},
+        "operation": {"operation": "branch"}, "evidence": {"evidence_refs": ["forged"]},
+        "registration": {"source_revision": "forged"}, "command": {"proposal_id": "other"},
+        "idempotency": {"idempotency_key": "other"}, "episode": {"episode_id": "other"}}.get(fault, {})
+    if fault == "world":
+        projection._world_ref = "world:other"
+    if fault == "receipt":
+        original_lookup = store.get_by_idempotency
+        monkeypatch.setattr(store, "get_by_idempotency", lambda principal, key:
+            None if principal == owner.PRINCIPAL else original_lookup(principal, key))
+    before = store.get_last_global_sequence()
+    result = projection.settle(proposal.model_copy(update=changes),
+        authority_event_id="forged" if fault == "event" else event_id)
+    assert result.status == "rejected"
+    assert cache.skill_revision(actor_id=proposal.actor_id, skill_id=proposal.skill_id) == 0
+    assert store.get_last_global_sequence() == before
+
+
 @pytest.mark.parametrize("fault", ["caller", "digest", "actor", "world", "missing", "stale", "method", "operation", "revision", "prerequisite"])
 def test_learning_rejection_is_zero_write(fault):
     store, owner, registration, request = setup(prerequisite_skill_ids=("mediation",) if fault == "prerequisite" else ())
@@ -98,6 +169,10 @@ def test_original_receipt_survives_source_advance_rule_removal_and_sqlite_reopen
         reopened = RegisteredLearningAuthority(store=store, registry=create_core_skill_registry(), rules=[])
         assert reopened.settle(request, caller_principal="service:learning") == receipt
         assert reopened.settle(request, caller_principal="service:learning") == receipt
+        projection, cache, proposal = _legacy_projection(store, reopened, request)
+        projected = projection.settle(proposal, authority_event_id=receipt.committed_event_ids[0])
+        assert projected.status == "accepted" and projected.revision == 1
+        assert cache.skill_revision(actor_id="char_a", skill_id="observation") == 1
         assert len(reopened.states(world_ref="world:test", actor_id="char_a")) == 1
         with pytest.raises(ValueError, match="idempotency"):
             reopened.settle(request.model_copy(update={"method": "research"}), caller_principal="service:learning")

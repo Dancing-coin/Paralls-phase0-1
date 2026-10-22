@@ -6,7 +6,7 @@ Parent requirements: [October learning specification](../../10月分析/规格/0
 
 ## Current implementation and problem
 
-`skills.learning`, `evidence`, `store` and `service` provide candidate collection, gates and skill projections. The working-tree `SkillLearningSettlement` accepts a nonempty authority-event string and increments an in-memory counter. It is not proof that an authority committed a learning outcome. No production learning authority caller was found. The four route fixtures do not close this gap.
+`skills.learning`, `evidence`, `store` and `service` provide candidate collection, gates and skill projections. The legacy `SkillLearningSettlement` formerly accepted a nonempty authority-event string and incremented an in-memory counter. The 2026-10-22 increment below replaces that admission with a read of the original durable owner fact. No production learning authority caller was found. The four route fixtures do not close this gap.
 
 ## Owner and source contract
 
@@ -29,6 +29,12 @@ The module exports an opt-in schema registration; production shared-store compos
 Required focused evidence: reject absent/forged/wrong-actor/private/stale/failed evidence, wrong registration and missing prerequisite with zero writes; real atomic owner append/receipt; exact/changed retry; evidence reuse rejection; source/prerequisite read CAS conflict; append failure/lost response; strict schema registration; SQLite reopen and replay validation; learned projection accepted by the existing stable capability compiler. Subsequent production and four-route evidence must separately show actual source→episode→gate→owner→capability invalidation and recovery.
 
 ## Architecture
+
+### Legacy committed-fact projection (2026-10-22)
+
+`SkillLearningSettlement` is a cache adapter, not a second owner. Bind an explicit RegisteredLearningAuthority and world; without either, accepted requests reject with `authority_required`. The owner reader first rebuilds the existing actor/world history, including its source, transaction and original receipt checks, then requires the named event to belong to that validated history. Match proposal id to command, idempotency key, skill, object, operation, stage, ordered evidence and episode id to correlation id. For this adapter, `source_revision` must be the original registration digest, pinning the recorded method and policy; an arbitrary teacher/version string cannot stand in for it. Existing proposal producers are not silently upgraded into production callers.
+
+Cache the original event stream revision rather than increment a local counter. The evidence cache is scoped to the adapter's world and must not be shared across world bindings. Preserve monotonic cached revisions when older receipts are projected. Retry identity includes the complete proposal, authority event, accepted flag and reason; changed proof rejects as a changed duplicate. Successful exact retries revalidate the original durable proof, while rejection replay retains the original failure evidence. New adapter instances and SQLite reopen use the original owner revision, with no world append. No durable episode, time/resource/teacher policy or automatic mastery is introduced.
 
 ### Personal ESM action disclosure increment
 
@@ -55,6 +61,8 @@ flowchart LR
   R["current: skill registry / internal learning object rules"] --> A
   A --> O["current: learning authority"] --> S["current: shared GameplayEventStore"]
   S --> P["current: learned state projection"] --> B["current: stable capability compiler"]
+  P --> LC["current: legacy committed-fact reader / explicit world"]
+  LC --> EC["current: evidence cache / original owner revision only"]
   P --> F["current increment: explicit actor/world read binding"] --> B
   B --> FE["current increment: frozen envelope / learning pin"]
   FE --> V["current increment: sync + durable handoff / completion validation"]
@@ -78,6 +86,9 @@ sequenceDiagram
   S-->>A: original durable receipt
   A->>A: rebuild recorded learned state
   A-->>C: receipt + learned state
+  C->>A: current legacy adapter: named event + matching proposal + explicit world
+  A->>S: rebuild original history / verify original source, transaction and receipt
+  A-->>C: original event revision; adapter caches without append
   C->>B: current increment: next turn reads scoped owner snapshot and compiles
   B-->>C: frozen envelope with original learning revision
   C->>A: current increment: reread actor/world snapshot before handoff and acceptance
@@ -98,6 +109,8 @@ flowchart TD
   G -->|yes| O["current: owner-only atomic commit"]
   O --> F["current shared ledger / opt-in learning event"]
   F --> L["current recorded learned projection"] --> B["current stable capability snapshot"]
+  L --> LP["current legacy proposal match / original proof revalidation"]
+  LP --> EC["current evidence cache / no skill-fact write authority"]
   B --> N["current increment: next frozen cognition turn"]
   L --> H["current increment: actor/world snapshot digest"]
   H --> N

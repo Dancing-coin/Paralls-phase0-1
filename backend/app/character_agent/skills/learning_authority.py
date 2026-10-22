@@ -243,6 +243,23 @@ class RegisteredLearningAuthority:
     def states(self, *, world_ref, actor_id):
         return list(self.read_snapshot(world_ref=world_ref, actor_id=actor_id).states)
 
+    def read_proposal_revision(self, *, world_ref, proposal, authority_event_id):
+        """Read an original committed fact; legacy proposals grant no write authority."""
+        snapshot = self.read_snapshot(world_ref=world_ref, actor_id=proposal.actor_id)
+        if authority_event_id not in snapshot.source_event_refs:
+            raise ValueError("learning_projection_event_unavailable")
+        event = self._store.get_event(authority_event_id)
+        request = LearningCommitRequest.model_validate(event.payload["request"])
+        rule = LearningObjectRule.model_validate(event.payload["registration"])
+        if ((request.command_id, request.idempotency_key, request.object_id, request.stage,
+             request.operation, request.correlation_id, request.rule_digest, rule.skill_id,
+             list(request.evidence_refs)) !=
+            (proposal.proposal_id, proposal.idempotency_key, proposal.object_id, proposal.stage,
+             proposal.operation, proposal.episode_id, proposal.source_revision, proposal.skill_id,
+             proposal.evidence_refs)):
+            raise ValueError("learning_projection_proposal_mismatch")
+        return event.stream_revision
+
     def read_snapshot(self, *, world_ref, actor_id):
         states, _, event_refs = self._history(world_ref, actor_id)
         return LearningStateSnapshot(world_ref=world_ref, actor_id=actor_id,

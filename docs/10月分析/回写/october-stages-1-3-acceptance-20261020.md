@@ -1285,6 +1285,20 @@ TDD 定向验证：先以两个新断言观察旧实现 **2 failed**（客户端
 
 **后端**：social catalog 到原 spatial owner 的完整 action+target 接线与 receipt exact-replay 子项已 fresh 验证；真实 Laya/WebSocket、多领域 owner common cut 仍局部。**模型质量**：Q01–Q04 未验收，没有模型调用。**角色闭环**：新增五动作 L3/L4/单 owner slice；完整输入生成、真实 Laya、跨域连续闭环仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，仍最后集中验收。未运行全量 pytest/Harness all、训练或 Godot。
 
+### 2026-10-22 legacy learning committed-proof admission
+
+已完成 registered-learning 子计划 Task 2 的 legacy admission 项。`SkillLearningSettlement` 不再接受任意非空 authority 字符串并自增 revision；显式绑定原 `RegisteredLearningAuthority` 与 world，通过原 history 校验 source/transaction/receipt，再匹配原事件与 proposal 的 command/idempotency、actor/world、skill/object、stage/operation、ordered evidence、episode/correlation 与 registration digest。缓存原 owner revision，exact retry 重新验证原回执，changed proof 拒绝；失败证据保留。此 adapter 的 `source_revision` 必须是原 rule digest，间接固定原 method/policy；没有放宽生产 caller 准入。
+
+RED：伪造非空字符串被旧实现接纳 **1 failed**；接口新增前14个proof案例失败；缓存成功后移除原回执仍被重放 **1 failed**。GREEN：registered owner、legacy settlement integration、capability vertical、ESM disclosure 四文件 **67 passed in 2.10s**。额外发现旧 integration fixture 使用未注册 `obj_box`，独立复现 `unsupported_object`；修正为现有 `obj_plaque` 和合法 actor position，保留 authority/metdata 断言。覆盖缺 proof、错误 actor/world/skill/object/stage/operation/evidence/registration/command/idempotency/episode、缺 receipt、changed duplicate、新 adapter 与 SQLite reopen；world sequence 不新增。
+
+静态 `backend-contract` **passed**，run `19c35afc6dc94c80824f047a15d65739`，cleanup passed；显式外部证据 `D:/Users/User/Documents/paralls-evidence/october-stages-1-3-20261020-01/learning-legacy-proof-contract-20261022/`。pytest basetemp 均在 D 盘。没有全量 pytest/Harness all、真实模型、正式 split、训练或 Godot。
+
+**后端**：legacy学习proof准入子项已验证，无第二skill-fact owner。**模型质量**：Q01–Q04未验收。**角色闭环**：该legacy类只有测试消费者，不能代替生产disclosure→持久episode→时间/资源/教师策略→owner caller；R10继续局部实现。**最终 Godot**：G-A/B/C未操作。
+
+清理：Harness 临时根已回收；本轮实际存在的 `D:\codex-temp\learning-proof-green`、`learning-proof-final` 已核实路径与归属，显式删除被自动审批以 `blocked by policy` 拒绝，未绕过，暂留。其他仅运行无 tmp_path 的 RED/baseline 路径未实际生成目录。删除了已无调用者的旧自增 revision API，避免遗留第二事实计数入口。
+
+删除旧API后相邻settlement/capability消费者再验证 **13 passed in 1.15s**；全 backend 搜索 `record_skill_revision` 无命中（rg exit 1表示无匹配），`git diff --check`通过。此复验未生成额外 basetemp 目录。
+
 ### 2026-10-22 social stationary-heartbeat admission repair
 
 真实 Laya/认证 WS social 纵切准备时发现：social admission digest 包含瞬时 spatial sample refs/revisions，模型推理期间同位置的新鲜心跳也会导致冻结合同 `target_unavailable`。先由真实 catalog→L3/L4→canonical handler 回归复现 **1 failed**，再将稳定空间准入身份与提交时精确 source cut 分开。稳定身份包含部署 scope、backend process epoch、controller binding、connection/epoch 与精确位置；Presence/Life/incarnation 和 visual lineage 继续进入准入摘要。执行时重新读取新鲜来源，并将当前 refs/read set 交给原 SocialSpatialOwner CAS。

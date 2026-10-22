@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.character_agent.skills.learning import LearningProposal
+from app.character_agent.skills.learning_authority import RegisteredLearningAuthority
 from app.character_agent.skills.models import ActionSettlementResult, PrimitiveActionPlan, SkillEvaluationResult
 from app.character_agent.skills.store import SkillEvidenceStore
 
@@ -27,10 +28,12 @@ class LearningSettlementReceipt(BaseModel):
 
 
 class SkillLearningSettlement:
-    """The sole owner boundary for projecting learning progress to skill revision."""
+    """Legacy cache projection of facts committed by RegisteredLearningAuthority."""
 
-    def __init__(self, *, store: SkillEvidenceStore | None = None) -> None:
+    def __init__(self, *, store: SkillEvidenceStore | None = None,
+                 authority: RegisteredLearningAuthority | None = None, world_ref: str = "") -> None:
         self._store = store or SkillEvidenceStore()
+        self._authority, self._world_ref = authority, world_ref
         self._receipts: dict[str, tuple[str, LearningSettlementReceipt]] = {}
 
     def settle(
@@ -41,11 +44,14 @@ class SkillLearningSettlement:
         accepted: bool = True,
         reason: str = "",
     ) -> LearningSettlementReceipt:
-        digest = self._digest(proposal)
+        digest = self._digest(proposal, authority_event_id, accepted, reason)
         previous = self._receipts.get(proposal.idempotency_key)
         if previous is not None:
             previous_digest, receipt = previous
             if previous_digest == digest:
+                if receipt.status == "accepted" and self._read_revision(proposal, authority_event_id) != receipt.revision:
+                    return receipt.model_copy(deep=True, update={"status": "rejected", "revision": 0,
+                        "reason": "authority_required"})
                 return receipt.model_copy(deep=True, update={"status": "duplicate_replayed"})
             return receipt.model_copy(deep=True, update={"status": "changed_duplicate", "reason": "idempotency_payload_changed"})
 
@@ -67,7 +73,8 @@ class SkillLearningSettlement:
             self._receipts[proposal.idempotency_key] = (digest, receipt)
             return receipt.model_copy(deep=True)
 
-        if not authority_event_id:
+        revision = self._read_revision(proposal, authority_event_id)
+        if revision is None:
             receipt = LearningSettlementReceipt(
                 proposal_id=proposal.proposal_id,
                 idempotency_key=proposal.idempotency_key,
@@ -85,9 +92,10 @@ class SkillLearningSettlement:
             self._receipts[proposal.idempotency_key] = (digest, receipt)
             return receipt.model_copy(deep=True)
 
-        revision = self._store.record_skill_revision(
+        revision = self._store.project_skill_revision(
             actor_id=proposal.actor_id,
             skill_id=proposal.skill_id,
+            revision=revision,
         )
         receipt = LearningSettlementReceipt(
             proposal_id=proposal.proposal_id,
@@ -107,8 +115,18 @@ class SkillLearningSettlement:
         self._receipts[proposal.idempotency_key] = (digest, receipt)
         return receipt.model_copy(deep=True)
 
-    def _digest(self, proposal: LearningProposal) -> str:
-        payload = json.dumps(proposal.model_dump(), sort_keys=True, separators=(",", ":"))
+    def _read_revision(self, proposal: LearningProposal, authority_event_id: str) -> int | None:
+        if authority_event_id and self._authority is not None and self._world_ref:
+            try:
+                return self._authority.read_proposal_revision(world_ref=self._world_ref,
+                    proposal=proposal, authority_event_id=authority_event_id)
+            except (KeyError, TypeError, ValueError):
+                pass
+        return None
+
+    def _digest(self, proposal: LearningProposal, authority_event_id: str, accepted: bool, reason: str) -> str:
+        payload = json.dumps([proposal.model_dump(), authority_event_id, accepted, reason],
+                             sort_keys=True, separators=(",", ":"))
         return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
