@@ -1139,7 +1139,7 @@ drive scan or cleanup was performed.
 
 成功覆盖迁至 canonical `CharacterExecutionContract` 注册 owner 路径：五动作均验证 committed owner receipt、`social_spatial_runtime_result`、execution/settlement timeline、working-memory settlement、contact continuity、exact retry replay 单事件；legacy 五动作零写测试也通过。相关定向选择排除独立对象 inspect stale fixture 后 **70 passed、1 deselected**（4 个既有 FastAPI lifespan warnings 与原 Pydantic mappingproxy warnings）。未运行全量 pytest、Harness all、模型、训练或 Godot。
 
-证据边界：canonical social 仍是单 owner backend contract slice，不是 authenticated Laya production admission、完整候选/source provenance、多 owner common cut、真实边界进程、Q01–Q04 模型质量或 Godot 可见结果。对象 inspect stale fixture 在完整两文件选择中仍失败，原因是旧测试 contract 未满足现有 owner candidate/scope admission；未放宽 owner 准入，也未计入通过证据。
+证据边界：canonical social 仍是单 owner backend contract slice，不是 authenticated Laya production admission、完整候选/source provenance、多 owner common cut、真实边界进程、Q01–Q04 模型质量或 Godot 可见结果。对象 inspect stale fixture 在当时的完整两文件选择中失败，原因是旧测试 contract 未满足现有 owner candidate/scope admission；后续 `object inspect stale contract fixture disposition` 已移除该无效成功夹具，且没有放宽 owner 准入。
 
 **后端**：legacy synthetic spatial success 已 fail-closed；canonical 五动作 durable owner receipt/replay 与角色回写定向通过。**模型质量**：Q01–Q04 未验收。**角色闭环**：单 owner social slice 已验证，完整 Laya action+target→L4→多领域 owner 及真实 backend 输入仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后验收。
 
