@@ -132,6 +132,8 @@ was made in this batch.
 - [ ] 必要定向 engine/runtime Harness，导出图像/消息/receipt/trace；若需最终全量门禁，先说明理由，避免违背禁止无意义全量运行的要求。
 - [ ] 审查矩阵全部在范围行与证据、精准提交、回收本轮进程/临时副本；只有此后可将整体 Goal complete。
 
+**2026-10-22 development inventory:** `prepare_character_evaluation.py` now exposes all six registered core composite actions against each visible development target, preserving source refs, skill bindings and registry revision. Unsupported target types and missing authenticated owners are explicitly blocked; every row remains `formal_quality_eligible=false`. The inventory does not change the three diagnostic wire candidates and cannot satisfy the formal quality denominator. Focused TDD test: initial RED exposed action loss under target-type filtering; final targeted test passed (1 passed). Existing source pins remain stale, so the full preparation test is currently blocked and no pins were refreshed. This closes only the development inventory visibility subitem; production candidate sourcing, L4, owner receipts, formal quality, and Godot remain open.
+
 ## Architecture / sequence / data flow
 
 ```mermaid

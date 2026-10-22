@@ -161,3 +161,31 @@ def test_empty_development_selection_cannot_claim_ready():
     result = preparer().prepare(REPO, FIXTURE, splits=())
     assert result["records"] == []
     assert result["preflight"]["development_ready"] is False
+
+
+def test_development_inventory_exposes_registered_actions_and_explicit_owner_gates():
+    module = preparer()
+    scenario = module.load_yaml(FIXTURE / "development.yaml")["scenarios"][0]
+    inventory = module._development_action_inventory(scenario, "char_a")
+    assert {item["action_id"] for item in inventory} == {
+        "survey_scene", "defuse_social_tension", "follow_room_protocol",
+        "assess_visible_threat", "enforce_access_boundary", "secure_perimeter",
+    }
+    assert all(item["source"] == "backend/app/character_agent/skills/catalog.py" for item in inventory)
+    assert all(item["owner_route"] == "" for item in inventory)
+    assert all(item["execution_contract"] == "unverified_owner_admission" for item in inventory)
+    assert all(item["formal_quality_eligible"] is False for item in inventory)
+    assert len(inventory) == 6 * len(scenario["visible_targets"])
+    actor_rows = [item for item in inventory if item["target_refs"]["target"] == scenario["contact"]]
+    assert all(item["target_type"] == "actor" for item in actor_rows)
+    assert next(item for item in actor_rows if item["action_id"] == "defuse_social_tension")["target_type_compatible"] is True
+
+
+def test_development_inventory_does_not_infer_unknown_target_types_or_grant_owners():
+    module = preparer()
+    scenario = {"scenario_id": "unknown", "visible_targets": ["unknown:target"], "objects": [], "contact": ""}
+    inventory = module._development_action_inventory(scenario, "char_a")
+    assert all(item["target_type"] == "unknown" for item in inventory)
+    assert all(item["target_type_compatible"] is False for item in inventory)
+    assert all(item["revision_pins"]["skill_registry"].startswith("skills:") for item in inventory)
+    assert all(item["skill_bindings"] for item in inventory)

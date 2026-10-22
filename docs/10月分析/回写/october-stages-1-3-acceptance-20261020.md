@@ -1237,3 +1237,11 @@ drive scan or cleanup was performed.
 TDD 定向验证：先以两个新断言观察旧实现 **2 failed**（客户端 attempt 被接受）；最小修复后运行 `backend/tests/test_street_combat_transport.py`，**16 passed**（4 个既有 FastAPI lifespan 弃用告警）。本轮临时目录为 `D:\codex-temp\street-contact-green`，未在 C 盘创建临时文件；未运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：client-attempt 已恢复为 authenticated contact receipt 前的 fail-closed 子项，encounter admission/Threat owner 仍为局部生产接线。**模型质量**：Q01–Q04 未验收。**角色闭环**：避免无 contact 证据的伪 embodied/L4 触发；完整真实 Laya action+target→L4→多领域 owner→回执/恢复/回放仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
+### 2026-10-22 Laya development action-target inventory
+
+候选准备器新增 development-only `development_action_inventory`。它直接读取 `create_core_skill_registry()` 的六个已注册复合动作，并为当前场景每个可见目标生成动作—目标记录；每条记录保留 skill binding、来源引用和 skill registry revision。目标类型不匹配的组合显式 `blocked`，缺少认证领域 owner 的组合同样保持空 `owner_route`、`unverified_owner_admission` 和 `formal_quality_eligible=false`。该 inventory 只用于审查完整动作范围与缺口，不改变现有三项诊断候选，不进入正式模型质量分母，也没有调用模型或读取 sealed labels。
+
+TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注册动作缺失，最小实现改为保留完整动作×可见目标并标注阻断原因，最终 `test_development_inventory_exposes_registered_actions_and_explicit_owner_gates` **1 passed**。完整准备测试仍会被现有 source pin drift fail-closed 阻止；本批未自动刷新 pin。临时目录为 `D:\codex-temp\laya-inventory-green`，使用后已清理；未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：新增可追溯的 development action-target inventory；真实 owner route、L4 合同、runtime legality 仍未实现。**模型质量**：Q01–Q04 未验收，inventory 不计入正式质量。**角色闭环**：完整 Laya 输入→候选→action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。

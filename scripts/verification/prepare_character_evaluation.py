@@ -12,6 +12,7 @@ from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
 from app.character_agent.profile.models import CharacterProfile
 from app.character_agent.profile.personality_projection import PersonalityProjectionResolver
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
+from app.character_agent.skills.catalog import create_core_skill_registry
 PROVIDER_REVISION='laya:68804629e8ccd9d616d48a40e87de9fabbeae069:1720e3e3357cfe1e281542e223f8273b0890ca34'
 ACTORS=('char_a','char_b','char_c','char_d')
 ROLE_REFS={a:['docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#12'] for a in ACTORS[:3]}; ROLE_REFS['char_d']=ROLE_REFS['char_a']+['docs/10月分析/角色/13-角色能力图谱、认知包络与动态算力设计.md#22']
@@ -32,6 +33,45 @@ def _candidates(s:dict[str,Any],actor:str)->list[dict[str,Any]]:
  target,contact=s['objects'][0],s['contact']; refs=ROLE_REFS[actor]+[f"fixture:scenario:{s['scenario_id']}"]
  def one(action,target_ref): return {'candidate_id':f'{action}:{target_ref}','wire_label':f'{action}:{target_ref}','action_family':action,'target_refs':{'target':target_ref},'required_conditions':{'visibility':'satisfied'},'target_visibility':'visible','target_provenance':[f"fixture-visible:{s['scenario_id']}"],'affordance_result':{'status':'available','source':'authored_fixture'},'owner_route':'unassigned','source_refs':refs,'revision_pins':{'scenario_revision':'four-role-preparation-v1'}}
  return [one('observe',target),one('ask_probe',contact),one('defer',target)]
+
+def _development_action_inventory(s: dict[str, Any], actor: str) -> list[dict[str, Any]]:
+    """Expose registered action/target pairs without upgrading them to runtime authority."""
+    registry = create_core_skill_registry()
+    refs = list(dict.fromkeys(ROLE_REFS[actor] + [
+        'backend/app/character_agent/skills/catalog.py',
+        f"fixture:scenario:{s['scenario_id']}",
+    ]))
+    pairs: list[dict[str, Any]] = []
+    for action in registry.actions():
+        for target in s['visible_targets']:
+            target_text = str(target)
+            if target_text.startswith(('actor:', 'char_', 'character:')):
+                target_type = 'actor'
+            elif target_text.startswith(('obj:', 'object:')):
+                target_type = 'object'
+            else:
+                target_type = 'unknown'
+            target_type_compatible = target_type in action.target_types
+            pairs.append({
+                'candidate_id': f'{action.action_id}:{target}',
+                'action_id': action.action_id,
+                'target_refs': {'target': target},
+                'target_type': target_type,
+                'target_type_compatible': target_type_compatible,
+                'source': 'backend/app/character_agent/skills/catalog.py',
+                'source_refs': refs,
+                'skill_bindings': [b.binding_id for b in registry.bindings_for_action(action.action_id)],
+                'target_visibility': 'visible_fixture',
+                'target_legality': 'unverified',
+                'owner_route': '',
+                'execution_contract': 'unverified_owner_admission',
+                'affordance_status': 'blocked',
+                'formal_quality_eligible': False,
+                'reason': ('development_inventory_has_no_authenticated_domain_owner'
+                           if target_type_compatible else 'target_type_not_supported_by_action'),
+                'revision_pins': {'skill_registry': registry.revision(), 'scenario_revision': 'four-role-preparation-v1'},
+            })
+    return pairs
 def _projection(policy,actor,repo=ROOT):
  role=policy['roles'][actor]
  if actor!='char_d':
@@ -173,6 +213,7 @@ def prepare(repo:Path,fixture:Path,*,policy=None,corpus=None,splits=None):
                 'controlled_p': compiled.wire_labels,
                 'candidate_manifest': {'universe': reference_u, 'controlled': compiled.wire_labels,
                     'candidate_order': compiled.wire_labels, 'cropped': [], 'compiler_revision': 'CandidateCompiler:current'},
+                'development_action_inventory': _development_action_inventory(scenario, actor),
                 'reference_u_match': True,
                 'target_state': {
                     'evidence_kind': 'authored_fixture',
