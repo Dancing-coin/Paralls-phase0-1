@@ -19,7 +19,7 @@
 - 保留真实 source、authority、隐私与 freeze 隔离；不能把 ack、choice、provider 可调用或合同测试当完整闭环。
 - 不自动训练/微调。不为补证据运行全量 pytest/Harness all；最终确需扩大验证，先说明必要性。
 - 小批次精准提交，保留用户历史 dirty。证据显式导出仓库外，清理只针对本轮资源。
-- Goal 保持 active；工具目前无法改 objective，本计划记录扩展目标，不虚报旧目标完成。
+- Goal objective 已扩展为阶段一至三整体实现与验收并保持 active；本计划与统一矩阵承载任务覆盖和批次证据，不能把 Goal active 或局部实现记录当作验收完成。
 
 ## Review Focus
 

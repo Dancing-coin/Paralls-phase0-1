@@ -1,5 +1,19 @@
 # 十月主线阶段一至三统一验收矩阵
 
+## 当前任务覆盖与验收依赖（2026-10-23）
+
+状态按任务证据标记，不用总百分比。单项完成不代表所属阶段或整体完成；以下复用正文和原始测试/运行记录，不重跑已有效的验证。
+
+| 范围 / 来源 | 状态 | 已完成且有证据的能力 | 剩余实现或验收 | 主要验收证据 / 下一依赖 |
+|---|---|---|---|---|
+| 阶段一：Task1，R01–R06（主计划 §Task1） | 局部实现 | 真实本地 Laya provider 调用、当前 listener 凭据复用、输入预算修复；认证 WS 私有输入；候选冻结与 action-target 投影；生产慢/快 cognition 部分路径及 stale terminal；DIALOGUE/Recall 有界接线子项。 | 全部用户可见输入和 revision 的来源/分母审查；生产 Dialogue/background 的原 turn/context 来源与总输入/tokenizer 硬预算；完整 action-target 来源覆盖；正式模型质量仍独立未验收。 | 本文「当前 Laya listener 凭据」「Laya social 输入预算」「R01/R07 快慢循环」与主计划 Task1。转入阶段二的真实 Laya 原动作消费前，先完成来源审查；预算合同不能替代完整输入证明。 |
+| 阶段二：Task2–3，R07–R09（主计划 §Task2–3） | 局部实现 | 当前 HEAD 的 authenticated WS→在线 L2→本地 Laya→worktable action+target→L4→原 ESM owner 两条真实 receipt→新进程 exact replay/zero world writes；combat participant 已纳入 app scoped checkpoint/tail 并通过 Durable 重启 replay（测试签名 contact）。 | 对完整候选来源和生产动作/目标的分母验证；更多真实领域 owner 原动作→L4→owner receipt；Social/Soul/Combat 等正式 owner 的多域 common cut；跨进程 session/world writeback recovery parity。真实 physics/runtime contact producer 仍未接入。 | `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-worktable-current-head-local-service-20261022\`、本文 worktable 与 combat replay 记录。角色缺领域 owner 时先完成阶段三对应 owner，再回到本行端到端验收。 |
+| 阶段三：D03–D11、R10–R14（阶段三原计划及本主计划 §Task4） | 局部实现，按 owner 分项收口 | 既有资源/库存/装备/Economy/Ecology/Presence/Life/Social/learning 的若干 owner、来源 reader、receipt 和 participant 已有 focused 或 bounded replay 证据；D08 combat owner/encounter/contact adapter 与 common participant 有 backend app replay 证据。 | 逐 owner 核对 production composition、可信来源、权限/CAS、原 receipt、恢复及共同 checkpoint-tail；D10 Soul 尚缺受信 production composition、完整 life/mind 语义与四门/操作覆盖、confirmed-time、private projection 和 L4 caller；Social 尚未有真实 Laya 选择触发的 owner 闭环。 | 本文对应 D08/D10/各领域分项回写；D10 依据 `docs/superpowers/specs/2026-10-20-bounded-soul-owner-design.md` 与 `docs/superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md` 继续，沿真实依赖先补 owner，再接角色原动作。测试 fixture、isolated owner replay 或 participant 数量均不替代 production composition/common cut。 |
+| 正式模型质量：Q01–Q04（主计划 §Task5） | 已实现未验证 / 验收未完成 | 有开发诊断、source inventory、质量脚本和历史官方本地 Laya 调用证据；来源与选择偏差的历史失败仍保留。 | 审阅并修复来源/输入映射问题；以真实完整 action+target 来源构造隔离 splits，开发归因后重建 calibration，冻结预算/阈值，再分别运行独立 final/holdout 并封存评分。 | 本文 Task5 / Q02 / source-drift 记录和既有外部证据。不得重复相同输入挑选成功 choice；不得跨 split；不自动训练/微调。 |
+| Godot G-A/B/C（主计划 §Task6） | 未实现（按顺序延期） | 已记录后端边界、场景目标及最终接口证据清单；无本轮 Godot 修改或运行。 | 后端与角色 owner、模型门收口后，依次验证 A 单角色跨情境、B 单角色连续 Boss 战、C 双角色连续协同；取得真实边界消息、owner 回执和可见场景结果。 | 主计划 Task6。所有前置未满足前不操作 Godot；最终证据含 boundary、owner、场景结果及恢复轨迹。 |
+
+阶段间依赖按真实缺口交错执行：阶段二的动作若依赖未实现 owner，先到阶段三完成该 owner 的生产来源、提交/回执和恢复，再回到阶段一/二验证真实角色调用；不能用阶段三单项测试、服务可调用、choice 接纳或候选合同替代闭环。阶段四、通用编辑器、AD/Blender、自走棋和其他明确 deferred 项不在本矩阵范围。
+
 ### 2026-10-23 当前 Laya listener 凭据定位与真实推理复验
 
 当前 `127.0.0.1:8765` listener 由 WSL `laya-serve` 进程提供，进程环境中存在本地 `LAYA_API_KEY`；当前 Windows backend shell 未设置 `CHARACTER_LAYA_API_KEY`。此前 401 是请求进程未使用服务当前凭据，不是模型服务要求外部 API key。只读从 listener 进程环境临时取值，服务 `/health` 与真实 `POST /v1/systemone` 均返回 200。随后通过仓库生产 `LayaSystemOneProvider` 发送冻结候选 `[observe, ask_probe]`，响应 `model=laya-rl-agent`、`routing=multilingual`，choice `observe`，provider latency 363.25 ms。凭据未打印、写文件或持久化；没有重启、接管或停止 listener，也没有在 C 盘创建临时文件。
