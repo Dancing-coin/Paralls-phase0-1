@@ -1,5 +1,15 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-23 R01/R07 生产组合下同角色快慢循环与 stale owner 终态
+
+新增 `test_production_fast_turn_completes_while_slow_goal_provider_is_pending`，在真实 component lifespan、production `CharacterCognitionDriver`、原 Character goal owner 和共享 `DialogueProviderSlots` 组合中，将慢目标 provider 保持 pending；同一 `char_a` 随后通过 typed visual cognition 完成 L2 与 L3 快回合。释放慢 provider 后，慢结果依据原 source pin 进入持久 `stale` terminal receipt，未产生该慢 proposal 的 `goal_state_event`。同文件慢目标完成基线、driver dispatch/terminal 与 runtime trigger 合计 **12 passed**：
+
+```powershell
+python -m pytest -q -p no:cacheprovider --basetemp D:\Users\User\Documents\paralls-evidence\tmp\slow-goal-prod-fast-suite-20261023 backend/tests/test_character_slow_goal_main.py backend/tests/test_character_slow_goal_driver_dispatch.py backend/tests/test_character_slow_goal_runtime_trigger.py backend/tests/test_character_slow_goal_driver_terminal.py
+```
+
+证据入口为 `backend/tests/test_character_slow_goal_main.py`；本次没有生成 Harness archive。该探针使用 controlled provider，并从 production runtime 的 typed cognition API 驱动快回合，不是认证 WebSocket transport 请求、真实 Laya action+target→L4→domain owner、无 pin 变化下慢 proposal 接受、正式 Q01–Q04 或完整 R09 replay 的证据。上述完整角色、模型质量及 Godot G-A/B/C 门禁保持开放。
+
 ### 2026-10-23 Laya social 输入预算修复与真实运行复核
 
 受控的 component backend live run 使用 `PopulationActivationPresenceService` 与配置的 scoped `ActivationGrant` 为 `char_a`/`char_b` 正式提交 activation、Presence、LifeState 和初始 resource receipts；随后以 trusted-local authenticated WebSocket session、双 actor controller spatial samples、`visual_fact_event` 和真实 `player_input` 进入 `char_a` cognition。该授权只存在于本轮独立开发进程，不能代表部署环境已经配置生产 grant 或通用 identity provider。

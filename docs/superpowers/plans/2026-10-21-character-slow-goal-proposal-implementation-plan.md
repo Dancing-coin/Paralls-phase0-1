@@ -152,3 +152,18 @@ cross-process provider/goal-owner receipt subitem only; live Laya action+target
 → L4 → domain-owner closure, formal quality, and Godot remain open. The new
 pytest base was removed and verified absent. Historical probe artifacts noted
 above were not created by this follow-up and were left untouched.
+
+Production fast/slow coexistence follow-up (2026-10-23): added a production
+lifespan probe that leaves the slow goal provider pending, completes a same-
+actor typed visual cognition turn through L2 and L3 using the shared provider
+slots, then releases the old proposal and verifies the original goal owner
+stores a `stale` terminal receipt without a proposal `goal_state_event`. The
+new probe plus production slow-goal completion, driver dispatch/terminal, and
+runtime trigger files passed **12 tests** using a D-drive pytest base. This
+verifies production composition and source-pin rejection under a controlled
+provider; the fast input is not an authenticated WebSocket message, and this
+does not prove real Laya action/target execution, unchanged-pin proposal
+acceptance, full replay, model quality, or Godot. No production code changed,
+so no backend-contract Harness profile was run. The focused test outcome is the
+evidence for this test-only verification batch; no full pytest/Harness all,
+model evaluation, training, or Godot operation was performed.
