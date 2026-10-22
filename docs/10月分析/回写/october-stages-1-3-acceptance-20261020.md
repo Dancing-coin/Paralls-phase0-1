@@ -1,5 +1,20 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 social target admission 修复与历史证据降级
+
+撤除未提交的 spatial-only social projection 草稿：配对空间样本不能替代 canonical Presence/Life、私有 visual lineage、当前 scope 和执行前 source 重验。修复 `main.py` canonical social ingress：新请求必须在当前 owner 重新投影的可见目标目录中命中动作、owner route 与合同 admission digest，否则在 owner 调用前 `target_unavailable`，零 world/角色 settlement 写入。当前尚无正式 social target source catalog，故新 social 请求保持 fail-closed。原 owner 已提交的请求先按幂等键恢复并核对完整 payload，不因当前目标不可见阻断原回执。
+
+RED：无目录 synthetic contract 被错误接受（1 failed）；恢复 RED：新增准入检查最初阻断已有 owner receipt（1 failed）。修复后定向运行 `test_character_execution_contract.py`、`test_social_spatial_owner.py`、`test_character_owner_target_projection.py`，**47 passed**、4 个既有 FastAPI warnings。旧五动作 synthetic-success 与无来源 ingress-reopen 夹具改为零写拒绝；owner 独立 durable reopen/exact retry 证据保留。历史 registered ingress/target pin/五动作成功记录只证明当时合同 seam，不能用于当前生产 admission 验收。
+
+| 验收面 | 当前状态 | 剩余实现或验收 |
+|---|---|---|
+| 后端 social owner | 局部实现；durable owner/replay 与新请求 fail-closed 已定向验证 | 正式中性 Presence/Life/私有视觉/空间 source catalog、来源 CAS、L4 caller；不能复用 combat hostile faction 代替 social 准入 |
+| 模型质量 | 未验证 | Q01–Q04、来源审阅与冻结、calibration/final/holdout；本批未调用模型 |
+| 完整角色闭环 | 局部实现 | 真实 Laya 完整 action+target→L4→多 owner receipt/common cut/恢复回放；旧 synthetic social success 不计入 |
+| Godot 最终验收 | 未执行 | G-A/G-B/G-C 最后集中完成，当前未修改或启动引擎 |
+
+临时目录均位于 D 盘；未运行全量 pytest、Harness all、训练或 Godot。本批不关闭 R05/R07–R09 或整体 Goal。
+
 ### 2026-10-22 execution WebSocket 回传认证 scope
 
 审计确认 `character_agent_execution` 是双向边界：backend 先向客户端发完整 L4 合同，之后只有收到合同回传才会调用 ESM/social 等领域 owner。原有 `verify_recorded_execution_contract()` 证明合同确实来自角色私有 session，但没有证明发回合同的 WebSocket connection 获准代表该 actor；未绑定连接和不相关的 actor scope 都能越过该 transport admission 并进入 owner 调用。现已在生产 envelope handler 前置校验当前绑定仍存在于 `WebSocketSessionAuthService`、binding 未过期，且合同 actor 属于该 session 的 `allowed_actor_refs`；拒绝发生在合同解析和领域 owner 前。内部 `direct_handler` 兼容只供既有后端 handler 测试使用，网络 connection 不走此例外。

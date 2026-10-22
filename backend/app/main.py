@@ -63,7 +63,7 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
-from app.gameplay.social_spatial_owner import SocialSpatialOwner
+from app.gameplay.social_spatial_owner import SOCIAL_SPATIAL_PRINCIPAL, SocialSpatialOwner
 from app.gameplay.canonical_combat_authority import (
     CanonicalCombatThreatAuthority,
     EncounterAdmissionRequest,
@@ -5587,8 +5587,31 @@ def _handle_envelope(
                                 "route": "social_spatial_owner", "error_code": "target_contract_mismatch",
                             })]
                     target_lookup = target_actor_id.removeprefix("character:")
-                    if (not target_lookup or target_lookup == actor_id
+                    prior = social_spatial_owner.store.get_by_idempotency(
+                        SOCIAL_SPATIAL_PRINCIPAL, execution_contract.idempotency_key,
+                    )
+                    if prior is None and (not target_lookup or target_lookup == actor_id
                             or not character_agent_runtime.supports_actor(target_lookup)):
+                        return [_as_envelope("ack", {
+                            "accepted": False, "source_type": envelope.message_type,
+                            "route": "social_spatial_owner", "error_code": "target_unavailable",
+                        })]
+                    snapshot = character_agent_runtime.get_private_snapshot(actor_id)
+                    target_ref = target_actor_id if target_actor_id.startswith("character:") else f"character:{target_actor_id}"
+                    admission_digest = execution_contract.expected_observation.get("target_admission_digest")
+                    descriptors = (character_object_execution.project_character_targets(snapshot)
+                        if prior is None and snapshot is not None and character_object_execution is not None else [])
+                    admitted = snapshot is not None and any(
+                        descriptor.get("target_ref") in {target_ref, target_lookup}
+                        and descriptor.get("owner_route") == "social_spatial_owner"
+                        and action_profile in descriptor.get("supported_intents", ())
+                        and descriptor.get("affordance_result", {}).get("status") == "available"
+                        and descriptor.get("target_admission_digest") == admission_digest
+                        and admission_digest
+                        and descriptor.get("target_ref") in snapshot.visible_target_refs
+                        for descriptor in descriptors
+                    )
+                    if prior is None and not admitted:
                         return [_as_envelope("ack", {
                             "accepted": False, "source_type": envelope.message_type,
                             "route": "social_spatial_owner", "error_code": "target_unavailable",

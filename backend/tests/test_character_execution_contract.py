@@ -358,7 +358,7 @@ def test_social_spatial_contract_fails_closed_without_registered_owner() -> None
     "request_type",
     ("approach", "follow_target", "seek_private_distance", "withdraw", "break_contact"),
 )
-def test_social_spatial_contract_uses_registered_durable_owner(request_type: str) -> None:
+def test_social_spatial_contract_without_current_target_admission_is_rejected(request_type: str) -> None:
     import app.main as main
     from app.gameplay.social_spatial_owner import SocialSpatialOwner
 
@@ -377,30 +377,10 @@ def test_social_spatial_contract_uses_registered_durable_owner(request_type: str
     messages = main._handle_envelope(
         main.Envelope(message_type="character_agent_execution", payload=contract)
     )
-    assert messages[0]["payload"]["accepted"] is True
+    assert messages[0]["payload"]["accepted"] is False
     assert messages[0]["payload"]["route"] == "social_spatial_owner"
-    assert messages[0]["payload"]["owner_receipt"]["committed"] is True
-    assert any(message["message_type"] == "social_spatial_runtime_result" for message in messages)
-    assert main.social_spatial_owner.replay("char_b")
-    timeline = main.character_agent_runtime.get_session_timeline("char_b")
-    timeline_types = [entry["event_type"] for entry in timeline]
-    assert "character_agent_execution_request" in timeline_types
-    assert "character_agent_settlement_result" in timeline_types
-    continuity = main.character_agent_runtime.get_runtime_continuity_state("char_b")
-    expected_contact_target = "" if request_type in {"withdraw", "break_contact"} else "char_a"
-    assert continuity["ongoing_contact_target"] == expected_contact_target
-    assert continuity["last_transition_kind"] == "accepted"
-    bundle = main.character_agent_runtime.get_memory_bundle("char_b")
-    assert any(
-        entry["event_type"] == "character_agent_settlement_result"
-        for entry in bundle["working_memory"]
-    )
-    replay_messages = main._handle_envelope(
-        main.Envelope(message_type="character_agent_execution", payload=contract)
-    )
-    assert replay_messages[0]["payload"]["accepted"] is True
-    assert replay_messages[0]["payload"]["owner_receipt"]["idempotency_status"] == "duplicate_replayed"
-    assert len(main.social_spatial_owner.replay("char_b")) == 1
+    assert messages[0]["payload"]["error_code"] == "target_unavailable"
+    assert main.social_spatial_owner.replay("char_b") == []
 
 
 def test_runtime_composition_registers_social_spatial_owner_by_default() -> None:
@@ -429,6 +409,54 @@ def test_social_spatial_ingress_rejects_unadmitted_target_without_owner_write() 
     assert main.social_spatial_owner.replay("char_b") == []
 
 
+def test_social_spatial_ingress_requires_current_target_admission_digest() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    contract = _valid_contract(
+        target_refs=("character:char_a",), semantic_intent_id="approach",
+        semantic_action_id="action:approach", expected_observation={"requested_action": "approach"},
+    )
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10,
+        payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
+    )
+    messages = main._handle_envelope(main.Envelope(message_type="character_agent_execution", payload=contract))
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["error_code"] == "target_unavailable"
+    assert main.social_spatial_owner.replay("char_b") == []
+
+
+def test_social_spatial_ingress_recovers_original_owner_receipt_without_current_visibility() -> None:
+    import app.main as main
+
+    main.reset_runtime_state()
+    contract = CharacterExecutionContract.model_validate(_valid_contract(
+        target_refs=("character:char_a",), semantic_intent_id="approach",
+        semantic_action_id="action:approach", expected_observation={"requested_action": "approach"},
+    ))
+    # A pre-existing owner commit must recover even when the target has left.
+    original = main.social_spatial_owner.submit(
+        actor_ref=contract.actor_id, target_ref="character:char_a", action_profile="approach",
+        request_ref=f"{contract.idempotency_key}:0", turn_id=contract.turn_id,
+        idempotency_key=contract.idempotency_key, causation_id=contract.causation_id,
+        correlation_id=contract.correlation_id, producer_ts=contract.producer_ts,
+        expected_revision_vector=dict(contract.expected_revision_vector),
+        expected_memory_revision_vector=dict(contract.expected_memory_revision_vector),
+        expected_snapshot_revision=contract.expected_snapshot_revision,
+    )
+    assert original.committed
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10, payload=contract.model_dump(mode="json"),
+    )
+    replay = main._handle_envelope(main.Envelope(
+        message_type="character_agent_execution", payload=contract.model_dump(mode="json"),
+    ))
+    assert replay[0]["payload"]["owner_receipt"]["idempotency_status"] == "duplicate_replayed"
+    assert replay[0]["payload"]["owner_receipt"]["committed_event_ids"] == list(original.committed_event_ids)
+    assert len(main.social_spatial_owner.replay("char_b")) == 1
+
+
 def test_social_spatial_ingress_rejects_target_pin_mismatch_without_owner_write() -> None:
     import app.main as main
 
@@ -448,7 +476,7 @@ def test_social_spatial_ingress_rejects_target_pin_mismatch_without_owner_write(
     assert main.social_spatial_owner.replay("char_b") == []
 
 
-def test_social_spatial_ingress_reopens_durable_owner_receipt(tmp_path) -> None:
+def test_social_spatial_ingress_does_not_write_without_current_target_admission(tmp_path) -> None:
     import app.main as main
     from app.gameplay.event_store import DurableGameplayEventStore
     from app.gameplay.social_spatial_owner import SocialSpatialOwner
@@ -466,14 +494,15 @@ def test_social_spatial_ingress_reopens_durable_owner_receipt(tmp_path) -> None:
         payload=CharacterExecutionContract.model_validate(contract).model_dump(mode="json"),
     )
     first = main._handle_envelope(main.Envelope(message_type="character_agent_execution", payload=contract))
-    assert first[0]["payload"]["owner_receipt"]["committed"] is True
+    assert first[0]["payload"]["accepted"] is False
+    assert first[0]["payload"]["error_code"] == "target_unavailable"
     store.close()
 
     restored_store = DurableGameplayEventStore(path)
     main.social_spatial_owner = SocialSpatialOwner(store=restored_store)
     replay = main._handle_envelope(main.Envelope(message_type="character_agent_execution", payload=contract))
-    assert replay[0]["payload"]["owner_receipt"]["idempotency_status"] == "duplicate_replayed"
-    assert len(main.social_spatial_owner.replay("char_b")) == 1
+    assert replay[0]["payload"]["accepted"] is False
+    assert main.social_spatial_owner.replay("char_b") == []
     restored_store.close()
 
 
