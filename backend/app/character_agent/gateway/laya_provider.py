@@ -296,7 +296,9 @@ class LayaSystemOneProvider:
         try:
             with urlopen(Request(self.endpoint, data=body, headers=headers, method="POST"), timeout=self.timeout_seconds) as response:
                 result = json.loads(response.read().decode("utf-8"))
-        except (HTTPError, URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
+        except HTTPError as exc:
+            raise ValueError(f"laya provider request failed: HTTPError status={int(exc.code)}") from exc
+        except (URLError, TimeoutError, OSError, json.JSONDecodeError) as exc:
             raise ValueError(f"laya provider request failed: {exc.__class__.__name__}") from exc
         if not isinstance(result, dict):
             raise ValueError("laya provider response must be an object")

@@ -236,6 +236,24 @@ def test_laya_rejects_invalid_candidate_shape_and_duplicates():
             raise AssertionError("invalid candidates must be rejected")
 
 
+def test_laya_http_error_exposes_status_without_response_body(monkeypatch):
+    from io import BytesIO
+    from urllib.error import HTTPError
+
+    def fail_request(*args, **kwargs):
+        raise HTTPError("http://127.0.0.1/v1/systemone", 401, "Unauthorized", {},
+                        BytesIO(b"Bearer private-token rejected"))
+
+    monkeypatch.setattr("app.character_agent.gateway.laya_provider.urlopen", fail_request)
+    provider = LayaSystemOneProvider(endpoint="http://127.0.0.1/v1/systemone", api_key="private-token")
+    with pytest.raises(ValueError) as caught:
+        provider.complete({"task_kind": "l3_planning", "context": {"candidate_intents": ["observe"]}})
+
+    assert str(caught.value) == "laya provider request failed: HTTPError status=401"
+    assert "private-token" not in str(caught.value)
+    assert "rejected" not in str(caught.value)
+
+
 def test_laya_unavailable_provider_is_fail_closed():
     provider = LayaSystemOneProvider(endpoint="http://127.0.0.1:1", timeout_seconds=0.05)
     try:
