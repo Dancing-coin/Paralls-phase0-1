@@ -209,94 +209,46 @@ class CanonicalCombatTargetReader:
     def resolve_current_participants(self, *, actor_ref: str, target_ref: str,
                                      world_ref: str, timeline_ref: str,
                                      eligible_life_states: frozenset[str] = _TARGET_ELIGIBLE_LIFE_STATES) -> dict[str, Any] | None:
-        """Resolve current Presence/Life facts without combat relations.
-
-        This is the neutral admission primitive for domains such as social.
-        ``timeline_ref`` is carried for the caller's admission context but is
-        deliberately not read from either source: Presence and Life are world
-        facts, while domain policy owns any timeline or relationship rules.
-        """
-        values = (actor_ref, target_ref, world_ref, timeline_ref)
-        if (any(not isinstance(value, str) or not value.strip() for value in values)
-                or actor_ref == target_ref
-                or not isinstance(eligible_life_states, frozenset)):
+        """Read neutral Presence/Life admission; callers must CAS returned heads."""
+        if (any(not isinstance(value, str) or not value.strip() for value in
+                (actor_ref, target_ref, world_ref, timeline_ref))
+                or actor_ref == target_ref or not isinstance(eligible_life_states, frozenset)):
             return None
         try:
+            streams = {f"presence:{world_ref}", f"population:{world_ref}"}
+            for actor in (actor_ref, target_ref):
+                streams.update(f"gameplay:character:life:{suffix}"
+                               for suffix in {actor, actor.removeprefix("character:")})
+            revisions = {stream: self.store.get_stream_head(stream) for stream in streams}
             presence_rows = self.store.read_stream(f"presence:{world_ref}")
-            selected_presence: list[Any] = []
-            selected_life: list[Any] = []
+            presence, life = [], []
             for actor in (actor_ref, target_ref):
                 aliases = {actor, actor.removeprefix("character:")}
-                rows = [row for row in presence_rows
-                        if row.payload.get("character_ref") in aliases]
-                if not rows or rows[-1].event_type != "population.presence.spawned":
+                rows = [row for row in presence_rows if row.payload.get("character_ref") in aliases]
+                if not rows:
                     return None
-                presence = rows[-1]
-                if (presence.schema_version != 1
-                        or presence.visibility_policy != "project"
-                        or presence.stream_id != f"presence:{world_ref}"
-                        or presence.payload.get("world_ref") != world_ref
-                        or presence.payload.get("character_ref") != actor
-                        or not self.store.transaction_owns_event(
-                            transaction_id=presence.transaction_id,
-                            event_id=presence.event_id,
-                            principal_ref=PRESENCE_PRINCIPAL)):
+                presence.append(rows[-1])
+                rows = [row for suffix in aliases
+                        for row in self.store.read_stream(f"gameplay:character:life:{suffix}")
+                        if row.payload.get("actor_ref") == actor]
+                if not rows:
                     return None
-                incarnation = presence.payload.get("incarnation")
-                if type(incarnation) is not int or incarnation < 1:
-                    return None
-                selected_presence.append(presence)
-                life_rows = [row for suffix in {actor, actor.removeprefix("character:")}
-                             for row in self.store.read_stream(f"gameplay:character:life:{suffix}")
-                             if row.payload.get("actor_ref") == actor]
-                if not life_rows:
-                    return None
-                life = max(life_rows, key=lambda row: row.global_sequence)
-                if (life.event_type != "gameplay.character.life_state_changed"
-                        or life.visibility_policy != "project"
-                        or life.payload.get("world_ref") != world_ref
-                        or life.payload.get("incarnation") != incarnation
-                        or life.payload.get("to_state") not in eligible_life_states
-                        or not self.store.transaction_owns_event(
-                            transaction_id=life.transaction_id,
-                            event_id=life.event_id,
-                            principal_ref=("authority:character:life-state:presence-admission"
-                                           if life.schema_version == 2 else LIFE_PRINCIPAL))):
-                    return None
-                if life.schema_version == 2 and (
-                        life.stream_id != f"gameplay:character:life:{actor}"
-                        or life.payload.get("from_state") != "unknown"
-                        or life.payload.get("to_state") != "alive"
-                        or life.payload.get("source_presence_event_id") != presence.event_id
-                        or life.payload.get("source_presence_revision") != presence.stream_revision):
-                    return None
-                if life.schema_version == 1 and life.stream_id not in {
-                        f"gameplay:character:life:{actor}",
-                        f"gameplay:character:life:{actor.removeprefix('character:')}",
-                }:
-                    return None
-                selected_life.append(life)
-            revisions = {f"presence:{world_ref}": self.store.get_stream_head(f"presence:{world_ref}")}
-            revisions.update({row.stream_id: self.store.get_stream_head(row.stream_id)
-                              for row in selected_life})
-            stable = (all(self.store.get_stream_head(stream) == revision
-                           for stream, revision in revisions.items())
-                      and all(self.store.get_event(row.event_id) == row
-                              for row in (*selected_presence, *selected_life)))
-            if not stable:
+                life.append(max(rows, key=lambda row: row.global_sequence))
+            actor_incarnation = f"{actor_ref}@{presence[0].payload['incarnation']}"
+            target_incarnation = f"{target_ref}@{presence[1].payload['incarnation']}"
+            sources = [*presence, *life]
+            if (not self._valid_participant_sources(sources,
+                    CombatTargetIdentity(actor_ref, (target_ref,)), world_ref, timeline_ref,
+                    actor_incarnation, target_incarnation, eligible_life_states)
+                    or any(self.store.get_stream_head(stream) != revision
+                           for stream, revision in revisions.items())):
                 return None
-            return {
-                "eligible": True,
-                "reason": "eligible",
-                "world_ref": world_ref,
-                "timeline_ref": timeline_ref,
-                "actor_incarnation_ref": f"{actor_ref}@{selected_presence[0].payload['incarnation']}",
-                "target_incarnation_ref": f"{target_ref}@{selected_presence[1].payload['incarnation']}",
-                "source_event_ids": [row.event_id for row in (*selected_presence, *selected_life)],
-                "source_revisions": revisions,
-            }
-        except (KeyError, IndexError, TypeError, ValueError,
-                GameplayEventStoreSnapshotError):
+            return dict(eligible=True, reason="eligible", world_ref=world_ref,
+                        timeline_ref=timeline_ref, actor_incarnation_ref=actor_incarnation,
+                        target_incarnation_ref=target_incarnation,
+                        source_event_ids=[row.event_id for row in sources],
+                        source_revisions=revisions)
+        except (KeyError, IndexError, TypeError, ValueError, GameplayEventStoreSnapshotError):
             return None
 
     def source_eligibility(self, *, actor_ref: str, target_ref: str, presence_event_ids: tuple[str, str],
@@ -344,6 +296,15 @@ class CanonicalCombatTargetReader:
                 or faction.payload.get("world_ref") != world_ref
                 or faction.payload.get("timeline_ref") != timeline_ref):
             return False
+        return self._valid_participant_sources(events[:4], attempt, world_ref, timeline_ref,
+                                               actor_incarnation_ref, target_incarnation_ref)
+
+    def _valid_participant_sources(self, events: list[Any], attempt: CombatTargetIdentity,
+                                  world_ref: str, timeline_ref: str, actor_incarnation_ref: str,
+                                  target_incarnation_ref: str,
+                                  eligible_life_states: frozenset[str] = _TARGET_ELIGIBLE_LIFE_STATES) -> bool:
+        if len(events) != 4 or len(attempt.target_refs) != 1 or attempt.actor_ref == attempt.target_refs[0]:
+            return False
         for presence, life, actor_ref, incarnation_ref in zip(
             events[:2], events[2:4], (attempt.actor_ref, attempt.target_refs[0]),
             (actor_incarnation_ref, target_incarnation_ref),
@@ -355,7 +316,7 @@ class CanonicalCombatTargetReader:
                     or life.event_type != "gameplay.character.life_state_changed"
                     or life.visibility_policy != "project"
                     or life.payload.get("actor_ref") != actor_ref
-                    or life.payload.get("to_state") not in _TARGET_ELIGIBLE_LIFE_STATES):
+                    or life.payload.get("to_state") not in eligible_life_states):
                 return False
             incarnation = presence.payload.get("incarnation")
             if type(incarnation) is not int or incarnation < 1 or incarnation_ref != f"{actor_ref}@{incarnation}":

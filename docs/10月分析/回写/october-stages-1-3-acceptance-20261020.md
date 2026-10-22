@@ -2,6 +2,8 @@
 
 ### 2026-10-22 中性 Presence/Life 参与者 reader 与 social source CAS
 
+后续复查修复 source cut 的读取竞态：新增测试真实追加 despawn，首轮返回旧 spawn 与新 Presence head（1 failed）；改为读取前冻结 Presence、Population 与两种 Life stream heads，并与 combat 复用 activation/Presence/Life 严格校验。修正后 social reader、canonical combat authority、Threat consumer、combat lifecycle 四文件 **42 passed in 3.80s**。本增量未扩展生产 social catalog；原始 pytest 输出见本轮执行记录。
+
 新增 `CanonicalCombatTargetReader.resolve_current_participants()` 作为不依赖 combat faction 的中性来源原语：只读取当前 `presence:{world}` 与角色 Life stream，确认当前 spawned event、incarnation、Life eligibility、owner transaction、当前 stream head 和事件内容；不写事件，也不读取 `faction:*`。该原语为正式 Social target catalog 提供 Presence/Life source cut，不能单独声称 social catalog、私有视觉 lineage、空间证据或 Laya 闭环已完成。
 
 `SocialSpatialOwner.submit()` 现在可携带 `source_read_set`/`source_context`，把 source heads 固定到 owner 事务的 read/pinned revisions，并在新写入前重验 source heads；source 变化返回 `social_spatial_source_stale` 且零写。已有 idempotency receipt 恢复仍按原 payload 精确回放，避免 source 变化阻断历史回执。
