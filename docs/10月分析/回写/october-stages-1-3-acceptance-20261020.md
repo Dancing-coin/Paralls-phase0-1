@@ -1206,3 +1206,16 @@ drive scan or cleanup was performed.
 证据边界：本批只修正角色感知目标绑定并固定 cognition unavailable 的 fail-safe 合同；`street_combat_attempt` 仍未接入 authenticated encounter/contact receipt、L4→Threat owner 生产链，Q01–Q04、完整 Laya 多 owner common cut、恢复回放生产链和 Godot G-A/G-B/G-C 仍未验收。
 
 **后端**：combat perception target data-flow 修正，定向 transport/lifecycle 35 项通过；正式 combat ingress 仍局部。**模型质量**：Q01–Q04 未验收，fallback 不作正式质量证据。**角色闭环**：受击角色 fail-safe execution contract 已验证，完整 Laya action+target→多域 owner 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
+### 2026-10-22 encounter/contact 方案确认与临时目录审计
+
+针对“普通街战 encounter lifecycle owner”和“生产 confirmed hit 接受的 contact 证据”完成方案确认：
+
+- 普通街战采用 backend 认证 scene/session admission 作为唯一 lifecycle owner。owner 生成稳定 `encounter_ref`，持久化 begin/end receipt，并在重连、并发、结束和恢复中复用同一身份。客户端 encounter id、按 actor-target/attempt 临时合成的 id，以及具名 boss/conflict 的局部 lifecycle 均不能替代通用街战 admission。
+- confirmed hit 只接受认证 physics/runtime authority 经 backend boundary 提交的 contact receipt。receipt 至少绑定 actor identity、connection epoch、attempt id、physics tick、目标 incarnation、动作合同和 source digest；客户端 pose/contact 与现有 `PhysicsContactEvidence` 只能用于开发联调和诊断，不能直接写 canonical Threat。
+
+因此 `street_combat_attempt` 在真实 issuer 与 receipt adapter 接通前继续 fail-closed；已有 trusted-local transport、choice 接纳、owner 单测和开发空间 sample 不升级为生产 combat 或正式模型质量证据。该决策回答了本轮两项产品问题，但没有关闭 D08 production ingress、Laya 多 owner common cut、Q01–Q04 或 Godot G-A/B/C。
+
+本轮临时目录审计确认 `TEMP`/`TMP` 均指向 D 盘路径 `D:\CODEX-~1\USER-T~1`；未发现本轮新建的 C 盘临时文件。D 盘 `D:\codex-temp` 下的历史诊断目录保留原有证据和归属信息，未对归属不明目录执行删除；后续本轮新产物继续使用专用 D 盘目录并在顶层消费后清理。
+
+**后端**：encounter/contact authority 方案已确认，生产入口仍 fail-closed/未实现。**模型质量**：Q01–Q04 未验收。**角色闭环**：现有 Laya inspect/worktable/social 单 owner 子项保留，完整输入→候选→action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
