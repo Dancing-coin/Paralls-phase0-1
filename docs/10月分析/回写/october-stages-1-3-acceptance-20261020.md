@@ -1219,3 +1219,11 @@ drive scan or cleanup was performed.
 本轮临时目录审计确认 `TEMP`/`TMP` 均指向 D 盘路径 `D:\CODEX-~1\USER-T~1`；未发现本轮新建的 C 盘临时文件。D 盘 `D:\codex-temp` 下的历史诊断目录保留原有证据和归属信息，未对归属不明目录执行删除；后续本轮新产物继续使用专用 D 盘目录并在顶层消费后清理。
 
 **后端**：encounter/contact authority 方案已确认，生产入口仍 fail-closed/未实现。**模型质量**：Q01–Q04 未验收。**角色闭环**：现有 Laya inspect/worktable/social 单 owner 子项保留，完整输入→候选→action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
+### 2026-10-22 Laya 正式评估 preflight fresh audit
+
+在当前 HEAD `744c8a78` 只读重跑 `python -B scripts/verification/verify_character_laya_evaluation.py --fixture backend/tests/fixtures/character_evaluation/four_role_lock_event`，结果 `evaluation_blocked`，`provider_calls=0`、`final_labels_read=false`，calibration/final/independent_holdout 均 `not_run`，Harness `run_id=8de5926173134824bcaa3312472969ee` cleanup passed。Fresh blocker 包含 5 项来源 pin 漂移/不完整、char_d profile 与 dossier schema unresolved、acceptable action set 未评审、development 缺完整 U/P/private projection/dynamic state/mind frame/合法目标，以及 policy/questions/candidates/thresholds/calibration method 未冻结、三套正式 split 为空。此运行未加载或读取 final/holdout 标签，也未调用模型。
+
+该 fresh 结果确认旧 fixture 不能作为当前正式质量证据；自动刷新 source pins 或填充正式 split 会把尚未审阅的新来源误当冻结基线，因此本批不改评估数据、不启动模型。下一步应从规格和当前注册动作/owner 生成 development-only 完整动作—目标目录，人工审阅可接受动作与 char_d 来源 schema，再按既有隔离程序建立校准和独立集；只有此前置完成后才安排正式 checkpoint 评估。D 盘专用 preflight 目录已清理；运行器报告 `harness_cleanup=passed`，未运行全量 pytest/Harness all、训练或 Godot。
+
+**后端**：无 runtime 改动；本轮复核的 Laya 评估入口保持 fail-closed。**模型质量**：当前 HEAD fresh preflight 明确阻止 Q01–Q04，正式模型调用为 0。**角色闭环**：无新 owner 或 L4 证据，完整 Laya 链继续开放。**最终 Godot**：G-A/B/C 未操作，仍最后集中验收。
