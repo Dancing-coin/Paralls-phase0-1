@@ -162,9 +162,11 @@ class RegisteredLearningAuthority:
             read_stream_revisions=request.expected_source_revisions, idempotency_key=request.idempotency_key,
             causation_id=request.causation_id, correlation_id=request.correlation_id)
 
-    def _history(self, world_ref, actor_id):
+    def _history(self, world_ref, actor_id, *, boundary_sequence=None):
         stream = self.stream_id(world_ref, actor_id)
         events = self._store.read_stream(stream)
+        if boundary_sequence is not None:
+            events = [event for event in events if event.global_sequence <= boundary_sequence]
         states, used = {}, set()
         for revision, event in enumerate(events, 1):
             try:
@@ -260,8 +262,8 @@ class RegisteredLearningAuthority:
             raise ValueError("learning_projection_proposal_mismatch")
         return event.stream_revision
 
-    def read_snapshot(self, *, world_ref, actor_id):
-        states, _, event_refs = self._history(world_ref, actor_id)
+    def read_snapshot(self, *, world_ref, actor_id, boundary_sequence=None):
+        states, _, event_refs = self._history(world_ref, actor_id, boundary_sequence=boundary_sequence)
         return LearningStateSnapshot(world_ref=world_ref, actor_id=actor_id,
             stream_id=self.stream_id(world_ref, actor_id), revision=len(event_refs),
             states=tuple(states[key].model_copy(deep=True) for key in sorted(states)),

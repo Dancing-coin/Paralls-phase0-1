@@ -30,6 +30,6 @@
   - [x] Freeze the snapshot digest in the envelope; validate handoff and sync/durable result pins to reject concurrent learning updates.
   - [x] Bind the production runtime to the shared owner reader; preserve historical dirty code through exact source snapshot staging and HEAD-isolated evidence. 176 passed, run `9c33cb1d2e5f4c27837ca583005ff547`. Parent checkbox remains open for remaining grant/revocation/source admissions.
 - [ ] Verify observation/imitation/guidance/practice/combat/review/research/mentorship/transfer stages and the specified mastery/difficulty dimensions without direct model skill writes.
-- [ ] Add the admitted owner to the existing common replay cut, including checkpoint-tail, corruption rejection and recovery; keep model quality and final Godot gates separate.
+- [x] Add the admitted owner to the existing common replay cut, including checkpoint-tail, corruption rejection and recovery; keep model quality and final Godot gates separate. 2026-10-22: actor-private snapshots and event refs are reconstructed from committed source/owner receipts at the exact global-sequence boundary; empty participant stays explicit; checkpoint-before/after learning, SQLite reopen, full replay digest and self-consistent tail tampering rejection covered by `backend/tests/test_learning_replay_participant.py`.
 
 Architecture, sequence and data flow are defined by the three linked spec diagrams. Task 1 implements the source-admission→owner→ledger→projection edges only.

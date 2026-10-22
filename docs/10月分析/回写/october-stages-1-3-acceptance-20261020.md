@@ -1,5 +1,13 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 registered learning owner common replay cut
+
+把 actor-private `RegisteredLearningAuthority` snapshot 接入 scoped common replay manifest。capture 记录 world/actor-scoped learned state、owner event refs、交易与 event digest；验证通过原 owner 的历史重建、source principal/transaction/receipt 证明，按 checkpoint `global_sequence` 排除 cut 后事件。空 learning cut 保持显式且向旧 manifest 兼容。checkpoint→tail 支持 learning 事实在 cut 后提交；重开 SQLite 后验证原 tail、与完整 replay digest 相等；即使攻击者重算 tail digest，state tamper 仍由 owner reconstruction 拒绝且无 store 写入。
+
+定向 TDD：首轮 9 个新增断言因 replay participant 缺失失败；接线后新测试文件 **9 passed**（4 个既有 FastAPI lifespan deprecation warnings）。与 registered learning owner、scoped checkpoint application、economy/random participant 合并复验 **96 passed, 2 deselected**，命令：`python -B -m pytest backend/tests/test_learning_replay_participant.py backend/tests/test_registered_learning_authority.py backend/tests/test_world_replay_checkpoint_application.py backend/tests/test_economy_random_replay_participant.py -q -p no:cacheprovider -k 'not test_population_activation_presence_application_checkpoint_tail_and_new_durable_authority and not test_shared_cut_replays_ten_domain_participants_after_cadence_and_restart' --basetemp D:/codex-temp/learning-replay-final-20261022`。两项 deselected 是已有 activation source fixture 和 presence producer_ref fixture 不匹配，本批代码未触及。pytest 临时目录仅在 `D:\codex-temp`；未运行全量 pytest/Harness all、模型、训练或 Godot。该项只关闭 R10 的 common replay cut 子项，生产四路线、time/resource/teacher policy、正式质量和整体恢复闭环仍开放。
+
+**后端**：learning common cut/checkpoint-tail/receipt rebuild 子项定向验证；生产 learning caller 和完整 multi-owner Laya recovery/replay 仍开放。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya input→candidate→action+target→L4→multi-owner receipts 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作。
+
 ### 2026-10-22 production stable action-family projection repair
 
 真实 Laya/WS development 诊断追到稳定包络：旧 compiler 把知识域 `social`、`boundary_enforcement` 等直接当作 L3 family，使 char_a 缺 movement/communication，char_b 无合法候选。现在由 `SkillActionBinding.action_families` 显式登记六条 core bindings；缺映射不猜测，必须满足 positive rank 与 registered required rank，撤销仍剔除。已知 family 的补集全部 blocked，空 allowed 不再意外放开动作。知识域仍保留在技能描述中；registry revision/snapshot digest 自然覆盖新增登记，未更新正式评估 frozen pins。
@@ -434,7 +442,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 | R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 与 worktable use 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect；在线 L2＋Laya worktable use/finish 与新进程恢复）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；worktable use 已有真实 Laya→L4→owner 回执；新增在线 L2/Laya 的真实 use→finish 连续周期及两份原回执新进程零写恢复；显式任务驱动、生产产出和完整多域仍缺。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
 | R09 中断／恢复／回放 | 局部验证（真实inspect及在线L2/Laya worktable两动作提交后新进程exact receipt恢复）；完整故障/回放未验证 | durable cognition/session、frozen resume、取消迟到负例 | owner 提交前后中断、新进程重开 exact receipt replay、changed duplicate、旧 worker 迟到零写、writeback 不重复 |
-| R10 学习／技能形成；规格06 | 局部实现 | registered learning owner前置39项；owner→冻结能力/旧provider拒绝/生产读取176项；生产inspect个人动作披露与来源owner/consumer回归141项，见下文 | 四学习路线仍缺完整生产source/episode/gate→owner策略、时间/资源/teacher与grant撤销准入、正式mastery语义与共同cut。工程模型训练不产生角色技能事件 |
+| R10 学习／技能形成；规格06 | 局部实现（common replay cut子项已定向验证） | registered learning owner前置39项；owner→冻结能力/旧provider拒绝/生产读取176项；生产inspect个人动作披露与来源owner/consumer回归141项；2026-10-22 learning scoped cut/tail/reopen与损坏拒绝9项，见顶部本批记录 | 四学习路线仍缺完整生产source/episode/gate→owner策略、时间/资源/teacher与grant撤销准入、正式mastery语义。common cut按端点有界重建验证，不代表生产四路线恢复验收。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |
 | R12 协同／短契约；计划03 | 局部实现 | local coordination signal/contract、recipient filtering | 真实 fact consumer 的可信时钟/context revision/participant 状态；双角色实际接收与连续协同回执 |
 | R13 SpeechLease／三路径语音 | 局部实现 | lease、dialogue continuation、TTS adapter | preset/catchphrase 目录、三路径 dispatch、取消/迟到；音频生成不等于空间 played/heard，听见证据最后验收 |

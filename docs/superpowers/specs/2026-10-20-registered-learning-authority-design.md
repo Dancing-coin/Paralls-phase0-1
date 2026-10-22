@@ -18,7 +18,7 @@ Each evidence reference is reread from the shared store. A registered source pol
 
 Requests bind actor, object registration digest, ordered distinct evidence ids, expected skill revision, command/idempotency/cause/correlation. Exact retries are checked against the original committed command before checking transient heads or current registrations. Changed duplicates reject. One piece of evidence cannot repeatedly produce an outcome for the same actor/object_id using new command ids. Separately registered object ids can reuse evidence; this is not a global evidence-spend ledger. A rejected command writes no skill fact. Successful append precedes projection rebuild, so lost response is recovered from the original receipt.
 
-Projection reconstructs the registered outcome recorded at commit time; later registry edits do not reinterpret historical learning. It validates event schema, principal, stream/actor, transition revision, command identity, payload digest, receipt and transaction membership. Projection supports a bounded full rebuild. Checkpoint/tail participation and global-cut integration are subsequent tasks, not inferred from a successful SQLite reopen.
+Projection reconstructs the registered outcome recorded at commit time; later registry edits do not reinterpret historical learning. It validates event schema, principal, stream/actor, transition revision, command identity, payload digest, receipt and transaction membership. Projection supports a bounded full rebuild. The 2026-10-22 replay increment adds an optional-version learning participant to the existing scoped common cut. It rebuilds owner snapshots at the exact global sequence, verifies source/transaction/receipt proofs, and preserves actor-private state inside the authority-only recovery envelope. Empty cuts are explicit; historical manifests without learning facts remain readable. Application checkpoint/tail and SQLite reopen are tested separately from production learning routes and quality gates. This uses a bounded history rebuild at each endpoint, not an incremental domain projector.
 
 ## Scope and acceptance
 
@@ -66,7 +66,9 @@ flowchart LR
   P --> F["current increment: explicit actor/world read binding"] --> B
   B --> FE["current increment: frozen envelope / learning pin"]
   FE --> V["current increment: sync + durable handoff / completion validation"]
-  X["later: production callers / four routes / shared cut"] -.-> O
+  S --> RP["current increment: authority-only common replay cut / historical owner snapshots"]
+  RP --> RV["current increment: checkpoint-tail proof verification / durable reopen"]
+  X["later: production callers / four routes"] -.-> O
   D["deferred: general editor / model training / Godot until final"]
 ```
 
@@ -93,6 +95,9 @@ sequenceDiagram
   B-->>C: frozen envelope with original learning revision
   C->>A: current increment: reread actor/world snapshot before handoff and acceptance
   A-->>C: compare original learning pin; reject changed pending work
+  C->>A: current replay increment: snapshot at checkpoint and tail boundaries
+  A->>S: reread bounded owner history and original source/transaction/receipt
+  A-->>C: scoped learned snapshots; verify replay digest after durable reopen
 ```
 
 ## Data flow and authority boundary
@@ -118,4 +123,6 @@ flowchart TD
   N --> Q
   Q -->|changed| Z
   Q -->|same| A["current: accept original provider continuation"]
+  F --> RC["current increment: private snapshots + event refs at exact cut"]
+  RC --> RV["current increment: authority-only replay envelope / proof and digest validation"]
 ```

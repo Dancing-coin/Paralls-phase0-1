@@ -989,6 +989,49 @@ def validate_life_state_checkpoint_tail(store, saved, current, start, end):
         raise ValueError("replay_life_state_checkpoint_tail_mismatch")
 
 
+def _learning_participant(store, *, boundary_sequence=None):
+    """Authority-only recovery envelope; each learned snapshot remains actor-private."""
+    from app.character_agent.skills.catalog import create_runtime_skill_registry
+    from app.character_agent.skills.learning_authority import RegisteredLearningAuthority
+
+    owner = RegisteredLearningAuthority(store=store, registry=create_runtime_skill_registry(), rules=())
+    events = [event for event in store.read_events()
+              if (event.event_type == owner.EVENT or event.stream_id.startswith("gameplay:character:learned:"))
+              and (boundary_sequence is None or event.global_sequence <= boundary_sequence)]
+    scopes = {}
+    refs = []
+    for event in events:
+        request = event.payload.get("request", {})
+        world, actor = request.get("world_ref"), request.get("actor_id")
+        if (event.event_type != owner.EVENT or event.schema_version != 1
+                or not isinstance(world, str) or not world or not isinstance(actor, str) or not actor
+                or event.stream_id != owner.stream_id(world, actor)):
+            raise ValueError("replay_learning_event_scope_invalid")
+        scopes[event.stream_id] = (world, actor)
+        refs.append(dict(event_id=event.event_id, global_sequence=event.global_sequence,
+            stream_id=event.stream_id, stream_revision=event.stream_revision,
+            transaction_id=event.transaction_id, event_digest=_digest(_json(event))))
+    streams = {stream: owner.read_snapshot(world_ref=world, actor_id=actor,
+        boundary_sequence=boundary_sequence).model_dump(mode="json")
+        for stream, (world, actor) in sorted(scopes.items())}
+    if {ref["event_id"] for ref in refs} != {
+            ref for row in streams.values() for ref in row["source_event_refs"]}:
+        raise ValueError("replay_learning_event_scope_invalid")
+    return dict(schema_version=1, scope="authority:character:learning-recovery",
+        streams=streams, event_refs=refs, view_digest=_digest(dict(streams=streams, event_refs=refs)),
+        reconstruction_api="RegisteredLearningAuthority.read_snapshot")
+
+
+def _validate_learning_participant(store, saved, *, boundary_sequence=None):
+    expected = _learning_participant(store, boundary_sequence=boundary_sequence)
+    if saved is None and not expected["event_refs"]:
+        return
+    if saved is None:
+        raise ValueError("replay_learning_participant_scope_mismatch")
+    if saved != expected:
+        raise ValueError("replay_saved_learning_projection_mismatch")
+
+
 def capture_participants(store, coordinator, driver, consumer, batch_refs, *, inventory_authority=None,
                          social_authority=None, social_recipient_ref=None, social_now=None,
                          social_delivery_authority=None, social_delivery_recipient_ref=None,
@@ -1117,6 +1160,7 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
         raise ValueError("replay_presence_participant_missing")
     presence = _presence_participant(store, presence_authority)
     life_state = _life_state_participant(store)
+    learning = _learning_participant(store)
     result = dict(schema_version=1, versions={"participant_manifest": 1, "batch_input": 1,
         "batch_operation": 1, "population_recovery": 1, "status_events": 1, "migration_events": 1,
         "economy_temporal": 1, "ecology_temporal": 1},
@@ -1175,6 +1219,8 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     if life_state is not None:
         result["life_state"] = life_state
         result["versions"]["life_state"] = 1
+    result["learning"] = learning
+    result["versions"]["learning"] = 1
     return result
 
 
@@ -1184,6 +1230,7 @@ def validate_saved_participants(store, manifest, batch_refs, boundary_sequence=N
     """Verify historical participant claims against durable facts, never submit work."""
     _validate_resource_participant(store, manifest.get("resource"), boundary_sequence=boundary_sequence)
     _validate_life_state_participant(store, manifest.get("life_state"), boundary_sequence=boundary_sequence)
+    _validate_learning_participant(store, manifest.get("learning"), boundary_sequence=boundary_sequence)
     _validate_economy_random_participant(store, manifest.get("economy_random"),
         boundary_sequence=boundary_sequence)
     _validate_equipment_participant(store, manifest.get("equipment"), boundary_sequence=boundary_sequence)
