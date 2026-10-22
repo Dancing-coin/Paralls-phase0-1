@@ -61,6 +61,7 @@ class SoulEffectRegistration(StrictGameplayModel):
     vulnerability_rule_ref: str = Field(min_length=1)
     link_rule_ref: str = Field(min_length=1)
     grant_rule_ref: str = Field(min_length=1)
+    effect_family: Literal["binding", "curse"] = "binding"
     precedence: int = Field(ge=0, strict=True)
     lifetime: Literal["until_revoked"]
 
@@ -75,16 +76,17 @@ class SoulEffectRequest(StrictGameplayModel):
     package_ref: str = Field(min_length=1)
     version: str = Field(min_length=1)
     rule_ref: str = Field(min_length=1)
-    operation: Literal["bind", "unbind"]
+    operation: Literal["bind", "unbind", "curse", "lift_curse"]
     original_effect_ref: str | None = None
     expected_revision: int = Field(ge=0, strict=True)
     idempotency_key: str = Field(min_length=1)
 
     @model_validator(mode="after")
     def validate_operation(self):
-        if self.operation == "unbind" and not self.original_effect_ref:
+        reversing = self.operation in {"unbind", "lift_curse"}
+        if reversing and not self.original_effect_ref:
             raise ValueError("soul_effect_original_required")
-        if self.operation == "bind" and self.original_effect_ref is not None:
+        if not reversing and self.original_effect_ref is not None:
             raise ValueError("soul_effect_original_unexpected")
         return self
 
@@ -119,17 +121,39 @@ class SoulEffectAuthority:
     def stream_id(world_ref: str, target_ref: str) -> str:
         return f"{_PREFIX}{world_ref}:{target_ref}"
 
+    @staticmethod
+    def _operation_family(operation: str) -> str:
+        return "curse" if operation in {"curse", "lift_curse"} else "binding"
+
+    @classmethod
+    def _stream_id(cls, world_ref: str, target_ref: str, effect_family: str) -> str:
+        base = cls.stream_id(world_ref, target_ref)
+        return base if effect_family == "binding" else f"{base}:{effect_family}"
+
+    @staticmethod
+    def _active_operation(effect_family: str) -> str:
+        return "curse" if effect_family == "curse" else "bind"
+
+    @staticmethod
+    def _reverse_operation(effect_family: str) -> str:
+        return "lift_curse" if effect_family == "curse" else "unbind"
+
+    @staticmethod
+    def _event_type(effect_family: str) -> str:
+        return "soul.effect.curse.changed" if effect_family == "curse" else "soul.effect.binding.changed"
+
     @_replay_scope
     def settle(self, request: SoulEffectRequest) -> SoulEffectReceipt:
         request = SoulEffectRequest.model_validate(request.model_dump(mode="python") if isinstance(request, SoulEffectRequest) else request)
-        stream = self.stream_id(request.world_ref, request.target_ref)
+        effect_family = self._operation_family(request.operation)
+        stream = self._stream_id(request.world_ref, request.target_ref, effect_family)
         try:
             prior = self.store.get_by_idempotency(_PRINCIPAL, request.idempotency_key)
             if prior is not None:
                 event = self._validate_original(request, prior, stream)
                 return SoulEffectReceipt(committed=True, zero_write=True, committed_event_ids=(event.event_id,))
             registration = self._registrations.get((request.world_ref, request.package_ref, request.version, request.rule_ref))
-            if registration is None:
+            if registration is None or registration.effect_family != effect_family:
                 return self._reject("soul_effect_registration")
             head = self.store.get_stream_head(stream)
             captured = self.store.get_stream_heads()
@@ -142,8 +166,9 @@ class SoulEffectAuthority:
                 captured.setdefault(fact_stream, 0)
             if head != request.expected_revision:
                 return self._reject("revision_conflict")
-            current = self.projection(world_ref=request.world_ref, target_ref=request.target_ref)
-            if request.operation == "bind":
+            current = self.projection(world_ref=request.world_ref, target_ref=request.target_ref,
+                effect_family=effect_family)
+            if request.operation == self._active_operation(effect_family):
                 if current.get("active"):
                     return self._reject("soul_effect_transition")
             elif (not current.get("active") or current.get("original_effect_ref") != request.original_effect_ref
@@ -196,10 +221,11 @@ class SoulEffectAuthority:
             reads[stream] = head
             if any(captured.get(name, 0) != revision for name, revision in reads.items()):
                 return self._reject("soul_effect_source_cut")
-            active = request.operation == "bind"
+            active = request.operation == self._active_operation(effect_family)
             payload = {"world_ref": request.world_ref, "actor_ref": request.actor_ref, "target_ref": request.target_ref,
                 "actor_incarnation": request.actor_incarnation, "target_incarnation": request.target_incarnation,
                 "package_ref": request.package_ref, "version": request.version, "rule_ref": request.rule_ref,
+                "operation": request.operation, "effect_family": effect_family,
                 "value_ref": registration.value_ref, "precedence": registration.precedence,
                 "lifetime": registration.lifetime, "active": active,
                 "original_effect_ref": None if active else request.original_effect_ref,
@@ -211,7 +237,7 @@ class SoulEffectAuthority:
             batch = build_multi_stream_atomic_event_batch(
                 command_id=f"soul:effect:{request.world_ref}:{request.target_ref}:{request.idempotency_key}",
                 principal_ref=_PRINCIPAL, expected_revisions={stream: head},
-                event_specs={stream: [("soul.effect.binding.changed", payload)]},
+                event_specs={stream: [(self._event_type(effect_family), payload)]},
                 event_visibility_policies={stream: ["authority_only"]}, idempotency_key=request.idempotency_key,
                 causation_id=f"action:{request.operation}", correlation_id=f"world:{request.world_ref}",
                 read_stream_revisions=reads, pinned_revisions=reads)
@@ -223,8 +249,9 @@ class SoulEffectAuthority:
             return self._reject(str(exc) or "soul_effect_invalid")
 
     @_replay_scope
-    def projection(self, *, world_ref: str, target_ref: str) -> dict[str, object]:
-        stream = self.stream_id(world_ref, target_ref)
+    def projection(self, *, world_ref: str, target_ref: str,
+                   effect_family: Literal["binding", "curse"] = "binding") -> dict[str, object]:
+        stream = self._stream_id(world_ref, target_ref, effect_family)
         events = self.store.read_stream(stream, to_revision=self.store.get_stream_head(stream))
         if not events:
             return {}
@@ -235,10 +262,12 @@ class SoulEffectAuthority:
                 raise ValueError("soul_effect_history_invalid")
             receipt = self.store.get_by_idempotency(_PRINCIPAL, transaction.idempotency_record.idempotency_key)
             payload = dict(event.payload)
+            operation = payload.get("operation") or (
+                self._active_operation(effect_family) if payload["active"] else self._reverse_operation(effect_family))
             request = SoulEffectRequest(**{field: payload[field] for field in
                 ("world_ref", "actor_ref", "target_ref", "actor_incarnation", "target_incarnation",
                  "package_ref", "version", "rule_ref", "original_effect_ref")},
-                operation="bind" if payload["active"] else "unbind", expected_revision=revision - 1,
+                operation=operation, expected_revision=revision - 1,
                 idempotency_key=transaction.idempotency_record.idempotency_key)
             self._validate_original(request, receipt, stream)
             if payload["active"]:
@@ -317,12 +346,17 @@ class SoulEffectAuthority:
         if batch is None or len(batch.events) != 1:
             raise ValueError("soul_effect_original_invalid")
         event = batch.events[0]
-        if (event.stream_id != stream or event.event_type != "soul.effect.binding.changed"
+        effect_family = self._operation_family(request.operation)
+        expected_active = request.operation == self._active_operation(effect_family)
+        expected_operation = request.operation
+        if (event.stream_id != stream or event.event_type != self._event_type(effect_family)
                 or event.visibility_policy != "authority_only" or event.event_id not in receipt.committed_event_ids
                 or any(event.payload.get(field) != getattr(request, field) for field in
                        ("world_ref", "actor_ref", "target_ref", "actor_incarnation",
                         "target_incarnation", "package_ref", "version", "rule_ref", "original_effect_ref"))
-                or event.payload.get("active") is not (request.operation == "bind")
+                or event.payload.get("active") is not expected_active
+                or event.payload.get("operation", expected_operation) != expected_operation
+                or event.payload.get("effect_family", effect_family) != effect_family
                 or batch.idempotency_record.idempotency_key != request.idempotency_key):
             raise ValueError("soul_effect_original_invalid")
         if (self.store.get_event(event.event_id) != event or event.schema_version != 1

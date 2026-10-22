@@ -70,6 +70,45 @@ def test_bind_and_explicit_counterplay_write_only_soul_and_pin_all_gates():
     assert store.read_events() == before
 
 
+def test_curse_and_lift_curse_have_independent_registered_owner_receipts():
+    from test_soul_fact_owner import _registration as fact_registration
+
+    store = GameplayEventStore()
+    _, anchors, _ = _setup(store)
+    fact_ops = ('bind', 'unbind', 'curse', 'lift_curse')
+    facts = SoulFactAuthority(anchors=anchors, registrations=tuple(
+        fact_registration(kind, operations=fact_ops) for kind in ('link', 'grant', 'protection')))
+    for revision, kind in enumerate(('link', 'grant')):
+        assert facts.settle(_command(rule_ref=f'rule:{kind}', expected_revision=revision,
+            idempotency_key=f'curse-fact:{kind}')).committed
+    registration = _registration(rule_ref='effect:curse', value_ref='curse:nightmark',
+        effect_family='curse')
+    owner = _api().SoulEffectAuthority(facts=facts, vulnerability=_gate(anchors),
+        registrations=(registration,))
+    request = _request(rule_ref='effect:curse', operation='curse', idempotency_key='curse:issue')
+
+    issued = owner.settle(request)
+
+    assert issued.committed and not issued.zero_write
+    event = store.get_event(issued.committed_event_ids[0])
+    assert event.event_type == 'soul.effect.curse.changed'
+    assert event.stream_id.endswith(':curse')
+    assert event.payload['operation'] == 'curse'
+    assert event.payload['value_ref'] == 'curse:nightmark'
+    assert event.payload['active'] is True
+    assert owner.projection(world_ref=WORLD, target_ref=ACTOR, effect_family='curse')['active']
+    assert owner.projection(world_ref=WORLD, target_ref=ACTOR) == {}
+
+    reversed_result = owner.settle(_request(rule_ref='effect:curse', operation='lift_curse',
+        original_effect_ref=event.event_id, expected_revision=1, idempotency_key='curse:reverse'))
+
+    assert reversed_result.committed
+    reversed_event = store.get_event(reversed_result.committed_event_ids[0])
+    assert reversed_event.payload['active'] is False
+    assert owner.projection(world_ref=WORLD, target_ref=ACTOR, effect_family='curse')['active'] is False
+    assert owner.settle(request).zero_write
+
+
 @pytest.mark.parametrize('issue,reason', [((), 'soul_effect_link'), (('link',), 'soul_effect_grant')])
 def test_missing_owner_fact_is_zero_write(issue, reason):
     store = GameplayEventStore()
@@ -234,7 +273,7 @@ def test_different_anchor_composition_cannot_supply_vulnerability():
             registrations=(_registration(),))
 
 
-@pytest.mark.parametrize('changes', [dict(operation='curse'), dict(operation='unbind'),
+@pytest.mark.parametrize('changes', [dict(operation='unbind'),
     dict(original_effect_ref='forged'), dict(expected_revision=True)])
 def test_unsupported_operations_and_invalid_original_refs_reject(changes):
     with pytest.raises(ValueError):
