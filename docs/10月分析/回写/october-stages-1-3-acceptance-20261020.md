@@ -1557,3 +1557,18 @@ TDD first reproduced the gap: the real backend transport integration recovered t
 RED 在两种 episode 类型上复现不完整 mastery 被接纳 **2 failed**；定向复验 `test_character_skill_evidence_extractor.py`、`test_character_skill_learning_gate.py`、`test_character_capability_action_vertical.py`：**23 passed**，basetemp `D:\codex-temp\learning-episode-shape-final-20261022`。没有运行全量 pytest、Harness all、模型评估/训练或 Godot。
 
 **后端**：R10 episode proposal mastery/difficulty 结构合同已实现并定向验证；生产 route/rule registration、source/teacher/time/resource policy 和 episode owner 仍缺。**模型质量**：Q01–Q04 未验收。**角色闭环**：该合同不增加真实 Laya/owner 提交证据。**最终 Godot**：G-A/G-B/G-C 未操作。
+
+### 2026-10-23 D08 combat common replay participant
+
+Common replay checkpoint/tail manifest 现在包含 D08 combat owner events、原始 owner transactions 与 idempotency receipts，并闭合事务 pinned stream prefixes 和 payload 显式引用的 source events。捕获可限定在历史 global-sequence cut；重开 SQLite 后重建相同 participant，篡改 event/receipt/source digest 或遗漏已有 combat participant 均拒绝。旧 manifest 未包含 combat participant 时仍可读取；空 participant 为只读。
+
+定向回归 `test_combat_replay_participant.py`、`test_world_replay_participants.py`、`test_world_replay_checkpoint_cut.py`、`test_combat_settlement_threat_consumer.py`、`test_physics_contact_receipt.py`：**36 passed, 4 existing FastAPI lifespan deprecation warnings**，耗时 6.67s。pytest basetemp 位于 `D:\Users\User\Documents\paralls-evidence\tmp\combat-replay-participant-20261023`，验证后已清理。contact receipt 测试使用隔离测试签名；该 participant 提供 common replay 的 durable owner/source 证据面，不会把测试签名升级为真实 physics producer，也不证明完整跨进程生产 common cut。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | D08 owner 事件、事务、回执和 source prefix 已加入 common checkpoint/tail participant；36 项定向回归通过。真实 physics/runtime authority producer、Laya/R01 action+target→L4→combat ingress 和实际生产多 owner common cut 仍未完成。 |
+| 模型质量 | Q01–Q04 未验收；本批无正式模型评分、calibration/final/holdout 访问或训练/微调。 |
+| 角色闭环 | Laya 完整动作与目标、L4 执行、真实 owner 提交/回执及恢复回放仍未验收。 |
+| 最终 Godot | G-A/G-B/G-C 未启动、操作或验证；继续留到后端和角色依赖收口后。 |
+
+没有运行全量 pytest、Harness all、模型评估、训练或 Godot。当前 Goal 已是“整体完成十月主线阶段一至三的实现与验收”，本项完成后继续沿统一矩阵推进；Goal 不得因这个 replay 子项标记完成。

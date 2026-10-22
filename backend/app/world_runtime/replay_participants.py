@@ -1048,6 +1048,155 @@ _SOUL_PRINCIPALS = {
     "gameplay:soul:effect:": "soul.effect_authority",
 }
 
+_COMBAT_EVENT_PRINCIPALS = {
+    "gameplay.combat.faction_relation_recorded": "authority:combat:faction-relation",
+    "gameplay.combat.encounter_begun": "authority:combat:encounter",
+    "gameplay.combat.encounter_ended": "authority:combat:encounter",
+    "gameplay.combat.physics_contact_receipt_recorded": "authority:combat:physics-contact-receipt",
+    "gameplay.combat.embodied_settlement_recorded": "authority:embodied:street-combat-settlement",
+    "gameplay.combat.threat_relation_recorded": "authority:combat:threat-relation",
+    "gameplay.embodied.street_settled@1": "authority:embodied:street-owner",
+}
+
+
+def _combat_explicit_event_refs(value, key=""):
+    if isinstance(value, Mapping):
+        for child_key, child in value.items():
+            if child_key in {"event_id", "event_ref", "faction_source_event_id",
+                    "embodied_event_id", "source_presence_event_id", "source_activation_event_id"}:
+                if isinstance(child, str):
+                    yield child
+                elif isinstance(child, (list, tuple)):
+                    yield from (item for item in child if isinstance(item, str))
+                continue
+            if child_key == "source_event_ids" and isinstance(child, (list, tuple)):
+                yield from (item for item in child if isinstance(item, str))
+            else:
+                yield from _combat_explicit_event_refs(child, str(child_key))
+    elif isinstance(value, (list, tuple)):
+        for child in value:
+            yield from _combat_explicit_event_refs(child, key)
+    elif isinstance(value, str) and ("event_id" in key or "event_ref" in key
+            or key.endswith("event_ids")):
+        yield value
+
+
+def _combat_receipt_ref(store, event):
+    principal = _COMBAT_EVENT_PRINCIPALS.get(event.event_type)
+    valid_stream = (
+        event.stream_id.startswith("faction:") if event.event_type == "gameplay.combat.faction_relation_recorded"
+        else event.stream_id.startswith("gameplay:combat:physics-contact:")
+        if event.event_type == "gameplay.combat.physics_contact_receipt_recorded"
+        else event.stream_id == "gameplay:embodied:street-owner"
+        if event.event_type == "gameplay.embodied.street_settled@1"
+        else event.stream_id.startswith("gameplay:combat:encounter:")
+    )
+    if (principal is None or not valid_stream or event.schema_version != 1
+            or event.visibility_policy not in {"project", "authority_only"}):
+        raise ValueError("replay_combat_event_scope_unsupported")
+    transaction = store.get_transaction(event.transaction_id)
+    if (transaction is None or event not in transaction.events
+            or transaction.idempotency_record.principal_ref != principal
+            or store.get_event(event.event_id) != event):
+        raise ValueError("replay_combat_original_missing")
+    record = transaction.idempotency_record
+    receipt = store.get_by_idempotency(record.principal_ref, record.idempotency_key)
+    if (receipt is None or not receipt.committed or receipt.failure is not None
+            or receipt.transaction_id != transaction.transaction_id
+            or receipt.idempotency_status != "new_commit"
+            or store.get_idempotency_record(record.principal_ref, record.idempotency_key) != record
+            or receipt.committed_event_ids != [item.event_id for item in transaction.events]
+            or receipt.global_sequence_range != (
+                transaction.events[0].global_sequence, transaction.events[-1].global_sequence)):
+        raise ValueError("replay_combat_original_receipt_invalid")
+    return dict(event_id=event.event_id, global_sequence=event.global_sequence,
+        stream_id=event.stream_id, stream_revision=event.stream_revision,
+        event_type=event.event_type, principal_ref=principal,
+        transaction_id=transaction.transaction_id, event_digest=_digest(_json(event)),
+        transaction_digest=_digest(_json(transaction)), receipt_digest=_digest(_json(receipt)))
+
+
+def _combat_source_ref(store, event):
+    transaction = store.get_transaction(event.transaction_id)
+    if (transaction is None or event not in transaction.events
+            or store.get_event(event.event_id) != event):
+        raise ValueError("replay_combat_source_receipt_invalid")
+    principal = transaction.idempotency_record.principal_ref
+    receipt = store.get_by_idempotency(principal, transaction.idempotency_record.idempotency_key)
+    if (receipt is None or not receipt.committed or receipt.failure is not None
+            or receipt.transaction_id != transaction.transaction_id
+            or receipt.idempotency_status != "new_commit"
+            or store.get_idempotency_record(principal,
+                transaction.idempotency_record.idempotency_key) != transaction.idempotency_record
+            or receipt.committed_event_ids != [item.event_id for item in transaction.events]
+            or receipt.global_sequence_range != (
+                transaction.events[0].global_sequence, transaction.events[-1].global_sequence)):
+        raise ValueError("replay_combat_source_receipt_invalid")
+    return dict(event_id=event.event_id, global_sequence=event.global_sequence,
+        stream_id=event.stream_id, stream_revision=event.stream_revision,
+        event_type=event.event_type, principal_ref=principal,
+        transaction_id=transaction.transaction_id, event_digest=_digest(_json(event)),
+        transaction_digest=_digest(_json(transaction)), receipt_digest=_digest(_json(receipt)))
+
+
+def _combat_participant(store, *, boundary_sequence=None):
+    """Capture combat owner receipts and every pinned source prefix at one cut."""
+    all_events = [event for event in store.read_events()
+                  if boundary_sequence is None or event.global_sequence <= boundary_sequence]
+    combat_scope = ("faction:", "gameplay:combat:", "gameplay:embodied:street-owner")
+    events = []
+    for event in all_events:
+        in_scope = event.stream_id.startswith(combat_scope) or event.event_type in _COMBAT_EVENT_PRINCIPALS
+        if in_scope:
+            if event.event_type not in _COMBAT_EVENT_PRINCIPALS:
+                raise ValueError("replay_combat_event_scope_unsupported")
+            events.append(event)
+
+    owner_refs = [_combat_receipt_ref(store, event) for event in events]
+    source_events = {}
+    explicit = {}
+    for event in events:
+        for event_id in _combat_explicit_event_refs(event.payload):
+            # The embodied receipt embeds its own committed event ID. That is
+            # an identity assertion, rather than a dependency on a prior event.
+            if event_id != event.event_id:
+                explicit[event_id] = min(explicit.get(event_id, event.global_sequence), event.global_sequence)
+        transaction = store.get_transaction(event.transaction_id)
+        for stream, revision in transaction.read_stream_revisions.items():
+            prefix = store.read_stream(stream, to_revision=revision)
+            if len(prefix) != revision or any(item.global_sequence >= event.global_sequence
+                    for item in prefix):
+                raise ValueError("replay_combat_source_cut_invalid")
+            for source in prefix:
+                source_events[source.event_id] = source
+
+    all_by_id = {event.event_id: event for event in all_events}
+    for event_id, owner_sequence in explicit.items():
+        source = all_by_id.get(event_id)
+        if source is None or source.global_sequence >= owner_sequence:
+            raise ValueError("replay_combat_explicit_source_missing")
+        source_events[event_id] = source
+
+    source_refs = [_combat_source_ref(store, event) for event in source_events.values()]
+    source_refs.sort(key=lambda row: (row["global_sequence"], row["event_id"]))
+    streams = {}
+    for stream in sorted({event.stream_id for event in events}):
+        refs = [row for row in owner_refs if row["stream_id"] == stream]
+        streams[stream] = dict(event_refs=refs, projection_digest=_digest(refs))
+    state = dict(streams=streams, event_refs=owner_refs, source_refs=source_refs)
+    return dict(schema_version=1, scope="authority:combat:common-replay",
+        streams=streams, event_refs=owner_refs, source_refs=source_refs,
+        view_digest=_digest(state),
+        reconstruction_api="Combat owner events, durable transactions and idempotency receipts")
+
+
+def _validate_combat_participant(store, saved, *, boundary_sequence=None):
+    expected = _combat_participant(store, boundary_sequence=boundary_sequence)
+    if saved is None and not expected["event_refs"]:
+        return
+    if saved != expected:
+        raise ValueError("replay_saved_combat_projection_mismatch")
+
 
 def _soul_explicit_event_refs(value, key=""):
     if isinstance(value, Mapping):
@@ -1330,6 +1479,7 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     life_state = _life_state_participant(store)
     learning = _learning_participant(store)
     soul = _soul_participant(store)
+    combat = _combat_participant(store)
     result = dict(schema_version=1, versions={"participant_manifest": 1, "batch_input": 1,
         "batch_operation": 1, "population_recovery": 1, "status_events": 1, "migration_events": 1,
         "economy_temporal": 1, "ecology_temporal": 1},
@@ -1392,6 +1542,8 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     result["versions"]["learning"] = 1
     result["soul"] = soul
     result["versions"]["soul"] = 1
+    result["combat"] = combat
+    result["versions"]["combat"] = 1
     return result
 
 
@@ -1403,6 +1555,7 @@ def validate_saved_participants(store, manifest, batch_refs, boundary_sequence=N
     _validate_life_state_participant(store, manifest.get("life_state"), boundary_sequence=boundary_sequence)
     _validate_learning_participant(store, manifest.get("learning"), boundary_sequence=boundary_sequence)
     _validate_soul_participant(store, manifest.get("soul"), boundary_sequence=boundary_sequence)
+    _validate_combat_participant(store, manifest.get("combat"), boundary_sequence=boundary_sequence)
     _validate_economy_random_participant(store, manifest.get("economy_random"),
         boundary_sequence=boundary_sequence)
     _validate_equipment_participant(store, manifest.get("equipment"), boundary_sequence=boundary_sequence)
