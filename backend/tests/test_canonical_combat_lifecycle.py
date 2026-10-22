@@ -2,7 +2,7 @@ from dataclasses import replace
 
 import pytest
 
-from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority
+from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority, EncounterAdmissionRequest
 from app.gameplay.event_store import DurableGameplayEventStore
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from test_combat_settlement_threat_consumer import _sources, _owner, _attempt
@@ -30,6 +30,61 @@ def _hit(owner, source, attempt, receipt):
         timeline_ref=source.timeline_ref, encounter_ref=source.encounter_ref,
         actor_incarnation_ref=source.actor_incarnation_ref, target_incarnation_ref=source.target_incarnation_ref,
         command_id="hit", idempotency_key="hit")
+
+
+def _admission(source, **changes):
+    values = dict(
+        world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+        actor_ref="character:char_a", target_ref="character:char_b",
+        actor_incarnation_ref=source.actor_incarnation_ref,
+        target_incarnation_ref=source.target_incarnation_ref,
+        presence_event_ids=source.presence_source_event_ids,
+        life_event_ids=source.life_state_source_event_ids,
+        faction_event_id=source.faction_source_event_id,
+        session_ref="ws_session:test", principal_ref="player:test",
+        allowed_actor_refs=("character:char_a",), connection_epoch=3,
+        lease_expires_at=200, command_id="admit:1", idempotency_key="admit:1",
+        causation_id="cause:admit", correlation_id="corr:admit", now=100,
+    )
+    values.update(changes)
+    return EncounterAdmissionRequest(**values)
+
+
+def test_admitted_encounter_is_minted_from_session_and_replays_without_hit(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "admission.db")
+    source = _sources(store)
+    owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+
+    first = owner.begin_admitted_encounter(_admission(source), authorized_caller="backend:combat")
+    assert first.committed
+    event = store.get_event(first.committed_event_ids[0])
+    encounter_ref = event.payload["encounter_ref"]
+    assert encounter_ref.startswith("encounter:")
+    assert event.payload["session_ref"] == "ws_session:test"
+    assert owner.encounter_projection(world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+                                      encounter_ref=encounter_ref)["state"] == "active"
+    replay = owner.begin_admitted_encounter(_admission(source), authorized_caller="backend:combat")
+    assert replay.committed and replay.idempotency_status == "duplicate_replayed"
+    assert replay.committed_event_ids == first.committed_event_ids
+    assert len(store.read_stream(f"gameplay:combat:encounter:{encounter_ref}")) == 1
+    store.close()
+
+
+@pytest.mark.parametrize("changes, code", [
+    ({"allowed_actor_refs": ("character:other",)}, "encounter_admission_invalid"),
+    ({"lease_expires_at": 99}, "encounter_session_expired"),
+    ({"connection_epoch": 0}, "encounter_admission_invalid"),
+    ({"world_ref": "world:other"}, "encounter_source_unavailable"),
+])
+def test_admitted_encounter_rejects_bad_binding_or_sources_without_write(tmp_path, changes, code):
+    store = DurableGameplayEventStore(tmp_path / "reject.db")
+    source = _sources(store)
+    owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+    before = len(store.read_events())
+    result = owner.begin_admitted_encounter(_admission(source, **changes), authorized_caller="backend:combat")
+    assert not result.committed and result.failure.error_code == code
+    assert len(store.read_events()) == before
+    store.close()
 
 
 def test_encounter_end_clears_projection_and_rejects_new_hit_after_durable_restart(tmp_path):

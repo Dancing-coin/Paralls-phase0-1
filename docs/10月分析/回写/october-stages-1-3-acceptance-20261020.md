@@ -1158,3 +1158,13 @@ drive scan or cleanup was performed.
 移除旧测试后清除遗留的 `pytest.mark.parametrize` 装饰器，避免它错误绑定到后续 social dialogue 测试。定向验证命令：`python -m pytest -q -p no:cacheprovider backend/tests/test_character_execution_contract.py backend/tests/test_character_object_execution.py --basetemp=D:\codex-temp\stage13-contract-fix\pytest --tb=short`，`TEMP` 与 `TMP` 同样指向 `D:\codex-temp\stage13-contract-fix`；结果 **53 passed in 5.85s**，4 个既有 FastAPI `on_event` 弃用告警。未运行全量 pytest、Harness all、模型、训练或 Godot。测试临时目录只在 D 盘，但本轮完成后的删除被执行策略拒绝，目录仍保留，未尝试绕过。
 
 证据边界：这是对象 owner contract 旧夹具清理及定向 owner 测试证据，不提升完整 Laya authenticated admission、候选来源完整性、多领域 action+target→L4→owner/common-cut、Q01–Q04 模型质量或 Godot G-A/G-B/G-C 状态。**后端**：对象 owner admission、receipt/replay/reopen 子项已验证；Laya 生产输入仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 多域链仍开放。**最终 Godot**：A/B/C 未操作。
+
+### 2026-10-22 combat encounter admission-only owner slice
+
+新增 `EncounterAdmissionRequest` 与 `CanonicalCombatThreatAuthority.begin_admitted_encounter()`。该 owner 只接受 backend 已解析的 session binding（session/principal/allowed actor scope/connection epoch/lease）及 canonical Presence、LifeState、Faction source refs；校验 actor scope、lease、source heads、incarnation 与 hostile relation 后，由 backend 依据 session 与幂等 key 稳定生成 `encounter_ref`，写入现有 `ENCOUNTER_BEGUN` owner receipt。客户端不得指定 encounter id。原 `begin_encounter()` hit-backed 兼容接口保留。
+
+定向验证：`test_canonical_combat_lifecycle.py` **17 passed**（D 盘 basetemp）。覆盖无 embodied hit admission、精确 retry/replay、scope/lease/epoch/source 失败零写以及旧 lifecycle 回归。
+
+证据边界：这是 backend owner admission slice，不是 authenticated production identity issuer。`WebSocketSessionAuthService` 的 `authenticated_session` adapter 仍 fail-closed，真实 `street_combat_attempt` ingress、Godot physics contact receipt、Laya 多 owner common cut、Q01–Q04 和 Godot G-A/B/C 仍未验收。未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：combat encounter admission owner 与持久 begin receipt 子项已验证；正式身份 issuer 和生产 ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from time import time
+from uuid import NAMESPACE_URL, uuid5
 
 from app.gameplay.event_store import GameplayEventStore, GameplayEventStoreSnapshotError
 from app.gameplay.models import AppendBatchResult
@@ -124,6 +126,36 @@ class CombatTargetIdentity:
 
     actor_ref: str
     target_refs: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class EncounterAdmissionRequest:
+    """Backend-resolved session admission for a street encounter.
+
+    The request deliberately carries binding facts rather than a client
+    supplied encounter id.  The session issuer remains outside this owner;
+    callers must pass the binding it resolved and verified at the boundary.
+    """
+
+    world_ref: str
+    timeline_ref: str
+    actor_ref: str
+    target_ref: str
+    actor_incarnation_ref: str
+    target_incarnation_ref: str
+    presence_event_ids: tuple[str, str]
+    life_event_ids: tuple[str, str]
+    faction_event_id: str
+    session_ref: str
+    principal_ref: str
+    allowed_actor_refs: tuple[str, ...]
+    connection_epoch: int
+    lease_expires_at: int
+    command_id: str
+    idempotency_key: str
+    causation_id: str
+    correlation_id: str
+    now: int | None = None
 
 
 class CanonicalCombatTargetReader:
@@ -271,6 +303,97 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
     def __init__(self, *, store: GameplayEventStore, authorized_callers: tuple[str, ...] = ()) -> None:
         self.store = store
         self.authorized_callers = frozenset(authorized_callers)
+
+    def begin_admitted_encounter(self, request: EncounterAdmissionRequest,
+                                 *, authorized_caller: str) -> AppendBatchResult:
+        """Create an encounter from an already authenticated session admission.
+
+        This is intentionally separate from ``begin_encounter`` which remains
+        the legacy hit-backed compatibility API.  The encounter reference is
+        minted here after admission and is never accepted from the client.
+        """
+        if authorized_caller not in self.authorized_callers:
+            return self._reject(request.command_id, "encounter_caller_not_authorized")
+        values = (request.world_ref, request.timeline_ref, request.actor_ref,
+                  request.target_ref, request.actor_incarnation_ref,
+                  request.target_incarnation_ref, request.session_ref,
+                  request.principal_ref, request.command_id,
+                  request.idempotency_key, request.causation_id,
+                  request.correlation_id)
+        if (any(not isinstance(value, str) or not value.strip() for value in values)
+                or request.actor_ref == request.target_ref
+                or len(request.presence_event_ids) != 2
+                or len(request.life_event_ids) != 2
+                or not request.allowed_actor_refs
+                or request.actor_ref not in request.allowed_actor_refs
+                or type(request.connection_epoch) is not int
+                or request.connection_epoch < 1
+                or type(request.lease_expires_at) is not int
+                or request.lease_expires_at < 1):
+            return self._reject(request.command_id, "encounter_admission_invalid")
+        now = int(time()) if request.now is None else request.now
+        if type(now) is not int or now < 0 or request.lease_expires_at < now:
+            return self._reject(request.command_id, "encounter_session_expired")
+        try:
+            sources = [self.store.get_event(ref) for ref in
+                       (*request.presence_event_ids, *request.life_event_ids,
+                        request.faction_event_id)]
+            attempt = CombatTargetIdentity(actor_ref=request.actor_ref,
+                                           target_refs=(request.target_ref,))
+            revisions = {row.stream_id: self.store.get_stream_head(row.stream_id)
+                         for row in sources}
+            for actor in (request.actor_ref, request.target_ref):
+                for suffix in {actor, actor.removeprefix("character:")}:
+                    stream = f"gameplay:character:life:{suffix}"
+                    revisions[stream] = self.store.get_stream_head(stream)
+            if (not self._valid_sources(sources, attempt, request.world_ref,
+                                        request.timeline_ref,
+                                        request.actor_incarnation_ref,
+                                        request.target_incarnation_ref)
+                    or not self._current_faction(sources[-1],
+                        actor_ref=request.actor_ref, target_ref=request.target_ref,
+                        world_ref=request.world_ref, timeline_ref=request.timeline_ref)
+                    or not all(self.store.get_stream_head(stream) == revision
+                               for stream, revision in revisions.items())):
+                return self._reject(request.command_id, "encounter_source_unavailable")
+            # Stable backend minting makes a lost response recoverable while
+            # keeping the reference outside the client supplied request.
+            encounter_ref = "encounter:" + uuid5(
+                NAMESPACE_URL, request.session_ref + ":" + request.idempotency_key
+            ).hex
+            payload = {
+                "world_ref": request.world_ref, "timeline_ref": request.timeline_ref,
+                "encounter_ref": encounter_ref, "actor_ref": request.actor_ref,
+                "target_ref": request.target_ref,
+                "actor_incarnation_ref": request.actor_incarnation_ref,
+                "target_incarnation_ref": request.target_incarnation_ref,
+                "source_event_ids": [row.event_id for row in sources],
+                "session_ref": request.session_ref,
+                "principal_ref": request.principal_ref,
+                "connection_epoch": request.connection_epoch,
+                "lease_expires_at": request.lease_expires_at,
+                "policy_revision": "combat-encounter-admission@1",
+                "authorized_caller": authorized_caller,
+            }
+            prior = self.store.get_by_idempotency(ENCOUNTER_PRINCIPAL,
+                                                  request.idempotency_key)
+            if prior is not None:
+                return self._lifecycle_replay(prior, payload, ENCOUNTER_BEGUN,
+                                              request.command_id,
+                                              request.idempotency_key)
+            stream = f"gameplay:combat:encounter:{encounter_ref}"
+            result = self.store.append_batch(build_atomic_event_batch(
+                command_id=request.command_id, principal_ref=ENCOUNTER_PRINCIPAL,
+                stream_id=stream, expected_revision=0,
+                event_specs=((ENCOUNTER_BEGUN, payload),),
+                idempotency_key=request.idempotency_key,
+                causation_id=request.causation_id,
+                correlation_id=request.correlation_id,
+                read_stream_revisions=revisions))
+            return result
+        except (KeyError, ValueError, TypeError, IndexError,
+                GameplayEventStoreSnapshotError):
+            return self._reject(request.command_id, "encounter_source_unavailable")
 
     def begin_encounter(self, *, attempt: ActionAttempt, authority_result: AuthorityResult,
                         presence_event_ids: tuple[str, str], life_event_ids: tuple[str, str],
