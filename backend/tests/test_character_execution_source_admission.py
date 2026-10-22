@@ -97,6 +97,121 @@ def test_changed_contract_is_rejected_at_production_ingress():
     assert main.character_agent_runtime.get_session_timeline("char_b") == before
 
 
+def test_websocket_execution_requires_current_session_actor_scope():
+    import app.main as main
+    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+
+    main.reset_runtime_state()
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10, payload=_contract().model_dump(mode="json"),
+    )
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("character:char_a",),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(
+        remote_host="127.0.0.1", observed_at=10, connection_ref="ws:actor-scope",
+    )
+    main._handle_envelope(main.Envelope(
+        message_type="websocket_session_bind",
+        payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+    ), connection_context=context)
+
+    messages = main._handle_envelope(main.Envelope(
+        message_type="character_agent_execution", payload=_contract().model_dump(mode="json"),
+    ), connection_context=context)
+
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["error_message"] == "execution_actor_scope_denied"
+
+
+def test_unbound_websocket_cannot_submit_recorded_execution():
+    import app.main as main
+    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+
+    main.reset_runtime_state()
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10, payload=_contract().model_dump(mode="json"),
+    )
+    context = WebSocketConnectionContext(
+        remote_host="127.0.0.1", observed_at=10, connection_ref="ws:unbound",
+    )
+
+    messages = main._handle_envelope(main.Envelope(
+        message_type="character_agent_execution", payload=_contract().model_dump(mode="json"),
+    ), connection_context=context)
+
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["error_message"] == "execution_session_required"
+
+
+def test_revoked_websocket_binding_cannot_submit_recorded_execution():
+    import app.main as main
+    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+
+    main.reset_runtime_state()
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10, payload=_contract().model_dump(mode="json"),
+    )
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("character:char_b",),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(
+        remote_host="127.0.0.1", observed_at=10, connection_ref="ws:revoked",
+    )
+    main._handle_envelope(main.Envelope(
+        message_type="websocket_session_bind",
+        payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+    ), connection_context=context)
+    main.websocket_session_auth_service.revoke_session(
+        context.binding.session_ref, reason_code="test_revocation", now=11,
+    )
+    context.observed_at = 11
+
+    messages = main._handle_envelope(main.Envelope(
+        message_type="character_agent_execution", payload=_contract().model_dump(mode="json"),
+    ), connection_context=context)
+
+    assert messages[0]["payload"]["accepted"] is False
+    assert messages[0]["payload"]["error_message"] == "execution_session_stale"
+
+
+def test_authorized_websocket_actor_passes_transport_admission():
+    import app.main as main
+    from app.services.websocket_session_auth_service import WebSocketConnectionContext
+
+    main.reset_runtime_state()
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_b", producer_ts=10, payload=_contract().model_dump(mode="json"),
+    )
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("character:char_b",),
+        issued_at=10,
+        expires_at=20,
+    )
+    context = WebSocketConnectionContext(
+        remote_host="127.0.0.1", observed_at=10, connection_ref="ws:authorized",
+    )
+    main._handle_envelope(main.Envelope(
+        message_type="websocket_session_bind",
+        payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+    ), connection_context=context)
+
+    messages = main._handle_envelope(main.Envelope(
+        message_type="character_agent_execution", payload=_contract().model_dump(mode="json"),
+    ), connection_context=context)
+
+    assert messages[0]["payload"].get("error_message") != "execution_actor_scope_denied"
+    assert messages[0]["payload"].get("error_message") != "execution_session_required"
+    assert messages[0]["payload"].get("error_message") != "execution_session_stale"
+
+
 def test_conflicting_recorded_duplicate_does_not_authorize_original():
     store = CharacterAgentSessionStore()
     for contract in (_contract(), _contract(semantic_action_id="use")):

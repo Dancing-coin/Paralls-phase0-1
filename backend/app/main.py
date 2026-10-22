@@ -5410,6 +5410,32 @@ def _handle_envelope(
 
     if envelope.message_type == "character_agent_execution":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        if connection_context.connection_ref != "direct_handler":
+            binding = connection_context.binding
+            if binding is None:
+                return [_as_error_ack(
+                    source_type=envelope.message_type,
+                    route="character_agent_execution_session",
+                    error=ValueError("execution_session_required"),
+                )]
+            current_binding = websocket_session_auth_service.resolve_binding(binding.session_ref)
+            if (current_binding != binding
+                    or (binding.lease_expires_at and binding.lease_expires_at <= connection_context.observed_at)):
+                return [_as_error_ack(
+                    source_type=envelope.message_type,
+                    route="character_agent_execution_session",
+                    error=ValueError("execution_session_stale"),
+                )]
+            actor_ref = payload.get("actor_ref")
+            if not isinstance(actor_ref, str) or not actor_ref:
+                actor_id = str(payload.get("actor_id", "") or "")
+                actor_ref = actor_id if actor_id.startswith("character:") else f"character:{actor_id}"
+            if actor_ref not in binding.allowed_actor_refs:
+                return [_as_error_ack(
+                    source_type=envelope.message_type,
+                    route="character_agent_execution_session",
+                    error=ValueError("execution_actor_scope_denied"),
+                )]
         legacy_bundle = payload.get("action_request_bundle")
         is_legacy_bundle = (
             "turn_id" not in payload
