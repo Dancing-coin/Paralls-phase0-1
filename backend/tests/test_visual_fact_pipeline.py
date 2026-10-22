@@ -373,16 +373,18 @@ def test_raw_visual_fact_updates_character_perceived_input_path() -> None:
         )
     )
 
-    perceived = main.character_perceived_input_service.get_latest("char_a")
+    perceived = main.character_perceived_input_service.get_latest("char_c")
+    target_perceived = main.character_perceived_input_service.get_latest("char_a")
 
     assert perceived is not None
-    assert perceived.actor_id == "char_a"
+    assert perceived.actor_id == "char_c"
     assert perceived.percept_channel == "visual"
     assert perceived.clarity_score == 1.0
     assert perceived.certainty_score == 1.0
+    assert target_perceived is None
 
 
-def test_raw_visual_fact_for_char_a_emits_character_agent_execution() -> None:
+def test_raw_visual_fact_for_observer_emits_character_agent_execution() -> None:
     event = VisualFactEvent(
         actor_id="char_c",
         room_id="room_demo",
@@ -407,7 +409,9 @@ def test_raw_visual_fact_for_char_a_emits_character_agent_execution() -> None:
 
     assert output_messages == []
     assert execution_messages
-    assert execution_messages[0]["payload"]["actor_ref"] == "character:char_a"
+    perceived = main.character_perceived_input_service.get_latest("char_c")
+    assert perceived is not None
+    assert perceived.target_actor_id == "char_a"
     assert execution_messages[0]["payload"]["turn_id"]
     assert "actor_control_frames" not in execution_messages[0]["payload"]
     assert "presentation" in execution_messages[0]["payload"]["allowed_realization_hints"]

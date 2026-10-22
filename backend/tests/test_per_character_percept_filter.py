@@ -47,10 +47,10 @@ def test_filter_candidate_for_matching_actor_returns_character_perceived_event()
         correlation_id="vf:300",
     )
 
-    perceived = filter_candidate_for_actor(candidate, actor_id="char_a")
+    perceived = filter_candidate_for_actor(candidate, actor_id="char_c")
 
     assert perceived is not None
-    assert perceived.actor_id == "char_a"
+    assert perceived.actor_id == "char_c"
     assert perceived.percept_channel == "visual"
     assert perceived.source_actor_id == "char_c"
     assert perceived.target_actor_id == "char_a"
@@ -80,6 +80,26 @@ def test_filter_candidate_for_non_matching_actor_returns_none() -> None:
     assert perceived is None
 
 
+def test_visual_candidate_is_not_delivered_to_its_target_actor() -> None:
+    candidate = CandidatePerceptEvent(
+        percept_channel="visual",
+        source_fact_family="visual_fact",
+        source_fact_type="fixed_gaze_on_target",
+        producer_ts=302,
+        room_id="room_demo",
+        scene_id="scene_demo",
+        zone_id="zone_focus",
+        source_actor_id="char_c",
+        target_actor_id="char_a",
+        audience_scope="candidate",
+        observability={"visual": True},
+        causation_id="vf:302",
+        correlation_id="vf:302",
+    )
+
+    assert filter_candidate_for_actor(candidate, actor_id="char_a") is None
+
+
 def test_filter_drops_visual_candidate_when_actor_is_not_facing_target() -> None:
     candidate = CandidatePerceptEvent(
         percept_channel="visual",
@@ -99,7 +119,7 @@ def test_filter_drops_visual_candidate_when_actor_is_not_facing_target() -> None
 
     perceived = filter_candidate_for_actor(
         candidate,
-        actor_id="char_a",
+        actor_id="char_c",
         context={
             "is_facing_target": False,
             "distance_m": 2.0,
@@ -130,7 +150,7 @@ def test_filter_keeps_visual_candidate_when_actor_is_facing_target() -> None:
 
     perceived = filter_candidate_for_actor(
         candidate,
-        actor_id="char_a",
+        actor_id="char_c",
         context={
             "is_facing_target": True,
             "distance_m": 2.0,
@@ -140,7 +160,7 @@ def test_filter_keeps_visual_candidate_when_actor_is_facing_target() -> None:
     )
 
     assert perceived is not None
-    assert perceived.actor_id == "char_a"
+    assert perceived.actor_id == "char_c"
     assert perceived.clarity_score == 1.0
     assert perceived.certainty_score == 1.0
     assert perceived.distance_m == 2.0
@@ -165,7 +185,7 @@ def test_filter_returns_private_event_with_quality_scores() -> None:
 
     perceived = filter_candidate_for_actor(
         candidate,
-        actor_id="char_a",
+        actor_id="char_c",
         context={
             "is_facing_target": True,
             "distance_m": 2.0,
@@ -200,7 +220,7 @@ def test_filter_reduces_certainty_for_distant_candidate() -> None:
 
     perceived = filter_candidate_for_actor(
         candidate,
-        actor_id="char_a",
+        actor_id="char_c",
         context={
             "is_facing_target": True,
             "distance_m": 6.0,

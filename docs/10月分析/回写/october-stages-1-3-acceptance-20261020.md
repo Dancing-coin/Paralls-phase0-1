@@ -1,5 +1,16 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 visual observer private-recipient repair
+
+`visual_fact` 中 `source.actor_id` 是观察者，`targets.actor_id` 是被观察者。此前候选 dispatch 和角色私有过滤按目标角色接收，导致观察事实进入 `char_a` 而不是观察者 `char_c` 的私有 cognition。现在 visual candidate 固定投递到 source observer；filter 拒绝目标角色及其他角色，只保留原 target refs；focus-mirror 去重也按 observer 接收语义执行。定向 TDD 首轮按预期 RED（4 failures）；修复后 `test_per_character_percept_filter.py`、`test_visual_fact_pipeline.py`、`test_candidate_percept_service.py` **47 passed**，4 个既有 FastAPI lifespan 弃用告警，最终 basetemp `D:\codex-temp\laya-visual-recipient-final`。本批没有调用 Laya、没有 backend 真实 WS 请求，不能证明模型执行或下游 execution message 的 owner/actor 正确性；该新增报告覆盖 L1 visual 私有收件人语义。
+
+| 验收面 | 状态与边界 |
+|---|---|
+| 后端 | visual fact observer→private percept 收件子项已实现并定向验证；完整 backend→Laya 生产链路仍局部，当前 shell 未配置 `CHARACTER_LAYA_ENDPOINT` / `CHARACTER_LAYA_API_KEY` |
+| 模型质量 | Q01–Q04 未验收；本批未调用模型、未读取 sealed split、未训练/微调 |
+| 角色闭环 | observer private visual input 已验证；完整输入/候选→Laya action+target→L4→多领域 owner receipt→恢复/回放仍开放 |
+| 最终 Godot | G-A/G-B/G-C 未操作，仍留到后端和角色链路之后 |
+
 ### 2026-10-22 Laya 本地模型单次推理复验
 
 回答“Laya 模型是否本地跑通”：是。本次启动本地服务后向 `127.0.0.1:8765/v1/systemone` 发出真实请求，HTTP 200；响应标记 `model=laya-rl-agent`，路由 `multilingual`，权重仓库为 `/mnt/d/laya-probe-cache/laya-multilingual`，实际 choice 为 `observe_boss`。输入 89 tokens，未截断。响应原件保存在 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-local-inference-20261022\response.json`。
@@ -469,7 +480,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 | R02 memory；规格04 | 局部实现 | recall、semantic cards、writeback policy、consistency/recovery tests | 真实 outcome 与 authority receipt 绑定，重复、冲突、重开不重复沉淀；保留隐私与来源 |
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 生产 L3 默认完整输入预算门已启用（c3fbbf27）；正式运行 tokenizer/config 冻结、同 request usage/pins 仍待真实模型验证，不能靠静默截断解决 |
-| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect/worktable 输入） | 私有 visible refs/source/catalog、ESM inspect/worktable policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler | 已补原生产目录缺口的 inspect 切片及 worktable `use_object`/`finish_use` 局部切片：typed roundtrip、action-specific supported intents、空 visibility 拒绝、scope 隔离与 owner 状态 digest；其余领域动作、完整策略覆盖与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
+| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect/worktable 输入；visual observer private recipient 子项已验证） | 私有 visible refs/source/catalog、ESM inspect/worktable policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler；visual fact 按 `source.actor_id` 投递，见本批新增证据 | 已补原生产目录缺口的 inspect 切片、worktable `use_object`/`finish_use` 局部切片及 L1 visual observer→private percept；其余领域动作、完整策略覆盖、完整目标来源与执行时 revalidation 仍缺，不得用 attention 或当前玩家猜目标 |
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证；stage typed 正文/身份校验增量见下） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 与 worktable use 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect；在线 L2＋Laya worktable use/finish 与新进程恢复）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；worktable use 已有真实 Laya→L4→owner 回执；新增在线 L2/Laya 的真实 use→finish 连续周期及两份原回执新进程零写恢复；显式任务驱动、生产产出和完整多域仍缺。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |

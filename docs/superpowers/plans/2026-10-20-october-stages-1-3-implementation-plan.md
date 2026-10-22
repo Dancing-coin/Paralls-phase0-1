@@ -38,7 +38,7 @@
 
 ## Task 1: 真实私有输入、动作目标与同源能力
 
-2026-10-22 production Laya preflight repair：按 [registered action-family projection](../specs/2026-10-22-registered-action-family-projection.md) 将知识域与 L3 family 分离；正式 char_a/char_b 包络、rank/revocation/缺映射拒绝及相邻 capability/learning/social 回归 **104 passed**。下一步修正 development observer 的显式 visual receiver/target 与 dedicated Laya credential，再运行真实认证 WS→Laya→L4→owner slice；不替代 multi-owner、formal Q01–Q04 或 Godot。
+2026-10-22 production Laya preflight repair：按 [registered action-family projection](../specs/2026-10-22-registered-action-family-projection.md) 将知识域与 L3 family 分离；正式 char_a/char_b 包络、rank/revocation/缺映射拒绝及相邻 capability/learning/social 回归 **104 passed**。2026-10-22 随后修复 `visual_fact` 按观察者而非目标角色进入 private percept 的收件错误，RED 4 failures，相关三文件最终 **47 passed**；详见统一矩阵。Provider 专用凭据隔离已有定向历史证据，但当前 shell 未配置 `CHARACTER_LAYA_ENDPOINT` / `CHARACTER_LAYA_API_KEY`。下一步由本轮自有 backend 配置本地 endpoint 与专用凭据，选择有正式 owner 的来源执行真实认证 WS→Laya→L4→owner slice；不接管当前在线服务，也不替代 multi-owner、formal Q01–Q04 或 Godot。
 
 **2026-10-22 social admission ruling：** spatial-only 草稿撤除；中性 social target 必须组合 canonical Presence/Life、私有 visual lineage、当前 scope 与真实空间来源，不能从 combat hostile faction 推导社交权限。canonical ingress 已要求当前 owner 重投影的 action/target/route/digest；缺 catalog 零写拒绝。原 owner receipt 的精确恢复在当前 target 消失时仍可执行。旧 synthetic-success fixture 降为拒绝验证，owner durable replay/reopen 保留；三文件定向 47 passed。下一实现任务是正式中性 source catalog 与原 owner CAS/L4 接线，不继续扩展 synthetic contract success。R05/R07–R09、Q01–Q04、Godot A/B/C 均未关闭。
 

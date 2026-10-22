@@ -8057,7 +8057,9 @@ def _should_suppress_character_agent_candidate_from_focus_mirror(
 
     target_actor_id = str(getattr(candidate, "target_actor_id", "") or "")
     target_object_id = str(getattr(candidate, "target_object_id", "") or "")
-    if target_actor_id != "" and target_actor_id != actor_id:
+    if target_actor_id != "" and target_actor_id != actor_id and actor_id != str(
+        getattr(candidate, "source_actor_id", "") or ""
+    ):
         return False
     if target_object_id != "":
         focus_target = str(focus.get("target_object_id", "") or "")
@@ -8492,7 +8494,9 @@ def _character_agent_messages_from_fact_candidates(
             )
         )
         candidate_actor_ids: list[str] = []
-        if candidate.target_actor_id != "":
+        if candidate.percept_channel == "visual" and candidate.source_actor_id != "":
+            candidate_actor_ids.append(candidate.source_actor_id)
+        elif candidate.target_actor_id != "":
             candidate_actor_ids.append(candidate.target_actor_id)
         elif event.source.actor_id:
             candidate_actor_ids.append(event.source.actor_id)

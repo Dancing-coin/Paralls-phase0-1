@@ -8,7 +8,10 @@ def filter_candidate_for_actor(
     actor_id: str,
     context: dict[str, object] | None = None,
 ) -> CharacterPerceivedEvent | None:
-    if candidate.target_actor_id != "" and candidate.target_actor_id != actor_id:
+    if candidate.percept_channel == "visual":
+        if candidate.source_actor_id and candidate.source_actor_id != actor_id:
+            return None
+    elif candidate.target_actor_id != "" and candidate.target_actor_id != actor_id:
         return None
 
     ctx = context or {}
