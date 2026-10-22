@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from secrets import token_urlsafe
 from time import time
-from typing import Callable, Literal
+from typing import Callable, Literal, NamedTuple
 
 from pydantic import BaseModel, ConfigDict, Field
 from app.ws_protocol import GameplayMirrorCapabilityOffer, GameplayMirrorCapabilityProfile
@@ -13,6 +13,15 @@ from app.ws_protocol import GameplayMirrorCapabilityOffer, GameplayMirrorCapabil
 
 CredentialKind = Literal["trusted_local_launch", "authenticated_session"]
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
+
+
+class AuthenticatedSessionIdentity(NamedTuple):
+    """Verified identity returned by the deployment-owned session adapter."""
+
+    principal_ref: str
+    allowed_actor_refs: tuple[str, ...]
+    lease_expires_at: int
+    allowed_government_drought_advisory_jurisdiction_refs: tuple[str, ...] = ()
 
 
 class WebSocketSessionEnrollment(BaseModel):
@@ -95,9 +104,11 @@ class WebSocketSessionAuthService:
         self,
         *,
         authenticated_session_adapter_configured: bool = False,
+        authenticated_session_resolver: Callable[[str, int], AuthenticatedSessionIdentity | None] | None = None,
         renewal_scope_selector: Callable[[WebSocketSessionBinding], tuple[str, ...]] | None = None,
     ) -> None:
         self.authenticated_session_adapter_configured = authenticated_session_adapter_configured
+        self._authenticated_session_resolver = authenticated_session_resolver
         self._renewal_scope_selector = renewal_scope_selector or (lambda binding: binding.allowed_actor_refs)
         self._trusted_credentials: dict[str, _TrustedLocalSessionCredential] = {}
         self._closed_trusted_credentials: dict[str, Literal["used", "revoked", "expired"]] = {}
@@ -153,9 +164,38 @@ class WebSocketSessionAuthService:
         now: int,
     ) -> WebSocketSessionBindResult:
         if enrollment.credential_kind == "authenticated_session":
-            if not self.authenticated_session_adapter_configured:
-                return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_adapter_unavailable")
-            return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_adapter_not_implemented")
+            if self._authenticated_session_resolver is None:
+                if not self.authenticated_session_adapter_configured:
+                    return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_adapter_unavailable")
+                return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_adapter_not_implemented")
+            try:
+                identity = self._authenticated_session_resolver(enrollment.credential, now)
+            except Exception:
+                identity = None
+            if not isinstance(identity, AuthenticatedSessionIdentity):
+                return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_invalid")
+            if (not isinstance(identity.principal_ref, str) or not identity.principal_ref.strip()
+                    or not isinstance(identity.allowed_actor_refs, tuple) or not identity.allowed_actor_refs
+                    or type(identity.lease_expires_at) is not int
+                    or identity.lease_expires_at < now
+                    or any(not isinstance(actor, str) or not actor.strip() for actor in identity.allowed_actor_refs)
+                    or not isinstance(identity.allowed_government_drought_advisory_jurisdiction_refs, tuple)
+                    or any(not isinstance(jurisdiction, str) or not jurisdiction.strip()
+                           for jurisdiction in identity.allowed_government_drought_advisory_jurisdiction_refs)):
+                return WebSocketSessionBindResult(accepted=False, error_code="authenticated_session_invalid")
+            binding = WebSocketSessionBinding(
+                session_ref=f"ws_session:{token_urlsafe(24)}",
+                principal_ref=identity.principal_ref,
+                allowed_actor_refs=tuple(dict.fromkeys(identity.allowed_actor_refs)),
+                allowed_government_drought_advisory_jurisdiction_refs=tuple(
+                    dict.fromkeys(identity.allowed_government_drought_advisory_jurisdiction_refs)
+                ),
+                connection_epoch=self._next_connection_epoch,
+                lease_expires_at=identity.lease_expires_at,
+            )
+            self._next_connection_epoch += 1
+            self._bindings[binding.session_ref] = binding
+            return WebSocketSessionBindResult(accepted=True, binding=binding)
         if remote_host not in _LOOPBACK_HOSTS:
             return WebSocketSessionBindResult(accepted=False, error_code="trusted_local_launch_requires_loopback")
         closed = self._closed_trusted_credentials.get(enrollment.credential)

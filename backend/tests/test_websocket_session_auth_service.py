@@ -1,4 +1,8 @@
-from app.services.websocket_session_auth_service import WebSocketSessionAuthService, WebSocketSessionEnrollment
+from app.services.websocket_session_auth_service import (
+    AuthenticatedSessionIdentity,
+    WebSocketSessionAuthService,
+    WebSocketSessionEnrollment,
+)
 
 
 def _enrollment(credential: str, *, credential_kind: str = "trusted_local_launch") -> WebSocketSessionEnrollment:
@@ -75,6 +79,65 @@ def test_authenticated_session_stays_fail_closed_without_adapter() -> None:
 
     assert result.accepted is False
     assert result.error_code == "authenticated_session_adapter_unavailable"
+
+
+def test_authenticated_session_uses_deployment_resolver_and_backend_owned_binding() -> None:
+    calls = []
+
+    def resolve(credential: str, now: int) -> AuthenticatedSessionIdentity | None:
+        calls.append((credential, now))
+        if credential != "provider-token":
+            return None
+        return AuthenticatedSessionIdentity(
+            principal_ref="principal:account:1",
+            allowed_actor_refs=("actor:a", "actor:a"),
+            lease_expires_at=now + 30,
+        )
+
+    service = WebSocketSessionAuthService(authenticated_session_resolver=resolve)
+    result = service.bind_session(
+        _enrollment("provider-token", credential_kind="authenticated_session"),
+        remote_host="203.0.113.7",
+        now=10,
+    )
+
+    assert result.accepted and result.binding is not None
+    assert result.binding.principal_ref == "principal:account:1"
+    assert result.binding.allowed_actor_refs == ("actor:a",)
+    assert result.binding.connection_epoch == 1
+    assert calls == [("provider-token", 10)]
+
+
+def test_authenticated_session_resolver_failure_is_fail_closed() -> None:
+    service = WebSocketSessionAuthService(authenticated_session_resolver=lambda credential, now: None)
+    result = service.bind_session(
+        _enrollment("invalid", credential_kind="authenticated_session"),
+        remote_host="203.0.113.7",
+        now=10,
+    )
+    assert result.accepted is False
+    assert result.error_code == "authenticated_session_invalid"
+
+
+def test_authenticated_session_resolver_errors_and_malformed_identity_fail_closed() -> None:
+    def unavailable(credential: str, now: int) -> AuthenticatedSessionIdentity | None:
+        raise TimeoutError("provider unavailable")
+
+    malformed = AuthenticatedSessionIdentity(
+        principal_ref="principal:account:1",
+        allowed_actor_refs=("actor:a",),
+        lease_expires_at=30,
+        allowed_government_drought_advisory_jurisdiction_refs=("",),
+    )
+    for resolver in (unavailable, lambda credential, now: object(), lambda credential, now: malformed):
+        service = WebSocketSessionAuthService(authenticated_session_resolver=resolver)
+        result = service.bind_session(
+            _enrollment("provider-token", credential_kind="authenticated_session"),
+            remote_host="203.0.113.7",
+            now=10,
+        )
+        assert result.accepted is False
+        assert result.error_code == "authenticated_session_invalid"
 
 
 def test_expired_launch_credentials_are_pruned_without_revoking_active_bindings() -> None:

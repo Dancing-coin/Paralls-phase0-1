@@ -1339,3 +1339,9 @@ RED：伪造非空字符串被旧实现接纳 **1 failed**；接口新增前14�
 TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注册动作缺失，最小实现改为保留完整动作×可见目标并标注阻断原因，最终 `test_development_inventory_exposes_registered_actions_and_explicit_owner_gates` **1 passed**。完整准备测试仍会被现有 source pin drift fail-closed 阻止；本批未自动刷新 pin。临时目录为 `D:\codex-temp\laya-inventory-green`，使用后已清理；未运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：新增可追溯的 development action-target inventory；真实 owner route、L4 合同、runtime legality 仍未实现。**模型质量**：Q01–Q04 未验收，inventory 不计入正式质量。**角色闭环**：完整 Laya 输入→候选→action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
+### 2026-10-22 authenticated session resolver boundary
+
+`WebSocketSessionAuthService` 增加可注入的 deployment-owned authenticated-session resolver：仅由 resolver 返回的 verified principal、actor scope、advisory scope 与 lease 生成 backend binding，enrollment payload 不提供授权主体。resolver 缺失、返回错误类型/无效 scope、过期 lease 或抛出运行异常均 fail-closed。该 seam 不是实际 identity provider；当前 main composition 未注入 resolver，生产登录仍未实现。
+
+定向验证：`test_websocket_session_auth_service.py` 与 `test_canonical_combat_lifecycle.py` 在 D 盘 basetemp 复验。该项只属于后端 authenticated issuer 的“可注入边界已实现、production adapter 未实现”；不构成真实登录、Laya 调用或 combat ingress 验收。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作。
