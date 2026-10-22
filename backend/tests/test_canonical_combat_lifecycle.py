@@ -4,6 +4,7 @@ import pytest
 
 from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority, EncounterAdmissionRequest
 from app.gameplay.event_store import DurableGameplayEventStore
+from app.services.websocket_session_auth_service import WebSocketSessionAuthService, WebSocketSessionEnrollment
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from test_combat_settlement_threat_consumer import _sources, _owner, _attempt
 
@@ -50,20 +51,40 @@ def _admission(source, **changes):
     return EncounterAdmissionRequest(**values)
 
 
+def _session_auth():
+    auth = WebSocketSessionAuthService()
+    credential = auth.create_trusted_local_launch_credential(
+        principal_ref="player:test", allowed_actor_refs=("character:char_a",),
+        issued_at=0, expires_at=200)
+    result = auth.bind_session(
+        WebSocketSessionEnrollment(
+            credential_kind="trusted_local_launch", credential=credential, protocol_version=1),
+        remote_host="127.0.0.1", now=100)
+    assert result.accepted and result.binding is not None
+    return auth, result.binding
+
+
 def test_admitted_encounter_is_minted_from_session_and_replays_without_hit(tmp_path):
     store = DurableGameplayEventStore(tmp_path / "admission.db")
     source = _sources(store)
     owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+    auth, binding = _session_auth()
 
-    first = owner.begin_admitted_encounter(_admission(source), authorized_caller="backend:combat")
+    first = owner.begin_admitted_encounter(_admission(source, session_ref=binding.session_ref,
+                                                       connection_epoch=binding.connection_epoch,
+                                                       lease_expires_at=binding.lease_expires_at),
+                                           authorized_caller="backend:combat", session_auth=auth)
     assert first.committed
     event = store.get_event(first.committed_event_ids[0])
     encounter_ref = event.payload["encounter_ref"]
     assert encounter_ref.startswith("encounter:")
-    assert event.payload["session_ref"] == "ws_session:test"
+    assert event.payload["session_ref"] == binding.session_ref
     assert owner.encounter_projection(world_ref=source.world_ref, timeline_ref=source.timeline_ref,
                                       encounter_ref=encounter_ref)["state"] == "active"
-    replay = owner.begin_admitted_encounter(_admission(source), authorized_caller="backend:combat")
+    replay = owner.begin_admitted_encounter(_admission(source, session_ref=binding.session_ref,
+                                                        connection_epoch=binding.connection_epoch,
+                                                        lease_expires_at=binding.lease_expires_at),
+                                            authorized_caller="backend:combat", session_auth=auth)
     assert replay.committed and replay.idempotency_status == "duplicate_replayed"
     assert replay.committed_event_ids == first.committed_event_ids
     assert len(store.read_stream(f"gameplay:combat:encounter:{encounter_ref}")) == 1
@@ -80,8 +101,14 @@ def test_admitted_encounter_rejects_bad_binding_or_sources_without_write(tmp_pat
     store = DurableGameplayEventStore(tmp_path / "reject.db")
     source = _sources(store)
     owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+    auth, binding = _session_auth()
+    changes = {"session_ref": binding.session_ref,
+               "connection_epoch": binding.connection_epoch,
+               "lease_expires_at": binding.lease_expires_at, **changes}
     before = len(store.read_events())
-    result = owner.begin_admitted_encounter(_admission(source, **changes), authorized_caller="backend:combat")
+    result = owner.begin_admitted_encounter(_admission(source, **changes),
+                                            authorized_caller="backend:combat",
+                                            session_auth=auth)
     assert not result.committed and result.failure.error_code == code
     assert len(store.read_events()) == before
     store.close()

@@ -1168,3 +1168,11 @@ drive scan or cleanup was performed.
 证据边界：这是 backend owner admission slice，不是 authenticated production identity issuer。`WebSocketSessionAuthService` 的 `authenticated_session` adapter 仍 fail-closed，真实 `street_combat_attempt` ingress、Godot physics contact receipt、Laya 多 owner common cut、Q01–Q04 和 Godot G-A/B/C 仍未验收。未运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：combat encounter admission owner 与持久 begin receipt 子项已验证；正式身份 issuer 和生产 ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多 owner receipt/recovery/replay 仍开放。**最终 Godot**：A/B/C 未操作，继续最后集中验收。
+
+### 2026-10-22 combat admission binding revalidation
+
+收紧 `begin_admitted_encounter()`：调用方必须提供当前 `WebSocketSessionAuthService`，owner 通过 `session_ref` 重新解析 active binding，并逐项匹配 principal、allowed actor scope、connection epoch、lease；撤销、过期、未知或字段篡改的旧 binding 在读取/写入 combat source 前 fail-closed。Faction source 同时要求 transaction 归属 `FACTION_PRINCIPAL`。
+
+定向复验：`test_canonical_combat_lifecycle.py` **17 passed**（D 盘 basetemp）。新增覆盖真实 backend-issued trusted-local binding、exact replay，以及 binding/source 失败零写。该证据仍不代表 `authenticated_session` issuer 已实现；真实 street ingress、Godot contact receipt、完整 Laya 多 owner common cut、Q01–Q04、Godot A/B/C 仍开放。未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：encounter admission 的当前 binding revalidation 与 faction provenance 已验证；正式 authenticated issuer 和生产 ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作。

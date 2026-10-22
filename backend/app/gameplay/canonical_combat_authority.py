@@ -16,6 +16,7 @@ from app.gameplay.event_store import GameplayEventStore, GameplayEventStoreSnaps
 from app.gameplay.models import AppendBatchResult
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.models.embodied_interaction import ActionAttempt, AuthorityResult
+from app.services.websocket_session_auth_service import WebSocketSessionAuthService
 
 
 FACTION_PRINCIPAL = "authority:combat:faction-relation"
@@ -305,7 +306,8 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
         self.authorized_callers = frozenset(authorized_callers)
 
     def begin_admitted_encounter(self, request: EncounterAdmissionRequest,
-                                 *, authorized_caller: str) -> AppendBatchResult:
+                                 *, authorized_caller: str,
+                                 session_auth: WebSocketSessionAuthService) -> AppendBatchResult:
         """Create an encounter from an already authenticated session admission.
 
         This is intentionally separate from ``begin_encounter`` which remains
@@ -334,6 +336,14 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
         now = int(time()) if request.now is None else request.now
         if type(now) is not int or now < 0 or request.lease_expires_at < now:
             return self._reject(request.command_id, "encounter_session_expired")
+        binding = session_auth.resolve_binding(request.session_ref)
+        if (binding is None or binding.binding_state != "bound_active"
+                or binding.principal_ref != request.principal_ref
+                or binding.allowed_actor_refs != request.allowed_actor_refs
+                or binding.connection_epoch != request.connection_epoch
+                or binding.lease_expires_at != request.lease_expires_at
+                or binding.lease_expires_at < now):
+            return self._reject(request.command_id, "encounter_session_unavailable")
         try:
             sources = [self.store.get_event(ref) for ref in
                        (*request.presence_event_ids, *request.life_event_ids,
@@ -353,6 +363,9 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
                     or not self._current_faction(sources[-1],
                         actor_ref=request.actor_ref, target_ref=request.target_ref,
                         world_ref=request.world_ref, timeline_ref=request.timeline_ref)
+                    or not self.store.transaction_owns_event(
+                        transaction_id=sources[-1].transaction_id,
+                        event_id=sources[-1].event_id, principal_ref=FACTION_PRINCIPAL)
                     or not all(self.store.get_stream_head(stream) == revision
                                for stream, revision in revisions.items())):
                 return self._reject(request.command_id, "encounter_source_unavailable")
