@@ -1,5 +1,16 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-23 当前 Laya listener 凭据定位与真实推理复验
+
+当前 `127.0.0.1:8765` listener 由 WSL `laya-serve` 进程提供，进程环境中存在本地 `LAYA_API_KEY`；当前 Windows backend shell 未设置 `CHARACTER_LAYA_API_KEY`。此前 401 是请求进程未使用服务当前凭据，不是模型服务要求外部 API key。只读从 listener 进程环境临时取值，在本次 PowerShell 进程内完成一次 `POST /v1/systemone`；服务 `/health` 返回 200，真实推理返回 HTTP 200、`model=laya-rl-agent`、`routing=multilingual`、choice `observe`。凭据未打印、写文件或持久化；没有重启、接管或停止 listener，也没有在 C 盘创建临时文件。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | 当前 listener 认证与一次真实本地推理已复验；Windows shell/backend provider 的凭据启动接线仍未配置，本次直连不证明 backend→Laya 生产 transport |
+| 模型质量 | Q01–Q04 未验收；本请求为开发 smoke，不属于正式样本，没有访问 calibration/final/holdout 或训练/微调 |
+| 角色闭环 | 无生产 backend turn、完整候选、L4、owner commit/receipt 或恢复回放证据 |
+| 最终 Godot | G-A/G-B/G-C 未操作，仍留到后端和角色依赖收口之后 |
+
 ### 2026-10-23 R01/R07 生产组合下同角色快慢循环与 stale owner 终态
 
 新增 `test_production_fast_turn_completes_while_slow_goal_provider_is_pending`，在真实 component lifespan、production `CharacterCognitionDriver`、原 Character goal owner 和共享 `DialogueProviderSlots` 组合中，将慢目标 provider 保持 pending；同一 `char_a` 随后通过 typed visual cognition 完成 L2 与 L3 快回合。释放慢 provider 后，慢结果依据原 source pin 进入持久 `stale` terminal receipt，未产生该慢 proposal 的 `goal_state_event`。同文件慢目标完成基线、driver dispatch/terminal 与 runtime trigger 合计 **12 passed**：
