@@ -1176,3 +1176,13 @@ drive scan or cleanup was performed.
 定向复验：`test_canonical_combat_lifecycle.py` **17 passed**（D 盘 basetemp）。新增覆盖真实 backend-issued trusted-local binding、exact replay，以及 binding/source 失败零写。该证据仍不代表 `authenticated_session` issuer 已实现；真实 street ingress、Godot contact receipt、完整 Laya 多 owner common cut、Q01–Q04、Godot A/B/C 仍开放。未运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：encounter admission 的当前 binding revalidation 与 faction provenance 已验证；正式 authenticated issuer 和生产 ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 链仍开放。**最终 Godot**：A/B/C 未操作。
+
+### 2026-10-22 street combat encounter admission backend ingress
+
+在 `main.py` runtime composition 注册同一 `GameplayEventStore` 上的 `CanonicalCombatThreatAuthority`，并新增 `street_combat_encounter_admit` boundary message。该入口只从当前 WebSocket connection 的 backend-issued session binding 读取 session/principal/actor scope/epoch/lease，再结合 payload 中的 canonical Presence/Life/Faction source refs 调用 admission-only owner；客户端不能提供 session identity 或 encounter id。无 WebSocket session 时在 owner/source 读取前返回 `websocket_session_required`，不产生 gameplay event。
+
+定向验证：新增 transport RED→GREEN 选择与既有 combat lifecycle 合并 **18 passed**（D 盘 basetemp，4 个既有 FastAPI `on_event` 弃用告警）。
+
+证据边界：本批只证明 backend session admission message→owner receipt seam 和 fail-closed 无 session 路径；`authenticated_session` issuer 仍未实现，当前 payload source refs 尚未由真实 street producer 组装，`street_combat_attempt` 仍未消费 encounter/Threat owner，Godot physics contact receipt、完整 Laya 多 owner common cut、Q01–Q04、G-A/G-B/G-C 仍未验收。未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：新增真实 backend encounter admission message seam，完整 D08 production ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→owner/recovery/replay 仍开放。**最终 Godot**：A/B/C 未操作。

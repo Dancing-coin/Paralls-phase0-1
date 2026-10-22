@@ -64,6 +64,10 @@ from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.social_spatial_owner import SocialSpatialOwner
+from app.gameplay.canonical_combat_authority import (
+    CanonicalCombatThreatAuthority,
+    EncounterAdmissionRequest,
+)
 from app.gameplay.p5.stormnight_realtime_session import (
     StormnightPlayerIntent,
     StormnightRealtimeSessionService,
@@ -302,6 +306,7 @@ resource_conversion_capability_resolver = None
 # Explicit registration seam.  None keeps canonical social actions fail-closed;
 # tests and a future authenticated composition layer may inject the owner.
 social_spatial_owner: SocialSpatialOwner | None = None
+combat_threat_authority: CanonicalCombatThreatAuthority | None = None
 
 
 def _social_delivery_replay_binding():
@@ -1823,6 +1828,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global _sqlite_wal_checkpoint_worker
     global unified_character_action_settlement_service
     global social_spatial_owner
+    global combat_threat_authority
 
     checkpoint_close_failure = None
     try:
@@ -1963,6 +1969,8 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     # reaching this owner.  Compose the durable owner on the same gameplay
     # store so the normal backend path emits receipts and can recover them.
     social_spatial_owner = SocialSpatialOwner(store=gameplay_event_store)
+    combat_threat_authority = CanonicalCombatThreatAuthority(
+        store=gameplay_event_store, authorized_callers=("backend:street-combat",))
     embodied_evidence_ledger = EmbodiedEvidenceLedger()
     default_scene_archive_door_embodied_service = DefaultSceneArchiveDoorEmbodiedService(
         esm_service=esm_service,
@@ -4807,6 +4815,46 @@ def _handle_envelope(
             physics_tick=physics_tick,
         ) if not error_code else False
         return [_as_envelope("street_combat_pose_result", {"actor_id": actor_id if isinstance(actor_id, str) else "", "physics_tick": physics_tick if isinstance(physics_tick, int) else -1, "accepted": accepted, "error_code": error_code, "actor_state": unified_character_action_settlement_service.street_actor_state(actor_id) if accepted else {}})]
+    if envelope.message_type == "street_combat_encounter_admit":
+        payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        binding = connection_context.binding
+        if binding is None:
+            return [_as_envelope("street_combat_encounter_result", {
+                "accepted": False, "error_code": "websocket_session_required"})]
+        try:
+            request = EncounterAdmissionRequest(
+                world_ref=payload["world_ref"], timeline_ref=payload["timeline_ref"],
+                actor_ref=payload["actor_ref"], target_ref=payload["target_ref"],
+                actor_incarnation_ref=payload["actor_incarnation_ref"],
+                target_incarnation_ref=payload["target_incarnation_ref"],
+                presence_event_ids=tuple(payload["presence_event_ids"]),
+                life_event_ids=tuple(payload["life_event_ids"]),
+                faction_event_id=payload["faction_event_id"],
+                session_ref=binding.session_ref, principal_ref=binding.principal_ref,
+                allowed_actor_refs=binding.allowed_actor_refs,
+                connection_epoch=binding.connection_epoch,
+                lease_expires_at=binding.lease_expires_at,
+                command_id=payload["command_id"], idempotency_key=payload["idempotency_key"],
+                causation_id=payload["causation_id"], correlation_id=payload["correlation_id"],
+                now=connection_context.observed_at,
+            )
+        except (KeyError, TypeError, ValueError):
+            return [_as_envelope("street_combat_encounter_result", {
+                "accepted": False, "error_code": "invalid_encounter_admission"})]
+        owner = combat_threat_authority
+        if owner is None:
+            return [_as_envelope("street_combat_encounter_result", {
+                "accepted": False, "error_code": "combat_owner_unavailable"})]
+        result = owner.begin_admitted_encounter(
+            request, authorized_caller="backend:street-combat",
+            session_auth=websocket_session_auth_service)
+        body = {"accepted": bool(result.committed), "receipt": result.model_dump(mode="json")}
+        if result.committed and result.committed_event_ids:
+            event = gameplay_event_store.get_event(result.committed_event_ids[0])
+            body["encounter_ref"] = event.payload.get("encounter_ref")
+        elif result.failure is not None:
+            body["error_code"] = result.failure.error_code
+        return [_as_envelope("street_combat_encounter_result", body)]
     if envelope.message_type == "street_combat_attempt":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
         try:

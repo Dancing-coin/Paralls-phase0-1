@@ -127,3 +127,24 @@ def test_street_transport_requires_current_own_actor_binding(message_type, case,
         assert result["error_code"] == code
     assert main.unified_character_action_settlement_service.street_actor_state("char_a") == before
     assert main.unified_character_action_settlement_service.mutation_count == 0
+
+
+def test_encounter_admission_requires_authenticated_websocket_session() -> None:
+    main.reset_runtime_state()
+    context = _context("char_a")
+    before = len(main.gameplay_event_store.read_events())
+    messages = main._handle_envelope(
+        Envelope(message_type="street_combat_encounter_admit", payload={
+            "world_ref": "world:demo", "timeline_ref": "timeline:main",
+            "actor_ref": "character:char_a", "target_ref": "character:char_b",
+            "actor_incarnation_ref": "character:char_a@1",
+            "target_incarnation_ref": "character:char_b@1",
+            "presence_event_ids": ["missing:a", "missing:b"],
+            "life_event_ids": ["missing:a", "missing:b"],
+            "faction_event_id": "missing:faction",
+            "command_id": "admit:transport", "idempotency_key": "admit:transport",
+            "causation_id": "cause:transport", "correlation_id": "corr:transport",
+        }), connection_context=context)
+    assert messages[0]["message_type"] == "street_combat_encounter_result"
+    assert messages[0]["payload"] == {"accepted": False, "error_code": "websocket_session_required"}
+    assert len(main.gameplay_event_store.read_events()) == before
