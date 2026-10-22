@@ -49,7 +49,7 @@ def _dispatch_many(message_type: str, payload: dict[str, object], *, actor="stre
     return main._handle_envelope(Envelope(message_type=message_type, payload=payload), connection_context=_context(actor))
 
 
-def test_websocket_street_combat_correlates_pose_and_settlement() -> None:
+def test_websocket_street_combat_client_attempt_fails_closed_without_contact_receipt() -> None:
     main.reset_runtime_state()
     _prepare_bound_actors()
     pose = _dispatch("street_combat_pose", {"actor_id": "street_bandage", "connection_epoch": 1, "position": [0.0, 0.2, -9.8], "physics_tick": 100})
@@ -58,15 +58,14 @@ def test_websocket_street_combat_correlates_pose_and_settlement() -> None:
     assert pose["payload"]["actor_state"]["hp"] == 100
     assert pose["payload"]["actor_state"]["stamina"] == 100
     _dispatch("street_combat_pose", {"actor_id": "char_a", "connection_epoch": 1, "position": [-2.0, 0.2, -9.8], "physics_tick": 100}, actor="char_a")
-    first = _dispatch_many("street_combat_attempt", {"attempt": attempt("transport").model_dump(mode="json")})[0]
-    assert first["message_type"] == "street_combat_result"
-    result = first["payload"]["authority_result"]
-    assert result["attempt_id"] == "attempt:transport"
-    assert result["outcome"] == "committed"
-    assert result["committed_projection"]["target_hp"] == 80
-    duplicate = _dispatch_many("street_combat_attempt", {"attempt": attempt("transport").model_dump(mode="json")})[0]
-    assert duplicate["payload"]["authority_result"]["transaction_id"] == result["transaction_id"]
-    assert main.unified_character_action_settlement_service.street_actor_state("char_a")["hp"] == 80
+    before_events = len(main.gameplay_event_store.read_events())
+    messages = _dispatch_many("street_combat_attempt", {"attempt": attempt("transport").model_dump(mode="json")})
+    assert messages[0]["message_type"] == "street_combat_result"
+    assert messages[0]["payload"] == {"accepted": False, "error_code": "contact_authority_unavailable"}
+    assert len(messages) == 1
+    assert len(main.gameplay_event_store.read_events()) == before_events
+    assert main.unified_character_action_settlement_service.mutation_count == 0
+    assert main.unified_character_action_settlement_service.street_actor_state("char_a")["hp"] == 100
 
 
 def test_websocket_street_combat_rejects_client_truth() -> None:
@@ -79,25 +78,18 @@ def test_websocket_street_combat_rejects_client_truth() -> None:
     assert main.unified_character_action_settlement_service.mutation_count == 0
 
 
-def test_committed_street_hit_enters_character_agent_fail_safe_execution_contract() -> None:
+def test_client_street_attempt_does_not_trigger_character_agent_execution() -> None:
     main.reset_runtime_state()
     _prepare_bound_actors()
     _dispatch("street_combat_pose", {"actor_id": "street_bandage", "connection_epoch": 1, "position": [0.0, 0.2, -9.8], "physics_tick": 100})
     _dispatch("street_combat_pose", {"actor_id": "char_a", "connection_epoch": 1, "position": [-2.0, 0.2, -9.8], "physics_tick": 100}, actor="char_a")
+    before_events = len(main.gameplay_event_store.read_events())
     messages = _dispatch_many("street_combat_attempt", {"attempt": attempt("agent-reaction").model_dump(mode="json")})
-    assert messages[0]["payload"]["authority_result"]["outcome"] == "committed"
+    assert messages[0]["payload"] == {"accepted": False, "error_code": "contact_authority_unavailable"}
     executions = [message["payload"] for message in messages if message["message_type"] == "character_agent_execution"]
-    assert executions, "committed hit must produce an execution contract for the target actor"
-    contract = executions[0]
-    assert contract["actor_ref"] == "character:char_a"
-    assert contract["semantic_action_id"] in {"action:self_protect", "action:observe", "action:withdraw"}
-    assert "evidence:target:char_a" in contract["context_tags"]
-    assert contract["expected_observation"]["execution_scope"] == {
-        "room_id": "room_street",
-        "scene_id": "scene_street_combat",
-        "zone_id": "zone_intersection",
-    }
-    assert all(contract["semantic_action_id"] != "action:melee.short_punch" for contract in executions)
+    assert executions == []
+    assert len(main.gameplay_event_store.read_events()) == before_events
+    assert main.unified_character_action_settlement_service.mutation_count == 0
 
 
 @pytest.mark.parametrize("message_type", ["street_combat_pose", "street_combat_attempt"])

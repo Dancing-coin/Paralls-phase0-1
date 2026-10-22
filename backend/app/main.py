@@ -4875,29 +4875,10 @@ def _handle_envelope(
             return [_as_envelope("street_combat_result", {"accepted": False, "error_code": binding_result.error_code})]
         if attempt.connection_epoch != binding_result.binding.connection_epoch:
             return [_as_envelope("street_combat_result", {"accepted": False, "error_code": "stale_connection_epoch"})]
-        prior_mutation_count = unified_character_action_settlement_service.mutation_count
-        result = unified_character_action_settlement_service.settle_street_combat(attempt)
-        messages = [_as_envelope("street_combat_result", {"accepted": result.outcome == "committed", "authority_result": result.to_payload()})]
-        if result.outcome == "committed" and unified_character_action_settlement_service.mutation_count > prior_mutation_count:
-            target_actor_id = attempt.target_refs[0].removeprefix("character:")
-            source_actor_id = attempt.actor_ref.removeprefix("character:")
-            if target_actor_id in {"char_a", "char_b"} and character_agent_runtime.supports_actor(target_actor_id):
-                perceived = CharacterPerceivedEvent(
-                    actor_id=target_actor_id,
-                    percept_channel="combat",
-                    producer_ts=int(attempt.submitted_at or attempt.physics_tick * 17),
-                    room_id="room_street",
-                    scene_id="scene_street_combat",
-                    zone_id="zone_intersection",
-                    perceived_summary=f"Struck by {source_actor_id} in the street",
-                    source_candidate_event_id=result.committed_event_ids[0],
-                    source_actor_id=source_actor_id,
-                    target_actor_id=target_actor_id,
-                    distance_m=float(result.committed_projection.get("distance_m", 0.0)),
-                )
-                commands = character_agent_runtime.ingest_character_perceived_event(perceived)
-                messages.extend(_as_character_agent_execution_envelopes(commands))
-        return messages
+        # Client attempts remain presentation/development input until a
+        # backend-verified physics contact receipt is available.
+        return [_as_envelope("street_combat_result", {
+            "accepted": False, "error_code": "contact_authority_unavailable"})]
     if envelope.message_type == "unified_character_action_recovery_snapshot_request":
         if "unified_character_action_settlement_service" not in globals():
             unified_character_action_settlement_service = EmbodiedAuthoritySettlementService(

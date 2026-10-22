@@ -1227,3 +1227,13 @@ drive scan or cleanup was performed.
 该 fresh 结果确认旧 fixture 不能作为当前正式质量证据；自动刷新 source pins 或填充正式 split 会把尚未审阅的新来源误当冻结基线，因此本批不改评估数据、不启动模型。下一步应从规格和当前注册动作/owner 生成 development-only 完整动作—目标目录，人工审阅可接受动作与 char_d 来源 schema，再按既有隔离程序建立校准和独立集；只有此前置完成后才安排正式 checkpoint 评估。D 盘专用 preflight 目录已清理；运行器报告 `harness_cleanup=passed`，未运行全量 pytest/Harness all、训练或 Godot。
 
 **后端**：无 runtime 改动；本轮复核的 Laya 评估入口保持 fail-closed。**模型质量**：当前 HEAD fresh preflight 明确阻止 Q01–Q04，正式模型调用为 0。**角色闭环**：无新 owner 或 L4 证据，完整 Laya 链继续开放。**最终 Godot**：G-A/B/C 未操作，仍最后集中验收。
+
+### 2026-10-22 street combat client-attempt fail-closed repair
+
+复核发现 `street_combat_attempt` 在当前 controller binding/connection epoch 通过后仍直接调用 `EmbodiedAuthoritySettlementService.settle_street_combat()`；这会把客户端 attempt 当作已确认命中，并继续产生 embodied settlement 及受击角色感知，违反已确认的 authenticated physics/runtime contact receipt 边界。该路径没有可验证的 contact authority receipt，因此不能进入任何 world/character owner 写入。
+
+已在 `backend/app/main.py` 的 boundary handler 中将合法 binding 后、settlement 前的路径固定为 `contact_authority_unavailable` fail-closed 返回；未授权、撤权和旧 epoch 的既有拒绝路径保持不变。同步将 transport 回归改为验证：客户端 attempt 只有单条拒绝 envelope，不产生 gameplay event、embodied mutation、Threat 写入或 character-agent execution。该改动不实现 contact receipt adapter，也不伪造生产 physics authority；真正 receipt 接入仍是 D08 后续依赖。
+
+TDD 定向验证：先以两个新断言观察旧实现 **2 failed**（客户端 attempt 被接受）；最小修复后运行 `backend/tests/test_street_combat_transport.py`，**16 passed**（4 个既有 FastAPI lifespan 弃用告警）。本轮临时目录为 `D:\codex-temp\street-contact-green`，未在 C 盘创建临时文件；未运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：client-attempt 已恢复为 authenticated contact receipt 前的 fail-closed 子项，encounter admission/Threat owner 仍为局部生产接线。**模型质量**：Q01–Q04 未验收。**角色闭环**：避免无 contact 证据的伪 embodied/L4 触发；完整真实 Laya action+target→L4→多领域 owner→回执/恢复/回放仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
