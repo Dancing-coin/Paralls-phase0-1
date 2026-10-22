@@ -456,6 +456,10 @@ Required evidence: no-trigger no-call; triggered request freezes only permitted 
 
 Next active work resumes with the unified acceptance matrix: advance stage 1/2 role and domain dependencies through small owner-backed slices, reusing the live sourced use/finish evidence already recorded at the end of the acceptance matrix. Do not repeat that model call to refresh evidence. Keep stage 3 retained and open only for uncovered sources/owners; model Q01-Q04 and Godot A/B/C remain their own final gates.
 
+### 2026-10-23 ESM common replay participant
+
+Added the ESM object owner participant to new scoped common replay captures. It records bounded owner event, transaction and idempotency receipt digests, pinned source-prefix references, and a payload-safe state/transition projection. Historical global-sequence capture, old manifest decoding when no ESM fact exists at that cut, omission/tamper rejection, source-prefix verification, and durable SQLite reopen are covered by `backend/tests/test_esm_replay_participant.py` plus replay participant/checkpoint regression. Focused result: 48 passed, 1 known activation-source fixture deselected, 4 existing FastAPI warnings. The isolated ESM participant is integrated in common capture/validation, but an application-level Laya multi-owner checkpoint→tail→process-restart run remains open. Continue against the unified matrix; do not count this as full role or stage closure.
+
 Backend: canonical actor scope defect fixed and controlled WS owner path verified. Model quality: Q01-Q04 open; these are development diagnostics, no quality pass. Role: sourced live post-repair cycle still requires one measurement on the corrected code; multi-domain/slow-goal closure open. Godot G-A/B/C unstarted, last. No broad pytest/Harness all, formal split access or training. Overall objective remains stages1-3; Goal status active, objective-edit API unavailable.
 
 

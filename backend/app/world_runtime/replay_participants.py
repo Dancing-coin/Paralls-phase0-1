@@ -54,6 +54,10 @@ _EQUIPMENT_EVENT_TYPES = frozenset({
     "gameplay.equipment.activation_started", "gameplay.equipment.activation_ended",
 })
 
+_ESM_OBJECT_STREAM_PREFIX = "gameplay:esm:object:"
+_ESM_OBJECT_EVENT = "gameplay.esm.object_settled"
+_ESM_OBJECT_PRINCIPAL = "authority:esm:object"
+
 _LIFE_STATE_EVENT = "gameplay.character.life_state_changed"
 
 _INVENTORY_EVENT_TYPES = frozenset({
@@ -1349,6 +1353,102 @@ def _validate_soul_participant(store, saved, *, boundary_sequence=None):
         raise ValueError("replay_saved_soul_projection_mismatch")
 
 
+def _esm_transaction_ref(store, event):
+    transaction = store.get_transaction(event.transaction_id)
+    if (transaction is None or len(transaction.events) != 1 or event not in transaction.events
+            or transaction.idempotency_record.principal_ref != _ESM_OBJECT_PRINCIPAL
+            or store.get_event(event.event_id) != event):
+        raise ValueError("replay_esm_original_missing")
+    record = transaction.idempotency_record
+    receipt = store.get_by_idempotency(record.principal_ref, record.idempotency_key)
+    if (receipt is None or not receipt.committed or receipt.failure is not None
+            or receipt.idempotency_status != "new_commit"
+            or store.get_idempotency_record(record.principal_ref, record.idempotency_key) != record
+            or receipt.transaction_id != transaction.transaction_id
+            or receipt.command_id != event.command_id
+            or receipt.committed_event_ids != [event.event_id]
+            or receipt.global_sequence_range != (event.global_sequence, event.global_sequence)
+            or receipt.resulting_stream_revisions != {event.stream_id: event.stream_revision}):
+        raise ValueError("replay_esm_original_receipt_invalid")
+    ref = dict(event_id=event.event_id, global_sequence=event.global_sequence,
+        stream_id=event.stream_id, stream_revision=event.stream_revision,
+        transaction_id=transaction.transaction_id, event_digest=_digest(_json(event)),
+        transaction_digest=_digest(_json(transaction)), receipt_digest=_digest(_json(receipt)))
+    return transaction, ref
+
+
+def _esm_participant(store, *, boundary_sequence=None):
+    """Capture ESM object receipts and source prefixes without authority payloads."""
+    all_events = [event for event in store.read_events()
+                  if boundary_sequence is None or event.global_sequence <= boundary_sequence]
+    owner_events = []
+    for event in all_events:
+        if event.stream_id.startswith(_ESM_OBJECT_STREAM_PREFIX) or event.event_type == _ESM_OBJECT_EVENT:
+            if (event.stream_id.startswith(_ESM_OBJECT_STREAM_PREFIX)
+                    and event.event_type == _ESM_OBJECT_EVENT):
+                owner_events.append(event)
+            else:
+                raise ValueError("replay_esm_event_scope_unsupported")
+
+    event_refs, source_refs, grouped = [], {}, {}
+    for event in owner_events:
+        if event.schema_version != 1 or event.visibility_policy != "authority_only":
+            raise ValueError("replay_esm_event_scope_unsupported")
+        transaction, ref = _esm_transaction_ref(store, event)
+        event_refs.append(ref)
+        grouped.setdefault(event.stream_id, []).append(event)
+        for source_stream, revision in transaction.read_stream_revisions.items():
+            prefix = store.read_stream(source_stream, to_revision=revision)
+            if (len(prefix) != revision or any(item.global_sequence >= event.global_sequence
+                    or boundary_sequence is not None and item.global_sequence > boundary_sequence
+                    for item in prefix)):
+                raise ValueError("replay_esm_source_cut_invalid")
+            for source in prefix:
+                source_ref = _combat_source_ref(store, source)
+                if boundary_sequence is not None and source.global_sequence > boundary_sequence:
+                    raise ValueError("replay_esm_source_cut_invalid")
+                source_refs[source.event_id] = source_ref
+
+    streams = {}
+    for stream, events in sorted(grouped.items()):
+        ordered = sorted(events, key=lambda item: item.stream_revision)
+        if [item.stream_revision for item in ordered] != list(range(1, len(ordered) + 1)):
+            raise ValueError("replay_esm_projection_revision_gap")
+        transitions, current_state = [], None
+        for event in ordered:
+            payload = event.payload
+            request = payload.get("request")
+            result = payload.get("result")
+            state = payload.get("current_state")
+            if (not isinstance(request, dict) or not isinstance(result, dict)
+                    or not isinstance(state, str) or not state
+                    or payload.get("request_digest") != _digest(request)
+                    or result.get("settlement_status") != "committed"
+                    or result.get("settlement_id") != event.transaction_id):
+                raise ValueError("replay_esm_projection_invalid")
+            current_state = state
+            transitions.append(dict(event_id=event.event_id, stream_revision=event.stream_revision,
+                request_digest=payload["request_digest"], state=state,
+                transition_digest=_digest(dict(request_digest=payload["request_digest"], state=state))))
+        streams[stream] = dict(revision=len(ordered), transitions=transitions,
+            state_digest=_digest(dict(stream_id=stream, current_state=current_state,
+                transitions=transitions)))
+    event_refs.sort(key=lambda row: (row["global_sequence"], row["event_id"]))
+    source_refs = [source_refs[key] for key in sorted(source_refs)]
+    state = dict(streams=streams, event_refs=event_refs, source_refs=source_refs)
+    return dict(schema_version=1, scope="authority:esm:object:common-replay",
+        streams=streams, event_refs=event_refs, source_refs=source_refs,
+        view_digest=_digest(state), reconstruction_api="ESM object owner receipt and transition replay")
+
+
+def _validate_esm_participant(store, saved, *, boundary_sequence=None):
+    expected = _esm_participant(store, boundary_sequence=boundary_sequence)
+    if saved is None and not expected["event_refs"]:
+        return
+    if saved != expected:
+        raise ValueError("replay_saved_esm_projection_mismatch")
+
+
 def capture_participants(store, coordinator, driver, consumer, batch_refs, *, inventory_authority=None,
                          social_authority=None, social_recipient_ref=None, social_now=None,
                          social_delivery_authority=None, social_delivery_recipient_ref=None,
@@ -1480,6 +1580,7 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     learning = _learning_participant(store)
     soul = _soul_participant(store)
     combat = _combat_participant(store)
+    esm = _esm_participant(store)
     result = dict(schema_version=1, versions={"participant_manifest": 1, "batch_input": 1,
         "batch_operation": 1, "population_recovery": 1, "status_events": 1, "migration_events": 1,
         "economy_temporal": 1, "ecology_temporal": 1},
@@ -1544,6 +1645,8 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     result["versions"]["soul"] = 1
     result["combat"] = combat
     result["versions"]["combat"] = 1
+    result["esm"] = esm
+    result["versions"]["esm"] = 1
     return result
 
 
@@ -1556,6 +1659,7 @@ def validate_saved_participants(store, manifest, batch_refs, boundary_sequence=N
     _validate_learning_participant(store, manifest.get("learning"), boundary_sequence=boundary_sequence)
     _validate_soul_participant(store, manifest.get("soul"), boundary_sequence=boundary_sequence)
     _validate_combat_participant(store, manifest.get("combat"), boundary_sequence=boundary_sequence)
+    _validate_esm_participant(store, manifest.get("esm"), boundary_sequence=boundary_sequence)
     _validate_economy_random_participant(store, manifest.get("economy_random"),
         boundary_sequence=boundary_sequence)
     _validate_equipment_participant(store, manifest.get("equipment"), boundary_sequence=boundary_sequence)

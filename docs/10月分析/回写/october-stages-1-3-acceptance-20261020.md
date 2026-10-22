@@ -7,8 +7,8 @@
 | 范围 / 来源 | 状态 | 已完成且有证据的能力 | 剩余实现或验收 | 主要验收证据 / 下一依赖 |
 |---|---|---|---|---|
 | 阶段一：Task1，R01–R06（主计划 §Task1） | 局部实现 | 真实本地 Laya provider 调用、当前 listener 凭据复用、输入预算修复；认证 WS 私有输入；候选冻结与 action-target 投影；生产慢/快 cognition 部分路径及 stale terminal；DIALOGUE/Recall 有界接线子项。 | 全部用户可见输入和 revision 的来源/分母审查；生产 Dialogue/background 的原 turn/context 来源与总输入/tokenizer 硬预算；完整 action-target 来源覆盖；正式模型质量仍独立未验收。 | 本文「当前 Laya listener 凭据」「Laya social 输入预算」「R01/R07 快慢循环」与主计划 Task1。转入阶段二的真实 Laya 原动作消费前，先完成来源审查；预算合同不能替代完整输入证明。 |
-| 阶段二：Task2–3，R07–R09（主计划 §Task2–3） | 局部实现 | 当前 HEAD 的 authenticated WS→在线 L2→本地 Laya→worktable action+target→L4→原 ESM owner 两条真实 receipt→新进程 exact replay/zero world writes；combat participant 已纳入 app scoped checkpoint/tail 并通过 Durable 重启 replay（测试签名 contact）。 | 对完整候选来源和生产动作/目标的分母验证；更多真实领域 owner 原动作→L4→owner receipt；Social/Soul/Combat 等正式 owner 的多域 common cut；跨进程 session/world writeback recovery parity。真实 physics/runtime contact producer 仍未接入。 | `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-worktable-current-head-local-service-20261022\`、本文 worktable 与 combat replay 记录。角色缺领域 owner 时先完成阶段三对应 owner，再回到本行端到端验收。 |
-| 阶段三：D03–D11、R10–R14（阶段三原计划及本主计划 §Task4） | 局部实现，按 owner 分项收口 | 既有资源/库存/装备/Economy/Ecology/Presence/Life/Social/learning 的若干 owner、来源 reader、receipt 和 participant 已有 focused 或 bounded replay 证据；D08 combat owner/encounter/contact adapter 与 common participant 有 backend app replay 证据。 | 逐 owner 核对 production composition、可信来源、权限/CAS、原 receipt、恢复及共同 checkpoint-tail；D10 Soul 尚缺受信 production composition、完整 life/mind 语义与四门/操作覆盖、confirmed-time、private projection 和 L4 caller；Social 尚未有真实 Laya 选择触发的 owner 闭环。 | 本文对应 D08/D10/各领域分项回写；D10 依据 `docs/superpowers/specs/2026-10-20-bounded-soul-owner-design.md` 与 `docs/superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md` 继续，沿真实依赖先补 owner，再接角色原动作。测试 fixture、isolated owner replay 或 participant 数量均不替代 production composition/common cut。 |
+| 阶段二：Task2–3，R07–R09（主计划 §Task2–3） | 局部实现 | 当前 HEAD 的 authenticated WS→在线 L2→本地 Laya→worktable action+target→L4→原 ESM owner 两条真实 receipt→新进程 exact replay/zero world writes；combat 与 ESM participant 已接入 common scoped manifest，combat 有 app checkpoint/tail Durable 重启证据（测试签名 contact），ESM participant 有 source-prefix、cutoff、SQLite reopen 与篡改拒绝 focused 证据。 | 对完整候选来源和生产动作/目标的分母验证；更多真实领域 owner 原动作→L4→owner receipt；Social/Soul/Combat/ESM 等正式 owner 的多域 app common cut；跨进程 session/world writeback recovery parity。真实 physics/runtime contact producer 仍未接入。 | 本文 worktable、combat replay 与「2026-10-23 ESM object common replay participant」记录。角色缺领域 owner 时先完成阶段三对应 owner，再回到本行端到端验收。 |
+| 阶段三：D03–D11、R10–R14（阶段三原计划及本主计划 §Task4） | 局部实现，按 owner 分项收口 | 既有资源/库存/装备/Economy/Ecology/Presence/Life/Social/learning 的若干 owner、来源 reader、receipt 和 participant 已有 focused 或 bounded replay 证据；D08 combat 与 ESM object owner 现有 common participant 基础。 | 逐 owner 核对 production composition、可信来源、权限/CAS、原 receipt、恢复及共同 checkpoint-tail；D10 Soul 尚缺受信 production composition、完整 life/mind 语义与四门/操作覆盖、confirmed-time、private projection 和 L4 caller；Social 尚未有真实 Laya 选择触发的 owner 闭环。 | 本文对应 D08/D10/各领域分项回写及 2026-10-23 ESM 记录；D10 依据 `docs/superpowers/specs/2026-10-20-bounded-soul-owner-design.md` 与 `docs/superpowers/plans/2026-10-20-october-stages-1-3-implementation-plan.md` 继续，沿真实依赖先补 owner，再接角色原动作。测试 fixture、isolated owner replay 或 participant 数量均不替代 production composition/common cut。 |
 | 正式模型质量：Q01–Q04（主计划 §Task5） | 已实现未验证 / 验收未完成 | 有开发诊断、source inventory、质量脚本和历史官方本地 Laya 调用证据；来源与选择偏差的历史失败仍保留。 | 审阅并修复来源/输入映射问题；以真实完整 action+target 来源构造隔离 splits，开发归因后重建 calibration，冻结预算/阈值，再分别运行独立 final/holdout 并封存评分。 | 本文 Task5 / Q02 / source-drift 记录和既有外部证据。不得重复相同输入挑选成功 choice；不得跨 split；不自动训练/微调。 |
 | Godot G-A/B/C（主计划 §Task6） | 未实现（按顺序延期） | 已记录后端边界、场景目标及最终接口证据清单；无本轮 Godot 修改或运行。 | 后端与角色 owner、模型门收口后，依次验证 A 单角色跨情境、B 单角色连续 Boss 战、C 双角色连续协同；取得真实边界消息、owner 回执和可见场景结果。 | 主计划 Task6。所有前置未满足前不操作 Godot；最终证据含 boundary、owner、场景结果及恢复轨迹。 |
 
@@ -1588,3 +1588,18 @@ Common replay checkpoint/tail manifest 现在包含 D08 combat owner events、�
 | 最终 Godot | G-A/G-B/G-C 未启动、操作或验证；继续留到后端和角色依赖收口后。 |
 
 没有运行全量 pytest、Harness all、模型评估、训练或 Godot。当前 Goal 已是“整体完成十月主线阶段一至三的实现与验收”，本项完成后继续沿统一矩阵推进；Goal 不得因这个 replay 子项标记完成。
+
+### 2026-10-23 ESM object common replay participant
+
+ESM durable object settlement 现进入 common scoped replay manifest。participant 按历史 `global_sequence` 捕获 ESM object owner event、原 transaction/idempotency receipt 摘要、每个事务 pinned read-stream prefix 的 event/transaction/receipt 摘要，并投影当前 state/transition digest；manifest 不暴露 authority-only object payload。空 participant 为只读。缺 participant、篡改 event/transaction/receipt/source digest、owner stream/event 不匹配或 source cut 越界均拒绝；旧 manifest 可在缺省 ESM 且历史 cut 无 ESM owner event 时继续读取。ESM 纳入新 capture 的 participant 和 decoder version 检查。
+
+定向回归：`test_esm_replay_participant.py`、`test_world_replay_participants.py`、`test_world_replay_checkpoint_cut.py`、`test_world_replay_checkpoint_application.py` **48 passed, 1 deselected, 4 existing FastAPI lifespan warnings**。命令使用 `python -B -m pytest -q -p no:cacheprovider`，basetemp `D:\codex-temp\esm-replay\focused-final`。被排除的既有 application fixture 在 replay 前失败于 `activation_source_unauthorized`；首次合并运行同样定位到该前置失败，其余 47 项通过。Harness `backend-contract` run `7098b56446b34712a0e226f23945c108` passed/cleanup passed。ESM participant 专项涵盖真实 source pin、SQLite reopen、历史 cutoff、manifest version compatibility、遗漏/篡改拒绝且零写。D 盘 RED/中间/最终 basetemp 均由本轮产生，验证后清理。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | ESM object owner 的 common participant 与旧 manifest 解码兼容已实现、定向验证；尚无完整 Laya 多领域 app checkpoint→tail→进程重启纵切，也未证明所有生产 owner 同 cut。 |
+| 模型质量 | Q01–Q04 未验收；本批未调用模型、未读取 calibration/final/holdout、未训练/微调。 |
+| 角色闭环 | 历史 worktable sourced owner/recovery 证据保留；本批只补 ESM common replay participant，不增加实时 Laya 消息或新 owner receipt 证据。完整 action+target→L4→多 owner receipt/common recovery 仍开放。 |
+| 最终 Godot | G-A/G-B/G-C 未启动、操作或验证；继续留到后端和角色链路之后。 |
+
+未运行全量 pytest、Harness all 或 Godot。整体 Goal 继续 active。
