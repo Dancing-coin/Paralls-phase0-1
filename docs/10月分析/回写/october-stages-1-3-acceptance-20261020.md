@@ -1,5 +1,11 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 D10 Life reader injection boundary
+
+`SoulPresenceSourceReader` 的 Life reader 注入此前只比较 `_store` 属性，任意同 store 对象即可伪造 `alive`。新增回归先确认该实现未拒绝伪 reader（RED），随后将注入约束为实际 `SoulLifeSourceReader`，并继续验证 store identity。Life/Presence source 两文件定向回归 **16 passed**，命令：`python -B -m pytest -q -p no:cacheprovider backend/tests/test_soul_life_sources.py backend/tests/test_soul_presence_sources.py --basetemp D:/codex-temp/soul-life-reader-final`。
+
+本批仅关闭 D10 的 reader implementation provenance 子项，不提供生产 composition、Life/mind policy、四门组合、完整 effect/value operation、common-cut participant、L4 caller 或 R14 验收。Godot、模型评估、全量 pytest、Harness all、训练均未运行。`D:\\codex-temp\\soul-life-reader-final` 是本轮 pytest basetemp；单独清理请求被自动审批策略拒绝，目录仍在。
+
 ### 2026-10-22 D10 schema 2 LifeState source adapter
 
 新增只读 `SoulLifeSourceReader`，按固定 Life stream revision 重建 schema 2 状态链；逐事件校验 owner transaction、完整原 receipt、actor/state transition、初始 alive 对应的原 Population activation 与 Presence spawn，以及 confirmed case-death 对应的原 terminal/confirmation receipt。`SoulPresenceSourceReader` 可显式接收同 store 的 Life reader，将 Life head 纳入 read set；未注入时，有 Life history 仍 fail closed。该 reader 不写 Soul、不给予权限，也未进入 production composition。

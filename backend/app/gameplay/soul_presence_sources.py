@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Mapping
 
+from app.gameplay.soul_life_sources import SoulLifeSourceReader
 from app.population_continuity.presence_runtime import PopulationPresenceAuthority
 
 
@@ -32,8 +33,11 @@ class SoulPresenceSourceReader:
             raise ValueError('soul_presence_source_authority')
         self._presence = presence
         self._store = presence.store
-        if life_sources is not None and getattr(life_sources, "_store", None) is not self._store:
-            raise ValueError('soul_presence_source_life_store')
+        if life_sources is not None:
+            if type(life_sources) is not SoulLifeSourceReader:
+                raise ValueError('soul_presence_source_life_authority')
+            if life_sources._store is not self._store:
+                raise ValueError('soul_presence_source_life_store')
         self._life_sources = life_sources
 
     def read(self, *, actor_ref: str, world_ref: str,

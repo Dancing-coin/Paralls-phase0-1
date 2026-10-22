@@ -87,6 +87,20 @@ def test_presence_source_includes_only_owner_verified_alive_state():
     assert life_event_id in source.source_event_refs
 
 
+def test_presence_source_rejects_untrusted_life_reader_implementation():
+    store = GameplayEventStore()
+    presence, _ = _spawn_and_initialize(store)
+
+    class ForgedLifeReader:
+        _store = store
+
+        def read(self, **_):
+            return type("Life", (), {"state": "alive"})()
+
+    with pytest.raises(ValueError, match="soul_presence_source_life_authority"):
+        SoulPresenceSourceReader(presence=presence, life_sources=ForgedLifeReader())
+
+
 def test_life_source_rejects_unowned_or_tampered_history():
     store = GameplayEventStore()
     _, life_event_id = _spawn_and_initialize(store)
