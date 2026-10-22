@@ -4822,14 +4822,22 @@ def _handle_envelope(
             return [_as_envelope("street_combat_encounter_result", {
                 "accepted": False, "error_code": "websocket_session_required"})]
         try:
+            actor_ref = payload["actor_ref"]
+            target_ref = payload["target_ref"]
+            source = combat_threat_authority.resolve_current_sources(
+                actor_ref=actor_ref, target_ref=target_ref,
+                world_ref=payload["world_ref"], timeline_ref=payload["timeline_ref"])
+            if source is None:
+                return [_as_envelope("street_combat_encounter_result", {
+                    "accepted": False, "error_code": "encounter_source_unavailable"})]
             request = EncounterAdmissionRequest(
                 world_ref=payload["world_ref"], timeline_ref=payload["timeline_ref"],
-                actor_ref=payload["actor_ref"], target_ref=payload["target_ref"],
-                actor_incarnation_ref=payload["actor_incarnation_ref"],
-                target_incarnation_ref=payload["target_incarnation_ref"],
-                presence_event_ids=tuple(payload["presence_event_ids"]),
-                life_event_ids=tuple(payload["life_event_ids"]),
-                faction_event_id=payload["faction_event_id"],
+                actor_ref=actor_ref, target_ref=target_ref,
+                actor_incarnation_ref=source["actor_incarnation_ref"],
+                target_incarnation_ref=source["target_incarnation_ref"],
+                presence_event_ids=(source["source_event_ids"][0], source["source_event_ids"][1]),
+                life_event_ids=(source["source_event_ids"][2], source["source_event_ids"][3]),
+                faction_event_id=source["source_event_ids"][4],
                 session_ref=binding.session_ref, principal_ref=binding.principal_ref,
                 allowed_actor_refs=binding.allowed_actor_refs,
                 connection_epoch=binding.connection_epoch,

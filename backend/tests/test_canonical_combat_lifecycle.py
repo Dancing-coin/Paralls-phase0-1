@@ -91,6 +91,42 @@ def test_admitted_encounter_is_minted_from_session_and_replays_without_hit(tmp_p
     store.close()
 
 
+def test_target_reader_resolves_current_sources_without_caller_refs(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "resolve.db")
+    source = _sources(store)
+    reader = CanonicalCombatThreatAuthority(store=store)
+
+    resolved = reader.resolve_current_sources(
+        actor_ref="character:char_a", target_ref="character:char_b",
+        world_ref=source.world_ref, timeline_ref=source.timeline_ref,
+    )
+
+    assert resolved is not None
+    assert resolved["eligible"] is True
+    assert tuple(resolved["source_event_ids"]) == (
+        *source.presence_source_event_ids,
+        *source.life_state_source_event_ids,
+        source.faction_source_event_id,
+    )
+    assert resolved["actor_incarnation_ref"] == source.actor_incarnation_ref
+    assert resolved["target_incarnation_ref"] == source.target_incarnation_ref
+    store.close()
+
+
+def test_target_reader_returns_none_when_canonical_source_is_missing(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "resolve-missing.db")
+    source = _sources(store)
+    reader = CanonicalCombatThreatAuthority(store=store)
+    before = len(store.read_events())
+
+    assert reader.resolve_current_sources(
+        actor_ref="character:char_a", target_ref="character:char_b",
+        world_ref=source.world_ref, timeline_ref="timeline:missing",
+    ) is None
+    assert len(store.read_events()) == before
+    store.close()
+
+
 @pytest.mark.parametrize("changes, code", [
     ({"allowed_actor_refs": ("character:other",)}, "encounter_admission_invalid"),
     ({"lease_expires_at": 99}, "encounter_session_expired"),

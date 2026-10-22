@@ -1186,3 +1186,11 @@ drive scan or cleanup was performed.
 证据边界：本批只证明 backend session admission message→owner receipt seam 和 fail-closed 无 session 路径；`authenticated_session` issuer 仍未实现，当前 payload source refs 尚未由真实 street producer 组装，`street_combat_attempt` 仍未消费 encounter/Threat owner，Godot physics contact receipt、完整 Laya 多 owner common cut、Q01–Q04、G-A/G-B/G-C 仍未验收。未运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：新增真实 backend encounter admission message seam，完整 D08 production ingress 仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→owner/recovery/replay 仍开放。**最终 Godot**：A/B/C 未操作。
+
+### 2026-10-22 combat admission source resolver
+
+`street_combat_encounter_admit` 不再接受客户端提供的 Presence/Life/Faction event ids 或 incarnation refs。新增 `CanonicalCombatTargetReader.resolve_current_sources()`，从当前 backend event store 读取 Presence、LifeState 和方向性 Faction 的最新 canonical rows，并复用 source eligibility、owner provenance、incarnation 与 stream-head 校验；缺少或过期来源在 owner 调用前返回 `encounter_source_unavailable`，不产生 gameplay event。handler 仅使用 resolver 返回的 source ids/incarnations 组装 `EncounterAdmissionRequest`。
+
+定向验证：新增 `test_target_reader_resolves_current_sources_without_caller_refs` 与 `test_target_reader_returns_none_when_canonical_source_is_missing`，选择运行 `backend/tests/test_canonical_combat_lifecycle.py -k "resolves_current_sources or missing"`，D 盘 basetemp，**2 passed**。该批没有运行全量 pytest、Harness all、模型、训练或 Godot。
+
+**后端**：encounter admission source refs 已改为 backend 当前 canonical resolver，客户端 source 伪造面收窄；正式 authenticated issuer、contact receipt 与 `street_combat_attempt`→L4→Threat owner 生产闭环仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多领域 owner 回执、恢复与回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。

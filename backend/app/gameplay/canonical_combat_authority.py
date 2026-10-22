@@ -165,6 +165,47 @@ class CanonicalCombatTargetReader:
     def __init__(self, *, store: GameplayEventStore) -> None:
         self.store = store
 
+    def resolve_current_sources(self, *, actor_ref: str, target_ref: str,
+                                world_ref: str, timeline_ref: str) -> dict[str, Any] | None:
+        """Resolve current canonical source refs; never accepts caller refs."""
+        if not all(isinstance(value, str) and value.strip() for value in
+                   (actor_ref, target_ref, world_ref, timeline_ref)) or actor_ref == target_ref:
+            return None
+        try:
+            presence_rows = self.store.read_stream(f"presence:{world_ref}")
+            presence = []
+            for actor in (actor_ref, target_ref):
+                candidates = [row for row in presence_rows
+                              if row.payload.get("character_ref") in {actor, actor.removeprefix("character:")}]
+                if not candidates:
+                    return None
+                presence.append(candidates[-1])
+            life = []
+            for actor in (actor_ref, target_ref):
+                candidates = [row for suffix in {actor, actor.removeprefix("character:")}
+                              for row in self.store.read_stream(f"gameplay:character:life:{suffix}")
+                              if row.payload.get("actor_ref") == actor]
+                if not candidates:
+                    return None
+                life.append(max(candidates, key=lambda row: row.global_sequence))
+            factions = [row for row in self.store.read_stream(f"faction:{world_ref}:{timeline_ref}")
+                        if row.payload.get("actor_ref") == actor_ref
+                        and row.payload.get("target_ref") == target_ref]
+            if not factions:
+                return None
+            decision = self.source_eligibility(
+                actor_ref=actor_ref, target_ref=target_ref,
+                presence_event_ids=tuple(row.event_id for row in presence),
+                life_event_ids=tuple(row.event_id for row in life),
+                faction_event_id=factions[-1].event_id, world_ref=world_ref,
+                timeline_ref=timeline_ref,
+                actor_incarnation_ref=f"{actor_ref}@{presence[0].payload['incarnation']}",
+                target_incarnation_ref=f"{target_ref}@{presence[1].payload['incarnation']}")
+            return decision if decision.get("eligible") else None
+        except (KeyError, IndexError, TypeError, ValueError,
+                GameplayEventStoreSnapshotError):
+            return None
+
     def source_eligibility(self, *, actor_ref: str, target_ref: str, presence_event_ids: tuple[str, str],
                            life_event_ids: tuple[str, str], faction_event_id: str,
                            world_ref: str, timeline_ref: str, actor_incarnation_ref: str,
