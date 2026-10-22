@@ -5,6 +5,7 @@ import json
 
 import pytest
 
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from test_street_combat_authority import attempt
 
 
@@ -101,3 +102,65 @@ def test_physics_contact_receipt_rejects_malformed_source_digest():
 
     with pytest.raises(ValueError):
         _signed_receipt(action_attempt, contact_source_digest="client-contact")
+
+
+def test_physics_contact_receipt_authority_persists_once_and_replays_exact_receipt(tmp_path):
+    api = _api()
+    action_attempt = attempt("receipt-durable", actor="street_bandage", target="char_a")
+    receipt = _signed_receipt(action_attempt)
+    path = tmp_path / "physics-contact.db"
+    store = DurableGameplayEventStore(path)
+    authority = api.PhysicsContactReceiptAuthority(
+        store=store,
+        verifier=api.PhysicsContactReceiptVerifier({_AUTHORITY: _SECRET}),
+    )
+
+    first = authority.record(
+        receipt, attempt=action_attempt, target_incarnation_ref="character:char_a@1"
+    )
+    replay = authority.record(
+        receipt, attempt=action_attempt, target_incarnation_ref="character:char_a@1"
+    )
+
+    assert first.committed is True
+    assert replay.committed is True
+    assert replay.idempotency_status == "duplicate_replayed"
+    assert len(store.read_events()) == 1
+    store.close()
+
+    reopened = DurableGameplayEventStore(path)
+    recovered = api.PhysicsContactReceiptAuthority(
+        store=reopened,
+        verifier=api.PhysicsContactReceiptVerifier({_AUTHORITY: _SECRET}),
+    ).receipt_for_attempt(action_attempt)
+    assert recovered == receipt
+    assert len(reopened.read_events()) == 1
+    reopened.close()
+
+
+def test_physics_contact_receipt_authority_rejects_changed_or_unauthenticated_attempt_without_writes():
+    api = _api()
+    action_attempt = attempt("receipt-conflict", actor="street_bandage", target="char_a")
+    store = GameplayEventStore()
+    verifier = api.PhysicsContactReceiptVerifier({_AUTHORITY: _SECRET})
+    authority = api.PhysicsContactReceiptAuthority(store=store, verifier=verifier)
+    original = _signed_receipt(action_attempt)
+    changed = _signed_receipt(
+        action_attempt, contact_source_digest="sha256:" + "b" * 64
+    )
+
+    assert authority.record(
+        original, attempt=action_attempt, target_incarnation_ref="character:char_a@1"
+    ).committed is True
+    conflict = authority.record(
+        changed, attempt=action_attempt, target_incarnation_ref="character:char_a@1"
+    )
+    unauthenticated = api.PhysicsContactReceiptAuthority(
+        store=store, verifier=api.PhysicsContactReceiptVerifier({})
+    ).record(original, attempt=action_attempt, target_incarnation_ref="character:char_a@1")
+
+    assert conflict.committed is False
+    assert conflict.failure.error_code == "contact_attempt_receipt_conflict"
+    assert unauthenticated.committed is False
+    assert unauthenticated.failure.error_code == "contact_receipt_unverified"
+    assert len(store.read_events()) == 1

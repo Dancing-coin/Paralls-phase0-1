@@ -1388,8 +1388,8 @@ TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注�
 
 ### 2026-10-22 D08 physics contact receipt contract slice
 
-新增 `PhysicsContactReceipt` 与 `PhysicsContactReceiptVerifier`，以认证 runtime authority 的 HMAC receipt 绑定 actor、target、connection epoch、attempt id、physics tick、target incarnation、action descriptor digest 与 attempt payload digest；未知 authority、签名错误、digest 格式错误或任一冻结字段不一致均拒绝。定向测试 `backend/tests/test_physics_contact_receipt.py`：**8 passed**，pytest basetemp 位于 `D:\Users\User\Documents\paralls-evidence\tmp\physics-contact-green-20261022`。
+新增 `PhysicsContactReceipt`、`PhysicsContactReceiptVerifier` 与 `PhysicsContactReceiptAuthority`。认证 runtime authority 的 HMAC receipt 绑定 actor、target、connection epoch、attempt id、physics tick、target incarnation、action descriptor digest 与 attempt payload digest；持久 authority 以 attempt identity 做一次性幂等，exact retry 从事件回执恢复，改变 receipt 或未认证来源均零写拒绝。定向测试 `backend/tests/test_physics_contact_receipt.py`：**10 passed**；与 street owner、combat lifecycle、transport 回归组合 **47 passed, 4 existing FastAPI lifespan warnings**。pytest basetemp 均位于 `D:\Users\User\Documents\paralls-evidence\tmp` 下。
 
-证据边界：这是 verifier contract，不是实际 physics producer 或生产配置。`street_combat_attempt` 尚未消费 receipt；receipt source digest 未与当前 canonical Presence/Life/Faction read-set 建立生产联系，未接 L4、Threat durable owner 或 exact replay。因此 D08 仍为局部实现，入口继续 fail-closed；本批不改变模型质量、Laya 闭环或 Godot 验收状态。未运行全量 pytest、Harness all、模型评估、训练或 Godot。
+证据边界：这是 backend receipt contract/持久 adapter，不是实际 physics producer 或生产配置。`street_combat_attempt` 尚未消费 receipt；receipt source digest 未与当前 canonical Presence/Life/Faction read-set 建立生产联系，未接 L4、Threat durable owner 或 combat ingress exact replay。因此 D08 仍为局部实现，入口继续 fail-closed；本批不改变模型质量、Laya 闭环或 Godot 验收状态。未运行全量 pytest、Harness all、模型评估、训练或 Godot。
 
-**后端**：contact receipt 验证合同局部实现并通过 8 项定向测试；真实签发来源、production ingress→L4→Threat receipt/replay 未完成。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 输入→候选→action+target→L4→多领域回执/恢复/回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+**后端**：contact receipt verifier 与 durable adapter 局部实现，定向 10 项及 47 项组合回归通过；真实签发来源、production ingress→L4→Threat receipt/replay 未完成。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 输入→候选→action+target→L4→多领域回执/恢复/回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
