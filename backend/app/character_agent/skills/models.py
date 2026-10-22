@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+import math
+from collections.abc import Mapping
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -24,6 +26,35 @@ DIFFICULTY_FACTORS = (
     "world_binding",
     "transfer_gap",
 )
+
+
+def _validate_learning_projection(master: Mapping[str, object], difficulty: Mapping[str, object]) -> None:
+    required_mastery_fields = {
+        "value", "confidence", "evidence_refs", "last_validated_at", "decay_policy",
+    }
+    for dimension, raw in master.items():
+        if not isinstance(raw, Mapping) or not required_mastery_fields.issubset(raw):
+            raise ValueError("mastery_record_invalid")
+        for field in ("value", "confidence"):
+            value = raw[field]
+            if (isinstance(value, bool) or not isinstance(value, (int, float))
+                    or not math.isfinite(float(value)) or not 0 <= float(value) <= 1):
+                raise ValueError("mastery_record_invalid")
+        refs = raw["evidence_refs"]
+        if (not isinstance(refs, list) or not refs
+                or any(not isinstance(ref, str) or not ref for ref in refs)
+                or len(set(refs)) != len(refs)):
+            raise ValueError("mastery_record_invalid")
+        validated_at = raw["last_validated_at"]
+        if not ((isinstance(validated_at, str) and validated_at)
+                or (isinstance(validated_at, int) and not isinstance(validated_at, bool) and validated_at >= 0)):
+            raise ValueError("mastery_record_invalid")
+        if not isinstance(raw["decay_policy"], str) or not raw["decay_policy"]:
+            raise ValueError("mastery_record_invalid")
+    for value in difficulty.values():
+        if (isinstance(value, bool) or not isinstance(value, (int, float))
+                or not math.isfinite(float(value)) or not 0 <= float(value) <= 1):
+            raise ValueError("difficulty_value_invalid")
 
 
 SettlementCategory = Literal["cognitive", "social", "physical", "tool", "authority", "special"]
@@ -329,7 +360,7 @@ class LearningEpisode(StrictSkillModel):
     feedback: list[str] = Field(default_factory=list)
     authority_status: str = "pending"
     mastery: dict[str, dict[str, object]] = Field(default_factory=dict)
-    difficulty: dict[str, float] = Field(default_factory=dict)
+    difficulty: dict[str, Annotated[float, Field(ge=0, le=1, allow_inf_nan=False, strict=True)]] = Field(default_factory=dict)
     owner_settlement_id: str = ""
     status: Literal["proposal", "accepted", "rejected"] = "proposal"
 
@@ -341,6 +372,7 @@ class LearningEpisode(StrictSkillModel):
             raise ValueError(f"unknown mastery dimension: {sorted(unknown_mastery)[0]}")
         if unknown_difficulty:
             raise ValueError(f"unknown difficulty factor: {sorted(unknown_difficulty)[0]}")
+        _validate_learning_projection(self.mastery, self.difficulty)
         return self
 
     @model_validator(mode="after")
@@ -377,7 +409,7 @@ class ImitationEpisode(StrictSkillModel):
     feedback: list[str] = Field(default_factory=list)
     authority_status: str = "pending"
     mastery: dict[str, dict[str, object]] = Field(default_factory=dict)
-    difficulty: dict[str, float] = Field(default_factory=dict)
+    difficulty: dict[str, Annotated[float, Field(ge=0, le=1, allow_inf_nan=False, strict=True)]] = Field(default_factory=dict)
     source_observation_refs: list[str] = Field(default_factory=list)
     visible_context_refs: list[str] = Field(default_factory=list)
     imitation_mode: str = ""
@@ -399,6 +431,7 @@ class ImitationEpisode(StrictSkillModel):
             raise ValueError(f"unknown mastery dimension: {sorted(unknown_mastery)[0]}")
         if unknown_difficulty:
             raise ValueError(f"unknown difficulty factor: {sorted(unknown_difficulty)[0]}")
+        _validate_learning_projection(self.mastery, self.difficulty)
         return self
 
     @model_validator(mode="after")

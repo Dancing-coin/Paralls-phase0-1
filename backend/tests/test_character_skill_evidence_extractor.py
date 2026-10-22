@@ -250,3 +250,24 @@ def test_learning_projection_rejects_unknown_mastery_and_difficulty_keys() -> No
             episode_id="episode:bad-difficulty", learner_id="char_a", skill_id="first_aid", stage="noticed",
             difficulty={"luck": 0.4}, source_refs=["observation:1"],
         )
+
+
+@pytest.mark.parametrize("episode_type", [LearningEpisode, ImitationEpisode])
+def test_episode_projection_requires_complete_bounded_mastery_and_difficulty(episode_type) -> None:
+    from app.character_agent.skills.models import DIFFICULTY_FACTORS, MASTERY_DIMENSIONS
+
+    base = dict(episode_id="episode:typed", actor_id="char_a", skill_id="first_aid")
+    with pytest.raises(ValueError, match="mastery_record_invalid"):
+        episode_type(**base, stage="observed", mastery={"familiarity": {"value": 0.4}})
+    with pytest.raises(ValueError):
+        episode_type(**base, stage="observed", difficulty={"pressure": 1.1})
+
+    record = {
+        "value": 0.4, "confidence": 0.7, "evidence_refs": ["receipt:1"],
+        "last_validated_at": "2026-10-22T00:00:00Z", "decay_policy": "source_validated",
+    }
+    episode = episode_type(**base, stage="observed",
+        mastery={dimension: record for dimension in MASTERY_DIMENSIONS},
+        difficulty={factor: 0.5 for factor in DIFFICULTY_FACTORS})
+    assert set(episode.mastery) == set(MASTERY_DIMENSIONS)
+    assert set(episode.difficulty) == set(DIFFICULTY_FACTORS)
