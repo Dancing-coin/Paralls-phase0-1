@@ -1,5 +1,18 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 D10 schema 2 LifeState source adapter
+
+新增只读 `SoulLifeSourceReader`，按固定 Life stream revision 重建 schema 2 状态链；逐事件校验 owner transaction、完整原 receipt、actor/state transition、初始 alive 对应的原 Population activation 与 Presence spawn，以及 confirmed case-death 对应的原 terminal/confirmation receipt。`SoulPresenceSourceReader` 可显式接收同 store 的 Life reader，将 Life head 纳入 read set；未注入时，有 Life history 仍 fail closed。该 reader 不写 Soul、不给予权限，也未进入 production composition。
+
+定向回归覆盖真实 ProfileActivationAuthority→Presence owner→CanonicalLifeStateAuthority 初始 alive、SQLite reopen、固定 revision 越界、Soul Presence read-set、篡改 event/receipt 拒绝及相关既有 owner 回归：**36 passed, 3 deselected**，basetemp `D:\codex-temp\soul-life-final\pytest`。3 个既有 LifeState caller fixture 缺少当前必需的 `producer_ref`，因此排除；没有更改这些既有测试或生产 owner。未运行全量 pytest、Harness all、模型评估、训练或 Godot。
+
+| 验收面 | 状态与边界 |
+|---|---|
+| 后端 | D10 的 schema 2 LifeState read adapter 已实现并定向验证；Soul Presence 显式消费 adapter 的 read-only 子项实现。Soul production composition、四门、effect/value policy、common-cut participant、L4 caller 仍未实现 |
+| 模型质量 | Q01–Q04 未验收；本批没有模型调用 |
+| 角色闭环 | Laya→L4→多领域 owner receipt/recovery/replay 仍局部，Life source reader 不构成角色闭环 |
+| 最终 Godot | G-A/G-B/G-C 未操作，仍留到后端与角色链收口后 |
+
 ### 2026-10-22 registered learning owner common replay cut
 
 把 actor-private `RegisteredLearningAuthority` snapshot 接入 scoped common replay manifest。capture 记录 world/actor-scoped learned state、owner event refs、交易与 event digest；验证通过原 owner 的历史重建、source principal/transaction/receipt 证明，按 checkpoint `global_sequence` 排除 cut 后事件。空 learning cut 保持显式且向旧 manifest 兼容。checkpoint→tail 支持 learning 事实在 cut 后提交；重开 SQLite 后验证原 tail、与完整 replay digest 相等；即使攻击者重算 tail digest，state tamper 仍由 owner reconstruction 拒绝且无 store 写入。

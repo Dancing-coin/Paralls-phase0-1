@@ -27,11 +27,14 @@ class SoulPresenceSourceReader:
     Life owner adapter is admitted, only a pinned empty Life stream is usable.
     """
 
-    def __init__(self, *, presence: PopulationPresenceAuthority):
+    def __init__(self, *, presence: PopulationPresenceAuthority, life_sources=None):
         if type(presence) is not PopulationPresenceAuthority or presence._sources is None:
             raise ValueError('soul_presence_source_authority')
         self._presence = presence
         self._store = presence.store
+        if life_sources is not None and getattr(life_sources, "_store", None) is not self._store:
+            raise ValueError('soul_presence_source_life_store')
+        self._life_sources = life_sources
 
     def read(self, *, actor_ref: str, world_ref: str,
              expected_incarnation: int | None = None) -> SoulPresenceSource:
@@ -66,9 +69,20 @@ class SoulPresenceSourceReader:
         activation = self._presence._sources.read(spawn.payload['source_activation_event_id'],
             world_ref=world_ref, profile_ref=profile)
         life_stream = f'gameplay:character:life:{profile}'
-        if self._store.get_stream_head(life_stream) != 0:
-            raise ValueError('soul_presence_source_life_unavailable')
-        refs = tuple(dict.fromkeys((*activation.source_event_refs, *(event.event_id for event in events))))
+        life_head = self._store.get_stream_head(life_stream)
+        life_refs: tuple[str, ...] = ()
+        if life_head:
+            if self._life_sources is None:
+                raise ValueError('soul_presence_source_life_unavailable')
+            life = self._life_sources.read(actor_ref=actor_ref, world_ref=world_ref,
+                                           incarnation=incarnation, boundary_revision=life_head)
+            if life.state != 'alive':
+                raise ValueError('soul_presence_source_life_ineligible')
+            life_refs = life.source_event_refs
+        refs = tuple(dict.fromkeys((*activation.source_event_refs, *(event.event_id for event in events), *life_refs)))
+        life_read_revisions = (dict(life.read_revisions) if life_head and self._life_sources is not None
+                               else {life_stream: 0})
         return SoulPresenceSource(actor_ref, world_ref, incarnation, spawn.event_id, activation.event_id,
-            MappingProxyType(dict(activation.read_revisions) | {stream: head, life_stream: 0}), refs,
-            max(activation.last_global_sequence, *(event.global_sequence for event in events)))
+            MappingProxyType(dict(activation.read_revisions) | {stream: head} | life_read_revisions), refs,
+            max(activation.last_global_sequence, *(event.global_sequence for event in events),
+                *(self._store.get_event(ref).global_sequence for ref in life_refs)))

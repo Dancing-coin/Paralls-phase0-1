@@ -110,6 +110,8 @@ was made in this batch.
 
 ## Task 4: 按实际依赖交错收口角色与领域
 
+**2026-10-22 D10 Life source adapter 子项：** 新增只读 `SoulLifeSourceReader`，由原 LifeState schema 2 事件、owner transaction/receipt、Presence/activation 原来源和 confirmed case-death 原 terminal/confirmation 重建状态；`SoulPresenceSourceReader` 显式注入后固定 Life read head。真实 owner→SQLite reopen、固定 cut、Presence read-set 与损坏拒绝及相关 owner 回归 **36 passed, 3 deselected**；3 个既有 LifeState caller fixture 缺少当前必需的 `producer_ref`，详见统一矩阵顶部。仅关闭 Life source-adapter 子项；Soul production composition、四门、effect/value、common cut、L4 以及 R14 保持开放。下一步接入需先完成既有 Life owner 的合法死亡/复生 incarnation 语义审查，再绑定 Soul admission；不得将 reader 作为授权。
+
 **Files:** 原计划02/03/04各 task 指定文件；统一矩阵 D03–D11/R10–R14。
 
 - [ ] 逐个真实角色 consumer 冻结需求来源、owner、权限、时间、receipt、恢复；已有 owner 优先复用。
