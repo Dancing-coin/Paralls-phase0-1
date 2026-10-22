@@ -50,7 +50,7 @@ TDD 首轮 **7 failed/4 passed**，命中缺字段、正式角色映射错误及
 
 | 验收面 | 当前状态与本批边界 |
 |---|---|
-| 后端 | stable binding→L3 family 子项已实现并定向验证；真实 observer 的 dedicated Laya key、visual receiver/target 仍需新运行验证。本会话专用 key 未注入且 127.0.0.1:8765 未监听，故当前未启动真实请求 |
+| 后端 | stable binding→L3 family 子项已实现并定向验证；本地 Laya 服务已完成一次带本地服务认证的真实推理请求（见本节顶部 2026-10-22 证据），但这不验证 backend 的 dedicated provider credential routing、真实 observer 的 visual receiver/target，或 backend→Laya→L4→owner 完整链路；本次运行后 127.0.0.1:8765 已释放 |
 | 模型质量 | Q01–Q04 未验收；本批未调用模型，未刷新 sealed source pins |
 | 角色闭环 | 正式角色候选包络阻塞已修；完整真实 Laya、多 owner、恢复/回放仍开放 |
 | 最终 Godot | G-A/G-B/G-C 未操作，继续最后集中验收 |
