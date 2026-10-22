@@ -79,7 +79,9 @@ def test_l2_frame_projects_only_memory_selected_by_existing_recall():
             {"memory_id": "excluded-secret-memory", "summary": "must not reappear"}]})
     context = request["context"]
     frame = context["frame"]
-    assert "selected-evidence" in json.dumps(frame)
-    assert "excluded-secret-memory" not in json.dumps(frame)
-    assert "must not reappear" not in json.dumps(frame)
-    CharacterMindFrame.model_validate(frame).validate_turn(turn())
+    typed_frame = CharacterMindFrame.model_validate(frame)
+    frame_json = typed_frame.model_dump_json()
+    assert "selected-evidence" in frame_json
+    assert "excluded-secret-memory" not in frame_json
+    assert "must not reappear" not in frame_json
+    typed_frame.validate_turn(turn())
