@@ -158,7 +158,7 @@ def test_agent_speak_private_content_transfers_without_stub_regeneration(monkeyp
     assert response["payload"]["tone"] == "neutral"
 
 
-def test_agent_speak_private_backfills_target_semantic_memory(monkeypatch) -> None:
+def test_agent_speak_private_does_not_invent_recipient_hearing(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
     main.reset_runtime_state()
 
@@ -166,25 +166,18 @@ def test_agent_speak_private_backfills_target_semantic_memory(monkeypatch) -> No
         request_type="speak_private",
         content="The west door is unsafe.",
     ))
-    bundle = main.character_agent_runtime.get_memory_bundle("char_a")
     timeline = main.character_agent_runtime.get_session_timeline("char_a")
     latest = main.character_perceived_input_service.get_latest("char_a")
 
-    assert latest is not None
-    assert "The west door is unsafe." in latest.perceived_summary
-    assert any(
-        "The west door is unsafe." in str(entry.get("summary", ""))
-        for entry in bundle["episodic_memories"]
-    )
-    assert any(entry.get("entity_id") == "char_b" for entry in bundle["social_memories"])
-    assert any(
+    assert latest is None or "The west door is unsafe." not in latest.perceived_summary
+    assert not any(
         entry["event_type"] == "character_perceived_event"
         and "The west door is unsafe." in str(entry.get("payload", {}).get("summary", ""))
         for entry in timeline
     )
 
 
-def test_agent_speak_public_backfills_other_agents_not_only_speaker(monkeypatch) -> None:
+def test_agent_speak_public_does_not_invent_other_agents_hearing(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
     main.reset_runtime_state()
     main.l1_occupancy_service.apply_actor_zone_update(
@@ -213,13 +206,14 @@ def test_agent_speak_public_backfills_other_agents_not_only_speaker(monkeypatch)
         request_type="speak_public",
         content="Everyone should watch the letter.",
     ))
-    listener_bundle = main.character_agent_runtime.get_memory_bundle("char_a")
+    listener_timeline = main.character_agent_runtime.get_session_timeline("char_a")
     speaker_timeline = main.character_agent_runtime.get_session_timeline("char_b")
     player_shell_timeline = main.character_agent_runtime.get_session_timeline("char_c")
 
-    assert any(
-        "Everyone should watch the letter." in str(entry.get("summary", ""))
-        for entry in listener_bundle["episodic_memories"]
+    assert not any(
+        entry["event_type"] == "character_perceived_event"
+        and "Everyone should watch the letter." in str(entry.get("payload", {}).get("summary", ""))
+        for entry in listener_timeline
     )
     assert not any(
         entry["event_type"] == "character_perceived_event"
@@ -232,7 +226,7 @@ def test_agent_speak_public_backfills_other_agents_not_only_speaker(monkeypatch)
     )
 
 
-def test_share_info_and_withhold_backfill_target_by_visibility(monkeypatch) -> None:
+def test_share_info_and_withhold_do_not_invent_recipient_hearing(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
     cases = [
         ("share_info", "The letter has a hidden mark."),
@@ -245,21 +239,18 @@ def test_share_info_and_withhold_backfill_target_by_visibility(monkeypatch) -> N
             request_type=request_type,
             content=content,
         ))
-        target_bundle = main.character_agent_runtime.get_memory_bundle("char_a")
+        target_timeline = main.character_agent_runtime.get_session_timeline("char_a")
         speaker_timeline = main.character_agent_runtime.get_session_timeline("char_b")
 
-        assert any(
-            content in str(entry.get("summary", ""))
-            for entry in target_bundle["episodic_memories"]
-        )
         assert not any(
             entry["event_type"] == "character_perceived_event"
             and content in str(entry.get("payload", {}).get("summary", ""))
-            for entry in speaker_timeline
+            for entry in target_timeline
         )
+        assert not any(entry["event_type"] == "character_perceived_event" for entry in speaker_timeline)
 
 
-def test_agent_speech_backfill_cascade_depth_records_without_cognition(monkeypatch) -> None:
+def test_agent_speech_without_playback_receipt_does_not_enter_recipient_l1(monkeypatch) -> None:
     monkeypatch.setattr(settings, "dialogue_mode", "stub")
     monkeypatch.setattr(settings, "character_dialogue_cascade_limit", 3)
     main.reset_runtime_state()
@@ -270,10 +261,8 @@ def test_agent_speech_backfill_cascade_depth_records_without_cognition(monkeypat
         source_ref_lineage=["root", "reply"],
     ))
     timeline = main.character_agent_runtime.get_session_timeline("char_a")
-    event_types = [entry["event_type"] for entry in timeline]
-
-    assert "character_perceived_event" in event_types
-    assert "l2_reasoning_request" not in event_types
+    assert not any(entry["event_type"] == "character_perceived_event" for entry in timeline)
+    assert not any(entry["event_type"] == "l2_reasoning_request" for entry in timeline)
 
 
 def test_dialogue_cascade_depth_records_without_triggering_cognition(monkeypatch) -> None:

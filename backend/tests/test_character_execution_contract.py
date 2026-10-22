@@ -281,11 +281,10 @@ def test_execution_ingress_rejects_non_contract_body_authority_payload() -> None
 
 
 
-def test_contract_pins_reach_social_dialogue_settlement(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_contract_pins_reach_social_dialogue_settlement() -> None:
     import app.main as main
 
     main.reset_runtime_state()
-    monkeypatch.setattr(main, "_backfill_character_agent_speech_perception", lambda **_: None)
     contract = _valid_contract(
         semantic_intent_id="speak_public",
         semantic_action_id="speak_public",

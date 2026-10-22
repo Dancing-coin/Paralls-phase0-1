@@ -129,6 +129,8 @@ was made in this batch.
 - [ ] 正式准入 owner 加入同一 global cut，验证迁移/权限/隐私 parity；独立 participant 数量不代替共同 cut。
 - [ ] 每个可审查批次提交并更新矩阵，历史证据按实际受影响路径失效。
 
+**2026-10-22 speech source-boundary correction:** Removed the production path that synthesized `CharacterPerceivedEvent` for listeners immediately after TTS generation. This path lacked Actor playback/spatial propagation and receiver L1 acoustic evidence; the existing speech design assigns playback to CharacterActor and hearing judgment to the receiving L1. Dialogue response/TTS output and speaker timeline remain. The real player `DialogueSubmit` ingress remains unchanged. RED reproduced fabricated listener L1 entries for private/public/share_info/withhold (4 expected failures); final focused execution/dialogue regression: **45 passed**, 8 existing FastAPI/Pydantic warnings. `backend-contract` Harness run `876c61e483244985b25f43599ab63e46` passed/cleanup passed; report: `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\speech-backend-contract-20261022\`. This removes false evidence only; speech recipient admission, the three playback paths, cancellation/late handling, authenticated playback receipt, real receiver L1 and Godot presentation remain open.
+
 ## Task 5: 正式模型质量
 
 **Files:** `character_agent/evaluation/`、既有 `prepare_character_evaluation.py`、`prepare_calibration_preclosure.py`、freeze/run/score scripts 与隔离 fixtures。

@@ -1,5 +1,20 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 移除 speech 合成回填的伪听见事实
+
+`_handle_character_agent_speech_action` 原先在 TTS 仅完成合成后，按 target/occupancy 直接构造 `clarity=1.0`、`certainty=1.0` 的 auditory `CharacterPerceivedEvent` 并写入接收角色 L1。此路径没有 Actor 播放、空间传播或接收角色声学判断证据，与角色语音设计中“CharacterActor 负责本地播放和空间传播，接收者是否听见由接收方 L1 决定”的边界冲突。已删除该 synthetic backfill 及其单独收件人推断；`dialogue_response`、TTS 输出和 speaker 侧对话记录保留，真实 player `DialogueSubmit` 输入路径不变。
+
+RED 先在四种路径复现 listener L1 写入（private/public/share_info/withhold；4 expected failures）。修复后 `backend/tests/test_character_dialogue_mind_core_integration.py` 与 `backend/tests/test_character_execution_contract.py` **45 passed**，8 个既有 FastAPI/Pydantic warnings。Harness `backend-contract` run `876c61e483244985b25f43599ab63e46` passed/cleanup passed，脱敏报告位于 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\speech-backend-contract-20261022\`。测试 basetemp 仅在 D 盘。没有运行全量 pytest/Harness all、模型评估、训练/微调或 Godot。
+
+该修复移除无来源的接收事实，不构成 speech owner/playback receipt。语音三路径、取消/迟到、执行时 recipient/source admission、真实 Actor 播放/空间传播回执与接收方 L1 仍未实现或验收；Godot 边界留到最后。R05/R13 及角色闭环状态仍为局部实现。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | 无回执合成 speech 不再进入 receiver L1；player DialogueSubmit 真实输入和既有对话响应合同回归通过 |
+| 模型质量 | Q01–Q04 未验收；本批没有模型调用或质量样本 |
+| 角色闭环 | speech 只保留发出侧响应，真实播放/接收回执仍缺；完整 Laya 多域 owner/recovery/replay 仍开放 |
+| 最终 Godot | G-A/G-B/G-C 未操作；播放边界和可见结果留到 backend/owner 收口后 |
+
 ### 2026-10-22 本地 Laya 服务认证与推理复验
 
 为确认本地服务认证问题不需要用户另行提供密钥，本次只读 `laya-serve` 运行进程环境中的本地 `LAYA_API_KEY`，未显示或持久化其值；对 `127.0.0.1:8765/v1/systemone` 的真实请求返回 HTTP 200，`model=laya-rl-agent`、`routing=multilingual`、choice `observe`，55 input tokens，`truncated=false`。脱敏结果位于 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-local-inference-20261022-live-recheck.json`。该值是本地 HTTP Bearer 认证配置，由服务进程持有，不是外部模型 API key，也不需要用户保存或提供。
@@ -523,7 +538,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 | R02 memory；规格04 | 局部实现 | recall、semantic cards、writeback policy、consistency/recovery tests | 真实 outcome 与 authority receipt 绑定，重复、冲突、重开不重复沉淀；保留隐私与来源 |
 | R03 官方 Laya 服务与 choice | 已完成（历史 bounded 链路） | `gateway/laya_provider.py`、gateway、[RW-34](backend-choice-foundations-stage3-20261015.md) | 复用服务及接纳证据；首回合为 cognition_unavailable physiology_hint，第二回合空命令，不能计入动作执行 |
 | R04 完整输入与预算；规格05、计划01 Task1C | 局部实现 | 完整 token budget gate、RW-32 修复后 22 条无截断诊断 | 生产 L3 默认完整输入预算门已启用（c3fbbf27）；正式运行 tokenizer/config 冻结、同 request usage/pins 仍待真实模型验证，不能靠静默截断解决 |
-| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect/worktable 输入；visual observer private recipient 子项已验证） | 私有 visible refs/source/catalog、ESM inspect/worktable policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler；visual fact 按 `source.actor_id` 投递，见本批新增证据 | 已补原生产目录缺口的 inspect 切片、worktable `use_object`/`finish_use` 局部切片及 L1 visual observer→private percept；其余领域动作、完整策略覆盖、完整目标来源与执行时 revalidation 仍缺。`CharacterCombatTargetCatalog` 当前仅作只读诊断，返回空 `supported_intents`、空 `owner_route` 和 `combat_action_admission_pending`；main 的 execution-contract egress 未接 combat action 到 `street_combat_attempt`，故不得将其计为 Laya 可执行 combat candidate。具体而言，L3 将 `speak_private`、`share_info`、`withhold` 列为 target-required，但 `CharacterSocialTargetCatalog` 仅登记五种 social movement intent，不能为这些 speech intent 提供合法 recipient descriptor；现有 dialogue handler 的 TTS/合成 percept 回填不构成真实播放或接收证据。补齐 combat 需先提供有来源的 action/capability/window admission 与受信执行反馈；补齐 speech 需复用经授权的 recipient/source owner 与执行时重验，并以真实边界消息和接收 L1 证据验收；不得用 attention 或当前玩家猜目标 |
+| R05 完整 U/P 与动作＋目标 | 局部实现（ESM inspect/worktable 输入；visual observer private recipient 子项已验证） | 私有 visible refs/source/catalog、ESM inspect/worktable policy 只读投影、生产 reset 绑定同一 ESM、原 CandidateCompiler；visual fact 按 `source.actor_id` 投递，见本批新增证据 | 已补原生产目录缺口的 inspect 切片、worktable `use_object`/`finish_use` 局部切片及 L1 visual observer→private percept；其余领域动作、完整策略覆盖、完整目标来源与执行时 revalidation 仍缺。`CharacterCombatTargetCatalog` 当前仅作只读诊断，返回空 `supported_intents`、空 `owner_route` 和 `combat_action_admission_pending`；main 的 execution-contract egress 未接 combat action 到 `street_combat_attempt`，故不得将其计为 Laya 可执行 combat candidate。具体而言，L3 将 `speak_private`、`share_info`、`withhold` 列为 target-required，但 `CharacterSocialTargetCatalog` 仅登记五种 social movement intent，不能为这些 speech intent 提供合法 recipient descriptor；角色发言的 synthetic TTS→listener L1 回填已删除，真实播放/接收证据仍缺。补齐 combat 需先提供有来源的 action/capability/window admission 与受信执行反馈；补齐 speech 需复用经授权的 recipient/source owner 与执行时重验，并以真实边界消息和接收 L1 证据验收；不得用 attention 或当前玩家猜目标 |
 | R06 能力包络／cognition policy；规格05、计划02 Task1–3 | 局部实现（durable Siming、三类同步入口及 background L2/L3 同源合同已验证；stage typed 正文/身份校验增量见下） | stable ability、CapabilityEnvelope、CognitionPolicy；durable Siming 与 background 在 L2 前冻结真实 registry/profile/dynamic 来源，L2/L3/L4 同 turn；background 保持 commands=[] | 冻结召回总条数与既有 token 估算预算已覆盖 L2/L3/gateway；background/dialogue/模型总输入硬预算、真实 memory/input revision、完整 frame/source 对齐仍缺；不能由 digest 一致推断认知差异或模型质量 |
 | R07 选择→非 fallback 原动作 L4；规格07 | 局部验证（真实 Laya inspect 与 worktable use 切片） | frozen candidate map/digest、canonical execution contract；run 4f2816ada4884a7dabab3644ff878564 | 实际 Laya 选择的 action+target 与非空原动作合同一致；不能由 fallback physiology_hint 或 accepted ack 替代 |
 | R08 L4→owner→反馈 | 局部验证（真实 Laya＋plaque inspect；在线 L2＋Laya worktable use/finish 与新进程恢复）；完整闭环未验证 | `CharacterObjectExecution`、main egress/ingress、ESM shared-store receipt、session dispatch-offered event | 原合同来源、后台派发期限、当前私有目标/scope/digest及空间 read CAS后真实 owner提交并回写；worktable use 已有真实 Laya→L4→owner 回执；新增在线 L2/Laya 的真实 use→finish 连续周期及两份原回执新进程零写恢复；显式任务驱动、生产产出和完整多域仍缺。真实 Laya原动作、多领域权限/生命周期、完整动作和真实 physics仍缺；不以合同测试代替完整纵切 |
@@ -531,7 +546,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 | R10 学习／技能形成；规格06 | 局部实现（common replay cut子项、episode mastery/difficulty 数据合同已定向验证） | registered learning owner前置39项；owner→冻结能力/旧provider拒绝/生产读取176项；生产inspect个人动作披露与来源owner/consumer回归141项；2026-10-22 learning scoped cut/tail/reopen与损坏拒绝9项；2026-10-22 `LearningEpisode`/`ImitationEpisode` mastery/difficulty 合同 23 passed，见本文件末尾与 `backend/tests/test_character_skill_evidence_extractor.py` | 四学习路线仍缺已批准生产 source/episode/gate→owner 策略、时间/资源/teacher 与 grant 撤销准入、正式 mastery 更新语义。当前仅校验 proposal 数据形状，不提供 episode 持久 owner 或技能写权。common cut 按端点有界重建验证，不代表生产四路线恢复验收。工程模型训练不产生角色技能事件 |
 | R11 regulation／五通道／episode；规格08 | 局部实现 | regulation projection、expression/observation episodes、资源私有投影 | 真实来源/权限/回执与消费接线；无来源 band/formula 继续 unknown，不凭空填生理结论；可见/听见最后验收 |
 | R12 协同／短契约；角色03 §3–6、规格08、计划03 Task3/6A | 局部实现（生产 sender admission、receiver-private L1 propagation 与过期过滤已定向验证；完整协同未实现） | `models/local_coordination.py` 的 signal/contract 校验；`services/per_character_percept_filter.py` 的 audibility/recipient/privacy gate；`main.py::_admit_local_coordination_signal` 复用当前 active WebSocket actor binding 对 raw/visual signal 做来源准入；`reasoning/l1_perception.py` 的接收方私有投影；本轮五个定向测试文件 88 passed，见本文件顶部 2026-10-22 记录 | 短契约 owner/context revision 与参与者状态、source receipt/replay、双角色独立 L1/Laya、连续协同、owner receipt 和 G-C 可见结果仍待实现/验证。普通事实 ingress 仍保留；不得把本切片计作完整协同或用测试注入 context 冒充生产接线 |
-| R13 SpeechLease／三路径语音 | 局部实现 | lease、dialogue continuation、TTS adapter | preset/catchphrase 目录、三路径 dispatch、取消/迟到；音频生成不等于空间 played/heard，听见证据最后验收 |
+| R13 SpeechLease／三路径语音 | 局部实现 | lease、dialogue continuation、TTS adapter；2026-10-22 移除 synthetic TTS→listener percept；backend-contract 与发言回归见本文件顶部 | preset/catchphrase 目录、三路径 dispatch、取消/迟到；Actor 播放/空间传播 receipt 与接收方 L1 判断仍缺，音频生成不等于空间 played/heard |
 | R14 精神资源／Soul 角色回验 | 局部实现 | Resource/L1 private projection 与缺 owner 拒绝 | D06/D10 就绪后回验；不能另造角色私有 Soul truth |
 
 ## 三、正式模型质量

@@ -7517,11 +7517,6 @@ def _handle_character_agent_speech_action(
         producer_ts=int(response.producer_ts or 0),
         payload=response.model_dump(),
     )
-    _backfill_character_agent_speech_perception(
-        action=action,
-        request_type=request_type,
-        response=response,
-    )
     return response
 
 
@@ -7552,120 +7547,6 @@ def _dialogue_submit_to_character_perceived_event(event: DialogueSubmit) -> Char
         clarity_score=1.0,
         certainty_score=1.0,
     )
-
-
-def _backfill_character_agent_speech_perception(
-    *,
-    action: dict[str, object],
-    request_type: str,
-    response: DialogueResponse,
-) -> None:
-    for perceived in _character_agent_speech_perceived_events(
-        action=action,
-        request_type=request_type,
-        response=response,
-    ):
-        _ingest_dialogue_perception(perceived)
-
-
-def _character_agent_speech_perceived_events(
-    *,
-    action: dict[str, object],
-    request_type: str,
-    response: DialogueResponse,
-) -> list[CharacterPerceivedEvent]:
-    room_id = str(action.get("room_id", "") or response.room_id or "room_demo")
-    scene_id = str(action.get("scene_id", "") or "scene_demo")
-    zone_id = str(action.get("zone_id", "") or "zone_focus")
-    lineage = _speech_source_ref_lineage(action)
-    events: list[CharacterPerceivedEvent] = []
-    for listener_id in _speech_perception_recipients(
-        action=action,
-        request_type=request_type,
-        speaker_actor_id=response.actor_id,
-        target_actor_id=str(response.target_actor_id or ""),
-        zone_id=zone_id,
-    ):
-        source_event_id = (
-            f"character_agent_speech:{response.producer_ts}:"
-            f"{request_type}:{response.actor_id}:{listener_id}"
-        )
-        perceived_summary = f'{response.actor_id}对你说："{response.content}"'
-        events.append(
-            CharacterPerceivedEvent(
-                actor_id=listener_id,
-                percept_channel="auditory",
-                producer_ts=int(response.producer_ts or 0),
-                room_id=room_id,
-                scene_id=scene_id,
-                zone_id=zone_id,
-                perceived_summary=perceived_summary,
-                source_candidate_event_id=source_event_id,
-                source_actor_id=response.actor_id,
-                target_actor_id=listener_id,
-                subject_ref=response.actor_id,
-                target_ref=listener_id,
-                source_ref_lineage=[*lineage, source_event_id],
-                clarity_score=1.0,
-                certainty_score=1.0,
-            )
-        )
-    return events
-
-
-def _speech_perception_recipients(
-    *,
-    action: dict[str, object],
-    request_type: str,
-    speaker_actor_id: str,
-    target_actor_id: str,
-    zone_id: str,
-) -> list[str]:
-    if request_type in {"speak_private", "share_info", "withhold"}:
-        candidates = [target_actor_id] if target_actor_id else []
-    elif request_type == "speak_public":
-        candidates = _same_room_agent_actor_ids(zone_id=zone_id)
-        if target_actor_id:
-            candidates.append(target_actor_id)
-    else:
-        candidates = []
-
-    recipients: list[str] = []
-    for candidate in candidates:
-        actor_id = str(candidate or "")
-        if actor_id == speaker_actor_id or not _is_agent_dialogue_target(actor_id):
-            continue
-        if actor_id not in recipients:
-            recipients.append(actor_id)
-    return recipients
-
-
-def _same_room_agent_actor_ids(*, zone_id: str) -> list[str]:
-    snapshot = l1_occupancy_service.snapshot()
-    if zone_id:
-        zone = snapshot.zone_states.get(zone_id)
-        if zone is not None and zone.actor_ids:
-            return list(zone.actor_ids)
-
-    actor_ids: list[str] = []
-    for zone in snapshot.zone_states.values():
-        actor_ids.extend(zone.actor_ids)
-    if actor_ids:
-        return sorted(set(actor_ids))
-
-    return sorted(str(actor_id) for actor_id in getattr(character_agent_runtime, "_supported_actor_ids", set()))
-
-
-def _speech_source_ref_lineage(action: dict[str, object]) -> list[str]:
-    raw_lineage = action.get("source_ref_lineage", [])
-    if not isinstance(raw_lineage, list):
-        return []
-    lineage: list[str] = []
-    for ref in raw_lineage:
-        text = str(ref or "")
-        if text:
-            lineage.append(text)
-    return lineage
 
 
 def _ingest_dialogue_perception(perceived: CharacterPerceivedEvent) -> list[CharacterGoalCommand]:
