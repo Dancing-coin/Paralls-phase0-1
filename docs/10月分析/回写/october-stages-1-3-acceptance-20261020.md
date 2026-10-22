@@ -2,11 +2,11 @@
 
 ### 2026-10-23 当前 Laya listener 凭据定位与真实推理复验
 
-当前 `127.0.0.1:8765` listener 由 WSL `laya-serve` 进程提供，进程环境中存在本地 `LAYA_API_KEY`；当前 Windows backend shell 未设置 `CHARACTER_LAYA_API_KEY`。此前 401 是请求进程未使用服务当前凭据，不是模型服务要求外部 API key。只读从 listener 进程环境临时取值，在本次 PowerShell 进程内完成一次 `POST /v1/systemone`；服务 `/health` 返回 200，真实推理返回 HTTP 200、`model=laya-rl-agent`、`routing=multilingual`、choice `observe`。凭据未打印、写文件或持久化；没有重启、接管或停止 listener，也没有在 C 盘创建临时文件。
+当前 `127.0.0.1:8765` listener 由 WSL `laya-serve` 进程提供，进程环境中存在本地 `LAYA_API_KEY`；当前 Windows backend shell 未设置 `CHARACTER_LAYA_API_KEY`。此前 401 是请求进程未使用服务当前凭据，不是模型服务要求外部 API key。只读从 listener 进程环境临时取值，服务 `/health` 与真实 `POST /v1/systemone` 均返回 200。随后通过仓库生产 `LayaSystemOneProvider` 发送冻结候选 `[observe, ask_probe]`，响应 `model=laya-rl-agent`、`routing=multilingual`，choice `observe`，provider latency 363.25 ms。凭据未打印、写文件或持久化；没有重启、接管或停止 listener，也没有在 C 盘创建临时文件。
 
 | 验收面 | 状态与证据边界 |
 |---|---|
-| 后端 | 当前 listener 认证与一次真实本地推理已复验；Windows shell/backend provider 的凭据启动接线仍未配置，本次直连不证明 backend→Laya 生产 transport |
+| 后端 | 当前 listener 认证、真实本地推理和生产 Laya provider 的候选传输已复验；Windows backend runtime 的凭据启动接线、真实 backend turn/transport 仍未复验 |
 | 模型质量 | Q01–Q04 未验收；本请求为开发 smoke，不属于正式样本，没有访问 calibration/final/holdout 或训练/微调 |
 | 角色闭环 | 无生产 backend turn、完整候选、L4、owner commit/receipt 或恢复回放证据 |
 | 最终 Godot | G-A/G-B/G-C 未操作，仍留到后端和角色依赖收口之后 |
