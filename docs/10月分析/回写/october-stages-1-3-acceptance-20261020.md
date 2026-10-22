@@ -1196,3 +1196,13 @@ drive scan or cleanup was performed.
 **后端**：encounter admission source refs 已改为 backend 当前 canonical resolver，客户端 source 伪造面收窄；正式 authenticated issuer、contact receipt 与 `street_combat_attempt`→L4→Threat owner 生产闭环仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多领域 owner 回执、恢复与回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
 
 补充验证：修正 transport 测试 fixture 使用当前 Unix 时间签发 trusted-local credential 后，`test_street_combat_transport.py` + `test_canonical_combat_lifecycle.py` 组合为 **34 passed, 1 failed**。唯一失败为既有角色受击反应断言实际收到 `action:observe` 而非 `action:self_protect`，不涉及本批 source resolver；canonical lifecycle 19 项与 encounter admission 负例均通过。该失败保留为角色闭环开放项，未改生产代码。
+
+### 2026-10-22 combat perception target binding and fail-safe contract
+
+修正 `street_combat_attempt` 投递给角色感知的 `CharacterPerceivedEvent.target_actor_id`：此前误填攻击者 `source_actor_id`，现绑定实际受击角色。同步收窄 transport 回归断言，验证提交命中后一定为受击角色生成 L4 execution contract，目标证据为 `char_a`，动作仅允许安全回退集合（`self_protect`、`observe`、`withdraw`），且不产生 melee 攻击；`model_unavailable` 时的 `observe` 是 continuity-floor 安全路径，不计入正式模型质量或 self-protect 选择证据。
+
+定向验证：`test_street_combat_transport.py` + `test_canonical_combat_lifecycle.py` **35 passed**（D 盘 basetemp，既有 FastAPI/Pydantic warnings）。
+
+证据边界：本批只修正角色感知目标绑定并固定 cognition unavailable 的 fail-safe 合同；`street_combat_attempt` 仍未接入 authenticated encounter/contact receipt、L4→Threat owner 生产链，Q01–Q04、完整 Laya 多 owner common cut、恢复回放生产链和 Godot G-A/G-B/G-C 仍未验收。
+
+**后端**：combat perception target data-flow 修正，定向 transport/lifecycle 35 项通过；正式 combat ingress 仍局部。**模型质量**：Q01–Q04 未验收，fallback 不作正式质量证据。**角色闭环**：受击角色 fail-safe execution contract 已验证，完整 Laya action+target→多域 owner 仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。

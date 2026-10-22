@@ -4892,7 +4892,7 @@ def _handle_envelope(
                     perceived_summary=f"Struck by {source_actor_id} in the street",
                     source_candidate_event_id=result.committed_event_ids[0],
                     source_actor_id=source_actor_id,
-                    target_actor_id=source_actor_id,
+                    target_actor_id=target_actor_id,
                     distance_m=float(result.committed_projection.get("distance_m", 0.0)),
                 )
                 commands = character_agent_runtime.ingest_character_perceived_event(perceived)

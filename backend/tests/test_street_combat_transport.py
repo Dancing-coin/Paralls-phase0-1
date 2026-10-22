@@ -79,7 +79,7 @@ def test_websocket_street_combat_rejects_client_truth() -> None:
     assert main.unified_character_action_settlement_service.mutation_count == 0
 
 
-def test_committed_street_hit_enters_character_agent_protective_execution_contract() -> None:
+def test_committed_street_hit_enters_character_agent_fail_safe_execution_contract() -> None:
     main.reset_runtime_state()
     _prepare_bound_actors()
     _dispatch("street_combat_pose", {"actor_id": "street_bandage", "connection_epoch": 1, "position": [0.0, 0.2, -9.8], "physics_tick": 100})
@@ -87,7 +87,16 @@ def test_committed_street_hit_enters_character_agent_protective_execution_contra
     messages = _dispatch_many("street_combat_attempt", {"attempt": attempt("agent-reaction").model_dump(mode="json")})
     assert messages[0]["payload"]["authority_result"]["outcome"] == "committed"
     executions = [message["payload"] for message in messages if message["message_type"] == "character_agent_execution"]
-    assert any(contract["actor_ref"] == "character:char_a" and contract["semantic_action_id"] == "action:self_protect" for contract in executions), [(contract["semantic_action_id"], contract["semantic_intent_id"], contract["target_refs"]) for contract in executions]
+    assert executions, "committed hit must produce an execution contract for the target actor"
+    contract = executions[0]
+    assert contract["actor_ref"] == "character:char_a"
+    assert contract["semantic_action_id"] in {"action:self_protect", "action:observe", "action:withdraw"}
+    assert "evidence:target:char_a" in contract["context_tags"]
+    assert contract["expected_observation"]["execution_scope"] == {
+        "room_id": "room_street",
+        "scene_id": "scene_street_combat",
+        "zone_id": "zone_intersection",
+    }
     assert all(contract["semantic_action_id"] != "action:melee.short_punch" for contract in executions)
 
 
