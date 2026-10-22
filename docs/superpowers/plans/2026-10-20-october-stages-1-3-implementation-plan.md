@@ -4,7 +4,7 @@
 
 **Goal:** 整体完成十月主线阶段一至三的实现与验收，包含完整 Laya、角色与真实领域 owner 闭环，以及最后集中完成的 Godot A/B/C。
 
-**目标扩展确认（2026-10-21）：** 完整 Laya 的验收必须覆盖真实 backend 运行、输入与候选完整性、完整 action+target、L4 执行、真实领域 owner 提交、receipt、恢复与回放；正式模型质量必须按 calibration/final/holdout 隔离完成 Q01–Q04。服务可调用、choice 接纳、合同测试和单 owner slice 只能作为局部证据。Godot A/B/C 在上述后端与角色依赖收口后集中执行；阶段四、通用编辑器、AD/Blender 动作工具链和自走棋继续排除。Goal API 当前只能更新 status，因此扩展目标由本计划和统一矩阵承载，Goal 保持 active。
+**目标扩展确认（2026-10-21，当前状态 2026-10-22）：** 完整 Laya 的验收必须覆盖真实 backend 运行、输入与候选完整性、完整 action+target、L4 执行、真实领域 owner 提交、receipt、恢复与回放；正式模型质量必须按 calibration/final/holdout 隔离完成 Q01–Q04。服务可调用、choice 接纳、合同测试和单 owner slice 只能作为局部证据。Godot A/B/C 在上述后端与角色依赖收口后集中执行；阶段四、通用编辑器、AD/Blender 动作工具链和自走棋继续排除。当前 Goal ledger 已扩展至整体阶段一至三并保持 active；计划与统一矩阵记录任务覆盖及证据。
 
 **Architecture:** 复用现有 CharacterTurnContext、MindFrame、L1–L4、gateway/Laya、RuntimeExecution 和 GameplayEventStore。角色缺少领域能力时先完成对应 owner，再返回角色；模型与 Godot 只提交结构化 intent，不成为世界 authority。
 
@@ -38,7 +38,7 @@
 
 ## Task 1: 真实私有输入、动作目标与同源能力
 
-2026-10-22 production Laya preflight repair：按 [registered action-family projection](../specs/2026-10-22-registered-action-family-projection.md) 将知识域与 L3 family 分离；正式 char_a/char_b 包络、rank/revocation/缺映射拒绝及相邻 capability/learning/social 回归 **104 passed**。2026-10-22 随后修复 `visual_fact` 按观察者而非目标角色进入 private percept 的收件错误，RED 4 failures，相关三文件最终 **47 passed**；详见统一矩阵。Provider 专用凭据隔离已有定向历史证据，但当前 shell 未配置 `CHARACTER_LAYA_ENDPOINT` / `CHARACTER_LAYA_API_KEY`。下一步由本轮自有 backend 配置本地 endpoint 与专用凭据，选择有正式 owner 的来源执行真实认证 WS→Laya→L4→owner slice；不接管当前在线服务，也不替代 multi-owner、formal Q01–Q04 或 Godot。
+2026-10-22 production Laya preflight repair：按 [registered action-family projection](../specs/2026-10-22-registered-action-family-projection.md) 将知识域与 L3 family 分离；正式 char_a/char_b 包络、rank/revocation/缺映射拒绝及相邻 capability/learning/social 回归 **104 passed**。随后修复 `visual_fact` 按观察者而非目标角色进入 private percept 的收件错误，相关三文件 **47 passed**。2026-10-22 当前 HEAD sourced worktable 真实运行现已通过 owned local Laya：authenticated WS→DeepSeek L2→Laya HTTP 200→两个 action+target→L4→原 ESM owner 两条 transaction receipts→独立进程 exact replay/zero world writes；输入 6587/8192 tokens 未截断。原始诊断归档和边界见统一矩阵。本项仅关闭一个单 owner worktable live slice；完整来源/候选分母、多 owner common replay cut、正式 Q01–Q04 和 Godot A/B/C 仍开放。
 
 **2026-10-22 social admission ruling：** spatial-only 草稿撤除；中性 social target 必须组合 canonical Presence/Life、私有 visual lineage、当前 scope 与真实空间来源，不能从 combat hostile faction 推导社交权限。canonical ingress 已要求当前 owner 重投影的 action/target/route/digest；缺 catalog 零写拒绝。原 owner receipt 的精确恢复在当前 target 消失时仍可执行。旧 synthetic-success fixture 降为拒绝验证，owner durable replay/reopen 保留；三文件定向 47 passed。下一实现任务是正式中性 source catalog 与原 owner CAS/L4 接线，不继续扩展 synthetic contract success。R05/R07–R09、Q01–Q04、Godot A/B/C 均未关闭。
 
@@ -83,7 +83,9 @@ and docs `eeb0f37f29c844d2a6ad08e15c86f3c0` passed with cleanup. An exact staged
 snapshot passed the 5 directly scoped files (80 passed); adding the broader legacy
 execution-contract file exposes one unsupported `obj_letter` assertion, reproduced
 on unchanged HEAD (`e39e1dd0a0614e509aed6235cc8505dd`). This remains a bounded owner
-slice, not live Laya or full R07/R08. Earlier run `c0c28134270c44ce8e21d9a5f9848c93`
+slice; the 2026-10-22 owned local-service run separately verifies its sourced live
+backend/Laya/L4/ESM receipt and exact replay path. Neither closes all R07/R08 or
+multi-owner recovery. Earlier run `c0c28134270c44ce8e21d9a5f9848c93`
 is historical and predates the final contract projection tightening.
 
 **已提交前置修复（不关闭 Task 2）：** `055d5abf` 将既有 ESM policy/state/occupant 检查补到直接 authority 入口，绑定 request/event 的 actor/scope/target/action，canonical 重复键禁止跨 scope；精确暂存隔离 52 passed。ESM 仍缺 durable transition/receipt 与 canonical 距离来源；Equipment controller binding 不自动授权角色，work intent 注册不等于 owner，social delivery 不等于 played/heard。下一纵切必须显式补合法角色 caller 和 owner admission，禁止伪造 physics 或授权。

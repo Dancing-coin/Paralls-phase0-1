@@ -1,25 +1,21 @@
 # 十月主线阶段一至三统一验收矩阵
 
-### 2026-10-22 当前 HEAD Laya 真实后端复跑（本地服务响应失败）
+### 2026-10-22 当前 HEAD Laya 真实后端复跑（本地服务与 worktable 单 owner 恢复通过）
 
-复用既有 worktable sourced-dialogue runner，以当前仓库 HEAD 启动 backend component app，经真实 authenticated WebSocket 输入、在线 DeepSeek L2 和生产 `LayaSystemOneProvider` 发起本地 Laya `/v1/systemone` 调用。第一轮未提供 `CHARACTER_LAYA_API_KEY`；第二轮通过进程环境注入已记录的本地服务认证值（不输出凭据），仍收到 HTTPError。runner 未保留 HTTP 状态码/响应体，故不能把失败断言为认证错误，也不能归因到 URL 路径；Laya adapter 路径实现是 `/v1/systemone`。当前监听者是复用的 WSL localhost relay，本轮未启动、接管或停止服务。
+本轮拥有的 backend component app 经 authenticated WebSocket 接收 `visual_fact/object_available` 与玩家 `DialogueSubmit`，在线 DeepSeek L2 两次 transport 成功、`fallback_used=false`；生产 `LayaSystemOneProvider` 向本轮启动的本地权重服务 `127.0.0.1:18765/v1/systemone` 发出两次 POST，均 HTTP 200、transport 成功且无 fallback。服务以本轮专用本地 Bearer 配置启动；旧 listener `127.0.0.1:8765`（WSL PID 587）未接管或停止，backend 使用端口 18767。Laya 冻结候选分别为 `[observe, use_object:obj_worktable, ask_probe]` 与 `[observe, finish_use:obj_worktable, ask_probe]`，实际 choice 保留对应 `obj_worktable` target。状态输入预算 `6464 + 122 = 6587/8192 tokens`，`truncated=false`。这证明该 sourced worktable turn 的输入、冻结候选及完整动作/目标一致性，不证明其他来源的候选全集完整。
 
-第二轮当前 HEAD trace 显示 DeepSeek L2 成功 2 次，Laya L3 真实传输失败 5 次；完整请求预算为 7538/8192 tokens、未截断，候选完整性在 adapter 组包处通过，但只有 1 个冻结候选，不足以证明完整动作/目标分母。没有 L4 `character_agent_execution` envelope、worktable owner receipt 或新 world write；恢复检查仅恢复已有 seed/memory receipts，不能计为本次角色动作回执。原始证据：`D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-worktable-current-head-after-visual-recipient-20261022-v3\`。此前无认证配置的第一次结果保留在 `...\laya-worktable-current-head-after-visual-recipient-20261022-v2\`；更早准备阶段的空 evidence 目录保留，因既有清理请求被拒绝，不绕过清理策略。未访问正式质量 split，未训练/微调，未操作 Godot。
+backend 发出两份真实 `character_agent_execution` L4 envelope，runner 回送后收到对应 `world_result`，两次均为 `settlement_status=committed`、`resolution_status=accepted`、target `obj_worktable`，并由原 ESM object owner 提交；transaction refs 为 `transaction:esm-object:5efe5d357f4378db0475365744a690496317250267f93e6fc161f855e4d8ba90` 与 `transaction:esm-object:63fcff4957fb65ee1bbc710c488aaee214122fd0f32934586776c14c5206c45c`。独立恢复进程重开本轮 SQLite/gameplay store 后 exact replay 返回同两条原 receipt，world sequence 保持 510、零新 world writes，interaction state 为 `ready`。原始 trace、owner snapshot、恢复脚本、runner (`probe.py`) 及结果位于 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-worktable-current-head-local-service-20261022\`；运行结束后本轮 Laya 与 backend 均已关闭，18765/18767 已释放。
 
-同一来源输入的 v4 复跑为诊断增加了只暴露 HTTP status 的错误摘要，Laya 明确返回 **401**。本轮通过进程环境提供了历史记录中的本地 token，服务仍拒绝；因此当前监听服务与历史 token 配置不匹配或服务以其他认证配置运行。没有读取用户服务配置/进程密钥，也没有停止或接管该 WSL relay。v4 原始证据：`D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-worktable-current-head-after-visual-recipient-20261022-v4\`。
-
-本复跑修正此前即时报告中的路径推断：尽管手工 GET `/v1/systemone/chat/completions` 返回 404，生产 Laya adapter 并不使用该路径；该 404 与真实失败无关。尚缺带 HTTP status/安全脱敏响应摘要的 live adapter 诊断，故当前不能区分服务鉴权配置、服务端拒绝或其他 HTTP 条件。
+此前复用 listener 的 v2/v3/v4 401 失败证据继续保留，表明原 listener 的认证配置不匹配；本次 owned server 的成功不改写历史失败。该结果关闭的是当前 HEAD sourced worktable 单 owner 开发纵切，不代表其他领域、多 owner common replay cut 或正式模型质量。未访问 calibration/final/holdout，未训练/微调，未操作 Godot。
 
 | 验收面 | 当前状态与证据边界 |
 |---|---|
-| 后端 | 当前 HEAD、真实 WS 输入及在线 L2 到 Laya provider 调用已运行；当前本地服务返回 HTTP 401，未进入 L4/领域 owner；复用服务不可当作本轮拥有的服务进程 |
+| 后端 | 当前 HEAD 真实 authenticated WS→DeepSeek L2→owned local Laya→L4→ESM owner 已验证一个 sourced worktable 子项；复用 listener 仍记录 401 历史失败 |
 | 模型质量 | Q01–Q04 未验收；本次是开发诊断，不访问 calibration/final/holdout |
-| 角色闭环 | 输入预算未截断；候选数 1；无 Laya 成功 choice、L4 envelope、此次 owner receipt 或动作恢复/回放 |
+| 角色闭环 | worktable 输入、该 turn 冻结候选与 action+target、两份 L4 envelope、两条原 owner receipt 与 exact replay/zero-write 已验证；其他 owner、多 owner common cut、完整恢复策略仍开放 |
 | 最终 Godot | G-A/G-B/G-C 未操作，仍留到后端与角色链路之后 |
 
-为缩小下一轮真实诊断面，`LayaSystemOneProvider` 现将 HTTPError 数字 status 加入错误摘要，仍不记录响应体、headers、token 或请求内容；对应 RED→GREEN 用例验证 401 可见且响应/认证文本不可见。Laya provider + credential routing 定向回归 **52 passed**；Harness `backend-contract` run `b5908e26975e4120921552c25913494b` passed/cleanup passed，证据 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-http-status-contract-20261022\`。当前 HEAD live v4 fresh 记录 HTTP 401。
-
-下一步需由当前本地 Laya 服务配置提供可用的服务访问认证，再复用同一来源任务继续验收。`CHARACTER_LAYA_API_KEY` 是送往 localhost HTTP 服务的 Bearer 认证，不是外部模型 API key；本轮只在适配器失败摘要和 runner trace 记录 HTTP 401，不记录认证值或服务响应体。不得把服务 HTTP 200 或任意 choice 当完整闭环。
+此前 `LayaSystemOneProvider` 已增加仅暴露 HTTP status 的安全失败摘要；定向回归 **52 passed**，Harness `backend-contract` run `b5908e26975e4120921552c25913494b` passed/cleanup passed，证据 `laya-http-status-contract-20261022/`。下一步依统一任务矩阵补未覆盖领域 owner 与 multi-owner common replay cut，再扩大角色来源覆盖；正式模型质量和 Godot 仍为独立门槛。`CHARACTER_LAYA_API_KEY` 是送往本地 HTTP 服务的 Bearer 认证，不是外部模型 API key；本轮未把认证值写入 trace 或报告。
 
 ### 2026-10-22 visual observer private-recipient repair
 
