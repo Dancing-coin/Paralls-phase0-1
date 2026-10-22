@@ -519,7 +519,7 @@ run `675f93eed4f545fc9ecc7d706c02a19c`：本批五文件80项通过；额外旧�
 
 RED 首次复现了原先 canonical `approach` 的 `accepted` 假结算；最小修复后定向回归为 **51 passed, 2 deselected**（包含新的 fail-closed 断言、对象 owner 合同及 action-request routing），pytest 临时目录位于 `D:\codex-temp\social-owner-green2\pytest`。这只关闭误报风险，不实现社交空间 owner；后续若要收口 R12/G-C，必须先提供可信空间/参与者来源、注册 owner、提交前重验、持久 receipt、恢复/回放和双角色真实边界证据。
 
-Legacy `action_request_bundle` 仍保留历史兼容分支，当前测试和调用方把其中的社交动作映射到 `_actor_target_action_settlement()` 的内存 `accepted` 结果。该分支没有正式 receipt/recovery 语义，不能进入 Laya 正式质量分母、R08/R09 或 G-C 验收；后续迁移必须一次性改为与 canonical 路径相同的 `social_spatial_owner` fail-closed，并同步更新旧兼容测试，不能只改一半。
+Legacy `action_request_bundle` 保留历史兼容分支，但其中五种社交空间动作已在 settlement 前以 `legacy_social_spatial_source_unavailable` fail-closed。2026-10-22 fresh 定向复验 `backend/tests/test_character_agent_action_request_routing.py` 的五个参数化用例及 canonical 无 owner 拒绝用例为 **5 passed**；命令为 `python -B -m pytest -q -p no:cacheprovider backend/tests/test_character_agent_action_request_routing.py backend/tests/test_character_execution_contract.py -k 'legacy_social_spatial_bundle or social_spatial_contract_without_registered_owner' --basetemp D:/codex-temp/oct22-social-legacy-refresh --tb=short`。该运行没有写 session timeline、social owner 或 gameplay events。此修正关闭 legacy 内存 `accepted` 的误报风险，不代表 social owner 实际提交：可信空间/参与者来源、owner receipt、重启恢复/回放及双角色真实边界仍缺，因此 R08/R09、Laya 多 owner 闭环和 G-C 均不升级；该切片不得进入正式模型质量分母。
 
 ## D06／D10 来源依赖：正式采用静态资源 genesis（2026-10-20）
 
