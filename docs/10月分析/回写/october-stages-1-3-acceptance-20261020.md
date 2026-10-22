@@ -1421,3 +1421,11 @@ TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注�
 证据边界：这是 backend receipt contract/持久 adapter，不是实际 physics producer 或生产配置。`street_combat_attempt` 尚未消费 receipt；receipt source digest 未与当前 canonical Presence/Life/Faction read-set 建立生产联系，未接 L4、Threat durable owner 或 combat ingress exact replay。因此 D08 仍为局部实现，入口继续 fail-closed；本批不改变模型质量、Laya 闭环或 Godot 验收状态。未运行全量 pytest、Harness all、模型评估、训练或 Godot。
 
 **后端**：contact receipt verifier 与 durable adapter 局部实现，定向 10 项及 47 项组合回归通过；真实签发来源、production ingress→L4→Threat receipt/replay 未完成。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 输入→候选→action+target→L4→多领域回执/恢复/回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
+### 2026-10-22 D08 authenticated contact → embodied settlement → Threat owner
+
+`street_combat_attempt` 现在要求当前 authenticated WebSocket binding，并只从 backend admitted encounter 解析 scope/source pins；客户端不能指定 encounter 或 source refs。已验证的 contact receipt 进入物理 receipt owner，真实 embodied authority 提交动作，durable adapter 记录 settlement，再由 canonical Threat owner 消费同一 owner receipt。Threat encounter projection 现在识别 settlement owner 写入，并校验 owner principal、encounter、world、timeline 与 active lifecycle；未知 owner/event 仍 fail closed。
+
+定向验证 `test_street_combat_transport.py`、`test_canonical_combat_lifecycle.py`、`test_combat_settlement_threat_consumer.py`、`test_canonical_combat_authority.py`：**59 passed, 4 existing FastAPI lifespan deprecation warnings**。pytest basetemp 位于 `D:\codex-temp\october-d08-threat`。其中 contact receipt 由测试签名，不是 Godot physics producer；此结果只关闭 D08 backend 合成 receipt owner 纵切，不证明真实 Godot 边界消息、L4 combat execution、跨领域 common replay cut 或 live recovery。
+
+**后端**：D08 backend contact→embodied owner→durable settlement→Threat owner 纵切已实现并定向验证；物理 producer、真实 L4 与 encounter recovery/replay 验收仍开放。**模型质量**：Q01–Q04 未验收。**角色闭环**：真实 Laya 完整 action+target、多领域回执/common cut、恢复与回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，仍留到后端与角色链路之后。
