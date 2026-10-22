@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import pytest
+from time import time
 
 os.environ["PARALLS_HEAVENLY_GRAPH_PATH"] = ":memory:"
 
@@ -16,14 +17,15 @@ from app.services.websocket_session_auth_service import WebSocketConnectionConte
 
 
 def _context(actor="street_bandage"):
-    return WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=100,
+    return WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=int(time()),
                                       connection_ref=f"connection:street:{actor}")
 
 
 def _enroll(actor="street_bandage"):
     context = _context(actor)
+    now = int(time())
     credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
-        actor_id=actor, controller_instance_id=f"controller:{actor}", issued_at=100, expires_at=200)
+        actor_id=actor, controller_instance_id=f"controller:{actor}", issued_at=now, expires_at=now + 100)
     messages = main._handle_envelope(Envelope(message_type="embodied_controller_bind", payload={
         "credential_kind": "trusted_local_launch", "credential": credential, "actor_id": actor,
         "controller_instance_id": f"controller:{actor}", "protocol_version": 1,

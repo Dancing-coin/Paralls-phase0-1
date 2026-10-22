@@ -1194,3 +1194,5 @@ drive scan or cleanup was performed.
 定向验证：新增 `test_target_reader_resolves_current_sources_without_caller_refs` 与 `test_target_reader_returns_none_when_canonical_source_is_missing`，选择运行 `backend/tests/test_canonical_combat_lifecycle.py -k "resolves_current_sources or missing"`，D 盘 basetemp，**2 passed**。该批没有运行全量 pytest、Harness all、模型、训练或 Godot。
 
 **后端**：encounter admission source refs 已改为 backend 当前 canonical resolver，客户端 source 伪造面收窄；正式 authenticated issuer、contact receipt 与 `street_combat_attempt`→L4→Threat owner 生产闭环仍局部。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多领域 owner 回执、恢复与回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
+补充验证：修正 transport 测试 fixture 使用当前 Unix 时间签发 trusted-local credential 后，`test_street_combat_transport.py` + `test_canonical_combat_lifecycle.py` 组合为 **34 passed, 1 failed**。唯一失败为既有角色受击反应断言实际收到 `action:observe` 而非 `action:self_protect`，不涉及本批 source resolver；canonical lifecycle 19 项与 encounter admission 负例均通过。该失败保留为角色闭环开放项，未改生产代码。
