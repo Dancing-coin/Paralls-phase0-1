@@ -672,6 +672,181 @@ async def test_social_population_participant_survives_durable_reopen_and_checkpo
 
 
 @pytest.mark.asyncio
+async def test_combat_common_participant_survives_application_restart_and_checkpoint_tail(
+    application, monkeypatch,
+):
+    from fastapi.testclient import TestClient
+    from app.gameplay.combat_durable_adapter import CombatSourceContext
+    from app.population_continuity.models import ActivationGrant, ActivationProposal
+    from test_combat_faction_admin_application import HEADERS, PATH, verifier
+    from test_combat_replay_participant import _attempt, _signed_contact
+
+    main, start, advance = application
+    await start()
+    world = await asyncio.wrap_future(main.runtime_execution.submit(
+        lambda: main._population_runtime_driver.world_runtime.mode.world_ref
+    ))
+    authority_ref, secret = "physics:test-runtime", "test-physics-authority-secret"
+    grants = tuple(ActivationGrant(
+        profile_ref=f"character:{actor}",
+        world_ref=world,
+        package_revision="package:bakery-authored-agents:v1",
+        policy_revision="policy:population:v1",
+        scope_grant=("actor:self",),
+    ) for actor in ("char_a", "char_b"))
+    monkeypatch.setattr(main.settings, "population_activation_grants", grants)
+    monkeypatch.setattr(main.settings, "physics_contact_authority_secrets", {authority_ref: secret})
+    monkeypatch.setattr(main, "world_admin_credential_verifier", verifier(worlds=(world,)))
+    await main._stop_population_runtime_on_shutdown()
+    await start()
+    await advance(86400)
+    plan, window = inputs(main)
+    await submit(main, plan=plan, window=window, budget=1)
+    cut = await capture(main, refs=("batch:1",), ref="replay:combat-common-cut")
+    assert cut.status == "consistent", cut.diagnostics
+    assert cut.checkpoint.state["participants"]["combat"]["event_refs"] == []
+
+    for grant in grants:
+        stream_heads, timeline, current_tick = await asyncio.wrap_future(
+            main.runtime_execution.submit(lambda: (
+                main.gameplay_event_store.get_stream_heads(),
+                main._population_runtime_driver.clock.timeline.timeline_id,
+                main._population_runtime_driver.current_tick,
+            ))
+        )
+        proposal = ActivationProposal(
+            proposal_id=f"activate:combat:{grant.profile_ref}",
+            **grant.model_dump(),
+            cadence_class="active",
+            activation_reason="explicit scoped integration grant",
+            source_ref="population:siming",
+            expected_revisions={f"population:{world}": stream_heads.get(f"population:{world}", 0)},
+            idempotency_key=f"activate:combat:{grant.profile_ref}",
+            correlation_id="correlation:combat-common-cut",
+        )
+        result = await asyncio.wrap_future(main.submit_population_activation_presence(
+            proposal=proposal,
+            presence_idempotency_key=f"presence:combat:{grant.profile_ref}",
+            presence_expected_revision=stream_heads.get(f"presence:{world}", 0),
+        ))
+        assert result.activation.committed and result.presence.committed and result.life_state.committed
+
+    timeline = await asyncio.wrap_future(main.runtime_execution.submit(
+        lambda: main._population_runtime_driver.clock.timeline.timeline_id
+    ))
+    faction_payload = dict(
+        world_ref=world,
+        timeline_ref=timeline,
+        actor_ref="character:char_a",
+        target_ref="character:char_b",
+        hostile=True,
+        command_id="faction:combat-common-cut",
+        idempotency_key="faction:combat-common-cut",
+        causation_id="cause:combat-common-cut",
+        correlation_id="correlation:combat-common-cut",
+    )
+    response = TestClient(main.component_app, client=("127.0.0.1", 48117))
+    try:
+        faction_result = response.post(PATH, json=faction_payload, headers=HEADERS)
+        assert faction_result.status_code == 200, faction_result.text
+    finally:
+        response.close()
+
+    def owner_vertical():
+        attempt = _attempt("application-common-cut")
+        resolved = main.combat_threat_authority.resolve_current_sources(
+            actor_ref=attempt.actor_ref,
+            target_ref=attempt.target_refs[0],
+            world_ref=world,
+            timeline_ref=timeline,
+        )
+        assert resolved is not None
+        source = CombatSourceContext(
+            world_ref=world,
+            timeline_ref=timeline,
+            encounter_ref="encounter:application-common-cut",
+            actor_incarnation_ref=resolved["actor_incarnation_ref"],
+            target_incarnation_ref=resolved["target_incarnation_ref"],
+            presence_source_event_ids=tuple(resolved["source_event_ids"][:2]),
+            life_state_source_event_ids=tuple(resolved["source_event_ids"][2:4]),
+            faction_source_event_id=resolved["source_event_ids"][4],
+        )
+        for actor, position in (("char_a", (0.0, 0.2, -9.8)), ("char_b", (1.0, 0.2, -9.8))):
+            assert main.unified_character_action_settlement_service.record_street_pose(
+                actor, position, physics_tick=attempt.physics_tick
+            )
+        owner_receipt = main.unified_character_action_settlement_service.settle_street_combat(attempt)
+        assert owner_receipt.outcome == "committed"
+        contact, _ = _signed_contact(attempt, source.target_incarnation_ref)
+        assert contact.authority_ref == authority_ref
+        contact_result = main.physics_contact_receipt_authority.record(
+            contact, attempt=attempt, target_incarnation_ref=source.target_incarnation_ref
+        )
+        assert contact_result.committed, contact_result.failure
+        admitted = main.combat_threat_authority.begin_encounter(
+            attempt=attempt,
+            authority_result=owner_receipt,
+            presence_event_ids=source.presence_source_event_ids,
+            life_event_ids=source.life_state_source_event_ids,
+            faction_event_id=source.faction_source_event_id,
+            world_ref=world,
+            timeline_ref=timeline,
+            encounter_ref=source.encounter_ref,
+            actor_incarnation_ref=source.actor_incarnation_ref,
+            target_incarnation_ref=source.target_incarnation_ref,
+            command_id="encounter:combat-common-cut",
+            idempotency_key="encounter:combat-common-cut",
+            authorized_caller="backend:street-combat",
+        )
+        assert admitted.committed, admitted.failure
+        durable = main.durable_embodied_combat_adapter.record_committed_settlement(
+            attempt,
+            authority_result=owner_receipt,
+            source=source,
+            command_id="combat:application-common-cut",
+            idempotency_key="combat:application-common-cut",
+            contact_receipt=contact,
+        )
+        assert durable.append_result is not None and durable.append_result.committed, durable.error_code
+        threat = main.durable_embodied_combat_adapter.consume_committed_hit(
+            attempt,
+            source=source,
+            command_id="threat:application-common-cut",
+            idempotency_key="threat:application-common-cut",
+        )
+        assert threat.committed, threat.failure
+    await asyncio.wrap_future(main.runtime_execution.submit(owner_vertical))
+    tail = await tail_call(main, checkpoint_ref="replay:combat-common-cut")
+    assert tail.status == "verified", tail.diagnostics
+    combat_types = {row["event_type"] for row in tail.payload["participants"]["combat"]["event_refs"]}
+    assert {
+        "gameplay.combat.physics_contact_receipt_recorded",
+        "gameplay.combat.encounter_begun",
+        "gameplay.combat.embodied_settlement_recorded",
+        "gameplay.combat.threat_relation_recorded",
+    } <= combat_types
+
+    first_store = main.gameplay_event_store
+    await main._stop_population_runtime_on_shutdown()
+    await start()
+    assert first_store is not main.gameplay_event_store
+    replayed = await tail_call(main, tail.payload, checkpoint_ref="replay:combat-common-cut")
+    assert replayed.status == "verified", replayed.diagnostics
+    assert replayed.result["full_digest"] == replayed.result["result_digest"]
+    assert replayed.result["participants"]["combat"]["event_refs"]
+    assert replayed.result["participants"]["combat"]["streams"]
+
+    from app.world_runtime.replay_checkpoint import _tail_hash
+    omitted = deepcopy(tail.payload)
+    omitted["participants"].pop("combat")
+    omitted["participants"]["versions"].pop("combat")
+    omitted["digest"] = _tail_hash(omitted)
+    rejected = await tail_call(main, omitted, checkpoint_ref="replay:combat-common-cut")
+    assert rejected.status in {"incomplete", "divergent"}
+    assert rejected.result is None
+
+
+@pytest.mark.asyncio
 async def test_population_activation_presence_application_checkpoint_tail_and_new_durable_authority(application):
     from app.population_continuity.models import ActivationGrant, ActivationProposal
 
