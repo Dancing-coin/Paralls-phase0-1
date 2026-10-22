@@ -88,6 +88,7 @@ class SpatialSourceEvidence:
     position: tuple[float, float, float]
     event_ref: str
     read_stream_revisions: dict[str, int]
+    admission_digest: str
 
 
 class EmbodiedSpatialSource:
@@ -241,4 +242,8 @@ class EmbodiedSpatialSource:
         if age < 0 or age > scope.max_age_ms:
             raise ValueError("spatial_source_stale")
         return SpatialSourceEvidence(position=tuple(payload["sample"]["position"]), event_ref=event.event_id,
-            read_stream_revisions={event.stream_id: event.stream_revision})
+            read_stream_revisions={event.stream_id: event.stream_revision},
+            admission_digest="sha256:" + _digest({
+                key: payload[key] for key in ("scope_digest", "process_epoch", "binding_id", "connection_ref")
+            } | {"position": payload["sample"]["position"],
+                 "connection_epoch": payload["sample"]["connection_epoch"]}))

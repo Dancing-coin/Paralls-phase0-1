@@ -440,3 +440,7 @@ Backend: canonical actor scope defect fixed and controlled WS owner path verifie
 ### Slow goal proposal contract batch (2026-10-21)
 
 Continue through the [child design](../specs/2026-10-21-character-slow-goal-proposal-design.md) and [five-batch plan](2026-10-21-character-slow-goal-proposal-implementation-plan.md). Batch 1 is contract-only; batches 2–5 remain open. R01/R07 are not closed by gateway success.
+
+### Social heartbeat prerequisite (2026-10-22)
+
+Before a live social slice, fixed stationary authenticated heartbeats invalidating the frozen target contract. Admission identity now pins scope/process/binding/connection/epoch/position plus canonical participant and visual lineage; execution reprojects fresh samples and the original owner CAS commits the exact current source cut. RED 1 failed; focused catalog/source/social-owner/execution-contract GREEN 91 passed (4 existing warnings). Moved/rebound sources reject without world writes. See the embodied-spatial-source design heartbeat ruling and unified matrix for evidence boundaries. This is controlled backend verification only, with no new model/WS/Godot evidence. Next resume the real Laya social path through production population admission and authenticated source ingress; preserve existing sourced worktable evidence. Q01–Q04, multi-domain closure and G-A/B/C remain open.

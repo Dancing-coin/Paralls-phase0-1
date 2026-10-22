@@ -10,6 +10,41 @@ Each actor has one shared-store stream across scopes, preventing scene aliasing.
 
 This source proves admission of controller evidence within declared bounds, not independent server physics, path clearance, contact, character permission or world effects. Production L4 lifecycle/target admission and ESM result/receipt recovery remain separate required edges. No source registration or evidence-only test closes R07–R09 or Godot A/B/C.
 
+### 2026-10-22 social heartbeat ruling
+
+The social catalog initially hashed each sample event ID and revision into its admission digest. A fresh authenticated sample at the same position between L3 freeze and owner ingress therefore invalidated the contract (`target_unavailable`, reproduced by the heartbeat regression). Ruling under the existing stages 1–3 authorization: distinguish stable spatial eligibility from the exact read set used for a new owner commit. The source supplies a digest over the verified deployment scope digest, backend process epoch, controller binding, connection identity/epoch and exact position. Tick, receipt time, sample ID and stream revision do not change that identity. A moved position, replacement binding/process or changed scope does. Social eligibility still pins canonical Presence/Life/incarnation and private visual lineage.
+
+The catalog retains full current sample refs and revisions in its descriptor and source context. On execution it reprojects through the same fresh, authenticated source reader, matches the stable admission digest, and submits the current source refs/read set to the original owner's atomic CAS. Frozen candidate provenance remains in the original character session; the owner receipt records the actual commit cut. Stale/revoked samples, changed identities and a source advance after projection still fail closed. Receipt recovery continues to use the original committed source context. This repairs stationary-heartbeat liveness only; moving-target replanning, physical arrival/contact, live Laya quality and Godot remain open.
+
+```mermaid
+flowchart LR
+  S["current authenticated spatial source"] --> I["implemented increment: stable identity + exact sample cut"]
+  I --> C["current social catalog / L4 admission"] --> O["current SocialSpatialOwner CAS"]
+  G["planned last: Godot arrival/contact"] -.-> S
+```
+
+```mermaid
+sequenceDiagram
+  participant L as L3/L4
+  participant S as Current spatial source
+  participant O as Social owner ingress
+  L->>S: freeze candidate identity and sample provenance
+  S->>S: same-position authenticated heartbeat
+  L->>O: frozen contract
+  O->>S: re-read freshness, binding, position and exact cut
+  S-->>O: matching stable identity, latest sample revisions
+  O->>O: atomic CAS and durable receipt
+```
+
+```mermaid
+flowchart TD
+  A["verified scope + process + binding + position"] --> D["stable eligibility digest"]
+  B["current sample event + revision + freshness"] --> R["execution read set"]
+  D --> M["match frozen contract"]
+  R --> M --> C["owner authority: CAS / original receipt"]
+  C --> P["planned visible movement; no contact claim"]
+```
+
 ## Architecture
 
 ```mermaid

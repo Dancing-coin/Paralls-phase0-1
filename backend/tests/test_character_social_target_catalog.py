@@ -183,6 +183,60 @@ def test_production_social_choice_l4_receipt_and_recovery(social_catalog, monkey
     assert store.get_last_global_sequence() == before
 
 
+@pytest.mark.parametrize("refresh", ["actor", "both", "moved", "rebound"])
+def test_social_contract_revalidates_heartbeat_identity(social_catalog, monkeypatch, refresh):
+    import app.main as main
+    from app.character_agent.execution.object_execution import CharacterObjectExecution
+    from app.gameplay.social_spatial_owner import SocialSpatialOwner
+    from app.world_runtime.embodied_spatial_source import EmbodiedSpatialSample
+    from app.services.embodied_controller_auth_service import EmbodiedControllerEnrollment
+
+    catalog, snapshot, store, source, scopes, clock, auth, timeline = social_catalog
+    main.reset_runtime_state()
+    monkeypatch.setattr(main, "social_spatial_owner", SocialSpatialOwner(store=store))
+    execution = CharacterObjectExecution(runtime=main.character_agent_runtime, owner=main.esm_service,
+        source=source, scopes=scopes, social_targets=catalog)
+    monkeypatch.setattr(main, "character_object_execution", execution)
+    main.character_agent_runtime._l1._snapshots["char_a"] = snapshot
+    snapshot.target_catalog = catalog.project_character_targets(snapshot)
+    descriptor = next(d for d in snapshot.target_catalog if "approach" in d["supported_intents"])
+    contract = _selected_social_contract(snapshot, "approach", None)
+    main.character_agent_runtime.record_execution_request(
+        actor_id="char_a", producer_ts=10, payload=contract.model_dump(mode="json"))
+
+    binding = auth.resolve_controller_binding(actor_id="char_a", connection_ref="network:char_a").binding
+    clock[0] += 50
+    if refresh == "rebound":
+        secret = auth.create_trusted_local_launch_credential(actor_id="char_a",
+            controller_instance_id="char_a", issued_at=1, expires_at=100)
+        binding = auth.bind_controller(EmbodiedControllerEnrollment(
+            credential_kind="trusted_local_launch", credential=secret, actor_id="char_a",
+            controller_instance_id="char_a", protocol_version=1), remote_host="127.0.0.1",
+            now=1, connection_ref="network:char_a").binding
+    source.accept(EmbodiedSpatialSample(actor_id="char_a", room_id="r", scene_id="s", zone_id="z",
+        scene_instance_id="s:1", scene_revision=1, connection_epoch=binding.connection_epoch,
+        physics_tick=2, position=(.01, 0., 0.) if refresh == "moved" else scopes[0].spawn_position),
+        connection_ref="network:char_a")
+    if refresh == "both":
+        binding = auth.resolve_controller_binding(actor_id="char_b", connection_ref="network:char_b").binding
+        source.accept(EmbodiedSpatialSample(actor_id="char_b", room_id="r", scene_id="s", zone_id="z",
+            scene_instance_id="s:1", scene_revision=1, connection_epoch=binding.connection_epoch,
+            physics_tick=2, position=scopes[1].spawn_position), connection_ref="network:char_b")
+
+    before = store.get_last_global_sequence()
+    result = main._handle_envelope(main.Envelope(
+        message_type="character_agent_execution", payload=contract.model_dump(mode="json")))
+    if refresh in {"moved", "rebound"}:
+        assert not result[0]["payload"]["accepted"]
+        assert result[0]["payload"]["error_code"] == "target_unavailable"
+        assert store.get_last_global_sequence() == before
+        return
+    assert result[0]["payload"]["accepted"], result
+    event = store.get_event(result[0]["payload"]["owner_receipt"]["committed_event_ids"][0])
+    assert event.payload["source_read_set"] != descriptor["target_revision_vector"]
+    assert event.payload["source_context"]["spatial_source_refs"] != descriptor["social_source_context"]["spatial_source_refs"]
+
+
 @pytest.mark.parametrize("case", ["hidden", "no_lineage", "empty_lineage", "self", "scope", "stale", "revoked", "timeline"])
 def test_social_catalog_missing_current_admission_never_exposes_actions(social_catalog, case):
     catalog, snapshot, store, source, scopes, clock, auth, timeline = social_catalog

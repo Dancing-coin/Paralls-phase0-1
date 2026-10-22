@@ -62,10 +62,12 @@ class CharacterSocialTargetCatalog:
                 "room_id": snapshot.room_id, "scene_id": snapshot.scene_id,
                 "zone_id": snapshot.zone_id, "scene_instance_id": actor_scope.scene_instance_id,
                 "scene_revision": actor_scope.scene_revision,
-            }, spatial_source_refs=[actor_evidence.event_ref, target_evidence.event_ref])
+            }, spatial_source_refs=[actor_evidence.event_ref, target_evidence.event_ref],
+                spatial_admission_digests=[actor_evidence.admission_digest, target_evidence.admission_digest])
+            admission_context = {key: value for key, value in context.items() if key != "spatial_source_refs"}
             for action in _ACTIONS:
                 payload = {"actor_ref": actor, "target_ref": target, "action": action,
-                           "context": context, "source_revisions": revisions}
+                           "context": admission_context, "source_revisions": neutral["source_revisions"]}
                 digest = "sha256:" + hashlib.sha256(json.dumps(
                     payload, sort_keys=True, separators=(",", ":"),
                 ).encode()).hexdigest()

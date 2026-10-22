@@ -1285,6 +1285,16 @@ TDD 定向验证：先以两个新断言观察旧实现 **2 failed**（客户端
 
 **后端**：social catalog 到原 spatial owner 的完整 action+target 接线与 receipt exact-replay 子项已 fresh 验证；真实 Laya/WebSocket、多领域 owner common cut 仍局部。**模型质量**：Q01–Q04 未验收，没有模型调用。**角色闭环**：新增五动作 L3/L4/单 owner slice；完整输入生成、真实 Laya、跨域连续闭环仍开放。**最终 Godot**：G-A/G-B/G-C 未操作，仍最后集中验收。未运行全量 pytest/Harness all、训练或 Godot。
 
+### 2026-10-22 social stationary-heartbeat admission repair
+
+真实 Laya/认证 WS social 纵切准备时发现：social admission digest 包含瞬时 spatial sample refs/revisions，模型推理期间同位置的新鲜心跳也会导致冻结合同 `target_unavailable`。先由真实 catalog→L3/L4→canonical handler 回归复现 **1 failed**，再将稳定空间准入身份与提交时精确 source cut 分开。稳定身份包含部署 scope、backend process epoch、controller binding、connection/epoch 与精确位置；Presence/Life/incarnation 和 visual lineage 继续进入准入摘要。执行时重新读取新鲜来源，并将当前 refs/read set 交给原 SocialSpatialOwner CAS。
+
+同位置 actor/both 心跳可提交且 receipt 使用新 source cut；移动 0.01m 或重新绑定则拒绝、零 world 写。定向选择 social catalog、embodied spatial source、social owner 和 execution contract：**91 passed, 4 existing FastAPI lifespan warnings**，10.26s；RED/GREEN basetemp 均在 `D:\codex-temp`。增量设计与三类图见 `docs/superpowers/specs/2026-10-20-embodied-spatial-source-design.md` 的 heartbeat ruling。
+
+提交前同组复验 **91 passed, 4 warnings in 10.15s**。三个本轮目录 `D:\codex-temp\social-heartbeat-{red,green,final}` 已逐一核实归属和绝对路径，但删除被自动审批以 `blocked by policy` 拒绝，未绕过，暂保留待清理。
+
+**后端**：静止心跳 liveness 子项已验证；移动目标重规划、认证 combat contact 与多 owner common cut 仍开放。**模型质量**：本批无模型调用，Q01–Q04 未验收。**角色闭环**：受控 L3/L4/单 owner 回归，不是新真实 Laya/WS 证据，不能证明实际移动或抵达。**最终 Godot**：G-A/B/C 未操作。未运行全量 pytest、Harness all、正式 split 或训练。
+
 ### 2026-10-22 Laya development action-target inventory
 
 候选准备器新增 development-only `development_action_inventory`。它直接读取 `create_core_skill_registry()` 的六个已注册复合动作，并为当前场景每个可见目标生成动作—目标记录；每条记录保留 skill binding、来源引用和 skill registry revision。目标类型不匹配的组合显式 `blocked`，缺少认证领域 owner 的组合同样保持空 `owner_route`、`unverified_owner_admission` 和 `formal_quality_eligible=false`。该 inventory 只用于审查完整动作范围与缺口，不改变现有三项诊断候选，不进入正式模型质量分母，也没有调用模型或读取 sealed labels。
