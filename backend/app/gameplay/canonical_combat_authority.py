@@ -594,6 +594,62 @@ class CanonicalCombatThreatAuthority(CanonicalCombatTargetReader):
             return None
         return matches[0] if len(matches) == 1 else None
 
+    def active_encounters_for_binding(
+        self, *, session_ref: str, principal_ref: str,
+        allowed_actor_refs: tuple[str, ...], connection_epoch: int,
+        lease_expires_at: int, now: int,
+    ) -> list[dict[str, Any]]:
+        """Return active encounter receipts owned by the current session scope."""
+        if (not session_ref.strip() or not principal_ref.strip() or not allowed_actor_refs
+                or type(connection_epoch) is not int or connection_epoch < 1
+                or type(lease_expires_at) is not int or type(now) is not int
+                or lease_expires_at < now):
+            return []
+        rows: list[dict[str, Any]] = []
+        for actor_ref in tuple(dict.fromkeys(allowed_actor_refs)):
+            if not isinstance(actor_ref, str) or not actor_ref.strip():
+                continue
+            for event in self.store.read_events(event_type=ENCOUNTER_BEGUN):
+                payload = event.payload
+                if (payload.get("session_ref") != session_ref
+                        or payload.get("principal_ref") != principal_ref
+                        or payload.get("connection_epoch") != connection_epoch
+                        or payload.get("lease_expires_at") != lease_expires_at
+                        or payload.get("actor_ref") != actor_ref):
+                    continue
+                encounter_ref = payload.get("encounter_ref")
+                world_ref, timeline_ref = payload.get("world_ref"), payload.get("timeline_ref")
+                target_ref = payload.get("target_ref")
+                source_ids = payload.get("source_event_ids")
+                if (not isinstance(encounter_ref, str) or not isinstance(world_ref, str)
+                        or not isinstance(timeline_ref, str) or not isinstance(target_ref, str)
+                        or not isinstance(source_ids, list) or len(source_ids) != 5
+                        or event.stream_id != f"gameplay:combat:encounter:{encounter_ref}"
+                        or not self.store.transaction_owns_event(
+                            transaction_id=event.transaction_id, event_id=event.event_id,
+                            principal_ref=ENCOUNTER_PRINCIPAL)):
+                    continue
+                try:
+                    projection = self.encounter_projection(
+                        world_ref=world_ref, timeline_ref=timeline_ref,
+                        encounter_ref=encounter_ref,
+                    )
+                except (GameplayEventStoreSnapshotError, KeyError, ValueError):
+                    continue
+                if projection["state"] != "active":
+                    continue
+                rows.append({
+                    "world_ref": world_ref, "timeline_ref": timeline_ref,
+                    "encounter_ref": encounter_ref, "actor_ref": actor_ref,
+                    "target_ref": target_ref, "source_event_ids": list(source_ids),
+                    "actor_incarnation_ref": payload.get("actor_incarnation_ref"),
+                    "target_incarnation_ref": payload.get("target_incarnation_ref"),
+                    "event_refs": list(projection["event_refs"]),
+                    "projection": projection,
+                })
+        rows.sort(key=lambda row: str(row["encounter_ref"]))
+        return rows
+
     def begin_encounter(self, *, attempt: ActionAttempt, authority_result: AuthorityResult,
                         presence_event_ids: tuple[str, str], life_event_ids: tuple[str, str],
                         faction_event_id: str, world_ref: str, timeline_ref: str, encounter_ref: str,

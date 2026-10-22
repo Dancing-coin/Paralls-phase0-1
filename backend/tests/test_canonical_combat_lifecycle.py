@@ -158,6 +158,33 @@ def test_active_admitted_encounter_resolves_only_for_its_current_session_and_sou
     store.close()
 
 
+def test_active_encounters_for_binding_are_scoped_and_recoverable(tmp_path):
+    store = DurableGameplayEventStore(tmp_path / "binding-recovery.db")
+    source = _sources(store)
+    owner = CanonicalCombatThreatAuthority(store=store, authorized_callers=("backend:combat",))
+    auth, binding = _session_auth()
+    admission = _admission(source, session_ref=binding.session_ref,
+                            connection_epoch=binding.connection_epoch,
+                            lease_expires_at=binding.lease_expires_at)
+    result = owner.begin_admitted_encounter(admission, authorized_caller="backend:combat", session_auth=auth)
+    assert result.committed
+
+    rows = owner.active_encounters_for_binding(
+        session_ref=binding.session_ref, principal_ref=binding.principal_ref,
+        allowed_actor_refs=binding.allowed_actor_refs,
+        connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at, now=100,
+    )
+    assert len(rows) == 1
+    assert rows[0]["encounter_ref"] == store.get_event(result.committed_event_ids[0]).payload["encounter_ref"]
+    assert owner.active_encounters_for_binding(
+        session_ref=binding.session_ref, principal_ref="player:other",
+        allowed_actor_refs=binding.allowed_actor_refs, connection_epoch=binding.connection_epoch,
+        lease_expires_at=binding.lease_expires_at, now=100,
+    ) == []
+    store.close()
+
+
 def test_active_admitted_encounter_resolution_rejects_ended_or_stale_source_cut(tmp_path):
     store = DurableGameplayEventStore(tmp_path / "ended-admission.db")
     source = _sources(store)

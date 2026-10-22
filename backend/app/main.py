@@ -4785,6 +4785,9 @@ def _handle_envelope(
         ]
     if envelope.message_type == "street_combat_recovery_snapshot_request":
         payload = envelope.payload if isinstance(envelope.payload, dict) else {}
+        binding = connection_context.binding
+        if binding is None or binding.binding_state != "bound_active":
+            return [_as_envelope("street_combat_recovery_snapshot", {"accepted": False, "error_code": "websocket_session_required"})]
         connection_epoch = payload.get("connection_epoch")
         if not isinstance(connection_epoch, int) or isinstance(connection_epoch, bool) or connection_epoch < 1:
             return [_as_envelope("street_combat_recovery_snapshot", {"accepted": False, "error_code": "connection_epoch_required"})]
@@ -4803,6 +4806,18 @@ def _handle_envelope(
                 for actor_id in ("street_bandage", "char_a", "char_b")
             },
         }
+        if combat_threat_authority is not None and durable_embodied_combat_adapter is not None:
+            encounters = combat_threat_authority.active_encounters_for_binding(
+                session_ref=binding.session_ref, principal_ref=binding.principal_ref,
+                allowed_actor_refs=binding.allowed_actor_refs,
+                connection_epoch=binding.connection_epoch,
+                lease_expires_at=binding.lease_expires_at,
+                now=connection_context.observed_at,
+            )
+            snapshot["combat_encounters"] = [
+                {**encounter, "settlements": durable_embodied_combat_adapter.replay_settlements(encounter["encounter_ref"])}
+                for encounter in encounters
+            ]
         snapshot_digest = "sha256:" + hashlib.sha256(json.dumps(snapshot, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
         resync_marker = f"resync:street:{connection_epoch}"
         unified_character_action_settlement_service.accept_street_snapshot(connection_epoch, snapshot_digest=snapshot_digest, resync_marker=resync_marker)

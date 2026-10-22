@@ -160,6 +160,13 @@ def test_encounter_admission_requires_authenticated_websocket_session() -> None:
     assert len(main.gameplay_event_store.read_events()) == before
 
 
+def test_street_combat_recovery_requires_authenticated_session() -> None:
+    main.reset_runtime_state()
+    messages = _dispatch_many("street_combat_recovery_snapshot_request", {"connection_epoch": 1})
+    assert messages[0]["message_type"] == "street_combat_recovery_snapshot"
+    assert messages[0]["payload"] == {"accepted": False, "error_code": "websocket_session_required"}
+
+
 def test_authenticated_contact_receipt_flows_through_embodied_and_threat_owners(monkeypatch):
     authority_ref = "authority:test:physics"
     secret = "test-physics-contact-secret-material-32-bytes"
@@ -247,3 +254,13 @@ def test_authenticated_contact_receipt_flows_through_embodied_and_threat_owners(
     assert result["payload"]["threat_receipt"]["committed"] is True
     assert result["payload"]["contact_receipt"]["committed"] is True
     assert main.unified_character_action_settlement_service.street_actor_state("char_b")["hp"] == 80
+    recovery = main._handle_envelope(
+        Envelope(message_type="street_combat_recovery_snapshot_request",
+                 payload={"connection_epoch": session.binding.connection_epoch}),
+        connection_context=context,
+    )[0]
+    assert recovery["payload"]["accepted"] is True
+    encounters = recovery["payload"]["snapshot"]["combat_encounters"]
+    assert len(encounters) == 1
+    assert encounters[0]["settlements"]
+    assert encounters[0]["settlements"][0]["source"]["encounter_ref"] == encounters[0]["encounter_ref"]
