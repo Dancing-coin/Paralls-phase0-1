@@ -39,7 +39,7 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 按当前规格的 authority 边界与 G-B 验收要求，采用以下组合：
 
 1. **普通街战 encounter owner：A**。由已认证 backend scene/session admission 创建唯一且持久的 `encounter_ref`，写入 begin/end receipt，并在重连、并发和结束条件中保持同一 encounter 身份。不得按 actor-target 或单次 attempt 临时合成 encounter。
-2. **confirmed hit contact source：A**。只接受 Godot physics owner 通过认证 boundary 提交的 contact receipt；receipt 至少绑定 actor identity、connection epoch、attempt id、physics tick、目标 incarnation、动作合同和 source digest。当前 client token/pose 只保留为开发联调输入，不能写 canonical Threat。
+2. **confirmed hit contact source：A**。只接受认证的 physics/runtime authority 通过 backend boundary 提交的 contact receipt；receipt 至少绑定 actor identity、connection epoch、attempt id、physics tick、目标 incarnation、动作合同和 source digest。Godot 可以作为最终可见场景和边界消息的参与方，但客户端 token/pose/contact 不能自行证明物理命中，也不能直接写 canonical Threat；当前 client token/pose 只保留为开发联调输入。
 
 这是目标内的已选实现方向，不是已有实现证据。A/A 的依赖顺序是：先接入真实、已认证的 backend scene/session admission issuer 与持久 begin/end receipt，再定义并接入 authenticated physics-contact receipt adapter，最后接 `street_combat_attempt` 到 Presence/Life/Faction read-set、L4 contract、Threat owner 和 replay participant。Godot B 场景只在这些 backend 边界具备后执行。当前审查没有找到可复用的生产 scene/session admission issuer；不得用任意 transport caller、client-provided encounter id 或按 actor-target/attempt 合成的 id 代替。confirmed hit 入口在 issuer 和 contact receipt 均可验证前继续 fail-closed。
 
@@ -56,7 +56,7 @@ Evidence boundary: this closes the Threat owner's active-encounter lifecycle gat
 | 决策项 | 选项 | 影响 |
 |---|---|---|
 | 普通生产 encounter 的身份与 lifecycle owner | **已选 A**：由已认证 backend scene/session admission 创建唯一 `encounter_ref`，持久 begin/end receipt；B 仅适用于既有具名 conflict/boss scenario，不能充当通用街战 owner；C 是 admission issuer 落地前的运行状态 | 当前尚缺真实 issuer。实现必须说明创建、并发、重连、结束、重开恢复的唯一性和原 receipt；不得按 actor-target 或 attempt 合成 ref。issuer 缺失期间维持 fail-closed。 |
-| confirmed hit 的 contact evidence | **已选 A**：只接受 Godot physics owner 通过认证 boundary 提交、与 actor binding/epoch/attempt/tick/目标 incarnation/动作合同绑定的 contact receipt；现有 bounded street contract 仅可作联调；client token/pose 不得写 canonical Threat | contact receipt adapter 必须验证 source identity、digest、单次 attempt 绑定、目标 incarnation 和动作合同，并作为 durable hit 事务的来源读集。真实 Godot 边界与可见结果只在最后 G-B 验收。 |
+| confirmed hit 的 contact evidence | **已选 A**：只接受认证 physics/runtime authority 通过 backend boundary 提交、与 actor binding/epoch/attempt/tick/目标 incarnation/动作合同绑定的 contact receipt；现有 bounded street contract 仅可作联调；Godot client token/pose/contact 不得写 canonical Threat | contact receipt adapter 必须验证 authority source identity、digest、单次 attempt 绑定、目标 incarnation 和动作合同，并作为 durable hit 事务的来源读集。真实 Godot 边界与可见结果只在最后 G-B 验收；客户端表现不能替代 physics authority。 |
 
 执行顺序：先从现有 backend/session 架构找到或补齐受信 admission issuer，复用 Threat owner 的 durable begin/end receipt；然后确定 contact receipt 的认证 boundary 和回放身份，再接通生产 ingress。现有 owner/lifecycle 测试继续作为 owner 子项证据，但不代替 issuer、真实 L4 输入、真实 contact 来源或完整角色闭环。
 
