@@ -102,6 +102,100 @@ def test_combat_participant_captures_owner_receipts_sources_and_contact(tmp_path
         reopened.close()
 
 
+def test_scoped_checkpoint_and_tail_capture_combat_owner_manifest(tmp_path):
+    from app.world_runtime.replay_checkpoint import (
+        capture_scoped_checkpoint,
+        capture_scoped_tail,
+    )
+
+    store = DurableGameplayEventStore(tmp_path / "combat-scoped-replay.sqlite3")
+    source = _sources(store)
+    owner = _owner(store)
+    attempt = _attempt("scoped-tail")
+    owner_receipt = owner.settle_street_combat(attempt)
+    assert owner_receipt.outcome == "committed"
+    assert _begin_encounter(store, source, attempt, owner_receipt).committed
+
+    def participants():
+        return dict(
+            schema_version=1,
+            versions={
+                "participant_manifest": 1,
+                "batch_input": 1,
+                "batch_operation": 1,
+                "population_recovery": 1,
+                "status_events": 1,
+                "migration_events": 1,
+                "combat": 1,
+            },
+            timeline={},
+            profile={},
+            mapping={},
+            confirmed_tick=0,
+            window_ticks=1,
+            owner_revisions={},
+            batches={"batch:combat": {}},
+            external_dependencies={},
+            random_context={},
+            population={"schema_version": 1},
+            status={"schema_version": 1},
+            migration={"schema_version": 1},
+            combat=replay_participants._combat_participant(store),
+        )
+
+    cut = capture_scoped_checkpoint(
+        store=store,
+        checkpoint_ref="replay:combat-scoped",
+        batch_refs=("batch:combat",),
+        participants=participants,
+    )
+    assert cut.status == "consistent", cut.diagnostics
+    assert {row["event_type"] for row in cut.checkpoint.state["participants"]["combat"]["event_refs"]} == {
+        "gameplay.combat.encounter_begun",
+        "gameplay.combat.faction_relation_recorded",
+        "gameplay.embodied.street_settled@1",
+    }
+
+    contact, secret = _signed_contact(attempt, source.target_incarnation_ref)
+    contact_owner = PhysicsContactReceiptAuthority(
+        store=store,
+        verifier=PhysicsContactReceiptVerifier({contact.authority_ref: secret}),
+    )
+    assert contact_owner.record(
+        contact, attempt=attempt, target_incarnation_ref=source.target_incarnation_ref
+    ).committed
+    durable = DurableEmbodiedCombatAdapter(authority=owner, store=store)
+    settled = durable.record_committed_settlement(
+        attempt,
+        authority_result=owner_receipt,
+        source=source,
+        command_id="combat:scoped-tail",
+        idempotency_key="combat:scoped-tail",
+        contact_receipt=contact,
+    )
+    assert settled.append_result is not None and settled.append_result.committed
+    assert durable.consume_committed_hit(
+        attempt,
+        source=source,
+        command_id="threat:scoped-tail",
+        idempotency_key="threat:scoped-tail",
+    ).committed
+
+    tail = capture_scoped_tail(store=store, checkpoint_ref="replay:combat-scoped", participants=participants)
+    assert tail.status == "verified", tail.diagnostics
+    assert {row["event_type"] for row in tail.payload["participants"]["combat"]["event_refs"]} >= {
+        "gameplay.combat.physics_contact_receipt_recorded",
+        "gameplay.combat.embodied_settlement_recorded",
+        "gameplay.combat.threat_relation_recorded",
+    }
+    assert {event["event_type"] for event in tail.payload["events"]} >= {
+        "gameplay.combat.physics_contact_receipt_recorded",
+        "gameplay.combat.embodied_settlement_recorded",
+        "gameplay.combat.threat_relation_recorded",
+    }
+    store.close()
+
+
 @pytest.mark.parametrize("fault", ["event", "receipt", "source", "omitted"])
 def test_combat_participant_rejects_tampering_without_writes(tmp_path, fault):
     store = DurableGameplayEventStore(tmp_path / f"combat-replay-{fault}.sqlite3")

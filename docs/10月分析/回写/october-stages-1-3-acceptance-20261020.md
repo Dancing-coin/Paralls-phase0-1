@@ -1562,11 +1562,11 @@ RED 在两种 episode 类型上复现不完整 mastery 被接纳 **2 failed**；
 
 Common replay checkpoint/tail manifest 现在包含 D08 combat owner events、原始 owner transactions 与 idempotency receipts，并闭合事务 pinned stream prefixes 和 payload 显式引用的 source events。捕获可限定在历史 global-sequence cut；重开 SQLite 后重建相同 participant，篡改 event/receipt/source digest 或遗漏已有 combat participant 均拒绝。旧 manifest 未包含 combat participant 时仍可读取；空 participant 为只读。
 
-定向回归 `test_combat_replay_participant.py`、`test_world_replay_participants.py`、`test_world_replay_checkpoint_cut.py`、`test_combat_settlement_threat_consumer.py`、`test_physics_contact_receipt.py`：**36 passed, 4 existing FastAPI lifespan deprecation warnings**，耗时 6.67s。pytest basetemp 位于 `D:\Users\User\Documents\paralls-evidence\tmp\combat-replay-participant-20261023`，验证后已清理。contact receipt 测试使用隔离测试签名；该 participant 提供 common replay 的 durable owner/source 证据面，不会把测试签名升级为真实 physics producer，也不证明完整跨进程生产 common cut。
+定向回归 `test_combat_replay_participant.py`、`test_world_replay_participants.py`、`test_world_replay_checkpoint_cut.py`、`test_combat_settlement_threat_consumer.py`、`test_physics_contact_receipt.py`：**37 passed, 4 existing FastAPI lifespan deprecation warnings**，耗时 6.91s。新增公共路径探针先在真实 encounter cut 后调用 `capture_scoped_checkpoint`，随后经 durable contact receipt、embodied settlement 和 Threat owner commit，再调用 `capture_scoped_tail`；checkpoint 与 tail manifest 均携带对应 combat owner participant，tail 同时带入三类新增 owner events。pytest basetemp 位于 `D:\Users\User\Documents\paralls-evidence\tmp\combat-scoped-tail-green-20261023`，验证后已清理。contact receipt 测试使用隔离测试签名；该 participant 提供 common replay 的 durable owner/source 证据面，不会把测试签名升级为真实 physics producer，也不证明完整跨进程生产 common cut 或 `replay_scoped_tail` 在生产多领域 owner composition 下的恢复。
 
 | 验收面 | 状态与证据边界 |
 |---|---|
-| 后端 | D08 owner 事件、事务、回执和 source prefix 已加入 common checkpoint/tail participant；36 项定向回归通过。真实 physics/runtime authority producer、Laya/R01 action+target→L4→combat ingress 和实际生产多 owner common cut 仍未完成。 |
+| 后端 | D08 owner 事件、事务、回执和 source prefix 已加入 common checkpoint/tail participant；37 项定向回归通过，公共 scoped checkpoint/tail capture 已纳入集成探针。真实 physics/runtime authority producer、Laya/R01 action+target→L4→combat ingress，以及生产多领域 composition 下跨进程 `replay_scoped_tail` 仍未完成。 |
 | 模型质量 | Q01–Q04 未验收；本批无正式模型评分、calibration/final/holdout 访问或训练/微调。 |
 | 角色闭环 | Laya 完整动作与目标、L4 执行、真实 owner 提交/回执及恢复回放仍未验收。 |
 | 最终 Godot | G-A/G-B/G-C 未启动、操作或验证；继续留到后端和角色依赖收口后。 |
