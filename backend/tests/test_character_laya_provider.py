@@ -34,6 +34,34 @@ def test_laya_preserves_frozen_deliberation_inputs_without_grading(field, value)
     assert json.dumps(context, sort_keys=True) == original
 
 
+def test_laya_wire_state_excludes_internal_target_admission_catalog():
+    context = {
+        "interpretation": {"interpreted_summary": "Approach the visible person"},
+        "snapshot": {
+            "visible_target_refs": ["char_b"],
+            "visible_target_sources": {"char_b": ["visual_fact:source"]},
+            "target_catalog": [{
+                "target_ref": "char_b",
+                "supported_intents": ["approach"],
+                "target_admission_digest": "admission-secret-sentinel",
+                "target_revision_vector": {"private:stream": 5},
+                "social_source_context": {"source_event_ids": ["authority-event-sentinel"]},
+            }],
+        },
+        "candidate_intents": ["observe", "approach:char_b"],
+    }
+    original = json.dumps(context, sort_keys=True)
+
+    state = json.loads(LayaSystemOneProvider._state(context))
+
+    assert state["snapshot"]["visible_target_refs"] == ["char_b"]
+    assert state["snapshot"]["visible_target_sources"] == {"char_b": ["visual_fact:source"]}
+    assert "target_catalog" not in state["snapshot"]
+    assert "admission-secret-sentinel" not in json.dumps(state)
+    assert "authority-event-sentinel" not in json.dumps(state)
+    assert json.dumps(context, sort_keys=True) == original
+
+
 def test_laya_runtime_role_conditions_reach_wire_without_private_archive():
     interpretation = CharacterInterpretation(
         actor_id="char_a", interpreted_summary="Inspect the visible lock",

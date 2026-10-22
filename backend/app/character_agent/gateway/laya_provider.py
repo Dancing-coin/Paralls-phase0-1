@@ -316,8 +316,11 @@ class LayaSystemOneProvider:
         if isinstance(explicit, str) and explicit.strip():
             payload["event"] = explicit.strip()
         else:
-            payload.update(interpretation=context.get("interpretation") or {},
-                           snapshot=context.get("snapshot") or {})
+            snapshot = context.get("snapshot") or {}
+            if isinstance(snapshot, dict) and "target_catalog" in snapshot:
+                snapshot = dict(snapshot)
+                snapshot.pop("target_catalog")
+            payload.update(interpretation=context.get("interpretation") or {}, snapshot=snapshot)
         if isinstance(profile, dict) and profile:
             payload["effective_profile_summary"] = CharacterPromptPolicy()._profile_summary(profile)
         # These are the actor-scoped, frozen L3 inputs, including already

@@ -46,6 +46,8 @@
 
 **Social catalog → L3/L4/owner 批次（2026-10-22）：** 正式 catalog 曾只进入候选 record compiler，候选动作生成和 strict local logic filter 仍受 L2 attention 隐式限制。用无 attention 的正式 catalog RED 复现；扩展五种 catalog-supported social intent，strict choice filter 从 frozen candidate target refs 取目标，缺 catalog 继续 fail closed。五动作 × attention 空/无关目标，纵切到 L4、原 `SocialSpatialOwner`、source-pinned receipt 与 stale/hidden exact replay：165 passed（矩阵记有完整命令和边界）；真实 Laya/WS ingress、multi-owner common cut、质量与 Godot 不升级。下批依统一矩阵交错推进仍缺的阶段一/二 owner 与真实 Laya common cut，不再重复此 social 子项。
 
+**2026-10-23 Laya social input budget repair/live recheck：** 真实 component backend input 在 authority-only `target_catalog` 投影进入 Laya state 后超过 8192-token 上限；移除该内部目录投影、保留可见 target/lineage，candidate freeze 与 backend revalidation 不变。定向 provider/budget/social catalog/compiler **136 passed**，backend-contract `2b065c6a72634974852f2a5d3fc1f13f` passed/cleanup passed。authenticated WS、run-scoped population activation grants、Presence/Life、双空间 source 与 visual/player input 均成功；修复后本地 Laya 收到完整 6146/8192 和 6206/8192-token 请求但两次均选 `observe`，无 social target/L4 owner receipt。故此只关闭输入预算 defect，不关闭完整 Laya/social action+target、owner receipt/replay、Q01–Q04 或 Godot；live diagnostics 与精确边界见统一矩阵。不要重试挑选成功模型输出。
+
 **Files:** `backend/app/models/character_agent_runtime.py`、`character_agent/reasoning/l1_perception.py`、`planning/l3_planner.py`、`runtime/runtime_loop.py`、`reasoning/l2_reasoner.py`；复用 `services/scene_affordance_registry.py`、`character_agent/skills/service.py`。测试在 `backend/tests/` 中沿已有 L1/candidate/capability 入口增加。
 
 **Interfaces:** 已过滤的真实感知＋现有 registry/owner 的版本与权限→私有 target catalog、visible refs、action-specific affordance→既有 CandidateCompiler；同一 turn 的 envelope/policy→L2/L3/dialogue/recall。

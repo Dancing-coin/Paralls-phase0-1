@@ -1,5 +1,22 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-23 Laya social 输入预算修复与真实运行复核
+
+受控的 component backend live run 使用 `PopulationActivationPresenceService` 与配置的 scoped `ActivationGrant` 为 `char_a`/`char_b` 正式提交 activation、Presence、LifeState 和初始 resource receipts；随后以 trusted-local authenticated WebSocket session、双 actor controller spatial samples、`visual_fact_event` 和真实 `player_input` 进入 `char_a` cognition。该授权只存在于本轮独立开发进程，不能代表部署环境已经配置生产 grant 或通用 identity provider。
+
+首轮真实 social 请求冻结出 `observe`、`approach:char_b`、`break_contact:char_b`，但 provider 在发 HTTP 前报告 `required=14857, max_len=8192`。char_a snapshot 中 `target_catalog` 占 17,649 bytes，重复承载五种 intent 的 owner source context、revision vector 和 admission digest；L3 已把动作/目标冻结在候选和 digest 中，这些 authority-only 投影不应复制到模型 state。现在 `LayaSystemOneProvider._state()` 仅从模型可见 snapshot 移除 `target_catalog`，保留 `visible_target_refs` 与 `visible_target_sources`；backend 候选冻结、target revision pins、执行时目录重投影和 owner CAS 均未放宽。RED 新测试先 1 failed，GREEN 后 `test_character_laya_provider.py`、`test_laya_runtime_input_budget.py`、`test_character_social_target_catalog.py`、`test_character_candidate_compiler.py` **136 passed, 4 existing FastAPI lifespan warnings**；Harness `backend-contract` run `2b065c6a72634974852f2a5d3fc1f13f` passed，cleanup passed，证据目录 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-social-budget-contract-20261023\`。
+
+修复后两个独立真实 char_a turn 分别为 **6,206/8,192** 与 **6,146/8,192 tokens**，`truncated=false`，本地 `laya-rl-agent` HTTP 调用均成功；两次都选择 `observe`，L4 envelope 没有 social owner route/目标，因此没有 social owner write、receipt 或 replay。首轮的 char_b 并发背景请求另有一次 HTTP 200 并选择 `self_protect`，不属于该 social turn，也未进入 owner。诊断 trace 分别保留在 `laya-social-live-20261023/`、`laya-social-live-20261023-budget-fix/` 与 `laya-social-live-20261023-explicit-command/`；这些选择不计正式质量样本或通过证据。没有重复调用同一输入；显式第二回合仍未得到 social action，后续需处理 action/target 对齐与正式质量准备，不能继续重试挑选成功样本。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | Laya social candidate 的 8,192-token preflight overflow 已修复并通过 136 项定向回归与 backend-contract；真实 activation/Presence/Life、authenticated WS 输入和候选投影已跑通。social action 未被模型选择，故 L4→SocialSpatialOwner receipt/recovery/replay 仍未验收。 |
+| 模型质量 | Q01–Q04 未验收；以上两次 char_a 结果为 development diagnostics，不属于冻结数据集或正式得分。未读取 calibration/final/holdout，未训练/微调。 |
+| 角色闭环 | 输入和可执行 social 候选真实到达 Laya；当前 `observe` 选择未带目标，未提交领域 owner。完整 action+target、owner receipt/recovery/replay 与 multi-owner common cut 仍开放。 |
+| 最终 Godot | G-A/G-B/G-C 未启动或验证，继续留到后端与角色依赖收口后。 |
+
+本轮 backend component 使用 18768，结束时端口已释放；既有 Laya listener 8765 保持运行且未被停止或接管。所有临时目录在 D 盘，Harness 报告 cleanup passed。
+
 ### 2026-10-22 D10 Soul common-cut replay participant 基础
 
 新增 Soul anchor/fact/effect participant，按指定 global sequence 重建 owner stream transition digest；每个 Soul event 验证固定 event type/schema、authority-only visibility、owner principal、单事件原 transaction、idempotency receipt、stream revision 和 pinned/read revision 相等。participant 同时纳入每个原事务所 pin 的 source stream prefix，以及 payload 明确引用的原始 event；source event、transaction 和 receipt 均形成 digest。checkpoint 不保存完整 Soul payload，仅保存 projection/source/transaction/receipt digest、event 类型和引用。新 manifest 固定 `soul=1`；旧 manifest 可继续不带该 participant。
