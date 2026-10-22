@@ -264,3 +264,5 @@ def test_authenticated_contact_receipt_flows_through_embodied_and_threat_owners(
     assert len(encounters) == 1
     assert encounters[0]["settlements"]
     assert encounters[0]["settlements"][0]["source"]["encounter_ref"] == encounters[0]["encounter_ref"]
+    recovered_settlement = encounters[0]["settlements"][0]
+    assert recovered_settlement["contact_receipt"] == receipt.model_dump(mode="json")

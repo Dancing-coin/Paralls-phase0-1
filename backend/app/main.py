@@ -4992,6 +4992,7 @@ def _handle_envelope(
         durable = adapter.settle_and_record(
             attempt, source=source, command_id=f"combat:{attempt.attempt_id}",
             idempotency_key=f"combat:{attempt.attempt_id}",
+            contact_receipt=contact_receipt,
         )
         if durable.error_code or durable.authority_result.outcome != "committed" or durable.append_result is None:
             return [_as_envelope("street_combat_result", {

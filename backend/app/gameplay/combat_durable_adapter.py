@@ -15,6 +15,7 @@ from app.gameplay.models import AppendBatchResult
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.canonical_combat_authority import CanonicalCombatThreatAuthority
 from app.gameplay.canonical_combat_authority import FACTION_PRINCIPAL
+from app.gameplay.physics_contact_receipt import PhysicsContactReceipt
 from app.models.embodied_interaction import ActionAttempt, AuthorityResult
 from app.services.embodied_authority_settlement_service import EmbodiedAuthoritySettlementService
 
@@ -151,6 +152,7 @@ class DurableEmbodiedCombatAdapter:
         source: CombatSourceContext | None,
         command_id: str,
         idempotency_key: str,
+        contact_receipt: PhysicsContactReceipt | None = None,
     ) -> CombatDurableResult:
         if source is None or not source.valid():
             return CombatDurableResult(
@@ -177,6 +179,7 @@ class DurableEmbodiedCombatAdapter:
             return self.record_committed_settlement(
                 attempt, authority_result=owner_receipt, source=source,
                 command_id=command_id, idempotency_key=idempotency_key,
+                contact_receipt=contact_receipt,
             )
         try:
             source_valid = self._validate_source(source, attempt)
@@ -200,6 +203,7 @@ class DurableEmbodiedCombatAdapter:
             source=source,
             command_id=command_id,
             idempotency_key=idempotency_key,
+            contact_receipt=contact_receipt,
         )
 
     def record_committed_settlement(
@@ -210,6 +214,7 @@ class DurableEmbodiedCombatAdapter:
         source: CombatSourceContext | None,
         command_id: str,
         idempotency_key: str,
+        contact_receipt: PhysicsContactReceipt | None = None,
     ) -> CombatDurableResult:
         """Recover only the durable append for an already committed owner result.
 
@@ -233,6 +238,7 @@ class DurableEmbodiedCombatAdapter:
             return self._replay_prior_receipt(
                 prior, attempt=attempt, authority_result=authority_result, source=source,
                 command_id=command_id, idempotency_key=idempotency_key,
+                contact_receipt=contact_receipt,
             )
         try:
             # Capture heads before revalidation: changes after this point must
@@ -254,7 +260,9 @@ class DurableEmbodiedCombatAdapter:
         if owner_receipt is None or not self._receipt_matches_attempt(owner_receipt, attempt, authority_result):
             return CombatDurableResult(authority_result=authority_result, error_code="embodied_receipt_invalid")
 
-        payload = self._settlement_payload(attempt, authority_result, source)
+        payload = self._settlement_payload(
+            attempt, authority_result, source, contact_receipt=contact_receipt
+        )
         stream_id = f"gameplay:combat:encounter:{source.encounter_ref}"
         revision = self._store.get_stream_head(stream_id)
         batch = build_atomic_event_batch(
@@ -284,9 +292,11 @@ class DurableEmbodiedCombatAdapter:
     def _replay_prior_receipt(
         self, prior: AppendBatchResult, *, attempt: ActionAttempt,
         authority_result: AuthorityResult, source: CombatSourceContext, command_id: str,
-        idempotency_key: str,
+        idempotency_key: str, contact_receipt: PhysicsContactReceipt | None = None,
     ) -> CombatDurableResult:
-        expected_payload = self._settlement_payload(attempt, authority_result, source)
+        expected_payload = self._settlement_payload(
+            attempt, authority_result, source, contact_receipt=contact_receipt
+        )
         try:
             transaction = self._store.get_transaction(prior.transaction_id)
             events = [self._store.get_event(event_id) for event_id in prior.committed_event_ids]
@@ -324,8 +334,14 @@ class DurableEmbodiedCombatAdapter:
                                    append_result=prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True))
 
     @staticmethod
-    def _settlement_payload(attempt: ActionAttempt, authority_result: AuthorityResult, source: CombatSourceContext) -> dict[str, Any]:
-        return {
+    def _settlement_payload(
+        attempt: ActionAttempt,
+        authority_result: AuthorityResult,
+        source: CombatSourceContext,
+        *,
+        contact_receipt: PhysicsContactReceipt | None = None,
+    ) -> dict[str, Any]:
+        payload = {
             "attempt_id": attempt.attempt_id, "action_instance_id": attempt.action_instance_id,
             "actor_ref": attempt.actor_ref, "target_refs": list(attempt.target_refs),
             "action_id": attempt.semantic_action_id,
@@ -343,6 +359,9 @@ class DurableEmbodiedCombatAdapter:
             "authority_transaction_id": authority_result.transaction_id,
             "attempt_payload_digest": attempt.payload_digest,
         }
+        if contact_receipt is not None:
+            payload["contact_receipt"] = contact_receipt.model_dump(mode="json")
+        return payload
 
     def _validate_source(self, source: CombatSourceContext, attempt: ActionAttempt) -> bool:
         """Re-read all source events before the embodied owner is admitted."""
@@ -465,6 +484,8 @@ class DurableEmbodiedCombatAdapter:
                 "target_refs": list(event.payload.get("target_refs", [])),
                 "damage": int(event.payload.get("damage", 0)),
                 "source": dict(source),
+                **({"contact_receipt": dict(event.payload["contact_receipt"])}
+                   if isinstance(event.payload.get("contact_receipt"), dict) else {}),
             })
         return rows
 
