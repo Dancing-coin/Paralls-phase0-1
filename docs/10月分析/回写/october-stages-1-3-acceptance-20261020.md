@@ -1,5 +1,13 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 execution WebSocket 回传认证 scope
+
+审计确认 `character_agent_execution` 是双向边界：backend 先向客户端发完整 L4 合同，之后只有收到合同回传才会调用 ESM/social 等领域 owner。原有 `verify_recorded_execution_contract()` 证明合同确实来自角色私有 session，但没有证明发回合同的 WebSocket connection 获准代表该 actor；未绑定连接和不相关的 actor scope 都能越过该 transport admission 并进入 owner 调用。现已在生产 envelope handler 前置校验当前绑定仍存在于 `WebSocketSessionAuthService`、binding 未过期，且合同 actor 属于该 session 的 `allowed_actor_refs`；拒绝发生在合同解析和领域 owner 前。内部 `direct_handler` 兼容只供既有后端 handler 测试使用，网络 connection 不走此例外。
+
+Fresh 定向验证：`python -m pytest -q -p no:cacheprovider backend/tests/test_character_execution_source_admission.py backend/tests/test_character_execution_contract.py backend/tests/test_character_object_execution.py backend/tests/test_websocket_connection_context.py --basetemp=D:\codex-temp\ws-scope-final\pytest --tb=short` → **80 passed, 4 existing FastAPI lifespan deprecation warnings**。新增测试先证明无 scope 连接和错误 actor scope 会被接受，再验证拒绝；最终选择也覆盖授权 actor 可越过 transport admission、撤权 binding 被拒绝，以及来源/owner 合同与 connection context 回归。首个 green 尝试因 D 盘 basetemp 父目录缺失产生 22 个 fixture setup errors，预建该目录后复跑通过。临时路径仅在 D 盘。此修复补足 transport actor admission，不证明正式 IdP、Laya 实时生成/回传、Godot 边界、生产 owner 全覆盖、恢复回放、Q01–Q04 或 G-A/B/C。
+
+**后端**：Character 执行回传的当前 WebSocket actor-scope admission 已实现并定向验证；真实 Laya 和完整生产身份 issuer 仍开放。**模型质量**：Q01–Q04 未验收。**角色闭环**：ESM object slice 保持已有子项证据，完整动作候选→L4→多 owner 回执及恢复/回放仍未验收。**最终 Godot**：A/B/C 未操作，仍最后集中验收。
+
 ### 2026-10-22 Soul fact 当前准入与历史来源 cut 修复
 
 提交 `e0883bd2`、`b3a1f532` 修复 anchor 创建后合法 Resource owner advance 导致 fact 准入错误拒绝的问题。anchor 原 receipt 继续验证其历史 Resource source cut；新 fact 的 CAS 绑定当前 Presence/activation/Life、anchor 与 fact stream。历史 fact 重建按原提交时刻验证 Presence incarnation、activation lifecycle、Life=0 及各来源当时的 stream head，不依赖角色当前仍在场。
