@@ -12,6 +12,7 @@ from collections.abc import Iterable, Mapping
 _FAILURE_STATUSES = {"rejected", "failed", "blocked"}
 _TRIGGER_KINDS = {
     "repeated_failure",
+    "context_conflict",
     "complex_information_failure",
     "high_risk_information_failure",
     "persistent_information_failure",
@@ -36,6 +37,20 @@ def derive_goal_proposal_trigger(
     """
     if not source_event_id or not frame_digest or type(goal_revision) is not int or goal_revision < 0:
         return None
+    marker = str(payload.get("slow_goal_trigger_kind", "") or "")
+    conflict_refs = [str(ref) for ref in payload.get("conflict_refs", []) if str(ref)] if isinstance(payload.get("conflict_refs", []), list) else []
+    if marker == "context_conflict":
+        if not conflict_refs:
+            return None
+        return {
+            "eligible": True,
+            "trigger_kind": marker,
+            "trigger_source_ref": source_event_id,
+            "frame_digest": frame_digest,
+            "goal_revision": goal_revision,
+            "evidence_refs": list(dict.fromkeys([source_event_id, *conflict_refs])),
+            "source_scope": "actor_private_percept_conflict",
+        }
     status = str(payload.get("settlement_status", "") or "")
     if status not in _FAILURE_STATUSES:
         return None
@@ -43,7 +58,6 @@ def derive_goal_proposal_trigger(
     prior = [item for item in history if isinstance(item, Mapping)
              and str(item.get("settlement_status", "") or "") in _FAILURE_STATUSES
              and (not action_profile or str(item.get("action_profile", "") or "") == action_profile)]
-    marker = str(payload.get("slow_goal_trigger_kind", "") or "")
     if marker not in _TRIGGER_KINDS:
         marker = "repeated_failure" if len(prior) >= 2 else ""
     if not marker:

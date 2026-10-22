@@ -3503,6 +3503,19 @@ class CharacterAgentRuntime:
             self._persist_graph_continuity(actor_id=event.actor_id, producer_ts=event.producer_ts)
         self._project_session_event(stored)
         self._update_memory_scene_knowledge(stored)
+        if event.fact_claim is not None:
+            subject_ref = (event.subject_ref or event.target_ref or event.target_actor_id
+                           or event.target_object_id or event.target_environment_id)
+            knowledge = self._l1.get_actor_scene_knowledge_store().entries_for_actor(event.actor_id)
+            conflict_refs = [conflict.conflict_id for entry in knowledge
+                             if entry.subject_ref == subject_ref
+                             for conflict in entry.conflicts if not conflict.resolved]
+            if conflict_refs:
+                self._maybe_emit_slow_goal_trigger(
+                    actor_id=event.actor_id, producer_ts=event.producer_ts,
+                    payload={"slow_goal_trigger_kind": "context_conflict", "conflict_refs": conflict_refs},
+                    source_event=stored, source_stage="percept_conflict",
+                )
 
     def _update_memory_scene_knowledge(self, event: dict[str, object]) -> None:
         actor_id, index = str(event['actor_id']), int(event['event_index'])
@@ -3918,7 +3931,8 @@ class CharacterAgentRuntime:
         self._slow_goal_trigger_handler = handler
 
     def _maybe_emit_slow_goal_trigger(self, *, actor_id: str, producer_ts: int,
-                                      payload: dict[str, object], source_event: dict[str, object]) -> None:
+                                      payload: dict[str, object], source_event: dict[str, object],
+                                      source_stage: str = "settlement_result") -> None:
         handler = self._slow_goal_trigger_handler
         if handler is None:
             return
@@ -3951,7 +3965,7 @@ class CharacterAgentRuntime:
             actor_id=actor_id, producer_ts=producer_ts,
             trigger_event={"event_id": trigger_source_ref,
                            "event_type": "character_goal_proposal_trigger",
-                           "source_stage": "settlement_result"},
+                           "source_stage": source_stage},
             turn_context=turn, source_refs=list(dict.fromkeys(
                 [trigger_source_ref, *trigger.get("evidence_refs", [])]
             )),

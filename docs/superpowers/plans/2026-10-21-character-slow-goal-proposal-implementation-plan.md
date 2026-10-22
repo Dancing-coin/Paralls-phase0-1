@@ -24,6 +24,17 @@ real Laya action selection, downstream L4/domain-owner execution, fast/slow
 coexistence under a real provider, fresh-process replay, formal model quality, or
 Godot evidence.
 
+Context-conflict trigger follow-up (2026-10-22): committed actor-private
+percept facts that the existing ASK knowledge owner marks as contested now
+produce one `context_conflict` goal-proposal source through the same frozen
+MindFrame and admission bridge. The trigger carries the committed source and
+conflict identities; ordinary uncertainty and model hints remain ineligible.
+Focused runtime, producer, memory-consistency, slow-goal contract/coordinator/
+driver/atomic/transition/main selections passed **83 tests**. Phase changes,
+goal conflicts and complex/high-risk/persistent information failures still lack
+independent production producers and remain open; no model call, training,
+formal quality or Godot work was performed.
+
 ## Batch 1: explicit generative proposal contract
 
 Own `gateway/model_gateway.py`, `gateway/model_provider.py`, `gateway/prompt_policy.py`, `gateway/output_validator.py`, the adjacent `gateway/goal_proposal.py` contract and `backend/tests/test_character_slow_goal_contract.py`. Provider dispatch must bypass ordinary L3 action coercion for this explicit contract. Preserve existing dirty hunks using a clean HEAD overlay for verification and selective staging. Do not alter global goal models or action-choice behavior for this batch.
