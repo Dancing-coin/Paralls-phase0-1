@@ -1,5 +1,11 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 正式中性 Social target catalog 与 owner source pins
+
+新增 `CharacterSocialTargetCatalog`，由私有 visual lineage、当前 Presence/Life participant source、同一 room/scene/zone scope 和 actor/target 两侧新鲜 `EmbodiedSpatialSource` 共同生成五类 social action descriptor：`approach`、`follow_target`、`seek_private_distance`、`withdraw`、`break_contact`。descriptor 固定 `owner_route=social_spatial_owner`、source refs、revision vector、execution scope、source context 和 action-specific admission digest；catalog 只读，不读取 `faction:*`，缺 visual lineage、当前参与者、scope、空间样本、timeline、绑定或 freshness 时返回空。`CharacterObjectExecution` 与生产 social ingress 已接入 catalog，并把 descriptor source pins/context 传入 `SocialSpatialOwner.submit()`；owner 仍只记录空间意图接纳，不宣称抵达或物理接触。
+
+定向 TDD：先以空 catalog 得到 **1 failed / 10 passed** 的 RED；扩展 scene instance/revision 和生产 owner receipt replay 用例时，新增测试先暴露了两处问题（跨 scene instance/revision 被接纳、重放丢失原 source pins，2 failed/1 failed）。修复后 catalog/回放测试 **15 passed**；与 execution/social owner/combat authority 回归组合 **93 passed**、4 个既有 FastAPI lifespan warnings。临时目录仅在 `D:\codex-temp`。该批关闭的是正式 social candidate/source catalog、L4 caller source-pin 与原 receipt exact recovery 子项，不关闭完整 Laya、多领域 owner、全矩阵恢复/回放、Q01–Q04 或 Godot A/B/C。
+
 ### 2026-10-22 中性 Presence/Life 参与者 reader 与 social source CAS
 
 后续复查修复 source cut 的读取竞态：新增测试真实追加 despawn，首轮返回旧 spawn 与新 Presence head（1 failed）；改为读取前冻结 Presence、Population 与两种 Life stream heads，并与 combat 复用 activation/Presence/Life 严格校验。修正后 social reader、canonical combat authority、Threat consumer、combat lifecycle 四文件 **42 passed in 3.80s**。本增量未扩展生产 social catalog；原始 pytest 输出见本轮执行记录。

@@ -10,12 +10,13 @@ from app.models.player_input import InteractIntent
 
 class CharacterObjectExecution:
     def __init__(self, *, runtime, owner, source, scopes, clock_ms=None, learning_world_ref=None,
-                 combat_targets=None):
+                 combat_targets=None, social_targets=None):
         self._runtime, self._owner, self._source = runtime, owner, source
         self._scopes = {scope.actor_id: scope for scope in scopes}
         self._clock_ms = clock_ms or (lambda: time.monotonic_ns() // 1_000_000)
         self._learning_world_ref = learning_world_ref
         self._combat_targets = combat_targets
+        self._social_targets = social_targets
         self._epoch = uuid4().hex
         self._lock = RLock()
 
@@ -52,6 +53,8 @@ class CharacterObjectExecution:
             descriptor["required_conditions"] = dict(descriptor["required_conditions"], range=range_status)
         if self._combat_targets is not None:
             descriptors.extend(self._combat_targets.project_character_targets(snapshot))
+        if self._social_targets is not None:
+            descriptors.extend(self._social_targets.project_character_targets(snapshot))
         return descriptors
 
     def execute(self, contract):

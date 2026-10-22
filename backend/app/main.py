@@ -27,6 +27,7 @@ from app.config import Settings, settings
 from app.character_agent.storage.session_store import CharacterAgentSessionStore
 from app.character_agent.execution.object_execution import CharacterObjectExecution
 from app.character_agent.execution.combat_target_catalog import CharacterCombatTargetCatalog
+from app.character_agent.execution.social_target_catalog import CharacterSocialTargetCatalog
 from app.debug_narration import (
     build_debug_event,
     summarize_backend_route,
@@ -1960,6 +1961,11 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         learning_world_ref=character_agent_runtime._learning_world_ref,
         combat_targets=CharacterCombatTargetCatalog(
             store=gameplay_event_store, presence=population_presence_authority,
+            timeline=lambda: (_population_runtime_driver.clock.timeline
+                              if _population_runtime_driver is not None else None)),
+        social_targets=CharacterSocialTargetCatalog(
+            store=gameplay_event_store, source=embodied_spatial_source,
+            scopes=settings.embodied_spatial_scopes,
             timeline=lambda: (_population_runtime_driver.clock.timeline
                               if _population_runtime_driver is not None else None)),
     )
@@ -5601,21 +5607,30 @@ def _handle_envelope(
                     admission_digest = execution_contract.expected_observation.get("target_admission_digest")
                     descriptors = (character_object_execution.project_character_targets(snapshot)
                         if prior is None and snapshot is not None and character_object_execution is not None else [])
-                    admitted = snapshot is not None and any(
-                        descriptor.get("target_ref") in {target_ref, target_lookup}
+                    admitted_descriptor = next((descriptor for descriptor in descriptors
+                        if descriptor.get("target_ref") in {target_ref, target_lookup}
                         and descriptor.get("owner_route") == "social_spatial_owner"
                         and action_profile in descriptor.get("supported_intents", ())
                         and descriptor.get("affordance_result", {}).get("status") == "available"
                         and descriptor.get("target_admission_digest") == admission_digest
                         and admission_digest
-                        and descriptor.get("target_ref") in snapshot.visible_target_refs
-                        for descriptor in descriptors
-                    )
+                        and descriptor.get("target_ref") in snapshot.visible_target_refs), None) \
+                        if snapshot is not None else None
+                    admitted = admitted_descriptor is not None
                     if prior is None and not admitted:
                         return [_as_envelope("ack", {
                             "accepted": False, "source_type": envelope.message_type,
                             "route": "social_spatial_owner", "error_code": "target_unavailable",
                         })]
+                    replay_source_set = None
+                    replay_source_context = None
+                    if prior is not None:
+                        try:
+                            prior_event = social_spatial_owner.store.get_event(prior.committed_event_ids[0])
+                            replay_source_set = prior_event.payload.get("source_read_set")
+                            replay_source_context = prior_event.payload.get("source_context")
+                        except (IndexError, KeyError, TypeError):
+                            pass
                     receipt = social_spatial_owner.submit(
                         actor_ref=execution_contract.actor_id,
                         target_ref=(target_actor_id if target_actor_id.startswith("character:")
@@ -5630,6 +5645,10 @@ def _handle_envelope(
                         expected_revision_vector=dict(execution_contract.expected_revision_vector),
                         expected_memory_revision_vector=dict(execution_contract.expected_memory_revision_vector),
                         expected_snapshot_revision=execution_contract.expected_snapshot_revision,
+                        source_read_set=(dict(admitted_descriptor.get("target_revision_vector", {}))
+                                         if admitted_descriptor is not None else replay_source_set),
+                        source_context=(dict(admitted_descriptor.get("social_source_context", {}))
+                                        if admitted_descriptor is not None else replay_source_context),
                     )
                     if receipt.committed:
                         event = social_spatial_owner.store.get_event(receipt.committed_event_ids[0])
