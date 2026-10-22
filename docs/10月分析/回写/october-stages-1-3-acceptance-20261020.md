@@ -1,5 +1,18 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 本地 Laya 服务认证与推理复验
+
+为确认本地服务认证问题不需要用户另行提供密钥，本次只读 `laya-serve` 运行进程环境中的本地 `LAYA_API_KEY`，未显示或持久化其值；对 `127.0.0.1:8765/v1/systemone` 的真实请求返回 HTTP 200，`model=laya-rl-agent`、`routing=multilingual`、choice `observe`，55 input tokens，`truncated=false`。脱敏结果位于 `D:\Users\User\Documents\paralls-evidence\october-stages-1-3-20261020-01\laya-local-inference-20261022-live-recheck.json`。该值是本地 HTTP Bearer 认证配置，由服务进程持有，不是外部模型 API key，也不需要用户保存或提供。
+
+这是单请求服务 smoke：仅证明当前已运行的本地模型服务可认证并返回推理结果，不证明生产 backend 闭环、候选完整性、L4/owner receipt、恢复回放或正式模型质量。没有修改、重启或接管 listener；没有访问 calibration/final/holdout、训练/微调或操作 Godot。
+
+| 验收面 | 状态与证据边界 |
+|---|---|
+| 后端 | 本地 Laya 服务认证与一次推理复验通过；现有 worktable 后端单 owner 纵切仍按其独立证据记录，完整多领域/common-cut 闭环未完成 |
+| 模型质量 | Q01–Q04 未验收；单次开发 smoke 不计正式质量证据 |
+| 角色闭环 | 本次无 backend/角色消息或 owner receipt；整体 Laya 输入/候选→action+target→L4→owner→恢复/回放仍开放 |
+| 最终 Godot | G-A/G-B/G-C 未操作，继续留到 backend 与角色链路之后 |
+
 ### 2026-10-22 R12 coordination signal sender admission
 
 Backend raw/visual fact ingress now retains a coordination signal only when the current WebSocket session binding is active and unexpired, its fixed actor scope contains the source actor, the event source matches the signal source, and the producer is `character_actor`. An absent, stale, or out-of-scope binding strips only the local signal; ordinary fact ingestion remains available through its existing path. This reuses session identity and adds no Communication authority. Contract participant/context admission remains fail-closed because production owner context is still absent.
