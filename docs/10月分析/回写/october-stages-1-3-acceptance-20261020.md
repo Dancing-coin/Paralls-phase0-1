@@ -1,5 +1,17 @@
 # 十月主线阶段一至三统一验收矩阵
 
+### 2026-10-22 中性 Presence/Life 参与者 reader 与 social source CAS
+
+新增 `CanonicalCombatTargetReader.resolve_current_participants()` 作为不依赖 combat faction 的中性来源原语：只读取当前 `presence:{world}` 与角色 Life stream，确认当前 spawned event、incarnation、Life eligibility、owner transaction、当前 stream head 和事件内容；不写事件，也不读取 `faction:*`。该原语为正式 Social target catalog 提供 Presence/Life source cut，不能单独声称 social catalog、私有视觉 lineage、空间证据或 Laya 闭环已完成。
+
+`SocialSpatialOwner.submit()` 现在可携带 `source_read_set`/`source_context`，把 source heads 固定到 owner 事务的 read/pinned revisions，并在新写入前重验 source heads；source 变化返回 `social_spatial_source_stale` 且零写。已有 idempotency receipt 恢复仍按原 payload 精确回放，避免 source 变化阻断历史回执。
+
+定向命令：
+`python -B -m pytest -q -p no:cacheprovider backend/tests/test_character_social_target_catalog.py backend/tests/test_canonical_combat_authority.py backend/tests/test_social_spatial_owner.py backend/tests/test_character_execution_contract.py --basetemp D:\\codex-temp\\social-reader-regression --tb=short`
+结果：**59 passed**，4 个既有 FastAPI lifespan deprecation warnings。临时目录仅在 D 盘。
+
+**后端**：中性 Presence/Life reader 与 social owner source CAS 已实现并定向验证；正式 social source catalog（私有视觉 lineage、scope/room/scene、fresh embodied source、action descriptor、digest）及其生产 ingress/L4 caller 仍未实现。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya action+target→L4→多领域 owner receipt→恢复/回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
+
 ### 2026-10-22 social target admission 修复与历史证据降级
 
 撤除未提交的 spatial-only social projection 草稿：配对空间样本不能替代 canonical Presence/Life、私有 visual lineage、当前 scope 和执行前 source 重验。修复 `main.py` canonical social ingress：新请求必须在当前 owner 重新投影的可见目标目录中命中动作、owner route 与合同 admission digest，否则在 owner 调用前 `target_unavailable`，零 world/角色 settlement 写入。当前尚无正式 social target source catalog，故新 social 请求保持 fail-closed。原 owner 已提交的请求先按幂等键恢复并核对完整 payload，不因当前目标不可见阻断原回执。

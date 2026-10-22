@@ -42,6 +42,8 @@ class SocialSpatialOwner:
         expected_revision_vector: dict[str, int],
         expected_memory_revision_vector: dict[str, int],
         expected_snapshot_revision: int,
+        source_read_set: dict[str, int] | None = None,
+        source_context: dict[str, Any] | None = None,
         authorized_caller: str = "character_agent",
     ) -> AppendBatchResult:
         values = (actor_ref, target_ref, action_profile, request_ref, turn_id,
@@ -56,6 +58,10 @@ class SocialSpatialOwner:
             return self._reject(request_ref, "social_spatial_revision_invalid")
         if any(type(value) is not int or value < 0 for value in (*expected_revision_vector.values(), *expected_memory_revision_vector.values())):
             return self._reject(request_ref, "social_spatial_revision_invalid")
+        reads = dict(source_read_set or {})
+        if any(not isinstance(stream, str) or not stream.strip() or type(revision) is not int or revision < 0
+               for stream, revision in reads.items()):
+            return self._reject(request_ref, "social_spatial_source_invalid")
         stream_id = f"gameplay:character:social-spatial:{actor_ref}"
         payload = {
             "actor_ref": actor_ref, "target_ref": target_ref, "action_profile": action_profile,
@@ -67,13 +73,18 @@ class SocialSpatialOwner:
             "expected_snapshot_revision": expected_snapshot_revision,
             "authorized_caller": authorized_caller, "policy_revision": "social-spatial@1",
         }
+        if source_read_set is not None or source_context is not None:
+            payload.update(source_read_set=reads, source_context=dict(source_context or {}))
         prior = self.store.get_by_idempotency(SOCIAL_SPATIAL_PRINCIPAL, idempotency_key)
         if prior is not None:
             return self._replay_or_reject(prior, payload, stream_id, request_ref, idempotency_key, causation_id, correlation_id)
+        if any(self.store.get_stream_head(stream) != revision for stream, revision in reads.items()):
+            return self._reject(request_ref, "social_spatial_source_stale")
         return self.store.append_batch(build_atomic_event_batch(
             command_id=request_ref, principal_ref=SOCIAL_SPATIAL_PRINCIPAL, stream_id=stream_id,
             expected_revision=self.store.get_stream_head(stream_id), event_specs=((SOCIAL_SPATIAL_EVENT, payload),),
             idempotency_key=idempotency_key, causation_id=causation_id, correlation_id=correlation_id,
+            read_stream_revisions=reads, pinned_revisions=reads,
         ))
 
     def replay(self, actor_ref: str) -> list[dict[str, Any]]:

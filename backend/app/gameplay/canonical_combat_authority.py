@@ -206,6 +206,99 @@ class CanonicalCombatTargetReader:
                 GameplayEventStoreSnapshotError):
             return None
 
+    def resolve_current_participants(self, *, actor_ref: str, target_ref: str,
+                                     world_ref: str, timeline_ref: str,
+                                     eligible_life_states: frozenset[str] = _TARGET_ELIGIBLE_LIFE_STATES) -> dict[str, Any] | None:
+        """Resolve current Presence/Life facts without combat relations.
+
+        This is the neutral admission primitive for domains such as social.
+        ``timeline_ref`` is carried for the caller's admission context but is
+        deliberately not read from either source: Presence and Life are world
+        facts, while domain policy owns any timeline or relationship rules.
+        """
+        values = (actor_ref, target_ref, world_ref, timeline_ref)
+        if (any(not isinstance(value, str) or not value.strip() for value in values)
+                or actor_ref == target_ref
+                or not isinstance(eligible_life_states, frozenset)):
+            return None
+        try:
+            presence_rows = self.store.read_stream(f"presence:{world_ref}")
+            selected_presence: list[Any] = []
+            selected_life: list[Any] = []
+            for actor in (actor_ref, target_ref):
+                aliases = {actor, actor.removeprefix("character:")}
+                rows = [row for row in presence_rows
+                        if row.payload.get("character_ref") in aliases]
+                if not rows or rows[-1].event_type != "population.presence.spawned":
+                    return None
+                presence = rows[-1]
+                if (presence.schema_version != 1
+                        or presence.visibility_policy != "project"
+                        or presence.stream_id != f"presence:{world_ref}"
+                        or presence.payload.get("world_ref") != world_ref
+                        or presence.payload.get("character_ref") != actor
+                        or not self.store.transaction_owns_event(
+                            transaction_id=presence.transaction_id,
+                            event_id=presence.event_id,
+                            principal_ref=PRESENCE_PRINCIPAL)):
+                    return None
+                incarnation = presence.payload.get("incarnation")
+                if type(incarnation) is not int or incarnation < 1:
+                    return None
+                selected_presence.append(presence)
+                life_rows = [row for suffix in {actor, actor.removeprefix("character:")}
+                             for row in self.store.read_stream(f"gameplay:character:life:{suffix}")
+                             if row.payload.get("actor_ref") == actor]
+                if not life_rows:
+                    return None
+                life = max(life_rows, key=lambda row: row.global_sequence)
+                if (life.event_type != "gameplay.character.life_state_changed"
+                        or life.visibility_policy != "project"
+                        or life.payload.get("world_ref") != world_ref
+                        or life.payload.get("incarnation") != incarnation
+                        or life.payload.get("to_state") not in eligible_life_states
+                        or not self.store.transaction_owns_event(
+                            transaction_id=life.transaction_id,
+                            event_id=life.event_id,
+                            principal_ref=("authority:character:life-state:presence-admission"
+                                           if life.schema_version == 2 else LIFE_PRINCIPAL))):
+                    return None
+                if life.schema_version == 2 and (
+                        life.stream_id != f"gameplay:character:life:{actor}"
+                        or life.payload.get("from_state") != "unknown"
+                        or life.payload.get("to_state") != "alive"
+                        or life.payload.get("source_presence_event_id") != presence.event_id
+                        or life.payload.get("source_presence_revision") != presence.stream_revision):
+                    return None
+                if life.schema_version == 1 and life.stream_id not in {
+                        f"gameplay:character:life:{actor}",
+                        f"gameplay:character:life:{actor.removeprefix('character:')}",
+                }:
+                    return None
+                selected_life.append(life)
+            revisions = {f"presence:{world_ref}": self.store.get_stream_head(f"presence:{world_ref}")}
+            revisions.update({row.stream_id: self.store.get_stream_head(row.stream_id)
+                              for row in selected_life})
+            stable = (all(self.store.get_stream_head(stream) == revision
+                           for stream, revision in revisions.items())
+                      and all(self.store.get_event(row.event_id) == row
+                              for row in (*selected_presence, *selected_life)))
+            if not stable:
+                return None
+            return {
+                "eligible": True,
+                "reason": "eligible",
+                "world_ref": world_ref,
+                "timeline_ref": timeline_ref,
+                "actor_incarnation_ref": f"{actor_ref}@{selected_presence[0].payload['incarnation']}",
+                "target_incarnation_ref": f"{target_ref}@{selected_presence[1].payload['incarnation']}",
+                "source_event_ids": [row.event_id for row in (*selected_presence, *selected_life)],
+                "source_revisions": revisions,
+            }
+        except (KeyError, IndexError, TypeError, ValueError,
+                GameplayEventStoreSnapshotError):
+            return None
+
     def source_eligibility(self, *, actor_ref: str, target_ref: str, presence_event_ids: tuple[str, str],
                            life_event_ids: tuple[str, str], faction_event_id: str,
                            world_ref: str, timeline_ref: str, actor_incarnation_ref: str,
