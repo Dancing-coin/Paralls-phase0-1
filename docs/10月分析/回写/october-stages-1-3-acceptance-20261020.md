@@ -1430,6 +1430,12 @@ TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注�
 
 **后端**：D08 backend contact→embodied owner→durable settlement→Threat owner 纵切已实现并定向验证；物理 producer、真实 L4 与 encounter recovery/replay 验收仍开放。**模型质量**：Q01–Q04 未验收。**角色闭环**：真实 Laya 完整 action+target、多领域回执/common cut、恢复与回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，仍留到后端与角色链路之后。
 
+### 2026-10-22 D08 owner replay recheck
+
+Fresh 定向复验 `test_street_combat_transport.py`、`test_canonical_combat_lifecycle.py`、`test_combat_settlement_threat_consumer.py`、`test_canonical_combat_authority.py` 为 **59 passed, 4 existing FastAPI lifespan deprecation warnings**，basetemp 使用 `D:\codex-temp\d08-recheck-final`。结果再次确认 encounter begin、embodied settlement、Threat settlement 及 durable reopen/exact duplicate replay 在 owner 层成立；没有新增代码。该复验不升级为 production transport recovery：`street_combat_recovery_snapshot_request` 当前恢复连接 epoch/actor snapshot，尚未在跨进程重启后由真实 Godot boundary message 重建并展示 combat owner receipts。
+
+**后端**：D08 owner durable replay 已 fresh 验证；跨进程 authenticated transport recovery、真实 physics producer、Godot 可见回执仍开放。**模型质量**：Q01–Q04 未验收。**角色闭环**：Laya 多领域 common cut 与 recovery/replay 仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作。
+
 ### 2026-10-22 character slow-goal context-conflict producer
 
 已将 actor-private perception owner 产生的 contested knowledge 接入既有慢目标触发桥。两条同 subject/claim 时间点但值冲突的已提交感知事实，经 ASK knowledge owner 形成未解决 conflict 后，runtime 生成一次 `context_conflict` 触发源；冻结 MindFrame、source refs、conflict refs 和 admission bridge 仍复用原路径。普通 uncertainty、L2 goal hints 和模型 confidence 不会触发。定向回归 `test_character_slow_goal_runtime_trigger.py`、`test_slow_goal_trigger_producer.py`、`test_character_agent_memory_consistency.py` 及慢目标 contract/coordinator/driver/atomic/transition/main、cognition driver 选择共 **83 passed**，basetemp 在 `D:\codex-temp\slow-goal-focused-final`。该批未调用模型、未访问 calibration/final/holdout、未训练/微调、未操作 Godot。
