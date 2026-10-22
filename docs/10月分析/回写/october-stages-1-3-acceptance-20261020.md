@@ -1385,3 +1385,11 @@ TDD 定向验证：新增 inventory 测试先暴露目标类型过滤导致注�
 定向复验 `test_trusted_local_gameplay_mirror_launcher.py`、`test_canonical_combat_lifecycle.py`、`test_street_combat_transport.py`：**49 passed, 4 existing FastAPI lifespan deprecation warnings in 7.09s**。测试覆盖受信 loopback/profile issuer、单次固定 scope binding、encounter owner receipt/reopen、canonical source admission，以及缺 authenticated contact receipt 时 `street_combat_attempt` fail-closed/零写。pytest basetemp 在 `D:\codex-temp\october-d08-issuer-20261022`。这是受控 backend evidence，不是 Godot 边界场景、真实登录 provider 或 physics contact runtime evidence。
 
 **后端**：D08 encounter session issuer/admission 与 durable begin receipt 子项已实现并定向验证；contact receipt adapter、L4→Threat production ingress/replay 仍未实现。**模型质量**：Q01–Q04 未验收。**角色闭环**：Laya action+target→多 owner receipts/recovery/replay 未验收。**最终 Godot**：G-A/G-B/G-C 未操作，仍最后集中验收。
+
+### 2026-10-22 D08 physics contact receipt contract slice
+
+新增 `PhysicsContactReceipt` 与 `PhysicsContactReceiptVerifier`，以认证 runtime authority 的 HMAC receipt 绑定 actor、target、connection epoch、attempt id、physics tick、target incarnation、action descriptor digest 与 attempt payload digest；未知 authority、签名错误、digest 格式错误或任一冻结字段不一致均拒绝。定向测试 `backend/tests/test_physics_contact_receipt.py`：**8 passed**，pytest basetemp 位于 `D:\Users\User\Documents\paralls-evidence\tmp\physics-contact-green-20261022`。
+
+证据边界：这是 verifier contract，不是实际 physics producer 或生产配置。`street_combat_attempt` 尚未消费 receipt；receipt source digest 未与当前 canonical Presence/Life/Faction read-set 建立生产联系，未接 L4、Threat durable owner 或 exact replay。因此 D08 仍为局部实现，入口继续 fail-closed；本批不改变模型质量、Laya 闭环或 Godot 验收状态。未运行全量 pytest、Harness all、模型评估、训练或 Godot。
+
+**后端**：contact receipt 验证合同局部实现并通过 8 项定向测试；真实签发来源、production ingress→L4→Threat receipt/replay 未完成。**模型质量**：Q01–Q04 未验收。**角色闭环**：完整 Laya 输入→候选→action+target→L4→多领域回执/恢复/回放仍未验收。**最终 Godot**：G-A/G-B/G-C 未操作，继续最后集中验收。
