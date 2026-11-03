@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -12,6 +10,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryItem, InventoryProjector, InventoryProjection
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.ownership_runtime import OwnershipProjector
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 class GiftRuntimeError(ValueError):
@@ -214,9 +213,6 @@ def _nonnegative(payload: Mapping[str, object], key: str) -> int:
         raise GiftRuntimeError("economy_event_payload_invalid")
     return value
 
-
-def _digest(value: object) -> str:
-    return sha256(json.dumps(value, default=lambda item: dict(item) if isinstance(item, Mapping) else item.__dict__, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 __all__ = ["GiftAuthorityService", "GiftProjection", "GiftProjector", "GiftRecord", "GiftRuntimeError"]

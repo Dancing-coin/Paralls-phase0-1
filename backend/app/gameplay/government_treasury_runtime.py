@@ -6,8 +6,6 @@ jurisdiction/currency pair. Economy remains the sole ledger and payment writer.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -28,6 +26,7 @@ from app.gameplay.models import (
 )
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 class GovernmentTreasuryCollectorError(ValueError):
@@ -338,9 +337,6 @@ def _text(payload: Mapping[str, object], key: str) -> str:
         raise GovernmentTreasuryCollectorError("treasury_collector_event_invalid")
     return value
 
-
-def _digest(value: object) -> str:
-    return sha256(json.dumps(value, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
 
 
 __all__ = [

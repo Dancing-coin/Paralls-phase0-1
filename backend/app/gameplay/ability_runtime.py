@@ -3,14 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from types import MappingProxyType
 from typing import Literal, Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.resource_body_runtime import BodyRuntimeProjection, ResourceStateProjection
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 AbilityRank = Literal["none", "novice", "basic", "trained", "expert", "master"]
@@ -318,15 +317,6 @@ def _revisions(*projections: object) -> Mapping[str, int]:
             revisions[stream_id] = max(revisions.get(stream_id, 0), revision)
     return MappingProxyType(dict(sorted(revisions.items())))
 
-
-def _digest(value: object) -> str:
-    def default(item: object) -> object:
-        if hasattr(item, "__dict__"):
-            return item.__dict__
-        if isinstance(item, Mapping):
-            return dict(item)
-        raise TypeError(type(item).__name__)
-    return sha256(json.dumps(value, default=default, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 __all__ = [

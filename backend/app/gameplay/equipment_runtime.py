@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -14,6 +12,7 @@ from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, Inventor
 from app.gameplay.modifier_runtime import ModifierDefinitionRegistry
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.resource_body_runtime import BodyRuntimeProjection
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 class EquipmentRuntimeError(ValueError):
@@ -951,16 +950,6 @@ def _text_tuple(value: object) -> tuple[str, ...]:
         raise EquipmentRuntimeError("equipment_event_payload_invalid")
     return tuple(value)
 
-
-def _digest(value: object) -> str:
-    def default(item: object) -> object:
-        if isinstance(item, Mapping):
-            return dict(item)
-        if hasattr(item, "__dict__"):
-            return item.__dict__
-        raise TypeError(type(item).__name__)
-
-    return sha256(json.dumps(value, default=default, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _inventory_stream(actor_ref: str) -> str:

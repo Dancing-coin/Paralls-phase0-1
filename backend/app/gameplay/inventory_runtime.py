@@ -15,6 +15,7 @@ from app.gameplay.patch_runtime import _canonical_digest
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from app.gameplay.shared_contracts import SettlementReceipt
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 class InventoryRuntimeError(ValueError):
@@ -3043,11 +3044,3 @@ def _bool_with_default(payload: Mapping[str, object], key: str, default: bool) -
     return value
 
 
-def _digest(value: object) -> str:
-    def default(item: object) -> object:
-        if isinstance(item, Mapping):
-            return dict(item)
-        if hasattr(item, "__dict__"):
-            return item.__dict__
-        raise TypeError(type(item).__name__)
-    return sha256(json.dumps(value, default=default, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()

@@ -27,6 +27,7 @@ from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObli
 from app.world_runtime.obligations import ObligationLifecycleRegistration
 from app.gameplay.economy_random_policy import EconomyRandomPolicy, validate_random_payload, validate_anchored_random_payload, random_payload_digest
 from app.gameplay.random_business_admission import RandomBusinessSource
+from app.gameplay.owner_runtime_base import digest as _digest
 import secrets
 
 
@@ -5218,7 +5219,6 @@ def _mapping(*, p:Mapping[str,object], key:str)->Mapping[str,object]:
     value=p.get(key)
     if not isinstance(value, Mapping): raise EconomyRuntimeError("economy_event_payload_invalid")
     return value
-def _digest(v:object)->str: return sha256(json.dumps(v,sort_keys=True,separators=(",",":"),default=lambda x:dict(x) if isinstance(x,Mapping) else x.__dict__).encode()).hexdigest()
 
 
 def _validate_public_project_budget_provenance(events: Sequence[GameplayEvent]) -> None:

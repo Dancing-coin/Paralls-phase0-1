@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -24,6 +22,7 @@ from app.gameplay.models import (
 )
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 class DebtRuntimeError(ValueError):
@@ -946,9 +945,6 @@ def _positive(payload: Mapping[str, object], key: str) -> int:
         raise DebtRuntimeError("economy_event_payload_invalid")
     return value
 
-
-def _digest(value: object) -> str:
-    return sha256(json.dumps(value, default=lambda item: dict(item) if isinstance(item, Mapping) else item.__dict__, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 __all__ = ["DebtAuthorityService", "DebtClaim", "DebtProjection", "DebtProjector", "DebtRuntimeError", "DebtTransaction", "SimpleDebtContract"]

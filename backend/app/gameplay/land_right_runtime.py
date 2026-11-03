@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from typing import Mapping
 
 from app.gameplay.credential_runtime import CredentialProjector, CredentialPresentationValidator
@@ -12,6 +10,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult
 from app.gameplay.ownership_runtime import OwnershipProjector
+from app.gameplay.owner_runtime_base import digest as _digest
 
 
 class LandRightRuntimeError(ValueError):
@@ -188,16 +187,6 @@ class LandRightTransferAuthority:
             raise LandRightRuntimeError("land_right_idempotency_missing_result")
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
 
-
-def _digest(value: object) -> str:
-    return sha256(
-        json.dumps(
-            value,
-            default=lambda item: dict(item) if isinstance(item, Mapping) else item.__dict__,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
 
 
 __all__ = [
