@@ -19,6 +19,7 @@ from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailur
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch_from_fragments
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
+from app.gameplay.owner_runtime_base import rejected_result
 
 
 class Organization(StrictGameplayModel):
@@ -1366,13 +1367,11 @@ class GovernmentAuthority:
         return self._store.append_batch(batch)
 
     @staticmethod
-    def _rejected_append(command_id: str, reason: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
+    def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
+        return rejected_result(
             command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=reason, message=reason, failed_stage="government_policy_admission"),
+            error_code=error_code,
+            stage="government_policy_admission",
         )
 
     def record_public_workshop_notice(

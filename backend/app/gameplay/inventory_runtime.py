@@ -15,7 +15,7 @@ from app.gameplay.patch_runtime import _canonical_digest
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from app.gameplay.shared_contracts import SettlementReceipt
-from app.gameplay.owner_runtime_base import digest as _digest
+from app.gameplay.owner_runtime_base import digest as _digest, rejected_result
 
 
 class InventoryRuntimeError(ValueError):
@@ -2929,16 +2929,11 @@ class InventoryAuthorityService:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"tx:{command_id}",
+        return rejected_result(
             command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(
-                error_code=error_code,
-                message=error_code,
-                failed_stage="inventory_commit",
-            ),
+            error_code=error_code,
+            stage="inventory_commit",
+            transaction_prefix="tx",
         )
 
     @staticmethod

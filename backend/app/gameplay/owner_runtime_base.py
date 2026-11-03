@@ -111,17 +111,29 @@ def replay_duplicate(
     )
 
 
-def rejected_result(*, command_id: str, error_code: str, stage: str) -> AppendBatchResult:
+def rejected_result(
+    *,
+    command_id: str,
+    error_code: str,
+    stage: str,
+    transaction_prefix: str = "transaction",
+) -> AppendBatchResult:
     """统一的拒绝回执。
 
-    各域原有 `_rejected_append` 的唯一差异是 failed_stage 字面量，
-    因此 stage 作为参数保留。
+    各域原有 `_rejected_append` 的两处差异作为参数保留：
+
+      - stage：failed_stage 字面量，各域不同
+      - transaction_prefix：多数域用 "transaction"，inventory 用 "tx"
+
+    transaction_prefix 不是风格差异：inventory 全文件的提交路径统一用
+    f"tx:{command_id}"（12 处），拒绝回执必须与之一致，否则同一命令的
+    拒绝回执与提交回执会在 transaction_id 上不一致。
     """
     from app.gameplay.models import GameplayFailure
 
     return AppendBatchResult(
         committed=False,
-        transaction_id=f"transaction:{command_id}",
+        transaction_id=f"{transaction_prefix}:{command_id}",
         command_id=command_id,
         idempotency_status="rejected",
         failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage=stage),

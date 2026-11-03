@@ -27,7 +27,7 @@ from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObli
 from app.world_runtime.obligations import ObligationLifecycleRegistration
 from app.gameplay.economy_random_policy import EconomyRandomPolicy, validate_random_payload, validate_anchored_random_payload, random_payload_digest
 from app.gameplay.random_business_admission import RandomBusinessSource
-from app.gameplay.owner_runtime_base import digest as _digest
+from app.gameplay.owner_runtime_base import digest as _digest, rejected_result
 import secrets
 
 
@@ -667,12 +667,10 @@ class EconomyAuthorityService:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
+        return rejected_result(
             command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="economy_obligation_commit"),
+            error_code=error_code,
+            stage="economy_obligation_commit",
         )
 
     def settle_package_declared_negotiated_exchange(

@@ -21,6 +21,7 @@ from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_s
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, ScheduledObligation, SettlementReceipt
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.organization_government_runtime import WorkerContributionRef
+from app.gameplay.owner_runtime_base import rejected_result
 
 _MILL_FLOUR_RECIPE_REF = "recipe:industrial-facilities:mill-flour@1"
 _MILL_FLOUR_OUTPUT_ITEM = "item:industrial-facilities:flour@1"
@@ -7238,13 +7239,11 @@ class ConstructionProductionAuthority:
         return self._store.append_batch(batch)
 
     @staticmethod
-    def _rejected_append(command_id: str, reason: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
+    def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
+        return rejected_result(
             command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=reason, message=reason, failed_stage="construction_admission"),
+            error_code=error_code,
+            stage="construction_admission",
         )
 
     @staticmethod
