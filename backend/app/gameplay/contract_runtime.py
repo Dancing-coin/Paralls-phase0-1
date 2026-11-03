@@ -13,7 +13,12 @@ from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCata
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, StrictGameplayModel
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
-from app.gameplay.owner_runtime_base import digest as _digest, replay_duplicate, rejected_result
+from app.gameplay.owner_runtime_base import (
+    build_event_batch,
+    digest as _digest,
+    rejected_result,
+    replay_duplicate,
+)
 
 
 class ContractRuntimeError(ValueError):
@@ -1332,7 +1337,15 @@ class ContractAuthorityService:
         return self._append(command_id, idempotency_key, digest, [event], self._store.get_stream_head(self._STREAM))
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, events: list[dict[str, object]], revision: int) -> AppendBatchResult:
-        return self._store.append_batch({"transaction_id": f"tx:{command_id}", "command_id": command_id, "expected_stream_revisions": {self._STREAM: revision}, "pinned_revisions": {self._STREAM: revision}, "events": events, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": []})
+        return self._store.append_batch(build_event_batch(
+            command_id=command_id,
+            principal=self._PRINCIPAL,
+            idempotency_key=idempotency_key,
+            payload_digest=digest,
+            events=events,
+            expected_stream_revisions={self._STREAM: revision},
+            result_digest=digest,
+        ))
 
     def accept_ogs_social_conflict_eligibility(self, *, source_event: object, expected_source_revision: int, command_id: str, idempotency_key: str, expected_contract_revision: int, causation_id: str, correlation_id: str) -> AppendBatchResult:
         """Record a Contract-owned eligibility marker from one exact Social case.

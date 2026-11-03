@@ -10,7 +10,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.ownership_runtime import OwnershipProjector
-from app.gameplay.owner_runtime_base import digest as _digest, replay_duplicate
+from app.gameplay.owner_runtime_base import digest as _digest, replay_duplicate, build_event_batch
 
 
 class CredentialRuntimeError(ValueError):
@@ -232,7 +232,15 @@ class CredentialAuthorityService:
         return self._append(command_id, idempotency_key, digest, events, {self._STREAM: self._store.get_stream_head(self._STREAM), inventory_stream: inventory_revision})
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, events: list[dict[str, object]], revisions: Mapping[str, int]) -> AppendBatchResult:
-        return self._store.append_batch({"transaction_id": f"tx:{command_id}", "command_id": command_id, "expected_stream_revisions": dict(revisions), "pinned_revisions": dict(revisions), "events": events, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": []})
+        return self._store.append_batch(build_event_batch(
+            command_id=command_id,
+            principal=self._PRINCIPAL,
+            idempotency_key=idempotency_key,
+            payload_digest=digest,
+            events=events,
+            expected_stream_revisions=revisions,
+            result_digest=digest,
+        ))
 
     @classmethod
     def _event(cls, command_id: str, index: int, event_type: str, payload: Mapping[str, object], causation_id: str, correlation_id: str) -> dict[str, object]:

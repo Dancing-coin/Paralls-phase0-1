@@ -138,3 +138,79 @@ def rejected_result(
         idempotency_status="rejected",
         failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage=stage),
     )
+
+
+# ---------------------------------------------------------------------------
+# 提交批次骨架
+# ---------------------------------------------------------------------------
+#
+# AST 核验（2026-11-03）：27 处 append_batch 调用全部包含下列 9 个顶层键：
+#   transaction_id / command_id / expected_stream_revisions / pinned_revisions /
+#   events / idempotency_record / outbox_entries / result_digest /
+#   projection_refresh_hints
+# 只在部分调用出现的可选键：
+#   read_stream_revisions（7 处）、owner_fragments（3 处）
+
+
+def build_event_batch(
+    *,
+    command_id: str,
+    principal: str,
+    idempotency_key: str,
+    payload_digest: str,
+    events: list[dict] | tuple[dict, ...],
+    expected_stream_revisions: Mapping[str, int],
+    result_digest: str,
+    transaction_prefix: str = "tx",
+    pinned_revisions: Mapping[str, int] | None = None,
+    read_stream_revisions: Mapping[str, int] | None = None,
+    owner_fragments: list | None = None,
+    outbox_entries: list | None = None,
+    projection_refresh_hints: list | None = None,
+) -> dict:
+    """组装可直接交给 `EventStore.append_batch` 的批次字典。
+
+    **只组装，不判断。** 它不计算任何摘要、不校验任何不变量、不决定
+    revision。所有语义仍由调用方提供。
+
+    三个刻意保留为参数的差异（见迁移文档 §五）：
+
+      transaction_prefix    "tx" 与 "transaction" 两套约定并存。
+                            inventory 全文件用 "tx"（12 处），其余多用
+                            "transaction"。统一会改变 transaction_id，
+                            而它被恢复校验引用。
+      result_digest         由调用方传入，**builder 不计算**。各域的
+                            恢复校验依赖自己的算法（事件摘要 / 事件
+                            列表摘要 / 命令摘要），统一会破坏历史数据
+                            的一致性检查。
+      pinned_revisions      默认与 expected_stream_revisions 相同，
+                            但 equipment / land_right 用不同的键名与
+                            来源，必须显式传入。
+
+    read_stream_revisions / owner_fragments 只在部分调用出现，因此可选。
+    """
+
+    batch: dict = {
+        "transaction_id": f"{transaction_prefix}:{command_id}",
+        "command_id": command_id,
+        "expected_stream_revisions": dict(expected_stream_revisions),
+        "pinned_revisions": dict(
+            expected_stream_revisions if pinned_revisions is None else pinned_revisions
+        ),
+        "events": list(events),
+        "idempotency_record": {
+            "principal_ref": principal,
+            "idempotency_key": idempotency_key,
+            "payload_digest": payload_digest,
+        },
+        "outbox_entries": list(outbox_entries or []),
+        "result_digest": result_digest,
+        "projection_refresh_hints": list(projection_refresh_hints or []),
+    }
+
+    if read_stream_revisions is not None:
+        batch["read_stream_revisions"] = dict(read_stream_revisions)
+    if owner_fragments is not None:
+        batch["owner_fragments"] = list(owner_fragments)
+
+    return batch
