@@ -10,7 +10,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.ownership_runtime import OwnershipProjector
-from app.gameplay.owner_runtime_base import digest as _digest, replay_duplicate, build_event_batch
+from app.gameplay.owner_runtime_base import digest as _digest, replay_duplicate, build_event_batch, StoreReadSnapshot
 
 
 class CredentialRuntimeError(ValueError):
@@ -110,15 +110,17 @@ class CredentialPresentationValidator:
         self._credential_projector = CredentialProjector()
         self._inventory_projector = InventoryProjector(inventory_registry)
         self._ownership_projector = OwnershipProjector()
+        self._reads = StoreReadSnapshot(store)
 
     def verify_right_holder_presentation(self, *, credential_id: str, presenter_ref: str) -> CredentialPresentationDecision:
-        links = self._credential_projector.rebuild(self._store.read_events()).links
+        events = self._reads.all_events()
+        links = self._credential_projector.rebuild(events).links
         link = links.get(credential_id)
         if link is None or link.status != "active":
             return CredentialPresentationDecision(credential_id, None if link is None else link.right_id, False, False, False, "credential_not_active")
-        inventory = self._inventory_projector.rebuild(presenter_ref, self._store.read_events())
+        inventory = self._inventory_projector.rebuild(presenter_ref, events)
         credential_present = link.credential_item_ref in inventory.items and link.credential_item_ref in inventory.locations
-        right = self._ownership_projector.rebuild(self._store.read_events()).rights.get(link.right_id)
+        right = self._ownership_projector.rebuild(events).rights.get(link.right_id)
         presenter_is_right_holder = right is not None and right.holder_ref == presenter_ref
         if not credential_present:
             error_code = "credential_not_present"
@@ -150,6 +152,8 @@ class CredentialAuthorityService:
         self._projector = CredentialProjector()
         self._ownership_projector = OwnershipProjector()
         self._inventory_projector = InventoryProjector(inventory_registry)
+        # 一条命令内可能读 2-3 次全量事件；合并成一次（见 StoreReadSnapshot）
+        self._reads = StoreReadSnapshot(store)
 
     def issue_credential(
         self,
@@ -181,16 +185,17 @@ class CredentialAuthorityService:
         duplicate = self._duplicate(idempotency_key, digest)
         if duplicate is not None:
             return duplicate
-        projection = self._projector.rebuild(self._store.read_events())
+        events = self._reads.all_events()
+        projection = self._projector.rebuild(events)
         if credential_id in projection.links or not all((credential_id, credential_item_ref, credential_holder_ref, right_id, issuer_ref)):
             raise CredentialRuntimeError("credential_invalid")
         if any(link.credential_item_ref == credential_item_ref and link.status == "active" for link in projection.links.values()):
             raise CredentialRuntimeError("credential_item_already_linked")
         if credential_kind not in {"deed", "receipt", "certificate", "key", "contract_document"} or proves not in {"evidence_only", "access_only", "evidence_and_access"}:
             raise CredentialRuntimeError("credential_invalid")
-        if right_id not in self._ownership_projector.rebuild(self._store.read_events()).rights:
+        if right_id not in self._ownership_projector.rebuild(events).rights:
             raise CredentialRuntimeError("ownership_right_missing")
-        holder_inventory = self._inventory_projector.rebuild(credential_holder_ref, self._store.read_events())
+        holder_inventory = self._inventory_projector.rebuild(credential_holder_ref, events)
         if credential_item_ref not in holder_inventory.items or credential_item_ref not in holder_inventory.locations:
             raise CredentialRuntimeError("credential_item_not_present")
         inventory_stream = f"gameplay:inventory:{credential_holder_ref}"
@@ -204,7 +209,8 @@ class CredentialAuthorityService:
         duplicate = self._duplicate(idempotency_key, digest)
         if duplicate is not None:
             return duplicate
-        link = self._projector.rebuild(self._store.read_events()).links.get(credential_id)
+        events = self._reads.all_events()
+        link = self._projector.rebuild(events).links.get(credential_id)
         if link is None or link.status != "active" or link.issuer_ref != issuer_ref or not reason:
             raise CredentialRuntimeError("credential_not_active")
         event = self._event(command_id, 1, "gameplay.credential.revoked", {"credential_id": credential_id, "issuer_ref": issuer_ref, "reason": reason}, causation_id, correlation_id)
@@ -216,11 +222,12 @@ class CredentialAuthorityService:
         duplicate = self._duplicate(idempotency_key, digest)
         if duplicate is not None:
             return duplicate
-        projection = self._projector.rebuild(self._store.read_events())
+        events = self._reads.all_events()
+        projection = self._projector.rebuild(events)
         prior = projection.links.get(prior_credential_id)
         if prior is None or prior.status != "active" or prior.issuer_ref != issuer_ref or replacement_credential_id in projection.links or not replacement_item_ref or not replacement_holder_ref:
             raise CredentialRuntimeError("credential_not_active")
-        replacement_inventory = self._inventory_projector.rebuild(replacement_holder_ref, self._store.read_events())
+        replacement_inventory = self._inventory_projector.rebuild(replacement_holder_ref, events)
         if replacement_item_ref not in replacement_inventory.items or replacement_item_ref not in replacement_inventory.locations:
             raise CredentialRuntimeError("credential_item_not_present")
         inventory_stream = f"gameplay:inventory:{replacement_holder_ref}"

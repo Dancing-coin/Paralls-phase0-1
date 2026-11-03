@@ -214,3 +214,63 @@ def build_event_batch(
         batch["owner_fragments"] = list(owner_fragments)
 
     return batch
+
+
+# ---------------------------------------------------------------------------
+# 单条命令内的读快照
+# ---------------------------------------------------------------------------
+
+
+class StoreReadSnapshot:
+    """把一条命令内的多次全量读合并成一次。
+
+    **实测依据（2026-11-04，见迁移文档 §六）**
+
+    原计划的 ProjectionCheckpointer 有两处前提经实测不成立：
+
+      1. `rebuild(events, checkpoint_at=...)` 比全量重建**慢 1.68 倍**
+         （N=100/300/600 稳定复现）：它做两次全量过滤 + 两次 reduce，
+         而 `checkpoint_at` 阶段的过滤本身就是 O(事件总数)。
+      2. 同一方法内的多次 rebuild 用的是**不同 projector**
+         （credential.issue_credential 同时用 credential/ownership/inventory
+         三个），投影 cache key 含 projector 身份，因此永不命中。
+
+    真正重复的是 `read_events()` 的深拷贝：
+
+        issue_credential   调 3 次
+        verify_..._presentation 调 3 次
+        supersede_credential 调 2 次
+
+    400 事件时每次约 2.9 ms。合并后实测 9.48 → 5.18 ms/命令。
+
+    **安全前提**（已核验）
+
+      - `read_events()` 返回的列表无任何调用方就地修改（AST 全仓扫描，0 处）
+      - 本类只以 tuple 返回，结构上禁止调用方修改
+      - head 与事件元组取自同一次读，不存在读到一半被打断的窗口
+
+    这不是跨命令缓存：提交会改变 head，下次调用自动重读。
+    """
+
+    __slots__ = ("_store", "_head", "_events")
+
+    def __init__(self, store: object) -> None:
+        self._store = store
+        self._head: int | None = None
+        self._events: tuple | None = None
+
+    def all_events(self) -> tuple:
+        """当前 head 对应的全部事件，缓存命中时复用。
+
+        head 从事件本身取（最后一条的 global_sequence），而不是先调
+        get_last_global_sequence 再读 —— 避免两次调用之间的并发写入
+        让缓存键与内容对不上。
+        """
+        if self._events is not None and self._head == self._store.get_last_global_sequence():
+            return self._events
+
+        events = tuple(self._store.read_events())
+        head = events[-1].global_sequence if events else 0
+        self._events = events
+        self._head = head
+        return events
