@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from hashlib import sha256
-import json
 from types import MappingProxyType
 from typing import Mapping, Sequence
 
@@ -13,7 +11,9 @@ from pydantic import ConfigDict, Field
 from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
-from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.owner_runtime_base import digest as _digest
+from app.gameplay.owner_runtime_base import rejected_result, replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
@@ -320,15 +320,14 @@ class OwnershipAuthorityService:
         )
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
-        if record is None:
-            return None
-        if record.payload_digest != digest:
-            raise OwnershipRuntimeError("idempotency_key_reused")
-        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if result is None:
-            raise OwnershipRuntimeError("ownership_idempotency_missing_result")
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        return replay_duplicate(
+            self._store,
+            principal=self._PRINCIPAL,
+            idempotency_key=idempotency_key,
+            payload_digest=digest,
+            error_factory=OwnershipRuntimeError,
+            missing_result_code="ownership_idempotency_missing_result",
+        ).duplicate
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, event_type: str, payload: dict[str, str], causation_id: str, correlation_id: str, projection: OwnershipProjection) -> AppendBatchResult:
         stream_id = "gameplay:ownership"
@@ -338,12 +337,10 @@ class OwnershipAuthorityService:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
+        return rejected_result(
             command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="municipal_certificate_admission"),
+            error_code=error_code,
+            stage="municipal_certificate_admission",
         )
 
 
@@ -354,14 +351,6 @@ def _text(payload: Mapping[str, object], key: str) -> str:
     return value
 
 
-def _digest(value: object) -> str:
-    def default(item: object) -> object:
-        if isinstance(item, Mapping):
-            return dict(item)
-        if hasattr(item, "__dict__"):
-            return item.__dict__
-        raise TypeError(type(item).__name__)
-    return sha256(json.dumps(value, default=default, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 __all__ = ["MunicipalDroughtAssessmentCertificateIntentV1", "OwnershipAuthorityService", "OwnershipProjection", "OwnershipProjector", "OwnershipRight", "OwnershipRuntimeError"]
