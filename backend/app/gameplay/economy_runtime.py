@@ -17,6 +17,7 @@ from app.gameplay.government_treasury_runtime import (
 )
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.contract_runtime import ContractProjector
+from app.gameplay.idempotency_validation import ReplayValidationError, validate_replay_result
 from app.gameplay.inventory_runtime import InventoryAuthorityService, InventoryDefinitionRegistry, InventoryRuntimeError
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayEvent, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
 from app.gameplay.ownership_runtime import OwnershipAuthorityService, OwnershipRuntimeError
@@ -1277,6 +1278,11 @@ class EconomyAuthorityService:
         result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if result is None:
             return self._rejected_append(command_id, "idempotency_record_missing_result")
+        try:
+            validate_replay_result(self._store, result)
+        except ReplayValidationError:
+            # 回执引用了不存在或不对应的事件：不得冒充已提交
+            return self._rejected_append(command_id, "idempotency_key_reused")
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
     @staticmethod
     def assess_tax_due(*, taxable_amount_minor:int, tax_rate_basis_points:int, evidence_refs:tuple[str,...])->int:
