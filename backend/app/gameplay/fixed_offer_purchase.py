@@ -13,6 +13,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryItem, InventoryProjector
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.ownership_runtime import OwnershipProjector
+from app.gameplay.owner_runtime_base import replay_duplicate
 
 
 class PurchaseRuntimeError(ValueError):
@@ -307,15 +308,14 @@ class FixedOfferAuthorityService:
             raise PurchaseRuntimeError("inventory_capacity_exceeded")
 
     def _duplicate(self, principal: str, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        record = self._store.get_idempotency_record(principal, idempotency_key)
-        if record is None:
-            return None
-        if record.payload_digest != digest:
-            raise PurchaseRuntimeError("idempotency_key_reused")
-        result = self._store.get_by_idempotency(principal, idempotency_key)
-        if result is None:
-            raise PurchaseRuntimeError("economy_idempotency_missing_result")
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        return replay_duplicate(
+            self._store,
+            principal=principal,
+            idempotency_key=idempotency_key,
+            payload_digest=digest,
+            error_factory=PurchaseRuntimeError,
+            missing_result_code="economy_idempotency_missing_result",
+        ).duplicate
 
     def _append(self, command_id: str, principal: str, idempotency_key: str, digest: str, events: list[dict[str, object]], expected_stream_revisions: Mapping[str, int]) -> AppendBatchResult:
         return self._store.append_batch(
