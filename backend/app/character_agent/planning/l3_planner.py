@@ -34,6 +34,32 @@ from app.models.character_agent_runtime import CharacterActiveGoalFrame
 from app.models.character_agent_runtime import CharacterIntentDecision, CharacterInterpretation, CharacterSuggestionPacket
 
 
+# Single declared source for the two descriptor vocabularies that used to be
+# repeated as inline literals in three places.  Producers may add a key here
+# only by extending the constant; an unknown key is never silently admitted.
+TARGET_REF_KEYS = frozenset({
+    "target", "actor", "entity", "object", "location", "recipient", "source", "destination",
+})
+CONDITION_KEYS = frozenset({
+    "visibility", "consent", "privacy", "contact", "range", "permission", "availability",
+})
+
+# Intents that cannot be expressed without a catalog descriptor.  A missing
+# descriptor for one of these is a producer defect, not an absent choice.
+TARGET_REQUIRED_INTENTS = frozenset({
+    "inspect_object", "use_object", "finish_use", "share_info", "speak_private", "follow_target",
+    "seek_private_distance", "break_contact", "withdraw", "approach",
+    "withhold", "short_punch", "unarmed_punch", "sword_slash",
+})
+
+# Intents that need no commitment, so an observation-only compilation is not a
+# failure by itself — but it is reported as a floor so a silent catalog
+# collapse can never look like a healthy turn.
+NON_COMMITTAL_INTENTS = frozenset({
+    "observe", "inspect_object", "ask_probe", "defer", "pause", "stay_silent", "self_protect",
+})
+
+
 @dataclass(frozen=True)
 class CandidateCompilation:
     """Auditable complete candidate universe and provider-presented subset.
@@ -48,6 +74,7 @@ class CandidateCompilation:
     diagnostics: list[dict[str, object]]
     coverage: dict[str, object]
     digest: str
+    floor: dict[str, object] = field(default_factory=dict)
 
     @property
     def wire_labels(self) -> list[str]:
@@ -119,7 +146,7 @@ class CandidateCompiler:
         target_parts = []
         if isinstance(target_refs, dict):
             for key in sorted(target_refs):
-                if key not in {"target", "actor", "entity", "object", "location", "recipient", "source", "destination"}:
+                if key not in TARGET_REF_KEYS:
                     continue
                 value = target_refs[key]
                 ref = value if isinstance(value, str) and re.fullmatch(r"[\w:./#-]{1,160}", value) else "unknown"
@@ -131,7 +158,7 @@ class CandidateCompiler:
         precondition_parts = []
         if isinstance(conditions, dict):
             for key in sorted(conditions):
-                if key not in {"visibility", "consent", "privacy", "contact", "range", "permission", "availability"}:
+                if key not in CONDITION_KEYS:
                     continue
                 value = conditions[key]
                 status = value if isinstance(value, str) and value in {"satisfied", "required", "blocked", "unknown", "unavailable"} else "unknown"
@@ -212,7 +239,7 @@ class CandidateCompiler:
                 # A visible target does not satisfy its other admission gates.
                 # `required` preserves a deferred check, never affirmative
                 # evidence; L4/owner must still validate it at execution.
-                for condition in ("visibility", "consent", "privacy", "contact", "range", "permission", "availability"):
+                for condition in sorted(CONDITION_KEYS):
                     if condition not in conditions:
                         continue
                     status = conditions[condition]
@@ -278,6 +305,7 @@ class CandidateCompiler:
                 pruned.append({"candidate_id": item["candidate_id"], "reason": "max_candidate_intents"})
                 continue
             presented.append(item)
+        floor = self._observation_floor(presented, universe, diagnostics, candidate_count=len(candidates))
         payload = {
             "universe": universe,
             "presented": presented,
@@ -300,7 +328,50 @@ class CandidateCompiler:
                 "coverage_ratio": (len(presented) / len(universe)) if universe else 1.0,
             },
             digest=digest,
+            floor=floor or {},
         )
+
+    @staticmethod
+    def _observation_floor(
+        presented: list[dict[str, object]],
+        universe: list[dict[str, object]],
+        diagnostics: list[dict[str, object]],
+        *,
+        candidate_count: int,
+    ) -> dict[str, object]:
+        """Report a turn that can only observe, instead of leaving it silent.
+
+        A collapsed target catalog is indistinguishable from a healthy quiet
+        turn: the agent simply picks `observe` and every counter looks normal.
+        This record makes that state visible in the frozen provider input and
+        in the trace digest without changing which candidates are presented.
+        """
+        if not presented:
+            return {
+                "status": "empty_presented",
+                "reason": "no_candidate_survived_compilation",
+                "universe_count": len(universe),
+                "candidate_count": candidate_count,
+            }
+        committed = [
+            item for item in presented
+            if str(item.get("semantic_intent_id", "") or "") not in NON_COMMITTAL_INTENTS
+        ]
+        if committed:
+            return {}
+        reasons = sorted({
+            str(entry.get("reason", "") or "")
+            for entry in diagnostics
+            if str(entry.get("reason", "") or "")
+        })
+        return {
+            "status": "observation_only",
+            "reason": "no_committal_candidate_admitted",
+            "universe_count": len(universe),
+            "presented_count": len(presented),
+            "candidate_count": candidate_count,
+            "diagnostic_reasons": reasons[:8],
+        }
 
 
 @dataclass(frozen=True)
@@ -420,11 +491,7 @@ class CharacterAgentL3Service:
             for item in snapshot.get("visible_target_refs", [])
             if str(item or "")
         } if isinstance(snapshot.get("visible_target_refs", []), list) else set()
-        target_required = {
-            "inspect_object", "use_object", "finish_use", "share_info", "speak_private", "follow_target",
-            "seek_private_distance", "break_contact", "withdraw", "approach",
-            "withhold", "short_punch", "unarmed_punch", "sword_slash",
-        }
+        target_required = TARGET_REQUIRED_INTENTS
         frame_pins = {
             "frame_digest": frame.frame_digest,
             "turn_id": frame.turn_id,
@@ -445,10 +512,7 @@ class CharacterAgentL3Service:
         records: list[dict[str, object]] = []
         for intent in dict.fromkeys(str(item) for item in intents if str(item)):
             family = self._candidate_action_family(intent)
-            targets = [item for item in catalog
-                       if "supported_intents" not in item or intent in item["supported_intents"]] if intent in target_required else [None]
-            if intent in target_required and not targets:
-                targets = [None]
+            targets = self._select_targets(catalog, intent, target_required)
             for descriptor in targets:
                 descriptor = descriptor if isinstance(descriptor, dict) else {}
                 target_ref = str(descriptor.get("target_ref", "") or "")
@@ -466,7 +530,7 @@ class CharacterAgentL3Service:
                 if target_values and "visible_target_refs" in snapshot and any(value not in visible for value in target_values):
                     condition["visibility"] = "blocked"
                     diagnosis = {"status": "blocked", "reason": "target_not_visible"}
-                if "supported_intents" in descriptor and intent not in descriptor["supported_intents"]:
+                if "supported_intents" in descriptor and intent not in (descriptor["supported_intents"] or ()):
                     diagnosis = {"status": "blocked", "reason": "target_action_not_supported"}
                 affordance = descriptor.get("affordance_result", {"status": "available", "reason": "registered"})
                 if not isinstance(affordance, dict):
@@ -515,6 +579,10 @@ class CharacterAgentL3Service:
                     if isinstance(supplied, dict) and record["affordance_result"].get("status", "unknown") == "available":
                         record["affordance_result"] = supplied
                 records.append(record)
+        records.extend(self._perception_only_records(
+            catalog, intents=intents, revision_pins=revision_pins, visible=visible,
+            snapshot=snapshot,
+        ))
         # Keep a safe observation/protection floor first, then surface complete
         # action+target records before lower priority targetless fallbacks so a
         # bounded P still contains lawful targeted choices when available.
@@ -528,6 +596,117 @@ class CharacterAgentL3Service:
                 str(item.get("candidate_id", "")),
             ),
         )
+
+    @staticmethod
+    def _perception_only(descriptor: dict[str, object]) -> bool:
+        """A descriptor the owner exposes for perception but not for action.
+
+        Producers state this explicitly with ``perception_only``.  The empty
+        ``supported_intents`` list that used to stand for it is ambiguous with
+        "supports nothing yet", so it is not accepted as a substitute.
+        """
+        return descriptor.get("perception_only") is True
+
+    @staticmethod
+    def _perception_only_records(
+        catalog: list[dict[str, object]],
+        *,
+        intents: list[str],
+        revision_pins: dict[str, object],
+        visible: set[str],
+        snapshot: dict[str, object],
+    ) -> list[dict[str, object]]:
+        """Emit exactly one pruned-candidate record per perceivable-only target.
+
+        These targets are real, current and visible, but the owner has not
+        admitted any action on them yet.  They are declared with
+        ``perception_only`` instead of an empty ``supported_intents`` list, so
+        the collapse is visible as a deliberate, reasoned prune rather than an
+        empty catalog.  The record can never be presented: its affordance is
+        always ``unavailable``, which the affordance stage prunes with
+        ``perception_only_no_action_admission``.
+        """
+        if "observe" not in intents:
+            return []
+        records: list[dict[str, object]] = []
+        for descriptor in catalog:
+            if descriptor.get("perception_only") is not True:
+                continue
+            target_ref = str(descriptor.get("target_ref", "") or "")
+            target_refs = {
+                str(k): str(v)
+                for k, v in (descriptor.get("target_refs") or {}).items()
+            } if isinstance(descriptor.get("target_refs"), dict) else {}
+            if target_ref and not target_refs:
+                target_refs = {"target": target_ref}
+            target_values = list(dict.fromkeys(target_refs.values()))
+            if target_values and "visible_target_refs" in snapshot and any(
+                value not in visible for value in target_values
+            ):
+                continue
+            condition = dict(descriptor.get("required_conditions") or {})
+            # Only visibility is meaningful for a target no action is admitted
+            # on: inheriting a producer's `range: unknown` would prune this
+            # record as `condition_unknown` and hide the real reason.
+            condition = {"visibility": condition.get("visibility", "satisfied")}
+            records.append({
+                "candidate_id": f"observe:{target_ref}" if target_ref else "observe",
+                "wire_label": f"observe:{target_ref}" if target_ref else "observe",
+                "semantic_action_id": CharacterAgentL3Service._candidate_semantic_action("observe"),
+                "semantic_intent_id": "observe",
+                "target_refs": target_refs,
+                "target_visibility": str(descriptor.get("target_visibility", "visible" if target_values else "none") or "none"),
+                "target_provenance": list(descriptor.get("target_provenance") or []) if isinstance(descriptor.get("target_provenance"), list) else [],
+                "affordance_result": {
+                    "status": "unavailable",
+                    "reason": "perception_only_no_action_admission",
+                },
+                "action_family": "observation",
+                "required_conditions": condition,
+                "owner_route": str(descriptor.get("owner_route", "") or ""),
+                "source_refs": list(descriptor.get("source_refs") or []) if isinstance(descriptor.get("source_refs"), list) else [],
+                "frame_ref": str(descriptor.get("frame_ref", "") or ""),
+                "revision_pins": {
+                    **revision_pins,
+                    **({"target_admission_digest": descriptor["target_admission_digest"]}
+                       if descriptor.get("target_admission_digest") else {}),
+                    "target_revision_vector": dict(descriptor.get("target_revision_vector", {}))
+                    if isinstance(descriptor.get("target_revision_vector", {}), dict) else {},
+                },
+                "diagnosis": {},
+                "perception_only": True,
+                "execution_contract": {},
+            })
+        return records
+
+    @staticmethod
+    def _select_targets(
+        catalog: list[dict[str, object]],
+        intent: str,
+        target_required: frozenset[str] | set[str],
+    ) -> list[dict[str, object] | None]:
+        """Pick the catalog descriptors that may carry `intent`.
+
+        A missing `supported_intents` key still means "no per-intent fence";
+        a present list fences that intent.  Perception-only descriptors are
+        never selected here - they carry no admitted action and are emitted
+        once per target by `_perception_only_records`.  An empty list without
+        that marker is a producer contract violation: it is selected so the
+        resulting record carries `target_action_not_supported` and is pruned
+        with a visible reason instead of disappearing.
+        """
+        if intent not in target_required:
+            return [None]
+        selected = [
+            item for item in catalog
+            if "supported_intents" not in item
+            or intent in (item.get("supported_intents") or ())
+            or (
+                not (item.get("supported_intents") or ())
+                and item.get("perception_only") is not True
+            )
+        ]
+        return selected or [None]
 
     def _compile_capability_contracts(
         self,
@@ -823,6 +1002,7 @@ class CharacterAgentL3Service:
             "candidate_pruned": compilation.pruned,
             "candidate_diagnostics": compilation.diagnostics,
             "candidate_digest": compilation.digest,
+            "candidate_floor": compilation.floor,
             "capability_envelope": capability_envelope.model_dump(mode="json"),
             "cognition_policy": cognition_policy.model_dump(mode="json"),
             "turn_id": cognition_policy.turn_id,

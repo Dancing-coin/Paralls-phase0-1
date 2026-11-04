@@ -303,3 +303,123 @@ def test_l3_preparation_preserves_permission_denial_in_the_frozen_provider_input
     assert "observe" in context["candidate_intents"]
     assert any(item["candidate_id"] == "use_object:obj_worktable" and item["condition"] == "permission"
                for item in context["candidate_diagnostics"])
+
+
+def test_perception_only_target_is_pruned_with_a_reason_instead_of_vanishing():
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+
+    snapshot = {
+        "actor_id": "char_a",
+        "visible_target_refs": ["char_b"],
+        "target_catalog": [{
+            "target_ref": "char_b", "target_refs": {"character": "char_b"},
+            "target_visibility": "visible", "supported_intents": [],
+            "perception_only": True, "owner_route": "",
+            "required_conditions": {"visibility": "satisfied", "range": "unknown"},
+            "affordance_result": {"status": "unavailable", "reason": "combat_action_admission_pending"},
+        }],
+    }
+    from app.character_agent.cognition.capability_envelope import CapabilityEnvelope
+    from app.character_agent.cognition.cognition_policy import CognitionPolicy
+    from app.models.character_agent_runtime import CharacterInterpretation
+
+    envelope = CapabilityEnvelope.compile(actor_id="char_a", turn_id="turn:perception")
+    policy = CognitionPolicy.resolve(envelope=envelope)
+    records = CharacterAgentL3Service()._candidate_records(
+        intents=["observe", "short_punch"],
+        interpretation=CharacterInterpretation(
+            actor_id="char_a", interpreted_summary="a hostile actor",
+            interpretation_type="combat_threat", salience_score=0.5, ambiguity_level="low",
+            risk_level="high", opportunity_level="low"),
+        snapshot=snapshot, envelope=envelope, policy=policy,
+        frame=None, skill_affordance_summary={},
+    )
+    result = CandidateCompiler().compile(
+        candidates=records, envelope=envelope, policy=policy, visible_targets={"char_b"})
+
+    # The hostile actor stays auditable even though no action is admitted.
+    assert [item["candidate_id"] for item in result.universe if item.get("perception_only")] == [
+        "observe:char_b"]
+    assert all(item["candidate_id"] != "short_punch:char_b" for item in result.presented)
+    assert any(entry["reason"] == "perception_only_no_action_admission" for entry in result.pruned)
+    assert result.floor == {} or result.floor.get("status") == "observation_only"
+
+
+def test_empty_intent_list_without_the_marker_is_a_producer_defect_not_a_silent_drop():
+    from app.character_agent.planning.l3_planner import CharacterAgentL3Service
+
+    snapshot = {
+        "actor_id": "char_a",
+        "visible_target_refs": ["char_b"],
+        "target_catalog": [{
+            "target_ref": "char_b", "target_refs": {"character": "char_b"},
+            "target_visibility": "visible", "supported_intents": [],
+            "required_conditions": {"visibility": "satisfied"},
+            "affordance_result": {"status": "available", "reason": "registered"},
+        }],
+    }
+    records = CharacterAgentL3Service()._candidate_records(
+        intents=["short_punch"], interpretation=None, snapshot=snapshot,
+        envelope=type("E", (), {"envelope_revision": "r", "envelope_digest": "d",
+                                "capability_revision": "c", "revision_pins": {}})(),
+        policy=type("P", (), {"policy_id": "p", "policy_digest": "d", "revision_pins": {}})(),
+        frame=None, skill_affordance_summary={},
+    )
+
+    assert [record["candidate_id"] for record in records] == ["short_punch:char_b"]
+    assert records[0]["diagnosis"] == {
+        "status": "blocked", "reason": "target_action_not_supported"}
+
+
+def test_observation_only_compilation_is_reported_as_a_floor():
+    result = CandidateCompiler().compile(
+        candidates=[_candidate("observe:obj:door")],
+        envelope={"allowed_action_families": ["observe"], "max_candidate_intents": 3},
+        visible_targets={"obj:door"},
+    )
+
+    assert result.wire_labels == ["observe:obj:door"]
+    assert result.floor["status"] == "observation_only"
+    assert result.floor["reason"] == "no_committal_candidate_admitted"
+
+
+def test_committal_candidate_suppresses_the_observation_floor():
+    actionable = {
+        **_candidate("use:obj:door", action_family="procedure"),
+        "semantic_intent_id": "use_object",
+        "semantic_action_id": "action:use",
+    }
+    result = CandidateCompiler().compile(
+        candidates=[_candidate("observe:obj:door"), actionable],
+        envelope={"allowed_action_families": ["observe", "procedure"], "max_candidate_intents": 3},
+        visible_targets={"obj:door"},
+    )
+
+    assert result.floor == {}
+
+
+def test_inspection_alone_is_still_reported_as_an_observation_floor():
+    """Inspecting is evidence gathering, not commitment, so it cannot hide a collapse."""
+    inspection = {
+        **_candidate("inspect:obj:door", action_family="observation"),
+        "semantic_intent_id": "inspect_object",
+        "semantic_action_id": "action:inspect",
+    }
+    result = CandidateCompiler().compile(
+        candidates=[_candidate("observe"), inspection],
+        envelope={"allowed_action_families": ["observe"], "max_candidate_intents": 3},
+        visible_targets={"obj:door"},
+    )
+
+    assert result.floor["status"] == "observation_only"
+
+
+def test_empty_presented_compilation_is_reported_as_a_floor():
+    result = CandidateCompiler().compile(
+        candidates=[_candidate("blocked", status="blocked")],
+        envelope={"allowed_action_families": ["observe"]},
+        visible_targets={"obj:door"},
+    )
+
+    assert result.presented == []
+    assert result.floor["status"] == "empty_presented"
