@@ -21,6 +21,12 @@ docs/架构/
       角色控制基础设施时序图.md
       角色控制基础设施数据流转图.md
   感知输入对齐层.md
+  Owner体系/
+    AGENTS.md
+    README.md
+    01-Owner分类、注册与当前实现对照.md
+    02-角色档案、状态与Owner对接.md
+    03-规则结算、跨Owner协作与UE-WRK边界.md
   事实上抛链路与多模态链路.md
   VLA与多模态链.md
   运行时/
@@ -54,12 +60,13 @@ docs/架构/
 6. `docs/架构/事实上抛链路与多模态链路.md`
 7. `docs/架构/VLA与多模态链.md`
 8. `docs/架构/运行时/运行时命名边界审计.md`
-9. `docs/架构/运行时/图表/整体运行时时序图.md`
-10. `docs/架构/运行时/图表/整体运行时数据流图.md`
-11. `docs/架构/运行时/模块/SystemL6事件总线.md`
-12. `docs/架构/运行时/模块/Siming.md`
-13. `docs/架构/运行时/模块/*.md`
-14. `docs/架构/通用基础设施/前端/README.md`
+9. `docs/架构/Owner体系/README.md`
+10. `docs/架构/运行时/图表/整体运行时时序图.md`
+11. `docs/架构/运行时/图表/整体运行时数据流图.md`
+12. `docs/架构/运行时/模块/SystemL6事件总线.md`
+13. `docs/架构/运行时/模块/Siming.md`
+14. `docs/架构/运行时/模块/*.md`
+15. `docs/架构/通用基础设施/前端/README.md`
 
 ## 分层原则
 

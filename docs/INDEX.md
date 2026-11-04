@@ -24,6 +24,7 @@
 - `docs/架构/运行时/运行时总览.md`：整体架构、整体运行时时序和整体数据流总入口。
 - `docs/架构/运行时/运行时覆盖矩阵.md`：当前运行时覆盖矩阵，包含领域、契约、代码负责人和 harness 证据。
 - `docs/架构/运行时/模块/GameplayFoundation与领域结算.md`：`backend/app/gameplay/` 的事件溯源、领域 authority、状态组合、镜像与受限参考闭环边界；明确它与 ESM、System L6、角色智能体和 Godot 的分工。
+- `docs/架构/Owner体系/README.md`：Owner 分类、当前 Paralls authority 实现对照、角色档案/状态对接、规则结算、跨 Owner 协作与 UE/Workflow/WRK 边界；属于设计收敛文档，不代表其中 planned 能力已经实现。
 - `docs/架构/运行时/模块/世界运行时.md`：`backend/app/world_runtime/` 大类文档，覆盖 L1、PQF、VLA、模型 readiness、调度和 continuity。
 - `docs/架构/运行时/图表/整体运行时时序图.md`：可渲染 Mermaid 时序图，覆盖对话、交互、Siming、角色投递和 provider 流程。
 - `docs/架构/运行时/图表/整体运行时数据流图.md`：可渲染 Mermaid 数据流图，覆盖 L1/PQF、交互结果合并、角色智能体投递、Siming 投影、VLA 运行时和模型服务边界。

@@ -226,3 +226,77 @@ A-Cognition保留本轮失败，仍缺完整输入/token门及archive完整性�
 本轮实际结果见[RW-34批次报告](../回写/backend-choice-foundations-stage3-20261015.md)：固定官方离线multilingual CPU服务经真实backend事实入口与原coordinator/driver完成choice接纳、冻结续行及L4结果。首回合L4为cognition_unavailable下的physiology_hint，第二不同事件新turn已完成但L4命令为空；不登记领域执行成功。取消后迟到结果zero_write，服务不可用有真实URLError。完整预算门在该backend进程显式启用，普通runtime仍opt-in。
 
 角色新增调节投影、表达/观察episode、协同/短契约、SpeechLease的局部合同，任务证据及剩余项见计划02/03；阶段三严格为规格09–12／计划04，Task1–2已开始实施、局部合同与生产迁移/最终验收分列。原角色03/04/15、规格08、计划02/03及原角色16/规格09–12/计划04分别回写。模型质量仍0/8、0/6、1/8未验收，Godot未验证，领域最终执行未验收；本轮不恢复Godot、其他输出类型、final/holdout或训练。验证与清理以批次报告最终区块为准。
+
+<!-- REVIEW-DRAFT 2026-10-31: appended revision; original combat design is preserved. -->
+## 【审阅草案】快循环输出类型边界补全（不改原文）
+
+原文的战斗循环以当前“动作＋目标”为中心，因此 `choice` 是首个可执行纵切片；图中的 `choice/score/typed output` 不能被理解为三者已经共享同一运行时合同。修订后，战斗循环只把 `choice` 用于当前动作选择；`score` 和 `noul` 必须通过独立任务进入，不能隐式改变战斗 Owner 的判定。
+
+| 类型 | 战斗内可审阅用途 | 进入执行层的条件 |
+|---|---|---|
+| `choice` | 在合法战斗候选中选择闪避、试探、攻击或撤退 | 候选、目标、能力、权限、承诺和 frame 通过 gate |
+| `score` | 风险等级、窗口质量或候选排序辅助评估 | 有登记的 ordinal/ranking consumer，只形成 proposal 或诊断 |
+| `noul` | 对可见战斗命题或证据做概率评估 | 命题来源、可见性和校准冻结；不能当命中或伤害真值 |
+
+战斗领域的命中、伤害、资源和控制仍由原 authority 结算；`score` 不能替代物理证据，`noul` 不能替代领域事实。
+
+### `[current] / [planned] / [deferred]`
+
+- `[current]`：choice 的冻结候选和 L4 提案边界有局部合同。
+- `[planned]`：为 score/noul 各建立具名 consumer，并验证输入、输出、校准、取消、迟到和回放。
+- `[deferred]`：没有 Owner 或题目来源的战斗 score/noul 任务；不制造 synthetic consumer。
+
+### 架构图
+
+```mermaid
+flowchart LR
+  F[combat MindFrame] --> C[choice]
+  F --> S[score]
+  F --> N[noul]
+  C --> G[L4 gate]
+  S --> P[ranking proposal]
+  N --> H[evidence proposal]
+  G --> O[combat authority]
+  P --> O
+  H --> O
+```
+
+### 主流程时序图
+
+```mermaid
+sequenceDiagram
+  participant B as Combat frame
+  participant L as Laya
+  participant G as Gate
+  participant X as L4/Actor
+  participant P as Physics
+  participant O as Combat owner
+  B->>L: mode-specific frozen task
+  L-->>G: typed response
+  G->>G: validate type and scope
+  alt choice
+    G->>X: action proposal
+    X->>P: local realization
+    P->>O: physics evidence
+  else score/noul
+    G->>O: bounded proposal or diagnostic
+  end
+  O-->>B: receipt and feedback
+```
+
+### 数据流图
+
+```mermaid
+flowchart TD
+  E[visible combat evidence] --> F[private frame]
+  F --> Q{typed task}
+  Q -->|choice| A[action + target]
+  Q -->|score| V[ordinal value]
+  Q -->|noul| T[truth probability]
+  A --> G[L4 admission]
+  V --> D[ranking consumer]
+  T --> B[belief consumer]
+  G --> O[combat owner]
+  D --> O
+  B --> O
+```
