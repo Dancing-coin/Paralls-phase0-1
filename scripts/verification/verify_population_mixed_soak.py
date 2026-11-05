@@ -538,7 +538,14 @@ async def backend(directory):
                 population=len(actors), mode=ready["mode"]))
             while not (directory / "start").exists():
                 if serving.done() or (directory / "stop").exists():
-                    raise RuntimeError("mixed_backend_exited_before_start")
+                    # Capture why the server exited before the start signal arrived.
+                    diag = "stop_file" if (directory / "stop").exists() else "serving_done"
+                    if serving.done():
+                        try:
+                            await serving
+                        except Exception as exc:
+                            diag += f": {type(exc).__name__}: {exc}"
+                    raise RuntimeError(f"mixed_backend_exited_before_start:{diag}")
                 await asyncio.sleep(.02)
             interval = await read_control(directory / "start")
             origin, end = interval["origin"], interval["load_end"]

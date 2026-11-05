@@ -194,7 +194,9 @@ def _collect_group_with_policy(directory, *, games, population=1000, seconds=600
                 if any(future.done() for future in futures) or perf_counter() >= deadline:
                     raise ValueError('capacity_backend_barrier_failed')
                 sleep(.02)
-            origin = perf_counter()+1
+            # 给所有 collect 线程留出充分时间读到 gate 并确认时钟有效；
+            # 1 秒在多进程并发的机器上可能不够（线程调度延迟）。
+            origin = perf_counter()+5
             write_json(gate, dict(origin=origin, load_end=origin+seconds))
             return [future.result() for future in futures]
         finally:
