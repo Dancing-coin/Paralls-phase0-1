@@ -231,7 +231,8 @@ class PopulationCadenceDriver:
                 if (self.mapping.source_unit_ref != "second"
                         or self.mapping.source_clock_ref != f"population-driver:{self.world_runtime.mode.world_ref}"
                         or self.mapping.target_timeline_ref != self.clock.timeline.timeline_id
-                        or self.mapping.ratio != 1 / self.clock.temporal_profile.step_duration):
+                        or self.mapping.ratio != 1 / self.clock.temporal_profile.step_duration
+                        or self.mapping.revision != self.mapping.target_profile_revision):
                     raise ValueError("population_time_unit_mismatch")
                 with self.world_runtime.store.group_commit():
                     cadence = self.world_runtime.build_population_cadence(

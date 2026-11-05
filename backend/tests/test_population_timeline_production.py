@@ -46,11 +46,14 @@ async def test_runtime_timeline_is_owned_and_resumes_confirmed_cadence(runtime):
     def rejected():
         driver = main._population_runtime_driver
         original = driver.publish_window
+        original_pinned = driver._pinned_publisher
         driver.publish_window = lambda cadence: None
+        driver._pinned_publisher = None
         try:
             return driver.tick(driver.current_tick + driver.window_size)
         finally:
             driver.publish_window = original
+            driver._pinned_publisher = original_pinned
 
     assert (await command(rejected)).rejected_windows
     assert await command(snapshot) == (timeline, profile, before)
