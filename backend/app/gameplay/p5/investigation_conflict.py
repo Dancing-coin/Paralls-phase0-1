@@ -31,6 +31,7 @@ _ACTION_WINDOW_EVENTS = (
     "gameplay.conflict.encounter_started",
     "gameplay.conflict.action_window_resolved",
     "gameplay.conflict.control_changed",
+    "gameplay.conflict.terminal_outcome_recorded",
     "gameplay.conflict.encounter_closed",
 )
 

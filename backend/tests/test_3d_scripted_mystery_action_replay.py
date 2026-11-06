@@ -29,7 +29,7 @@ def _window_command(index: int) -> GameplayCommandEnvelope:
         project_ref="project:action-window",
         transaction_id=f"transaction:action-window:{index}",
         idempotency_key=f"idempotency:action-window:{index}",
-        expected_revisions={EVENT_STREAM: index * 4},
+        expected_revisions={EVENT_STREAM: index * 5},
         read_set_revisions={SOURCE_STREAM: 1},
         causation_id=f"causation:action-window:{index}",
         correlation_id="correlation:action-window:replay",
