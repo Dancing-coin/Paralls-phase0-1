@@ -1,7 +1,8 @@
-from copy import deepcopy
+import json
 
 import pytest
 
+from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
@@ -18,7 +19,12 @@ def test_entry_l2_and_l3_share_pre_interpretation_contract(tmp_path, monkeypatch
             self.contexts = []
 
         def prepare_run_request(self, *, task_kind, context, **kwargs):
-            self.contexts.append((task_kind, deepcopy(context)))
+            # Record the context the way the provider sees it.  The L2 mind frame
+            # is a frozen model holding MappingProxyType fields, which deepcopy
+            # cannot pickle; a failing hook here would silently push L2 onto the
+            # continuity floor and hide the very request under test.
+            frozen = CharacterModelGateway.freeze_prepared_request({"context": context})
+            self.contexts.append((task_kind, json.loads(frozen)["context"]))
             return super().prepare_run_request(task_kind=task_kind, context=context, **kwargs)
 
     gateway = Gateway()

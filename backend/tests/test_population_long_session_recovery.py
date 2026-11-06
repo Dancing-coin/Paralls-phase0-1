@@ -130,7 +130,9 @@ def test_checkpoint_database_read_failure_does_not_try_another_generation(tmp_pa
     before = target.export_recovery_state()
     with pytest.raises(GameplayEventStoreSnapshotError) as failure:
         _publisher(target, InMemoryAuthorityEventBus())
-    assert str(failure.value.__cause__) == "gameplay_snapshot_read_failed"
+    # The store surfaces read failures directly instead of rewrapping them as
+    # row_invalid, so the read diagnostic is the raised error itself.
+    assert str(failure.value) == "gameplay_snapshot_read_failed"
     assert target.export_recovery_state() == before
 
 
@@ -253,7 +255,12 @@ def test_publish_success_then_delivery_write_failure_remains_recoverable(tmp_pat
 def test_driver_rebuild_uses_constant_cursor_without_history_sets(tmp_path):
     from app.world_runtime.population_driver import PopulationCadenceDriver
 
-    world, publisher, _, _ = _run(tmp_path / "g.db", windows=18)
+    world = _runtime(tmp_path / "g.db")
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    # Publish through a driver so every window carries the driver's time pins:
+    # a rebuilt driver refuses to resume a confirmed cursor that has none.
+    seed = PopulationCadenceDriver(world_runtime=world, publish_window=publisher, window_size=60, catch_up_limit=18)
+    assert len(seed.tick(1080).published_cadence_ids) == 18
     driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher, window_size=60, catch_up_limit=2)
     assert driver.current_tick == 1080
     assert not hasattr(driver, "_published_cadence_ids") and not hasattr(driver, "_runtime_history")

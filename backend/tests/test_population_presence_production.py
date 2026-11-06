@@ -98,7 +98,17 @@ async def test_runtime_ingress_uses_bound_source_and_durable_initial_life(tmp_pa
                 assert tx.read_stream_revisions == {"population:world:bakery": 1, "presence:world:bakery": 1}
                 if original_ids is not None:
                     assert ids == original_ids
-                    assert store.read_events() == before
+                    after = store.read_events()
+                    assert after[:len(before)] == before
+                    added = after[len(before):]
+                    if admission == "life_response_lost":
+                        # The first attempt stopped at the life step, before resource
+                        # materialization, so the retry completes exactly that step
+                        # once and replays everything before it.
+                        assert result.resources is not None and result.resources.committed
+                        assert [event.event_id for event in added] == list(result.resources.committed_event_ids)
+                    else:
+                        assert added == []
                 original_ids = ids
 
             await asyncio.wrap_future(main.runtime_execution.submit(inspect))

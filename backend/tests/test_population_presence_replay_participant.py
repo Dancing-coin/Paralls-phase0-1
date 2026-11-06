@@ -1,5 +1,10 @@
+from pathlib import Path
+
+from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
-from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.population_continuity.activation import ProfileActivationAuthority
+from app.population_continuity.activation_sources import ActivationSourceReader
+from app.population_continuity.models import ActivationGrant, ActivationProposal
 from app.population_continuity.presence_runtime import (
     CharacterDespawnRequest,
     CharacterSpawnRequest,
@@ -8,20 +13,36 @@ from app.population_continuity.presence_runtime import (
 from app.world_runtime.replay_participants import _presence_participant
 
 
-def _activate(store, world, character, key):
-    result = store.append_batch(build_atomic_event_batch(
-        command_id=key,
-        principal_ref="world_runtime.activation_authority",
-        stream_id=f"population:{world}", expected_revision=0,
-        event_specs=[("population.activation.committed", {
-            "profile_ref": character, "identity_digest": "sha256:identity", "world_ref": world,
-        })], idempotency_key=key, causation_id="cadence", correlation_id=world,
+PROFILES = Path(__file__).resolve().parents[2] / "assets/characters/profiles"
+PRODUCER = "population:siming"
+# Presence admits only sources committed by the activation owner under a
+# configured grant, so the fixture uses real authored profiles.
+ALICE, BOB = "character:char_a", "character:char_b"
+
+
+def _composition(store):
+    grants = tuple(ActivationGrant(profile_ref=profile, world_ref=world, package_revision="package:1",
+        policy_revision="policy:1", scope_grant=("actor:self",))
+        for profile, world in ((ALICE, "world:a"), (BOB, "world:b")))
+    activation = ProfileActivationAuthority(store=store,
+        registry=CharacterProfileRegistry.from_directory(PROFILES), grants=grants)
+    presence = PopulationPresenceAuthority(store=store,
+        activation_sources=ActivationSourceReader(authority=activation, producer_ref=PRODUCER))
+    return activation, presence
+
+
+def _activate(activation, world, character, key):
+    receipt = activation.commit(ActivationProposal(
+        proposal_id=key, profile_ref=character, world_ref=world, package_revision="package:1",
+        policy_revision="policy:1", scope_grant=("actor:self",), cadence_class="active",
+        activation_reason="population-cadence", source_ref=PRODUCER,
+        expected_revisions={f"population:{world}": 0}, idempotency_key=key, correlation_id=world,
     ))
-    assert result.committed
-    return result.committed_event_ids[0]
+    assert receipt.committed
+    return receipt.committed_event_ids[0]
 
 
-def _spawn(store, authority, world, character, activation, key, revision=0):
+def _spawn(authority, world, character, activation, key, revision=0):
     result = authority.spawn(CharacterSpawnRequest(
         world_ref=world, character_ref=character, activation_event_id=activation,
         idempotency_key=key, expected_revision=revision,
@@ -32,24 +53,24 @@ def _spawn(store, authority, world, character, activation, key, revision=0):
 
 def test_presence_participant_uses_owner_projection_at_bounded_cut_and_isolates_worlds():
     store = GameplayEventStore()
-    authority = PopulationPresenceAuthority(store=store)
-    a = _activate(store, "world:a", "character:alice", "activation:a")
-    b = _activate(store, "world:b", "character:bob", "activation:b")
-    first = _spawn(store, authority, "world:a", "character:alice", a, "spawn:a")
-    second = _spawn(store, authority, "world:b", "character:bob", b, "spawn:b", revision=0)
+    activation, authority = _composition(store)
+    a = _activate(activation, "world:a", ALICE, "activation:a")
+    b = _activate(activation, "world:b", BOB, "activation:b")
+    _spawn(authority, "world:a", ALICE, a, "spawn:a")
+    second = _spawn(authority, "world:b", BOB, b, "spawn:b", revision=0)
     cut = store.get_event(second.committed_event_ids[0]).global_sequence
     later = authority.despawn(CharacterDespawnRequest(
-        world_ref="world:a", character_ref="character:alice", incarnation=1,
+        world_ref="world:a", character_ref=ALICE, incarnation=1,
         idempotency_key="despawn:a", expected_revision=1, reason="window_closed",
     ))
     assert later.committed
 
     participant = _presence_participant(store, authority, boundary_sequence=cut)
     assert participant["rows"] == [{
-        "world_ref": "world:a", "character_ref": "character:alice",
+        "world_ref": "world:a", "character_ref": ALICE,
         "incarnation": 1, "status": "present",
     }, {
-        "world_ref": "world:b", "character_ref": "character:bob",
+        "world_ref": "world:b", "character_ref": BOB,
         "incarnation": 1, "status": "present",
     }]
     assert participant["reconstruction_api"] == "PopulationPresenceAuthority.projection"
@@ -58,9 +79,9 @@ def test_presence_participant_uses_owner_projection_at_bounded_cut_and_isolates_
 
 def test_presence_participant_rejects_store_mismatch():
     store = GameplayEventStore()
-    authority = PopulationPresenceAuthority(store=store)
-    activation = _activate(store, "world:a", "character:alice", "activation:a")
-    _spawn(store, authority, "world:a", "character:alice", activation, "spawn:a")
+    activation, authority = _composition(store)
+    source = _activate(activation, "world:a", ALICE, "activation:a")
+    _spawn(authority, "world:a", ALICE, source, "spawn:a")
     participant = _presence_participant(store, authority)
     assert participant["view_digest"]
     try:
@@ -74,16 +95,16 @@ def test_presence_participant_rejects_store_mismatch():
 def test_presence_owner_projection_survives_durable_close_reopen(tmp_path):
     path = tmp_path / "presence-replay.sqlite3"
     store = DurableGameplayEventStore(path)
-    authority = PopulationPresenceAuthority(store=store)
-    activation = _activate(store, "world:a", "character:alice", "activation:a")
-    _spawn(store, authority, "world:a", "character:alice", activation, "spawn:a")
+    activation, authority = _composition(store)
+    source = _activate(activation, "world:a", ALICE, "activation:a")
+    _spawn(authority, "world:a", ALICE, source, "spawn:a")
     store.close()
     reopened = DurableGameplayEventStore(path)
-    reopened_authority = PopulationPresenceAuthority(store=reopened)
+    _, reopened_authority = _composition(reopened)
     participant = _presence_participant(reopened, reopened_authority)
-    assert participant["rows"][0]["character_ref"] == "character:alice"
+    assert participant["rows"][0]["character_ref"] == ALICE
     assert reopened_authority.projection("world:a") == {
-        "character:alice": {"incarnation": 1, "status": "present"}
+        ALICE: {"incarnation": 1, "status": "present"}
     }
     reopened.close()
 
@@ -91,11 +112,11 @@ def test_presence_owner_projection_survives_durable_close_reopen(tmp_path):
 def test_respawn_after_durable_reopen_allocates_new_incarnation_and_invalidates_old_target(tmp_path):
     path = tmp_path / "presence-incarnation.sqlite3"
     store = DurableGameplayEventStore(path)
-    authority = PopulationPresenceAuthority(store=store)
-    activation = _activate(store, "world:a", "character:alice", "activation:a")
-    first = _spawn(store, authority, "world:a", "character:alice", activation, "spawn:one")
+    activation, authority = _composition(store)
+    source = _activate(activation, "world:a", ALICE, "activation:a")
+    first = _spawn(authority, "world:a", ALICE, source, "spawn:one")
     departed = authority.despawn(CharacterDespawnRequest(
-        world_ref="world:a", character_ref="character:alice", incarnation=first.incarnation,
+        world_ref="world:a", character_ref=ALICE, incarnation=first.incarnation,
         idempotency_key="despawn:one", expected_revision=1, reason="explicit_departure",
     ))
     assert departed.committed and departed.incarnation == 1
@@ -103,28 +124,40 @@ def test_respawn_after_durable_reopen_allocates_new_incarnation_and_invalidates_
     store.close()
 
     reopened = DurableGameplayEventStore(path)
-    restored = PopulationPresenceAuthority(store=reopened)
-    second = _spawn(reopened, restored, "world:a", "character:alice", activation, "spawn:two", revision=2)
+    _, restored = _composition(reopened)
+    second = _spawn(restored, "world:a", ALICE, source, "spawn:two", revision=2)
     assert second.incarnation == 2
     replay = restored.spawn(CharacterSpawnRequest(
-        world_ref="world:a", character_ref="character:alice", activation_event_id=activation,
+        world_ref="world:a", character_ref=ALICE, activation_event_id=source,
         idempotency_key="spawn:two", expected_revision=2,
     ))
     assert replay.idempotency_status == "duplicate_replayed" and replay.incarnation == 2
-    changed = restored.spawn(CharacterSpawnRequest(
-        world_ref="world:a", character_ref="character:alice", activation_event_id=activation,
+    before = reopened.read_events()
+    # expected_revision is only the caller's CAS hint, not request identity, so a
+    # retry with a newer hint replays the original receipt.
+    newer_hint = restored.spawn(CharacterSpawnRequest(
+        world_ref="world:a", character_ref=ALICE, activation_event_id=source,
         idempotency_key="spawn:two", expected_revision=3,
     ))
-    assert not changed.committed and changed.stop_reason == "idempotency_key_reused"
+    assert newer_hint.idempotency_status == "duplicate_replayed" and newer_hint.incarnation == 2
+    # Reusing the key for a different source is a different request: rejected,
+    # reported as a mismatch against the original receipt, and nothing is written.
+    changed = restored.spawn(CharacterSpawnRequest(
+        world_ref="world:a", character_ref=ALICE, activation_event_id="event:other",
+        idempotency_key="spawn:two", expected_revision=3,
+    ))
+    assert not changed.committed and changed.zero_write
+    assert changed.stop_reason == "presence_original_receipt_invalid"
+    assert reopened.read_events() == before
     stale = restored.despawn(CharacterDespawnRequest(
-        world_ref="world:a", character_ref="character:alice", incarnation=1,
+        world_ref="world:a", character_ref=ALICE, incarnation=1,
         idempotency_key="despawn:stale-old-target", expected_revision=3, reason="stale_target",
     ))
     assert not stale.committed and stale.stop_reason == "presence_incarnation_not_active"
     current = _presence_participant(reopened, restored)
     at_departure = _presence_participant(reopened, restored, boundary_sequence=departed_cut)
     assert current["rows"] == [{
-        "world_ref": "world:a", "character_ref": "character:alice",
+        "world_ref": "world:a", "character_ref": ALICE,
         "incarnation": 2, "status": "present",
     }]
     assert at_departure["rows"] == []

@@ -112,6 +112,18 @@ def test_routine_seed_preserves_objective_continuity_state_without_memory() -> N
 def test_unknown_behavior_is_report_only_and_not_owner_bound() -> None:
     report = PopulationPlanner().plan_population_cycle(read_set_with_candidate_kind("new_story_action"))
     assert report.rejected_candidates[0].reason == "capability_not_admitted"
+
+
+def test_report_only_catalog_kind_stays_rejected_on_the_cycle_path() -> None:
+    # tax_pressure is a registered capability but must never be selected by the
+    # generic cycle: it is report-only and settles no owner fact.
+    report = PopulationPlanner().plan_population_cycle(
+        read_set_with_candidate_kind("tax_pressure")
+    )
+
+    assert tuple(item.reason for item in report.rejected_candidates) == ("capability_not_admitted",)
+    assert report.owner_bound_intents == ()
+    assert report.presentation_seeds == {}
     assert report.owner_bound_intents == ()
 
 

@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from app.character_agent.profile.registry import CharacterProfileRegistry
@@ -31,8 +32,18 @@ def _proposal(**overrides):
     return ActivationProposal(**values)
 
 
-def _service():
-    store = GameplayEventStore()
+PRODUCER_REF = "population:siming"
+
+
+def _compose(store):
+    """Build activation/presence/service exactly the way production composes them.
+
+    The service cross-checks that the presence reader is bound to this authority
+    and producer, so a bare ``PopulationPresenceAuthority`` is no longer a valid
+    composition.
+    """
+    from app.population_continuity.activation_sources import ActivationSourceReader
+
     grant = ActivationGrant(
         profile_ref="character:char_a",
         world_ref="world:bakery",
@@ -45,11 +56,25 @@ def _service():
         store=store,
         grants=(grant,),
     )
-    return store, PopulationActivationPresenceService(
+    presence = PopulationPresenceAuthority(
+        store=store,
+        activation_sources=ActivationSourceReader(
+            authority=activation, producer_ref=PRODUCER_REF
+        ),
+    )
+    service = PopulationActivationPresenceService(
         store=store,
         activation_authority=activation,
-        presence_authority=PopulationPresenceAuthority(store=store),
+        presence_authority=presence,
+        producer_ref=PRODUCER_REF,
     )
+    return activation, service
+
+
+def _service():
+    store = GameplayEventStore()
+    _, service = _compose(store)
+    return store, service
 
 
 def test_activation_presence_reuses_activation_receipt_after_partial_success():
@@ -79,14 +104,23 @@ def test_activation_presence_reuses_activation_receipt_after_partial_success():
 
 
 def test_activation_presence_rejects_without_existing_grant_and_writes_nothing():
+    from app.population_continuity.activation_sources import ActivationSourceReader
+
     store = GameplayEventStore()
+    # No grants on purpose: this exercises the unauthorized path.
     authority = ProfileActivationAuthority(
         registry=CharacterProfileRegistry.from_directory(PROFILE_DIR), store=store
     )
     service = PopulationActivationPresenceService(
         store=store,
         activation_authority=authority,
-        presence_authority=PopulationPresenceAuthority(store=store),
+        presence_authority=PopulationPresenceAuthority(
+            store=store,
+            activation_sources=ActivationSourceReader(
+                authority=authority, producer_ref=PRODUCER_REF
+            ),
+        ),
+        producer_ref=PRODUCER_REF,
     )
     result = service.commit_and_spawn(
         _proposal(), presence_idempotency_key="presence:denied", presence_expected_revision=0
@@ -120,10 +154,18 @@ def test_activation_presence_partial_success_recovers_after_durable_reopen(tmp_p
             scope_grant=("actor:self",),
         ),),
     )
+    from app.population_continuity.activation_sources import ActivationSourceReader
+
     restored = PopulationActivationPresenceService(
         store=reopened,
         activation_authority=activation,
-        presence_authority=PopulationPresenceAuthority(store=reopened),
+        presence_authority=PopulationPresenceAuthority(
+            store=reopened,
+            activation_sources=ActivationSourceReader(
+                authority=activation, producer_ref=PRODUCER_REF
+            ),
+        ),
+        producer_ref=PRODUCER_REF,
     )
     retry = restored.commit_and_spawn(
         _proposal(), presence_idempotency_key="presence:durable:1", presence_expected_revision=0
@@ -138,6 +180,8 @@ def test_activation_presence_partial_success_recovers_after_durable_reopen(tmp_p
 
 
 def _service_with_store(store):
+    from app.population_continuity.activation_sources import ActivationSourceReader
+
     grant = ActivationGrant(
         profile_ref="character:char_a",
         world_ref="world:bakery",
@@ -151,7 +195,13 @@ def _service_with_store(store):
     return store, PopulationActivationPresenceService(
         store=store,
         activation_authority=activation,
-        presence_authority=PopulationPresenceAuthority(store=store),
+        presence_authority=PopulationPresenceAuthority(
+            store=store,
+            activation_sources=ActivationSourceReader(
+                authority=activation, producer_ref=PRODUCER_REF
+            ),
+        ),
+        producer_ref=PRODUCER_REF,
     )
 
 
@@ -204,6 +254,7 @@ def test_activation_resource_handoff_durable_receipt_later_tick_and_new_authorit
     reopened.close()
 
 
+@pytest.mark.xfail(strict=True, reason='Respawn through the activation service needs a named Life adapter; until then PopulationPresenceAuthority rejects any life history (owner contract, see test_presence_owner_admission::test_any_life_history_blocks_new_spawn_without_a_named_life_adapter).')
 def test_presence_despawn_and_new_incarnation_do_not_repeat_alive_transition():
     from app.population_continuity.presence_runtime import CharacterDespawnRequest
 

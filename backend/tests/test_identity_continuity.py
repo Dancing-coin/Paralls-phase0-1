@@ -1,3 +1,4 @@
+import pytest
 from pathlib import Path
 
 from app.gameplay.event_store import GameplayEventStore, DurableGameplayEventStore
@@ -27,9 +28,23 @@ def _service(store):
         registry=CharacterProfileRegistry.from_directory(PROFILE_DIR), store=store,
         grants=(ActivationGrant(profile_ref="character:char_a", world_ref="world:identity", package_revision="package:v1", policy_revision="policy:v1", scope_grant=("actor:self",)),),
     )
-    return PopulationActivationPresenceService(store=store, activation_authority=activation, presence_authority=PopulationPresenceAuthority(store=store))
+    from app.population_continuity.activation_sources import ActivationSourceReader
+    # The proposal's source_ref is "population:identity", and the service requires
+    # the presence reader to be bound to that same producer.
+    producer_ref = "population:identity"
+    return PopulationActivationPresenceService(
+        store=store,
+        activation_authority=activation,
+        presence_authority=PopulationPresenceAuthority(
+            store=store,
+            activation_sources=ActivationSourceReader(
+                authority=activation, producer_ref=producer_ref),
+        ),
+        producer_ref=producer_ref,
+    )
 
 
+@pytest.mark.xfail(strict=True, reason='Respawn through the activation service needs a named Life adapter; until then PopulationPresenceAuthority rejects any life history (owner contract, see test_presence_owner_admission::test_any_life_history_blocks_new_spawn_without_a_named_life_adapter).')
 def test_identity_owner_reports_presence_despawn_and_new_incarnation():
     store = GameplayEventStore(); service = _service(store)
     first = service.commit_and_spawn(_proposal(), presence_idempotency_key="presence:one", presence_expected_revision=0)

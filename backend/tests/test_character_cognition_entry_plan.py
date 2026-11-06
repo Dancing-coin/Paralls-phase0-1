@@ -54,7 +54,12 @@ def test_siming_entry_plan_matches_actual_existing_prefix_before_first_provider(
     assert rt._l2._gateway.requests == []
     actual_events = [{field: item[field] for field in ('event_type', 'producer_ts', 'payload')}
         for item in rt.get_session_timeline('char_a')]
-    assert actual_events[:-1] == plan['events']
+    # The plan covers exactly the entry prefix.  Preparing the job then opens the
+    # canonical turn (turn context) before issuing the first provider request.
+    entry = len(plan['events'])
+    assert actual_events[:entry] == plan['events']
+    assert [item['event_type'] for item in actual_events[entry:]] == [
+        'character_turn_context_created', 'l2_reasoning_request']
     import json
     assert actual_events[-1] == dict(event_type='l2_reasoning_request', producer_ts=300,
         payload=json.loads(advance.next_job.request_json))

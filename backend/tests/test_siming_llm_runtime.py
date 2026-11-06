@@ -172,6 +172,116 @@ def test_runtime_uses_first_accepted_candidate_after_rejecting_earlier_candidate
     assert result.audit_records[-1].status == "recorded"
 
 
+def test_runtime_selects_highest_confidence_candidate_not_first() -> None:
+    runtime = SimingRuntime(
+        llm_provider=FakeSimingLlmCandidateProvider(
+            [
+                make_candidate(
+                    candidate_id="cand:llm:first",
+                    target_environment_id=None,
+                    confidence=0.2,
+                    explanation="Weak first candidate.",
+                ),
+                make_candidate(
+                    candidate_id="cand:llm:better",
+                    target_environment_id=None,
+                    confidence=0.9,
+                    explanation="Stronger candidate.",
+                ),
+            ]
+        )
+    )
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())])
+
+    decisions = [output for output in result.outputs if output.output_type == "intervention_decision"]
+    assert decisions
+    # Candidate order must not decide the intervention: confidence does.
+    assert decisions[0].payload["candidate_id"] == "cand:llm:better"
+
+
+def test_runtime_selection_is_order_independent() -> None:
+    def run(order: tuple[str, str]) -> str:
+        payloads = {
+            "a": make_candidate(
+                candidate_id="cand:llm:a",
+                target_environment_id=None,
+                confidence=0.8,
+                proposed_band="fact_reveal",
+            ),
+            "b": make_candidate(
+                candidate_id="cand:llm:b",
+                target_environment_id=None,
+                confidence=0.4,
+                proposed_band="opportunity",
+            ),
+        }
+        runtime = SimingRuntime(
+            llm_provider=FakeSimingLlmCandidateProvider([payloads[key] for key in order])
+        )
+        result = runtime.tick(
+            [SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())]
+        )
+        decisions = [
+            output for output in result.outputs if output.output_type == "intervention_decision"
+        ]
+        return decisions[0].payload["candidate_id"] if decisions else ""
+
+    assert run(("a", "b")) == run(("b", "a")) == "cand:llm:a"
+
+
+def test_runtime_prefers_least_forceful_band_at_equal_confidence() -> None:
+    runtime = SimingRuntime(
+        llm_provider=FakeSimingLlmCandidateProvider(
+            [
+                make_candidate(
+                    candidate_id="cand:llm:forceful",
+                    target_environment_id=None,
+                    confidence=0.6,
+                    proposed_band="fact_reveal",
+                ),
+                make_candidate(
+                    candidate_id="cand:llm:gentle",
+                    target_environment_id=None,
+                    confidence=0.6,
+                    proposed_band="opportunity",
+                ),
+            ]
+        )
+    )
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())])
+
+    decisions = [output for output in result.outputs if output.output_type == "intervention_decision"]
+    assert decisions[0].payload["candidate_id"] == "cand:llm:gentle"
+
+
+def test_runtime_rejected_candidate_never_wins_even_with_higher_confidence() -> None:
+    runtime = SimingRuntime(
+        llm_provider=FakeSimingLlmCandidateProvider(
+            [
+                make_candidate(
+                    candidate_id="cand:llm:unsafe",
+                    established_fact_ids=["visual_fact:unknown"],
+                    target_environment_id=None,
+                    confidence=0.99,
+                ),
+                make_candidate(
+                    candidate_id="cand:llm:safe",
+                    target_environment_id=None,
+                    confidence=0.1,
+                ),
+            ]
+        )
+    )
+
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event())])
+
+    assert any(audit.status == "policy_rejected" for audit in result.audit_records)
+    decisions = [output for output in result.outputs if output.output_type == "intervention_decision"]
+    assert decisions[0].payload["candidate_id"] == "cand:llm:safe"
+
+
 def test_runtime_records_no_action_when_provider_returns_invalid_output_error() -> None:
     runtime = SimingRuntime(
         llm_provider=InvalidOutputProvider(SimingLlmProviderInvalidOutput("bad candidate envelope"))

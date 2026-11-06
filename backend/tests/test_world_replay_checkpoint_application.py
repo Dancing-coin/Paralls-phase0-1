@@ -847,10 +847,23 @@ async def test_combat_common_participant_survives_application_restart_and_checkp
 
 
 @pytest.mark.asyncio
-async def test_population_activation_presence_application_checkpoint_tail_and_new_durable_authority(application):
+async def test_population_activation_presence_application_checkpoint_tail_and_new_durable_authority(
+    application, monkeypatch,
+):
     from app.population_continuity.models import ActivationGrant, ActivationProposal
 
     main, start, advance = application
+    grants = (ActivationGrant(
+        profile_ref="character:char_a", world_ref="world:bakery",
+        package_revision="package:bakery-authored-agents:v1",
+        policy_revision="policy:population:v1", scope_grant=("actor:self",),
+    ),)
+    # Grants and producer must be configured before composition: the Presence
+    # source reader snapshots both at construction, so assigning them to the
+    # live activation authority afterwards never reaches Presence admission.
+    # Contract fixture: this producer is deliberately not an existing issuer.
+    monkeypatch.setattr(main.settings, "population_activation_grants", grants)
+    monkeypatch.setattr(main.settings, "population_activation_producer_ref", "population:contract-fixture")
     await start()
     await advance(86400)
     plan, window = inputs(main)
@@ -859,14 +872,6 @@ async def test_population_activation_presence_application_checkpoint_tail_and_ne
     assert empty_cut.status == "consistent", empty_cut.diagnostics
     assert empty_cut.checkpoint.state["participants"]["presence"]["rows"] == []
     assert empty_cut.checkpoint.state["participants"]["life_state"]["actors"] == {}
-    grants = (ActivationGrant(
-        profile_ref="character:char_a", world_ref="world:bakery",
-        package_revision="package:bakery-authored-agents:v1",
-        policy_revision="policy:population:v1", scope_grant=("actor:self",),
-    ),)
-    # Contract fixture: this grant is deliberately not attributed to an existing issuer.
-    await asyncio.wrap_future(main.runtime_execution.submit(
-        lambda: setattr(main.population_activation_authority, "grants", grants)))
     proposal = ActivationProposal(
         proposal_id="proposal:app-presence", profile_ref="character:char_a",
         world_ref="world:bakery", package_revision="package:bakery-authored-agents:v1",

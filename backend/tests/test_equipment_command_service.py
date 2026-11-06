@@ -50,15 +50,38 @@ def _service(store, auth, scope=None, content_source=None):
         slots=(EquipmentSlotDefinition("right_hand"),), content_source=content_source), inventory
 
 
+def _presence_authority(store, profiles):
+    """Bind the presence reader the way production does.
+
+    A bare ``PopulationPresenceAuthority`` has no activation source, so despawn
+    cannot validate the original receipt and every call is rejected.
+    """
+    from app.population_continuity.activation_sources import ActivationSourceReader
+
+    grant = ActivationGrant(profile_ref=CHARACTER, world_ref=WORLD,
+        package_revision="package:bakery-authored-agents:v1", policy_revision="policy:population:v1",
+        scope_grant=("actor:self",))
+    producer_ref = "population:siming"
+    activation = ProfileActivationAuthority(registry=profiles, store=store, grants=(grant,))
+    presence = PopulationPresenceAuthority(
+        store=store,
+        activation_sources=ActivationSourceReader(
+            authority=activation, producer_ref=producer_ref),
+    )
+    return activation, presence, producer_ref
+
+
 def _admit_presence(store):
     profiles = CharacterProfileRegistry.from_directory(
         Path(__file__).resolve().parents[2] / "assets/characters/profiles")
     grant = ActivationGrant(profile_ref=CHARACTER, world_ref=WORLD,
         package_revision="package:bakery-authored-agents:v1", policy_revision="policy:population:v1",
         scope_grant=("actor:self",))
+    activation, presence, producer_ref = _presence_authority(store, profiles)
     service = PopulationActivationPresenceService(store=store,
-        activation_authority=ProfileActivationAuthority(registry=profiles, store=store, grants=(grant,)),
-        presence_authority=PopulationPresenceAuthority(store=store),
+        activation_authority=activation,
+        presence_authority=presence,
+        producer_ref=producer_ref,
         resource_materialization_caller=CharacterResourceMaterializationCaller(
             authority=ResourceMaterializationAuthorityService(store=store, registry=profiles)))
     result = service.commit_and_spawn(ActivationProposal(
@@ -174,7 +197,10 @@ def test_wrong_scope_or_incarnation_is_zero_write(tmp_path, change, error):
 
 def test_despawned_actor_cannot_change_equipment(tmp_path):
     store, _, service = _setup(tmp_path)
-    assert PopulationPresenceAuthority(store=store).despawn(CharacterDespawnRequest(
+    profiles = CharacterProfileRegistry.from_directory(
+        Path(__file__).resolve().parents[2] / "assets/characters/profiles")
+    _, presence, _ = _presence_authority(store, profiles)
+    assert presence.despawn(CharacterDespawnRequest(
         world_ref=WORLD, character_ref=CHARACTER, incarnation=1, reason="left-world",
         expected_revision=1, idempotency_key="despawn:equipment")).committed
     before = len(store.read_events())
@@ -260,10 +286,13 @@ def test_exact_replay_uses_persisted_content_pin_after_source_rotation(tmp_path)
 
 def test_presence_racing_owner_append_is_rejected_by_shared_store_read_pins(tmp_path, monkeypatch):
     store, _, service = _setup(tmp_path)
+    profiles = CharacterProfileRegistry.from_directory(
+        Path(__file__).resolve().parents[2] / "assets/characters/profiles")
+    _, presence, _ = _presence_authority(store, profiles)
     original = store.append_batch
     def append(batch):
         monkeypatch.setattr(store, "append_batch", original)
-        assert PopulationPresenceAuthority(store=store).despawn(CharacterDespawnRequest(
+        assert presence.despawn(CharacterDespawnRequest(
             world_ref=WORLD, character_ref=CHARACTER, incarnation=1, reason="left-world",
             expected_revision=1, idempotency_key="despawn:race")).committed
         return original(batch)

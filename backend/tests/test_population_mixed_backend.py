@@ -129,9 +129,9 @@ async def probe():
         rows = []
         fragments = []
         original_read_set = PreparedPopulationFrame.read_set
-        def read_set(fragment, cadence, projections):
-            actual = original_read_set(fragment, cadence, projections)
-            expected = PopulationReadSet.from_inputs(cadence, projections)
+        def read_set(fragment, cadence, projections, temporal_pins=None):
+            actual = original_read_set(fragment, cadence, projections, temporal_pins=temporal_pins)
+            expected = PopulationReadSet.from_inputs(cadence, projections, temporal_pins=temporal_pins)
             assert actual.read_set_digest == expected.read_set_digest
             fragments.append(actual.read_set_digest)
             return actual
