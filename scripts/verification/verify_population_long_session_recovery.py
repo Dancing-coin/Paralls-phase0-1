@@ -839,30 +839,22 @@ def resource_bounds(cases: dict[int, list[dict]]) -> dict[str, object]:
     full_history_calls = {history: {name: max(sample["ready"]["calls"].get(name, 0) for sample in samples)
                                    for name in forbidden} for history, samples in cases.items()}
     # 相同形状的 tick/revision 可以多一位数字；返回行/模型数没有此豁免。
-    # audit() 会读取全部事件进行完整性检查（O(H)），导致字节量、行数和解码次数随历史增长。
-    # 1.25 容许每 ~25% 历史增长下由 audit 贡献的额外大事件（~2.6KB/event）。
-    # 行数和解码次数容差 1.15 对应事件表增长（其他表应保持固定）。
     byte_ratio = payload[large] / max(1, payload[small])
-    row_ratio = rows[large] / max(1, rows[small])
-    decode_ratio = decodes[large] / max(1, decodes[small])
     marker = {history: {field: max(sample["ready"]["calls"].get(f"session_marker_{field}", 0)
                                   for sample in samples) for field in ("reads", "bytes")}
               for history, samples in cases.items()}
-    passed = (large != small and row_ratio <= 1.15 and decode_ratio <= 1.15
+    passed = (large != small and rows[large] <= rows[small] and decodes[large] <= decodes[small]
               and vm_steps[large] <= vm_limit
               and marker[large]["reads"] <= marker[small]["reads"]
               and marker[large]["bytes"] <= max(1, marker[small]["bytes"]) * 1.1
-              and byte_ratio <= 1.25 and not any(count for counts in full_history_calls.values() for count in counts.values()))
+              and byte_ratio <= 1.1 and not any(count for counts in full_history_calls.values() for count in counts.values()))
     return {"passed": passed, "sql_rows": rows, "sql_payload_bytes": payload, "decode_entry_calls": decodes,
             "sql_vm_steps_sampled": vm_steps, "sql_vm_step_limit": vm_limit,
             "sql_vm_step_ratio_tolerance": 1.5, "sql_vm_sampling_allowance": vm_sampling_allowance,
             "sql_vm_tolerance_reason": "max(small * 1.5, small + one vm_interval per baseline database); fixed-tail index depth and sampling quantization only",
-            "full_history_calls": full_history_calls, "session_marker": marker,
-            "sql_payload_byte_ratio": byte_ratio, "sql_row_ratio": row_ratio, "decode_entry_ratio": decode_ratio,
-            "row_ratio_tolerance": 1.15, "decode_ratio_tolerance": 1.15,
-            "payload_byte_tolerance": 1.25,
-            "payload_byte_tolerance_reason": "audit() reads all events (O(H)) for integrity check; tolerance accounts for ~25% history growth with large cadence events (~2.6KB each)",
-            "row_decode_tolerance_reason": "audit() scans and decodes all events; growth corresponds to event table growth (other tables and non-audit operations remain fixed)"}
+            "full_history_calls": full_history_calls, "session_marker": marker, "sql_payload_byte_ratio": byte_ratio,
+            "payload_byte_tolerance": 1.1,
+            "payload_byte_tolerance_reason": "fixed-shape tick/revision digits and marker database-path length; no row/model/read-count allowance"}
 
 
 def _summary(cases: dict[int, list[dict]], *, population: int, tail: int, repeats: int) -> dict:

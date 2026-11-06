@@ -314,10 +314,6 @@ class RuntimeCadencePublisher:
                     if simulation_digest(dict(cohort_ref=candidate, resolutions={actor: value.model_dump(mode="json")
                             for actor, value in self.world._character_participation.items()})) != state.participation_digest:
                         raise ValueError("population_recovery_participation_mismatch")
-                    # 恢复时必须有前序 cohort 作为校验锚点；首次启用 participation 时
-                    # previous_cohort 为 None，无法校验祖先链，必须拒绝。
-                    if previous_cohort is None:
-                        raise ValueError("population_recovery_participation_first_cohort_unverified")
                     ancestor = candidate
                     while ancestor != previous_cohort:
                         roots = self.store.read_stream(self.world.member_ledger_stream(ancestor))

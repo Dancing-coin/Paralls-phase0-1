@@ -2693,9 +2693,18 @@ def _assemble_status_runtime():
         status_tag_registry.register(definition)
     status_tag_service = StatusTagAuthorityService(store=gameplay_event_store, registry=status_tag_registry)
     # Persisted statuses must not silently disappear when configuration is removed.
-    if any(e.event_type.startswith("gameplay.status_tag.") and e.payload.get("actor_ref") not in bindings
-           for e in gameplay_event_store.read_events()):
-        raise ValueError("status_actor_configuration_missing")
+    # Check each status_tag event type separately to use the events_type_sequence index.
+    status_event_types = (
+        "gameplay.status_tag.applied",
+        "gameplay.status_tag.expired",
+        "gameplay.status_tag.removed",
+        "gameplay.status_tag.stack_changed",
+        "gameplay.status_tag.time_migrated",
+    )
+    for event_type in status_event_types:
+        if any(e.payload.get("actor_ref") not in bindings
+               for e in gameplay_event_store.read_events(event_type=event_type)):
+            raise ValueError("status_actor_configuration_missing")
     status_temporal_consumer = StatusTemporalConsumer(service=status_tag_service, bindings=bindings)
 
 
