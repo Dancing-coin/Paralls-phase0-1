@@ -62,6 +62,11 @@ class MixedWindowProbe:
         self.publisher = getclosurevars(driver.publish_window).nonlocals["publisher"]
         original = driver.tick
         def tick(target):
+            if target == driver.current_tick:
+                # The driver retries recoverable owner work at the confirmed
+                # boundary; that opens no new window, so there is nothing to
+                # measure or fixture here.
+                return original(target)
             if self.origin is None or self.driver_origin is None or target != driver.current_tick + 1:
                 raise ValueError("mixed_window_origin_or_stride_invalid")
             started, previous_tick = perf_counter(), driver.current_tick
