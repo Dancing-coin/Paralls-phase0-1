@@ -128,10 +128,17 @@ class SimingReadModelBuilder:
             intervention_surface.update(guardrail_summary)
 
         current_state = {
-            "imbalance_type": "information_visibility",
+            # Prefer the computed dominant imbalance; fall back to the previous
+            # constant only when no aggregate was computed for this snapshot.
+            "imbalance_type": fairness.dominant_imbalance_type
+            or "information_visibility",
             "intervention_urgency": "normal",
             "active_phase_marker": storyline.active_phase,
         }
+        if fairness.global_imbalance_score is not None:
+            current_state["global_imbalance_score"] = fairness.global_imbalance_score
+        if fairness.imbalance_reasons:
+            current_state["imbalance_reasons"] = list(fairness.imbalance_reasons)
         if checkpoint_summary:
             current_state["checkpoint"] = dict(checkpoint_summary)
 

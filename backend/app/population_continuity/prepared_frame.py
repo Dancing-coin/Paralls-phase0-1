@@ -47,15 +47,22 @@ class PreparedPopulationFrame:
     projections_json: bytes
     projection_refs: tuple[str, ...]
 
-    def read_set(self, cadence, projections):
+    def read_set(self, cadence, projections, temporal_pins=None):
         ordered = tuple(sorted(projections, key=lambda item: item.ref))
         refs = tuple(item.ref for item in ordered)
         if refs != self.projection_refs:
-            return PopulationReadSet.from_inputs(cadence, projections)
+            return PopulationReadSet.from_inputs(cadence, projections, temporal_pins=temporal_pins)
         cadence_json = json.dumps(cadence.model_dump(mode="json"), sort_keys=True,
             separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode()
-        encoded = b'{"cadence":' + cadence_json + b',"projections":' + self.projections_json + b'}'
+        encoded = b'{"cadence":' + cadence_json + b',"projections":' + self.projections_json
+        # Mirror PopulationReadSet.from_inputs byte for byte: pins are a sorted
+        # trailing key and are omitted entirely when empty.
+        if temporal_pins:
+            encoded += b',"temporal_pins":' + json.dumps(dict(temporal_pins), sort_keys=True,
+                separators=(",", ":"), ensure_ascii=True, allow_nan=False).encode()
+        encoded += b'}'
         return PopulationReadSet.model_construct(cadence=cadence, projections=ordered,
+            temporal_pins=dict(temporal_pins or {}),
             read_set_digest="sha256:" + hashlib.sha256(encoded).hexdigest())
 
 

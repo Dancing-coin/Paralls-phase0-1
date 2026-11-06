@@ -25,6 +25,20 @@ class SimingAuditWriter:
         record = self._records_by_id.get(audit_id)
         return record.model_copy(deep=True) if record is not None else None
 
+    def observe_effect(self, audit_id: str, effectiveness: str) -> SimingAuditRecord | None:
+        """Attach an observed intervention effect to an existing audit record.
+
+        Dispatch status and observed effect answer different questions, so the
+        effect is written alongside the record instead of overwriting its status.
+        Unknown ids return ``None`` rather than creating an orphan record.
+        """
+        record = self._records_by_id.get(audit_id)
+        if record is None:
+            return None
+        updated = record.model_copy(update={"effectiveness": effectiveness})
+        self._records_by_id[audit_id] = updated
+        return updated.model_copy(deep=True)
+
     def record_checkpoint(self, checkpoint: SimingCheckpoint) -> None:
         self._checkpoints_by_id[checkpoint.checkpoint_id] = checkpoint.model_copy(deep=True)
 
@@ -146,6 +160,15 @@ class SqliteSimingAuditWriter(SimingAuditWriter):
             "SELECT payload FROM records WHERE kind='audit' AND id=?", (audit_id,)
         ).fetchone()
         return SimingAuditRecord.model_validate_json(row[0]) if row else None
+
+    def observe_effect(self, audit_id: str, effectiveness: str) -> SimingAuditRecord | None:
+        """Persist an observed effect without touching the dispatch status."""
+        existing = self.get_record(audit_id)
+        if existing is None:
+            return None
+        updated = existing.model_copy(update={"effectiveness": effectiveness})
+        self._put("audit", updated, audit_id)
+        return updated
 
     def record_checkpoint(self, checkpoint: SimingCheckpoint) -> None:
         self._put("checkpoint", checkpoint, checkpoint.checkpoint_id)

@@ -1,5 +1,6 @@
 from app.models.siming_event import FairnessStateSnapshot
 from app.models.siming_runtime_state import FairnessDimensionSnapshot, StateTreeSnapshot
+from app.services.siming_fairness_aggregate import compute_fairness_aggregate
 from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_quality_monitor import REQUIRED_DIMENSIONS
 
@@ -40,6 +41,8 @@ class SimingFairnessAuditEngine:
                 ),
             )
 
+        aggregate = compute_fairness_aggregate(dimensions)
+
         return FairnessStateSnapshot(
             snapshot_id=f"fairness:{state_tree.snapshot_id}",
             room_id=state_tree.room_id,
@@ -52,4 +55,7 @@ class SimingFairnessAuditEngine:
             blocked_actor_ids=[],
             recent_intervention_ids=[],
             dimensions=dimensions,
+            global_imbalance_score=aggregate.score,
+            dominant_imbalance_type=aggregate.dominant,
+            imbalance_reasons=list(aggregate.reasons),
         )

@@ -32,6 +32,7 @@ from .social_input import FrozenSocialPlanningInput
 from .source_inputs import HouseholdScheduleInput, OrganizationScheduleInput, ProductionCompletedEvidenceInput
 from .capability_input import FrozenCapabilityEligibilityInput
 from .siming_contracts import PopulationBatchReport, PopulationReadSet
+from .decision_surface import PopulationCapabilityCatalog
 
 
 class SocialPlanningResult:
@@ -138,20 +139,38 @@ def _branch_work_wage_request_digest(request: BranchWorkWageRequest) -> str:
 class PopulationPlanner:
     """Pure proposal generator; it has no store and no append method."""
 
-    ADMITTED_BEHAVIORS = frozenset(
+    # Kinds the cycle planner can turn into a candidate.  This is a *subset* of
+    # the capability catalog: ``tax_pressure`` and ``social_population_signal``
+    # are registered capabilities, but they reach the read set as report-only /
+    # owner-bound inputs and must stay rejected on this path.  Deriving the
+    # vocabulary from the catalog must not widen what the cycle may select.
+    CYCLE_BEHAVIORS = frozenset(
         {
             "routine_work",
             "schedule_gated_supply",
             "relationship_negotiation",
-            "high_value_event",
-            "b3_event",
             "organization_production_work_contribution",
             "inventory_output_custody",
         }
     )
-    ACTIVATION_BEHAVIORS = frozenset(
-        {"relationship_negotiation", "high_value_event", "b3_event"}
-    )
+    # Planner-side activation-only kinds.  They have no capability descriptor
+    # because they never settle an owner fact; they only raise scheduling
+    # priority.
+    ACTIVATION_ONLY_BEHAVIORS = frozenset({"high_value_event", "b3_event"})
+
+    ADMITTED_BEHAVIORS = CYCLE_BEHAVIORS | ACTIVATION_ONLY_BEHAVIORS
+    ACTIVATION_BEHAVIORS = frozenset({"relationship_negotiation"}) | ACTIVATION_ONLY_BEHAVIORS
+
+    @classmethod
+    def validate_vocabulary(cls) -> None:
+        """Fail closed when a cycle behavior is missing from the catalog."""
+        registered = PopulationCapabilityCatalog.registered_behavior_kinds()
+        missing = cls.CYCLE_BEHAVIORS - registered
+        if missing:
+            raise ValueError(
+                "population_cycle_behavior_unregistered:" + ",".join(sorted(missing))
+            )
+
 
     def plan_three_actor_cohort(self, read_set: PopulationReadSet) -> PopulationBatchReport:
         """Classify the closed three-actor cohort without performing writes."""

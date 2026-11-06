@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Literal, Mapping
 
 from pydantic import Field, field_serializer, model_validator
 
+from app.population_continuity.fair_focus import FairFocusQueue
 from app.population_continuity.models import ContinuityModel
 
 if TYPE_CHECKING:
@@ -68,6 +69,33 @@ class PopulationDecisionCandidate(ContinuityModel):
         return dict(value)
 
 
+GovernanceOutcome = Literal[
+    "accept",
+    "no_op",
+    "requeue",
+    "defer",
+    "upgrade",
+]
+
+
+class PopulationDeferralRecord(ContinuityModel):
+    """Auditable record for a candidate the governor deliberately postponed.
+
+    Budget exhaustion and fidelity deferral are governance decisions, not silent
+    drops: without a record the candidate is indistinguishable from one that was
+    never proposed.
+    """
+
+    candidate_ref: str = Field(min_length=1)
+    actor_ref: str = Field(min_length=1)
+    behavior_kind: str = Field(min_length=1)
+    reason: Literal["budget_exhausted", "max_candidates_reached", "fidelity_deferred"]
+    budget_used: int = Field(ge=0)
+    budget_remaining: int = Field(ge=0)
+    estimated_cost: int = Field(ge=0)
+    fidelity_tier: str = Field(min_length=1)
+
+
 class PopulationDecision(ContinuityModel):
     selected_candidates: tuple[PopulationDecisionCandidate, ...] = ()
     deferred_candidates: tuple[PopulationDecisionCandidate, ...] = ()
@@ -87,14 +115,45 @@ class PopulationDecision(ContinuityModel):
         return dict(value)
 
     decision_reason_codes: tuple[str, ...] = ()
+    # ``None`` means the caller did not classify the outcome; only an explicit
+    # classification is validated, so legacy construction stays valid.
+    governance_outcome: GovernanceOutcome | None = None
+    deferrals: tuple[PopulationDeferralRecord, ...] = ()
     read_set_digest: str = Field(min_length=1)
     result_digest: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def validate_governance_outcome(self) -> "PopulationDecision":
+        """Keep an explicit outcome consistent with what was decided."""
+        if self.governance_outcome is None:
+            return self
+        if self.governance_outcome == "accept":
+            if not self.selected_candidates:
+                raise ValueError("governance_outcome_accept_requires_selection")
+        elif self.governance_outcome == "no_op":
+            if self.selected_candidates:
+                raise ValueError("governance_outcome_no_op_requires_empty_selection")
+        elif self.governance_outcome == "upgrade":
+            # An upgrade promotes fidelity instead of settling a fact, so it must
+            # never carry an owner-bound selection in the same decision.
+            if any(
+                "owner_bound_intent" in candidate.allowed_outputs
+                for candidate in self.selected_candidates
+            ):
+                raise ValueError("governance_outcome_upgrade_cannot_settle_owner_fact")
+        return self
 
 
 class PopulationCapabilityDescriptor(ContinuityModel):
     capability_id: str = Field(min_length=1)
     accepted_behavior_kinds: tuple[str, ...] = Field(min_length=1)
     required_scopes: tuple[str, ...] = ()
+    # Where a candidate of this behavior can legitimately originate.  A
+    # capability registered here but reachable only from fixtures must say so,
+    # otherwise "enabled" reads as "production-drivable".
+    production_source: Literal["owner_event", "baseline_projection", "fixture_only"] = (
+        "owner_event"
+    )
     required_source_domains: tuple[str, ...] = ()
     target_owner: str = Field(min_length=1)
     allowed_output_kinds: tuple[PopulationOutputKind, ...] = Field(min_length=1)
@@ -104,19 +163,76 @@ class PopulationCapabilityDescriptor(ContinuityModel):
     owner_contract_ref: str | None = None
 
     def validate_owner_contract(self) -> bool:
-        if "owner_bound_intent" not in self.allowed_output_kinds or not self.owner_contract_ref:
-            return "owner_bound_intent" not in self.allowed_output_kinds
+        """Non-raising owner-contract check used by the admission gate.
+
+        Returns ``False`` for any malformed descriptor so the caller can fail
+        closed.  Use :meth:`require_owner_contract` when the caller must
+        distinguish "not required" from "misconfigured".
+        """
+        try:
+            self.require_owner_contract()
+        except ValueError:
+            return False
+        return True
+
+    def require_owner_contract(self) -> None:
+        """Raise when an owner-bound descriptor is misconfigured.
+
+        A descriptor that produces ``owner_bound_intent`` must resolve to a
+        governed contract whose owner is exactly ``target_owner``.  Silently
+        disabling such a capability would hide a configuration error, so this
+        rejects loudly instead.
+        """
+        if "owner_bound_intent" not in self.allowed_output_kinds:
+            return
+        if not self.owner_contract_ref:
+            raise ValueError(
+                f"population_capability_owner_contract_missing:{self.capability_id}"
+            )
         from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog
 
         try:
-            contract = GovernedAuthorityContractCatalog.require(contract_ref=self.owner_contract_ref)
-        except Exception:
-            return False
-        return contract.owner_ref == self.target_owner
+            contract = GovernedAuthorityContractCatalog.require(
+                contract_ref=self.owner_contract_ref
+            )
+        except Exception as exc:  # noqa: BLE001 - re-raised with capability context
+            raise ValueError(
+                f"population_capability_owner_contract_unknown:{self.capability_id}"
+            ) from exc
+        if contract.owner_ref != self.target_owner:
+            raise ValueError(
+                f"population_capability_owner_contract_mismatch:{self.capability_id}"
+            )
 
 
 class PopulationCapabilityCatalog:
     """Source-controlled, read-only capability descriptors for population decisions."""
+
+    @staticmethod
+    def validate_owner_contracts(policy_revision: str = "policy:registry:v1") -> None:
+        """Fail closed when any registered owner-bound capability is misconfigured.
+
+        The admission gate only ever sees the descriptors a caller passes in, so
+        a bad catalog entry could stay invisible until that capability happens to
+        be requested.  Validating the whole catalog once makes the error appear
+        at composition time instead.
+        """
+        for descriptor in PopulationCapabilityCatalog.default(policy_revision):
+            descriptor.require_owner_contract()
+
+    @staticmethod
+    def registered_behavior_kinds(policy_revision: str = "policy:registry:v1") -> frozenset[str]:
+        """Return every behavior kind registered by the source-controlled catalog.
+
+        This is the single source of truth for population behavior vocabulary.
+        Other modules must derive their admitted sets from here instead of
+        hardcoding private copies; ``policy_revision`` does not affect the set.
+        """
+        return frozenset(
+            kind
+            for descriptor in PopulationCapabilityCatalog.default(policy_revision)
+            for kind in descriptor.accepted_behavior_kinds
+        )
 
     @staticmethod
     def default(policy_revision: str) -> tuple[PopulationCapabilityDescriptor, ...]:
@@ -185,6 +301,7 @@ class PopulationCapabilityCatalog:
                 capability_revision="population:routine-presentation:v1",
                 policy_revision=policy_revision,
                 enabled=True,
+                production_source="baseline_projection",
             ),
             PopulationCapabilityDescriptor(
                 capability_id="population:activation-candidate:v1",
@@ -194,6 +311,10 @@ class PopulationCapabilityCatalog:
                 capability_revision="population:activation-candidate:v1",
                 policy_revision=policy_revision,
                 enabled=True,
+                # No committed owner event produces this behavior yet, so only
+                # fixtures can drive it.  Recording that keeps "enabled" from
+                # being read as "production-drivable".
+                production_source="fixture_only",
             ),
             PopulationCapabilityDescriptor(
                 capability_id="population:tax-pressure:v1",
@@ -333,6 +454,8 @@ class PopulationDecisionPlanner:
         self,
         candidates: tuple[PopulationDecisionCandidate, ...],
         policy: PopulationDecisionPolicy,
+        *,
+        focus_queue: "FairFocusQueue | None" = None,
     ) -> PopulationDecision:
         def score(candidate: PopulationDecisionCandidate) -> float:
             return (
@@ -346,6 +469,7 @@ class PopulationDecisionPlanner:
         ordered = sorted(candidates, key=lambda item: (-score(item), item.candidate_ref, item.source_projection_refs))
         selected: list[PopulationDecisionCandidate] = []
         deferred: list[PopulationDecisionCandidate] = []
+        deferrals: list[PopulationDeferralRecord] = []
         # 按角色限制昂贵层级，同角色的不同义务仍保留原成本和候选身份。
         tier_actor_limits = {"B1": 32, "B2": 4}
         selected_actors: dict[str, set[str]] = {tier: set() for tier in tier_actor_limits}
@@ -354,13 +478,43 @@ class PopulationDecisionPlanner:
             actors = selected_actors.get(candidate.fidelity_tier)
             tier_full = (actors is not None and candidate.actor_ref not in actors
                          and len(actors) >= tier_actor_limits[candidate.fidelity_tier])
-            if tier_full or len(selected) >= policy.max_candidates or budget_used + candidate.estimated_cost > policy.budget:
+            defer_reason: str | None = None
+            if tier_full:
+                defer_reason = "fidelity_deferred"
+            elif len(selected) >= policy.max_candidates:
+                defer_reason = "max_candidates_reached"
+            elif budget_used + candidate.estimated_cost > policy.budget:
+                defer_reason = "budget_exhausted"
+            if defer_reason is not None:
                 deferred.append(candidate)
+                # Deferral is a governance decision and must stay auditable;
+                # otherwise a starved candidate is indistinguishable from one
+                # that was never proposed.
+                deferrals.append(
+                    PopulationDeferralRecord(
+                        candidate_ref=candidate.candidate_ref,
+                        actor_ref=candidate.actor_ref,
+                        behavior_kind=candidate.behavior_kind,
+                        reason=defer_reason,
+                        budget_used=budget_used,
+                        budget_remaining=max(0, policy.budget - budget_used),
+                        estimated_cost=candidate.estimated_cost,
+                        fidelity_tier=candidate.fidelity_tier,
+                    )
+                )
                 continue
             selected.append(candidate)
             budget_used += candidate.estimated_cost
             if actors is not None:
                 actors.add(candidate.actor_ref)
+        if focus_queue is not None:
+            # Spend the credit of whoever was actually served.  Without this the
+            # queue only ever accumulates, so the same actor keeps out-ranking
+            # everyone and coverage never improves.
+            focus_queue.observe_service({c.actor_ref for c in selected})
+            focus_queue.accrue(
+                {c.actor_ref for c in deferred} - {c.actor_ref for c in selected}
+            )
         counts: dict[str, int] = {}
         for candidate in selected:
             counts[candidate.fidelity_tier] = counts.get(candidate.fidelity_tier, 0) + 1
@@ -372,6 +526,8 @@ class PopulationDecisionPlanner:
             budget_remaining=max(0, policy.budget - budget_used),
             fidelity_counts=counts,
             decision_reason_codes=("weighted_selection",) if selected else ("no_candidate_selected",),
+            governance_outcome="accept" if selected else "no_op",
+            deferrals=tuple(deferrals),
             read_set_digest="sha256:unbound",
             result_digest=result_digest,
         )

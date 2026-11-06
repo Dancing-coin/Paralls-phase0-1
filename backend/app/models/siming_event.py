@@ -50,6 +50,15 @@ InterventionBand = Literal[
 
 CandidateSource = Literal["rule", "llm", "fallback"]
 
+DominantImbalanceType = Literal[
+    "information_starvation",
+    "participation_starvation",
+    "private_channel_lock",
+    "evidence_bottleneck",
+    "suspicion_runaway",
+    "balanced",
+]
+
 AuditStatus = Literal[
     "recorded",
     "no_action",
@@ -68,6 +77,24 @@ AuditStatus = Literal[
     "feasibility_rejected",
     "unknown_effect",
     "ack_timeout",
+    # Intervention effectiveness outcomes.  Without these the governor can
+    # record that it acted but never whether acting helped.
+    "effective",
+    "partially_effective",
+    "ineffective",
+    "harmful",
+    "rolled_back",
+]
+
+# The subset of audit statuses that describe an observed effect rather than a
+# dispatch outcome.  Kept explicit so "did it work" stays distinguishable from
+# "did it send".
+InterventionEffectiveness = Literal[
+    "effective",
+    "partially_effective",
+    "ineffective",
+    "harmful",
+    "rolled_back",
 ]
 
 
@@ -85,6 +112,11 @@ class FairnessStateSnapshot(BaseModel):
     blocked_actor_ids: list[str] = Field(default_factory=list)
     recent_intervention_ids: list[str] = Field(default_factory=list)
     dimensions: dict[str, FairnessDimensionSnapshot] = Field(default_factory=dict)
+    # Aggregates are optional so older callers and fixtures keep validating;
+    # ``None`` means "not computed", which must not be read as "balanced".
+    global_imbalance_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    dominant_imbalance_type: DominantImbalanceType | None = None
+    imbalance_reasons: list[str] = Field(default_factory=list)
 
 
 class InterventionCandidate(BaseModel):
@@ -185,6 +217,9 @@ class SimingAuditRecord(BaseModel):
     reason: str
     dispatch_event_id: str | None = None
     correction_records: list[SimingAuditCorrection] = Field(default_factory=list)
+    # Observed effect of the intervention, recorded separately from the dispatch
+    # ``status`` so "did it send" never has to stand in for "did it work".
+    effectiveness: InterventionEffectiveness | None = None
 
 
 class SimingTickResult(BaseModel):

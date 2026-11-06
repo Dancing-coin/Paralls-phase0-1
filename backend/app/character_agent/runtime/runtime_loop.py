@@ -55,6 +55,7 @@ from app.character_agent.models.simulation_seed import (
     CharacterContinuityReceipt,
     CharacterMemoryCandidate,
     CharacterMemoryMaterializationReceipt,
+    CharacterSimulationSeedCandidate,
 )
 from app.character_agent.mind.frame_builder import CharacterMindFrameBuilder
 from app.character_agent.mind.writeback_policy import MindWritebackPolicyRouter
@@ -284,6 +285,7 @@ class CharacterAgentRuntime:
             self._shared_module_states: dict[str, dict[str, dict[str, object]]] = {}
             self._continuity_flush_locks: dict[str, RLock] = {}
             self._continuity_revisions: dict[str, int] = {}
+            self._seed_projection_commands: dict[str, tuple[CharacterGoalCommand, ...]] = {}
             self._continuity_service = CharacterContinuityService(
                 apply_command=self._apply_continuity_command,
                 materialize=self.materialize_pending_seed_memories,
@@ -1839,6 +1841,36 @@ class CharacterAgentRuntime:
         return self._activation_authority.active_lock(world_ref=self._activation_world_ref,
             profile_ref=f"character:{actor_id}") if self._activation_authority is not None else None
 
+    def _owner_cursor_for(self, command: CharacterContinuityCommand) -> int:
+        """Highest confirmed owner stream revision carried by this command.
+
+        ``owner_cursor`` is a logical tick for display, but it must come from the
+        owner stream vector rather than from the world tick: collapsing them is
+        what previously made all cursors indistinguishable.
+        """
+        vector = command.source_revision_vector
+        if not vector:
+            return 0
+        return max(int(revision) for revision in vector.values())
+
+    def get_character_memory_cursor(self, actor_id: str) -> int:
+        """Highest tick whose memory has actually been materialized.
+
+        Advancing this reflects a committed five-pool write, so it must stay at
+        zero until materialization succeeds for at least one candidate.
+        """
+        receipts = self._session_store.list_receipts(actor_id, "materialization")
+        committed = [
+            CharacterMemoryMaterializationReceipt.model_validate(value)
+            for value in receipts.values()
+        ]
+        cursors = [
+            receipt.memory_cursor
+            for receipt in committed
+            if receipt.status in {"committed", "idempotent_replay"} and receipt.memory_cursor
+        ]
+        return max(cursors) if cursors else 0
+
     def get_character_simulation_cursor(self, actor_id: str) -> int:
         """读取原 Core 最近的实际连续性回执，不把世界事件序号当仿真 tick。"""
         revision = self.get_continuity_revision(actor_id)
@@ -2532,8 +2564,63 @@ class CharacterAgentRuntime:
             return receipt
 
     def ingest_seed_projection(self, seed: object) -> list[CharacterGoalCommand]:
-        # Public callers must use apply_character_continuity_command; this parser is internal.
-        return []
+        """Parse a simulation seed into actor-local goal commands.
+
+        The seed is presentation/activation input, not a world fact.  This parser
+        therefore never derives intent from presentation-only fields: it emits a
+        command only when the seed explicitly declares an already-registered
+        ``command_type``.  Nothing here calls a model; L1-L4 builders consume the
+        committed projection instead.
+        """
+        try:
+            candidate = (
+                seed
+                if isinstance(seed, CharacterSimulationSeedCandidate)
+                else CharacterSimulationSeedCandidate.model_validate(seed)
+            )
+        except Exception:
+            return []
+        actor_id = candidate.actor_ref.removeprefix("character:")
+        if not actor_id or not self.supports_actor(actor_id):
+            return []
+        # Idempotent by seed identity: a replayed seed yields the same commands.
+        digest = self._cognition_digest(
+            {
+                "seed": candidate.idempotency_key,
+                "actor": candidate.actor_ref,
+                "from_tick": candidate.from_tick,
+                "to_tick": candidate.to_tick,
+            }
+        )
+        cached = self._seed_projection_commands.get(digest)
+        if cached is not None:
+            return [command.model_copy(deep=True) for command in cached]
+        presentation = candidate.presentation_seed if isinstance(candidate.presentation_seed, dict) else {}
+        command_type = str(presentation.get("command_type") or "")
+        if command_type not in SHARED_CHARACTER_COMMANDS:
+            # No registered command is declared: this seed only carries
+            # presentation/activation hints, which must not become actions.
+            self._seed_projection_commands[digest] = ()
+            return []
+        target_actor_id = presentation.get("target_actor_id")
+        target_object_id = presentation.get("target_object_id")
+        target_environment_id = presentation.get("target_environment_id")
+        command = CharacterGoalCommand(
+            actor_id=actor_id,
+            command_type=command_type,
+            ttl_ms=int(presentation.get("ttl_ms") or 1000),
+            causation_id=candidate.seed_id,
+            correlation_id=f"seed:{candidate.idempotency_key}",
+            producer_ts=candidate.to_tick,
+            target_actor_id=str(target_actor_id) if target_actor_id else None,
+            target_object_id=str(target_object_id) if target_object_id else None,
+            target_environment_id=str(target_environment_id) if target_environment_id else None,
+            dialogue_text=str(presentation["dialogue_text"]) if presentation.get("dialogue_text") else None,
+            idempotency_key=candidate.idempotency_key,
+        )
+        commands: tuple[CharacterGoalCommand, ...] = (command,)
+        self._seed_projection_commands[digest] = commands
+        return [item.model_copy(deep=True) for item in commands]
 
     def get_seed_projection(self, actor_id: str) -> dict[str, object]:
         state = self._session_store.read_runtime_state(actor_id)
@@ -2808,9 +2895,15 @@ class CharacterAgentRuntime:
             simulation_tick_cursor=simulation_tick_cursor,
             source_revision_vector=dict(command.source_revision_vector),
             cursor_vector={
+                # Four distinct cursors, per the continuity contract.  They must
+                # not move together: state settles with the command, experience
+                # tracks recorded history separately, memory only advances once
+                # five-pool materialization succeeds, and owner_cursor mirrors
+                # the confirmed owner stream revisions this command carried.
+                "owner_cursor": self._owner_cursor_for(command),
                 "state_cursor": simulation_tick_cursor,
-                "experience_cursor": simulation_tick_cursor,
-                "memory_cursor": 0,
+                "experience_cursor": self.get_memory_revision(actor_id),
+                "memory_cursor": self.get_character_memory_cursor(actor_id),
             },
             source_owner_receipt_refs=command.source_owner_receipt_refs,
             recorded_at=command.to_tick,
@@ -3923,6 +4016,10 @@ class CharacterAgentRuntime:
             producer_ts=producer_ts,
             snapshot=self._get_snapshot_for_observatory(actor_id, producer_ts),
         )
+        # The settlement refreshed supervision and continuity above; persist
+        # them unconditionally.  The slow-goal trigger persists only when a
+        # handler is installed and a trigger fires, so it cannot stand in.
+        self._persist_graph_continuity(actor_id=actor_id, producer_ts=producer_ts)
 
     def set_slow_goal_trigger_handler(self, handler) -> None:
         """Install the owner admission bridge; ``None`` disables dispatch."""

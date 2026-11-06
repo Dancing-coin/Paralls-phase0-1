@@ -1261,6 +1261,37 @@ class SimingRuntime:
         except ValueError:
             return 0
 
+    # Minimal-intervention order.  A better-documented candidate of the same
+    # confidence wins only if it asks for less forceful intervention.
+    _BAND_PRECEDENCE = {
+        "none": 0,
+        "impulse": 1,
+        "opportunity": 2,
+        "fact_reveal": 3,
+        "environment_request": 4,
+    }
+
+    def _select_candidate(
+        self, evaluated: list[tuple[InterventionCandidate, object, object]]
+    ) -> tuple[InterventionCandidate, object, object] | None:
+        """Pick one candidate deterministically instead of first-past-the-post.
+
+        Every candidate is evaluated before any is chosen, so the decision no
+        longer depends on provider emission order.  Ranking is: higher
+        confidence first, then the least forceful band, then ``candidate_id``
+        so a retry over the same input set is stable.
+        """
+        if not evaluated:
+            return None
+        return min(
+            evaluated,
+            key=lambda item: (
+                -float(getattr(item[0], "confidence", 0.0) or 0.0),
+                self._BAND_PRECEDENCE.get(str(item[0].proposed_band), 99),
+                item[0].candidate_id,
+            ),
+        )
+
     def _outputs_for_candidates(
         self,
         event: AuthorityEvent,
@@ -1270,6 +1301,7 @@ class SimingRuntime:
     ) -> tuple[list[SimingOutput], list[SimingAuditRecord]]:
         audits: list[SimingAuditRecord] = []
 
+        executable: list[tuple[InterventionCandidate, object, object]] = []
         for candidate in candidates:
             policy_result = self._policy.evaluate(candidate, snapshot=snapshot)
             if not policy_result.accepted:
@@ -1293,6 +1325,11 @@ class SimingRuntime:
                 )
                 continue
 
+            executable.append((candidate, policy_result, feasibility_result))
+
+        selected = self._select_candidate(executable)
+        if selected is not None:
+            candidate, policy_result, feasibility_result = selected
             outputs = [
                 self._candidate_output(event, candidate),
                 self._decision_output(

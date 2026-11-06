@@ -3,6 +3,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.siming_event import FairnessStateSnapshot
 from app.models.siming_narrative import NarrativeCoreResult, QualitySignal
 from app.models.siming_runtime_state import FairnessDimensionSnapshot, StateTreeSnapshot
+from app.services.siming_fairness_aggregate import compute_fairness_aggregate
 from app.services.siming_feature_registry import SimingFeatureRegistry
 
 
@@ -24,6 +25,10 @@ class QualityMonitorResult(BaseModel):
 
 
 class SimingQualityMonitor:
+    # A single actor whose suspicion exceeds this is treated as a runaway risk:
+    # suspicion concentrating on one person is the failure mode, not heat itself.
+    SUSPICION_HEAT_THRESHOLD = 0.75
+
     def __init__(
         self,
         *,
@@ -77,6 +82,7 @@ class SimingQualityMonitor:
 
         established_fact_id = state_tree.environment.summary.get("established_fact_id")
         target_actor_id = state_tree.character.summary.get("target_actor_id")
+        aggregate = compute_fairness_aggregate(dimensions)
 
         return QualityMonitorResult(
             snapshot=FairnessStateSnapshot(
@@ -91,6 +97,9 @@ class SimingQualityMonitor:
                 blocked_actor_ids=[],
                 recent_intervention_ids=[],
                 dimensions=dimensions,
+                global_imbalance_score=aggregate.score,
+                dominant_imbalance_type=aggregate.dominant,
+                imbalance_reasons=list(aggregate.reasons),
             ),
             signals=signals,
             risk_tags=sorted(set(risk_tags)),
@@ -157,6 +166,47 @@ class SimingQualityMonitor:
                 )
             )
 
+        # Suspicion heat was previously hard-coded as unavailable, which left one
+        # of the five fairness dimensions permanently unmeasurable.  Derive it
+        # from the recorded per-actor attention instead, so the dimension has a
+        # real source and can still report "unavailable" only when truly absent.
+        suspicion_heat = state_tree.character.summary.get("suspicion_heat")
+        if isinstance(suspicion_heat, dict):
+            heat_values = {
+                str(actor_id): float(value)
+                for actor_id, value in suspicion_heat.items()
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            }
+            hot_actors = sorted(
+                actor_id for actor_id, value in heat_values.items() if value >= self.SUSPICION_HEAT_THRESHOLD
+            )
+            if hot_actors:
+                signals.append(
+                    QualitySignal(
+                        signal_id=f"quality:{state_tree.snapshot_id}:suspicion_heat_distribution",
+                        dimension="suspicion_heat_distribution",
+                        severity="high" if len(hot_actors) == 1 else "medium",
+                        target_refs=hot_actors,
+                        suggested_action_band="fact_reveal",
+                        reason=(
+                            "suspicion concentrated on a single actor"
+                            if len(hot_actors) == 1
+                            else "suspicion heat spread across actors"
+                        ),
+                    )
+                )
+            else:
+                signals.append(
+                    QualitySignal(
+                        signal_id=f"quality:{state_tree.snapshot_id}:suspicion_heat_distribution",
+                        dimension="suspicion_heat_distribution",
+                        severity="ok",
+                        target_refs=[],
+                        suggested_action_band="none",
+                        reason="suspicion heat within bounds",
+                    )
+                )
+
         return signals
 
     def _dimension_from_signals(
@@ -165,11 +215,13 @@ class SimingQualityMonitor:
         signals: list[QualitySignal],
     ) -> FairnessDimensionSnapshot:
         if dimension_id == "suspicion_heat_distribution" and not signals:
+            # Only reachable when the state tree carries no suspicion_heat source
+            # at all; a present-but-calm source emits an "ok" signal instead.
             return FairnessDimensionSnapshot(
                 dimension_id=dimension_id,
-                status="partial",
+                status="unavailable",
                 score=0.0,
-                reason="suspicion heat data unavailable",
+                reason="suspicion heat source absent",
                 mapped_to_policy=True,
             )
 

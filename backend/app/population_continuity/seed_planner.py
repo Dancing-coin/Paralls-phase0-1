@@ -10,6 +10,7 @@ from app.character_agent.models.simulation_seed import (
     CharacterSimulationSeedCandidate,
 )
 
+from .batch import PopulationPlanner
 from .siming_contracts import PopulationProjection, PopulationReadSet
 
 
@@ -24,20 +25,23 @@ def _projection_actor(projection: PopulationProjection) -> str:
     return str(actor or projection.ref)
 
 
+def _tick_from(payload: dict[str, Any], key: str, default: int) -> int:
+    """Read an optional tick override, rejecting bool/negative/non-integer forgeries."""
+    value = payload.get(key)
+    if value is None:
+        return default
+    # ``bool`` is an ``int`` subclass; a forged ``True`` must not become tick 1.
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("seed_memory_tick_invalid")
+    return value
+
+
 class CharacterSeedPlanner:
     """Derives pending actor inputs from an immutable population read set."""
 
-    ADMITTED_BEHAVIORS = frozenset(
-        {
-            "routine_work",
-            "schedule_gated_supply",
-            "relationship_negotiation",
-            "high_value_event",
-            "b3_event",
-            "organization_production_work_contribution",
-            "inventory_output_custody",
-        }
-    )
+    # Seeds can only exist for behaviors the cycle planner actually admits;
+    # this stays narrower than the capability catalog on purpose.
+    ADMITTED_BEHAVIORS = PopulationPlanner.ADMITTED_BEHAVIORS
 
     def derive(
         self,
@@ -83,15 +87,27 @@ class CharacterSeedPlanner:
             memory_candidates: tuple[CharacterMemoryCandidate, ...] = ()
             if kind != "relationship_negotiation" and exposure_basis in {"affected_directly", "public_propagation"}:
                 event_ref = source_refs[0] if source_refs else f"projection:{projection.ref}"
+                # ``event_valid_at`` is when the fact happened; ``knowledge_available_at``
+                # is when this actor could come to know it.  They must not be collapsed:
+                # a projection may observe a window whose consequence reaches the actor
+                # later.  Payload may pin either explicitly.
+                event_valid_at = _tick_from(payload, "event_valid_at", cadence.window_end)
+                knowledge_available_at = _tick_from(
+                    payload, "knowledge_available_at", cadence.window_end
+                )
+                if knowledge_available_at < event_valid_at:
+                    raise ValueError("seed_memory_time_order_invalid")
                 memory_candidates = (
                     CharacterMemoryCandidate(
                         candidate_id=f"memory:{actor_ref}:{projection.ref}",
                         actor_ref=actor_ref,
                         candidate_kind="event_experience",
                         source_event_refs=(event_ref,),
-                        event_valid_at=cadence.window_end,
-                        event_recorded_at=cadence.window_end,
-                        knowledge_available_at=cadence.window_end,
+                        event_valid_at=event_valid_at,
+                        event_recorded_at=_tick_from(
+                            payload, "event_recorded_at", cadence.window_end
+                        ),
+                        knowledge_available_at=knowledge_available_at,
                         exposure_basis=exposure_basis,
                         summary=str(payload.get("summary") or kind),
                         confidence=float(payload.get("confidence", 0.5)),

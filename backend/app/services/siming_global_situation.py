@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate
 from app.models.siming_runtime_state import FairnessDimensionSnapshot
+from app.services.siming_fairness_aggregate import compute_fairness_aggregate
 
 
 SituationState = Literal["open", "updated", "stale", "resolved"]
@@ -221,6 +222,23 @@ class SimingGlobalSituationLayer:
         return snapshot
 
     def to_fairness_snapshot(self, snapshot: SimingGlobalSituationSnapshot) -> FairnessStateSnapshot:
+        dimensions = {
+            "visibility_imbalance": FairnessDimensionSnapshot(
+                dimension_id="visibility_imbalance",
+                status="fresh",
+                score=snapshot.visibility_imbalance,
+                reason="Siming global situation visibility imbalance",
+                mapped_to_policy=True,
+            ),
+            "situation_pressure": FairnessDimensionSnapshot(
+                dimension_id="situation_pressure",
+                status="fresh",
+                score=snapshot.fairness_pressure,
+                reason="Siming global situation pressure",
+                mapped_to_policy=True,
+            ),
+        }
+        aggregate = compute_fairness_aggregate(dimensions)
         return FairnessStateSnapshot(
             snapshot_id=f"fairness:{snapshot.snapshot_id}",
             room_id=snapshot.room_id,
@@ -231,22 +249,10 @@ class SimingGlobalSituationLayer:
             known_fact_ids=list(snapshot.public_fact_refs),
             eligible_actor_ids=[],
             blocked_actor_ids=[],
-            dimensions={
-                "visibility_imbalance": FairnessDimensionSnapshot(
-                    dimension_id="visibility_imbalance",
-                    status="fresh",
-                    score=snapshot.visibility_imbalance,
-                    reason="Siming global situation visibility imbalance",
-                    mapped_to_policy=True,
-                ),
-                "situation_pressure": FairnessDimensionSnapshot(
-                    dimension_id="situation_pressure",
-                    status="fresh",
-                    score=snapshot.fairness_pressure,
-                    reason="Siming global situation pressure",
-                    mapped_to_policy=True,
-                ),
-            },
+            dimensions=dimensions,
+            global_imbalance_score=aggregate.score,
+            dominant_imbalance_type=aggregate.dominant,
+            imbalance_reasons=list(aggregate.reasons),
         )
 
     def to_intervention_candidate(self, snapshot: SimingGlobalSituationSnapshot) -> InterventionCandidate:
