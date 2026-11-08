@@ -102,6 +102,12 @@ def prepare_record(record: dict, provider: LayaSystemOneProvider) -> dict:
     for index, candidate in enumerate(candidates):
         candidate["wire_label"] = f"C{index + 1}"
         candidate["target_refs"] = {key: target_aliases[value] for key, value in candidate["target_refs"].items()}
+        # Calibration only asks for a diagnostic choice.  Permission remains
+        # unknown to the runtime, so mark it as deferred rather than admitting
+        # an executable candidate or dropping the diagnostic option entirely.
+        conditions = candidate.get("required_conditions")
+        if isinstance(conditions, dict) and conditions.get("permission") == "unknown":
+            conditions["permission"] = "required"
     compilation = CandidateCompiler().compile(
         candidates=candidates,
         visible_targets=[target_aliases[e["target_ref"]] for e in record["visible_evidence"]],

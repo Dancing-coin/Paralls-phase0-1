@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import StrEnum
 
 
@@ -41,9 +42,64 @@ _DOMAINS = {
     FactType.DAILY_RHYTHM_ACTIVITY_PHASE_STATE: "daily_rhythm",
 }
 
+_GAMEPLAY_FACT_DOMAINS = {
+    "gameplay.inventory.item_moved": "inventory",
+    "gameplay.organization.production_work_contribution_accepted": "organization",
+    "gameplay.ownership.right_transferred": "ownership",
+    "gameplay.economy.account_credited": "economy",
+    "gameplay.survival.obligation_settled": "survival_body",
+    "gameplay.survival.body_changed": "survival_body",
+    "gameplay.resource.capability_committed": "resource_scene",
+    "gameplay.scene.result_committed": "resource_scene",
+    "gameplay.resource.scale_projection_probe": "resource_scene",
+}
+
+
+@dataclass(frozen=True)
+class FactTypeRef:
+    value: str
+    domain: str
+
+
+class FactTypeRegistry:
+    """Typed event references; gameplay entries are sourced from schema declarations."""
+
+    def __init__(self) -> None:
+        self._refs: dict[str, FactTypeRef] = {
+            fact.value: FactTypeRef(fact.value, domain)
+            for fact, domain in _DOMAINS.items()
+        }
+        self._refs.update({key: FactTypeRef(key, domain) for key, domain in _GAMEPLAY_FACT_DOMAINS.items()})
+        self._load_gameplay_schemas()
+
+    def _load_gameplay_schemas(self) -> None:
+        from app.gameplay.event_schema_registry import gameplay_schema_event_types
+
+        for event_type in gameplay_schema_event_types():
+            self._refs.setdefault(event_type, FactTypeRef(event_type, event_type.split(".", 2)[1]))
+
+    def from_event_type(self, event_type: str) -> FactType | FactTypeRef | None:
+        try:
+            return FactType(event_type)
+        except ValueError:
+            pass
+        return self._refs.get(event_type)
+
+    def domain_for(self, fact_type: FactType | FactTypeRef) -> str:
+        return _DOMAINS.get(fact_type, fact_type.domain if isinstance(fact_type, FactTypeRef) else "unknown")
+
+    def register_event_type(self, event_type: str) -> FactTypeRef | None:
+        return self.from_event_type(event_type)
+
+    def event_types(self) -> tuple[str, ...]:
+        return tuple(sorted(self._refs))
+
+
+FACT_TYPE_REGISTRY = FactTypeRegistry()
+
 
 def get_domain_for_fact_type(fact_type: FactType) -> str:
     return _DOMAINS.get(fact_type, "unknown")
 
 
-__all__ = ["FactType", "get_domain_for_fact_type"]
+__all__ = ["FACT_TYPE_REGISTRY", "FactType", "FactTypeRef", "FactTypeRegistry", "get_domain_for_fact_type"]

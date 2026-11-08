@@ -4,6 +4,7 @@ from collections.abc import Callable
 from copy import deepcopy
 
 from app.models.authority_event import AuthorityEvent
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
     GraphRevisionVector,
@@ -19,35 +20,11 @@ from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 class HeavenlyAuthorityEventProjector:
     """Authority 事件图谱投影器：只派生 projection，不拥有领域事实。
 
-    NOTE: S3 断点（05-Owner重构影响评估.md 第四章断点清单）
-    当前实现：字符串前缀推断 Owner domain（过渡期方案）
-
-    短期改进（Q2-A）：
-      - DOMAIN_BY_EVENT_PREFIX 保持字典形式
-      - 添加验证：启动时检查前缀覆盖率（所有 gameplay 事件都有映射）
-      - revision 改读真 Owner revision（见 line 57-61）
-
-    长期目标（Q2-C，Phase 2+）：
-      - 改为 FactType 枚举订阅（main.py:2233 的 "*" 改为具体类型列表）
-      - 前缀表换成 FactType → domain 契约声明
-      - 图只存边（关系），事实走 OwnerFactQuery
+    Event domains are resolved through the typed FactType registry. The graph
+    still stores the current projection payload until OwnerFactQuery lands.
 
     See: docs/reference/phase1-siming/Q1-Q2-decisions.md
     """
-
-    # TODO: S3 短期改进 - 添加启动验证
-    # TODO: S3 长期 - 换成 FactType 枚举映射（Phase 2）
-    DOMAIN_BY_EVENT_PREFIX = {
-        "esm_result_event": "esm_world",
-        "constraint_state_event": "esm_world",
-        "gameplay.inventory.": "inventory",
-        "gameplay.organization.": "organization",
-        "gameplay.ownership.": "ownership",
-        "gameplay.economy.": "economy",
-        "gameplay.survival.": "survival_body",
-        "gameplay.resource.": "resource_scene",
-        "gameplay.scene.": "resource_scene",
-    }
 
     def __init__(
         self,
@@ -122,12 +99,8 @@ class HeavenlyAuthorityEventProjector:
 
     @classmethod
     def _domain_for(cls, event_type: str) -> str | None:
-        if event_type in cls.DOMAIN_BY_EVENT_PREFIX:
-            return cls.DOMAIN_BY_EVENT_PREFIX[event_type]
-        for prefix, domain in cls.DOMAIN_BY_EVENT_PREFIX.items():
-            if event_type.startswith(prefix):
-                return domain
-        return None
+        fact_type = FACT_TYPE_REGISTRY.from_event_type(event_type)
+        return FACT_TYPE_REGISTRY.domain_for(fact_type) if fact_type is not None else None
 
 
 __all__ = ["HeavenlyAuthorityEventProjector"]

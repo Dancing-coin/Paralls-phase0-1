@@ -1,4 +1,5 @@
 from app.models.authority_event import AuthorityEvent
+from app.models.fact_type import FACT_TYPE_REGISTRY, FactType, FactTypeRef
 from app.models.siming_runtime_state import ObservedSimingEvent
 
 
@@ -21,21 +22,20 @@ class SimingObservePipeline:
     See: docs/reference/phase1-siming/Q1-Q2-decisions.md
     """
 
-    # TODO: S2 长期 - 换成 FactType 枚举映射（Phase 2）
-    ALLOWED_EVENT_TYPES = frozenset({
-        "world_fact_event",
-        "visual_fact_event",
-        "esm_result_event",
-        "character_behavior_event",
-        "conversation_resolution_event",
-        "constraint_state_event",
-        "population_cadence_event",
+    ALLOWED_FACT_TYPES = frozenset({
+        FactType.WORLD_FACT,
+        FactType.VISUAL_FACT,
+        FactType.ESM_RESULT,
+        FactType.CHARACTER_BEHAVIOR,
+        FactType.CONVERSATION_RESOLUTION,
+        FactType.CONSTRAINT_STATE,
+        FactType.POPULATION_CADENCE,
     })
-
     def observe(self, events: list[AuthorityEvent]) -> list[ObservedSimingEvent]:
         observed: list[ObservedSimingEvent] = []
         for event in events:
-            if event.event_type not in self.ALLOWED_EVENT_TYPES:
+            fact_type = FACT_TYPE_REGISTRY.from_event_type(event.event_type)
+            if fact_type not in self.ALLOWED_FACT_TYPES and not isinstance(fact_type, FactTypeRef):
                 continue
             if not self._is_routed_to_siming(event):
                 continue
