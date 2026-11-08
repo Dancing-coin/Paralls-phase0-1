@@ -645,6 +645,8 @@ class CharacterAgentL3Service:
         if frame is not None:
             if frame.actor_id != interpretation.actor_id:
                 raise ValueError("mind frame actor mismatch")
+            if frame.turn_id and turn_context is None:
+                raise ValueError("mind frame turn context required")
             if turn_context is not None:
                 frame = frame.bind_to_turn(turn_context)
         interpretation = self._normalize_interpretation(interpretation)

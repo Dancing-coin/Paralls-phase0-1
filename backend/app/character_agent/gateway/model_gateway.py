@@ -51,7 +51,9 @@ class CharacterModelGateway:
         frame = context.get("frame")
         if frame is not None:
             from app.character_agent.models.mind_frame import CharacterMindFrame
-            if not isinstance(frame, CharacterMindFrame) or not frame.frame_digest or not frame.turn_id:
+            if not isinstance(frame, CharacterMindFrame):
+                raise ValueError("gateway requires a frozen mind frame")
+            if frame.turn_id and not frame.frame_digest:
                 raise ValueError("gateway requires a frozen mind frame")
             evidence_refs = context.get("evidence_refs", [])
             if not isinstance(evidence_refs, list) or any(
