@@ -305,6 +305,12 @@ def replay_scoped_tail(*, store, checkpoint_ref, tail, expected_result_digest=No
                 raise ValueError("replay_decoder_unsupported")
             manifest = _manifest(tail["participants"], saved.state["batch_refs"])
             saved_manifest = saved.state["participants"]
+            if social_authority is None and manifest.get("social") is not None:
+                from app.gameplay.p5.social_knowledge import SocialFactAuthority
+                from app.gameplay.production_package_registry import build_production_social_policy_registry
+                social_authority = SocialFactAuthority(
+                    registry=build_production_social_policy_registry(), store=store,
+                )
             if ("inventory" in saved_manifest) != ("inventory" in manifest):
                 raise ValueError("replay_participant_scope_conflict")
             # A tail must replay the exact checkpoint participant set.  Checking
