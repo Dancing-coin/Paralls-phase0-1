@@ -1,5 +1,6 @@
 """Explicit typed application boundary with real authored bakery source/Durable."""
 from pathlib import Path
+from time import time
 
 from app import main
 from app.gameplay.economy_random_registry import EconomyRandomPolicyRegistry
@@ -123,8 +124,9 @@ def test_real_fastapi_websocket_controller_bind_then_random_command(tmp_path, mo
     driver.require_temporal_authorization = True
     assert driver.tick(window).published_cadence_ids
     auth = EmbodiedControllerAuthService()
+    issued_at = int(time())
     secret = auth.create_trusted_local_launch_credential(
-        actor_id="char_a", controller_instance_id="controller:network", issued_at=1, expires_at=1000)
+        actor_id="char_a", controller_instance_id="controller:network", issued_at=issued_at, expires_at=issued_at + 1000)
     monkeypatch.setattr(main, "gameplay_event_store", store, raising=False)
     monkeypatch.setattr(main, "economy_random_caller",
         PopulationEconomyRandomCaller(store=store, registry=registry, population_driver=driver), raising=False)
