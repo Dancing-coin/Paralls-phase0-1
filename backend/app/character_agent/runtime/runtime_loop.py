@@ -10,6 +10,7 @@ from app.character_agent.runtime.cognition_continuation import (
 )
 import hashlib
 import json
+import inspect
 import math
 import os
 from pathlib import Path
@@ -750,8 +751,9 @@ class CharacterAgentRuntime:
                 effective_profile=effective_profile,
                 need_tension_state=need_tension_state,
                 turn_context=turn,
-                capability_envelope=cognition_contract["capability_envelope"],
-                cognition_policy=cognition_contract["cognition_policy"],
+                **({"capability_envelope": cognition_contract["capability_envelope"],
+                    "cognition_policy": cognition_contract["cognition_policy"]}
+                   if "capability_envelope" in inspect.signature(self._l2.prepare_perceived_event).parameters else {}),
             ),
         )
         turn = self._turn_coordinator.append_stage(
@@ -820,9 +822,10 @@ class CharacterAgentRuntime:
                 dynamic_state=self.get_dynamic_state_record(event.actor_id).model_dump(),
                 behavior_policy_snapshot=behavior_policy_snapshot,
                 turn_context=turn,
-                capability_envelope=cognition_contract["capability_envelope"],
-                cognition_policy=cognition_contract["cognition_policy"],
-                frame=self._restore_cognition_mind_frame(dict(cognition_contract, turn_context=turn)),
+                **({"capability_envelope": cognition_contract["capability_envelope"],
+                    "cognition_policy": cognition_contract["cognition_policy"],
+                    "frame": self._restore_cognition_mind_frame(dict(cognition_contract, turn_context=turn))}
+                   if "capability_envelope" in inspect.signature(self._l3.prepare_intent_plan).parameters else {}),
             ),
         )
         self._consume_behavior_policy_for_turn(
@@ -2469,6 +2472,7 @@ class CharacterAgentRuntime:
             source_ref_lineage=[result.result_id, result.request_id, result.pqf_query_id, *result.provider_result_refs],
             fact_claim=result.fact_claim,
         ), verification_result=result, verification_conflict_refs=projected_result.conflict_refs)
+        self._unresolved_tension_store.resolve(result.actor_id, target_ref=result.subject_ref)
 
     def apply_memory_correction(
         self, request: MemoryCorrectionRequest, *, principal_ref: str,

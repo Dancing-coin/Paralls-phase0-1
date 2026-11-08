@@ -197,6 +197,8 @@ def audit_fixture(repo: Path, fixture: Path) -> dict[str, Any]:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser()
     parser.add_argument("--fixture", type=Path, default=Path("backend/tests/fixtures/character_evaluation/four_role_lock_event"))
     parser.add_argument("--output", type=Path)

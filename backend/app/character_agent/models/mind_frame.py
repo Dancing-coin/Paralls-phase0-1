@@ -224,11 +224,11 @@ class CharacterMindFrame(StrictMindFrameModel):
 
     def bind_to_turn(self, turn: CharacterTurnContext) -> "CharacterMindFrame":
         """Bind once; later consumers must validate the original content and pins."""
-        if self.actor_id != turn.actor_id:
-            raise ValueError("mind frame actor mismatch")
         if self.turn_id:
             self.validate_turn(turn)
             return self
+        if self.actor_id != turn.actor_id:
+            raise ValueError("mind frame actor mismatch")
         bound = self.model_copy(update={
             "turn_id": turn.turn_id,
             "branch_id": turn.branch_id,
@@ -243,10 +243,10 @@ class CharacterMindFrame(StrictMindFrameModel):
     def validate_turn(self, turn: CharacterTurnContext) -> None:
         if not self.turn_id:
             raise ValueError("mind frame is not bound to a turn")
-        if self.actor_id != turn.actor_id:
-            raise ValueError("mind frame actor mismatch")
         if self.turn_id != turn.turn_id:
             raise ValueError("mind frame turn mismatch")
+        if self.actor_id != turn.actor_id:
+            raise ValueError("mind frame actor mismatch")
         if self.branch_id != turn.branch_id:
             raise ValueError("mind frame branch mismatch")
         if dict(self.input_revision_vector) != dict(turn.input_revision_vector):

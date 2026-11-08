@@ -33,6 +33,14 @@ class CharacterUnresolvedTensionStore:
     def clear(self, actor_id: str) -> None:
         self._by_actor.pop(actor_id, None)
 
+    def resolve(self, actor_id: str, *, target_ref: str, source_event_id: str = "") -> None:
+        tensions = self._by_actor.get(actor_id, [])
+        self._by_actor[actor_id] = [
+            item.model_copy(update={"status": "resolved"})
+            if item.target_ref == target_ref and (not source_event_id or item.source_event_id == source_event_id) else item
+            for item in tensions
+        ]
+
     def _model(self, value: dict[str, object] | CharacterUnresolvedTension) -> CharacterUnresolvedTension:
         if isinstance(value, CharacterUnresolvedTension):
             return value.model_copy(deep=True)

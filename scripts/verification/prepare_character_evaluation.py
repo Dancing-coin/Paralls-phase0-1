@@ -183,9 +183,9 @@ def prepare(repo:Path,fixture:Path,*,policy=None,corpus=None,splits=None):
                     'provider_revision': PROVIDER_REVISION,
                     'frame': CharacterMindFrame.model_validate(frame),
                     'capability_envelope': {},
-                    'cognition_policy': {},
                 },
             )
+            request['context']['cognition_policy'] = {}
             request = json.loads(CharacterModelGateway.freeze_prepared_request(request))
             wire_request = LayaSystemOneProvider(endpoint='http://127.0.0.1:8765').build_wire_request(request)
             acceptable = [_acceptable_action(actor, scenario, pair, corpus) for pair in scenario['review']['acceptable_pairs']]
