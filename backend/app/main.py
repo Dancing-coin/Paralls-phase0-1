@@ -2242,6 +2242,8 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     script_beat_projection = ScriptBeatProjection()
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
+    # Protocol 09: Siming → ESM (08-司命与ESM协作协议.md)
+    authority_event_bus.subscribe("siming.environment_request", _handle_siming_environment_request)
     debug_stream.clear()
     _publish_population_cadence_at_game_start()
     # Startup composition is already committed; drain its presentation outbox
@@ -2269,6 +2271,33 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
         _ack_siming_staging_request_from_origin(event)
     finally:
         _cognition_origin.reset(token)
+
+
+def _handle_siming_environment_request(event: AuthorityEvent) -> None:
+    """Protocol 09 stub: forward siming.environment_request to ESM.
+
+    Receives siming.environment_request from the authority bus (produced by
+    siming_event_producer when selected_path == "environment_change_path") and
+    resolves it through ESM, publishing the resulting world_result authority event.
+    """
+    payload = event.payload
+    request = EnvironmentRequest(
+        request_id=f"siming:{event.causation_id}",
+        room_id=event.room_id,
+        scene_id=event.scene_id,
+        zone_id=event.zone_id,
+        source={"system": "siming", "event_id": event.event_id},
+        target_entity_refs={"environment_ids": [str(payload.get("target_environment_id", "") or "env_default")]},
+        goal=str(payload.get("goal", "") or "environment_change"),
+        requested_change_type=str(payload.get("requested_change_type", "") or "light_level_drop"),
+        requested_strength=str(payload.get("requested_strength", "medium") or "medium"),
+        reason_tag="siming_environment_request",
+        producer_ts=event.producer_ts,
+        causation_id=event.causation_id,
+        correlation_id=event.correlation_id,
+    )
+    resolution, _environment_result = esm_service.resolve_environment_request(request)
+    _publish_world_result_authority_event(resolution, source_event=request)
 
 
 def _ack_siming_staging_request_from_origin(event: AuthorityEvent) -> None:
