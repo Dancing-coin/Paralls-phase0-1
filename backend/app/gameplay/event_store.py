@@ -1238,10 +1238,13 @@ class DurableGameplayEventStore(GameplayEventStore):
         try:
             return [model.model_validate_json(self._decode_json(row[0]))
                     for row in self._rows(sql, parameters)]
-        except GameplayEventStoreSnapshotError:
+        except GameplayEventStoreSnapshotError as exc:
             # Preserve store lifecycle/read failures raised by _rows.  These
             # are not malformed persisted rows and callers rely on the exact
             # closed/read-failed diagnostic when recovering a Durable store.
+            if str(exc) in {"gameplay_snapshot_closed", "gameplay_snapshot_json_codec_invalid",
+                            "gameplay_snapshot_json_codec_unsupported"}:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
             raise
         except (ValueError, TypeError) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
