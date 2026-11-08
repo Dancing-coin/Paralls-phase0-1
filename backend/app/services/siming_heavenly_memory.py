@@ -35,6 +35,8 @@ class SimingHeavenlyMemoryService:
         idempotency_key: str,
         siming_room_head=None,
     ) -> HeavenlyGraphWriteBatch:
+        # TODO: S5 (05-待决问题与缺陷登记.md - 司命断点)
+        #   WorldFactMemoryEntry has no fact_type_ref field. Should add source_owner/source_revision tracking.
         self._require_heavenly_scope(scope)
         node = HeavenlyGraphNode(
             node_id=entry.entry_id,

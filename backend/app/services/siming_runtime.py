@@ -1531,6 +1531,8 @@ class SimingRuntime:
             payload={
                 "established_fact_id": established_fact_id,
                 "presentation_hint": "increase observability for established light change",
+                # TODO: S8 (05-待决问题与缺陷登记.md - 司命断点)
+                #   "char_b" is hardcoded placeholder. Should use roster/roster resolution in Phase 2.
                 "target_actor_id": "char_b",
                 "target_environment_id": event.payload.get("target_environment_id"),
             },
@@ -1557,6 +1559,8 @@ class SimingRuntime:
             intervention_band="fact_reveal",
             payload={
                 "presentation_hint": f"notice change around {target_label}",
+                # TODO: S8 (05-待决问题与缺陷登记.md - 司命断点)
+                #   "char_b" is hardcoded placeholder. Should use roster/roster resolution in Phase 2.
                 "target_actor_id": "char_b",
                 "target_environment_id": target_environment_id,
                 "target_object_id": target_object_id,
@@ -1956,6 +1960,8 @@ class SimingRuntime:
         event: AuthorityEvent,
         snapshot: FairnessStateSnapshot,
     ) -> FairnessStateSnapshot:
+        # TODO: S8 (05-待决问题与缺陷登记.md - 司命断点)
+        #   Fallback uses hardcoded ["char_b"]. Should use roster resolution in Phase 2.
         if snapshot.eligible_actor_ids or not self._is_light_drop(event):
             return snapshot
         return snapshot.model_copy(update={"eligible_actor_ids": ["char_b"]})

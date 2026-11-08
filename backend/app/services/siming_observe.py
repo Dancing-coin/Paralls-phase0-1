@@ -3,6 +3,9 @@ from app.models.siming_runtime_state import ObservedSimingEvent
 
 
 class SimingObservePipeline:
+    # TODO: S2 (05-待决问题与缺陷登记.md - 司命断点)
+    #   event_type string whitelist should be replaced with FactType enum in Phase 2.
+    #   Currently these are hardcoded strings with no corresponding FactType registry.
     ALLOWED_EVENT_TYPES = {
         "world_fact_event",
         "visual_fact_event",

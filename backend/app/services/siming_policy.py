@@ -24,6 +24,8 @@ class SimingInterventionPolicy:
     def evaluate(
         self, candidate: InterventionCandidate, *, snapshot: FairnessStateSnapshot
     ) -> SimingPolicyResult:
+        # TODO: S6 (05-待决问题与缺陷登记.md - 司命断点)
+        #   Qualification judgment only checks actor_id. Should check full FactType eligibility in Phase 2.
         reasons: list[str] = []
 
         unknown_facts = [

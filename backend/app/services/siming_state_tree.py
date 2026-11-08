@@ -32,6 +32,9 @@ class InMemorySimingStateTree:
         if not observed_events:
             raise ValueError("at least one observed event is required")
 
+        # TODO: S1 (05-待决问题与缺陷登记.md - 司命断点)
+        #   Three payload keys are hardcoded: target_environment_id, target_actor_id, established_fact_id
+        #   Should be replaced with structured FactType contract in Phase 2.
         current_event = observed_events[-1]
         environment_id = self._latest_non_empty_payload_value(
             observed_events, "target_environment_id"

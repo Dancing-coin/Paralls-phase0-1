@@ -126,6 +126,9 @@ class SimingEventProducer:
         )
 
     def _event_type_for(self, output: SimingOutput) -> str:
+        # TODO: S7 (05-待决问题与缺陷登记.md - 司命断点)
+        #   "siming.environment_request" path (line 146) is dead code - no subscribers.
+        #   Should be removed or connected to Owner domain in Phase 2.
         if output.output_type == "fairness_snapshot":
             return "siming.fairness_snapshot"
         if output.output_type == "intervention_candidate":
