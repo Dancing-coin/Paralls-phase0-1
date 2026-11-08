@@ -28,6 +28,13 @@ def create_daily_rhythm_event_schema_registry() -> EventSchemaRegistry:
 class DailyRhythmRuntime:
     """Publishes the B0 daily rhythm state owned by this domain."""
 
+    ACTIVITY_PHASE_MACHINE_ID = "daily_rhythm.activity_phase"
+    _ACTIVITY_PHASE_STATES = ("morning", "afternoon", "evening", "night")
+
+    @classmethod
+    def activity_phase_states(cls) -> tuple[str, ...]:
+        return cls._ACTIVITY_PHASE_STATES
+
     def __init__(self, event_bus, *, store: GameplayEventStore | None = None) -> None:
         self._event_bus = event_bus
         self._store = store

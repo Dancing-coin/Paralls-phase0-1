@@ -110,6 +110,8 @@ class FairnessStateSnapshot(BaseModel):
     known_fact_ids: list[str] = Field(default_factory=list)
     eligible_actor_ids: list[str] = Field(default_factory=list)
     blocked_actor_ids: list[str] = Field(default_factory=list)
+    eligible_environment_ids: list[str] = Field(default_factory=list)
+    eligible_object_ids: list[str] = Field(default_factory=list)
     recent_intervention_ids: list[str] = Field(default_factory=list)
     dimensions: dict[str, FairnessDimensionSnapshot] = Field(default_factory=dict)
     # Aggregates are optional so older callers and fixtures keep validating;

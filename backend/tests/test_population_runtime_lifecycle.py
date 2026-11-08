@@ -232,17 +232,26 @@ async def test_application_reopens_persistent_store_and_resumes_without_reseedin
     try:
         main.reset_runtime_state(restore_gameplay=True)
         await main.start_population_runtime()
-        initial_events = main.gameplay_event_store.get_last_global_sequence()
+        cadence_stream = "population-cadence:world:bakery-district"
+        initial_cadence_ids = tuple(
+            event.event_id for event in main.gameplay_event_store.read_stream(cadence_stream)
+        )
         rows = main._population_runtime_driver.world_runtime.population_hot_state.export_rows()
         main.stop_population_runtime()
         main.reset_runtime_state(restore_gameplay=True)
-        assert main.gameplay_event_store.get_last_global_sequence() == initial_events
+        assert tuple(
+            event.event_id for event in main.gameplay_event_store.read_stream(cadence_stream)
+        ) == initial_cadence_ids
         task = main.start_population_runtime()
         assert main._population_runtime_driver.current_tick == 86400
         assert main._population_runtime_driver.world_runtime.population_hot_state.export_rows() == rows
         await task
         assert main._population_runtime_driver.current_tick == 172800
-        assert main.gameplay_event_store.get_last_global_sequence() == initial_events + 1
+        cadence_ids = tuple(
+            event.event_id for event in main.gameplay_event_store.read_stream(cadence_stream)
+        )
+        assert cadence_ids[: len(initial_cadence_ids)] == initial_cadence_ids
+        assert len(cadence_ids) == len(initial_cadence_ids) + 1
     finally:
         await main._shutdown_population_runtime()
         main.reset_runtime_state()

@@ -18,6 +18,8 @@ def test_daily_rhythm_declares_fact_types_and_phase_machine():
     assert DailyRhythmRuntime.phase_at(6 * 3_600) == "afternoon"
     assert DailyRhythmRuntime.phase_at(12 * 3_600) == "evening"
     assert DailyRhythmRuntime.phase_at(18 * 3_600) == "night"
+    assert DailyRhythmRuntime.ACTIVITY_PHASE_MACHINE_ID == "daily_rhythm.activity_phase"
+    assert DailyRhythmRuntime.activity_phase_states() == ("morning", "afternoon", "evening", "night")
 
 
 def test_daily_rhythm_runtime_publishes_initialization_and_updates():
