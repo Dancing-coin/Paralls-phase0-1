@@ -2227,9 +2227,15 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         scope_resolver=siming_scope_for_event,
     )
     # TODO: Q2 (05-Owner重构影响评估.md 第三章)
-    #   Heavenly Graph 用 "*" 通配订阅全部 gameplay 事件，应改成按 FactType 订阅。
-    #   revision 混推 max(payload_revision, producer_ts)。
-    #   需要定：保留改 FactType，还是砍掉直接用 OwnerFactQuery。
+    #   决策：A（短期）+ C（长期路线图）
+    #   短期（Phase 0-1）：
+    #     - 改 "*" 通配为按 FactType 枚举订阅
+    #     - authority_graph_projector.py:22-32 前缀表改为 FactType 声明
+    #     - revision 改读真 Owner revision（不再混推 max(payload, producer_ts)）
+    #   长期（Phase 2+）：
+    #     - 迁移到混合架构：图只存边（关系），事实走 OwnerFactQuery
+    #     - 图专注"谁在哪""谁影响谁"，不存事实副本（单一真相）
+    #     - 需先完成：OwnerFactQuery 接口落地 + 图 schema 重设计
     authority_event_bus.subscribe(
         "*", authority_graph_projector.project,
         excluded_event_types=frozenset({"population_cadence_event"}),
