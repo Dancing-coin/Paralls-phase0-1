@@ -5203,7 +5203,7 @@ def _handle_envelope(
         result = embodied_controller_auth_service.bind_controller(
             enrollment,
             remote_host=connection_context.remote_host,
-            now=(100 if connection_context.connection_ref == "direct_handler" else int(time())),
+            now=(100 if connection_context.connection_ref == "direct_handler" else connection_context.observed_at),
             connection_ref=connection_context.connection_ref,
         )
         if not result.accepted or result.binding is None:
