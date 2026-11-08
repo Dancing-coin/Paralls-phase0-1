@@ -17,8 +17,14 @@ from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 
 
 class HeavenlyAuthorityEventProjector:
-    """Authority 事件图谱投影器：只派生 projection，不拥有领域事实。"""
+    """Authority 事件图谱投影器：只派生 projection，不拥有领域事实。
 
+    NOTE: Phase 2 改进（Q2）
+    当前使用字符串前缀推断 Owner domain。应改成显式的 FactType → domain 映射。
+    See: 05-待决问题与缺陷登记.md Q2
+    """
+
+    # TODO: Phase 2 改成 FactType 枚举
     DOMAIN_BY_EVENT_PREFIX = {
         "esm_result_event": "esm_world",
         "constraint_state_event": "esm_world",
