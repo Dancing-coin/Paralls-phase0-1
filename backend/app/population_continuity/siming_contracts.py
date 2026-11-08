@@ -173,7 +173,7 @@ class PopulationB0ContinuousDelta(ContinuityModel):
             ):
                 raise ValueError("b0_state_value_invalid")
             if key == "activity_phase" and value not in {
-                "rest", "routine", "routine_work", "leisure"
+                "morning", "afternoon", "evening", "night", "rest", "routine", "routine_work", "leisure"
             }:
                 raise ValueError("b0_state_value_invalid")
         if any(not isinstance(ref, str) or not ref for ref in self.due_obligation_refs):

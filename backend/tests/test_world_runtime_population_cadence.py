@@ -42,6 +42,26 @@ def test_world_runtime_builds_replayable_population_cadence_from_committed_world
     assert cadence.base_checkpoint_digest.startswith("sha256:")
 
 
+def test_world_runtime_emits_daily_rhythm_owner_events_at_initialization_and_confirmation() -> None:
+    from app.services.authority_event_bus import InMemoryAuthorityEventBus
+
+    bus = InMemoryAuthorityEventBus()
+    store = GameplayEventStore()
+    runtime = WorldContinuityRuntime(store=store, mode=_mode(), event_bus=bus, owner_store=store)
+    initialized = bus.list_events()
+    assert len(initialized) == 12
+    assert all(event.event_type == "daily_rhythm.initialized" for event in initialized)
+    assert len(store.read_events()) == 12
+    runtime.resume()
+    cadence = runtime.build_population_cadence(window_start=0, window_end=3_600)
+    runtime.build_population_projections(cadence)
+    runtime.confirm_population_cadence(cadence)
+    updates = [event for event in bus.list_events() if event.event_type == "daily_rhythm.state_updated"]
+    assert len(updates) == 12
+    assert len(store.read_events()) == 25  # Includes the committed population.world.resume event.
+    assert updates[0].payload["state"]["fatigue"] == 0.16
+
+
 def test_world_runtime_cadence_uses_revision_heads_without_scanning_history() -> None:
     store = GameplayEventStore()
     runtime = WorldContinuityRuntime(store=store, mode=_mode())

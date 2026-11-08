@@ -5,6 +5,8 @@ from functools import lru_cache
 from types import MappingProxyType
 from typing import Mapping
 
+from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime
+
 
 SECONDS_PER_HOUR = 3_600
 SECONDS_PER_DAY = 86_400
@@ -21,18 +23,12 @@ class B0ContinuousResult:
     due_ticks: tuple[int, ...]
 
 
-def _phase_at(tick: int) -> str:
-    local = tick % SECONDS_PER_DAY
-    if local < 6 * SECONDS_PER_HOUR:
-        return "rest"
-    if local < 18 * SECONDS_PER_HOUR:
-        return "routine_work"
-    return "leisure"
+_phase_at = DailyRhythmRuntime.phase_at
 
 
 def _next_phase_boundary(tick: int) -> int:
     day_start = tick - tick % SECONDS_PER_DAY
-    for offset in (6 * SECONDS_PER_HOUR, 18 * SECONDS_PER_HOUR, SECONDS_PER_DAY):
+    for offset in (6 * SECONDS_PER_HOUR, 12 * SECONDS_PER_HOUR, 18 * SECONDS_PER_HOUR, SECONDS_PER_DAY):
         boundary = day_start + offset
         if boundary > tick:
             return boundary
@@ -40,7 +36,7 @@ def _next_phase_boundary(tick: int) -> int:
 
 
 def _fatigue_after(value: float, from_tick: int, to_tick: int) -> float:
-    rates = {"rest": -0.04, "routine_work": 0.02, "leisure": -0.01}
+    rates = {"morning": -0.04, "afternoon": 0.02, "evening": 0.02, "night": -0.01}
     cursor = from_tick
     result = value
     while cursor < to_tick:

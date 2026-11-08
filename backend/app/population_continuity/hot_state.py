@@ -18,10 +18,8 @@ HOT_FIELDS = frozenset(
         "starvation_credit",
     }
 )
-# TODO: Q1 (05-Owner重构影响评估.md 第三章)
-#   这 6 个字段无 Owner 归属，直接写入 B0 热表。
-#   引入分层后会成为"双真相 + revision 冲突"。
-#   需要定：这些字段分配给哪个 Owner（现有 or 新建）。
+# daily_rhythm_runtime now publishes the canonical event stream; this table remains
+# a compatibility projection until OwnerFactQuery is available.
 
 
 class _ReadOnlyRow(dict[str, object]):
@@ -316,7 +314,7 @@ class PopulationHotState:
     def _default_row() -> dict[str, object]:
         return {
             "last_update_tick": 0,
-            "activity_phase": "rest",
+            "activity_phase": "morning",
             "fatigue": 0.2,
             "need_pressure": 0.1,
             "next_due_tick": 21_600,
@@ -339,7 +337,7 @@ class PopulationHotState:
                 or not 0.0 <= float(value) <= 1.0
             ):
                 raise ValueError("hot_state_value_invalid")
-            if key == "activity_phase" and value not in {"rest", "routine", "routine_work", "leisure"}:
+            if key == "activity_phase" and value not in {"morning", "afternoon", "evening", "night", "rest", "routine", "routine_work", "leisure"}:
                 raise ValueError("hot_state_value_invalid")
 
 

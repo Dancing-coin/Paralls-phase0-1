@@ -136,6 +136,36 @@ def test_application_authority_bus_projects_esm_event_to_shared_graph(tmp_path: 
         main.settings = config_module.Settings(heavenly_graph_path=previous_path)
 
 
+def test_application_authority_bus_does_not_project_daily_rhythm_owner_events(tmp_path: Path) -> None:
+    previous_path = main.settings.heavenly_graph_path
+    main.settings = config_module.Settings(
+        heavenly_graph_path=str(tmp_path / "daily-rhythm.sqlite3"),
+        siming_heavenly_mode="off",
+    )
+    main.reset_runtime_state()
+    try:
+        from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime
+
+        DailyRhythmRuntime(main.authority_event_bus).initialize("char_a")
+        nodes = main.heavenly_graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=HeavenlyGraphScope(
+                    world_id="world:demo",
+                    session_id="session:demo",
+                    story_branch_id="branch:main",
+                    room_id="room:population",
+                    scene_id="scene:population",
+                ),
+                valid_at=0,
+                node_types=["causal_event"],
+            )
+        )
+        assert all(node.provenance.source_ref != "daily_rhythm.initialized:char_a:0:0" for node in nodes)
+    finally:
+        main.close_runtime_resources()
+        main.settings = config_module.Settings(heavenly_graph_path=previous_path)
+
+
 def test_authority_correction_projection_retains_correction_lineage(tmp_path: Path) -> None:
     graph = SQLiteHeavenlyGraphAdapter(tmp_path / "authority-correction.sqlite3")
     projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _event: _scope())

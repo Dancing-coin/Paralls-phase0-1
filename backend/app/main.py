@@ -726,7 +726,7 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
     if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
         return None
     mode = _bakery_population_mode()
-    world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster)
+    world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster, event_bus=authority_event_bus)
     world_stream_ref = f"world:{mode.world_ref}"
     clock_profile = population_clock_profile(settings.population_runtime_profile)
     window_size = int(clock_profile["window_ticks"])
@@ -2238,7 +2238,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     #     - 需先完成：OwnerFactQuery 接口落地 + 图 schema 重设计
     authority_event_bus.subscribe(
         "*", authority_graph_projector.project,
-        excluded_event_types=frozenset({"population_cadence_event"}),
+        excluded_event_types=frozenset({"population_cadence_event", "daily_rhythm.initialized", "daily_rhythm.state_updated"}),
     )
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)

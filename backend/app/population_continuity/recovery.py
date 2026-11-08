@@ -82,7 +82,7 @@ class RecoveryActor(_RecoveryModel):
     actor_id: str = Field(min_length=1)
     revision: int = Field(ge=0)
     last_update_tick: int = Field(ge=0)
-    activity_phase: Literal["rest", "routine", "routine_work", "leisure"]
+    activity_phase: Literal["morning", "afternoon", "evening", "night", "rest", "routine", "routine_work", "leisure"]
     fatigue: float = Field(ge=0, le=1, allow_inf_nan=False)
     need_pressure: float = Field(ge=0, le=1, allow_inf_nan=False)
     next_due_tick: int = Field(ge=0)

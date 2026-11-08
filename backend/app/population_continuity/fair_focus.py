@@ -10,10 +10,9 @@ This module supplies the missing loop: it ranks by accumulated credit, resets th
 credit of whoever was actually served, and exposes coverage/starvation metrics so
 "nobody starved" is a measurable claim instead of an assumption.
 
-Phase 2 Work (Q1): This module manages starvation_credit from HOT_FIELDS without
-an explicit Owner assignment. When Q1 is resolved (B0 fields assigned to an Owner),
-this module should be updated to source credit from the Owner's event log rather
-than the direct HOT_FIELDS dictionary.
+The B0 starvation credit is projected by daily_rhythm_runtime. FairFocusQueue's
+independent scheduler credit remains local; OwnerFactQuery is required before it
+can read canonical daily rhythm state.
 See: 05-待决问题与缺陷登记.md Q1
 """
 
