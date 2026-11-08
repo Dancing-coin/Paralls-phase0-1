@@ -37,6 +37,10 @@ class SimingInterventionPolicy:
             reasons.append("unknown_fact_reference")
 
         if candidate.target_actor_id:
+            # TODO: S6 (05-待决问题与缺陷登记.md - 司命断点)
+            #   Eligibility check currently only handles target_actor_id.
+            #   Phase 2: extend to non-actor entities (environment_id, object_id)
+            #   via unified entity eligibility registry.
             if candidate.target_actor_id in snapshot.blocked_actor_ids:
                 reasons.append("actor_not_eligible")
             elif candidate.target_actor_id not in snapshot.eligible_actor_ids:

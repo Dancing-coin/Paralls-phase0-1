@@ -19,12 +19,24 @@ from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 class HeavenlyAuthorityEventProjector:
     """Authority 事件图谱投影器：只派生 projection，不拥有领域事实。
 
-    NOTE: Phase 2 改进（Q2）
-    当前使用字符串前缀推断 Owner domain。应改成显式的 FactType → domain 映射。
-    See: 05-待决问题与缺陷登记.md Q2
+    NOTE: S3 断点（05-Owner重构影响评估.md 第四章断点清单）
+    当前实现：字符串前缀推断 Owner domain（过渡期方案）
+
+    短期改进（Q2-A）：
+      - DOMAIN_BY_EVENT_PREFIX 保持字典形式
+      - 添加验证：启动时检查前缀覆盖率（所有 gameplay 事件都有映射）
+      - revision 改读真 Owner revision（见 line 57-61）
+
+    长期目标（Q2-C，Phase 2+）：
+      - 改为 FactType 枚举订阅（main.py:2233 的 "*" 改为具体类型列表）
+      - 前缀表换成 FactType → domain 契约声明
+      - 图只存边（关系），事实走 OwnerFactQuery
+
+    See: docs/reference/phase1-siming/Q1-Q2-decisions.md
     """
 
-    # TODO: Phase 2 改成 FactType 枚举
+    # TODO: S3 短期改进 - 添加启动验证
+    # TODO: S3 长期 - 换成 FactType 枚举映射（Phase 2）
     DOMAIN_BY_EVENT_PREFIX = {
         "esm_result_event": "esm_world",
         "constraint_state_event": "esm_world",

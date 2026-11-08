@@ -43,6 +43,12 @@ class StrictMemoryModel(BaseModel):
 
 
 class WorldFactMemoryEntry(StrictMemoryModel):
+    """World fact memory entry for Siming's Heavenly Memory.
+
+    TODO: S5 (05-待决问题与缺陷登记.md - 司命断点)
+      Missing fact_type_ref field. Currently only stores generic state_key/state_value.
+      In Phase 2, add fact_type_ref to map to Owner FactType declarations.
+    """
     domain: Literal["world_fact"] = "world_fact"
     entry_id: str
     world_anchor_id: str
