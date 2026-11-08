@@ -43,11 +43,23 @@ _BRANCH: GraphVisibilityScope = "branch_only"
 class HeavenlyNodeTypeRegistry:
     """Deterministic registry for the first-version Heavenly Graph node types.
 
-    TODO: S4 (05-待决问题与缺陷登记.md - 司命断点)
-      These node_type rules are hardcoded. In Phase 2, should be replaced with
-      declarative FactType → GraphNodeType mapping from the Owner domain.
+    NOTE: S4 断点（05-待决问题与缺陷登记.md 第四章断点清单）
+    当前实现：硬编码 node_type 注册表（过渡期方案）
+
+    短期方案（Q2-A）：
+      - DEFAULT_RULES 保持 dict[str, _NodeRule] 形式
+      - 这是显式的类型→规则映射，不是推断
+      - node_type 值需与 Owner domain 对齐（但不依赖 Owner 注册）
+
+    长期目标（Q2-C，Phase 2+）：
+      - 改为 FactType → GraphNodeType 声明式映射
+      - node_type 由 Owner domain 的 FactType registry 统一提供
+      - 图规则从 FactType metadata 派生
+
+    See: docs/reference/phase1-siming/Q1-Q2-decisions.md
     """
 
+    # TODO: S4 长期 - 改为 FactType → GraphNodeType 声明式映射（Phase 2）
     DEFAULT_RULES: dict[str, _NodeRule] = {
         "siming_admission": _NodeRule((_SIMING,), ("projection",), (_INTERNAL,)),
         "world_fact": _NodeRule((_SIMING, _RESOURCE), ("fact",), (_PUBLIC, _AUTHORITY, _BRANCH)),

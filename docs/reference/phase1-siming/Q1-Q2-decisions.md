@@ -11,7 +11,9 @@
 
 ### 决策
 
-**选 A：新建 `daily_rhythm_runtime` Owner**
+**调整：不动 Owner，司命自己管理这 6 个字段**
+
+（原决策 A "新建 daily_rhythm_runtime" 被否决，原因：不要改 Owner 设计）
 
 ### 六个字段
 

@@ -37,10 +37,20 @@ class SimingInterventionPolicy:
             reasons.append("unknown_fact_reference")
 
         if candidate.target_actor_id:
-            # TODO: S6 (05-待决问题与缺陷登记.md - 司命断点)
-            #   Eligibility check currently only handles target_actor_id.
-            #   Phase 2: extend to non-actor entities (environment_id, object_id)
-            #   via unified entity eligibility registry.
+            # NOTE: S6 断点（05-待决问题与缺陷登记.md 第四章断点清单）
+            # 当前实现：资格判定只检查 target_actor_id（过渡期方案）
+            #
+            # 短期方案（Q2-A）：
+            #   - 保持 actor-only 判定
+            #   - environment_id/object_id 不走资格检查（由 ESM/Owner 自己验证）
+            #
+            # 长期目标（Q2-C，Phase 2+）：
+            #   - 扩展到非角色实体（environment_id, object_id）
+            #   - 统一 entity eligibility registry
+            #   - 资格判定由 Owner domain 提供，不在司命硬编码
+            #
+            # See: docs/reference/phase1-siming/Q1-Q2-decisions.md
+            # TODO: S6 长期 - 改为统一 entity eligibility registry（Phase 2）
             if candidate.target_actor_id in snapshot.blocked_actor_ids:
                 reasons.append("actor_not_eligible")
             elif candidate.target_actor_id not in snapshot.eligible_actor_ids:
