@@ -2221,13 +2221,14 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
     _build_siming_cognition(siming_event_pipeline)
-    for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
+    for event_type in SimingEventConsumer.ALLOWED_FACT_TYPES:
         if (event_type == "population_cadence_event" and type(authority_event_bus) is InMemoryAuthorityEventBus
                 and _handle_siming_authority_event is _NATIVE_SIMING_AUTHORITY_HANDLER):
             authority_event_bus._subscribe_prepared_population(
                 _handle_siming_authority_event, _handle_prepared_siming_population)
         else:
             authority_event_bus.subscribe(event_type, _handle_siming_authority_event)
+    authority_event_bus.subscribe("siming_staging_ack", _handle_siming_authority_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     authority_graph_projector = HeavenlyAuthorityEventProjector(
