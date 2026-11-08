@@ -2226,6 +2226,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         heavenly_graph,
         scope_resolver=siming_scope_for_event,
     )
+    # TODO: Q2 (05-Owner重构影响评估.md 第三章)
+    #   Heavenly Graph 用 "*" 通配订阅全部 gameplay 事件，应改成按 FactType 订阅。
+    #   revision 混推 max(payload_revision, producer_ts)。
+    #   需要定：保留改 FactType，还是砍掉直接用 OwnerFactQuery。
     authority_event_bus.subscribe(
         "*", authority_graph_projector.project,
         excluded_event_types=frozenset({"population_cadence_event"}),

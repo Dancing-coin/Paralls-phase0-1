@@ -18,6 +18,10 @@ HOT_FIELDS = frozenset(
         "starvation_credit",
     }
 )
+# TODO: Q1 (05-Owner重构影响评估.md 第三章)
+#   这 6 个字段无 Owner 归属，直接写入 B0 热表。
+#   引入分层后会成为"双真相 + revision 冲突"。
+#   需要定：这些字段分配给哪个 Owner（现有 or 新建）。
 
 
 class _ReadOnlyRow(dict[str, object]):

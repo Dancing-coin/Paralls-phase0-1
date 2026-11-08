@@ -9,6 +9,9 @@ feedback loop.
 This module supplies the missing loop: it ranks by accumulated credit, resets the
 credit of whoever was actually served, and exposes coverage/starvation metrics so
 "nobody starved" is a measurable claim instead of an assumption.
+
+NOTE: This module manages starvation_credit from HOT_FIELDS without an explicit
+Owner assignment. See Q1 in 05-待决问题与缺陷登记.md for context.
 """
 
 from __future__ import annotations
