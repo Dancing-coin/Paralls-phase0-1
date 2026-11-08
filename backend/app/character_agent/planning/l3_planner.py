@@ -1833,7 +1833,7 @@ class CharacterAgentL3Service:
             "speak_public": "speak_public",
             "self_protect": "physiology_hint",
             "short_punch": "short_punch",
-            "stay_silent": "observe_target",
+            "stay_silent": "observe",
         }
         return mapping.get(candidate, "observe_target")
 
