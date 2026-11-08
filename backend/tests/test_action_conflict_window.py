@@ -37,7 +37,6 @@ EVENT_TYPES = (
     "gameplay.conflict.encounter_started",
     "gameplay.conflict.action_window_resolved",
     "gameplay.conflict.control_changed",
-    "gameplay.conflict.terminal_outcome_recorded",
     "gameplay.conflict.encounter_closed",
 )
 
@@ -87,8 +86,7 @@ def _registry() -> P5PolicyRegistry:
                 ("encounter-started", "4"),
                 ("window-resolved", "5"),
                 ("control-changed", "6"),
-                ("terminal-outcome-recorded", "7"),
-                ("encounter-closed", "8"),
+                ("encounter-closed", "7"),
             )
         ),
         event_namespaces=(
@@ -112,7 +110,6 @@ def _registry() -> P5PolicyRegistry:
                     "schema:p5:action-window:encounter-started",
                     "schema:p5:action-window:window-resolved",
                     "schema:p5:action-window:control-changed",
-                    "schema:p5:action-window:terminal-outcome-recorded",
                     "schema:p5:action-window:encounter-closed",
                 ),
                 strict=True,
@@ -278,7 +275,7 @@ def test_action_window_duplicate_replays_without_new_write() -> None:
     assert first.committed is True
     assert second.committed is True
     assert second.idempotency_status == "duplicate_replayed"
-    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 5
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 4
 
 
 def test_action_window_changed_duplicate_is_zero_write() -> None:
@@ -306,7 +303,7 @@ def test_action_window_changed_duplicate_is_zero_write() -> None:
     assert first.committed is True
     assert changed.committed is False
     assert changed.error_code == "action_window_idempotency_reused"
-    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 5
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 4
 
 
 def test_action_window_role_scope_and_source_revision_reject_without_partial_append() -> None:
@@ -357,7 +354,7 @@ def test_action_window_facade_rejects_changed_duplicate_and_private_evidence() -
     )
     assert not changed.committed
     assert changed.error_code == "action_window_idempotency_reused"
-    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 5
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 4
 
     private_intent = intent.model_copy(
         update={
@@ -368,7 +365,7 @@ def test_action_window_facade_rejects_changed_duplicate_and_private_evidence() -
         }
     )
     private = authority.resolve_action_window(
-        command=_command().model_copy(update={"idempotency_key": "idempotency:private", "expected_revisions": {EVENT_STREAM: 5}}),
+        command=_command().model_copy(update={"idempotency_key": "idempotency:private", "expected_revisions": {EVENT_STREAM: 4}}),
         intent=private_intent,
         graph=_graph(),
         spatial_snapshot=_snapshot(),
@@ -377,4 +374,4 @@ def test_action_window_facade_rejects_changed_duplicate_and_private_evidence() -
     )
     assert not private.committed
     assert private.error_code == "action_window_private_evidence_leaked"
-    assert len(store.read_events()) == 6
+    assert len(store.read_events()) == 5
