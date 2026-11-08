@@ -58,6 +58,9 @@ class DailyRhythmRuntime:
         if self._store is not None:
             stream_id = f"daily-rhythm:{actor_id}"
             command_id = event_id
+            existing = self._store.get_by_idempotency("daily_rhythm_runtime", event_id)
+            if existing is not None and existing.committed and existing.committed_event_ids:
+                return
             batch = build_atomic_event_batch(
                 command_id=command_id,
                 principal_ref="daily_rhythm_runtime",

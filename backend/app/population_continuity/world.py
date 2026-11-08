@@ -68,7 +68,8 @@ class WorldContinuityRuntime:
         self._daily_rhythm = DailyRhythmRuntime(event_bus, store=owner_store) if event_bus is not None else None
         if self._daily_rhythm is not None:
             for actor_id in self.roster.actor_ids:
-                self._daily_rhythm.initialize(actor_id)
+                if owner_store is None or owner_store.get_stream_head(f"daily-rhythm:{actor_id}") == 0:
+                    self._daily_rhythm.initialize(actor_id)
         from .recovery import population_kernel_digest
         self._population_kernel_digest = population_kernel_digest()
         self._cadence_cache: dict[tuple[object, ...], PopulationCadenceInput] = {}
