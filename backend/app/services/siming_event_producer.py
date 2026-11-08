@@ -145,6 +145,8 @@ class SimingEventProducer:
             return "siming.visual_observability_request"
         if output.selected_path == "l3_highlight_path":
             return "siming.presentation_highlight_request"
+        # S7: environment_change_path routes to ESM (not dead despite the name)
+        # Routes to "environment_request" but target is ["esm"]. Clarify in Phase 2.
         if output.selected_path == "environment_change_path":
             return "siming.environment_request"
         if (
