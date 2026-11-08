@@ -1277,6 +1277,10 @@ class EconomyAuthorityService:
         result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
         if result is None:
             return self._rejected_append(command_id, "idempotency_record_missing_result")
+        batch = self._store.get_transaction(result.transaction_id)
+        if (batch is None
+                or tuple(event.event_id for event in batch.events) != tuple(result.committed_event_ids)):
+            return self._rejected_append(command_id, "idempotency_key_reused")
         return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
     @staticmethod
     def assess_tax_due(*, taxable_amount_minor:int, tax_rate_basis_points:int, evidence_refs:tuple[str,...])->int:
