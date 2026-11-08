@@ -1,5 +1,6 @@
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate
 from app.services.siming_policy import SimingInterventionPolicy
+from app.services.siming_policy import EntityEligibilityRegistry
 
 
 def make_snapshot(**overrides: object) -> FairnessStateSnapshot:
@@ -116,3 +117,28 @@ def test_policy_accepts_environment_request_with_esm_validated_tag() -> None:
 
     assert result.accepted is True
     assert "established_fact_visible" in result.reasons
+
+
+def test_policy_requires_registered_environment_and_object_eligibility():
+    environment = make_candidate(target_actor_id=None, target_environment_id="env_lamp")
+    object_candidate = make_candidate(target_actor_id=None, target_object_id="obj_letter")
+    snapshot = make_snapshot()
+    assert "environment_not_eligible" in SimingInterventionPolicy().evaluate(environment, snapshot=snapshot).reasons
+    assert "object_not_eligible" in SimingInterventionPolicy().evaluate(object_candidate, snapshot=snapshot).reasons
+
+
+def test_policy_accepts_registered_environment_and_object_eligibility():
+    snapshot = make_snapshot(eligible_environment_ids=["env_lamp"], eligible_object_ids=["obj_letter"])
+    environment = make_candidate(target_actor_id=None, target_environment_id="env_lamp")
+    object_candidate = make_candidate(target_actor_id=None, target_object_id="obj_letter")
+    assert SimingInterventionPolicy().evaluate(environment, snapshot=snapshot).accepted
+    assert SimingInterventionPolicy().evaluate(object_candidate, snapshot=snapshot).accepted
+
+
+def test_entity_eligibility_registry_covers_all_target_kinds():
+    registry = EntityEligibilityRegistry(
+        actors=("char_b",), environments=("env_lamp",), objects=("obj_letter",)
+    )
+    assert registry.is_eligible("actor", "char_b")
+    assert registry.is_eligible("environment", "env_lamp")
+    assert registry.is_eligible("object", "obj_letter")
