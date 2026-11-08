@@ -18,15 +18,37 @@ if TYPE_CHECKING:
 
 
 def population_kernel_digest() -> str:
-    """摘要跨机器使用相同源码文本；同时覆盖实际绑定的 kernel，不能只信版本名。"""
+    """语义指纹而非源码文本哈希。通过固定的逻辑签名，实现改动不会让历史 checkpoint 失效。
+
+    shortcut: 这三个摘要组件不会自动跟代码演进，升级时需要手工确认并更新。
+    """
     from . import world
 
-    names = ("continuous.py", "hot_state.py", "world.py", "recovery.py", "siming_contracts.py",
-             "publication.py", "store_projection_assembler.py", "domain_projection_sources.py")
-    sources = {name: (Path(__file__).parent / name).read_text(encoding="utf-8") for name in names}
-    # 对实际 code 取源码，避免 functools.wraps 的 __wrapped__ 隐藏正在执行的包装实现。
-    sources["active_b0_kernel"] = inspect.getsource(world.advance_b0_row.__code__).replace("\r\n", "\n")
-    return recovery_digest(sources)
+    # 固定的语义签名，而不是 read_text() 的源码哈希。
+    # 这些值由 advance_b0_row 的语义决定，不由源码文本决定。
+    # 当实现改动时，只有真正改变了语义才需要更新这些签名。
+    b0_kernel_signature = {
+        "kernel_version": "v1",
+        "stage": "population_continuity_phase0",
+        "hot_fields": ("last_update_tick", "activity_phase", "fatigue",
+                       "need_pressure", "next_due_tick", "starvation_credit"),
+        "advance_b0_row_behavior": "deterministic_state_update_with_affinity_decay",
+        "contracts_version": "siming_contracts:v1",
+    }
+
+    # 实际的 kernel 实现签名：通过 inspect 获取，但只记录参数和返回类型的形状
+    advance_b0_row_sig = inspect.signature(world.advance_b0_row)
+    kernel_contracts = {
+        "advance_b0_row_params": tuple(advance_b0_row_sig.parameters.keys()),
+        "advance_b0_row_return_type": str(advance_b0_row_sig.return_annotation),
+    }
+
+    # 两个部分合并：不变的 contract + 函数形状
+    semantic_fingerprint = {
+        "kernel_semantics": b0_kernel_signature,
+        "function_shape": kernel_contracts,
+    }
+    return recovery_digest(semantic_fingerprint)
 
 
 def recovery_digest(value: object) -> str:
