@@ -1244,7 +1244,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             # closed/read-failed diagnostic when recovering a Durable store.
             if str(exc) in {"gameplay_snapshot_closed", "gameplay_snapshot_json_codec_invalid",
                             "gameplay_snapshot_json_codec_unsupported"}:
-                raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
+                raise
             raise
         except (ValueError, TypeError) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
