@@ -6097,11 +6097,60 @@ def _handle_envelope(
     route = runtime.accept_player_input(event)
     if (route["route"] == "esm_service" and isinstance(event, InteractIntent)
             and event.target_object_id in {"obj_plaque", "obj_worktable"}):
-        return [{"message_type": "ack", "payload": {
+        rejected = [{"message_type": "ack", "payload": {
             "accepted": False, "source_type": envelope.message_type,
             "route": "esm_service", "request_id": event.request_id,
             "error_code": "object_interaction_source_unavailable",
         }}]
+        binding = embodied_controller_auth_service.resolve_controller_binding(
+            actor_id=event.actor_id, connection_ref=connection_context.connection_ref)
+        scopes = [scope for scope in settings.embodied_spatial_scopes
+                  if (scope.actor_id, scope.room_id, scope.scene_id, scope.zone_id)
+                  == (event.actor_id, event.room_id, event.scene_id, event.zone_id)]
+        if (not binding.accepted or binding.binding is None or len(scopes) != 1
+                or not event.request_id or event.execution_contract_ref or event.turn_id
+                or (event.target_object_id, event.interaction_type) not in {
+                    ("obj_plaque", "inspect"), ("obj_worktable", "use"),
+                    ("obj_worktable", "finish_use")}):
+            return rejected
+        scope = scopes[0]
+        identity = hashlib.sha256(json.dumps(
+            [binding.binding.binding_id, event.request_id], separators=(",", ":")
+        ).encode()).hexdigest()
+        canonical = event.model_copy(update={"turn_id": f"player-object:{identity}",
+                                             "execution_contract_ref": f"player-object:{identity}"})
+        request = esm_service.build_action_request(canonical)
+        try:
+            prior = esm_service.find_object_settlement(canonical, action_request=request)
+            policy = esm_service.interaction_policy_for(
+                canonical.target_object_id, canonical.interaction_type, room_id=canonical.room_id,
+                scene_id=canonical.scene_id, zone_id=canonical.zone_id, actor_id=canonical.actor_id)
+            if prior is None:
+                evidence = embodied_spatial_source.read(
+                    actor_id=scope.actor_id, room_id=scope.room_id, scene_id=scope.scene_id,
+                    scene_instance_id=scope.scene_instance_id, zone_id=scope.zone_id,
+                    scene_revision=scope.scene_revision, connection_ref=connection_context.connection_ref)
+                result, receipt = esm_service.settle_object_interaction(
+                    canonical, action_request=request, actor_position=evidence.position,
+                    read_stream_revisions=evidence.read_stream_revisions)
+            else:
+                result, receipt = prior
+        except (ValueError, KeyError):
+            return rejected
+        messages = [{"message_type": "ack", "payload": {
+            "accepted": True, "source_type": envelope.message_type, "route": "esm_service",
+            "request_id": event.request_id,
+        }}, _as_world_result_envelope(result.model_dump(mode="json"))]
+        if prior is None and receipt is not None and receipt.committed and policy is not None:
+            state = esm_service.emit_object_state_result(
+                room_id=canonical.room_id, scene_id=canonical.scene_id, zone_id=canonical.zone_id,
+                actor_id=canonical.actor_id, target_object_id=canonical.target_object_id,
+                previous_state=str(policy["previous_state"]), current_state=str(policy["current_state"]),
+                machine_id=str(policy["machine_id"]), producer_ts=result.producer_ts + 1,
+                request_ref=result.request_ref, causation_id=result.causation_id,
+                correlation_id=result.correlation_id, settlement_id=receipt.transaction_id)
+            messages.append(_as_world_result_envelope(state.model_dump(mode="json")))
+        return _finalize_outbound_messages(messages)
     activated_dialogue_response: DialogueResponse | None = None
     if isinstance(event, DialogueSubmit) and route["route"] == "character_service":
         def run_dialogue_cognition() -> None:

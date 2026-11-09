@@ -222,13 +222,15 @@ class EmbodiedSpatialSource:
             return receipt
 
     def read(self, *, actor_id: str, room_id: str, scene_id: str, scene_instance_id: str,
-             zone_id: str, scene_revision: int) -> SpatialSourceEvidence:
+             zone_id: str, scene_revision: int, connection_ref: str | None = None) -> SpatialSourceEvidence:
         scope = self._scope(_ScopeIdentity(actor_id=actor_id, room_id=room_id, scene_id=scene_id,
             scene_instance_id=scene_instance_id, zone_id=zone_id, scene_revision=scene_revision))
         event = self._latest(actor_id)
         if event is None:
             raise ValueError("spatial_source_missing")
         payload = event.payload
+        if connection_ref is not None and payload["connection_ref"] != connection_ref:
+            raise ValueError("spatial_source_connection_mismatch")
         if payload["scope_digest"] != _digest(scope.model_dump(mode="json")):
             raise ValueError("spatial_scope_mismatch")
         if payload["process_epoch"] != self._process_epoch:
