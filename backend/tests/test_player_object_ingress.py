@@ -67,6 +67,11 @@ def test_real_websocket_bound_sample_and_object_retry(configured):
         assert websocket.receive_json()["payload"]["accepted"]
         bound = websocket.receive_json()
         assert bound["message_type"] == "embodied_controller_bound"
+        websocket.send_json({"message_type": "embodied_spatial_resume_request", "payload": {"actor_id": "char_a"}})
+        resume = websocket.receive_json()
+        assert resume["message_type"] == "embodied_spatial_resume_result"
+        assert resume["payload"]["accepted"] and resume["payload"]["position"] == [0.0, 0.0, 0.0]
+        assert resume["payload"]["connection_epoch"] == bound["payload"]["connection_epoch"]
         websocket.send_json({"message_type": "embodied_spatial_sample", "payload": payload(
             SimpleNamespace(connection_epoch=bound["payload"]["connection_epoch"]))})
         admitted = websocket.receive_json()
