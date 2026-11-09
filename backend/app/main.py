@@ -6095,6 +6095,13 @@ def _handle_envelope(
 
     event = _parse_player_input(envelope.payload)
     route = runtime.accept_player_input(event)
+    if (route["route"] == "esm_service" and isinstance(event, InteractIntent)
+            and event.target_object_id in {"obj_plaque", "obj_worktable"}):
+        return [{"message_type": "ack", "payload": {
+            "accepted": False, "source_type": envelope.message_type,
+            "route": "esm_service", "request_id": event.request_id,
+            "error_code": "object_interaction_source_unavailable",
+        }}]
     activated_dialogue_response: DialogueResponse | None = None
     if isinstance(event, DialogueSubmit) and route["route"] == "character_service":
         def run_dialogue_cognition() -> None:

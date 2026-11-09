@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
@@ -1409,6 +1411,21 @@ def test_door_close_fails_closed_until_its_physical_path_is_implemented() -> Non
         zone_id="zone_focus",
         target_object_id="obj_archive_door",
     ) == "closed"
+
+
+@pytest.mark.parametrize("action", ["use", "finish_use"])
+def test_legacy_worktable_interaction_rejects_before_any_object_commit(action) -> None:
+    _reset_runtime_state_with_local_character_model()
+    before = main.gameplay_event_store.get_last_global_sequence()
+    result = main._handle_envelope(Envelope(message_type="player_input", payload={
+        "player_id": "p1", "room_id": "room_demo", "actor_id": "char_c",
+        "intent_type": "interact_intent", "producer_ts": 462,
+        "target_object_id": "obj_worktable", "interaction_type": action,
+    }))
+    assert result[0]["payload"]["accepted"] is False
+    assert result[0]["payload"]["error_code"] == "object_interaction_source_unavailable"
+    assert not any(message.get("event_type") == "object_state_result" for message in result)
+    assert main.gameplay_event_store.get_last_global_sequence() == before
 
 
 def test_worktable_finish_use_requires_the_authority_committed_engaged_state() -> None:
