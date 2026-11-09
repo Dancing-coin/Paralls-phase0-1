@@ -110,6 +110,14 @@ on Python 3.12.2 from `backend` on 2026-11-09. These are additional nodes, not
 part of the two 9,922-node runs above. Extend each set for actual callers before
 its migration; the tests do not prove all possible Decimal or equipment inputs.
 
+At test commit `8fa4bc0a6c3d561b1320b5a43ce64e2657acf75a`, those 15
+supplemental nodes were run twice using the same Python 3.12.2 environment and
+`backend` working directory. Both runs passed all 15 in identical collection
+order, with matching dependency hashes and unchanged source. The original
+results, collected node IDs, invocations and environment snapshots are in
+[supplement-8fa4bc0a.zip](supplement-8fa4bc0a.zip). These targeted runs do not
+replace a full-suite run at the later commit.
+
 The [historical source and gate analysis](original-sources-and-gates.md)
 records the v1/v2 delivery conflict and maps D2-D10 to their dependent stages.
 Its relative links refer to the original Paralls-docs repository. These
