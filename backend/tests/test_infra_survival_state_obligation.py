@@ -425,6 +425,10 @@ def test_survival_owner_rejects_batch_events_diverging_from_fragment() -> None:
     forged = plan.owner_commit_batch.model_copy(update={"events": [plan.owner_commit_batch.events[0].model_copy(update={"payload": {"tampered": True}}), *plan.owner_commit_batch.events[1:]]}, deep=True)
     result = authority.commit_obligation_batch(forged)
     assert not result.committed and result.failure and result.failure.error_code == "survival_owner_commit_fragment_mismatch"
+    assert result.transaction_id == f"transaction:{forged.command_id}"
+    assert result.failure.message == "survival_owner_commit_fragment_mismatch"
+    assert result.failure.failed_stage == "survival_obligation_commit"
+    assert result.idempotency_status == "rejected" and not result.committed_event_ids
     assert len(store.read_events()) == 2
 
 
@@ -439,4 +443,8 @@ def test_survival_owner_rejects_batch_event_order_change() -> None:
     reversed_batch = plan.owner_commit_batch.model_copy(update={"events": list(reversed(plan.owner_commit_batch.events))}, deep=True)
     result = authority.commit_obligation_batch(reversed_batch)
     assert not result.committed and result.failure and result.failure.error_code == "survival_owner_commit_fragment_mismatch"
+    assert result.transaction_id == f"transaction:{reversed_batch.command_id}"
+    assert result.failure.message == "survival_owner_commit_fragment_mismatch"
+    assert result.failure.failed_stage == "survival_obligation_commit"
+    assert result.idempotency_status == "rejected" and not result.committed_event_ids
     assert len(store.read_events()) == 2

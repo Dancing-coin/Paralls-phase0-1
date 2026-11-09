@@ -301,14 +301,11 @@ class SurvivalAuthority:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        from app.gameplay.models import GameplayFailure
+        from app.gameplay.owner_runtime_base import rejected_result
 
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
-            command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="survival_obligation_commit"),
+        return rejected_result(
+            command_id=command_id, error_code=error_code,
+            stage="survival_obligation_commit", transaction_prefix="transaction",
         )
 
     def projector(self, *, checkpoint_at: int | None = None) -> SurvivalProjection:
