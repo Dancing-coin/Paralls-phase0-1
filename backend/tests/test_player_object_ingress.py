@@ -48,6 +48,56 @@ def test_bound_player_object_commit_retries_and_requires_engaged_state(configure
     assert main.gameplay_event_store.get_last_global_sequence() == before + 2
 
 
+def test_real_websocket_bound_sample_and_object_retry(configured):
+    from time import time
+    from types import SimpleNamespace
+    from fastapi.testclient import TestClient
+
+    now = int(time())
+    credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
+        actor_id="char_a", controller_instance_id="controller:websocket-object",
+        issued_at=now, expires_at=now + 60)
+    client = TestClient(main.component_app, client=("127.0.0.1", 47111))
+    with client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "embodied_controller_bind", "payload": {
+            "credential_kind": "trusted_local_launch", "credential": credential,
+            "actor_id": "char_a", "controller_instance_id": "controller:websocket-object",
+            "protocol_version": 1,
+        }})
+        assert websocket.receive_json()["payload"]["accepted"]
+        bound = websocket.receive_json()
+        assert bound["message_type"] == "embodied_controller_bound"
+        websocket.send_json({"message_type": "embodied_spatial_sample", "payload": payload(
+            SimpleNamespace(connection_epoch=bound["payload"]["connection_epoch"]))})
+        admitted = websocket.receive_json()
+        assert admitted["message_type"] == "embodied_spatial_sample_result"
+        assert admitted["payload"]["accepted"]
+        body = {"player_id": "p1", "room_id": "room_default", "scene_id": "scene_default",
+            "zone_id": "zone_default", "actor_id": "char_a", "intent_type": "interact_intent",
+            "producer_ts": 10, "target_object_id": "obj_worktable", "interaction_type": "use",
+            "request_id": "websocket:use"}
+        before = main.gameplay_event_store.get_last_global_sequence()
+        websocket.send_json({"message_type": "player_input", "payload": body})
+        messages = []
+        for _ in range(100):
+            messages.append(websocket.receive_json())
+            if messages[-1].get("event_type") == "object_state_result":
+                break
+        assert messages[0]["payload"]["accepted"]
+        assert messages[-1].get("event_type") == "object_state_result"
+        assert main.gameplay_event_store.get_last_global_sequence() == before + 1
+        websocket.send_json({"message_type": "player_input", "payload": body})
+        retry_ack = None
+        for _ in range(100):
+            message = websocket.receive_json()
+            if message["message_type"] == "ack" and message["payload"].get("request_id") == body["request_id"]:
+                retry_ack = message
+                break
+        assert retry_ack is not None and retry_ack["payload"]["accepted"]
+        assert main.gameplay_event_store.get_last_global_sequence() == before + 1
+    client.close()
+
+
 def test_another_bound_controller_cannot_borrow_spatial_sample(configured):
     first = bind()
     assert dispatch(payload(first))[0]["payload"]["accepted"]
