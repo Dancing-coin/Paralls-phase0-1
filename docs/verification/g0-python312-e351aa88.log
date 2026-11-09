@@ -1,0 +1,1088 @@
+........................................................................ [  0%]
+........................................................................ [  1%]
+........................................................................ [  2%]
+.........F................F............................................. [  2%]
+........................................................................ [  3%]
+........................................................................ [  4%]
+........................................................................ [  5%]
+........................................................................ [  5%]
+......................................................F................. [  6%]
+........................................................................ [  7%]
+........................................................................ [  7%]
+........................................................................ [  8%]
+........................................................................ [  9%]
+........................................................................ [ 10%]
+..............................FFFF...................................... [ 10%]
+........................................................................ [ 11%]
+.FFFFF.FFFFFF........................................................... [ 12%]
+........................................................................ [ 13%]
+........................................................................ [ 13%]
+........................................................................ [ 14%]
+........................................................................ [ 15%]
+.......................F................................................ [ 15%]
+........................................................................ [ 16%]
+........................................................................ [ 17%]
+........................................................................ [ 18%]
+........................................................................ [ 18%]
+........................................................................ [ 19%]
+........................................................................ [ 20%]
+........................................................................ [ 21%]
+........................................................................ [ 21%]
+........................................................................ [ 22%]
+........................................................................ [ 23%]
+........................................................................ [ 23%]
+........................................................................ [ 24%]
+........................................................................ [ 25%]
+........................................................................ [ 26%]
+........................................................................ [ 26%]
+........................................................................ [ 27%]
+........................................................................ [ 28%]
+........................................................................ [ 29%]
+........................................................................ [ 29%]
+........................................................................ [ 30%]
+.........................................F......F....................... [ 31%]
+........................................................................ [ 31%]
+........................................................................ [ 32%]
+........................................................................ [ 33%]
+........................................................................ [ 34%]
+........................................................................ [ 34%]
+........................................................................ [ 35%]
+........................................................................ [ 36%]
+........................................................................ [ 37%]
+........................................................................ [ 37%]
+........................................................................ [ 38%]
+........................................................................ [ 39%]
+........................................................................ [ 39%]
+........................................................................ [ 40%]
+............x........................................................... [ 41%]
+........................................................................ [ 42%]
+........................................................................ [ 42%]
+........................................................................ [ 43%]
+........................................................................ [ 44%]
+........................................................................ [ 45%]
+........................................................................ [ 45%]
+........................................................................ [ 46%]
+........................................................................ [ 47%]
+........................................................................ [ 47%]
+........................................................................ [ 48%]
+........................................................................ [ 49%]
+........................................................................ [ 50%]
+........................................................................ [ 50%]
+........................................................................ [ 51%]
+........................................................................ [ 52%]
+........................................................................ [ 53%]
+........................................................................ [ 53%]
+........................................................................ [ 54%]
+........................................................................ [ 55%]
+........................................................................ [ 55%]
+.....................................................F.................. [ 56%]
+........................................................................ [ 57%]
+........................................................................ [ 58%]
+........................................................................ [ 58%]
+........................................................................ [ 59%]
+........................................................................ [ 60%]
+...........................................x............................ [ 60%]
+........................................................................ [ 61%]
+........................................................................ [ 62%]
+........................................................................ [ 63%]
+........................................................................ [ 63%]
+........................................................................ [ 64%]
+........................................................................ [ 65%]
+........................................................................ [ 66%]
+........................................................................ [ 66%]
+........................................................................ [ 67%]
+........................................................................ [ 68%]
+........................................................................ [ 68%]
+........................................................................ [ 69%]
+........................................................................ [ 70%]
+........................................................................ [ 71%]
+........................................................................ [ 71%]
+.......s................................................................ [ 72%]
+........................................................................ [ 73%]
+........................................................................ [ 74%]
+........................................................................ [ 74%]
+........................................................................ [ 75%]
+........................................................................ [ 76%]
+........................................................................ [ 76%]
+...........................................F............................ [ 77%]
+........................................................................ [ 78%]
+........................................................................ [ 79%]
+........................................................................ [ 79%]
+........................................................................ [ 80%]
+........................................................................ [ 81%]
+........................................................................ [ 82%]
+........................................................................ [ 82%]
+........................................................................ [ 83%]
+........................................................................ [ 84%]
+........................................................................ [ 84%]
+........................................................................ [ 85%]
+........................................................................ [ 86%]
+........................................................................ [ 87%]
+........................................................................ [ 87%]
+........................................................................ [ 88%]
+........................................................................ [ 89%]
+........................................................................ [ 90%]
+........................................................................ [ 90%]
+........................................................................ [ 91%]
+........................................................................ [ 92%]
+........................................................................ [ 92%]
+...................................s.................................... [ 93%]
+.................F...................................................... [ 94%]
+........................................................................ [ 95%]
+........................................................................ [ 95%]
+........................................................................ [ 96%]
+........................................................................ [ 97%]
+........................................................................ [ 98%]
+...................F.................................................... [ 98%]
+........................................................................ [ 99%]
+........................................F...........                     [100%]
+================================== FAILURES ===================================
+_______ test_offline_wire_preserves_unknowns_targets_and_source_memory ________
+backend\tests\test_calibration_preclosure.py:20: in test_offline_wire_preserves_unknowns_targets_and_source_memory
+    results = [preparation.prepare_record(r, provider) for r in source["records"]]
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_calibration_preclosure.py:116: in prepare_record
+    wire = provider.build_wire_request(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\app\character_agent\gateway\laya_provider.py:71: in build_wire_request
+    raise ValueError("laya provider requires frozen candidates")
+E   ValueError: laya provider requires frozen candidates
+___________ test_all_22_repaired_budgets_equal_fixed_official_usage ___________
+backend\tests\test_calibration_repair_contracts.py:249: in test_all_22_repaired_budgets_equal_fixed_official_usage
+    provider = LayaSystemOneProvider(endpoint="http://offline.invalid", tokenizer_path=str(tokenizer),
+backend\app\character_agent\gateway\laya_provider.py:46: in __init__
+    from tokenizers import Tokenizer
+E   ModuleNotFoundError: No module named 'tokenizers'
+_ test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_under_local_only_planner _
+backend\tests\test_character_agent_runtime.py:386: in test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_under_local_only_planner
+    assert packets[0].recommended_intents[0] == "observe"
+E   AssertionError: assert 'observe_target' == 'observe'
+E     
+E     - observe
+E     + observe_target
+_____ test_runner_rejects_changed_wire_and_truth_before_any_provider_call _____
+backend\tests\test_character_development_runner.py:28: in test_runner_rejects_changed_wire_and_truth_before_any_provider_call
+    data = package()
+           ^^^^^^^^^
+backend\tests\test_character_development_runner.py:21: in package
+    return load("prepare_character_evaluation").prepare(
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+__ test_runner_uses_real_adapter_mapping_and_flushes_diagnostic_only_results __
+backend\tests\test_character_development_runner.py:50: in test_runner_uses_real_adapter_mapping_and_flushes_diagnostic_only_results
+    data = package()
+           ^^^^^^^^^
+backend\tests\test_character_development_runner.py:21: in package
+    return load("prepare_character_evaluation").prepare(
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_____ test_runner_preserves_rejected_real_response_and_does_not_grade_it ______
+backend\tests\test_character_development_runner.py:77: in test_runner_preserves_rejected_real_response_and_does_not_grade_it
+    summary = runner.run(package(), repo=REPO, output_dir=tmp_path / "evidence", endpoint="http://local-test")
+                         ^^^^^^^^^
+backend\tests\test_character_development_runner.py:21: in package
+    return load("prepare_character_evaluation").prepare(
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+___ test_runner_stops_changed_input_version_and_retains_already_issued_call ___
+backend\tests\test_character_development_runner.py:86: in test_runner_stops_changed_input_version_and_retains_already_issued_call
+    data = package()
+           ^^^^^^^^^
+backend\tests\test_character_development_runner.py:21: in package
+    return load("prepare_character_evaluation").prepare(
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_ test_preparation_materializes_frozen_frames_and_independent_reference_universe _
+backend\tests\test_character_evaluation_preparation.py:22: in test_preparation_materializes_frozen_frames_and_independent_reference_universe
+    result = preparer().prepare(REPO, FIXTURE)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_______________ test_model_input_never_contains_grading_answers _______________
+backend\tests\test_character_evaluation_preparation.py:52: in test_model_input_never_contains_grading_answers
+    baseline = module.prepare(REPO, FIXTURE)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_____________ test_final_and_independent_holdout_remain_unopened ______________
+backend\tests\test_character_evaluation_preparation.py:65: in test_final_and_independent_holdout_remain_unopened
+    assert module.prepare(REPO, FIXTURE, corpus=corpus)["final_labels_read"] is False
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_____________ test_same_authority_trajectory_cannot_cross_splits ______________
+backend\tests\test_character_evaluation_preparation.py:76: in test_same_authority_trajectory_cannot_cross_splits
+    with pytest.raises(ValueError, match="trajectory_leakage"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'trajectory_leakage'
+E     Actual message: 'source_changed:assets/characters/profiles/char_a.yaml'
+_______ test_missing_or_hidden_targets_cannot_receive_fixture_admission _______
+backend\tests\test_character_evaluation_preparation.py:84: in test_missing_or_hidden_targets_cannot_receive_fixture_admission
+    with pytest.raises(ValueError, match="fixture_target_not_visible"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'fixture_target_not_visible'
+E     Actual message: 'source_changed:assets/characters/profiles/char_a.yaml'
+________ test_abo_projection_does_not_inherit_runtime_numeric_defaults ________
+backend\tests\test_character_evaluation_preparation.py:97: in test_abo_projection_does_not_inherit_runtime_numeric_defaults
+    result = preparer().prepare(REPO, FIXTURE)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+______________ test_reference_universe_detects_compiler_omission ______________
+backend\tests\test_character_evaluation_preparation.py:121: in test_reference_universe_detects_compiler_omission
+    with pytest.raises(ValueError, match="reference_u_mismatch"):
+E   AssertionError: Regex pattern did not match.
+E     Expected regex: 'reference_u_mismatch'
+E     Actual message: 'source_changed:assets/characters/profiles/char_a.yaml'
+_______ test_fixture_profiles_have_source_evidence_without_abo_defaults _______
+backend\tests\test_character_evaluation_preparation.py:126: in test_fixture_profiles_have_source_evidence_without_abo_defaults
+    result = preparer().prepare(REPO, FIXTURE)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_____ test_authored_profile_reaches_shared_wire_without_private_backbone ______
+backend\tests\test_character_evaluation_preparation.py:135: in test_authored_profile_reaches_shared_wire_without_private_backbone
+    result = preparer().prepare(REPO, FIXTURE)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+___ test_preparation_is_repeatable_and_full_wire_matches_runtime_serializer ___
+backend\tests\test_character_evaluation_preparation.py:147: in test_preparation_is_repeatable_and_full_wire_matches_runtime_serializer
+    baseline = module.prepare(REPO, FIXTURE)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_____________ test_empty_development_selection_cannot_claim_ready _____________
+backend\tests\test_character_evaluation_preparation.py:161: in test_empty_development_selection_cannot_claim_ready
+    result = preparer().prepare(REPO, FIXTURE, splits=())
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+scripts\verification\prepare_character_evaluation.py:135: in prepare
+    _check_pins(repo, policy)
+scripts\verification\prepare_character_evaluation.py:27: in _check_pins
+    if not p.is_file() or _sha(p)!=str(pin.get('sha256','')): raise ValueError(f"source_changed:{pin.get('path','')}")
+                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   ValueError: source_changed:assets/characters/profiles/char_a.yaml
+_____________ test_l3_prepared_request_carries_frozen_mind_frame ______________
+backend\tests\test_character_mind_frame_consumers.py:47: in test_l3_prepared_request_carries_frozen_mind_frame
+    prepared = CharacterAgentL3Service().prepare_intent_plan(
+backend\app\character_agent\planning\l3_planner.py:651: in prepare_intent_plan
+    raise ValueError("mind frame turn context required")
+E   ValueError: mind frame turn context required
+__ test_shared_cut_replays_ten_domain_participants_after_cadence_and_restart __
+backend\tests\test_economy_random_replay_participant.py:332: in test_shared_cut_replays_ten_domain_participants_after_cadence_and_restart
+    assert (await _run(main, lambda: PopulationPresenceAuthority(store=main.gameplay_event_store).despawn(
+E   AssertionError: assert False
+E    +  where False = PresenceReceipt(committed=False, status='rejected', world_ref='world:bakery', character_ref='character:char_a', incarn...), revision_vector={}, idempotency_status='rejected', zero_write=True, stop_reason='presence_original_receipt_invalid').committed
+__ test_economy_temporal_application_checkpoint_tail_survives_durable_reopen __
+backend\tests\test_economy_temporal_replay_application.py:109: in test_economy_temporal_application_checkpoint_tail_survives_durable_reopen
+    assert restored.status == "verified", restored.diagnostics
+E   AssertionError: ('replay_social_participant_missing',)
+E   assert 'incomplete' == 'verified'
+E     
+E     - verified
+E     + incomplete
+_____ test_legacy_diagnostic_frame_still_prepares_without_canonical_turn ______
+backend\tests\test_mind_frame_turn_boundary.py:88: in test_legacy_diagnostic_frame_still_prepares_without_canonical_turn
+    prepared = prepare(frame(), None)
+               ^^^^^^^^^^^^^^^^^^^^^^
+backend\tests\test_mind_frame_turn_boundary.py:27: in prepare
+    return CharacterAgentL3Service().prepare_intent_plan(
+backend\app\character_agent\planning\l3_planner.py:841: in prepare_intent_plan
+    request = self._gateway.prepare_run_request(
+backend\app\character_agent\gateway\model_gateway.py:55: in prepare_run_request
+    raise ValueError("gateway requires a frozen mind frame")
+E   ValueError: gateway requires a frozen mind frame
+_____ test_bootstrap_preserves_excluded_settings_and_real_http_enrollment _____
+backend\tests\test_runtime_asgi.py:238: in test_bootstrap_preserves_excluded_settings_and_real_http_enrollment
+    with TestClient(main.app, client=('127.0.0.1', 47302)) as client:
+..\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:698: in __enter__
+    portal.call(self.wait_startup)
+..\paralls-g0-py312\Lib\site-packages\anyio\from_thread.py:340: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+..\paralls-g0-py312\Lib\site-packages\anyio\from_thread.py:265: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+..\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:733: in wait_startup
+    await receive()
+..\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:724: in receive
+    self.task.result()
+D:\python\Lib\concurrent\futures\_base.py:449: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+..\paralls-g0-py312\Lib\site-packages\anyio\from_thread.py:265: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+..\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:714: in lifespan
+    await self.app(scope, self.stream_receive.receive, self.stream_send.send)
+..\paralls-g0-py312\Lib\site-packages\fastapi\applications.py:1163: in __call__
+    await super().__call__(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\starlette\applications.py:96: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\starlette\middleware\errors.py:151: in __call__
+    await self.app(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\starlette\middleware\exceptions.py:49: in __call__
+    await self.app(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\fastapi\middleware\asyncexitstack.py:18: in __call__
+    await self.app(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\starlette\routing.py:670: in __call__
+    await self.middleware_stack(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\fastapi\routing.py:2726: in app
+    await self.lifespan(scope, receive, send)
+..\paralls-g0-py312\Lib\site-packages\starlette\routing.py:648: in lifespan
+    async with self.lifespan_context(app) as maybe_state:
+D:\python\Lib\contextlib.py:210: in __aenter__
+    return await anext(self.gen)
+           ^^^^^^^^^^^^^^^^^^^^^
+backend\app\services\runtime_asgi.py:40: in lifespan
+    await host.start()
+backend\app\services\runtime_process.py:128: in start
+    return await asyncio.shield(self._ready)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E   app.services.runtime_process.RuntimeProcessError: runtime_child_exited
+---------------------------- Captured stderr call -----------------------------
+D:\Temp\paralls-g0-py312\Lib\site-packages\fastapi\testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+
+  from starlette.testclient import TestClient as TestClient  # noqa
+
+Process game-runtime:
+
+Traceback (most recent call last):
+
+  File "D:\python\Lib\multiprocessing\process.py", line 314, in _bootstrap
+
+    self.run()
+
+  File "D:\python\Lib\multiprocessing\process.py", line 108, in run
+
+    self._target(*self._args, **self._kwargs)
+
+  File "D:\Temp\paralls-g0-b3-ingress-20261109\backend\tests\test_runtime_asgi.py", line 220, in bootstrap_secret_observation_child
+
+    runtime_child_main(*args)
+
+  File "D:\Temp\paralls-g0-b3-ingress-20261109\backend\app\services\runtime_process.py", line 559, in runtime_child_main
+
+    abandoned = asyncio.run(_run_child(command_queue, control_queue, result_queue, notification_queue, settings_json))
+
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "D:\python\Lib\asyncio\runners.py", line 194, in run
+
+    return runner.run(main)
+
+           ^^^^^^^^^^^^^^^^
+
+  File "D:\python\Lib\asyncio\runners.py", line 118, in run
+
+    return self._loop.run_until_complete(task)
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "D:\python\Lib\asyncio\base_events.py", line 685, in run_until_complete
+
+    return future.result()
+
+           ^^^^^^^^^^^^^^^
+
+  File "D:\Temp\paralls-g0-b3-ingress-20261109\backend\app\services\runtime_process.py", line 585, in _run_child
+
+    configured = config.Settings.model_validate_json(settings_json)
+
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+  File "D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py", line 782, in model_validate_json
+
+    return cls.__pydantic_validator__.validate_json(
+
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+pydantic_core._pydantic_core.ValidationError: 1 validation error for Settings
+
+physics_contact_authority_secrets
+
+  Input should be an object [type=dict_type]
+
+    For further information visit https://errors.pydantic.dev/2.13/v/dict_type
+
+_____ test_case_open_then_existing_p5_action_window_commits_on_same_store _____
+backend\tests\test_stormnight_action_loop.py:50: in test_case_open_then_existing_p5_action_window_commits_on_same_store
+    assert not [event for event in store.read_events() if event.event_type == "gameplay.conflict.terminal_outcome_recorded"]
+E   AssertionError: assert not [GameplayEvent(event_id='event:action-window:attempt:bakery-theft:1:0:4', event_type='gameplay.conflict.terminal_outco..., 'evidence_refs': ('evidence:window:1',), 'visibility_policy': 'project', 'event_kind': 'terminal_outcome_recorded'})]
+_ test_admin_auth_changing_in_runtime_queue_rejects_without_write[identity_changed] _
+backend\tests\test_world_admin_cadence_production.py:171: in test_admin_auth_changing_in_runtime_queue_rejects_without_write
+    assert response.status_code == 403, response.text
+E   AssertionError: {"committed":true,"transaction_id":"transaction:admin:queued-expiry:1","command_id":"admin:queued-expiry:1","committed_event_ids":["event:admin:queued-expiry:1:1"],"resulting_stream_revisions":{"population-cadence-revocation:world:bakery-district":1},"global_sequence_range":[9,9],"idempotency_status":"new_commit","projection_refresh_hints":[]}
+E   assert 200 == 403
+E    +  where 200 = <Response [200 OK]>.status_code
+____ test_websocket_character_agent_execution_emits_scheduling_round_trace ____
+..\paralls-g0-py312\Lib\site-packages\anyio\streams\memory.py:118: in receive
+    return self.receive_nowait()
+           ^^^^^^^^^^^^^^^^^^^^^
+..\paralls-g0-py312\Lib\site-packages\anyio\streams\memory.py:113: in receive_nowait
+    raise WouldBlock
+E   anyio._core._exceptions.WouldBlock
+
+During handling of the above exception, another exception occurred:
+..\paralls-g0-py312\Lib\site-packages\anyio\_core\_tasks.py:152: in fail_at
+    yield cancel_scope
+..\paralls-g0-py312\Lib\site-packages\anyio\_core\_tasks.py:179: in fail_after
+    yield scope
+backend\tests\conftest.py:14: in _receive_websocket_message_with_timeout
+    return await stream.receive()  # type: ignore[attr-defined, no-any-return]
+           ^^^^^^^^^^^^^^^^^^^^^^
+..\paralls-g0-py312\Lib\site-packages\anyio\streams\memory.py:126: in receive
+    await receive_event.wait()
+..\paralls-g0-py312\Lib\site-packages\anyio\_backends\_asyncio.py:1936: in wait
+    await self._event.wait()
+D:\python\Lib\asyncio\locks.py:212: in wait
+    await fut
+E   asyncio.exceptions.CancelledError: Cancelled via cancel scope 23b000532f0; reason: deadline exceeded
+
+During handling of the above exception, another exception occurred:
+backend\tests\conftest.py:19: in _bounded_websocket_receive
+    return self.portal.call(_receive_websocket_message_with_timeout, self._send_rx)  # type: ignore[union-attr]
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\paralls-g0-py312\Lib\site-packages\anyio\from_thread.py:340: in call
+    return cast(T_Retval, self.start_task_soon(func, *args).result())
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+D:\python\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+..\paralls-g0-py312\Lib\site-packages\anyio\from_thread.py:265: in _call_func
+    retval = await retval_or_awaitable
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+backend\tests\conftest.py:13: in _receive_websocket_message_with_timeout
+    with anyio.fail_after(5.0):
+D:\python\Lib\contextlib.py:158: in __exit__
+    self.gen.throw(value)
+..\paralls-g0-py312\Lib\site-packages\anyio\_core\_tasks.py:178: in fail_after
+    with fail_at(deadline, shield=shield, reason=reason) as scope:
+D:\python\Lib\contextlib.py:158: in __exit__
+    self.gen.throw(value)
+..\paralls-g0-py312\Lib\site-packages\anyio\_core\_tasks.py:155: in fail_at
+    raise TimeoutError(reason) if reason else TimeoutError
+E   TimeoutError
+
+The above exception was the direct cause of the following exception:
+backend\tests\test_ws_protocol.py:1672: in test_websocket_character_agent_execution_emits_scheduling_round_trace
+    received = [websocket.receive_json() for _ in range(13)]
+                ^^^^^^^^^^^^^^^^^^^^^^^^
+..\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:198: in receive_json
+    message = self.receive()
+              ^^^^^^^^^^^^^^
+backend\tests\conftest.py:21: in _bounded_websocket_receive
+    raise AssertionError("timed out after 5 seconds waiting for a WebSocket test message") from exc
+E   AssertionError: timed out after 5 seconds waiting for a WebSocket test message
+============================== warnings summary ===============================
+backend\tests\conftest.py:7
+  D:\Temp\paralls-g0-b3-ingress-20261109\backend\tests\conftest.py:7: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import WebSocketTestSession
+
+..\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:53
+  D:\Temp\paralls-g0-py312\Lib\site-packages\starlette\testclient.py:53: DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.
+    _PortalFactoryType = Callable[[], AbstractContextManager[anyio.abc.BlockingPortal]]
+
+backend\app\main.py:1265
+  D:\Temp\paralls-g0-b3-ingress-20261109\backend\app\main.py:1265: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+..\paralls-g0-py312\Lib\site-packages\fastapi\applications.py:4681
+..\paralls-g0-py312\Lib\site-packages\fastapi\applications.py:4681
+  D:\Temp\paralls-g0-py312\Lib\site-packages\fastapi\applications.py:4681: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+backend\app\main.py:1312
+  D:\Temp\paralls-g0-b3-ingress-20261109\backend\app\main.py:1312: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+tests/test_behavior_turn_recorder.py::test_application_runtime_wires_character_turns_to_shared_sqlite_graph
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...83fdf637f50ca9ec2ab37'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...83fdf637f50ca9ec2ab37'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 1401}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_behavior_turn_recorder.py::test_application_runtime_wires_character_turns_to_shared_sqlite_graph
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...b1a283df2b9c7b2c8f8ef'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...b1a283df2b9c7b2c8f8ef'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 1401}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_dialogue_mind_core_integration.py::test_player_dialogue_submit_ingests_target_memory_and_social_record
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...cca03d73aa7b411e1e21e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...cca03d73aa7b411e1e21e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 2301}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_dialogue_mind_core_integration.py::test_player_dialogue_submit_ingests_target_memory_and_social_record
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...cc82200194bd160eb15b3'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...cc82200194bd160eb15b3'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 2301}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_dialogue_mind_core_integration.py::test_stub_dialogue_submit_keeps_dialogue_response_contract
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...aee40840104adf8a9129f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...aee40840104adf8a9129f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 2301}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_dialogue_mind_core_integration.py::test_stub_dialogue_submit_keeps_dialogue_response_contract
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...cd676c2eebcbd3273a80f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...cd676c2eebcbd3273a80f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 2301}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_dialogue_streaming.py: 7 warnings
+tests/test_character_speech_lease_contract.py: 3 warnings
+tests/test_dialogue_cognition_contract.py: 10 warnings
+tests/test_dialogue_completion_lifecycle.py: 54 warnings
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...44260db28603c2b63af05'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...44260db28603c2b63af05'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 90210}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_dialogue_streaming.py: 7 warnings
+tests/test_character_speech_lease_contract.py: 3 warnings
+tests/test_dialogue_cognition_contract.py: 9 warnings
+tests/test_dialogue_completion_lifecycle.py: 35 warnings
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...610824d263a6894df8f1e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...610824d263a6894df8f1e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 90210}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_graph_continuity_store.py::test_character_runtime_rebuilds_state_from_graph_after_session_file_loss
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...f87628ecf6f7dd34d3706'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...f87628ecf6f7dd34d3706'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 200}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_graph_continuity_store.py::test_character_runtime_rebuilds_state_from_graph_after_session_file_loss
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...b1a283df2b9c7b2c8f8ef'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...b1a283df2b9c7b2c8f8ef'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 200}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_graph_continuity_store.py::test_character_runtime_rebuilds_state_from_graph_after_session_file_loss
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...a46d68d896cac2fc73df4'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...a46d68d896cac2fc73df4'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 202}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_graph_continuity_store.py::test_character_runtime_rebuilds_state_from_graph_after_session_file_loss
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...c69a577d92aa8898d118e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...c69a577d92aa8898d118e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 202}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_graph_memory_routing.py::test_runtime_uses_injected_router
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...28e3312f164fa90b8c361'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...28e3312f164fa90b8c361'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 100}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_graph_memory_routing.py::test_runtime_uses_injected_router
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...695c21de17150da723ce1'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...695c21de17150da723ce1'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 100}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_local_coordination_contract.py::test_raw_fact_ingress_uses_server_receive_time_for_coordination_expiry[15-True]
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...fbe2b4379cef7caf63919'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...fbe2b4379cef7caf63919'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ..._id': 'zone_demo'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 10}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_local_coordination_contract.py::test_raw_fact_ingress_uses_server_receive_time_for_coordination_expiry[15-True]
+tests/test_character_local_coordination_contract.py::test_raw_fact_ingress_does_not_forward_unbound_or_out_of_scope_coordination_signal[None]
+tests/test_character_local_coordination_contract.py::test_raw_fact_ingress_does_not_forward_unbound_or_out_of_scope_coordination_signal[scope1]
+tests/test_character_local_coordination_contract.py::test_raw_fact_without_coordination_signal_keeps_legacy_unbound_ingress
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...0cb19646bf6a9a9acde5f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...0cb19646bf6a9a9acde5f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 10}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_local_coordination_contract.py::test_raw_fact_ingress_does_not_forward_unbound_or_out_of_scope_coordination_signal[None]
+tests/test_character_local_coordination_contract.py::test_raw_fact_ingress_does_not_forward_unbound_or_out_of_scope_coordination_signal[scope1]
+tests/test_character_local_coordination_contract.py::test_raw_fact_without_coordination_signal_keeps_legacy_unbound_ingress
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...258c932096d9b287d84de'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...258c932096d9b287d84de'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ..._id': 'zone_demo'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 10}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_character_semantic_recall.py::test_semantic_recall_uses_canonical_refs_and_cards
+tests/test_character_semantic_recall.py::test_semantic_recall_card_payload_exports_tuple_refs_as_json_arrays
+tests/test_character_semantic_recall.py::test_graph_budget_is_bounded_without_graph_writes
+tests/test_character_semantic_recall.py::test_light_actor_without_scope_uses_bounded_memory_only
+tests/test_l2_perceived_turn_recall.py::test_perceived_event_freezes_actor_private_semantic_cards
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'node_revision': 2}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_cognition_recall_budget.py::test_semantic_card_truncation_also_bounds_memory_and_reports_omissions
+tests/test_cognition_recall_budget.py::test_zero_recall_budget_does_not_query_graph
+tests/test_cognition_recall_budget.py::test_l2_and_gateway_keep_same_budget_on_final_model_request
+tests/test_cognition_recall_budget.py::test_l3_prepared_recall_cannot_bypass_frozen_policy[True]
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_dialogue_cognition_contract.py::test_actual_dialogue_fallback_keeps_original_l2_l3_policy_turn_and_recall_budget[True]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[False-l2_reasoning]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[False-l3_planning]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[False-tts]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[True-l2_reasoning]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[True-l3_planning]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[True-tts]
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...65a93518449be5d5a6a6c'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...65a93518449be5d5a6a6c'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 90210}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_dialogue_cognition_contract.py::test_actual_dialogue_fallback_keeps_original_l2_l3_policy_turn_and_recall_budget[True]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[True-l2_reasoning]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[True-l3_planning]
+tests/test_dialogue_completion_lifecycle.py::test_real_l2_l3_and_tts_waits_keep_mutations_on_owner[True-tts]
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...d2b7a9fb42b9088aa3b86'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...d2b7a9fb42b9088aa3b86'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ..._intent': 'observe'}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 90210}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_dialogue_cognition_contract.py::test_agent_fallback_does_not_inherit_recipient_private_contract
+tests/test_dialogue_completion_lifecycle.py::test_agent_initiated_stream_start_preserves_speaking_actor
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_a-dialogue_generation]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_a-tts]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_b-dialogue_generation]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_b-tts]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_c-dialogue_generation]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_c-tts]
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...49fd4587edc684367377b'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...49fd4587edc684367377b'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 90210}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_dialogue_cognition_contract.py::test_agent_fallback_does_not_inherit_recipient_private_contract
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_a-dialogue_generation]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_a-tts]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_b-dialogue_generation]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_b-tts]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_c-dialogue_generation]
+tests/test_dialogue_review_fixes.py::test_agent_fallback_pins_both_participants_but_not_unrelated_actor[char_c-tts]
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...7e89314139f0d6b458fbd'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...7e89314139f0d6b458fbd'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 90210}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_dialogue_completion_lifecycle.py::test_reset_closes_existing_cognition_even_before_first_dialogue_ticket
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...cad12e920fc2ac034681b'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...cad12e920fc2ac034681b'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 300}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...5b9a5fb0332d50541dfc5'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...5b9a5fb0332d50541dfc5'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 101}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...a071e2efa33665e9045fc'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...a071e2efa33665e9045fc'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 101}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...b990bb686bf8a05ace275'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...b990bb686bf8a05ace275'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 102}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_raw_fact_route_consumes_l1_projection_with_real_provider_refs
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...48e53c038a94547146112'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...48e53c038a94547146112'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 102}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_projected_fact_path_uses_multi_actor_bridge
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...433b82af9c8bb2b395c3d'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...433b82af9c8bb2b395c3d'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 1300}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_projected_fact_path_uses_multi_actor_bridge
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...deeb25d1a780e8cb84ec2'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...deeb25d1a780e8cb84ec2'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 1300}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_projected_fact_path_uses_multi_actor_bridge
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...171d8c2e5602dbe425d73'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...171d8c2e5602dbe425d73'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 1301}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l1_perception_frame_runtime.py::test_main_projected_fact_path_uses_multi_actor_bridge
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...40d0659eaa9d79f8232bc'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...40d0659eaa9d79f8232bc'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 1301}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_l2_perceived_turn_recall.py::test_self_body_runtime_prepares_semantic_recall_before_l2
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...fe277f3170506bf2280ac'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...fe277f3170506bf2280ac'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 320}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_organization_government_social_descriptor_binding.py::test_organization_membership_admitted_write_is_exact_binding_bound
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `NormalizedOutcomeDeclaration` - serialized value may not be as expected [field_name='outcome_declarations', input_value={'declaration_ref': 'decl...782299c6b28c3c87cc50fe'}, input_type=dict])
+    PydanticSerializationUnexpectedValue(Expected `CapabilityBindingRequest` - serialized value may not be as expected [field_name='capability_binding_requests', input_value={'binding_ref': 'binding:...bership-delegation@1',)}, input_type=dict])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_population_activation_policy.py::test_structured_player_inputs_invoke_activation_once_without_requeueing_active_handoff
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...812cf7e419dbddfe504f1'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...812cf7e419dbddfe504f1'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 101}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_population_activation_policy.py::test_structured_player_inputs_invoke_activation_once_without_requeueing_active_handoff
+tests/test_siming_population_production_boundaries.py::test_production_player_dialogue_cognition_runs_inside_activation_lock
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...cd7082a7e7867982bdbfd'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...cd7082a7e7867982bdbfd'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 101}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_population_activation_policy.py::test_structured_player_inputs_invoke_activation_once_without_requeueing_active_handoff
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 102}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_population_activation_policy.py::test_structured_player_inputs_invoke_activation_once_without_requeueing_active_handoff
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...03c83376333b64a9c5fe4'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...03c83376333b64a9c5fe4'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 102}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_read_content_debug_privacy.py::test_read_content_stays_in_actor_memory_and_out_of_debug_websocket
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...9ba1eb6773298d5c2e5f0'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...9ba1eb6773298d5c2e5f0'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 460}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_read_content_debug_privacy.py::test_read_content_stays_in_actor_memory_and_out_of_debug_websocket
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...b6734bff63711bde5fb5e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...b6734bff63711bde5fb5e'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 460}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_read_content_debug_privacy.py::test_read_content_stays_in_actor_memory_and_out_of_debug_websocket
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 462}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_read_content_debug_privacy.py::test_read_content_stays_in_actor_memory_and_out_of_debug_websocket
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...9ba1eaaeeaf0775c35614'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...9ba1eaaeeaf0775c35614'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 462}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_runtime_process_socket_recovery.py::test_real_socket_owner_restart_fences_old_pending_completion
+  D:\Temp\paralls-g0-py312\Lib\site-packages\websockets\legacy\__init__.py:6: DeprecationWarning: websockets.legacy is deprecated; see https://websockets.readthedocs.io/en/stable/howto/upgrade.html for upgrade instructions
+    warnings.warn(  # deprecated in 14.0 - 2024-11-09
+
+tests/test_runtime_process_socket_recovery.py::test_real_socket_owner_restart_fences_old_pending_completion
+  D:\Temp\paralls-g0-py312\Lib\site-packages\uvicorn\protocols\websockets\websockets_impl.py:41: UvicornDeprecationWarning: The `websockets` implementation is deprecated, and `--ws websockets` will point at the `websockets-sansio` implementation in a future release. Use `--ws websockets-sansio` or `--ws auto` to switch now.
+    warnings.warn(
+
+tests/test_runtime_process_socket_recovery.py::test_real_socket_owner_restart_fences_old_pending_completion
+tests/test_runtime_process_socket_recovery.py::test_real_socket_owner_restart_fences_old_pending_completion
+tests/test_runtime_websocket_shutdown.py::test_peer_close_then_shutdown_completes_original_uvicorn_lifecycle
+tests/test_runtime_websocket_shutdown.py::test_service_reader_close_precedes_backend_stop_and_retains_remote_failure
+tests/test_runtime_websocket_shutdown.py::test_service_reader_close_precedes_backend_stop_and_retains_remote_failure
+tests/test_runtime_websocket_shutdown.py::test_service_reader_close_precedes_backend_stop_and_retains_remote_failure
+tests/test_runtime_websocket_shutdown.py::test_service_reader_close_precedes_backend_stop_and_retains_remote_failure
+tests/test_runtime_websocket_shutdown.py::test_service_reader_close_precedes_backend_stop_and_retains_remote_failure
+tests/test_runtime_websocket_shutdown.py::test_service_reader_close_precedes_backend_stop_and_retains_remote_failure
+  D:\Temp\paralls-g0-py312\Lib\site-packages\websockets\legacy\server.py:1168: DeprecationWarning: remove second argument of ws_handler
+    warnings.warn("remove second argument of ws_handler", DeprecationWarning)
+
+tests/test_siming_heavenly_staging_transport.py::test_char_b_observation_retains_the_destruction_authority_reference
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...bd99be4f3628cbca244a0'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...bd99be4f3628cbca244a0'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 502}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_siming_heavenly_staging_transport.py::test_char_b_observation_retains_the_destruction_authority_reference
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...dd035a5d60f6c20e64881'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...dd035a5d60f6c20e64881'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 502}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_siming_population_production_boundaries.py::test_production_player_dialogue_cognition_runs_inside_activation_lock
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...d440955620adcf8a9c539'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...d440955620adcf8a9c539'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...d': 'zone:bakery'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 101}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_temporal_profile_migration.py::test_actual_activation_remaining_rounding_receipts_and_durable_restart
+tests/test_temporal_profile_migration.py::test_actual_activation_remaining_rounding_receipts_and_durable_restart
+tests/test_temporal_profile_migration.py::test_actual_activation_remaining_rounding_receipts_and_durable_restart
+tests/test_temporal_profile_migration.py::test_owner_receipt_survives_failed_completion_then_restart
+tests/test_temporal_profile_migration.py::test_committed_receipt_repairs_failed_clock_activation
+tests/test_world_batch_settlement_application.py::test_real_caller_new_store_owner_runtime_receipts_and_frozen_pins
+tests/test_world_batch_settlement_application.py::test_real_caller_new_store_owner_runtime_receipts_and_frozen_pins
+tests/test_world_replay_checkpoint_application.py::test_application_durable_cut_tail_full_replay_and_old_migration_pins
+tests/test_world_replay_checkpoint_application.py::test_application_durable_cut_tail_full_replay_and_old_migration_pins
+  D:\Temp\paralls-g0-b3-ingress-20261109\backend\app\world_runtime\temporal_migration.py:108: PydanticDeprecatedSince211: Accessing the 'model_fields' attribute on the instance is deprecated. Instead, you should access this attribute from the model class. Deprecated in Pydantic V2.11 to be removed in V3.0.
+    key: pins[key] for key in binding.model_fields if key in pins})
+
+tests/test_ws_protocol.py::test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_for_char_b
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...c7c26c2097386cd731063'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...c7c26c2097386cd731063'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...id': 'zone_focus'})}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 902}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+tests/test_ws_protocol.py::test_websocket_targeted_auditory_fact_event_emits_character_agent_execution_for_char_b
+  D:\Temp\paralls-g0-py312\Lib\site-packages\pydantic\main.py:475: UserWarning: Pydantic serializer warnings:
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_refs', input_value=mappingproxy({'context': ...0cb19646bf6a9a9acde5f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, str]` - serialized value may not be as expected [field_name='stage_idempotency_keys', input_value=mappingproxy({'context': ...0cb19646bf6a9a9acde5f'}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, CharacterTurnStageEvent]` - serialized value may not be as expected [field_name='stage_events', input_value=mappingproxy({'context': ...'social_deltas': ()}))}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='input_revision_vector', input_value=mappingproxy({'l1_input': 902}), input_type=mappingproxy])
+    PydanticSerializationUnexpectedValue(Expected `dict[str, int]` - serialized value may not be as expected [field_name='memory_revision_vector', input_value=mappingproxy({'memory': 0}), input_type=mappingproxy])
+    return self.__pydantic_serializer__.to_python(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED backend\tests\test_calibration_preclosure.py::test_offline_wire_preserves_unknowns_targets_and_source_memory
+FAILED backend\tests\test_calibration_repair_contracts.py::test_all_22_repaired_budgets_equal_fixed_official_usage
+FAILED backend\tests\test_character_agent_runtime.py::test_character_agent_runtime_player_suggestion_path_uses_continuity_floor_under_local_only_planner
+FAILED backend\tests\test_character_development_runner.py::test_runner_rejects_changed_wire_and_truth_before_any_provider_call
+FAILED backend\tests\test_character_development_runner.py::test_runner_uses_real_adapter_mapping_and_flushes_diagnostic_only_results
+FAILED backend\tests\test_character_development_runner.py::test_runner_preserves_rejected_real_response_and_does_not_grade_it
+FAILED backend\tests\test_character_development_runner.py::test_runner_stops_changed_input_version_and_retains_already_issued_call
+FAILED backend\tests\test_character_evaluation_preparation.py::test_preparation_materializes_frozen_frames_and_independent_reference_universe
+FAILED backend\tests\test_character_evaluation_preparation.py::test_model_input_never_contains_grading_answers
+FAILED backend\tests\test_character_evaluation_preparation.py::test_final_and_independent_holdout_remain_unopened
+FAILED backend\tests\test_character_evaluation_preparation.py::test_same_authority_trajectory_cannot_cross_splits
+FAILED backend\tests\test_character_evaluation_preparation.py::test_missing_or_hidden_targets_cannot_receive_fixture_admission
+FAILED backend\tests\test_character_evaluation_preparation.py::test_abo_projection_does_not_inherit_runtime_numeric_defaults
+FAILED backend\tests\test_character_evaluation_preparation.py::test_reference_universe_detects_compiler_omission
+FAILED backend\tests\test_character_evaluation_preparation.py::test_fixture_profiles_have_source_evidence_without_abo_defaults
+FAILED backend\tests\test_character_evaluation_preparation.py::test_authored_profile_reaches_shared_wire_without_private_backbone
+FAILED backend\tests\test_character_evaluation_preparation.py::test_preparation_is_repeatable_and_full_wire_matches_runtime_serializer
+FAILED backend\tests\test_character_evaluation_preparation.py::test_empty_development_selection_cannot_claim_ready
+FAILED backend\tests\test_character_mind_frame_consumers.py::test_l3_prepared_request_carries_frozen_mind_frame
+FAILED backend\tests\test_economy_random_replay_participant.py::test_shared_cut_replays_ten_domain_participants_after_cadence_and_restart
+FAILED backend\tests\test_economy_temporal_replay_application.py::test_economy_temporal_application_checkpoint_tail_survives_durable_reopen
+FAILED backend\tests\test_mind_frame_turn_boundary.py::test_legacy_diagnostic_frame_still_prepares_without_canonical_turn
+FAILED backend\tests\test_runtime_asgi.py::test_bootstrap_preserves_excluded_settings_and_real_http_enrollment
+FAILED backend\tests\test_stormnight_action_loop.py::test_case_open_then_existing_p5_action_window_commits_on_same_store
+FAILED backend\tests\test_world_admin_cadence_production.py::test_admin_auth_changing_in_runtime_queue_rejects_without_write[identity_changed]
+FAILED backend\tests\test_ws_protocol.py::test_websocket_character_agent_execution_emits_scheduling_round_trace
+26 failed, 9886 passed, 2 skipped, 2 xfailed, 234 warnings in 1297.29s (0:21:37)
