@@ -116,6 +116,10 @@ def test_resume_state_requires_binding_and_recovers_last_admitted_position(confi
     assert recovered["payload"]["position"] == [1.0, 0.0, 0.0]
     assert recovered["payload"]["connection_epoch"] == replacement.connection_epoch
     assert not request("foreign")["payload"]["accepted"]
+    before = main.gameplay_event_store.get_last_global_sequence()
+    assert not dispatch({**payload(replacement), "position": [0, 0, 0]}, "spatial:new")[0]["payload"]["accepted"]
+    assert main.gameplay_event_store.get_last_global_sequence() == before
+    assert dispatch({**payload(replacement), "position": [1, 0, 0]}, "spatial:new")[0]["payload"]["accepted"]
 
 
 def test_network_binding_uses_backend_clock_not_payload_time(configured):
