@@ -94,18 +94,20 @@ def test_changed_duplicate_cannot_replace_frozen_time_input(field, value):
     ctx = context()
     intent = bound_intent(ctx)
     first = resolve(owner, intent, ctx)
+    assert first.committed
+    stream = next(iter(_command().expected_revisions))
+    before = store.read_stream(stream)
     changed = intent.model_copy(update={"time_binding": intent.time_binding.model_copy(update={field: value})})
     assert resolve(owner, changed, ctx).error_code == "action_window_idempotency_reused"
-    stream = next(iter(_command().expected_revisions))
-    assert store.get_stream_head(stream) == 4
+    assert store.get_stream_head(stream) == 5
+    assert store.read_stream(stream) == before
     assert [event.event_type for event in store.read_stream(stream)] == [
         "gameplay.conflict.encounter_started",
         "gameplay.conflict.action_window_resolved",
         "gameplay.conflict.control_changed",
+        "gameplay.conflict.terminal_outcome_recorded",
         "gameplay.conflict.encounter_closed",
     ]
-    assert not store.read_stream(stream, event_type="gameplay.conflict.terminal_outcome_recorded")
-    assert first.committed
 
 
 def test_owner_preserves_legacy_event_without_claiming_time_evidence():
@@ -150,7 +152,7 @@ def test_durable_restart_preserves_time_pins_and_original_receipt(tmp_path):
         assert duplicate.receipt.committed_event_ids == first.receipt.committed_event_ids
         assert restored.get_event(first.receipt.committed_event_ids[0]).payload["time_binding"] == pins
         stream = next(iter(_command().expected_revisions))
-        assert restored.get_stream_head(stream) == 4
-        assert not restored.read_stream(stream, event_type="gameplay.conflict.terminal_outcome_recorded")
+        assert restored.get_stream_head(stream) == 5
+        assert len(restored.read_stream(stream, event_type="gameplay.conflict.terminal_outcome_recorded")) == 1
     finally:
         restored.close()
