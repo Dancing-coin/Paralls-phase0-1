@@ -1428,52 +1428,6 @@ def test_legacy_worktable_interaction_rejects_before_any_object_commit(action) -
     assert main.gameplay_event_store.get_last_global_sequence() == before
 
 
-def test_worktable_finish_use_requires_the_authority_committed_engaged_state() -> None:
-    _reset_runtime_state_with_local_character_model()
-
-    def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
-        return main._handle_envelope(
-            Envelope(
-                message_type="player_input",
-                payload={
-                    "player_id": "p1",
-                    "room_id": "room_demo",
-                    "actor_id": "char_c",
-                    "intent_type": "interact_intent",
-                    "producer_ts": producer_ts,
-                    "target_object_id": "obj_worktable",
-                    "interaction_type": interaction_type,
-                },
-            )
-        )
-
-    engaged = interact(462, "use")
-    released = interact(463, "finish_use")
-    rejected = interact(464, "finish_use")
-
-    engaged_transition = next(message for message in engaged if message.get("message_type") == "state_machine_transition")
-    released_transition = next(message for message in released if message.get("message_type") == "state_machine_transition")
-    released_object_result = next(
-        message
-        for message in released
-        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
-    )
-    state_constraint = next(
-        message
-        for message in rejected
-        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
-    )
-
-    assert engaged_transition["machine_id"] == "work_surface"
-    assert engaged_transition["from_state"] == "ready"
-    assert engaged_transition["to_state"] == "engaged"
-    assert released_transition["from_state"] == "engaged"
-    assert released_transition["to_state"] == "ready"
-    assert released_object_result["payload"]["current_state"] == "ready"
-    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
-    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
-
-
 def test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture() -> None:
     _reset_runtime_state_with_local_character_model()
     main.runtime._actor_positions["char_c"] = (15.4, 0.7, -6.6)

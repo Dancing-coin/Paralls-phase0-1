@@ -24,6 +24,8 @@ def test_bound_player_object_commit_retries_and_requires_engaged_state(configure
     before = main.gameplay_event_store.get_last_global_sequence()
     first = interact("use", "request:use")
     assert first[0]["payload"]["accepted"]
+    started = next(m["payload"] for m in first if m.get("event_type") == "object_state_result")
+    assert (started["previous_state"], started["current_state"], started["machine_id"]) == ("ready", "engaged", "work_surface")
     assert main.esm_service.interaction_state_for(room_id="room_default", scene_id="scene_default",
         zone_id="zone_default", target_object_id="obj_worktable") == "engaged"
     assert main.gameplay_event_store.get_last_global_sequence() == before + 1
@@ -31,11 +33,15 @@ def test_bound_player_object_commit_retries_and_requires_engaged_state(configure
     assert main.gameplay_event_store.get_last_global_sequence() == before + 1
     assert not interact("use", "request:use", producer_ts=11)[0]["payload"]["accepted"]
     assert main.gameplay_event_store.get_last_global_sequence() == before + 1
-    assert interact("finish_use", "request:finish")[0]["payload"]["accepted"]
+    finished = interact("finish_use", "request:finish")
+    assert finished[0]["payload"]["accepted"]
+    released = next(m["payload"] for m in finished if m.get("event_type") == "object_state_result")
+    assert (released["previous_state"], released["current_state"]) == ("engaged", "ready")
     replay = interact("use", "request:use")
     assert not any(m.get("event_type") == "object_state_result" for m in replay)
     rejected = interact("finish_use", "request:again")
-    assert any(m.get("event_type") == "constraint_state_result" for m in rejected)
+    constraint = next(m["payload"] for m in rejected if m.get("event_type") == "constraint_state_result")
+    assert (constraint["constraint_type"], constraint["constraint_code"]) == ("interaction_state_constraint", "invalid_interaction_state")
     assert main.gameplay_event_store.get_last_global_sequence() == before + 2
 
 
