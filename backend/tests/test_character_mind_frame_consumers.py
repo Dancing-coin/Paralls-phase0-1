@@ -10,15 +10,16 @@ from app.models.character_perceived import CharacterPerceivedEvent
 from app.character_agent.models.private_world_snapshot import CharacterPrivateWorldSnapshot
 
 
-def _frame() -> CharacterMindFrame:
-    turn = CharacterTurnContext.begin(
+def _turn() -> CharacterTurnContext:
+    return CharacterTurnContext.begin(
         actor_id="char_a", source_event_ref="event:1", producer_ts=1,
         causation_id="cause:1", correlation_id="corr:1",
         input_revision_vector={"l1": 1}, memory_revision_vector={"memory": 1},
         policy_revision="policy:1", snapshot_revision=1, branch_id="branch:main",
     )
+def _frame() -> CharacterMindFrame:
     return CharacterMindFrameBuilder().build_frame(
-        actor_id="char_a", producer_ts=1, turn_context=turn,
+        actor_id="char_a", producer_ts=1, turn_context=_turn(),
         snapshot={}, memory_bundle={},
     )
 
@@ -49,7 +50,7 @@ def test_l3_prepared_request_carries_frozen_mind_frame() -> None:
             actor_id="char_a", interpreted_summary="observe", interpretation_type="state_change",
             salience_score=0.5, ambiguity_level="low", risk_level="low", opportunity_level="low",
         ),
-        control_mode="agent_full_auto", snapshot={}, profile={}, memory_bundle={}, frame=frame,
+        control_mode="agent_full_auto", snapshot={}, profile={}, memory_bundle={}, frame=frame, turn_context=_turn(),
     )
     request = json.loads(prepared.request_json)
     assert request["context"]["frame"]["frame_digest"] == frame.frame_digest
