@@ -1,12 +1,24 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from hashlib import sha256
+from types import MappingProxyType
 
-from app.gameplay.modifier_runtime import ModifierDefinitionRegistry, ModifierStateProjector, ModifierTemplate
+from app.gameplay.modifier_runtime import ModifierDefinitionRegistry, ModifierStateProjector, ModifierTemplate, _digest
 from app.gameplay.models import GameplayEvent
 
 
 ACTOR = "actor:modifier"
+
+
+def test_modifier_digest_preserves_nested_decimal_representation() -> None:
+    value = MappingProxyType({
+        "sequence": [Decimal("1.0"), Decimal("1.00")],
+        "nested": MappingProxyType({"value": Decimal("123.4500"), "negative_zero": Decimal("-0.00")}),
+    })
+    canonical = b'{"nested":{"negative_zero":"-0.00","value":"123.4500"},"sequence":["1.0","1.00"]}'
+    assert _digest(value) == sha256(canonical).hexdigest()
+    assert _digest({"value": Decimal("1.0")}) != _digest({"value": Decimal("1.00")})
 
 
 def _event(event_id: str, event_type: str, sequence: int, payload: dict[str, object]) -> GameplayEvent:

@@ -101,8 +101,14 @@ failures and whether the client limitation below is acceptable for G1.
 All historical nodes in the adjacent G1 lists remain collected and passed in
 both runs: ownership 5, modifier 11, equipment 72, inventory 49, and shared
 replay 201. Lists may overlap; these numbers must not be added as unique tests.
-Before each G1 migration, extend the relevant set for actual callers and add
-the identified modifier Decimal and equipment receipt predicate protections.
+On top of that frozen baseline, `test_modifier_digest_preserves_nested_decimal_representation`
+and `test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes`
+add 15 cases covering nested Decimal representation and equipment receipt,
+transaction, event identity, stream and visibility rejection without writes or
+bridge side effects. The five historical lists plus these cases passed 345 tests
+on Python 3.12.2 from `backend` on 2026-11-09. These are additional nodes, not
+part of the two 9,922-node runs above. Extend each set for actual callers before
+its migration; the tests do not prove all possible Decimal or equipment inputs.
 
 The [historical source and gate analysis](original-sources-and-gates.md)
 records the v1/v2 delivery conflict and maps D2-D10 to their dependent stages.

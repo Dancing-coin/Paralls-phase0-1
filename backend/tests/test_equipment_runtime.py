@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from types import MappingProxyType
+from unittest.mock import Mock
 
 import pytest
 
@@ -354,6 +355,63 @@ def test_equip_duplicate_rejects_changed_causal_identity_without_writes() -> Non
             idempotency_key="equip", causation_id="cause:changed", correlation_id="corr",
         )
     assert store.export_snapshot() == before
+
+
+@pytest.mark.parametrize("fault", [
+    "uncommitted", "empty_refs", "wrong_command", "duplicate_refs",
+    "missing_transaction", "reordered_transaction", "missing_event",
+    "event_command", "event_causation", "event_correlation", "event_transaction",
+    "foreign_actor_stream", "foreign_stream", "visibility",
+])
+def test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes(monkeypatch, fault: str) -> None:
+    store, inventory_registry, service = _service()
+    _create_sword(store, inventory_registry)
+    command = dict(command_id="cmd:equip", actor_ref=ACTOR, item_id="item:sword:1",
+                   source_container_id="container:bag", slot_key="right_hand", body=_body(),
+                   idempotency_key="equip", causation_id="cause", correlation_id="corr")
+    first = service.equip(**command)
+    assert first.committed and len(first.committed_event_ids) > 1
+    before = store.export_snapshot()
+    bridge = Mock()
+    service._resource_modifier_bridge = bridge
+    if fault in {"uncommitted", "empty_refs", "wrong_command", "duplicate_refs"}:
+        updates = {
+            "uncommitted": {"committed": False},
+            "empty_refs": {"committed_event_ids": []},
+            "wrong_command": {"command_id": "cmd:other"},
+            "duplicate_refs": {"committed_event_ids": [*first.committed_event_ids, first.committed_event_ids[0]]},
+        }
+        forged = first.model_copy(update=updates[fault], deep=True)
+        monkeypatch.setattr(store, "get_by_idempotency", lambda *_: forged)
+    elif fault in {"missing_transaction", "reordered_transaction"}:
+        batch = store.get_transaction(first.transaction_id)
+        forged = None if fault == "missing_transaction" else batch.model_copy(update={"events": list(reversed(batch.events))})
+        monkeypatch.setattr(store, "get_transaction", lambda *_: forged)
+    else:
+        get_event = store.get_event
+        event_id = first.committed_event_ids[0]
+        updates = {
+            "event_command": {"command_id": "cmd:other"},
+            "event_causation": {"causation_id": "cause:other"},
+            "event_correlation": {"correlation_id": "corr:other"},
+            "event_transaction": {"transaction_id": "tx:other"},
+            "foreign_actor_stream": {"stream_id": "gameplay:inventory:actor:other"},
+            "foreign_stream": {"stream_id": "gameplay:other:actor:equipment"},
+            "visibility": {"visibility_policy": "public"},
+        }
+
+        def read_event(ref: str):
+            if ref != event_id:
+                return get_event(ref)
+            if fault == "missing_event":
+                raise KeyError(ref)
+            return get_event(ref).model_copy(update=updates[fault], deep=True)
+
+        monkeypatch.setattr(store, "get_event", read_event)
+    with pytest.raises(EquipmentRuntimeError, match="equipment_idempotency_receipt_invalid"):
+        service.equip(**command)
+    assert store.export_snapshot() == before
+    bridge.sync_equipment_transaction.assert_not_called()
 
 
 def test_equip_duplicate_rejects_event_type_moved_to_wrong_stream_contract() -> None:
