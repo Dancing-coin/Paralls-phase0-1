@@ -67,9 +67,8 @@ def test_cached_body_does_not_hide_sql_updates_or_corruption(store, decompressio
     with closing(sqlite3.connect(store._snapshot_path)) as connection, connection:
         connection.execute("UPDATE events SET full_value=? WHERE event_id=?", (changed_body[:-1], event.event_id))
     for _ in range(2):
-        with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_row_invalid") as failure:
+        with pytest.raises(GameplayEventStoreSnapshotError, match="^gameplay_snapshot_json_codec_invalid$"):
             store.get_event(event.event_id)
-        assert str(failure.value.__cause__) == "gameplay_snapshot_json_codec_invalid"
     assert len(decompressions) == 3
 
 
@@ -156,6 +155,5 @@ def test_close_clears_cached_content_and_prefetched_decode_does_not_retain_it(st
     assert store._decode_json(body)
     assert store._json_text_cache == {}
     assert store._json_text_cache_bytes == 0
-    with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_row_invalid") as failure:
+    with pytest.raises(GameplayEventStoreSnapshotError, match="^gameplay_snapshot_closed$"):
         store.get_event("evt:session:reserved")
-    assert str(failure.value.__cause__) == "gameplay_snapshot_closed"
