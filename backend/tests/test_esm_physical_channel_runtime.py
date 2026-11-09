@@ -76,13 +76,14 @@ def test_physical_effects_merge_through_orchestration_unified_result_family() ->
             intent=InteractionIntentFrame(
                 intent_id="intent:grab",
                 actor_id="char_a",
-                target_refs={"object_ids": ["obj_box"]},
-                semantic_intent="take_object",
-                physical_affordance="grab",
+                target_refs={"object_ids": ["obj_plaque"]},
+                semantic_intent="inspect",
+                physical_affordance="contact",
             ),
             player_id="player",
             room_id="room_demo",
-            target_object_id="obj_box",
+            target_object_id="obj_plaque",
+            actor_position=(-2.2, 1.2, -2.0),
             producer_ts=1,
         )
     )
@@ -98,12 +99,13 @@ def test_semantic_only_behavior_remains_unchanged_when_physical_channel_exists()
             intent=InteractionIntentFrame(
                 intent_id="intent:inspect",
                 actor_id="char_a",
-                target_refs={"object_ids": ["obj_box"]},
+                target_refs={"object_ids": ["obj_plaque"]},
                 semantic_intent="inspect",
             ),
             player_id="player",
             room_id="room_demo",
-            target_object_id="obj_box",
+            target_object_id="obj_plaque",
+            actor_position=(-2.2, 1.2, -2.0),
             producer_ts=1,
         )
     )
