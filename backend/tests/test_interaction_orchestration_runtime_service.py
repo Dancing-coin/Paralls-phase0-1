@@ -104,10 +104,12 @@ def test_mixed_path_calls_semantic_and_physical_then_merges_one_unified_result_f
             intent=InteractionIntentFrame(
                 intent_id="intent:push",
                 actor_id="char_a",
-                target_refs={"object_ids": ["obj_box"]},
-                semantic_intent="move_obstacle",
-                physical_affordance="push",
-            )
+                target_refs={"object_ids": ["obj_plaque"]},
+                semantic_intent="inspect",
+                physical_affordance="contact",
+            ),
+            target_object_id="obj_plaque",
+            actor_position=(-2.2, 1.2, -2.0),
         )
     )
 
@@ -238,20 +240,24 @@ def test_interaction_orchestration_carries_advisory_skill_metadata_without_chang
             intent=InteractionIntentFrame(
                 intent_id="intent:push",
                 actor_id="char_a",
-                target_refs={"object_ids": ["obj_box"]},
-                semantic_intent="move_obstacle",
-                physical_affordance="push",
-            )
+                target_refs={"object_ids": ["obj_plaque"]},
+                semantic_intent="inspect",
+                physical_affordance="contact",
+            ),
+            target_object_id="obj_plaque",
+            actor_position=(-2.2, 1.2, -2.0),
         )
     )
     metadata_request = _request(
         intent=InteractionIntentFrame(
             intent_id="intent:push",
             actor_id="char_a",
-            target_refs={"object_ids": ["obj_box"]},
-            semantic_intent="move_obstacle",
-            physical_affordance="push",
+            target_refs={"object_ids": ["obj_plaque"]},
+            semantic_intent="inspect",
+            physical_affordance="contact",
         ),
+        target_object_id="obj_plaque",
+        actor_position=(-2.2, 1.2, -2.0),
         skill_evaluation_result=_skill_evaluation_result(),
         primitive_action_plan=_primitive_action_plan(),
     )
