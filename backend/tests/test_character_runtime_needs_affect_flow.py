@@ -51,7 +51,8 @@ class _StubProfile:
     def __init__(self, payload: dict[str, object]) -> None:
         self._payload = payload
 
-    def model_dump(self) -> dict[str, object]:
+    def model_dump(self, *, mode: str = "python") -> dict[str, object]:
+        assert mode in {"python", "json"}
         return dict(self._payload)
 
 
@@ -120,6 +121,7 @@ class _RecordingL2(CharacterAgentL2Service):
         effective_profile: dict[str, object] | None = None,
         need_tension_state: dict[str, object] | None = None,
         turn_context=None,
+        **kwargs,
     ) -> bytes:
         self.interpret_context = self._reasoning_context(
             actor_id=snapshot.actor_id,
@@ -177,6 +179,7 @@ class _RecordingL3(CharacterAgentL3Service):
         dynamic_state: dict[str, object] | None = None,
         behavior_policy_snapshot: dict[str, object] | None = None,
         turn_context=None,
+        **kwargs,
     ) -> CharacterIntentDecision:
         self.select_context = {
             "interpretation": interpretation.model_dump(),
@@ -204,7 +207,8 @@ class _RecordingL3(CharacterAgentL3Service):
             current_goal_state=current_goal_state, goal_state_history=goal_state_history,
             supervision_state=supervision_state, unresolved_tensions=unresolved_tensions,
             background_agenda_state=background_agenda_state, need_tension_state=need_tension_state,
-            dynamic_state=dynamic_state)
+            dynamic_state=dynamic_state, behavior_policy_snapshot=behavior_policy_snapshot,
+            turn_context=turn_context, **kwargs)
 
     def decision_from_plan(self, plan, *, interpretation):
         return CharacterIntentDecision(
