@@ -1,0 +1,24 @@
+{
+  "cwd": "D:\\Temp\\paralls-g0-b3-ingress-20261109\\backend",
+  "sys_path_prepend": [
+    "D:\\Temp\\paralls-g0-b3-ingress-20261109\\backend",
+    "D:\\Temp\\paralls-g0-b3-ingress-20261109"
+  ],
+  "pytest_args": [
+    "tests",
+    "-v",
+    "--tb=short",
+    "-p",
+    "no:cacheprovider",
+    "--junitxml=D:\\Temp\\paralls-g0-939c6746-run2\\junit.xml"
+  ],
+  "runner_argv": [
+    "D:/Users/User/Documents/Unreal Projects/Paralls-docs/docs/architecture-v2/09-验收/G0-20261109-5321266d/run_baseline.py",
+    "--repo",
+    "D:/Temp/paralls-g0-b3-ingress-20261109",
+    "--output",
+    "D:/Temp/paralls-g0-939c6746-run2",
+    "--manifest",
+    "D:/Temp/paralls-g0-939c6746-run1/test-files.json"
+  ]
+}
