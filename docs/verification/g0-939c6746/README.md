@@ -1,9 +1,21 @@
 # G0 candidate baseline, 2026-11-09
 
-This is evidence for review, not G0 approval. Runtime source under test was
+G0 is approved for entry into G1, subject to the limitations recorded below.
+Runtime source under test was
 `939c674681c3f2c648c3286bd27b381bb3a7490a` on
 `codex/g0-b3-ingress-20261109`; the original baseline was `5321266d`.
 The evidence-only commit containing this file comes after the tested source.
+
+## G0 approval
+
+On 2026-11-09 the user, acting as technical lead, explicitly stated in this
+conversation: "技术负责人审批通过,你继续记录". This responds to the request to
+accept the 39 classified failures and the B3 Godot client integration limitation
+and approve entry into G1. The approval applies to the evidence and boundaries
+in this record on `codex/g0-b3-ingress-20261109`, including the full baseline
+at `4c6418763dfaa2efdbefccb7b1c31d612cabf2f1`. G0 is released and G1 may start.
+This records the user's decision; it does not assert an independent rerun or
+independent review beyond the user's stated approval.
 
 ## Updated full baseline
 
@@ -137,6 +149,6 @@ replace a full-suite run at the later commit.
 The [historical source and gate analysis](original-sources-and-gates.md)
 records the v1/v2 delivery conflict and maps D2-D10 to their dependent stages.
 Its relative links refer to the original Paralls-docs repository. These
-decisions remain open. This evidence does not approve G1, close those decisions,
-or establish UE, Godot runtime, or Demo acceptance. Technical-lead review and
-approval remain outstanding; the local author cannot assert independent review.
+decisions remain open. The G0 approval does not close those decisions or
+establish UE, Godot runtime, or Demo acceptance. Each G1 migration still requires
+its own targeted regression, baseline comparison and independent rollback boundary.
