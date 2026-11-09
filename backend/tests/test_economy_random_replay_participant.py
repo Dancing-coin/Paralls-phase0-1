@@ -329,7 +329,7 @@ async def test_shared_cut_replays_ten_domain_participants_after_cadence_and_rest
             causation_id=confirmation_id, correlation_id="death:joint")
         assert result.result.committed
     await _run(main, settle_death)
-    assert (await _run(main, lambda: PopulationPresenceAuthority(store=main.gameplay_event_store).despawn(
+    assert (await _run(main, lambda: presence_service(main.gameplay_event_store)[1].presence_authority.despawn(
         CharacterDespawnRequest(world_ref="world:bakery", character_ref="character:char_a",
             incarnation=1, idempotency_key="despawn:joint", expected_revision=1,
             reason="explicit_departure")))).committed

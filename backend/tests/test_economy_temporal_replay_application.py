@@ -98,6 +98,11 @@ async def test_economy_temporal_application_checkpoint_tail_survives_durable_reo
     inventory = main.inventory_authority_service
     restored_inventory = InventoryAuthorityService(
         store=reopened, registry=inventory._registry, package_registry=inventory._package_registry)
+    from app.gameplay.p5.social_knowledge import SocialFactAuthority
+    social = main.social_fact_authority_service
+    restored_social = SocialFactAuthority(
+        registry=social._registry, store=reopened,
+        package_registry=getattr(social, "_package_registry", None))
     try:
         restored = replay_scoped_tail(
             store=reopened,
@@ -105,6 +110,7 @@ async def test_economy_temporal_application_checkpoint_tail_survives_durable_reo
             tail=tail.payload,
             expected_result_digest=tail.payload["result_digest"],
             inventory_authority=restored_inventory,
+            social_authority=restored_social,
         )
         assert restored.status == "verified", restored.diagnostics
         assert restored.result["result_digest"] == restored.result["full_digest"]
