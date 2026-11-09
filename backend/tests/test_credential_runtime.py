@@ -140,3 +140,63 @@ def test_issuance_rejects_item_not_currently_held_without_link_event() -> None:
     with pytest.raises(CredentialRuntimeError, match="credential_item_not_present"):
         _issue(service, command_id="cmd:missing-item", credential_id="credential:missing-item", item_ref="item:missing", idempotency_key="missing-item")
     assert store.read_events() == before
+
+
+def _credential_command(service: CredentialAuthorityService, kind: str):
+    common = dict(command_id=f"cmd:{kind}", idempotency_key=kind, causation_id="cause", correlation_id="corr")
+    if kind == "issue":
+        return service.issue_credential, common | dict(
+            credential_id="credential:deed:1", credential_item_ref="item:deed:1",
+            credential_holder_ref="actor:alice", right_id=RIGHT, credential_kind="deed",
+            proves="evidence_only", issuer_ref="authority:land-registry",
+        )
+    if kind == "revoke":
+        return service.revoke_credential, common | dict(
+            credential_id="credential:deed:1", issuer_ref="authority:land-registry", reason="lost",
+        )
+    return service.supersede_credential, common | dict(
+        prior_credential_id="credential:deed:1", replacement_credential_id="credential:deed:2",
+        replacement_item_ref="item:deed:2", replacement_holder_ref="actor:alice",
+        issuer_ref="authority:land-registry",
+    )
+
+
+@pytest.mark.parametrize("kind", ["issue", "revoke", "supersede"])
+def test_credential_replay_boundaries_for_each_command(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup()
+    if kind != "issue":
+        _issue(service)
+    command, args = _credential_command(service, kind)
+    first = command(**args)
+    assert first.committed
+    before = store.read_events()
+    replay = command(**args)
+    assert replay == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    with pytest.raises(CredentialRuntimeError, match="^idempotency_key_reused$"):
+        command(**(args | {"command_id": "cmd:changed"}))
+    monkeypatch.setattr(store, "get_by_idempotency", lambda *_: None)
+    with pytest.raises(CredentialRuntimeError, match="^credential_idempotency_missing_result$"):
+        command(**args)
+    assert store.read_events() == before
+
+
+@pytest.mark.parametrize("kind", ["issue", "revoke", "supersede"])
+def test_credential_stale_commit_rejects_without_partial_writes(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup()
+    if kind != "issue":
+        _issue(service)
+    command, args = _credential_command(service, kind)
+    before = store.read_events()
+    append = store.append_batch
+
+    def append_with_stale_revision(batch):
+        stream = "gameplay:ownership" if kind == "issue" else "gameplay:credentials"
+        batch["expected_stream_revisions"][stream] -= 1
+        return append(batch)
+
+    monkeypatch.setattr(store, "append_batch", append_with_stale_revision)
+    result = command(**args)
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "revision_conflict"
+    assert store.read_events() == before

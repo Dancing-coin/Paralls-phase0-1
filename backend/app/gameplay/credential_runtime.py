@@ -11,6 +11,7 @@ from typing import Mapping, Sequence
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult, GameplayEvent
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.ownership_runtime import OwnershipProjector
 
 
@@ -240,15 +241,11 @@ class CredentialAuthorityService:
         return {"event_id": f"evt:{command_id}:credential:{index}", "event_type": event_type, "schema_version": 1, "stream_id": cls._STREAM, "stream_revision": 0, "global_sequence": 0, "transaction_id": f"tx:{command_id}", "command_id": command_id, "causation_id": causation_id, "correlation_id": correlation_id, "visibility_policy": "authority_only", "payload": dict(payload)}
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
-        if record is None:
-            return None
-        if record.payload_digest != digest:
-            raise CredentialRuntimeError("idempotency_key_reused")
-        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if result is None:
-            raise CredentialRuntimeError("credential_idempotency_missing_result")
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        return replay_duplicate(
+            self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
+            payload_digest=digest, error_factory=CredentialRuntimeError,
+            missing_result_code="credential_idempotency_missing_result",
+        )
 
 
 def _text(payload: Mapping[str, object], key: str) -> str:
