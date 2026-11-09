@@ -5,6 +5,22 @@ This is evidence for review, not G0 approval. Runtime source under test was
 `codex/g0-b3-ingress-20261109`; the original baseline was `5321266d`.
 The evidence-only commit containing this file comes after the tested source.
 
+## Updated full baseline
+
+After adding the 15 supplemental tests, two complete serial runs at commit
+`4c6418763dfaa2efdbefccb7b1c31d612cabf2f1` collected 9,937 nodes and each
+reported 9,894 passed, 39 failed, two skipped and two xfailed. The runtime
+source is unchanged from `939c6746`; only tests and evidence changed. Compared
+with the earlier full baseline, all 15 new nodes passed and no previously
+passing node failed. Both runs have identical node order, outcomes, failure
+names, phases and error types; source, manifest and package hashes matched and
+the worktree was clean. One normalized timeout stack differs only by the
+asyncio cancel-scope runtime identifier. The original outputs, environment,
+manifest, node IDs and JUnit reports are retained in
+[full-4c641876.zip](full-4c641876.zip). The same local Python 3.12.2
+environment and `backend` working directory were used; the 39 known failures
+and limitations described below remain. These runs are not independent review.
+
 ## Reproduction
 
 Two serial runs used Windows, Python 3.12.2, the same virtual environment,
