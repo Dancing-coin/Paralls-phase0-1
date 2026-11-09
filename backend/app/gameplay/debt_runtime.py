@@ -23,6 +23,7 @@ from app.gameplay.models import (
     StrictGameplayModel,
 )
 from app.gameplay.replay import GameplayProjectionReplay
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
 
@@ -898,15 +899,11 @@ class DebtAuthorityService:
         return self._store.append_batch(batch)
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
-        if record is None:
-            return None
-        if record.payload_digest != digest:
-            raise DebtRuntimeError("idempotency_key_reused")
-        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if result is None:
-            raise DebtRuntimeError("economy_idempotency_missing_result")
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        return replay_duplicate(
+            self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
+            payload_digest=digest, error_factory=DebtRuntimeError,
+            missing_result_code="economy_idempotency_missing_result",
+        )
 
     @staticmethod
     def _event(command_id: str, index: int, event_type: str, stream_id: str, transaction_id: str, causation_id: str, correlation_id: str, payload: Mapping[str, object]) -> dict[str, object]:

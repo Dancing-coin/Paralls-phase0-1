@@ -323,3 +323,62 @@ def test_policy_cancellation_reversal_restores_pinned_outstanding_without_moving
             correlation_id="corr",
         )
     assert store.read_events() == before_second_reversal
+
+
+def _g1_command(kind: str):
+    store, service = _setup()
+    common = dict(command_id=f"cmd:g1:{kind}", idempotency_key=f"g1:{kind}", causation_id="cause", correlation_id="corr")
+    issue_args = dict(contract_id=CONTRACT, debt_id=DEBT, creditor_ref=CREDITOR, debtor_ref=DEBTOR,
+                      creditor_account_id="account:creditor", debtor_account_id="account:debtor",
+                      currency_ref="coin", principal_amount=8, due_tick=10)
+    if kind == "issue":
+        return store, service, service.issue_simple_debt, common | issue_args
+    assert service.issue_simple_debt(**(issue_args | dict(command_id="cmd:seed", idempotency_key="seed", causation_id="cause", correlation_id="corr"))).committed
+    if kind == "pay":
+        return store, service, service.pay_debt, common | dict(debt_id=DEBT, debtor_account_id="account:debtor", creditor_account_id="account:creditor", amount=3)
+    if kind == "overdue":
+        return store, service, service.mark_debt_overdue, common | dict(debt_id=DEBT, due_tick=10, overdue_tick=11)
+    if kind == "default":
+        assert service.mark_debt_overdue(command_id="cmd:overdue", debt_id=DEBT, due_tick=10, overdue_tick=11, idempotency_key="overdue", causation_id="cause", correlation_id="corr").committed
+        return store, service, service.mark_debt_default, common | dict(debt_id=DEBT, due_tick=10, default_tick=12)
+    policy = dict(debt_id=DEBT, authority_ref="authority:collections", reason="test")
+    if kind == "cancel":
+        return store, service, service.cancel_debt_by_policy, common | policy
+    if kind == "reverse":
+        assert service.cancel_debt_by_policy(command_id="cmd:cancel", idempotency_key="cancel", causation_id="cause", correlation_id="corr", **policy).committed
+        return store, service, service.reverse_debt_cancellation_by_policy, common | policy | dict(original_cancellation_record_id="debt-cancel:cmd:cancel")
+    assert _pay(service, 3, command_id="cmd:partial", idempotency_key="partial").committed
+    return store, service, service.correct_debt_payment_by_policy, common | policy | dict(original_payment_record_id="debt-payment:cmd:partial", debtor_account_id="account:debtor", creditor_account_id="account:creditor")
+
+
+@pytest.mark.parametrize("kind", ["issue", "pay", "cancel", "overdue", "default", "reverse", "correct"])
+def test_g1_debt_replay_boundaries(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, command, args = _g1_command(kind)
+    first = command(**args)
+    assert first.committed
+    before = store.read_events()
+    assert command(**args) == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    with pytest.raises(DebtRuntimeError, match="^idempotency_key_reused$"):
+        command(**(args | {"command_id": "cmd:changed"}))
+    monkeypatch.setattr(store, "get_by_idempotency", lambda *_: None)
+    with pytest.raises(DebtRuntimeError, match="^economy_idempotency_missing_result$"):
+        command(**args)
+    assert store.read_events() == before
+
+
+@pytest.mark.parametrize("kind", ["issue", "pay", "cancel", "overdue", "default", "reverse", "correct"])
+def test_g1_debt_stale_commit_has_no_partial_writes(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, service, command, args = _g1_command(kind)
+    before = store.read_events()
+    revisions = service._revisions
+
+    def stale_revisions():
+        value = revisions()
+        value["gameplay:economy"] -= 1
+        return value
+
+    monkeypatch.setattr(service, "_revisions", stale_revisions)
+    result = command(**args)
+    assert not result.committed
+    assert result.failure is not None and result.failure.error_code == "revision_conflict"
+    assert store.read_events() == before
