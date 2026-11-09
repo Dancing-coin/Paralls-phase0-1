@@ -247,7 +247,7 @@ func _advance_prediction() -> void:
 		if _consumer.pending_predictions.has("prediction:live:stamina-confirm"):
 			return
 		if current != 5 or _consumer.prediction_resolution_trace.is_empty():
-			_finish(false, "prediction_confirmation_authority_projection_missing")
+			return
 			return
 		var confirmed: Dictionary = _consumer.prediction_resolution_trace.back()
 		if str(confirmed.get("resolution", "")) != "confirmed" or str(confirmed.get("transaction_id", "")).is_empty():
