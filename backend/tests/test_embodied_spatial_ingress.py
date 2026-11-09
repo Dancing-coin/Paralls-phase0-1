@@ -122,6 +122,27 @@ def test_resume_state_requires_binding_and_recovers_last_admitted_position(confi
     assert dispatch({**payload(replacement), "position": [1, 0, 0]}, "spatial:new")[0]["payload"]["accepted"]
 
 
+def test_resume_rejects_changed_scope_and_extra_payload_without_writes(configured, monkeypatch):
+    from app.world_runtime.embodied_spatial_source import EmbodiedSpatialSource
+
+    binding = bind()
+    assert dispatch(payload(binding))[0]["payload"]["accepted"]
+    before = main.gameplay_event_store.get_last_global_sequence()
+    context = WebSocketConnectionContext.direct_handler_compatibility()
+    context.connection_ref = "spatial:c"
+
+    def request(body):
+        return main._handle_envelope(Envelope(message_type="embodied_spatial_resume_request", payload=body),
+            connection_context=context)[0]["payload"]
+
+    assert not request({"actor_id": "char_a", "position": [5, 0, 0]})["accepted"]
+    monkeypatch.setattr(main, "embodied_spatial_source", EmbodiedSpatialSource(store=main.gameplay_event_store,
+        auth=main.embodied_controller_auth_service,
+        scopes=[scope().model_copy(update={"scene_revision": 2})]))
+    assert request({"actor_id": "char_a"}) == {"accepted": False, "error_code": "spatial_scope_migration_required"}
+    assert main.gameplay_event_store.get_last_global_sequence() == before
+
+
 def test_network_binding_uses_backend_clock_not_payload_time(configured):
     credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
         actor_id="char_a", controller_instance_id="spatial:a", issued_at=100, expires_at=200)
