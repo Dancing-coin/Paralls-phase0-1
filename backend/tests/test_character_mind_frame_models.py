@@ -205,7 +205,7 @@ def test_mind_frame_rejects_rebinding_to_another_actor_or_turn() -> None:
         frame.bind_to_turn(turn)
 
     bound = frame.bind_to_turn(turn.model_copy(update={"actor_id": "char_a"}))
-    other = turn.model_copy(update={"source_event_ref": "event:2", "turn_id": "turn:char_a:event:2"})
+    other = turn.model_copy(update={"actor_id": "char_a", "source_event_ref": "event:2", "turn_id": "turn:char_a:event:2"})
     with pytest.raises(ValueError, match="turn"):
         bound.bind_to_turn(other)
 

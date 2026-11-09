@@ -452,6 +452,7 @@ def main() -> int:
     import argparse
     import asyncio
     from datetime import datetime, timezone
+    from uuid import uuid4
     from scripts.verification.population_godot_runner import backend_child, collect, write_json
     from scripts.verification.common import verification_dir
     parser = argparse.ArgumentParser(description=__doc__)
@@ -467,7 +468,7 @@ def main() -> int:
         parser.error("--python-exe must match the current interpreter")
     profile_run = not (args.collect or args.verify_artifacts or args.backend_child)
     if profile_run:
-        args.collect = ROOT / ".harness/verification" / ("population-godot-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ"))
+        args.collect = ROOT / ".harness/verification" / ("population-godot-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid4().hex)
     if args.backend_child:
         if not args.state_directory:
             parser.error("--state-directory is required for backend child")
