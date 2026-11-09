@@ -6141,6 +6141,18 @@ def _handle_envelope(
             "accepted": True, "source_type": envelope.message_type, "route": "esm_service",
             "request_id": event.request_id,
         }}, _as_world_result_envelope(result.model_dump(mode="json"))]
+        if receipt is not None and receipt.committed and policy is not None:
+            stream = next(iter(receipt.resulting_stream_revisions))
+            head = gameplay_event_store.get_stream_head(stream)
+            latest = gameplay_event_store.read_stream(stream, from_revision=head, limit=1)[0]
+            current = str(latest.payload["current_state"])
+            projected = l1_occupancy_service.snapshot().object_states.get(canonical.target_object_id)
+            if projected is None or projected.state != current or projected.zone_id != canonical.zone_id:
+                l1_occupancy_service.apply_object_state_update(
+                    object_id=canonical.target_object_id, zone_id=canonical.zone_id, state=current,
+                    affordances=[str(value) for value in policy["affordances"]],
+                    occludes=bool(policy["occludes"]),
+                    producer_ts=int(latest.payload["result"]["producer_ts"]), source_ref=latest.event_id)
         if prior is None and receipt is not None and receipt.committed and policy is not None:
             state = esm_service.emit_object_state_result(
                 room_id=canonical.room_id, scene_id=canonical.scene_id, zone_id=canonical.zone_id,

@@ -26,6 +26,7 @@ def test_bound_player_object_commit_retries_and_requires_engaged_state(configure
     assert first[0]["payload"]["accepted"]
     started = next(m["payload"] for m in first if m.get("event_type") == "object_state_result")
     assert (started["previous_state"], started["current_state"], started["machine_id"]) == ("ready", "engaged", "work_surface")
+    assert main.l1_occupancy_service.snapshot().object_states["obj_worktable"].state == "engaged"
     assert main.esm_service.interaction_state_for(room_id="room_default", scene_id="scene_default",
         zone_id="zone_default", target_object_id="obj_worktable") == "engaged"
     assert main.gameplay_event_store.get_last_global_sequence() == before + 1
@@ -37,8 +38,10 @@ def test_bound_player_object_commit_retries_and_requires_engaged_state(configure
     assert finished[0]["payload"]["accepted"]
     released = next(m["payload"] for m in finished if m.get("event_type") == "object_state_result")
     assert (released["previous_state"], released["current_state"]) == ("engaged", "ready")
+    assert main.l1_occupancy_service.snapshot().object_states["obj_worktable"].state == "ready"
     replay = interact("use", "request:use")
     assert not any(m.get("event_type") == "object_state_result" for m in replay)
+    assert main.l1_occupancy_service.snapshot().object_states["obj_worktable"].state == "ready"
     rejected = interact("finish_use", "request:again")
     constraint = next(m["payload"] for m in rejected if m.get("event_type") == "constraint_state_result")
     assert (constraint["constraint_type"], constraint["constraint_code"]) == ("interaction_state_constraint", "invalid_interaction_state")
@@ -72,6 +75,23 @@ def test_failed_object_append_does_not_publish_object_success(configured, monkey
     assert main.gameplay_event_store.get_last_global_sequence() == before
     assert main.esm_service.interaction_state_for(room_id="room_default", scene_id="scene_default",
         zone_id="zone_default", target_object_id="obj_worktable") == "ready"
+
+
+def test_retry_repairs_projection_after_committed_response_is_lost(configured, monkeypatch):
+    binding = bind()
+    assert dispatch(payload(binding))[0]["payload"]["accepted"]
+    before = main.gameplay_event_store.get_last_global_sequence()
+    original = main.l1_occupancy_service.apply_object_state_update
+    def fail(**_kwargs):
+        raise OSError("projection unavailable")
+    monkeypatch.setattr(main.l1_occupancy_service, "apply_object_state_update", fail)
+    with pytest.raises(OSError, match="projection unavailable"):
+        interact("use", "request:use")
+    assert main.gameplay_event_store.get_last_global_sequence() == before + 1
+    monkeypatch.setattr(main.l1_occupancy_service, "apply_object_state_update", original)
+    assert interact("use", "request:use")[0]["payload"]["accepted"]
+    assert main.gameplay_event_store.get_last_global_sequence() == before + 1
+    assert main.l1_occupancy_service.snapshot().object_states["obj_worktable"].state == "engaged"
 
 
 @pytest.mark.parametrize("case", ["unbound", "missing_sample", "missing_request", "foreign_actor", "foreign_scope"])
