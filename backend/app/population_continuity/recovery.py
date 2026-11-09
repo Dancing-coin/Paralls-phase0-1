@@ -19,7 +19,10 @@ if TYPE_CHECKING:
     from .world import WorldContinuityRuntime
 
 
-_APPROVED_B0_AST_SHA256 = "7120cd54cd8d41c7489c7bdb762472e9a0b611f7db79964a8e044889e4ee62ad"
+_APPROVED_B0_AST_SHA256 = frozenset({
+    "201b8a7c9b369cf9a30c149ab34a8205aec015e9a28ac627faba169c911ab764",  # Python 3.12
+    "7120cd54cd8d41c7489c7bdb762472e9a0b611f7db79964a8e044889e4ee62ad",  # Python 3.13
+})
 
 
 def population_kernel_digest() -> str:
@@ -53,7 +56,7 @@ def population_kernel_digest() -> str:
         "kernel_semantics": b0_kernel_signature,
         "function_shape": kernel_contracts,
     }
-    if implementation != _APPROVED_B0_AST_SHA256:
+    if implementation not in _APPROVED_B0_AST_SHA256:
         semantic_fingerprint["unapproved_implementation"] = implementation
     return recovery_digest(semantic_fingerprint)
 
