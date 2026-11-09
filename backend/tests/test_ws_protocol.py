@@ -1,9 +1,11 @@
 from pathlib import Path
+from time import time
 
+from app.character_agent.models.character_execution import CharacterExecutionContract
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
-from app.models.player_input import DialogueSubmit
+from app.models.player_input import DialogueSubmit, InteractIntent
 from app.models.ai_output import DialogueResponse
 from app.models.dialogue_audio import DialogueAudio
 from app.models.environment_request import EnvironmentRequest
@@ -1414,47 +1416,41 @@ def test_door_close_fails_closed_until_its_physical_path_is_implemented() -> Non
 def test_worktable_finish_use_requires_the_authority_committed_engaged_state() -> None:
     _reset_runtime_state_with_local_character_model()
 
-    def interact(producer_ts: int, interaction_type: str) -> list[dict[str, object]]:
-        return main._handle_envelope(
-            Envelope(
-                message_type="player_input",
-                payload={
-                    "player_id": "p1",
-                    "room_id": "room_demo",
-                    "actor_id": "char_c",
-                    "intent_type": "interact_intent",
-                    "producer_ts": producer_ts,
-                    "target_object_id": "obj_worktable",
-                    "interaction_type": interaction_type,
-                },
-            )
+    scope = dict(room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",
+                 target_object_id="obj_worktable")
+
+    def interact(producer_ts: int, interaction_type: str):
+        # Owner-level regression; production pose/dispatch admission is covered by object execution tests.
+        event = InteractIntent(
+            player_id="character_agent", actor_id="char_c", intent_type="interact_intent",
+            producer_ts=producer_ts, interaction_type=interaction_type,
+            turn_id=f"turn:worktable:{producer_ts}",
+            execution_contract_ref=f"execution:worktable:{producer_ts}", **scope,
+        )
+        return main.esm_service.settle_object_interaction(
+            event, action_request=main.esm_service.build_action_request(event),
+            actor_position=main.esm_service.OBJECT_POSITIONS["obj_worktable"],
         )
 
-    engaged = interact(462, "use")
-    released = interact(463, "finish_use")
-    rejected = interact(464, "finish_use")
+    assert main.esm_service.interaction_state_for(**scope) == "ready"
+    engaged, engaged_receipt = interact(462, "use")
+    assert engaged.settlement_status == "committed" and engaged_receipt.committed
+    assert main.esm_service.interaction_state_for(**scope) == "engaged"
+    assert main.gameplay_event_store.get_event(engaged_receipt.committed_event_ids[0]).payload["current_state"] == "engaged"
+    assert interact(462, "use") == (engaged, engaged_receipt)
 
-    engaged_transition = next(message for message in engaged if message.get("message_type") == "state_machine_transition")
-    released_transition = next(message for message in released if message.get("message_type") == "state_machine_transition")
-    released_object_result = next(
-        message
-        for message in released
-        if message.get("message_type") == "world_result" and message.get("event_type") == "object_state_result"
-    )
-    state_constraint = next(
-        message
-        for message in rejected
-        if message.get("message_type") == "world_result" and message.get("event_type") == "constraint_state_result"
-    )
-
-    assert engaged_transition["machine_id"] == "work_surface"
-    assert engaged_transition["from_state"] == "ready"
-    assert engaged_transition["to_state"] == "engaged"
-    assert released_transition["from_state"] == "engaged"
-    assert released_transition["to_state"] == "ready"
-    assert released_object_result["payload"]["current_state"] == "ready"
-    assert state_constraint["payload"]["constraint_type"] == "interaction_state_constraint"
-    assert state_constraint["payload"]["constraint_code"] == "invalid_interaction_state"
+    released, released_receipt = interact(463, "finish_use")
+    assert released.settlement_status == "committed" and released_receipt.committed
+    assert main.esm_service.interaction_state_for(**scope) == "ready"
+    assert main.gameplay_event_store.get_event(released_receipt.committed_event_ids[0]).payload["current_state"] == "ready"
+    before = main.gameplay_event_store.get_last_global_sequence()
+    assert interact(463, "finish_use") == (released, released_receipt)
+    state_constraint, rejected_receipt = interact(464, "finish_use")
+    assert state_constraint.constraint_type == "interaction_state_constraint"
+    assert state_constraint.constraint_code == "invalid_interaction_state"
+    assert rejected_receipt is None
+    assert main.esm_service.interaction_state_for(**scope) == "ready"
+    assert main.gameplay_event_store.get_last_global_sequence() == before
 
 
 def test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture() -> None:
@@ -1678,30 +1674,53 @@ def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> Non
 
 def test_websocket_character_agent_execution_emits_scheduling_round_trace() -> None:
     _reset_runtime_state_with_local_character_model()
-    client = TestClient(app)
+    contract = CharacterExecutionContract(
+        turn_id="turn:char_b:scheduling", actor_ref="character:char_b",
+        source_ref="percept:scheduling", producer_ts=10,
+        target_refs=["character:char_a"], semantic_intent_id="speak_public",
+        semantic_action_id="action:speak", expected_revision_vector={"session:char_b": 1},
+        idempotency_key="execution:char_b:scheduling", causation_id="cause:scheduling",
+        correlation_id="corr:scheduling", privacy_scope="actor_private:char_b",
+        authority_scope="world:default", expected_observation={"summary": "Hello"},
+    )
+    now = int(time())
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="p1", allowed_actor_refs=("character:char_b",),
+        issued_at=now, expires_at=now + 60,
+    )
+    client = TestClient(app, client=("127.0.0.1", 50000))
     with client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "websocket_session_bind", "payload": {
+            "credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1,
+        }})
+        assert websocket.receive_json()["payload"]["accepted"] is True
+        assert websocket.receive_json()["message_type"] == "websocket_session_bound"
+        main.character_agent_runtime.record_execution_request(
+            actor_id="char_b", producer_ts=contract.producer_ts, payload=contract.model_dump(mode="json"),
+        )
         websocket.send_json(
             {
                 "message_type": "character_agent_execution",
-                "payload": {
-                    "actor_id": "char_b",
-                    "action_request_bundle": {
-                        "requested_actions": [
-                            {
-                                "request_type": "approach",
-                                "actor_id": "char_b",
-                                "target_actor_id": "char_a",
-                            }
-                        ]
-                    },
-                },
+                "payload": contract.model_dump(mode="json"),
             }
         )
-
-        received = [websocket.receive_json() for _ in range(13)]
+        websocket.send_json({"message_type": "transport_barrier", "payload": {
+            "request_id": "transport_barrier:scheduling", "producer_ts": 11,
+        }})
+        received = []
+        while True:
+            message = websocket.receive_json()
+            if message.get("payload", {}).get("request_id") == "transport_barrier:scheduling":
+                assert message["payload"]["accepted"] is True
+                break
+            received.append(message)
 
     traces = [message for message in received if message["message_type"] == "scheduling_round_trace"]
 
+    assert received[0]["payload"]["accepted"] is True
+    response = next(message["payload"] for message in received if message["message_type"] == "dialogue_response")
+    assert response["actor_id"] == "char_b"
+    assert response["turn_id"] == contract.turn_id
     assert traces
     assert traces[0]["payload"]["round_id"] == 1
     assert traces[0]["payload"]["lead_actor_id"] == "char_b"

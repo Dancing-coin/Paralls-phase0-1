@@ -73,6 +73,7 @@ def valid_live_evidence(tmp_path: Path) -> LiveEvidence:
 
 
 def test_preflight_rejects_disabled_or_fake_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CHARACTER_MODEL_PROVIDER_KIND", "local")
     monkeypatch.setenv("SIMING_LLM_MODE", "disabled")
     result = live_preflight(project_root())
     assert result.ok is False

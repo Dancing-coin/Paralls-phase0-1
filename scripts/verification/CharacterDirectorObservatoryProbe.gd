@@ -4,6 +4,7 @@ var _backend_connected := false
 var _dialogue_received := false
 var _character_debug_event_count := 0
 var _script_beat_count := 0
+var _bottom_strip_siming_observed := false
 const BACKEND_URL := "ws://127.0.0.1:8000/ws"
 
 const STATE_PAYLOADS_OK_MARKER := "character_director_observatory_probe:state_payloads_ok=true"
@@ -70,6 +71,8 @@ func _run_probe() -> void:
 		get_tree().quit(1)
 		return
 	print("character_director_observatory_probe:wait_begin")
+	# Observe real refreshes before newer rows evict Siming from the latest three.
+	state.observatory_state_changed.connect(_observe_bottom_strip.bind(observatory_root))
 	var timeline_projection_ok := _check_timeline_projection(state, timeline)
 	_print_bool_marker(TIMELINE_PROJECTION_OK_MARKER, timeline_projection_ok)
 	if not timeline_projection_ok:
@@ -274,7 +277,8 @@ func _run_probe() -> void:
 		)
 	)
 	var bottom_strip_siming_populated: bool = (
-		early_bottom_strip_siming_populated
+		_bottom_strip_siming_observed
+		or early_bottom_strip_siming_populated
 		or live_bottom_strip_siming_populated
 		or state_bottom_strip_siming_populated
 		or (
@@ -397,6 +401,13 @@ func _wait_for_backend_connected(timeout_ms: int) -> bool:
 			return true
 		await get_tree().process_frame
 	return false
+
+
+func _observe_bottom_strip(observatory_root: Node) -> void:
+	var world_trace := observatory_root.get_node_or_null("WorldOutcomeTrace")
+	var trace_label := world_trace.get_child(0) if world_trace and world_trace.get_child_count() > 0 else null
+	if trace_label != null and str(trace_label.text).find("[司命]") >= 0:
+		_bottom_strip_siming_observed = true
 
 
 func _wait_for_bottom_strip_siming(state: Node, observatory_root: Node, timeout_ms: int) -> bool:

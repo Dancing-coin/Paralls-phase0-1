@@ -101,7 +101,7 @@ def test_concurrent_raw_fact_handlers_do_not_duplicate_character_memory_events()
 
     runtime._session_store.append_event = delayed_append_event  # type: ignore[method-assign]
 
-    def envelope(index: int) -> Envelope:
+    def envelope() -> Envelope:
         event = RawFactEvent(
             fact_family="visual_fact",
             fact_type="fixed_gaze_on_target",
@@ -112,14 +112,15 @@ def test_concurrent_raw_fact_handlers_do_not_duplicate_character_memory_events()
             zone_id="zone_focus",
             source={"system": "godot.raw_fact_emitter", "actor_id": "char_c"},
             targets={"actor_id": "char_b"},
-            causation_id=f"concurrent:{index}",
+            # 同一权威事件的并发重投必须保留原溯源。
+            causation_id="concurrent:fact",
             correlation_id="concurrent:batch",
         )
         return Envelope(message_type="raw_fact_event", payload=event.model_dump())
 
     errors: list[BaseException] = []
     with ThreadPoolExecutor(max_workers=8) as executor:
-        futures = [executor.submit(_handle_envelope, envelope(index)) for index in range(16)]
+        futures = [executor.submit(_handle_envelope, envelope()) for _ in range(16)]
         for future in as_completed(futures):
             try:
                 future.result()

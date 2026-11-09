@@ -213,7 +213,9 @@ def test_execute_choice_branch_returns_no_impact_when_authority_accepts_without_
     module = load_module()
     baseline = module.fixture_baseline_model()
     baseline["objects"][0]["state"]["possession"] = "char_a"
-    candidate = module.fixture_candidate_choices()[2]
+    baseline["allowed_deviations"] = []
+    baseline["prior_event_requirements"][0]["interaction_type"] = "inspect"
+    candidate = module.fixture_candidate_choices()[0]
 
     result = module.execute_choice_branch(baseline, candidate)
 
@@ -893,48 +895,6 @@ def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkey
         [
             {"choices": [{"message": {"content": json.dumps(baseline, ensure_ascii=False)}}]},
             {"choices": [{"message": {"content": json.dumps({"choices": choices}, ensure_ascii=False)}}]},
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "content": json.dumps(
-                                {
-                                    "projections": [
-                                        {
-                                            "choice_id": "A",
-                                            "impacted_mainline_node": "箕谷疑兵转为主动牵制",
-                                            "original_mainline_direction": "赵云疑兵仍是牵制，街亭危机继续逼近。",
-                                            "evolved_mainline_direction": "刘世民亲赴箕谷后，疑兵士气上升并形成主动牵制。",
-                                            "followup_nodes": [
-                                                "曹真需要重新判断箕谷兵力性质",
-                                                "街亭方向获得更长反应窗口",
-                                                "诸葛亮主力可以调整北伐节奏",
-                                            ],
-                                            "locked_fact_constraints": ["街亭危机已经迫近。"],
-                                            "evolvable": True,
-                                            "projection_notes": "Projection consumes backend branch_diff and does not decide proof status.",
-                                        },
-                                        {
-                                            "choice_id": "B",
-                                            "impacted_mainline_node": "成都后方协调",
-                                            "original_mainline_direction": "成都政务尚未准备承接皇帝突然亲征。",
-                                            "evolved_mainline_direction": "关兴承担联络任务，后方协调状态改为 delegated。",
-                                            "followup_nodes": [
-                                                "郭攸之、董允、向宠接管后方秩序",
-                                                "御驾亲征的政治阻力下降",
-                                            ],
-                                            "locked_fact_constraints": ["街亭危机已经迫近。"],
-                                            "evolvable": True,
-                                            "projection_notes": "Support branch still changes the mainline support conditions.",
-                                        },
-                                    ]
-                                },
-                                ensure_ascii=False,
-                            )
-                        }
-                    }
-                ]
-            },
         ]
     )
 
@@ -951,8 +911,8 @@ def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkey
 
     assert report["mode"] == "chapter"
     assert report["choices_source"] == "deepseek_auto"
-    assert report["overall_script_evolution_passed"] is True
-    assert report["summary_zh"].startswith("通过：")
+    assert report["overall_script_evolution_passed"] is False
+    assert report["summary_zh"].startswith("失败：")
     assert report["normalization"]["script_normalize"] == "deepseek_chapter"
     assert report["normalization"]["choices_normalize"] == "deepseek_auto_choices"
     assert {actor["actor_id"] for actor in report["baseline_model"]["actors"]} == {"liu_shimin", "guan_xing"}
@@ -961,18 +921,16 @@ def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkey
     assert report["candidate_choices"][0]["contract_alignment"]["aligned"] is True
     assert len(report["chain_trace"]) >= 7
     assert len(report["choices"]) == 3
-    assert report["choices"][0]["classification"] in {
-        "MAINLINE_IMPACT_DETECTED",
-        "SIMING_INTERVENTION_PROPOSED",
-    }
-    assert report["choices"][0]["full_chain"]["authority_event_count"] >= 3
-    assert report["choices"][0]["full_chain"]["esm_result_count"] >= 2
-    assert report["choices"][0]["full_chain"]["branch_diff_count"] >= 1
-    assert report["choices"][0]["full_chain"]["siming_observed"] is True
-    assert report["choices"][0]["mainline_projection"]["impacted_mainline_node"] == "箕谷疑兵转为主动牵制"
-    assert "街亭方向获得更长反应窗口" in report["choices"][0]["mainline_projection"]["followup_nodes"]
-    assert report["choices"][0]["mainline_projection"]["evolvable"] is True
-    assert report["choices"][1]["mainline_projection"]["impacted_mainline_node"] == "成都后方协调"
+    for choice in report["choices"][:2]:
+        assert choice["classification"] == "CONSTRAINT_REJECTED"
+        assert choice["full_chain"]["authority_event_count"] == 2
+        assert choice["full_chain"]["esm_result_count"] == 1
+        assert choice["branch_diff"] == []
+        assert choice["full_chain"]["branch_diff_count"] == 0
+        assert choice["full_chain"]["siming_observed"] is False
+        assert choice["full_chain"]["siming_output_count"] == 0
+        assert choice["mainline_projection"]["evolvable"] is False
+        assert not any(event["event_type"] == "world.object_state.changed" for event in choice["authority_events"])
     assert report["choices"][2]["classification"] == "NEEDS_PRIOR_EVENT"
     assert report["choices"][2]["mainline_projection"]["evolvable"] is False
 
@@ -988,11 +946,9 @@ def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkey
     assert "ESM 结果" in markdown
     assert "司命观察" in markdown
     assert "后续主线演化" in markdown
-    assert "箕谷疑兵转为主动牵制" in markdown
-    assert "街亭方向获得更长反应窗口" in markdown
-    assert "world.object_state.changed" in markdown
-    assert "action_resolution_result" in markdown
-    assert "objects.node_jigu_campaign.command_state: undecided -> imperial_redirect" in markdown
+    assert "constraint_state_result" in markdown
+    assert "world.object_state.changed" not in markdown
+    assert "objects.node_jigu_campaign.command_state: undecided -> imperial_redirect" not in markdown
 
     events = [json.loads(line) for line in events_jsonl.read_text(encoding="utf-8").splitlines()]
     stages = {event["stage"] for event in events}
@@ -1023,21 +979,21 @@ def test_chapter_mode_auto_choices_writes_full_chain_logs(tmp_path: Path, monkey
     projection_event = next(
         event for event in events if event["stage"] == "choice_mainline_projected" and event["payload"]["choice_id"] == "A"
     )
-    assert len(authority_event["payload"]["authority_events"]) >= 3
-    assert any(item["event_type"] == "world.object_state.changed" for item in authority_event["payload"]["authority_events"])
-    assert len(esm_event["payload"]["esm_results"]) >= 2
-    assert any(item["result_type"] == "action_resolution_result" for item in esm_event["payload"]["esm_results"])
+    assert len(authority_event["payload"]["authority_events"]) == 2
+    assert not any(item["event_type"] == "world.object_state.changed" for item in authority_event["payload"]["authority_events"])
+    assert len(esm_event["payload"]["esm_results"]) == 1
+    assert esm_event["payload"]["esm_results"][0]["result_type"] == "constraint_state_result"
     assert diff_event["payload"]["branch_diff"] == report["choices"][0]["branch_diff"]
-    assert siming_event["payload"]["siming_evidence"]["observed"] is True
-    assert projection_event["payload"]["mainline_projection"]["impacted_mainline_node"] == "箕谷疑兵转为主动牵制"
+    assert siming_event["payload"]["siming_observed"] is False
+    assert siming_event["payload"]["siming_output_count"] == 0
+    assert projection_event["payload"]["mainline_projection"]["evolvable"] is False
 
     module._print_console(report)
     console = capsys.readouterr().out
     assert "后续主线演化(mainline_projection):" in console
     assert "Branch Diff:" in console
-    assert "objects.node_jigu_campaign.command_state: undecided -> imperial_redirect" in console
-    assert "影响主线节点=箕谷疑兵转为主动牵制" in console
-    assert "新主线走向=刘世民亲赴箕谷后，疑兵士气上升并形成主动牵制。" in console
+    assert "objects.node_jigu_campaign.command_state: undecided -> imperial_redirect" not in console
+    assert "约束拒绝" in console
     assert "后续剧情节点=" in console
 
 
@@ -1203,19 +1159,11 @@ def test_chapter_baseline_promotes_actor_deviation_targets_to_narrative_objects(
         },
     )
 
-    assert result.classification in {"MAINLINE_IMPACT_DETECTED", "SIMING_INTERVENTION_PROPOSED"}
-    assert result.branch_diff == [
-        {
-            "path": "objects.guan_xing.state.action",
-            "from": "hesitant",
-            "to": "obeys_and_delivers_order",
-        },
-        {
-            "path": "objects.imperial_order.state.delivered",
-            "from": False,
-            "to": True,
-        },
-    ]
+    assert result.classification == "CONSTRAINT_REJECTED"
+    assert result.branch_diff == []
+    assert result.siming_evidence == {}
+    assert not any(event["event_type"] == "world.object_state.changed" for event in result.authority_events)
+    assert result.esm_results[0]["constraint_type"] == "interaction_policy_constraint"
 
 
 def test_normalize_with_deepseek_rejects_partial_or_reordered_choice_lists(monkeypatch) -> None:

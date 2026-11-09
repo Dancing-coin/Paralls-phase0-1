@@ -124,7 +124,7 @@ def same_run_profile_report(project_root: Path, filename: str) -> Path:
     """
     if not filename or Path(filename).name != filename:
         raise ValueError("profile_report_filename_invalid")
-    local = verification_dir(project_root) / filename
+    local = artifact_path(project_root, f".harness/verification/{filename}")
     if local.is_file():
         return local
     run_root = current_run(project_root).evidence_root

@@ -41,6 +41,7 @@ def inventory(root: Path) -> tuple[list[str], str]:
         for directory in ("scenes", "scripts", "backend")
         for path in (root / directory).rglob("*")
         if path.is_file() and path.suffix in {".gd", ".tscn", ".py"}
+        and not path.is_relative_to(root / "backend" / "build")
     )
     digest = hashlib.sha256()
     callers = []
