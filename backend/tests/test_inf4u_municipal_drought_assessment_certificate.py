@@ -88,6 +88,57 @@ def test_incomplete_or_changed_certificate_request_is_zero_write() -> None:
     assert store.export_snapshot() == before
 
 
+@pytest.mark.parametrize("case,code", [
+    ("missing", "municipal_certificate_advisory_missing"),
+    ("stale_contract", "municipal_certificate_contract_revision_conflict"),
+    ("stale_ownership", "revision_conflict"),
+])
+def test_certificate_rejection_receipt_and_zero_write(case: str, code: str) -> None:
+    store, advisory_event_id = _setup_completed_assessment()
+    ownership = OwnershipAuthorityService(store=store)
+    request = _intent_for(store, advisory_event_id)
+    if case == "missing":
+        request = request.model_copy(update={"advisory_event_id": "event:missing"})
+    elif case == "stale_contract":
+        request = request.model_copy(update={"expected_contract_revision": 0})
+    else:
+        request = request.model_copy(update={"expected_ownership_revision": 1})
+    before = store.export_snapshot()
+
+    result = ownership.grant_municipal_drought_assessment_certificate(request)
+
+    assert not result.committed
+    assert result.transaction_id == f"transaction:{request.command_id}"
+    assert result.command_id == request.command_id
+    assert result.idempotency_status == "rejected"
+    assert result.failure is not None
+    assert result.failure.error_code == result.failure.message == code
+    assert result.failure.failed_stage == "municipal_certificate_admission"
+    assert not result.committed_event_ids
+    assert store.export_snapshot() == before
+
+
+def test_certificate_exact_retry_and_changed_payload_preserve_receipts() -> None:
+    store, advisory_event_id = _setup_completed_assessment()
+    ownership = OwnershipAuthorityService(store=store)
+    request = _intent_for(store, advisory_event_id)
+    first = ownership.grant_municipal_drought_assessment_certificate(request)
+    before = store.export_snapshot()
+
+    retry = ownership.grant_municipal_drought_assessment_certificate(request)
+    changed = ownership.grant_municipal_drought_assessment_certificate(
+        request.model_copy(update={"correlation_id": "corr:changed"})
+    )
+
+    assert first.committed
+    assert retry == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    assert not changed.committed and changed.failure is not None
+    assert changed.failure.error_code == changed.failure.message == "idempotency_key_reused"
+    assert changed.failure.failed_stage == "municipal_certificate_admission"
+    assert changed.transaction_id == f"transaction:{request.command_id}"
+    assert store.export_snapshot() == before
+
+
 def test_generic_initial_title_cannot_reserve_municipal_certificate_identity() -> None:
     store, advisory_event_id = _setup_completed_assessment()
     contract_id = f"contract:municipal-drought-assessment:{JURISDICTION}:{advisory_event_id}"

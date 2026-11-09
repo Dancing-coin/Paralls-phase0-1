@@ -13,8 +13,8 @@ from pydantic import ConfigDict, Field
 from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
-from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment, StrictGameplayModel
-from app.gameplay.owner_runtime_base import replay_duplicate
+from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.owner_runtime_base import rejected_result, replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
@@ -335,12 +335,9 @@ class OwnershipAuthorityService:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
-            command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="municipal_certificate_admission"),
+        return rejected_result(
+            command_id=command_id, error_code=error_code,
+            stage="municipal_certificate_admission", transaction_prefix="transaction",
         )
 
 
