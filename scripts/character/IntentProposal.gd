@@ -37,7 +37,7 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 		"move_local": move if move is Vector2 else Vector2.ZERO,
 		"desired_facing_yaw": facing,
 		"action_id": StringName(raw.get("action_id", "")),
-		"target_ref": StringName(raw.get("target_ref", "")),
+		"target_ref": StringName(str(raw.get("target_ref") if raw.get("target_ref") != null else "")),
 		"claims": raw.get("claims", []).duplicate(),
 		"locomotion_relation": StringName(raw.get("locomotion_relation", "coexist")),
 		"priority": int(raw.get("priority", 0)),

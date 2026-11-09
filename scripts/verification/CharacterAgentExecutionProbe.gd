@@ -78,12 +78,12 @@ func _run_probe() -> void:
 			"source": {
 				"layer": "L1",
 				"system": "godot.raw_fact_emitter",
-				"actor_id": "char_c",
+				"actor_id": "char_a",
 				"object_id": "",
 				"environment_id": "",
 			},
 			"targets": {
-				"actor_id": "char_a",
+				"actor_id": "char_b",
 				"object_id": "",
 				"environment_id": "",
 			},
