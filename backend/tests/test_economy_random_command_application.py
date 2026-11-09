@@ -124,9 +124,9 @@ def test_real_fastapi_websocket_controller_bind_then_random_command(tmp_path, mo
     assert driver.tick(window).published_cadence_ids
     auth = EmbodiedControllerAuthService()
     import time
-    now = int(time.time() * 1000)
+    now = int(time.time())
     secret = auth.create_trusted_local_launch_credential(
-        actor_id="char_a", controller_instance_id="controller:network", issued_at=now, expires_at=now + 60_000)
+        actor_id="char_a", controller_instance_id="controller:network", issued_at=now, expires_at=now + 60)
     monkeypatch.setattr(main, "gameplay_event_store", store, raising=False)
     monkeypatch.setattr(main, "economy_random_caller",
         PopulationEconomyRandomCaller(store=store, registry=registry, population_driver=driver), raising=False)

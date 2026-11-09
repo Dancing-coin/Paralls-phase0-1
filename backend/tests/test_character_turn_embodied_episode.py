@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import time
 from app.character_agent.models.embodied_episode import CandidateActionObservation
 from app.character_agent.services.embodied_episode_service import EmbodiedEpisodeService
 from app.character_agent.models.turn_context import CharacterTurnContext
@@ -17,8 +18,9 @@ def _connection() -> WebSocketConnectionContext:
 
 
 def _bind(connection: WebSocketConnectionContext) -> None:
+    now = int(time())
     credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
-        actor_id="char_c", controller_instance_id="controller:char_c:turn-door", issued_at=100, expires_at=200
+        actor_id="char_c", controller_instance_id="controller:char_c:turn-door", issued_at=now, expires_at=now + 100
     )
     main._handle_envelope(
         main.Envelope(
