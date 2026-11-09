@@ -145,7 +145,8 @@ async def test_admin_auth_changing_in_runtime_queue_rejects_without_write(applic
 
     def observe_submit(command):
         future = original_submit(command)
-        submitted.set()
+        if command.__qualname__ == "revoke_world_admin_cadence.<locals>.command":
+            submitted.set()
         return future
 
     monkeypatch.setattr(execution, "submit", observe_submit)
