@@ -841,6 +841,24 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
     assert results["forward_direction_probe"]["status"] == "proved"
 
 
+@pytest.mark.parametrize("bridge,actor,expected", [
+    ("before_player_shell_move _sync_character_c_control_frame sync_player_control_frame", "player_control_move_direction apply_physics_command", "proved"),
+    ("before_player_shell_move", "player_control_move_direction apply_physics_command", "missing"),
+    ("before_player_shell_move _sync_character_c_control_frame sync_player_control_frame", "player_control_move_direction", "missing"),
+])
+def test_phase0_audit_checks_current_player_actor_motor_chain(bridge, actor, expected):
+    report = evaluate_phase0_audit(
+        pytest_passed=True, scene_load_ok=True,
+        main_log="locomotion_probe:distance=0.3 forward_alignment=1.0", focus_log="",
+        main_screenshot_exists=True, focus_screenshot_exists=True,
+        interaction_source="", esm_service_source="", voice_controller_source="",
+        player_bridge_source=bridge, character_replica_source=actor,
+        player_shell_source="set_human_intent_frame before_player_shell_move get_character_actor",
+        character_motor_source="apply_physics_command move_and_slide",
+    )
+    assert _index_by_id(report["results"])["player_root_motion_chain"]["status"] == expected
+
+
 @pytest.mark.parametrize('measurements,proved', [
     ('', False),
     ('actor=char_a distance=0.000 target_alignment=1.000\nactor=char_b distance=0.100 target_alignment=1.000', False),

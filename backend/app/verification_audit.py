@@ -431,7 +431,13 @@ def evaluate_phase0_audit(
     player_root_motion_runtime_ok = "player_root_motion_step:char_c" in main_log or "player_root_motion_step:char_c" in focus_log
     player_motor_runtime_ok = _has_positive_locomotion_alignment(combined_log)
     player_root_motion_code_ok = "before_player_shell_move" in player_bridge_source and "consume_player_root_motion_request" in character_replica_source
-    player_motor_code_ok = "apply_intent_frame" in player_shell_source and "move_and_slide" in character_motor_source
+    direct_motor_path = "apply_intent_frame" in player_shell_source
+    actor_motor_path = (
+        all(token in player_shell_source for token in ("set_human_intent_frame", "before_player_shell_move", "get_character_actor"))
+        and all(token in player_bridge_source for token in ("_sync_character_c_control_frame", "sync_player_control_frame"))
+        and all(token in character_replica_source for token in ("player_control_move_direction", "apply_physics_command"))
+    )
+    player_motor_code_ok = (direct_motor_path or actor_motor_path) and "move_and_slide" in character_motor_source
     player_root_motion_status = "proved" if (player_root_motion_runtime_ok and player_root_motion_code_ok) or (player_motor_runtime_ok and player_motor_code_ok) else ("weak" if player_root_motion_code_ok or player_motor_code_ok else "missing")
     player_root_motion_notes = ""
     if player_root_motion_status == "weak":
