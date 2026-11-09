@@ -343,3 +343,26 @@ def test_package_exchange_rejects_corrupt_receipt_event_reference() -> None:
     assert not duplicate.committed and duplicate.failure is not None
     assert duplicate.failure.error_code == "idempotency_key_reused"
     assert store.export_snapshot() == before
+
+
+@pytest.mark.parametrize("corruption", ["empty", "duplicate", "reordered", "wrong_transaction"])
+def test_package_exchange_rejects_inconsistent_replay_receipt_without_writes(corruption) -> None:
+    store, economy, _inventory, _ownership, _contracts = _setup()
+    intent = _intent(outcome_ref="outcome:package-compass")
+    first = economy.settle_package_declared_negotiated_exchange(intent)
+    assert first.committed and len(first.committed_event_ids) > 1
+    ids = list(first.committed_event_ids)
+    changes = {
+        "empty": {"committed_event_ids": []},
+        "duplicate": {"committed_event_ids": ids + [ids[0]]},
+        "reordered": {"committed_event_ids": list(reversed(ids))},
+        "wrong_transaction": {"transaction_id": "transaction:missing"},
+    }
+    store._idempotency_results[("actor_gameplay.economy_domain", intent.idempotency_key)] = first.model_copy(
+        update=changes[corruption], deep=True)
+    before = store.export_snapshot()
+
+    duplicate = economy.settle_package_declared_negotiated_exchange(intent)
+
+    assert not duplicate.committed and duplicate.failure.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
