@@ -80,8 +80,9 @@ replay 201. Lists may overlap; these numbers must not be added as unique tests.
 Before each G1 migration, extend the relevant set for actual callers and add
 the identified modifier Decimal and equipment receipt predicate protections.
 
-The source and gate analysis in the separate Paralls-docs repository records
-the v1/v2 delivery conflict and maps D2-D10 to their dependent stages. These
+The [historical source and gate analysis](original-sources-and-gates.md)
+records the v1/v2 delivery conflict and maps D2-D10 to their dependent stages.
+Its relative links refer to the original Paralls-docs repository. These
 decisions remain open. This evidence does not approve G1, close those decisions,
 or establish UE, Godot runtime, or Demo acceptance. Technical-lead review and
 approval remain outstanding; the local author cannot assert independent review.
