@@ -223,6 +223,12 @@ func _advance_prediction() -> void:
 		# Wait for the initial authoritative delivery before starting the overlay.
 		if _consumer.last_delivery_sequence < 1:
 			return
+		# The confirmation request can race the first delivery; accept its already
+		# settled projection and continue with the rejection phase.
+		if current == 5 and _consumer.accepted_projection_count >= 2:
+			_prediction_confirm_started = true
+			_write_prediction_ready("confirm")
+			return
 		if current != 6:
 			_finish(false, "prediction_initial_authority_snapshot_invalid")
 			return
