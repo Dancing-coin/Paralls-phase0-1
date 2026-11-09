@@ -82,3 +82,37 @@ def test_scenario4_replays_an_identical_land_right_transfer_without_a_second_tit
     assert replayed.idempotency_status == "duplicate_replayed"
     assert len(scenario.store.read_events()) == event_count_after_first
     assert scenario.ownership().rights[scenario.land_right_id].holder_ref == scenario.recipient_ref
+
+
+def test_land_right_replay_rejects_changed_revision_and_missing_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
+    scenario = _purchased_scenario()
+    assert scenario.issue_deed_credential().committed
+    revision = scenario.store.get_stream_head("gameplay:ownership")
+    first = scenario.transfer_land_right(expected_ownership_revision=revision)
+    before = scenario.store.read_events()
+    replay = scenario.transfer_land_right(expected_ownership_revision=revision)
+    assert replay == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    with pytest.raises(AdventureBasicScenarioError, match="^idempotency_key_reused$"):
+        scenario.transfer_land_right(expected_ownership_revision=revision + 1)
+    monkeypatch.setattr(scenario.store, "get_by_idempotency", lambda *_: None)
+    with pytest.raises(AdventureBasicScenarioError, match="^land_right_idempotency_missing_result$"):
+        scenario.transfer_land_right(expected_ownership_revision=revision)
+    assert scenario.store.read_events() == before
+
+
+def test_land_right_stale_commit_rejects_without_partial_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    scenario = _purchased_scenario()
+    assert scenario.issue_deed_credential().committed
+    before = scenario.store.read_events()
+    append = scenario.store.append_batch
+
+    def append_with_stale_revision(batch):
+        batch["expected_stream_revisions"]["gameplay:credentials"] -= 1
+        return append(batch)
+
+    monkeypatch.setattr(scenario.store, "append_batch", append_with_stale_revision)
+    result = scenario.transfer_land_right()
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "revision_conflict"
+    assert scenario.store.read_events() == before
