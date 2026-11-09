@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from app.gameplay.econ1_economy_runtime import EconomyAuthority
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.shared_contracts import ScheduledObligation
@@ -44,6 +46,41 @@ def _opened_store() -> GameplayEventStore:
     store = GameplayEventStore()
     assert _open(store, accrual_ref="accrual:one").committed
     return store
+
+
+@pytest.mark.parametrize("case,code", [
+    ("scope", "economy_wage_owner_commit_scope_denied"),
+    ("mismatch", "economy_wage_owner_commit_fragment_mismatch"),
+])
+def test_economy_wage_invalid_batch_rejection_receipt_is_zero_write(case: str, code: str) -> None:
+    store = _opened_store()
+    authority = EconomyAuthority(store=store)
+    obligation = _obligation(status="due")
+    coordinator = ObligationSettlementCoordinator(store=store, lifecycle_registrations=(_registration(),))
+    plan = coordinator.plan_expire(
+        obligation=obligation,
+        fragment=authority.build_wage_obligation_expiry_fragment(obligation=obligation, reason_ref="reason:wage_window_elapsed"),
+        principal_ref="world_runtime.caller", reason_ref="reason:wage_window_elapsed",
+    )
+    assert plan.ready and plan.owner_commit_batch is not None
+    batch = plan.owner_commit_batch
+    if case == "scope":
+        batch = batch.model_copy(update={"owner_fragments": []})
+    else:
+        batch = batch.model_copy(update={"expected_stream_revisions": {STREAM: 999}})
+    before = store.export_snapshot()
+
+    result = authority.commit_obligation_batch(batch)
+
+    assert not result.committed
+    assert result.transaction_id == f"transaction:{batch.command_id}"
+    assert result.command_id == batch.command_id
+    assert result.idempotency_status == "rejected"
+    assert result.failure is not None
+    assert result.failure.error_code == result.failure.message == code
+    assert result.failure.failed_stage == "economy_wage_obligation_commit"
+    assert not result.committed_event_ids
+    assert store.export_snapshot() == before
 
 
 def test_economy_wage_retry_is_owner_fragment_event_derived() -> None:

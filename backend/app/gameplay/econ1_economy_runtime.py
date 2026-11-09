@@ -10,6 +10,7 @@ from pydantic import ConfigDict, Field
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.owner_runtime_base import rejected_result
 from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.gameplay.settlement_plan import SettlementPlan, build_atomic_event_batch, build_multi_stream_atomic_event_batch_from_fragments
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
@@ -142,12 +143,9 @@ class EconomyAuthority:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
-            command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="economy_wage_obligation_commit"),
+        return rejected_result(
+            command_id=command_id, error_code=error_code,
+            stage="economy_wage_obligation_commit", transaction_prefix="transaction",
         )
 
     @classmethod
