@@ -5160,6 +5160,18 @@ def _handle_envelope(
     if envelope.message_type == "embodied_grab_carry_place_probe":
         return _handle_embodied_grab_carry_place_probe(envelope)
 
+    if envelope.message_type == "embodied_spatial_resume_request":
+        payload = envelope.payload
+        if (not isinstance(payload, dict) or set(payload) != {"actor_id"}
+                or not isinstance(payload["actor_id"], str) or not payload["actor_id"]):
+            return [_as_envelope("embodied_spatial_resume_result", {"accepted": False, "error_code": "invalid_payload"})]
+        try:
+            state = embodied_spatial_source.resume(actor_id=payload["actor_id"],
+                connection_ref=connection_context.connection_ref)
+        except ValueError as exc:
+            return [_as_envelope("embodied_spatial_resume_result", {"accepted": False, "error_code": str(exc)})]
+        return [_as_envelope("embodied_spatial_resume_result", {"accepted": True, **state})]
+
     if envelope.message_type == "embodied_spatial_sample":
         try:
             sample = EmbodiedSpatialSample.model_validate(envelope.payload)

@@ -159,6 +159,21 @@ class EmbodiedSpatialSource:
         self._validate_event(events[0], actor_id)
         return events[0]
 
+    def resume(self, *, actor_id: str, connection_ref: str) -> dict[str, object]:
+        binding = self._auth.resolve_controller_binding(actor_id=actor_id, connection_ref=connection_ref)
+        if not binding.accepted or binding.binding is None:
+            raise ValueError("controller_binding_required")
+        scope = self._scopes.get(actor_id)
+        if scope is None:
+            raise ValueError("spatial_scope_mismatch")
+        with self._lock:
+            latest = self._latest(actor_id)
+            if latest is not None and latest.payload["scope_digest"] != _digest(scope.model_dump(mode="json")):
+                raise ValueError("spatial_scope_migration_required")
+            position = scope.spawn_position if latest is None else latest.payload["sample"]["position"]
+            identity = {name: getattr(scope, name) for name in _ScopeIdentity.model_fields}
+            return {**identity, "connection_epoch": binding.binding.connection_epoch, "position": list(position)}
+
     def accept(self, sample: EmbodiedSpatialSample, *, connection_ref: str) -> AppendBatchResult:
         sample = EmbodiedSpatialSample.model_validate(sample)
         scope = self._scope(sample)

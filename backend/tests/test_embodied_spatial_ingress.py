@@ -90,6 +90,34 @@ def test_transport_disconnect_revokes_spatial_source(configured):
     assert dispatch({**payload(binding), "physics_tick": 2})[0]["payload"]["accepted"] is False
 
 
+def test_resume_state_requires_binding_and_recovers_last_admitted_position(configured):
+    from app.ws_protocol import Envelope
+
+    def request(connection):
+        context = WebSocketConnectionContext.direct_handler_compatibility()
+        context.connection_ref = connection
+        return main._handle_envelope(Envelope(message_type="embodied_spatial_resume_request",
+            payload={"actor_id": "char_a"}), connection_context=context)[0]
+
+    assert not request("foreign")["payload"]["accepted"]
+    binding = bind()
+    initial = request("spatial:c")
+    assert initial["payload"]["accepted"]
+    assert initial["payload"]["position"] == [0.0, 0.0, 0.0]
+    now = [1000]
+    configured._clock_ms = lambda: now[0]
+    assert dispatch(payload(binding))[0]["payload"]["accepted"]
+    now[0] += 1000
+    assert dispatch({**payload(binding), "physics_tick": 61, "position": [1, 0, 0]})[0]["payload"]["accepted"]
+    main.embodied_controller_auth_service.disconnect_connection("spatial:c")
+    assert not request("spatial:c")["payload"]["accepted"]
+    replacement = bind("spatial:new")
+    recovered = request("spatial:new")
+    assert recovered["payload"]["position"] == [1.0, 0.0, 0.0]
+    assert recovered["payload"]["connection_epoch"] == replacement.connection_epoch
+    assert not request("foreign")["payload"]["accepted"]
+
+
 def test_network_binding_uses_backend_clock_not_payload_time(configured):
     credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
         actor_id="char_a", controller_instance_id="spatial:a", issued_at=100, expires_at=200)
