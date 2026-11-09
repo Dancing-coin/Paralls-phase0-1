@@ -20,6 +20,7 @@ from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.idempotency_validation import ReplayValidationError, validate_replay_result
 from app.gameplay.inventory_runtime import InventoryAuthorityService, InventoryDefinitionRegistry, InventoryRuntimeError
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayEvent, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.owner_runtime_base import rejected_result
 from app.gameplay.ownership_runtime import OwnershipAuthorityService, OwnershipRuntimeError
 from app.gameplay.patch_runtime import GameplayPatchRuntimeError, PackageDeclaredNegotiatedExchangeDefinition
 from app.gameplay.settlement_plan import AppendDerivedSettlementRecipe, SettlementPlan
@@ -666,12 +667,9 @@ class EconomyAuthorityService:
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
-            command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage="economy_obligation_commit"),
+        return rejected_result(
+            command_id=command_id, error_code=error_code,
+            stage="economy_obligation_commit", transaction_prefix="transaction",
         )
 
     def settle_package_declared_negotiated_exchange(

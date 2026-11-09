@@ -138,6 +138,10 @@ def test_economy_owner_rejects_batch_events_that_diverge_from_owner_fragment():
     assert not result.committed
     assert result.failure is not None
     assert result.failure.error_code == "economy_owner_commit_fragment_mismatch"
+    assert result.transaction_id == f"transaction:{forged_batch.command_id}"
+    assert result.failure.message == "economy_owner_commit_fragment_mismatch"
+    assert result.failure.failed_stage == "economy_obligation_commit"
+    assert result.idempotency_status == "rejected" and not result.committed_event_ids
     assert store.export_snapshot() == before
 
 
