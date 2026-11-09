@@ -10,6 +10,26 @@ import pytest
 from copy import deepcopy
 
 
+def test_active_tension_prioritizes_latest_focused_knowledge_within_budget() -> None:
+    knowledge = [
+        {"memory_id": f"k:{tick}", "world_ts": tick, "state": "high_confidence_believed",
+         "claim": {"scope_ref": "world:one", "subject_ref": "obj_letter", "predicate": "state",
+                   "valid_at": tick, "value": value}}
+        for tick, value in [(1, "present"), (4, "removed")]
+    ]
+    memory = {"knowledge_memories": knowledge,
+              "event_memories": [{"memory_id": "e:1", "world_ts": 5, "summary": "obj_letter " * 20}]}
+    context = {"attention_targets": ["obj_letter"], "unresolved_tensions": [
+        {"category": "constraint_result", "status": "active", "target_ref": "obj_letter"}]}
+    policy = CharacterMemoryRecallPolicy(pool_limit=1, token_budget=100)
+
+    result = policy.select(memory, context=context)
+
+    assert [row["memory_id"] for row in result.memory["knowledge_memories"]] == ["k:4"]
+    assert result.metadata["estimated_tokens"] <= 100
+    assert result.metadata["truncated"]
+
+
 @pytest.mark.parametrize("pool", ["event_memories", "relational_memories"])
 def test_recall_only_copies_payloads_returned_within_the_budget(pool) -> None:
     copied = []

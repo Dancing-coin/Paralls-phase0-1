@@ -123,6 +123,17 @@ class CharacterMemoryRecallPolicy:
             token_budget = min(token_budget, cognition_policy.memory.token_budget)
         subjects = self._current_subjects(context)
         required = self._required_memories(normalized, subjects) if strong else set()
+        tensions = context.get("unresolved_tensions", [])
+        tension_subjects = {
+            tension.get("target_ref") for tension in tensions
+            if isinstance(tension, dict) and tension.get("category") == "constraint_result"
+            and tension.get("status", "active") == "active"
+            and tension.get("target_ref") in subjects
+        } if isinstance(tensions, list) else set()
+        tension_evidence = {
+            ref for ref in self._required_memories(normalized, tension_subjects)
+            if ref[0] == "knowledge_memories"
+        }
         terms = self._context_terms(context)
         candidates: list[tuple[float, str, str, dict[str, object]]] = []
         selected_by_pool: dict[str, list[dict[str, object]]] = {}
@@ -135,7 +146,8 @@ class CharacterMemoryRecallPolicy:
                 for index, entry in enumerate(normalized[pool]):
                     is_required = (pool, self._memory_id(entry)) in required
                     item = (
-                        self._score(entry, terms=terms, max_timestamp=max_timestamp) + (2.0 if is_required else 0.0),
+                        self._score(entry, terms=terms, max_timestamp=max_timestamp)
+                        + (2.0 if is_required or (pool, self._memory_id(entry)) in tension_evidence else 0.0),
                         self._timestamp(entry),
                         str(entry.get("memory_id", "") or entry.get("event_id", "") or ""),
                         index, entry,
