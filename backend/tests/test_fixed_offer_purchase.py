@@ -16,7 +16,7 @@ ITEM = "item:brass-compass:1"
 OFFER = "offer:brass-compass"
 
 
-def _setup(*, buyer_balance: int = 10, buyer_slots: int = 3) -> tuple[GameplayEventStore, InventoryDefinitionRegistry, FixedOfferAuthorityService]:
+def _setup(*, buyer_balance: int = 10, buyer_slots: int = 3, publish: bool = True) -> tuple[GameplayEventStore, InventoryDefinitionRegistry, FixedOfferAuthorityService]:
     store = GameplayEventStore()
     registry = InventoryDefinitionRegistry()
     registry.register_item(ItemDefinition("item:brass-compass", "1", 1, 1))
@@ -30,8 +30,13 @@ def _setup(*, buyer_balance: int = 10, buyer_slots: int = 3) -> tuple[GameplayEv
     economy.open_account(command_id="cmd:buyer-account", account_id="account:buyer", owner_ref=BUYER, currency_ref="coin", initial_balance=buyer_balance, idempotency_key="buyer-account", causation_id="cause", correlation_id="corr")
     economy.open_account(command_id="cmd:seller-account", account_id="account:seller", owner_ref=SELLER, currency_ref="coin", initial_balance=0, idempotency_key="seller-account", causation_id="cause", correlation_id="corr")
     service = FixedOfferAuthorityService(store=store, inventory_registry=registry)
-    assert service.publish_offer(command_id="cmd:offer", offer_id=OFFER, seller_ref=SELLER, asset_ref=ASSET, right_id="right:brass-compass", item_id=ITEM, source_container_id="container:seller", price_amount=4, currency_ref="coin", idempotency_key="offer", causation_id="cause", correlation_id="corr").committed
+    if publish:
+        assert _publish(service).committed
     return store, registry, service
+
+
+def _publish(service: FixedOfferAuthorityService, *, command_id: str = "cmd:offer", idempotency_key: str = "offer"):
+    return service.publish_offer(command_id=command_id, offer_id=OFFER, seller_ref=SELLER, asset_ref=ASSET, right_id="right:brass-compass", item_id=ITEM, source_container_id="container:seller", price_amount=4, currency_ref="coin", idempotency_key=idempotency_key, causation_id="cause", correlation_id="corr")
 
 
 def _purchase(service: FixedOfferAuthorityService, *, command_id: str = "cmd:purchase", idempotency_key: str = "purchase"):
@@ -121,3 +126,47 @@ def test_purchase_retry_returns_original_result_without_second_debit_or_transfer
     assert replay.idempotency_status == "duplicate_replayed"
     assert EconomyProjector().rebuild(store.read_events()).balances == {"account:buyer": 6, "account:seller": 4}
     assert len([event for event in store.read_events() if event.event_type == "gameplay.ownership.right_transferred"]) == 1
+
+
+@pytest.mark.parametrize("kind", ["offer", "purchase"])
+def test_fixed_offer_replay_boundaries(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup(publish=kind == "purchase")
+    command = _publish if kind == "offer" else _purchase
+    first = command(service, idempotency_key="shared")
+    assert first.committed
+    before = store.read_events()
+    replay = command(service, idempotency_key="shared")
+    assert replay == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    with pytest.raises(PurchaseRuntimeError, match="^idempotency_key_reused$"):
+        command(service, command_id="cmd:changed", idempotency_key="shared")
+    monkeypatch.setattr(store, "get_by_idempotency", lambda *_: None)
+    with pytest.raises(PurchaseRuntimeError, match="^economy_idempotency_missing_result$"):
+        command(service, idempotency_key="shared")
+    assert store.read_events() == before
+
+
+def test_offer_and_purchase_keep_idempotency_principals_separate() -> None:
+    store, _, service = _setup(publish=False)
+    assert _publish(service, idempotency_key="shared").committed
+    assert _purchase(service, idempotency_key="shared").committed
+    assert _publish(service, idempotency_key="shared").idempotency_status == "duplicate_replayed"
+    assert _purchase(service, idempotency_key="shared").idempotency_status == "duplicate_replayed"
+    assert len(store.read_transactions()[-1].events) == 7
+
+
+@pytest.mark.parametrize("kind", ["offer", "purchase"])
+def test_fixed_offer_stale_commit_rejects_without_partial_writes(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup(publish=kind == "purchase")
+    before = store.read_events()
+    append = store.append_batch
+
+    def append_with_stale_revision(batch):
+        batch["expected_stream_revisions"]["gameplay:ownership"] -= 1
+        return append(batch)
+
+    monkeypatch.setattr(store, "append_batch", append_with_stale_revision)
+    result = (_publish if kind == "offer" else _purchase)(service)
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "revision_conflict"
+    assert store.read_events() == before
