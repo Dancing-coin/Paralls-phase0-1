@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import inspect
 import json
 import re
+import textwrap
 from pathlib import Path
 from typing import TYPE_CHECKING
 from typing import Literal
@@ -17,11 +19,11 @@ if TYPE_CHECKING:
     from .world import WorldContinuityRuntime
 
 
-def population_kernel_digest() -> str:
-    """语义指纹而非源码文本哈希。通过固定的逻辑签名，实现改动不会让历史 checkpoint 失效。
+_APPROVED_B0_AST_SHA256 = "7120cd54cd8d41c7489c7bdb762472e9a0b611f7db79964a8e044889e4ee62ad"
 
-    shortcut: 这三个摘要组件不会自动跟代码演进，升级时需要手工确认并更新。
-    """
+
+def population_kernel_digest() -> str:
+    """Bind the existing semantic version to the approved active implementation."""
     from . import world
 
     # 固定的语义签名，而不是 read_text() 的源码哈希。
@@ -36,11 +38,14 @@ def population_kernel_digest() -> str:
         "contracts_version": "siming_contracts:v1",
     }
 
-    # 实际的 kernel 实现签名：通过 inspect 获取，但只记录参数和返回类型的形状
+    # The approved AST preserves the already-issued semantic digest. A changed
+    # implementation gets a distinct digest until its migration is reviewed.
+    source = textwrap.dedent(inspect.getsource(world.advance_b0_row.__code__))
+    implementation = hashlib.sha256(ast.dump(ast.parse(source), include_attributes=False).encode()).hexdigest()
     advance_b0_row_sig = inspect.signature(world.advance_b0_row)
     kernel_contracts = {
         "advance_b0_row_params": tuple(advance_b0_row_sig.parameters.keys()),
-        "advance_b0_row_return_type": str(advance_b0_row_sig.return_annotation),
+        "advance_b0_row_return_type": "B0ContinuousResult",
     }
 
     # 两个部分合并：不变的 contract + 函数形状
@@ -48,6 +53,8 @@ def population_kernel_digest() -> str:
         "kernel_semantics": b0_kernel_signature,
         "function_shape": kernel_contracts,
     }
+    if implementation != _APPROVED_B0_AST_SHA256:
+        semantic_fingerprint["unapproved_implementation"] = implementation
     return recovery_digest(semantic_fingerprint)
 
 

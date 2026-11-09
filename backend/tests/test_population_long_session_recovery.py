@@ -160,6 +160,12 @@ def test_kernel_implementation_change_is_rejected_even_without_tail(tmp_path, mo
     assert target.export_recovery_state() == before
 
 
+def test_approved_kernel_retains_published_semantic_digest():
+    from app.population_continuity.recovery import population_kernel_digest
+
+    assert population_kernel_digest() == "sha256:82eec26922498aa0a0e49b9909f4ada4207bfa747f3cbf0029ca3e21dd50da48"
+
+
 def test_kernel_digest_is_stable_across_source_paths_and_newlines(tmp_path, monkeypatch):
     from app.population_continuity import recovery, world
 
