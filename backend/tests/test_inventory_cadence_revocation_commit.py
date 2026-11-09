@@ -12,7 +12,7 @@ from app.population_continuity.world import WorldContinuityRuntime
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.siming_population_capability import PopulationSimulationCapability
 from test_population_runtime_driver import _mode
-from test_siming_population_inventory_vertical import _fixture, _read_set
+from test_siming_population_inventory_vertical import _fixture, _read_set, _time_pins
 
 
 def _context(*, admitted=True, durable_path=None):
@@ -31,10 +31,11 @@ def _context(*, admitted=True, durable_path=None):
         world_runtime=world, event_bus=InMemoryAuthorityEventBus(),
         room_id="room", scene_id="scene", zone_id="zone",
     )
+    time_pins = _time_pins(cadence)
     if admitted:
-        assert publisher(cadence) is not None
+        assert publisher(cadence, time_pins=time_pins) is not None
     projections = _read_set(certification).projections
-    read_set = PopulationReadSet.from_inputs(cadence, projections)
+    read_set = PopulationReadSet.from_inputs(cadence, projections, temporal_pins=time_pins)
     return store, inventory, publisher, read_set
 
 
