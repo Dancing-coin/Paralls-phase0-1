@@ -27,6 +27,7 @@ class SimingKnowledgeGraph:
         self._latest_access: dict[tuple[str, str], PerceptionAccess] = {}
         self._membership_states: dict[tuple[str, str], MembershipState] = {}
         self._knowledge_claims: dict[tuple[str, str], KnowledgeClaim] = {}
+        self._higher_order_claims: dict[tuple[str, str, str], KnowledgeClaim] = {}
         self._awareness_relations: dict[tuple[str, str, str], AwarenessRelation] = {}
 
     def create_conversation(
@@ -268,7 +269,8 @@ class SimingKnowledgeGraph:
             acquired_at=current_tick if state != "unknown" else None,
             source_type=source,
         )
-        if previous is not None and previous.knowledge_state == "suspected" and state == "unknown":
+        if (previous is not None and previous.knowledge_state == "suspected" and state == "unknown"
+                and current_tick >= previous.acquired_at):
             return KnowledgeResolution(**previous.model_dump())
         if previous is None or previous.acquired_at is None or current_tick >= previous.acquired_at:
             self._knowledge_claims[(actor_id, info_id)] = claim
@@ -299,6 +301,62 @@ class SimingKnowledgeGraph:
             risk_level=level,
             risk_factors=[f"eavesdropper_count={count}"],
             eavesdropper_ids=eavesdroppers if count else [],
+        )
+
+    def evaluate_higher_order_knowledge(
+        self, observer_id: str, known_by_actor_id: str, info_id: str, current_tick: int
+    ) -> KnowledgeResolution:
+        if current_tick < 0:
+            raise ValueError("current_tick must be non-negative")
+        info = self._information_items.get(info_id)
+        known_claim = self._knowledge_claims.get((observer_id, info_id))
+        subject_claim = self._knowledge_claims.get((known_by_actor_id, info_id))
+        claim_key = (observer_id, known_by_actor_id, info_id)
+        previous = self._higher_order_claims.get(claim_key)
+        if (previous is not None and previous.knowledge_state == "known"
+                and current_tick >= previous.acquired_at):
+            return KnowledgeResolution(**previous.model_dump())
+
+        proven = (
+            info is not None
+            and current_tick >= info.revealed_at
+            and observer_id != known_by_actor_id
+            and known_claim is not None
+            and known_claim.knowledge_state == "known"
+            and known_claim.acquired_at <= current_tick
+            and subject_claim is not None
+            and subject_claim.knowledge_state == "known"
+            and subject_claim.acquired_at <= current_tick
+            and info.conversation_id is not None
+            and (access := self._access_at(observer_id, info.conversation_id, info.revealed_at)) is not None
+            and access.access_quality in ("full", "partial")
+            and (subject_access := self._access_at(known_by_actor_id, info.conversation_id, info.revealed_at)) is not None
+            and subject_access.access_quality in ("full", "partial")
+            and (awareness := self._awareness_relations.get(
+                (observer_id, known_by_actor_id, info.conversation_id)
+            )) is not None
+            and awareness.updated_at <= info.revealed_at
+            and awareness.awareness_level in ("aware_present", "aware_mutual")
+        )
+        claim = KnowledgeClaim(
+            actor_id=observer_id,
+            known_by_actor_id=known_by_actor_id,
+            info_id=info_id,
+            knowledge_state="known" if proven else "unknown",
+            acquired_at=current_tick if proven else None,
+            source_type="inference" if proven else None,
+        )
+        if proven or previous is None:
+            self._higher_order_claims[claim_key] = claim
+        return KnowledgeResolution(**claim.model_dump())
+
+    def who_knows_knows(self, info_id: str, known_by_actor_id: str) -> list[str]:
+        return sorted(
+            observer_id
+            for (observer_id, subject_id, claimed_info), claim in self._higher_order_claims.items()
+            if subject_id == known_by_actor_id
+            and claimed_info == info_id
+            and claim.knowledge_state == "known"
         )
 
     def who_knows(self, info_id: str) -> list[str]:

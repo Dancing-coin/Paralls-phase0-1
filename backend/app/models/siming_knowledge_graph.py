@@ -58,6 +58,7 @@ class MembershipState(KnowledgeGraphModel):
 class KnowledgeClaim(KnowledgeGraphModel):
     actor_id: str = Field(min_length=1)
     info_id: str = Field(min_length=1)
+    known_by_actor_id: str | None = Field(default=None, min_length=1)
     knowledge_state: KnowledgeState = "unknown"
     acquired_at: int | None = Field(default=None, ge=0)
     source_type: KnowledgeSource | None = None
@@ -90,6 +91,7 @@ class AccessResolution(KnowledgeGraphModel):
 class KnowledgeResolution(KnowledgeGraphModel):
     actor_id: str
     info_id: str
+    known_by_actor_id: str | None = None
     knowledge_state: KnowledgeState
     source_type: KnowledgeSource | None = None
     acquired_at: int | None = None

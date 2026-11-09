@@ -177,6 +177,16 @@ def test_past_query_does_not_erase_current_knowledge() -> None:
     assert graph.who_knows("fact") == ["b"]
 
 
+def test_past_query_cannot_reveal_a_future_suspicion() -> None:
+    graph = _graph()
+    graph.evaluate_access("b", "conv-1", 110, 0.4, 0.4)
+    graph.register_information("fact", "statement", "a", 110, "conv-1")
+    current = graph.evaluate_knowledge("b", "fact", 120)
+    assert current.knowledge_state == "suspected"
+    assert graph.evaluate_knowledge("b", "fact", 105).knowledge_state == "unknown"
+    assert graph.evaluate_knowledge("b", "fact", 121).knowledge_state == "suspected"
+
+
 def test_awareness_requires_evidence_of_both_actors_and_symmetric_mutual_access() -> None:
     graph = _graph()
     graph.evaluate_access("a", "conv-1", 110)
@@ -184,6 +194,63 @@ def test_awareness_requires_evidence_of_both_actors_and_symmetric_mutual_access(
     graph.evaluate_access("b", "conv-1", 110, 0.4, 0.4)
     assert graph.evaluate_awareness("a", "b", "conv-1", 110).awareness_level == "aware_present"
     assert graph.evaluate_awareness("b", "a", "conv-1", 110).awareness_level == "aware_present"
+
+
+def test_higher_order_knowledge_requires_observed_shared_access() -> None:
+    graph = _graph()
+    graph.evaluate_access("a", "conv-1", 110)
+    graph.evaluate_access("b", "conv-1", 110)
+    graph.evaluate_awareness("a", "b", "conv-1", 110)
+    graph.register_information("shared", "statement", "a", 110, "conv-1")
+    graph.evaluate_knowledge("a", "shared", 110)
+    graph.evaluate_knowledge("b", "shared", 110)
+
+    result = graph.evaluate_higher_order_knowledge("a", "b", "shared", 110)
+
+    assert (result.knowledge_state, result.source_type) == ("known", "inference")
+    assert graph.who_knows("shared") == ["a", "b"]
+    assert graph.who_knows_knows("shared", "b") == ["a"]
+
+
+def test_higher_order_knowledge_rejects_unobserved_or_late_access() -> None:
+    graph = _graph()
+    graph.evaluate_access("a", "conv-1", 110)
+    graph.evaluate_access("b", "conv-1", 120)
+    graph.register_information("shared", "statement", "a", 110, "conv-1")
+    graph.evaluate_knowledge("a", "shared", 110)
+    graph.evaluate_knowledge("b", "shared", 120)
+
+    result = graph.evaluate_higher_order_knowledge("a", "b", "shared", 120)
+
+    assert result.knowledge_state == "unknown"
+    assert graph.who_knows_knows("shared", "b") == []
+
+
+def test_higher_order_knowledge_does_not_use_future_claims_or_erase_current_claim() -> None:
+    graph = _graph()
+    for actor in ("a", "b"):
+        graph.evaluate_access(actor, "conv-1", 110)
+    graph.evaluate_awareness("a", "b", "conv-1", 110)
+    graph.register_information("shared", "statement", "a", 110, "conv-1")
+    for actor in ("a", "b"):
+        graph.evaluate_knowledge(actor, "shared", 120)
+
+    assert graph.evaluate_higher_order_knowledge("a", "b", "shared", 115).knowledge_state == "unknown"
+    assert graph.evaluate_higher_order_knowledge("a", "b", "shared", 120).knowledge_state == "known"
+    assert graph.evaluate_higher_order_knowledge("a", "b", "shared", 105).knowledge_state == "unknown"
+    assert graph.who_knows_knows("shared", "b") == ["a"]
+
+
+def test_shared_knowledge_without_awareness_does_not_reveal_another_actors_knowledge() -> None:
+    graph = _graph()
+    for actor in ("a", "b"):
+        graph.evaluate_access(actor, "conv-1", 110)
+    graph.register_information("shared", "statement", "a", 110, "conv-1")
+    for actor in ("a", "b"):
+        graph.evaluate_knowledge(actor, "shared", 110)
+
+    assert graph.who_knows("shared") == ["a", "b"]
+    assert graph.evaluate_higher_order_knowledge("a", "b", "shared", 110).knowledge_state == "unknown"
 
 
 @pytest.mark.parametrize("quality", [0.4, 1.0])

@@ -18,10 +18,7 @@ if TYPE_CHECKING:
 
 
 def population_kernel_digest() -> str:
-    """语义指纹而非源码文本哈希。通过固定的逻辑签名，实现改动不会让历史 checkpoint 失效。
-
-    shortcut: 这三个摘要组件不会自动跟代码演进，升级时需要手工确认并更新。
-    """
+    """结合语义版本和实际内核源码，拒绝实现不匹配的历史检查点。"""
     from . import world
 
     # 固定的语义签名，而不是 read_text() 的源码哈希。
@@ -42,7 +39,7 @@ def population_kernel_digest() -> str:
         "advance_b0_row_source": active_kernel_source,
     }
 
-    # 两个部分合并：不变的 contract + 函数形状
+    # 源码不包含文件路径，并统一换行，避免迁移工作区导致指纹漂移。
     semantic_fingerprint = {
         "kernel_semantics": b0_kernel_signature,
         "function_shape": kernel_contracts,
