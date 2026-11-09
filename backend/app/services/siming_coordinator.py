@@ -10,7 +10,7 @@ from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSu
 
 
 class SimingCoordinator:
-    def __init__(self, *, runtime, admissions, graph, invalidation_reader, output_pipeline=None, character_admissions=None):
+    def __init__(self, *, runtime, admissions, graph, invalidation_reader, output_pipeline=None, character_admissions=None, publish_event=None):
         self.runtime = runtime
         self.admissions = admissions
         self.graph = graph
@@ -18,6 +18,7 @@ class SimingCoordinator:
         self._cursor = None
         self.output_pipeline = output_pipeline
         self.character_admissions = character_admissions
+        self.publish_event = publish_event
 
     def _owner(self):
         self.runtime._assert_siming_owner()
@@ -509,7 +510,10 @@ class SimingCoordinator:
                 # 原 publisher 未提供跨重启完整回执；先持久记录尝试，禁止不明结果重发。
                 entry = self._outstanding(entry, now=now, reason="publishing:" + effect.effect_key).entry
                 event = AuthorityEvent.model_validate(effect.payload["event"])
-                self.output_pipeline._producer.publish_events([event])
+                if self.publish_event is None:
+                    self.output_pipeline._producer.publish_events([event])
+                else:
+                    self.publish_event(event)
                 receipt = {"event_id": event.event_id, "event_digest": digest(effect.payload["event"])}
             elif effect.kind == "character_delivery":
                 if self.character_admissions is None:

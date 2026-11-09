@@ -355,6 +355,33 @@ _character_cognition_failure = None
 _siming_cognition_driver = None
 _siming_cognition_task = None
 _siming_cognition_failure = None
+_async_siming_publication = ContextVar('async_siming_publication', default=False)
+
+
+def _publish_async_siming_event(event):
+    token = _async_siming_publication.set(True)
+    try:
+        siming_event_pipeline._producer.publish_events([event])
+    finally:
+        _async_siming_publication.reset(token)
+
+
+def _project_siming_authority_event(event):
+    if not _async_siming_publication.get():
+        return frontend_authority_event_projector.handle_event(event)
+    from app.services.frontend_authority_event_projection import project_authority_event_as_inner_prompt, project_authority_event_as_siming_output, project_authority_event_for_frontend
+    origin = _cognition_output_routes.resolve(event.causation_id)
+    actor_id = str(event.payload.get('target_actor_id') or (origin.source_actor_id if origin else ''))
+    sink = _cognition_output_routes.connections.get(origin.connection_ref) if origin is not None else None
+    if sink is None or not actor_id or not _cognition_origin_current(origin, actor_id):
+        return None
+    inner_prompt = project_authority_event_as_inner_prompt(event)
+    messages = [inner_prompt] if inner_prompt is not None else [message for message in (
+        project_authority_event_as_siming_output(event), project_authority_event_for_frontend(event)) if message is not None]
+    if messages:
+        sink.post({'child_key': 'siming:' + event.event_id, 'actor_id': actor_id,
+            'binding_pin': list(origin.binding_pin), 'connection_ref': origin.connection_ref, 'messages': messages})
+    return None
 
 
 def _build_siming_cognition(pipeline):
@@ -394,7 +421,7 @@ def _build_siming_cognition(pipeline):
         if character_agent_runtime.supports_actor(actor) else {'supported': False})
     coordinator = SimingCoordinator(runtime=rt, graph=heavenly_graph,
         admissions=SimingAdmissionService(SimingHeavenlyMemoryService(heavenly_graph)),
-        invalidation_reader=invalidation, output_pipeline=pipeline)
+        invalidation_reader=invalidation, output_pipeline=pipeline, publish_event=_publish_async_siming_event)
     async def owner_call(command):
         return await _dialogue_owner_call(runtime_execution, command)
     _siming_cognition_driver = SimingDriver(coordinator=coordinator, owner_call=owner_call,
@@ -411,7 +438,9 @@ def _handle_siming_authority_event(event):
     origin = _cognition_origin.get()
     if (not receipt.replayed and origin is not None and origin.binding_pin
             and _get_dialogue_coordinator()._connection_current(origin.connection_ref, origin.binding_pin)):
-        _cognition_output_routes.remember(event.event_id, origin, receipt.entry.expires_at)
+        source_actor_id = str(event.source.actor_id or event.payload.get('actor_id') or '')
+        _cognition_output_routes.remember(event.event_id, CognitionOrigin(
+            origin.connection_ref, origin.binding_pin, source_actor_id), receipt.entry.expires_at)
     return receipt
 
 
@@ -2267,7 +2296,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     world_outcome_debug_projection = WorldOutcomeDebugProjection()
     script_beat_projection = ScriptBeatProjection()
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
+        authority_event_bus.subscribe(event_type, _project_siming_authority_event)
     # Protocol 09: Siming → ESM (08-司命与ESM协作协议.md)
     authority_event_bus.subscribe("siming.environment_request", _handle_siming_environment_request)
     debug_stream.clear()

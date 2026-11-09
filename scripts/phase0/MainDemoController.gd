@@ -314,6 +314,16 @@ func _on_backend_connected(_payload: String) -> void:
 		# The Heavenly probe owns the setup sequence and will issue explicit
 		# interaction/perception events after the scene is ready.
 		return
+	if not OS.get_environment("PARALLS_GAMEPLAY_MIRROR_ENROLLMENT_JSON").is_empty():
+		var mirror = load("res://scripts/interaction/GameplayMirrorBridge.gd").new()
+		add_child(mirror)
+		if mirror.load_session_enrollment_from_environment() != OK or mirror.bind_session() != OK:
+			_bus_log("phase0_session_bind_failed")
+			return
+		var binding: Dictionary = await _get_bus().websocket_session_bound_received
+		if str(binding.get("session_ref", "")).is_empty():
+			_bus_log("phase0_session_bind_failed")
+			return
 	_request_backend_health()
 	_emit_spatial_access_zone_entry()
 	if pending_focus_sync:
