@@ -128,6 +128,7 @@ class CharacterMemoryRecallPolicy:
             tension.get("target_ref") for tension in tensions
             if isinstance(tension, dict) and tension.get("category") == "constraint_result"
             and tension.get("status", "active") == "active"
+            and isinstance(tension.get("target_ref"), str)
             and tension.get("target_ref") in subjects
         } if isinstance(tensions, list) else set()
         tension_evidence = {

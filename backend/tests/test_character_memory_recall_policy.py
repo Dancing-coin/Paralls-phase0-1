@@ -30,6 +30,13 @@ def test_active_tension_prioritizes_latest_focused_knowledge_within_budget() -> 
     assert result.metadata["truncated"]
 
 
+def test_recall_ignores_malformed_tension_target():
+    policy = CharacterMemoryRecallPolicy()
+    result = policy.select({}, context={"attention_targets": ["obj_letter"], "unresolved_tensions": [
+        {"category": "constraint_result", "target_ref": ["obj_letter"]}]})
+    assert result.memory["knowledge_memories"] == []
+
+
 @pytest.mark.parametrize("pool", ["event_memories", "relational_memories"])
 def test_recall_only_copies_payloads_returned_within_the_budget(pool) -> None:
     copied = []
