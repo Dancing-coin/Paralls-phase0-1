@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from time import time
 from app.services.websocket_session_auth_service import WebSocketConnectionContext
 from app.ws_protocol import Envelope
 import app.main as main
@@ -14,11 +15,12 @@ def _connection(connection_ref: str) -> WebSocketConnectionContext:
 
 
 def _bind(connection_context: WebSocketConnectionContext) -> None:
+    now = int(time())
     credential = main.embodied_controller_auth_service.create_trusted_local_launch_credential(
         actor_id="char_c",
         controller_instance_id="controller:char_c:door-ws",
-        issued_at=100,
-        expires_at=200,
+        issued_at=now,
+        expires_at=now + 100,
     )
     main._handle_envelope(
         Envelope(
