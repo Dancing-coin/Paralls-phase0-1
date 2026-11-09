@@ -13,6 +13,7 @@ from pydantic import ConfigDict, Field
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, StrictGameplayModel
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
@@ -1367,15 +1368,11 @@ class ContractAuthorityService:
         )
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
-        if record is None:
-            return None
-        if record.payload_digest != digest:
-            raise ContractRuntimeError("idempotency_key_reused")
-        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if result is None:
-            raise ContractRuntimeError("contract_idempotency_missing_result")
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        return replay_duplicate(
+            self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
+            payload_digest=digest, error_factory=ContractRuntimeError,
+            missing_result_code="contract_idempotency_missing_result",
+        )
 
     def _validated_duplicate_event(
         self,

@@ -128,3 +128,50 @@ def test_registered_service_completion_evidence_fulfills_contract_in_one_batch()
         correlation_id="corr",
     )
     assert replay.idempotency_status == "duplicate_replayed"
+
+
+def _g1_contract_command(kind: str):
+    store, service = _service()
+    common = dict(command_id=f"cmd:g1:{kind}", idempotency_key=f"g1:{kind}", causation_id="cause", correlation_id="corr")
+    if kind == "create":
+        return store, service.create_contract, common | dict(contract_id="contract:delivery:1", contract_type="simple_service", terms_ref="terms:delivery:v1", party_refs=("actor:buyer", "actor:carrier"))
+    assert _create(service).committed
+    policy = dict(contract_id="contract:delivery:1", authority_ref="authority:contracts")
+    if kind == "fulfill":
+        return store, service.fulfill_contract_by_policy, common | policy
+    if kind == "terminate":
+        return store, service.terminate_contract_by_policy, common | policy | dict(reason="impossible")
+    return store, service.complete_simple_service_by_policy, common | policy | dict(completion_evidence_kind="delivery_proof", completion_evidence_ref="evidence:delivered")
+
+
+@pytest.mark.parametrize("kind", ["create", "fulfill", "terminate", "complete"])
+def test_g1_contract_replay_boundaries(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, command, args = _g1_contract_command(kind)
+    first = command(**args)
+    assert first.committed
+    before = store.read_events()
+    assert command(**args) == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    with pytest.raises(ContractRuntimeError, match="^idempotency_key_reused$"):
+        command(**(args | {"command_id": "cmd:changed"}))
+    monkeypatch.setattr(store, "get_by_idempotency", lambda *_: None)
+    with pytest.raises(ContractRuntimeError, match="^contract_idempotency_missing_result$"):
+        command(**args)
+    assert store.read_events() == before
+
+
+@pytest.mark.parametrize("kind", ["create", "fulfill", "terminate", "complete"])
+def test_g1_contract_stale_commit_rejects_without_partial_writes(kind: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    store, command, args = _g1_contract_command(kind)
+    before = store.read_events()
+    append = store.append_batch
+
+    def append_with_stale_revision(batch):
+        revision = batch["expected_stream_revisions"]["gameplay:contracts"]
+        batch["expected_stream_revisions"]["gameplay:contracts"] = revision + 1
+        return append(batch)
+
+    monkeypatch.setattr(store, "append_batch", append_with_stale_revision)
+    result = command(**args)
+    assert not result.committed
+    assert result.failure is not None and result.failure.error_code == "revision_conflict"
+    assert store.read_events() == before
