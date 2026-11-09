@@ -141,7 +141,7 @@ func _verify_checksum_failures(vectors: Dictionary) -> bool:
 	add_child(consumer)
 	if not bool(consumer.consume_projection(vectors["base"]).get("accepted", false)):
 		return false
-	var before := consumer.visible_groups.duplicate(true)
+	var before: Dictionary = consumer.visible_groups.duplicate(true)
 	var checksum: String = consumer.snapshot_checksum
 	var accepted: int = consumer.accepted_projection_count
 	var revision: String = consumer.facade_revision
@@ -182,7 +182,7 @@ func _verify_checksum_failures(vectors: Dictionary) -> bool:
 			return false
 	consumer.resync_required = false
 	var result := consumer.consume_validated_delivery(_wrap_projection(vectors["delta"], 1, 2, "delta"))
-	var passed := bool(result.get("accepted", false)) and consumer.snapshot_checksum == str(vectors["target"]["snapshot_checksum"])
+	var passed: bool = bool(result.get("accepted", false)) and consumer.snapshot_checksum == str(vectors["target"]["snapshot_checksum"])
 	consumer.queue_free()
 	return passed
 
@@ -222,7 +222,7 @@ func _verify_prediction_projection_boundary(vectors: Dictionary) -> bool:
 	var target_delivery := _wrap_projection(vectors["delta"], 1, 3, "delta")
 	target_delivery["prediction_resolutions"] = resolutions
 	var together := consumer.consume_validated_delivery(target_delivery)
-	var passed := bool(together.get("accepted", false)) and consumer.pending_predictions.is_empty() and consumer.prediction_resolution_trace.size() == 1
+	var passed: bool = bool(together.get("accepted", false)) and consumer.pending_predictions.is_empty() and consumer.prediction_resolution_trace.size() == 1
 	consumer.queue_free()
 	return passed
 

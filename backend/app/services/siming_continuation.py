@@ -26,6 +26,7 @@ def digest(value: object) -> str:
 
 
 CANDIDATE_TIMELINE_REQUEUE = "candidate_timeline_changed"
+ADAPTIVE_ACTOR_REQUEUE = "adaptive_actor_changed"
 RETRYABLE_SIMING_PROVIDER_ERRORS = frozenset({
     "SimingLlmProviderError",
     "SimingLlmProviderInvalidOutput",
@@ -51,6 +52,12 @@ def candidate_timeline_changed(previous: dict, current: dict) -> bool:
                 return False
             pin["actors"][actor] = [pair for pair in value if pair[0] != "timeline"]
     return left == right
+
+
+def adaptive_actor_changed(previous: dict, current: dict) -> bool:
+    return (previous.get("actors") != current.get("actors")
+            and previous.keys() == current.keys()
+            and all(previous[key] == current[key] for key in previous if key != "actors"))
 
 
 class SimingCandidate(InterventionCandidate):

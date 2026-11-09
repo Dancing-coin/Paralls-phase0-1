@@ -123,10 +123,11 @@ def main() -> int:
         environment["GAMEPLAY_MIRROR_LIVE_PROBE_DROP_FIRST_DELIVERY"] = "true"
     if args.scenario == "backpressure":
         environment.update({
+            "GAMEPLAY_MIRROR_LIVE_PROBE_BACKPRESSURE": "1",
             "GAMEPLAY_MIRROR_PROJECTION_QUEUE_CAPACITY": "1",
             "GAMEPLAY_MIRROR_CONTROL_QUEUE_CAPACITY": "1",
             "GAMEPLAY_MIRROR_DIRTY_ACTOR_LIMIT": "1",
-            "GAMEPLAY_MIRROR_LIVE_PROBE_DELIVERY_DELAY_SECONDS": "0.25",
+            "GAMEPLAY_MIRROR_LIVE_PROBE_DELIVERY_DELAY_SECONDS": "1",
         })
     backend = None
     process = None
@@ -140,7 +141,7 @@ def main() -> int:
             [
                 resolve_python_exe(args.python_exe), "scripts/launch_trusted_local_gameplay_mirror.py",
                 "--launch-profile-ref", "mirror-live-probe", "--godot-exe", str(resolve_godot_exe(args.godot_exe)),
-                "--scene", "res://scenes/phase0/LiveGameplayMirrorDeliveryProbe.tscn", "--headless", "--quit-after", "900", "--render-thread", "safe",
+                "--scene", "res://scenes/phase0/LiveGameplayMirrorDeliveryProbe.tscn", "--headless", "--render-thread", "safe",
             ],
             cwd=root,
             env=child_env,

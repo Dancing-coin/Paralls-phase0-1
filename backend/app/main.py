@@ -3229,6 +3229,8 @@ def _commit_configured_trusted_local_gameplay_mirror_live_probe(
     lifecycle_stream = f"gameplay:state_groups:{actor_ref}"
     resource_stream = f"gameplay:resources:{actor_ref}"
     event_prefix = f"evt:trusted-local-mirror-live:{uuid4()}"
+    if os.getenv('GAMEPLAY_MIRROR_LIVE_PROBE_BACKPRESSURE') == '1' and gameplay_event_store.get_stream_head(resource_stream) > 0:
+        resource_delta = -1
     events = [
         {
             "event_id": f"{event_prefix}:materialize",
@@ -3637,6 +3639,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         actor_ref = str(delivery.get("payload", {}).get("actor_ref", ""))
         item = {**delivery, "_fence": (mirror_sink, actor_versions.get(actor_ref, 0))}
         if initial_ack is not None:
+            if initial_ack.get('payload', {}).get('source_type') == 'gameplay_mirror_snapshot_request':
+                mirror_delivery_queue.drop_actor(actor_ref)
             mirror_delivery_queue.enqueue_initial_batch(initial_ack, item)
         else:
             mirror_delivery_queue.enqueue_delivery(item)

@@ -4,7 +4,7 @@ from app.models.siming_heavenly_memory import (
     SimingAdmissionProvider, SimingAdmissionCursor, SimingAdmissionEffect, SimingAdmissionEffectReceipt, SimingAdmissionTransition,
 )
 from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
-from app.services.siming_continuation import RETRYABLE_SIMING_PROVIDER_ERRORS, SimingProviderCompletion, SimingAcceptedPlan, SimingAdvance, SimingTurnFrame, SimingStageEffects, digest, CANDIDATE_TIMELINE_REQUEUE, candidate_timeline_changed
+from app.services.siming_continuation import RETRYABLE_SIMING_PROVIDER_ERRORS, SimingProviderCompletion, SimingAcceptedPlan, SimingAdvance, SimingTurnFrame, SimingStageEffects, digest, CANDIDATE_TIMELINE_REQUEUE, ADAPTIVE_ACTOR_REQUEUE, candidate_timeline_changed, adaptive_actor_changed
 from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_heavenly_runtime_support import SimingHeavenlyRuntimeSupport
 
@@ -55,7 +55,7 @@ class SimingCoordinator:
         """调用方已经保留原全局槽；仅 owner 推进账本并返回独立 provider。"""
         self._owner()
         entry, _ = self._entry_and_head(key)
-        if entry.state in {"admitted", "due", "requeued"} and (entry.transition is None or entry.transition.reason != CANDIDATE_TIMELINE_REQUEUE):
+        if entry.state in {"admitted", "due", "requeued"} and (entry.transition is None or entry.transition.reason not in {CANDIDATE_TIMELINE_REQUEUE, ADAPTIVE_ACTOR_REQUEUE}):
             entry = self.begin(key, now=now).entry
         if entry.state == "result_ready":
             entry = self.freeze_result(key, now=now).entry
@@ -259,6 +259,8 @@ class SimingCoordinator:
             return SimingAdvance(status="zero_write", reason="deadline")
         if entry.state == "requeued" and entry.transition.reason == CANDIDATE_TIMELINE_REQUEUE:
             return self._prepare_requeued(entry, head, now=now, timeout_seconds=timeout_seconds)
+        if entry.state == "requeued" and entry.transition.reason == ADAPTIVE_ACTOR_REQUEUE:
+            return self._prepare_adaptive_requeued(entry, head, now=now, timeout_seconds=timeout_seconds)
         if entry.state == "provider_pending":
             frame = SimingTurnFrame.model_validate_json(entry.transition.provider.frame_json)
             try:
@@ -305,6 +307,34 @@ class SimingCoordinator:
     def _can_requeue(self, frame, now):
         return (frame.stage == "candidate" and now < frame.expires_at
             and candidate_timeline_changed(frame.pin, self.runtime._capture_siming_pin(frame)))
+
+    def _prepare_adaptive_requeued(self, entry, head, *, now, timeout_seconds):
+        frame = SimingTurnFrame.model_validate_json(entry.transition.provider.frame_json)
+        reason = self._invalidation(frame.siming_input.source_event)
+        if now >= min(entry.expires_at, frame.expires_at):
+            reason = "wall_ttl_expired"
+        if head.after_state:
+            self.runtime.install_planned_state(SimingStageEffects.model_validate(head.after_state))
+        current = self.runtime._capture_siming_pin(frame)
+        if reason is None and not adaptive_actor_changed(frame.pin, current):
+            reason = "stale_pin"
+        if reason is not None:
+            self._reconcile_only(entry, head, now=now, reason=reason)
+            return SimingAdvance(status="zero_write", reason=reason)
+        prepared, heavenly_frame, request = self.runtime.heavenly_support.prepare_request(frame.siming_input)
+        if prepared is not None or request is None:
+            self._reconcile_only(entry, head, now=now, reason="adaptive_refresh_unavailable")
+            return SimingAdvance(status="zero_write", reason="adaptive_refresh_unavailable")
+        frame.heavenly_frame, frame.request = heavenly_frame, request
+        frame.actor_ids = self.runtime.heavenly_support.prepared_actor_ids(heavenly_frame)
+        if self.runtime._capture_siming_pin(frame) != current:
+            self._reconcile_only(entry, head, now=now, reason="stale_pin")
+            return SimingAdvance(status="zero_write", reason="stale_pin")
+        advance = self.runtime.register_planned_turn(frame.model_dump_json().encode(),
+            expires_at=min(entry.expires_at, frame.expires_at), timeout_seconds=timeout_seconds)
+        if advance.status != "pending":
+            return advance
+        return self._save_provider(entry, advance, now=now, ordinal=entry.transition.ordinal + 1)
 
     def _requeue_candidate(self, entry, frame, *, now, completion_json):
         # 原 job 留作被拒结果的身份，frame.pin 保存本次重排所观察到的读集。
@@ -412,6 +442,15 @@ class SimingCoordinator:
             validation = self.runtime.validate_completion(job, completion_json)
             reason = validation.reason if validation.status == "zero_write" else None
         if reason is not None:
+            if (validation is not None and reason == "stale_pin" and frame.stage == "adaptive"
+                    and now < frame.expires_at and adaptive_actor_changed(frame.pin, self.runtime._capture_siming_pin(frame))):
+                receipt = self.admissions.advance(key, expected_revision=entry.revision, now=now,
+                    transition=SimingAdmissionTransition(state="requeued", stage="adaptive",
+                        ordinal=provider_entry.transition.ordinal, due_at=now,
+                        provider=provider_entry.transition.provider, completion_json=canonical,
+                        reason=ADAPTIVE_ACTOR_REQUEUE))
+                self.runtime.cancel_turn(job.turn_id)
+                return receipt
             if validation is not None and reason == "stale_pin" and self._can_requeue(frame, now):
                 return self._requeue_candidate(entry, frame, now=now, completion_json=canonical)
             if (validation is not None and reason == "stale_pin"

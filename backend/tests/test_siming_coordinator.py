@@ -439,6 +439,94 @@ def test_adaptive_provider_plan_uses_same_durable_stage_boundary(adaptive_state)
     assert owner.admissions.read_room_head(key.scope).completed_sequence == 0
 
 
+def test_adaptive_actor_change_reprepares_without_replaying_initial_effects(adaptive_state):
+    import time
+    from app.services.siming_continuation import run_siming_provider
+    from test_siming_continuation import _adaptive_input
+    runtime = adaptive_state.siming_runtime
+    actor_revision = [0]
+    runtime._actor_pin_reader = lambda actor: {"actor": actor, "revision": actor_revision[0]}
+    owner = SimingCoordinator(runtime=runtime, graph=adaptive_state.graph,
+        admissions=SimingAdmissionService(SimingHeavenlyMemoryService(adaptive_state.graph)),
+        invalidation_reader=lambda _: None)
+    now = time.time()
+    key = owner.admit_event(_adaptive_input().source_event, now=now, expires_at=now + 60, policy_version='v1').entry.key
+    owner.begin(key, now=now)
+    initial = owner.resume_committed(key, now=now)
+    initial_receipts = initial.entry.transition.receipts
+    job = owner.prepare_provider(key, now=now).job
+    old_revision = owner.admissions.read(key).entry.provider_revision
+    completion = run_siming_provider(runtime.heavenly_support._llm_provider, job.request_json)
+    actor_revision[0] += 1
+    requeued = owner.accept_provider(key, job, completion, now=now, provider_revision=old_revision)
+    assert requeued.entry.state == 'requeued'
+    assert owner.accept_provider(key, job, completion, now=now, provider_revision=old_revision).replayed
+    # Recreate the coordinator at the durable boundary before claiming the retry.
+    owner = SimingCoordinator(runtime=runtime, graph=adaptive_state.graph,
+        admissions=SimingAdmissionService(SimingHeavenlyMemoryService(adaptive_state.graph)),
+        invalidation_reader=lambda _: None)
+    requeued_entry = owner.admissions.read(key).entry
+    retried, _, revision = owner.prepare_ready(key, now=now)
+    assert retried.token != job.token and revision > old_revision
+    from app.services.siming_continuation import SimingTurnFrame
+    transition = owner.admissions.read(key).entry.transition
+    altered = SimingTurnFrame.model_validate_json(transition.provider.frame_json)
+    altered.heavenly_frame['event_family'] = 'tampered'
+    provider = transition.provider.model_copy(update={'frame_json': altered.model_dump_json()})
+    with pytest.raises(ValueError, match='siming_admission_requeue_changed_request'):
+        owner.admissions._validate_transition(requeued_entry, transition.model_copy(update={'provider': provider}), now)
+    assert owner.admissions.read(key, revision=initial.entry.revision).entry.transition.receipts == initial_receipts
+    fresh = run_siming_provider(runtime.heavenly_support._llm_provider, retried.request_json)
+    accepted = owner.accept_provider(key, retried, fresh, now=now, provider_revision=revision)
+    assert accepted.entry.state == 'result_ready'
+
+
+def test_adaptive_actor_requeue_does_not_accept_other_changed_inputs(adaptive_state):
+    import time
+    from app.services.siming_continuation import run_siming_provider
+    from test_siming_continuation import _adaptive_input
+    runtime = adaptive_state.siming_runtime
+    actor_revision = [0]
+    runtime._actor_pin_reader = lambda actor: {'actor': actor, 'revision': actor_revision[0]}
+    owner = SimingCoordinator(runtime=runtime, graph=adaptive_state.graph,
+        admissions=SimingAdmissionService(SimingHeavenlyMemoryService(adaptive_state.graph)),
+        invalidation_reader=lambda _: None)
+    now = time.time()
+    key = owner.admit_event(_adaptive_input().source_event, now=now, expires_at=now + 60, policy_version='v1').entry.key
+    owner.begin(key, now=now)
+    owner.resume_committed(key, now=now)
+    job = owner.prepare_provider(key, now=now).job
+    completion = run_siming_provider(runtime.heavenly_support._llm_provider, job.request_json)
+    actor_revision[0] += 1
+    runtime.heavenly_support._resources._recent_signatures.append('changed')
+    assert owner.accept_provider(key, job, completion, now=now).entry.state == 'stale'
+
+
+def test_adaptive_requeue_rechecks_invalidation_before_provider(adaptive_state):
+    import time
+    from app.services.siming_continuation import run_siming_provider
+    from test_siming_continuation import _adaptive_input
+    runtime = adaptive_state.siming_runtime
+    actor_revision = [0]
+    invalidated = [False]
+    runtime._actor_pin_reader = lambda actor: {'actor': actor, 'revision': actor_revision[0]}
+    owner = SimingCoordinator(runtime=runtime, graph=adaptive_state.graph,
+        admissions=SimingAdmissionService(SimingHeavenlyMemoryService(adaptive_state.graph)),
+        invalidation_reader=lambda _: 'branch_reset' if invalidated[0] else None)
+    now = time.time()
+    key = owner.admit_event(_adaptive_input().source_event, now=now, expires_at=now + 60, policy_version='v1').entry.key
+    owner.begin(key, now=now)
+    owner.resume_committed(key, now=now)
+    job = owner.prepare_provider(key, now=now).job
+    completion = run_siming_provider(runtime.heavenly_support._llm_provider, job.request_json)
+    actor_revision[0] += 1
+    assert owner.accept_provider(key, job, completion, now=now).entry.state == 'requeued'
+    invalidated[0] = True
+    assert owner.prepare_ready(key, now=now) is None
+    assert owner.admissions.read(key).entry.state == 'stale'
+    assert runtime.pending_count == 0
+
+
 @pytest.mark.parametrize('change', ['actor', 'source', 'policy'])
 def test_unsubmitted_provider_request_does_not_adopt_new_external_pin(tmp_path, change):
     import time

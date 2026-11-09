@@ -1134,11 +1134,17 @@ def test_prompt_policy_and_output_validator_expose_task_specific_contracts() -> 
         context={
             "actor_id": "char_b",
             "control_mode": "agent_full_auto",
+            "frozen_candidates": [{"wire_label": "observe", "description": "watch"}, {"wire_label": "ask_probe", "description": "ask"}],
             "snapshot": {"attention_targets": ["char_a"]},
             "memory": {"working_memory": [], "episodic_memories": [], "relational_memories": []},
         },
         route={"route_mode": "online_default", "provider_kind": "online"},
     )
+    assert 'frozen_candidates' in prompt['system_instruction']
+    assert 'wire_label' in prompt['system_instruction']
+    assert 'original order' in prompt['system_instruction']
+    assert '"wire_label":"observe"' in prompt['user_instruction']
+    assert '"wire_label":"ask_probe"' in prompt['user_instruction']
     output = validator.validate(
         task_kind="l3_planning",
         output={

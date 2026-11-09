@@ -310,20 +310,33 @@ func _on_backend_connected(_payload: String) -> void:
 		return
 	backend_connected_once = true
 	pending_backend_reconnect = false
-	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
-		# The Heavenly probe owns the setup sequence and will issue explicit
-		# interaction/perception events after the scene is ready.
-		return
 	if not OS.get_environment("PARALLS_GAMEPLAY_MIRROR_ENROLLMENT_JSON").is_empty():
 		var mirror = load("res://scripts/interaction/GameplayMirrorBridge.gd").new()
 		add_child(mirror)
-		if mirror.load_session_enrollment_from_environment() != OK or mirror.bind_session() != OK:
+		var enrollment_path := OS.get_environment("SIMING_RESTART_ENROLLMENT_PATH")
+		if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1" and _get_bus().has_meta("siming_initial_bound"):
+			while not FileAccess.file_exists(enrollment_path):
+				await get_tree().create_timer(0.1).timeout
+			var enrollment: Variant = JSON.parse_string(FileAccess.get_file_as_string(enrollment_path))
+			DirAccess.remove_absolute(enrollment_path)
+			if not enrollment is Dictionary:
+				_bus_log("phase0_session_bind_failed")
+				return
+			mirror.set_session_enrollment(enrollment)
+		elif mirror.load_session_enrollment_from_environment() != OK:
+			_bus_log("phase0_session_bind_failed")
+			return
+		if mirror.bind_session() != OK:
 			_bus_log("phase0_session_bind_failed")
 			return
 		var binding: Dictionary = await _get_bus().websocket_session_bound_received
 		if str(binding.get("session_ref", "")).is_empty():
 			_bus_log("phase0_session_bind_failed")
 			return
+		_get_bus().set_meta("siming_initial_bound", true)
+	if OS.get_environment("SIMING_HEAVENLY_AUTOTEST") == "1":
+		# The Heavenly probe owns the remaining setup sequence.
+		return
 	_request_backend_health()
 	_emit_spatial_access_zone_entry()
 	if pending_focus_sync:
