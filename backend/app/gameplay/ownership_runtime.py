@@ -14,6 +14,7 @@ from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
@@ -320,15 +321,11 @@ class OwnershipAuthorityService:
         )
 
     def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
-        if record is None:
-            return None
-        if record.payload_digest != digest:
-            raise OwnershipRuntimeError("idempotency_key_reused")
-        result = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if result is None:
-            raise OwnershipRuntimeError("ownership_idempotency_missing_result")
-        return result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        return replay_duplicate(
+            self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
+            payload_digest=digest, error_factory=OwnershipRuntimeError,
+            missing_result_code="ownership_idempotency_missing_result",
+        )
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, event_type: str, payload: dict[str, str], causation_id: str, correlation_id: str, projection: OwnershipProjection) -> AppendBatchResult:
         stream_id = "gameplay:ownership"
