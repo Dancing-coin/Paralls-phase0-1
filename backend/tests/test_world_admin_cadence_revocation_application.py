@@ -140,10 +140,13 @@ async def test_admin_auth_changing_in_runtime_queue_rejects_without_write(applic
 
     def observe_submit(command):
         future = original_submit(command)
-        submitted.set()
+        if command.__qualname__ == "revoke_world_admin_cadence.<locals>.command":
+            submitted.set()
         return future
 
     monkeypatch.setattr(execution, "submit", observe_submit)
+    execution.submit(lambda: None)
+    assert not submitted.is_set()
     client = TestClient(main.component_app, client=("127.0.0.1", 47224))
     response_task = asyncio.create_task(asyncio.to_thread(
         client.post, "/admin/cadence-revocations", json=payload,
