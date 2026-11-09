@@ -25,6 +25,7 @@ from app.models.siming_runtime_state import (
     StorylineStateSnapshot,
 )
 from app.services.siming_fact_core import SimingFactCore
+from app.services.siming_knowledge_graph import SimingKnowledgeGraph
 from app.services.siming_fairness_audit import SimingFairnessAuditEngine
 from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_feasibility import SimingExecutionFeasibility
@@ -134,6 +135,7 @@ class SimingRuntime:
         population_model_observer=None,
         actor_pin_reader=None,
         source_pin_reader=None,
+        knowledge_graph: SimingKnowledgeGraph | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -143,6 +145,7 @@ class SimingRuntime:
         self._feasibility = feasibility or SimingExecutionFeasibility()
         self._observe_pipeline = observe_pipeline or SimingObservePipeline()
         self._fact_core = fact_core or SimingFactCore()
+        self._knowledge_graph = knowledge_graph or SimingKnowledgeGraph()
         self._state_tree = state_tree or InMemorySimingStateTree()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(
             self._feature_registry
@@ -186,6 +189,10 @@ class SimingRuntime:
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
         return self._heavenly_support
+
+    @property
+    def knowledge_graph(self) -> SimingKnowledgeGraph:
+        return self._knowledge_graph
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         # 兼容工具入口；与异步入口共用下面的显式阶段，串行 drain。

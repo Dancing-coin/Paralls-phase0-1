@@ -36,11 +36,10 @@ def population_kernel_digest() -> str:
         "contracts_version": "siming_contracts:v1",
     }
 
-    # 实际的 kernel 实现签名：通过 inspect 获取，但只记录参数和返回类型的形状
-    advance_b0_row_sig = inspect.signature(world.advance_b0_row)
+    # 读取绑定代码对象而非函数包装器，避免 functools.wraps 隐藏实际实现。
+    active_kernel_source = inspect.getsource(world.advance_b0_row.__code__).replace("\r\n", "\n")
     kernel_contracts = {
-        "advance_b0_row_params": tuple(advance_b0_row_sig.parameters.keys()),
-        "advance_b0_row_return_type": str(advance_b0_row_sig.return_annotation),
+        "advance_b0_row_source": active_kernel_source,
     }
 
     # 两个部分合并：不变的 contract + 函数形状
