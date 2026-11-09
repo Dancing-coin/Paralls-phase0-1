@@ -20,6 +20,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'backend'))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
+from app.character_agent.gateway.memory_recall import CharacterMemoryRecallPolicy
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.models.mind_frame import CharacterMindFrame
 from app.character_agent.planning.l3_planner import CandidateCompiler
@@ -104,7 +105,10 @@ def prepare_v4(*, repo: Path, reviewer_input: dict[str, Any]) -> dict[str, Any]:
                 role_visible_conditions=conditions,
                 common_constraints=scenario.get('common_constraints', ''))
             frame['frame_digest'] = digest({key: value for key, value in frame.items() if key != 'frame_digest'})
-            request = CharacterModelGateway().prepare_run_request(task_kind='l3_planning', route_override='laya', context={
+            # Historical diagnostic fixtures have no memory or runtime cognition policy.
+            # Keep their frozen empty policy while computing recall under the profile.
+            request = CharacterModelGateway().prepare_run_request(task_kind='l3_planning', route_override='laya',
+                prepared_recall=CharacterMemoryRecallPolicy().select({}, context={'effective_profile': projection['effective_profile']}), context={
                 'actor_id': actor, 'control_mode': 'agent_full_auto',
                 'snapshot': {'event': facts['event'], 'question': facts['question'],
                     'visible_target_refs': facts['visible_targets'],
