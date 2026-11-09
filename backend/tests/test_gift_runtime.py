@@ -85,3 +85,35 @@ def test_gift_retry_returns_original_transaction_without_second_transfer() -> No
     assert first.committed and replay.committed
     assert replay.idempotency_status == "duplicate_replayed"
     assert len([event for event in store.read_events() if event.event_type == "gameplay.ownership.right_transferred"]) == 1
+
+
+def test_gift_changed_retry_and_missing_receipt_reject_without_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup()
+    first = _gift(service)
+    before = store.read_events()
+    with pytest.raises(GiftRuntimeError, match="^idempotency_key_reused$"):
+        _gift(service, command_id="cmd:changed")
+    assert store.read_events() == before
+    replay = _gift(service)
+    assert replay == first.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+    monkeypatch.setattr(store, "get_by_idempotency", lambda *_: None)
+    with pytest.raises(GiftRuntimeError, match="^economy_idempotency_missing_result$"):
+        _gift(service)
+    assert store.read_events() == before
+
+
+def test_gift_rejects_stale_revision_at_commit_without_partial_writes(monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup()
+    before = store.read_events()
+    append = store.append_batch
+
+    def append_with_stale_revision(batch):
+        batch["expected_stream_revisions"]["gameplay:ownership"] -= 1
+        return append(batch)
+
+    monkeypatch.setattr(store, "append_batch", append_with_stale_revision)
+    result = _gift(service)
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "revision_conflict"
+    assert store.read_events() == before
