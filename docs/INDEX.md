@@ -41,7 +41,6 @@
 - `docs/9月分析/README.md`：初代产品初稿入口，记录小镇、个人区域、锚点朋友、朋友圈桌游和剧本角色增量方向；该目录是提议性分析材料，不授权实现。
 - `docs/10月分析/README.md`：模型驱动的角色心智、Laya 快慢循环、协同作战、语音表达和玩法思考模式分析；该目录是提议性架构材料，不授权实现。
 - `docs/10月中旬分析/README.md`：全体角色社会生命、MiroFish 式派生社会图谱、B0-B3 混合群体模拟、Laya 快循环和局部活化的中旬整合方案；规格、计划、审查和回写分目录维护，仍不授权实现。
-- `docs/11月份分析/README.md`：司命与群体模拟的功能实现审查批次，承接中旬规格与门禁计划，按“未做/骨架未通/不完整/语义分裂”四类登记功能差距；属审查材料，不授权实现。
 - `docs/8月分析/第二阶段推进/README.md`：`bakery-authored-agents` 的增量指导入口；正式 SDD/plan 见下方 Phase Two tree。
 - `docs/art-resource-swap-workflow.md`：美术资源替换与更新工作流手册，定义 art pack、adapter scene、runtime shell 和 binding profile 的接入方式。
 - `docs/art-asset-production-repository.md`：独立 `paralls-art-assets` 美术生产仓库的职责、交接流程、旧资源参考和资格门禁。

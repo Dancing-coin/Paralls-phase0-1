@@ -23,7 +23,7 @@ TEST_FILES = [
     "backend/tests/test_ws_protocol.py::test_websocket_press_intent_uses_registered_switch_authority_policy",
     "backend/tests/test_ws_protocol.py::test_websocket_archive_door_open_requires_bound_controller_before_physical_preflight",
     "backend/tests/test_ws_protocol.py::test_door_close_fails_closed_until_its_physical_path_is_implemented",
-    "backend/tests/test_ws_protocol.py::test_worktable_finish_use_requires_the_authority_committed_engaged_state",
+    "backend/tests/test_player_object_ingress.py::test_bound_player_object_commit_retries_and_requires_engaged_state",
     "backend/tests/test_ws_protocol.py::test_observation_bench_stand_requires_the_authority_scoped_occupant_and_emits_posture",
     "backend/tests/test_ws_protocol.py::test_websocket_interact_intent_emits_constraint_when_player_is_far",
 ]

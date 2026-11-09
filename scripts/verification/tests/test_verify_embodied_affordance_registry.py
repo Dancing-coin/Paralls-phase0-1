@@ -20,3 +20,8 @@ def test_affordance_registry_verifier_uses_current_physical_door_contract_tests(
     )
     assert "backend/tests/test_ws_protocol.py::test_websocket_open_intent_uses_registered_archive_door_authority_policy" not in verifier.TEST_FILES
     assert "backend/tests/test_ws_protocol.py::test_door_close_requires_the_authority_committed_open_state" not in verifier.TEST_FILES
+
+
+def test_affordance_registry_verifier_runs_authorized_worktable_contract() -> None:
+    assert "backend/tests/test_player_object_ingress.py::test_bound_player_object_commit_retries_and_requires_engaged_state" in verifier.TEST_FILES
+    assert "backend/tests/test_ws_protocol.py::test_worktable_finish_use_requires_the_authority_committed_engaged_state" not in verifier.TEST_FILES
