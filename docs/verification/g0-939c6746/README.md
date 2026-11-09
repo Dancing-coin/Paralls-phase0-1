@@ -19,6 +19,30 @@ The [raw archive](raw-runs.zip) preserves the original output bytes, including
 the manifest used for its recorded SHA-256; the readable JSON copies may have
 Git-normalized line endings. Extract the original manifest when reproducing.
 
+For example, from the evidence branch worktree in PowerShell, using the same
+Python environment and an unused destination for each path:
+
+```powershell
+$g0Evidence = (Resolve-Path 'docs/verification/g0-939c6746').Path
+$g0Checkout = 'D:/Temp/paralls-g0-review-source'
+$g0Raw = 'D:/Temp/paralls-g0-review-raw'
+$g0Output = 'D:/Temp/paralls-g0-review-run'
+git worktree add --detach $g0Checkout 939c674681c3f2c648c3286bd27b381bb3a7490a
+Expand-Archive -LiteralPath "$g0Evidence/raw-runs.zip" -DestinationPath $g0Raw
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' "$g0Evidence/run_baseline.py" `
+  --repo $g0Checkout --output $g0Output `
+  --manifest "$g0Raw/paralls-g0-939c6746-run1/test-files.json"
+```
+
+On 2026-11-09 a separate clean checkout at the pinned source collected the same
+9,922 nodes in the same order, with matching package and manifest hashes. A
+targeted execution of the five G1 node lists plus the player object, spatial
+ingress, character recall and long-session recovery files collected 375 items
+and passed all 375. [reproduction-check.zip](reproduction-check.zip) preserves
+the collection and targeted results, invocations and environment. This used
+the same local virtual environment and operator as the original runs; it is
+not independent reviewer reproduction.
+
 Both runs collected 9,922 nodes and produced 9,879 passed, 39 failed, two
 skipped and two xfailed. The capture schema groups xfails with skips. Node
 order, per-node outcome, failure order, phase and error type matched; source,
