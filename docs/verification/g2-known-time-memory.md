@@ -10,6 +10,25 @@ synthetic values and do not establish that those production time domains match.
 Delayed memory may become visible early; a trusted mapping and production-path
 regression are still required.
 
+On 2026-11-10 an in-memory exercise called the actual activation entry with
+`producer_ts=100000` and a pending candidate whose `knowledge_available_at`
+was 101. Activation acquired the lock and the event-memory count became one.
+No confirmed Population time was supplied to that entry. This reproduces the
+unconditional comparison; it does not establish the world time of a real
+Godot session or repair any memory already projected.
+
+The seed planner assigns `world_ref` from the cadence, but the production
+continuity command does not carry that field. Its persisted candidate and
+continuity event therefore do not establish the candidate's world. The
+activation lock's default `world:default` is not a substitute: the production
+bakery Population driver uses `world:bakery-district`. A safe correction needs
+durable world provenance for new candidates, a separately supplied confirmed
+time for that same world, and an explicit policy for legacy candidates whose
+provenance cannot be established. It must preserve existing command digests,
+replay semantics and the event timestamp/cursor meaning. Unknown provenance
+cannot authorize early materialization. Previously projected memories and
+receipts require separate investigation; this evidence does not undo them.
+
 An early materialization attempt previously persisted a permanent
 `temporal_knowledge_denied` receipt. The same candidate then replayed that
 refusal after its knowledge time, including after restart. New early attempts
