@@ -54,3 +54,20 @@ commit boundary, not a test-only registry:
 The visibility benchmark remains synthetic; its inconsistent tail results do
 not validate this separate commit path or close D6. No decision D2-D10 is
 closed by this investigation.
+
+## Existing durable serialization regression
+
+`test_independent_durable_writers_serialize_revision_and_preserve_retry`
+starts two distinct durable stores against one SQLite file and races batches
+with the same expected stream revision. One commits and one gets a revision
+conflict. After both stores close, a reopened store returns the original
+receipt for an exact retry, rejects a changed digest and has one event,
+transaction and outbox entry. This validates the existing revision and
+idempotency substrate, not authority epoch enforcement or handoff.
+
+On Windows 11 with the G0 Python 3.12.2 environment, the following command
+reported 47 passed and 2 deprecation warnings:
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' -m pytest backend/tests/test_gameplay_event_store_persistence.py backend/tests/test_gameplay_event_store_contract.py backend/tests/test_gameplay_event_store_connection.py -q
+```

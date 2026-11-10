@@ -3,12 +3,60 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore, GameplayEventStoreSnapshotError
 
 from test_gameplay_event_store_contract import _batch, _event, _outbox
+
+
+def test_independent_durable_writers_serialize_revision_and_preserve_retry(tmp_path) -> None:
+    path = tmp_path / "independent-writers.db"
+    stores = [DurableGameplayEventStore(path), DurableGameplayEventStore(path)]
+    barrier = threading.Barrier(2)
+
+    def batch(name: str) -> dict[str, object]:
+        tx, command = f"tx:{name}", f"cmd:{name}"
+        return _batch(
+            tx=tx, command_id=command, key=f"key:{name}", digest=f"digest:{name}",
+            events=[_event(f"evt:{name}", stream_id="stream:shared", tx=tx, command_id=command)],
+            outbox_entries=[_outbox(f"evt:{name}", tx=tx)],
+            expected={"stream:shared": 0},
+        )
+
+    batches = [batch("first"), batch("second")]
+
+    def append(index: int):
+        barrier.wait(timeout=10)
+        return stores[index].append_batch(batches[index])
+
+    try:
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(append, range(2)))
+        winner = next(index for index, result in enumerate(results) if result.committed)
+        loser = 1 - winner
+        assert not results[loser].committed
+        assert results[loser].failure.error_code == "revision_conflict"
+    finally:
+        for store in stores:
+            store.close()
+
+    reopened = DurableGameplayEventStore(path)
+    try:
+        retry = reopened.append_batch(batches[winner])
+        assert retry.idempotency_status == "duplicate_replayed"
+        assert retry.committed_event_ids == results[winner].committed_event_ids
+        changed = batch("first" if winner == 0 else "second")
+        changed["idempotency_record"]["payload_digest"] = "digest:changed"
+        rejection = reopened.append_batch(changed)
+        assert rejection.failure.error_code == "idempotency_key_reused"
+        assert len(reopened.read_events()) == 1
+        assert len(reopened.read_transactions()) == 1
+        assert len(reopened.list_outbox(include_delivered=True)) == 1
+    finally:
+        reopened.close()
 
 
 def test_snapshot_round_trip_recovers_events_idempotency_and_outbox_state(tmp_path) -> None:
