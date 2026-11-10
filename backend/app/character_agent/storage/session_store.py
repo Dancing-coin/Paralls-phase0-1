@@ -869,6 +869,15 @@ class CharacterAgentSessionStore:
             return [deepcopy(v) for (actor,_),v in self._candidates.items() if actor==actor_id]
         return [json.loads(row[0]) for row in self._connection.execute("SELECT payload_json FROM character_session_candidates WHERE actor_id=? ORDER BY rowid",(actor_id,))]
 
+    def has_candidate(self, actor_id: str, candidate_id: str) -> bool:
+        self._check_open()
+        if self._connection is None:
+            return (actor_id, candidate_id) in self._candidates
+        return self._connection.execute(
+            "SELECT 1 FROM character_session_candidates WHERE actor_id=? AND candidate_id=?",
+            (actor_id, candidate_id),
+        ).fetchone() is not None
+
     def has_other_candidate(self, actor_id: str, candidate_id: str, dedup_key: str) -> bool:
         self._check_open()
         if self._connection is None:

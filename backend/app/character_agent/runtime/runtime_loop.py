@@ -2892,6 +2892,19 @@ class CharacterAgentRuntime:
             if self._session_store.has_other_candidate(actor_id, candidate.candidate_id, candidate.dedup_key):
                 return self._continuity_refusal(command, current_revision, "memory_candidate_duplicate")
             staged_candidates.append(candidate)
+        reused_ids = {candidate.candidate_id for candidate in staged_candidates
+                      if self._session_store.has_candidate(actor_id, candidate.candidate_id)}
+        if reused_ids:
+            worlds: dict[str, str | None] = dict.fromkeys(reused_ids)
+            for event in self._session_store.list_events(actor_id):
+                commit = event.get("payload", {}).get("continuity_commit", {})
+                if isinstance(commit, dict):
+                    for raw in commit.get("memory_candidates", []):
+                        candidate_id = raw.get("candidate_id")
+                        if candidate_id in reused_ids:
+                            worlds[candidate_id] = commit.get("memory_world_ref")
+            if any(world != command.world_ref for world in worlds.values()):
+                return self._continuity_refusal(command, current_revision, "memory_candidate_world_conflict")
         try:
             if isinstance(need_delta, dict):
                 staged_need = {**self._need_tension_store.read(actor_id), **deepcopy(need_delta), "actor_id": actor_id}

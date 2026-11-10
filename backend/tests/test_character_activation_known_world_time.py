@@ -101,3 +101,45 @@ def test_world_binding_cannot_be_attached_to_a_command_without_candidates():
     data["world_ref"] = "world:bakery"
     with pytest.raises(ValueError, match="command_memory_world_without_candidates"):
         CharacterContinuityCommand.model_validate(data)
+
+
+@pytest.mark.parametrize("persistent", [False, True])
+@pytest.mark.parametrize("original_world", ["world:bakery", None])
+def test_candidate_identity_cannot_move_to_another_world(tmp_path, persistent, original_world):
+    clock = {"world:bakery": 100, "world:other": 1000}
+    options = {"storage_root": tmp_path} if persistent else {}
+    runtime = CharacterAgentRuntime(memory_known_time_provider=clock.get, **options)
+    first = command_for_char_a(world_ref=original_world)
+    committed = runtime.apply_character_continuity_command(first)
+    assert committed.status == "committed"
+    if persistent:
+        runtime.close()
+        runtime = CharacterAgentRuntime(memory_known_time_provider=clock.get, **options)
+    assert runtime.apply_character_continuity_command(first).status == "idempotent_replay"
+    before = runtime.get_pending_seed_candidates("char_a")
+    second = first.model_copy(update={
+        "command_id": "continuity:second", "idempotency_key": "continuity:second",
+        "expected_character_revision": committed.character_revision_after,
+        "world_ref": "world:other",
+    })
+    denied = runtime.apply_character_continuity_command(second)
+    assert denied.status == "rejected"
+    assert denied.refusal_reason == "memory_candidate_world_conflict"
+    assert runtime.get_pending_seed_candidates("char_a") == before
+    assert runtime.materialize_pending_seed_memories("char_a", 100000)[0].refusal_reason == "temporal_knowledge_denied"
+    assert runtime.get_memory_bundle("char_a")["event_memories"] == []
+    runtime.close()
+
+
+@pytest.mark.parametrize("world", ["world:bakery", None])
+def test_candidate_identity_can_be_updated_within_same_world(world):
+    runtime = CharacterAgentRuntime(memory_known_time_provider=lambda _: 101)
+    first = command_for_char_a(world_ref=world)
+    committed = runtime.apply_character_continuity_command(first)
+    second = first.model_copy(update={
+        "command_id": "continuity:second", "idempotency_key": "continuity:second",
+        "expected_character_revision": committed.character_revision_after,
+    })
+    assert runtime.apply_character_continuity_command(second).status == "committed"
+    assert runtime.apply_character_continuity_command(second).status == "idempotent_replay"
+    runtime.close()
