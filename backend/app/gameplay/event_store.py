@@ -35,6 +35,26 @@ class GameplayEventStoreSnapshotError(ValueError):
 
 
 _DURABLE_JSON_PREFIX = b"paralls-json-zlib-v1\0"
+_EVENT_FIELDS = frozenset(GameplayEvent.model_fields)
+_IMMUTABLE_SCALAR_TYPES = (str, int, float, bool, type(None))
+
+
+def _copy_event_for_read(event: GameplayEvent) -> GameplayEvent:
+    values = event.__dict__
+    payload = values.get("payload")
+    if (
+        type(event) is GameplayEvent
+        and values.keys() == _EVENT_FIELDS
+        and event.__pydantic_extra__ is None
+        and event.__pydantic_private__ is None
+        and type(payload) is dict
+        and all(type(key) is str and type(value) in _IMMUTABLE_SCALAR_TYPES for key, value in payload.items())
+        and all(type(value) in _IMMUTABLE_SCALAR_TYPES for key, value in values.items() if key != "payload")
+    ):
+        copied = event.model_copy()
+        copied.__dict__["payload"] = payload.copy()
+        return copied
+    return event.model_copy(deep=True)
 
 
 def encode_durable_json(value: str) -> bytes:
@@ -378,7 +398,7 @@ class GameplayEventStore:
             if limit is not None:
                 events = events[:_limit(limit)]
             return [
-                self._events_by_id.get(event.event_id, event).model_copy(deep=True)
+                _copy_event_for_read(self._events_by_id.get(event.event_id, event))
                 for event in events
             ]
 
@@ -396,7 +416,7 @@ class GameplayEventStore:
                 events = (event for event in events if event.event_type == event_type)
             if limit is not None:
                 events = islice(events, _limit(limit))
-            return [event.model_copy(deep=True) for event in events]
+            return [_copy_event_for_read(event) for event in events]
 
     def read_transactions(self, *, global_position: int | None = None, limit: int | None = None) -> list[AtomicEventBatch]:
         with self._lock:

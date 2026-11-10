@@ -302,6 +302,41 @@ def test_append_copies_each_nested_payload_once_and_keeps_boundary_isolation(tmp
             store.close()
 
 
+def test_in_memory_reads_preserve_nested_aliases_and_isolate_model_state():
+    batch = AtomicEventBatch.model_validate(_batch())
+    event = batch.events[0]
+    shared = {"values": [1]}
+    event.payload["left"] = shared
+    event.payload["right"] = shared
+    event.__dict__["cached_state"] = {"payload": event.payload}
+    event.__pydantic_fields_set__.discard("payload")
+    store = GameplayEventStore()
+    assert store.append_batch(batch).committed
+
+    for read in (lambda: store.read_events()[0], lambda: store.read_stream(event.stream_id)[0]):
+        result = read()
+        assert "payload" not in result.model_fields_set
+        assert "payload" not in result.model_dump(exclude_unset=True)
+        assert result.payload["left"] is result.payload["right"]
+        assert result.__dict__["cached_state"]["payload"] is result.payload
+        result.payload["left"]["values"].append(2)
+        assert read().payload["right"]["values"] == [1]
+
+
+def test_in_memory_scalar_reads_preserve_fields_set_and_isolate_payload():
+    batch = AtomicEventBatch.model_validate(_batch())
+    event = batch.events[0]
+    event.__pydantic_fields_set__.discard("payload")
+    store = GameplayEventStore()
+    assert store.append_batch(batch).committed
+    for read in (lambda: store.read_events()[0], lambda: store.read_stream(event.stream_id)[0]):
+        result = read()
+        assert "payload" not in result.model_fields_set
+        assert "payload" not in result.model_dump(exclude_unset=True)
+        result.payload["slot"] = "changed"
+        assert read().payload["slot"] == event.stream_id
+
+
 @pytest.mark.parametrize("durable", [False, True])
 def test_append_keeps_shared_input_payloads_separate_across_stored_fields(tmp_path, durable):
     shared = {"items": [{"ref": "original"}]}
