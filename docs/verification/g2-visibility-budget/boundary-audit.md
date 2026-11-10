@@ -45,10 +45,10 @@ On 2026-11-10, `D:/Temp/paralls-g0-py312/Scripts/python.exe -m pytest
 backend/tests/test_embodied_interaction_session.py -q` reported 7 passed with
 6 deprecation warnings; this is backend test evidence, not a Godot run.
 
-## Proposed session audience contract (product confirmation pending)
+## Session audience contract (product approved)
 
-On 2026-11-10 the user supplied an implementation proposal, explicitly still
-subject to product confirmation. It distinguishes authenticated participants,
+On 2026-11-10 the user supplied the session audience rules and subsequently
+approved them as product rules for implementation. They distinguish authenticated participants,
 observers with authoritative perception, recipients with authorized delivery,
 and separately authorized and audited debug access. Each fact requires
 principal-specific field eligibility and known time; missing evidence denies
@@ -69,8 +69,8 @@ The projection pull currently receives no connection context. Before changing
 the route, trace authoritative disclosure, world and scene instance, perception
 and delivery records and their historical revisions, plus the actual send-time
 binding recheck. Freeze participant, observer, delayed delivery, private field,
-revocation, expiry, reconnect and historical replay cases. No implementation or
-product approval is implied by this proposal; performance expansion remains
+revocation, expiry, reconnect and historical replay cases. Product approval does
+not establish implementation or acceptance; performance expansion remains
 paused under the recorded gate, and D2–D10 remain open.
 
 The session binding in `websocket_session_auth_service.py` carries a
