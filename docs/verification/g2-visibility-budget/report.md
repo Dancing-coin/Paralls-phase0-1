@@ -221,3 +221,47 @@ open. Reverting the experiment commit removes the diagnostic only.
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_filter_before_copy.py --all-visible --output docs/verification/g2-visibility-budget/filter-order-all-results.json
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_filter_before_copy.py --all-visible --output docs/verification/g2-visibility-budget/filter-order-all-results-repeat.json
 ```
+
+## Durable Store Read Diagnostic
+
+`measure_durable_read.py` uses the real `DurableGameplayEventStore` to append
+the existing synthetic fixture, close and reopen an isolated SQLite database,
+and compare the stored events with the in-memory source. It measures the real
+`read_events` method and that same read followed by the provisional fixture
+scan for four principals. Each of two independent processes records 60 pairs
+per row after five warmups, with alternating operation order. All samples,
+fixture directory paths, environment and source hash are retained in
+`durable-read-results.json` and `durable-read-results-repeat.json`.
+
+| Events | Run | Raw p95 range | Read plus scan p95 range | Maximum p95 ratio |
+|---:|---:|---:|---:|---:|
+| 256 | 1 | 0.90–0.93 ms | 0.93–0.99 ms | 1.07 |
+| 256 | 2 | 0.91–0.95 ms | 0.95–0.99 ms | 1.08 |
+| 1,024 | 1 | 7.37–7.61 ms | 7.53–7.84 ms | 1.04 |
+| 1,024 | 2 | 7.44–7.69 ms | 7.65–8.24 ms | 1.07 |
+| 4,096 | 1 | 41.34–42.41 ms | 42.29–43.50 ms | 1.03 |
+| 4,096 | 2 | 42.31–42.98 ms | 43.35–43.98 ms | 1.03 |
+
+Both 4,096 rows exceed the candidate 40 ms absolute budget even before the
+scan. The fixture has small payloads and correlated policy, stream and owner;
+the scan counts results rather than creating projections or enforcing the
+specified refusal, identity, timing and distortion rules. Repeated reads use a
+hot SQLite/OS cache, and the harness retains a reference list and a raw result
+while sampling, potentially affecting GC. This is not a production SLO, an
+end-to-end workload, or evidence that the relative gate for real `read_as`
+passes. The existing gate remains open.
+
+SQLite schema 3 stores newly appended full events in `full_value` using the
+store's encoded representation; the `value` column contains only event type.
+Older rows may retain complete JSON in `value`. Thus the existing event-type
+index cannot directly filter visibility metadata across both formats. A future
+index or migration must preserve history, handle both formats and enforce
+authorization without trusting stale or caller-supplied index entries. The
+diagnostic itself changes no runtime or archive format; revert its commit to
+remove it independently. Isolated fixture databases are left at the paths in
+the result files.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_durable_read.py --output docs/verification/g2-visibility-budget/durable-read-results.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_durable_read.py --output docs/verification/g2-visibility-budget/durable-read-results-repeat.json
+```
