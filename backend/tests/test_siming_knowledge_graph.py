@@ -154,6 +154,22 @@ def test_future_access_cannot_be_used_for_past_membership() -> None:
     assert graph.evaluate_membership("a", "conv-1", 110).membership_type == "listener"
 
 
+def test_past_membership_query_does_not_overwrite_current_membership() -> None:
+    graph = _graph()
+    graph.evaluate_access("a", "conv-1", 120)
+    graph.evaluate_membership("a", "conv-1", 120, has_spoken=True)
+    assert graph.evaluate_membership("a", "conv-1", 110).membership_type == "listener"
+    assert graph.who_is_in_conversation("conv-1") == ["a"]
+
+
+def test_older_access_does_not_replace_latest_privacy_observation() -> None:
+    graph = _graph()
+    graph.evaluate_access("a", "conv-1", 120, 0, 0)
+    graph.evaluate_membership("a", "conv-1", 120)
+    graph.evaluate_access("a", "conv-1", 110, 0.4, 0.4)
+    assert graph.evaluate_privacy_risk("b", "conv-1").risk_level == "none"
+
+
 def test_no_access_does_not_count_as_privacy_exposure() -> None:
     graph = _graph()
     graph.evaluate_access("a", "conv-1", 110, 0, 0)

@@ -26,6 +26,7 @@ class SimingKnowledgeGraph:
         self._access_history: dict[tuple[str, str], list[PerceptionAccess]] = {}
         self._latest_access: dict[tuple[str, str], PerceptionAccess] = {}
         self._membership_states: dict[tuple[str, str], MembershipState] = {}
+        self._membership_updated_at: dict[tuple[str, str], int] = {}
         self._knowledge_claims: dict[tuple[str, str], KnowledgeClaim] = {}
         self._higher_order_claims: dict[tuple[str, str, str], KnowledgeClaim] = {}
         self._awareness_relations: dict[tuple[str, str, str], AwarenessRelation] = {}
@@ -108,7 +109,10 @@ class SimingKnowledgeGraph:
             access_started_at=current_tick,
         )
         self._access_history.setdefault((actor_id, conversation_id), []).append(access)
-        self._latest_access[(actor_id, conversation_id)] = access
+        key = (actor_id, conversation_id)
+        latest = self._latest_access.get(key)
+        if latest is None or current_tick >= latest.access_started_at:
+            self._latest_access[key] = access
         return AccessResolution(
             actor_id=actor_id,
             conversation_id=conversation_id,
@@ -171,7 +175,8 @@ class SimingKnowledgeGraph:
 
         joined_at = current_tick if membership_type in ("candidate", "silent_member", "active_member") else None
         previous = self._membership_states.get((actor_id, conversation_id))
-        if joined_at is not None and previous is not None and previous.joined_at is not None:
+        if (joined_at is not None and previous is not None and previous.joined_at is not None
+                and previous.joined_at <= current_tick):
             joined_at = previous.joined_at
         state = MembershipState(
             actor_id=actor_id,
@@ -179,7 +184,14 @@ class SimingKnowledgeGraph:
             membership_type=membership_type,
             joined_at=joined_at,
         )
-        self._membership_states[(actor_id, conversation_id)] = state
+        key = (actor_id, conversation_id)
+        if current_tick < self._membership_updated_at.get(key, -1):
+            return MembershipResolution(
+                actor_id=actor_id, conversation_id=conversation_id,
+                membership_type=membership_type, joined_at=joined_at, reason=reason,
+            )
+        self._membership_states[key] = state
+        self._membership_updated_at[key] = current_tick
         members = set(conversation.participant_ids)
         listeners = set(conversation.listener_ids)
         if membership_type in ("candidate", "silent_member", "active_member"):
