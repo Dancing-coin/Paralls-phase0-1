@@ -22,6 +22,33 @@ Finding provenance currently scans the character event history when candidates
 exist; long-history performance has not been measured against a production
 budget. D2-D10 and the B3 client acceptance limitations remain open.
 
+## Candidate Time Update Limitation
+
+The existing same-world candidate update also allows a new continuity command
+to change `knowledge_available_at`. On Windows 11 / Python 3.12.2, the
+following isolated in-memory exercise committed a candidate with event time 99
+and knowledge time 101, deferred it at world tick 100, then committed another
+command for the same candidate and world with knowledge time 100. The next
+materialization committed and exposed the memory at tick 100. It uses the real
+continuity and materialization methods and the test fixture, not the production
+cadence or an authenticated external ingress.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/probe_candidate_time_update.py
+```
+
+The seed planner derives the candidate ID from actor and projection ID and
+permits source payloads to specify times. Existing domain behavior permits
+same-world updates; the inspected contract establishes event time <= knowledge
+time but does not establish which authority can correct a previously recorded
+knowledge time or how correction evidence is verified. Thus the earlier
+world-binding fix does not prevent an earlier-time update from authorizing
+materialization. A G2 implementation needs a source-bound correction contract,
+including historical conflicting updates, exact retries, restart and already
+materialized memories. Rejecting all earlier corrections without that contract
+would decide domain behavior not established here. No runtime code changed;
+revert this diagnostic commit to remove the probe and note.
+
 ## Cadence provenance audit
 
 The seed planner copies `world_ref` from the cadence into the continuity
