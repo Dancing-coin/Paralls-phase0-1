@@ -93,6 +93,16 @@ assess all upstream gates. It does establish that an adapter which treats the
 current snapshot or bridge frame alone as historical, authenticated session
 perception would not satisfy the approved provenance requirement.
 
+`EmbodiedSpatialSource` is a stronger, separate position source: it checks a
+controller binding and deployment scope, commits sampled position and scene
+instance, and returns event and stream-revision evidence. Its `read` accepts
+only the current process epoch, current binding and fresh sample, using a
+process monotonic clock. It is consequently a current position input, not a
+historical world-time perception or identity-recognition record. The social
+target catalog combines current position with a snapshot's visible-target
+lineage; that combination does not on its own establish a committed session
+field disclosure. B3 client sampling remains unaccepted.
+
 `SocialDeliveryAuthority.record_delivery` commits a source event reference,
 recipient and effective window. It checks `world_now` against that window but
 does not record `world_now` in the delivery event. Consequently the window's
