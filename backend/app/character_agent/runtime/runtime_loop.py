@@ -1963,6 +1963,8 @@ class CharacterAgentRuntime:
         if reason:
             return None, ActivationReceipt(committed=False, status="requeued", profile_ref=profile_ref,
                                            zero_write=True, stop_reason=reason)
+        if decision.load_private_memory:
+            self._validate_materialization_tick(producer_ts)
         stream = f"population:{self._activation_world_ref}"
         receipt = authority.lock(
             world_ref=self._activation_world_ref,
@@ -2634,11 +2636,15 @@ class CharacterAgentRuntime:
     def get_pending_seed_candidates(self, actor_id: str) -> list[dict[str, object]]:
         return self._session_store.list_candidates(actor_id)
 
+    @staticmethod
+    def _validate_materialization_tick(producer_ts: int) -> None:
+        if type(producer_ts) is not int or producer_ts < 0:
+            raise ValueError("materialization_tick_invalid")
+
     def materialize_pending_seed_memories(
         self, actor_id: str, producer_ts: int
     ) -> list[CharacterMemoryMaterializationReceipt]:
-        if type(producer_ts) is not int or producer_ts < 0:
-            raise ValueError("materialization_tick_invalid")
+        self._validate_materialization_tick(producer_ts)
         candidates = {value["candidate_id"]: CharacterMemoryCandidate.model_validate(value) for value in self.get_pending_seed_candidates(actor_id)}
         receipts: list[CharacterMemoryMaterializationReceipt] = []
         for candidate_id, candidate in list(candidates.items()):

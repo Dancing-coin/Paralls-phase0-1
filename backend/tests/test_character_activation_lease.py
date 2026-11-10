@@ -55,9 +55,23 @@ def test_busy_admission_does_not_materialize_or_append_again(monkeypatch):
     before = instance._activation_authority.store.export_snapshot()
     rejected, receipt = instance.begin_actor_activation("char_a", active_dialogue_decision(), producer_ts=2)
     assert rejected is None and not receipt.committed and receipt.zero_write
+    rejected, receipt = instance.begin_actor_activation("char_a", active_dialogue_decision(), producer_ts=-1)
+    assert rejected is None and receipt.stop_reason == "activation_lock_conflict" and receipt.zero_write
     assert len(calls) == 1
     assert instance._activation_authority.store.export_snapshot() == before
     instance.finish_actor_activation(handle, reason="cancelled")
+
+
+@pytest.mark.parametrize("invalid_tick", [True, -1, 1.5, float("nan"), "1", None])
+def test_invalid_materialization_tick_does_not_write_activation_lock(invalid_tick):
+    instance = runtime()
+    authority = instance._activation_authority.store
+    before = authority.export_snapshot()
+    with pytest.raises(ValueError, match="materialization_tick_invalid"):
+        instance.begin_actor_activation("char_a", active_dialogue_decision(), producer_ts=invalid_tick)
+    assert authority.export_snapshot() == before
+    assert not instance.activation_lock_is_active("char_a")
+    assert instance.pending_actor_activations() == ()
 
 
 def test_unrelated_actor_lock_revision_does_not_invalidate_lease():
