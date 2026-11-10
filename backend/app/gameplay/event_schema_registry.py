@@ -50,6 +50,11 @@ SOCIAL_DELIVERY_EVENT_SCHEMAS = (
         "sha256:social:delivery-recorded:v1",
     ),
     EventSchemaRegistration(
+        "gameplay.social.delivery_recorded@2",
+        2,
+        "sha256:social:delivery-recorded:v2-known-time",
+    ),
+    EventSchemaRegistration(
         "gameplay.social.delivery_expired@1",
         1,
         "sha256:social:delivery-expired:v1",

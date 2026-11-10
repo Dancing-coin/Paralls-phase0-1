@@ -19,7 +19,9 @@ from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 _PRINCIPAL = "authority:p5:social-delivery"
-_RECORDED = "gameplay.social.delivery_recorded@1"
+_LEGACY_RECORDED = "gameplay.social.delivery_recorded@1"
+_RECORDED = "gameplay.social.delivery_recorded@2"
+_RECORDED_TYPES = frozenset({_LEGACY_RECORDED, _RECORDED})
 _EXPIRED = "gameplay.social.delivery_expired@1"
 _REVOCATION = "gameplay.social.visibility_revoked"
 
@@ -99,13 +101,15 @@ class SocialDeliveryAuthority:
                 "recipient_ref": recipient_ref, "effective_from": window.effective_from,
                 "effective_to": window.effective_to, "operational_cutoff": window.operational_cutoff,
             }
-            if (prior is not None and prior.event_type == _RECORDED
+            if (prior is not None and prior.event_type in _RECORDED_TYPES
                     and prior.command_id == command_id
                     and prior.causation_id == causation_id
                     and prior.correlation_id == correlation_id
                     and all(prior.payload.get(key) == value for key, value in identity.items())):
                 return SocialDeliveryResult(True, "duplicate_replayed", result)
             return SocialDeliveryResult(False, "idempotency_key_reused")
+        if type(world_now) is not int or world_now < 0:
+            return SocialDeliveryResult(False, "social_delivery_world_time_invalid")
         if world_now < window.effective_from or world_now >= window.effective_to:
             return SocialDeliveryResult(False, "social_delivery_world_window_closed")
         if window.operational_cutoff is not None:
@@ -123,6 +127,7 @@ class SocialDeliveryAuthority:
         stream_id = _delivery_stream(recipient_ref, delivery_ref)
         payload = {
             "delivery_ref": delivery_ref,
+            "known_at_world_tick": world_now,
             "source_stream_id": source_stream_id,
             "source_revision": source_revision,
             "source_event_id": source_event_id,
@@ -145,7 +150,10 @@ class SocialDeliveryAuthority:
             correlation_id=correlation_id,
         )
         batch = batch.model_copy(update={
-            "events": [event.model_copy(update={"visibility_policy": f"actor:{recipient_ref}"}, deep=True) for event in batch.events],
+            "events": [event.model_copy(update={
+                "schema_version": 2,
+                "visibility_policy": f"actor:{recipient_ref}",
+            }, deep=True) for event in batch.events],
             "read_stream_revisions": {source_stream_id: source_revision},
             "owner_fragments": [OwnerAuthorizedFragment(
                 fragment_id=f"fragment:social-delivery:{command_id}",
@@ -175,8 +183,9 @@ class SocialDeliveryAuthority:
         command_id: str, idempotency_key: str, causation_id: str, correlation_id: str,
     ) -> SocialDeliveryResult:
         stream_id = _delivery_stream(recipient_ref, delivery_ref)
-        events = self._store.read_events(event_type=_RECORDED)
-        recorded = next((event for event in events if event.stream_id == stream_id), None)
+        events = [event for event in self._store.read_events()
+                  if event.event_type in _RECORDED_TYPES and event.stream_id == stream_id]
+        recorded = next(iter(events), None)
         if recorded is None:
             return SocialDeliveryResult(False, "social_delivery_missing")
         payload = recorded.payload
@@ -242,6 +251,8 @@ class SocialDeliveryAuthority:
         projection store.  Events after the boundary cannot affect either the
         delivery rows or their source/revocation checks.
         """
+        if type(world_now) is not int or world_now < 0:
+            raise ValueError("social_delivery_world_time_invalid")
         if checkpoint_at is not None and checkpoint_at < 0:
             raise ValueError("social_delivery_checkpoint_invalid")
         if checkpoint_at is not None:
@@ -252,10 +263,15 @@ class SocialDeliveryAuthority:
         historical = self._read_events_at(checkpoint_at)
         rows: list[dict[str, object]] = []
         revisions: dict[str, int] = {}
-        recorded_events = [event for event in historical if event.event_type == _RECORDED]
+        recorded_events = [event for event in historical if event.event_type in _RECORDED_TYPES]
         for event in recorded_events:
             payload = event.payload
             if payload.get("recipient_ref") != recipient_ref:
+                continue
+            if (event.event_type != _RECORDED or event.schema_version != 2
+                    or type(payload.get("known_at_world_tick")) is not int
+                    or payload["known_at_world_tick"] < 0
+                    or world_now < payload["known_at_world_tick"]):
                 continue
             if any(e.stream_id == event.stream_id and e.event_type == _EXPIRED for e in historical):
                 continue

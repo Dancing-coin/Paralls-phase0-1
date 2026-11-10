@@ -40,10 +40,16 @@ def test_delivery_rechecks_source_and_projects_recipient_scope():
     authority = SocialDeliveryAuthority(store=store)
     result = _record(authority, source_event_id=event_id)
     assert result.committed
-    assert authority.view_for(recipient_ref="character:recipient", world_now=15).deliveries
+    before_known = authority.view_for(recipient_ref="character:recipient", world_now=14)
+    at_known = authority.view_for(recipient_ref="character:recipient", world_now=15)
+    assert not before_known.deliveries
+    assert at_known.deliveries[0]["known_at_world_tick"] == 15
+    recorded = store.read_events(event_type="gameplay.social.delivery_recorded@2")
+    assert len(recorded) == 1 and recorded[0].schema_version == 2
     assert store.list_outbox()[0].audience == "actor:character:recipient"
-    duplicate = _record(authority, source_event_id=event_id)
+    duplicate = _record(authority, source_event_id=event_id, world_now=18)
     assert duplicate.committed and duplicate.error_code == "duplicate_replayed"
+    assert authority.view_for(recipient_ref="character:recipient", world_now=18).deliveries[0]["known_at_world_tick"] == 15
     changed = _record(authority, source_event_id=event_id, window=SocialDeliveryWindow(10, 21, 30))
     assert not changed.committed and changed.error_code == "idempotency_key_reused"
 
@@ -57,6 +63,17 @@ def test_delivery_changed_command_identity_is_rejected_without_write():
     before = store.export_snapshot()
     changed = _record(authority, source_event_id=event_id, command_id="delivery-2")
     assert not changed.committed and changed.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
+@pytest.mark.parametrize("world_now", [None, True, "15", -1, 15.0])
+def test_delivery_rejects_invalid_world_time_without_write(world_now):
+    store, _ = _store()
+    _, _, event_id = _source(store)
+    before = store.export_snapshot()
+    result = _record(SocialDeliveryAuthority(store=store), source_event_id=event_id,
+                     world_now=world_now)
+    assert not result.committed and result.error_code == "social_delivery_world_time_invalid"
     assert store.export_snapshot() == before
 
 
@@ -180,12 +197,13 @@ def test_durable_reopen_preserves_delivery_and_replay(tmp_path):
     store = DurableGameplayEventStore(path, event_schema_registry=registry)
     _, _, event_id = _source(store)
     authority = SocialDeliveryAuthority(store=store)
-    assert _record(authority, source_event_id=event_id).committed
+    assert _record(authority, source_event_id=event_id, world_now=15).committed
     store.close()
     reopened_registry = EventSchemaRegistry.from_snapshot(registry.export_snapshot())
     reopened = DurableGameplayEventStore(path, event_schema_registry=reopened_registry)
     reopened_authority = SocialDeliveryAuthority(store=reopened)
-    assert reopened_authority.view_for(recipient_ref="character:recipient", world_now=15).deliveries
+    assert not reopened_authority.view_for(recipient_ref="character:recipient", world_now=14).deliveries
+    assert reopened_authority.view_for(recipient_ref="character:recipient", world_now=15).deliveries[0]["known_at_world_tick"] == 15
     duplicate = _record(reopened_authority, source_event_id=event_id)
     assert duplicate.committed and duplicate.error_code == "duplicate_replayed"
     reopened.close()
@@ -270,6 +288,67 @@ def test_unbound_delivery_participant_only_represents_an_empty_cut():
         _social_delivery_participant(store, authority, recipient_ref=None, now=15)
 
 
+def test_legacy_delivery_without_known_time_is_not_projected():
+    from app.gameplay.p5.social_delivery import _delivery_stream, _digest
+
+    store, _ = _store()
+    _, source_stream, source_id = _source(store)
+    source = store.get_event(source_id)
+    batch = build_atomic_event_batch(
+        command_id="delivery-1", principal_ref=_PRINCIPAL,
+        stream_id=_delivery_stream("character:recipient", "delivery:legacy"),
+        expected_revision=0,
+        event_specs=(("gameplay.social.delivery_recorded@1", {
+            "delivery_ref": "delivery:legacy", "recipient_ref": "character:recipient",
+            "source_stream_id": source_stream, "source_revision": source.stream_revision,
+            "source_event_id": source_id, "source_payload_digest": _digest(source.payload),
+            "effective_from": 10, "effective_to": 20, "operational_cutoff": 30,
+        }),),
+        idempotency_key="delivery-key", causation_id="c:delivery", correlation_id="co:delivery",
+    )
+    batch = batch.model_copy(update={"events": [batch.events[0].model_copy(
+        update={"visibility_policy": "actor:character:recipient"})]}, deep=True)
+    assert store.append_batch(batch).committed
+    view = SocialDeliveryAuthority(store=store).view_for(
+        recipient_ref="character:recipient", world_now=50)
+    assert view.deliveries == ()
+    duplicate = _record(SocialDeliveryAuthority(store=store), source_event_id=source_id,
+                        delivery_ref="delivery:legacy")
+    assert duplicate.committed and duplicate.error_code == "duplicate_replayed"
+    assert SocialDeliveryAuthority(store=store).view_for(
+        recipient_ref="character:recipient", world_now=50).deliveries == ()
+
+
+def test_version_two_delivery_without_known_time_fails_replay_validation():
+    from app.gameplay.p5.social_delivery import _delivery_stream, _digest
+    from app.world_runtime.replay_participants import _social_delivery_events
+
+    store, _ = _store()
+    _, source_stream, source_id = _source(store)
+    source = store.get_event(source_id)
+    batch = build_atomic_event_batch(
+        command_id="missing-time-delivery", principal_ref=_PRINCIPAL,
+        stream_id=_delivery_stream("character:recipient", "delivery:missing-time"),
+        expected_revision=0,
+        event_specs=(("gameplay.social.delivery_recorded@2", {
+            "delivery_ref": "delivery:missing-time", "recipient_ref": "character:recipient",
+            "source_stream_id": source_stream, "source_revision": source.stream_revision,
+            "source_event_id": source_id, "source_payload_digest": _digest(source.payload),
+            "effective_from": 0, "effective_to": 100,
+        }),),
+        idempotency_key="missing-time-delivery", causation_id="missing-time",
+        correlation_id="missing-time",
+    )
+    batch = batch.model_copy(update={"events": [batch.events[0].model_copy(update={
+        "schema_version": 2, "visibility_policy": "actor:character:recipient",
+    })]}, deep=True)
+    assert store.append_batch(batch).committed
+    authority = SocialDeliveryAuthority(store=store)
+    assert authority.view_for(recipient_ref="character:recipient", world_now=50).deliveries == ()
+    with pytest.raises(ValueError, match="replay_social_delivery_event_provenance_invalid"):
+        _social_delivery_events(store)
+
+
 @pytest.mark.parametrize("fault", ["stream", "visibility", "schema", "unknown_type", "principal", "persisted"])
 def test_delivery_participant_rejects_corrupt_owner_fact_without_write(monkeypatch, fault):
     from app.world_runtime.replay_participants import _social_delivery_participant
@@ -279,7 +358,7 @@ def test_delivery_participant_rejects_corrupt_owner_fact_without_write(monkeypat
     authority = SocialDeliveryAuthority(store=store)
     assert _record(authority, source_event_id=source_id).committed
     delivery = next(event for event in store.read_events()
-                    if event.event_type == "gameplay.social.delivery_recorded@1")
+                    if event.event_type == "gameplay.social.delivery_recorded@2")
     before = store.export_snapshot()
 
     if fault == "principal":
@@ -293,7 +372,7 @@ def test_delivery_participant_rejects_corrupt_owner_fact_without_write(monkeypat
         update = {
             "stream": {"stream_id": "gameplay:social:delivery:wrong"},
             "visibility": {"visibility_policy": "public"},
-            "schema": {"schema_version": 2},
+            "schema": {"schema_version": 3},
             "unknown_type": {"event_type": "gameplay.social.delivery_recalled@2"},
         }[fault]
         original = store.read_events

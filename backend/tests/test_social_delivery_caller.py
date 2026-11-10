@@ -102,7 +102,7 @@ def test_government_notice_production_caller_recovers_after_lost_append_response
         causation_id=notice.event_id, correlation_id="social-production:lost",
     )
     assert retry.result.committed and retry.result.error_code == "duplicate_replayed"
-    assert len(store.read_events(event_type="gameplay.social.delivery_recorded@1")) == 1
+    assert len(store.read_events(event_type="gameplay.social.delivery_recorded@2")) == 1
 
 
 def test_government_notice_expiry_uses_bound_source_and_replays_changed_duplicates():
@@ -242,7 +242,7 @@ async def test_application_social_ingress_commits_bound_delivery_from_durable_so
     )
     assert recipient == "org:mill:1"
     events = main.gameplay_event_store.read_events(
-        event_type="gameplay.social.delivery_recorded@1"
+        event_type="gameplay.social.delivery_recorded@2"
     )
     assert len(events) == 1
     assert events[0].payload["recipient_ref"] == recipient

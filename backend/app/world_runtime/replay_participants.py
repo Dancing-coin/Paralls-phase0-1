@@ -735,6 +735,7 @@ def _social_participant(store, authority, *, recipient_ref, now):
 
 _SOCIAL_DELIVERY_EVENT_TYPES = frozenset({
     "gameplay.social.delivery_recorded@1",
+    "gameplay.social.delivery_recorded@2",
     "gameplay.social.delivery_expired@1",
 })
 
@@ -754,9 +755,14 @@ def _social_delivery_events(store, *, boundary_sequence=None):
             persisted = store.get_event(event.event_id)
         except KeyError as exc:
             raise ValueError("replay_social_delivery_event_provenance_invalid") from exc
-        if (event.event_type not in _SOCIAL_DELIVERY_EVENT_TYPES or event.schema_version != 1
+        expected_schema_version = 2 if event.event_type == "gameplay.social.delivery_recorded@2" else 1
+        if (event.event_type not in _SOCIAL_DELIVERY_EVENT_TYPES
+                or event.schema_version != expected_schema_version
                 or not isinstance(recipient, str) or not recipient
                 or not isinstance(delivery, str) or not delivery
+                or event.event_type == "gameplay.social.delivery_recorded@2"
+                    and (type(event.payload.get("known_at_world_tick")) is not int
+                         or event.payload["known_at_world_tick"] < 0)
                 or event.stream_id != _delivery_stream(recipient, delivery)
                 or event.visibility_policy != f"actor:{recipient}"
                 or transaction is None or event not in transaction.events or persisted != event
@@ -774,7 +780,7 @@ def _social_delivery_scope_recipients(store, *, boundary_sequence=None):
     caller = GovernmentPublicMillingSocialDeliveryCaller(store=store)
     recipients = {event.payload["recipient_ref"] for event in _social_delivery_events(
         store, boundary_sequence=boundary_sequence)
-        if event.event_type == "gameplay.social.delivery_recorded@1"}
+        if event.event_type in {"gameplay.social.delivery_recorded@1", "gameplay.social.delivery_recorded@2"}}
     for event in store.read_events():
         if boundary_sequence is not None and event.global_sequence > boundary_sequence:
             continue

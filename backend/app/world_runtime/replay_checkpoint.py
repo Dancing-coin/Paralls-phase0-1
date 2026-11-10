@@ -116,6 +116,7 @@ def _replay_readable_event(event):
         event.event_type in {
             "gameplay.government.public_milling_notice_recorded",
             "gameplay.character.life_state_changed",
+            "gameplay.social.delivery_recorded@2",
         }
         and event.schema_version == 2
     )
