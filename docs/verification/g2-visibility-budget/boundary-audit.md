@@ -32,6 +32,15 @@ authorization. Neither the custom policy name nor the room audience alone
 specifies the v2 visibility class, observer eligibility or delivery delay.
 Changing this route needs a documented trusted binding and a compatible probe,
 plus tests of both the bus and stored-event fallback projections.
+On 2026-11-10 a two-connection `TestClient` probe against `component_app`
+created a handshake on one unbound `/ws` connection and pulled its first
+projection by session ID on a second unbound connection. The response included
+the initiator and participant references. The production ASGI wrapper forwards
+ordinary envelopes to the runtime; this component test does not establish
+network exposure or prove the production process path. `session_public_safe`
+alone does not establish whether this audience is authorized. Treat this as an
+unresolved access boundary, not proof that the projection is secret or that
+principal-aware enforcement is installed.
 On 2026-11-10, `D:/Temp/paralls-g0-py312/Scripts/python.exe -m pytest
 backend/tests/test_embodied_interaction_session.py -q` reported 7 passed with
 6 deprecation warnings; this is backend test evidence, not a Godot run.
