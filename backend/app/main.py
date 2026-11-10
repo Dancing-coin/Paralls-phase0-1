@@ -6868,13 +6868,35 @@ def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> 
         return [_as_envelope("embodied_interaction_session_projection_denied", {
             "error_code": "session_projection_visibility_denied",
         })]
+    try:
+        outbox = gameplay_event_store.get_outbox(f"outbox:{next_event.event_id}")
+    except KeyError:
+        outbox = None
+    expected_payload = None
+    if (outbox is not None and outbox.event_id == next_event.event_id
+            and outbox.transaction_id == next_event.transaction_id
+            and outbox.global_sequence == next_event.global_sequence
+            and outbox.topic == next_event.event_type and outbox.audience == "godot_room"):
+        projection = outbox.payload_projection.get("payload")
+        if isinstance(projection, dict):
+            expected_payload = {
+                **projection,
+                "outbox_id": outbox.outbox_id,
+                "transaction_id": next_event.transaction_id,
+                "event_id": next_event.event_id,
+                "stream_id": next_event.stream_id,
+                "stream_revision": next_event.stream_revision,
+                "global_sequence": next_event.global_sequence,
+                "committed_payload": next_event.payload,
+            }
     matching_authority_event = next(
         (
             event
             for event in authority_event_bus.list_events()
-            if event.event_id == next_event.event_id
+            if expected_payload is not None
+            and event.event_id == next_event.event_id
             and event.event_type == next_event.event_type
-            and event.payload.get("committed_payload") == next_event.payload
+            and event.payload == expected_payload
         ),
         None,
     )

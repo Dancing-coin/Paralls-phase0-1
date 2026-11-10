@@ -15,6 +15,36 @@ from app.services.embodied_interaction_session_service import EmbodiedInteractio
 from app.ws_protocol import Envelope
 
 
+@pytest.mark.parametrize("outbox_state", ["valid", "missing", "mismatched"])
+def test_websocket_session_pull_ignores_forged_bus_projection(monkeypatch, outbox_state):
+    reset_runtime_state()
+    assert _propose(main.embodied_interaction_session_service, session_id="forged-session").accepted
+    event = main.gameplay_event_store.read_stream("session:forged-session")[0]
+    legitimate = next(item for item in main.authority_event_bus.list_events() if item.event_id == event.event_id)
+    forged = legitimate.model_copy(deep=True)
+    forged.payload["reason_code"] = "private-forged-value"
+    forged.payload["global_sequence"] = 999999
+    bus = InMemoryAuthorityEventBus()
+    bus.publish(forged)
+    bus.publish(legitimate)
+    monkeypatch.setattr(main, "authority_event_bus", bus)
+    if outbox_state == "missing":
+        def missing_outbox(outbox_id):
+            raise KeyError(outbox_id)
+        monkeypatch.setattr(main.gameplay_event_store, "get_outbox", missing_outbox)
+    elif outbox_state == "mismatched":
+        entry = main.gameplay_event_store.get_outbox(f"outbox:{event.event_id}")
+        monkeypatch.setattr(main.gameplay_event_store, "get_outbox", lambda _: entry.model_copy(update={"topic": "other"}))
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
+            "session_id": "forged-session", "after_global_sequence": 0,
+        }})
+        response = websocket.receive_json()
+    assert response["message_type"] == "embodied_interaction_session_event"
+    assert response["payload"]["global_sequence"] == event.global_sequence
+    assert "private-forged-value" not in str(response)
+
+
 @pytest.mark.parametrize("dispatch", [False, True])
 @pytest.mark.parametrize("event_type,policy", [
     ("embodied.interaction_session.private", "authority_only"),
