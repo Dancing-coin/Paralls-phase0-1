@@ -265,3 +265,38 @@ the result files.
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_durable_read.py --output docs/verification/g2-visibility-budget/durable-read-results.json
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_durable_read.py --output docs/verification/g2-visibility-budget/durable-read-results-repeat.json
 ```
+
+## Cache Admission Diagnostic
+
+The durable store's decoded-text cache is bounded to 512 entries and 2 MiB.
+The 4,096-event sequential fixture can churn that cache. To examine this cost,
+`measure_cache_admission.py` opens two independent store instances over each
+previously created isolated 4,096-event fixture. On one instance only, the
+experiment disables cache insertion by replacing its `_remember_json_text`
+method; the other retains normal behavior. Both still query SQLite, decode,
+validate and create fresh models. The script compares full initial results,
+then alternates the instances for 60 read-plus-fixture-scan samples per
+principal, after five warmups. Individual samples and source hashes are in
+`cache-admission-results.json` and `cache-admission-results-repeat.json`.
+
+| Run | Normal p95 range | No-insertion p95 range |
+|---:|---:|---:|
+| 1 | 35.76–36.82 ms | 31.18–31.70 ms |
+| 2 | 37.31–38.13 ms | 32.61–32.90 ms |
+
+These are synthetic hot-cache samples with the same simplified count-only
+policy as the preceding diagnostic. They do not measure subsequent point-read
+cache hits, mixed workloads, cold I/O, multiple writers or full authorization.
+The experiment changes an instance method and is not a proposed production
+implementation; it cannot establish that bypassing admission preserves hooks,
+concurrency or cache behavior. It does not erase previous budget exceedances or
+demonstrate the real `read_as` contract. No runtime or archive format changed.
+The fixture database paths are recorded in the results; the databases remain
+on disk. Revert this diagnostic's commit to remove it independently.
+
+```powershell
+$fixture = (Get-Content docs/verification/g2-visibility-budget/durable-read-results.json -Raw | ConvertFrom-Json).fixture_directory
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_cache_admission.py --database (Join-Path $fixture 'events-4096.db') --output docs/verification/g2-visibility-budget/cache-admission-results.json
+$fixture = (Get-Content docs/verification/g2-visibility-budget/durable-read-results-repeat.json -Raw | ConvertFrom-Json).fixture_directory
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_cache_admission.py --database (Join-Path $fixture 'events-4096.db') --output docs/verification/g2-visibility-budget/cache-admission-results-repeat.json
+```
