@@ -1,0 +1,219 @@
+{
+  "measurement": "g2-visibility-baseline",
+  "contract_status": "provisional_fixture_not_production_enforcement",
+  "python": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "repeat_count": 30,
+  "warmup_count": 5,
+  "event_counts": [
+    256,
+    1024,
+    4096
+  ],
+  "principals": [
+    "principal:public-observer",
+    "principal:town-authority",
+    "principal:private-owner",
+    "principal:debug-probe"
+  ],
+  "policies": [
+    "project",
+    "authority_only",
+    "private",
+    "debug_only"
+  ],
+  "rows": [
+    {
+      "event_count": 256,
+      "principal": "principal:public-observer",
+      "raw_read_events": {
+        "median_ms": 1.82505,
+        "p95_ms": 1.8959,
+        "p99_ms": 2.0838
+      },
+      "provisional_read_as": {
+        "median_ms": 1.8215,
+        "p95_ms": 1.8676,
+        "p99_ms": 1.8778,
+        "visible_count": 64,
+        "overhead_ratio_p95": 0.9850730523761801
+      }
+    },
+    {
+      "event_count": 256,
+      "principal": "principal:town-authority",
+      "raw_read_events": {
+        "median_ms": 1.82505,
+        "p95_ms": 1.8959,
+        "p99_ms": 2.0838
+      },
+      "provisional_read_as": {
+        "median_ms": 1.87175,
+        "p95_ms": 1.897,
+        "p99_ms": 1.9028,
+        "visible_count": 128,
+        "overhead_ratio_p95": 1.0005801993776045
+      }
+    },
+    {
+      "event_count": 256,
+      "principal": "principal:private-owner",
+      "raw_read_events": {
+        "median_ms": 1.82505,
+        "p95_ms": 1.8959,
+        "p99_ms": 2.0838
+      },
+      "provisional_read_as": {
+        "median_ms": 1.82125,
+        "p95_ms": 1.8745,
+        "p99_ms": 1.8852,
+        "visible_count": 128,
+        "overhead_ratio_p95": 0.9887124848356982
+      }
+    },
+    {
+      "event_count": 256,
+      "principal": "principal:debug-probe",
+      "raw_read_events": {
+        "median_ms": 1.82505,
+        "p95_ms": 1.8959,
+        "p99_ms": 2.0838
+      },
+      "provisional_read_as": {
+        "median_ms": 1.85835,
+        "p95_ms": 1.8932,
+        "p99_ms": 1.9032,
+        "visible_count": 192,
+        "overhead_ratio_p95": 0.9985758742549713
+      }
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:public-observer",
+      "raw_read_events": {
+        "median_ms": 7.4864999999999995,
+        "p95_ms": 10.1652,
+        "p99_ms": 11.6047
+      },
+      "provisional_read_as": {
+        "median_ms": 7.49875,
+        "p95_ms": 7.7335,
+        "p99_ms": 11.2885,
+        "visible_count": 256,
+        "overhead_ratio_p95": 0.7607818832880809
+      }
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:town-authority",
+      "raw_read_events": {
+        "median_ms": 7.4864999999999995,
+        "p95_ms": 10.1652,
+        "p99_ms": 11.6047
+      },
+      "provisional_read_as": {
+        "median_ms": 7.5051000000000005,
+        "p95_ms": 8.4176,
+        "p99_ms": 11.285,
+        "visible_count": 512,
+        "overhead_ratio_p95": 0.8280801164758195
+      }
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:private-owner",
+      "raw_read_events": {
+        "median_ms": 7.4864999999999995,
+        "p95_ms": 10.1652,
+        "p99_ms": 11.6047
+      },
+      "provisional_read_as": {
+        "median_ms": 7.84465,
+        "p95_ms": 8.357,
+        "p99_ms": 11.9989,
+        "visible_count": 512,
+        "overhead_ratio_p95": 0.8221186007161688
+      }
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:debug-probe",
+      "raw_read_events": {
+        "median_ms": 7.4864999999999995,
+        "p95_ms": 10.1652,
+        "p99_ms": 11.6047
+      },
+      "provisional_read_as": {
+        "median_ms": 7.50085,
+        "p95_ms": 8.1026,
+        "p99_ms": 11.1287,
+        "visible_count": 768,
+        "overhead_ratio_p95": 0.7970920395073388
+      }
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:public-observer",
+      "raw_read_events": {
+        "median_ms": 29.6884,
+        "p95_ms": 36.4093,
+        "p99_ms": 37.6091
+      },
+      "provisional_read_as": {
+        "median_ms": 31.1441,
+        "p95_ms": 37.8689,
+        "p99_ms": 38.3198,
+        "visible_count": 1024,
+        "overhead_ratio_p95": 1.040088658666879
+      }
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:town-authority",
+      "raw_read_events": {
+        "median_ms": 29.6884,
+        "p95_ms": 36.4093,
+        "p99_ms": 37.6091
+      },
+      "provisional_read_as": {
+        "median_ms": 30.8448,
+        "p95_ms": 37.6072,
+        "p99_ms": 38.2008,
+        "visible_count": 2048,
+        "overhead_ratio_p95": 1.0329009346513116
+      }
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:private-owner",
+      "raw_read_events": {
+        "median_ms": 29.6884,
+        "p95_ms": 36.4093,
+        "p99_ms": 37.6091
+      },
+      "provisional_read_as": {
+        "median_ms": 30.257649999999998,
+        "p95_ms": 37.1772,
+        "p99_ms": 37.5817,
+        "visible_count": 2048,
+        "overhead_ratio_p95": 1.0210907652715102
+      }
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:debug-probe",
+      "raw_read_events": {
+        "median_ms": 29.6884,
+        "p95_ms": 36.4093,
+        "p99_ms": 37.6091
+      },
+      "provisional_read_as": {
+        "median_ms": 30.420299999999997,
+        "p95_ms": 37.2064,
+        "p99_ms": 37.4312,
+        "visible_count": 3072,
+        "overhead_ratio_p95": 1.0218927581689294
+      }
+    }
+  ]
+}
