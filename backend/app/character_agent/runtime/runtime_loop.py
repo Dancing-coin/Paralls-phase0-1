@@ -1859,10 +1859,13 @@ class CharacterAgentRuntime:
         Advancing this reflects a committed five-pool write, so it must stay at
         zero until materialization succeeds for at least one candidate.
         """
-        receipts = self._session_store.list_receipts(actor_id, "materialization")
+        receipts = [
+            *self._session_store.list_receipts(actor_id, "materialization").values(),
+            *self._session_store.list_receipts(actor_id, "materialization_after_defer").values(),
+        ]
         committed = [
             CharacterMemoryMaterializationReceipt.model_validate(value)
-            for value in receipts.values()
+            for value in receipts
         ]
         cursors = [
             receipt.memory_cursor
@@ -2637,11 +2640,19 @@ class CharacterAgentRuntime:
         candidates = {value["candidate_id"]: CharacterMemoryCandidate.model_validate(value) for value in self.get_pending_seed_candidates(actor_id)}
         receipts: list[CharacterMemoryMaterializationReceipt] = []
         for candidate_id, candidate in list(candidates.items()):
-            prior_payload = self._session_store.read_receipt(actor_id, kind="materialization", key=candidate_id)
+            receipt_kind = "materialization"
+            prior_payload = self._session_store.read_receipt(actor_id, kind=receipt_kind, key=candidate_id)
             prior = CharacterMemoryMaterializationReceipt.model_validate(prior_payload) if prior_payload else None
+            if prior is not None and prior.status == "rejected" and prior.refusal_reason == "temporal_knowledge_denied":
+                if producer_ts < candidate.knowledge_available_at:
+                    receipts.append(prior.model_copy(update={"status": "idempotent_replay"}))
+                    continue
+                receipt_kind = "materialization_after_defer"
+                prior_payload = self._session_store.read_receipt(actor_id, kind=receipt_kind, key=candidate_id)
+                prior = CharacterMemoryMaterializationReceipt.model_validate(prior_payload) if prior_payload else None
             if prior is not None:
                 if prior.status == "committed":
-                    committed_event = self._session_store.read_committed_event_for_receipt(actor_id, kind="materialization", key=candidate_id)
+                    committed_event = self._session_store.read_committed_event_for_receipt(actor_id, kind=receipt_kind, key=candidate_id)
                     if committed_event is None:
                         raise ValueError("character_materialization_commit_missing")
                     self._project_session_event(committed_event)
@@ -2671,7 +2682,6 @@ class CharacterAgentRuntime:
                     status="rejected",
                     refusal_reason="temporal_knowledge_denied",
                 )
-                self._remember_materialization_receipt(candidate_id, receipt)
                 receipts.append(receipt)
                 continue
             event_type, payload = self._memory_materialization_event(candidate, actor_id, candidate_id)
@@ -2689,6 +2699,7 @@ class CharacterAgentRuntime:
                 payload={
                     **payload,
                     "materialization_receipt": receipt.model_dump(mode="json"),
+                    **({"materialization_receipt_kind": receipt_kind} if receipt_kind != "materialization" else {}),
                 },
             )
             self._project_session_event(event)

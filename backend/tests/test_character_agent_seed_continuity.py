@@ -9,6 +9,7 @@ from app.character_agent.models.simulation_seed import (
     CharacterModuleDelta,
     CharacterContinuityCommand,
     CharacterMemoryCandidate,
+    CharacterMemoryMaterializationReceipt,
     CharacterSimulationSeedCandidate,
 )
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
@@ -411,6 +412,81 @@ def test_memory_materialization_requires_exposure_and_is_idempotent() -> None:
     assert materialized[0].refusal_reason == "memory_materialization_denied"
     replay = runtime.materialize_pending_seed_memories("char_a", producer_ts=101)
     assert replay[0].status == "idempotent_replay"
+
+
+def test_delayed_memory_becomes_known_after_early_attempt_and_restart(tmp_path: Path) -> None:
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    assert runtime.apply_character_continuity_command(command_for_char_a()).status == "committed"
+
+    early = runtime.materialize_pending_seed_memories("char_a", producer_ts=100)
+    assert early[0].status == "rejected"
+    assert early[0].refusal_reason == "temporal_knowledge_denied"
+    assert runtime.get_memory_bundle("char_a")["event_memories"] == []
+    assert runtime.get_character_memory_cursor("char_a") == 0
+    runtime.close()
+
+    restored = CharacterAgentRuntime(storage_root=tmp_path)
+    due = restored.materialize_pending_seed_memories("char_a", producer_ts=101)
+    assert due[0].status == "committed"
+    assert due[0].memory_cursor == 101
+    assert len(restored.get_memory_bundle("char_a")["event_memories"]) == 1
+    assert restored.materialize_pending_seed_memories("char_a", producer_ts=102)[0].status == "idempotent_replay"
+    assert len(restored.get_memory_bundle("char_a")["event_memories"]) == 1
+    restored.close()
+
+
+def test_legacy_temporal_refusal_preserved_and_memory_delivered_once(tmp_path: Path) -> None:
+    runtime = CharacterAgentRuntime(storage_root=tmp_path)
+    runtime.apply_character_continuity_command(command_for_char_a())
+    candidate_id = "memory:char_a:default"
+    legacy = CharacterMemoryMaterializationReceipt(
+        candidate_id=candidate_id, actor_ref="char_a", status="rejected",
+        refusal_reason="temporal_knowledge_denied",
+    )
+    runtime._remember_materialization_receipt(candidate_id, legacy)
+    runtime.close()
+
+    restored = CharacterAgentRuntime(storage_root=tmp_path)
+    assert restored.materialize_pending_seed_memories("char_a", producer_ts=100)[0].status == "idempotent_replay"
+    assert restored.get_memory_bundle("char_a")["event_memories"] == []
+    assert restored.materialize_pending_seed_memories("char_a", producer_ts=101)[0].status == "committed"
+    assert restored.get_character_memory_cursor("char_a") == 101
+    assert restored._session_store.read_receipt("char_a", kind="materialization", key=candidate_id) == legacy.model_dump(mode="json")
+    restored.close()
+
+    again = CharacterAgentRuntime(storage_root=tmp_path)
+    assert again.materialize_pending_seed_memories("char_a", producer_ts=102)[0].status == "idempotent_replay"
+    assert len(again.get_memory_bundle("char_a")["event_memories"]) == 1
+    again.close()
+
+
+def test_legacy_deferred_materialization_recovers_projection_failure(tmp_path: Path, monkeypatch) -> None:
+    memory_store = CharacterAgentMemoryStore(storage_root=tmp_path)
+    runtime = CharacterAgentRuntime(storage_root=tmp_path, memory_store=memory_store)
+    runtime.apply_character_continuity_command(command_for_char_a())
+    candidate_id = "memory:char_a:default"
+    runtime._remember_materialization_receipt(candidate_id, CharacterMemoryMaterializationReceipt(
+        candidate_id=candidate_id, actor_ref="char_a", status="rejected",
+        refusal_reason="temporal_knowledge_denied",
+    ))
+    original_write = memory_store.write_event
+    failed = False
+
+    def fail_once(event) -> None:
+        nonlocal failed
+        if not failed:
+            failed = True
+            raise RuntimeError("materialization_memory_projection_failed")
+        original_write(event)
+
+    monkeypatch.setattr(memory_store, "write_event", fail_once)
+    with pytest.raises(RuntimeError, match="materialization_memory_projection_failed"):
+        runtime.materialize_pending_seed_memories("char_a", producer_ts=101)
+    assert runtime.materialize_pending_seed_memories("char_a", producer_ts=101)[0].status == "idempotent_replay"
+    assert len(runtime.get_memory_bundle("char_a")["event_memories"]) == 1
+    assert len([event for event in runtime.get_session_timeline("char_a")
+                if event.get("payload", {}).get("materialization_receipt")]) == 1
+    runtime.close()
 
 
 def test_materialization_memory_failure_retries_committed_fact_without_duplicate(

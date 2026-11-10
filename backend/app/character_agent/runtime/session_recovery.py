@@ -190,5 +190,8 @@ def session_event_facts(
         receipt = CharacterMemoryMaterializationReceipt.model_validate(payload["materialization_receipt"])
         if receipt.actor_ref.removeprefix("character:") != actor_id:
             raise ValueError("character_materialization_commit_actor_mismatch")
-        receipts.append(("materialization", receipt.candidate_id, receipt.model_dump(mode="json")))
+        kind = payload.get("materialization_receipt_kind", "materialization")
+        if not isinstance(kind, str) or kind not in {"materialization", "materialization_after_defer"}:
+            raise ValueError("character_materialization_receipt_kind_invalid")
+        receipts.append((kind, receipt.candidate_id, receipt.model_dump(mode="json")))
     return receipts, candidates
