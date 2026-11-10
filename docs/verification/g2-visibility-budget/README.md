@@ -20,3 +20,5 @@ records the p95 ratio against the current raw read. The initial grouped result
 is in `results.json`; alternating paired runs are in `paired-results.json` and
 `paired-results-rerun.json`. One paired run exceeded the provisional budget,
 so no runtime visibility implementation has started. See [report.md](report.md).
+Additional per-sample normal-GC and no-GC diagnostics are recorded there;
+they do not explain away the earlier exceedance.

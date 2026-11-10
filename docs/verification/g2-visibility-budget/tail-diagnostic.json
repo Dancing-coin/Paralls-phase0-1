@@ -1,0 +1,2531 @@
+{
+  "measurement": "g2-visibility-tail-diagnostic",
+  "contract_status": "synthetic_fixture_not_production_enforcement",
+  "python": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "event_count": 4096,
+  "principal": "principal:debug-probe",
+  "warmups": 10,
+  "samples": [
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.4998,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.2143,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.1385,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6764,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.6244,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7999,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.6176,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.762,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.5793,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.1909,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.0109,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.5287,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.882,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.3506,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 37.647,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.385,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8087,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9232,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.8559,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.662,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8937,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.7191,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 30.4851,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 30.8022,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 30.5208,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3748,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 37.1172,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.5793,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.6191,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3892,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1601,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.5909,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.5174,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 37.5973,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1433,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7132,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 32.6357,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.4753,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 36.654,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          1,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9877,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8598,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8341,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.2766,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.1556,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.44,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.2022,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.618,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8356,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 32.3374,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.832,
+        "cpu_ms": 15.625,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.1137,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.7111,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 30.9513,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.694,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.9681,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.4027,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.7699,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.1695,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.8774,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.2446,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.706,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7697,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1072,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 35.992,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9007,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8736,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 37.9488,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8008,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.5886,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.2743,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.0358,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9955,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.671,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 37.3214,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.0613,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.686,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9984,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9905,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 36.5282,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          1,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9102,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8179,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0591,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.0313,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 30.8325,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.7242,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.7532,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.6636,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9897,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9188,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.2481,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 37.0189,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3892,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.7611,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6149,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1896,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.097,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 37.0109,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0525,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1459,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0526,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.797,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8179,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.4649,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.6736,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8096,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.2803,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.3831,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.875,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 37.0605,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9936,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.0712,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3297,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.3663,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 30.5718,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.1232,
+        "cpu_ms": 15.625,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 35.8396,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.2586,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.0031,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 37.6098,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9808,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.2068,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 30.5305,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.3794,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6465,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8132,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.6687,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.2079,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 30.7241,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.7738,
+        "cpu_ms": 15.625,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6477,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 36.58,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          1,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0621,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.4554,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.1416,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.6998,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3217,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.5582,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 37.0295,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.026,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7459,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9842,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.4355,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 35.8879,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.5774,
+        "cpu_ms": 15.625,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.6844,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.2068,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 30.1034,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 30.8275,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 35.2421,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6005,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.2921,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7604,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.5478,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3197,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1001,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.6282,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.8094,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.1414,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.1549,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.3829,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.6602,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0212,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.6871,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.2463,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 32.1565,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8358,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.7962,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.8197,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 32.1871,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.164,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1837,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9573,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.1842,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          1,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.095,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.3569,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7469,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.2976,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 37.0843,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.6519,
+        "cpu_ms": 15.625,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.221,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9781,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.537,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 36.9741,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6261,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.6448,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.3443,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.9033,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7519,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.2939,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 37.3471,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.3785,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7363,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.6867,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8987,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 36.2897,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.512,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9852,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.991,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1124,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6868,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.8588,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.4087,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.3382,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.4593,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.7448,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.4883,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1435,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.8267,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.7991,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0038,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1616,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.9992,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.9895,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          1,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0112,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.1198,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.8594,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.7925,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.226,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.133,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 36.7853,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.9827,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.3125,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.5516,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.01,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 36.373,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.874,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 31.9197,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.0408,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.3044,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 37.5458,
+        "cpu_ms": 46.875,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.4201,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.6044,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 32.1516,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 32.3555,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          22,
+          1,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 36.9231,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          20,
+          2,
+          1
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.7423,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": true,
+      "raw": {
+        "wall_ms": 31.1896,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.2345,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    },
+    {
+      "raw_first": false,
+      "raw": {
+        "wall_ms": 32.744,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      },
+      "filtered": {
+        "wall_ms": 31.4564,
+        "cpu_ms": 31.25,
+        "gc_collections": [
+          21,
+          2,
+          0
+        ]
+      }
+    }
+  ]
+}

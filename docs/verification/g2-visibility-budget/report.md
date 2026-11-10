@@ -52,6 +52,29 @@ Paired measurement command:
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_paired.py --output docs/verification/g2-visibility-budget/paired-results.json
 ```
 
+## Tail diagnostic
+
+Two further 4,096-event debug-principal runs recorded 120 alternating pairs
+after 10 warmups; raw samples are retained in `tail-diagnostic.json` and
+`tail-diagnostic-no-gc.json`. With normal garbage collection, raw/filtered
+wall p95 were 37.01/36.83 ms. Every measured call triggered collections.
+With cyclic GC disabled for the diagnostic process, raw/filtered p95 were
+30.61/31.22 ms. The normal-GC recording predates the `gc_enabled` output
+field; GC was enabled for that invocation.
+
+This comparison indicates a substantial GC contribution in these runs, but
+the runs were sequential and have no controlled system-load record. It does
+not establish the cause of the earlier 46.70 ms result. Process CPU samples
+are quantized in approximately 15.625 ms increments in this environment and
+cannot reliably separate scheduling from execution for individual reads.
+Disabling GC is solely an experiment, not a production recommendation. The
+earlier exceedance and the pause on expanding visibility coverage remain.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_tail.py --output docs/verification/g2-visibility-budget/tail-diagnostic.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_tail.py --disable-gc --output docs/verification/g2-visibility-budget/tail-diagnostic-no-gc.json
+```
+
 The output is `results.json` in this directory. The source script records the
 fixture, principals, policies, environment and median/p95/p99 aggregates.
 The grouped run sampled raw and filtered reads separately. The paired runs
