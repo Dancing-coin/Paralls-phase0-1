@@ -71,3 +71,37 @@ reported 47 passed and 2 deprecation warnings:
 ```powershell
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' -m pytest backend/tests/test_gameplay_event_store_persistence.py backend/tests/test_gameplay_event_store_contract.py backend/tests/test_gameplay_event_store_connection.py -q
 ```
+
+## Migration Constraints
+
+The existing `DriverArbitrator` grants in-process, window-scoped advancement
+claims and explicitly grants no settlement rights. It is not a persisted
+writer registry and cannot authorize EventStore commits. The connection and
+runtime-process generations likewise do not identify a canonical writer for
+each `(stream, scope)`.
+
+The EventStore currently accepts snapshot schemas 1 and 2, and SQLite schema
+3. A protected archive needs a new schema version that older readers reject:
+adding optional keys to schema 2 risks an old reader silently discarding the
+fence. SQLite migration also has to account for an old process that opened the
+database before the schema version changed. Checking the version only at
+startup cannot stop that process from appending afterwards. A rollout must
+either establish and verify an exclusive quiescence boundary before enabling
+protection, or enforce the fence in a database boundary that old connections
+cannot bypass. Merely upgrading the open-time schema check is insufficient.
+
+An implementation unit must include all of these observable cases:
+
+| Boundary | Required observation |
+|---|---|
+| First protection | Existing history and receipt digests stay unchanged; protected streams cannot accept a write without the registered writer and epoch. |
+| Atomic multi-stream batch | A missing or stale grant for any protected stream rejects the entire batch, including outbox and revision changes. |
+| Retry after transition | The original exact retry resolves its existing receipt; a changed digest rejects; neither publishes again. |
+| Concurrent instances | Handoff and append serialize on the same SQLite transaction boundary; after handoff an old writer cannot append through another already-open instance. |
+| Interrupted handoff | Freeze, outstanding commands and unknown outcomes survive restart; no caller-provided boolean substitutes for drain or receipt evidence. |
+| Restore and rollback | New snapshots preserve fence state and are rejected by old readers; legacy snapshots load without silently acquiring protection. Rollback requires a verified compatible migration or a pre-protection archive. |
+| Authority identity | The registered writer is bound to a trusted runtime authority, not merely the idempotency record's caller-supplied principal string. |
+
+The exact trusted authority and freeze/drain owner for a first real stream
+remain to be traced before enabling it. This matrix is a design constraint,
+not an implementation or evidence of G2 acceptance.
