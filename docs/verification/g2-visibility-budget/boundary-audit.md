@@ -73,6 +73,31 @@ revocation, expiry, reconnect and historical replay cases. Product approval does
 not establish implementation or acceptance; performance expansion remains
 paused under the recorded gate, and D2–D10 remain open.
 
+### Existing evidence sources traced on 2026-11-10
+
+`L1RuntimePerceptionBridge` builds actor-specific frames from projected raw
+facts and occupancy, including capture clock and target references. The
+inspected adapter does not itself establish a committed, replayable session
+field disclosure or identity-recognition grant. Its inputs and producer trust
+must be traced before using a frame as authorization.
+
+`SocialDeliveryAuthority.record_delivery` commits a source event reference,
+recipient and effective window. It checks `world_now` against that window but
+does not record `world_now` in the delivery event. Consequently the window's
+`effective_from` cannot establish when a later delivery actually occurred;
+even its sequence-cut replay cannot reconstruct that time from this payload.
+Its production caller found in this audit is the government public milling
+notice caller, not an embodied-session delivery path. A delivery source and
+trusted time for session fields must be established before reuse; existing
+historical deliveries must not be assigned an invented delivery time.
+
+The social handshake authority validates a completed session's exact event
+history before producing actor-private shared-experience facts. This is useful
+source provenance for that specific operation, but it is not a general
+per-field disclosure or historical observer authorization for session pulls.
+These observations are static code inspection, not an end-to-end authorization
+test; they do not implement or accept the approved product rule.
+
 The session binding in `websocket_session_auth_service.py` carries a
 backend-issued `principal_ref`, actor scope, connection epoch and lease. A
 caller-supplied principal or a hardcoded debug name cannot replace that
