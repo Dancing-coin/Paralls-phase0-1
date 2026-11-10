@@ -17,7 +17,8 @@ def test_balance_uses_graph_and_preserves_policy_snapshot():
     assert result.participation_distribution.actor_scores == {'alice': 1, 'bob': 0}
     assert result.conversation_access_fairness.actor_scores == {'alice': 1, 'bob': 0}
     assert result.evidence_visibility_distribution.actor_scores == {'alice': 1, 'bob': 0}
-    assert result.suspicion_heat_distribution is None
+    assert result.suspicion_heat_distribution.actor_scores == {'alice': 0.5, 'bob': 0.5}
+    assert result.overall_fairness_score == 0.6
     candidate = InterventionCandidate(candidate_id='c', room_id='room', scene_id='scene', zone_id='z', causation_id='cause', correlation_id='corr', proposed_band='opportunity', target_actor_id='alice', established_fact_ids=['fact'])
     assert SimingInterventionPolicy().evaluate(candidate, snapshot=result).accepted
     assert base.information_distribution is None
@@ -37,3 +38,18 @@ def test_balance_evaluates_explicit_suspicion_heat():
     )
     assert snapshot.suspicion_heat_distribution.actor_scores == {'alice': 1.0, 'bob': 0.0}
     assert snapshot.suspicion_heat_distribution.gini_coefficient == 0.5
+
+
+def test_fairness_snapshot_new_fields_keep_legacy_defaults():
+    snapshot = FairnessStateSnapshot(
+        snapshot_id='legacy', room_id='room', scene_id='scene', zone_id='zone',
+        causation_id='cause', correlation_id='corr',
+    )
+    assert snapshot.information_distribution is None
+    assert snapshot.participation_distribution is None
+    assert snapshot.conversation_access_fairness is None
+    assert snapshot.suspicion_heat_distribution is None
+    assert snapshot.evidence_visibility_distribution is None
+    assert snapshot.overall_fairness_score == 1.0
+    assert not snapshot.needs_intervention
+    assert snapshot.intervention_urgency == 'none'

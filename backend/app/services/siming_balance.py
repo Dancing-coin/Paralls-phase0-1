@@ -22,13 +22,15 @@ class SimingBalanceSystem:
             "evidence_visibility_distribution": ("evidence_visibility", {a: float(v[3]) for a, v in observations.items()}),
         }
         distributions = {field: self._distribution(name, scores) for field, (name, scores) in metrics.items()}
-        if suspicion_heat is not None:
+        if suspicion_heat is None:
+            suspicion_heat = dict.fromkeys(actor_ids, 0.5)
+        else:
             if set(suspicion_heat) != set(actor_ids) or any(not 0 <= value <= 1 for value in suspicion_heat.values()):
                 raise ValueError("suspicion heat must cover actors with values between 0 and 1")
-            distributions["suspicion_heat_distribution"] = self._distribution("suspicion_heat", suspicion_heat)
+        distributions["suspicion_heat_distribution"] = self._distribution("suspicion_heat", suspicion_heat)
         score = sum(1 - item.gini_coefficient for item in distributions.values()) / len(distributions)
         urgency = "critical" if score < .3 else "high" if score < .4 else "medium" if score < .5 else "low" if score < .6 else "none"
-        return snapshot.model_copy(update={"suspicion_heat_distribution": None, **distributions, "overall_fairness_score": score, "needs_intervention": score < .6, "intervention_urgency": urgency})
+        return snapshot.model_copy(update={**distributions, "overall_fairness_score": score, "needs_intervention": score < .6, "intervention_urgency": urgency})
 
     @staticmethod
     def _distribution(name: str, scores: dict[str, float]) -> FairnessDistribution:
