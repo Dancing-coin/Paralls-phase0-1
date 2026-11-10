@@ -22,6 +22,31 @@ Finding provenance currently scans the character event history when candidates
 exist; long-history performance has not been measured against a production
 budget. D2-D10 and the B3 client acceptance limitations remain open.
 
+## Cadence provenance audit
+
+The seed planner copies `world_ref` from the cadence into the continuity
+command. The production clock provider separately checks that this world
+matches the active Population driver and that migration is not pending before
+returning its current tick. This prevents a mismatched world label from using
+that driver's clock, but the label itself does not authenticate the cadence.
+
+The regular `RuntimeCadencePublisher` validates source revisions, commits a
+`population.cadence.admitted` record and delivers through the outbox. There is
+also a game-start path in `main.py` that calls the authorized publication
+function directly: it checks a committed source event, revision vector and
+projection scope, but does not commit a cadence admission through that outbox.
+The in-process authority bus and Siming consumer accept a cadence by event
+type; they are not an independent proof of origin. The inspected HTTP and
+WebSocket adapter publishing sites construct other event types, but this static
+inspection does not establish that every possible in-process caller is trusted
+or that future ingress cannot publish an equivalent event.
+
+Consequently the earlier world-time change protects its documented production
+clock comparison, not cadence authenticity, canonical-writer fencing or general
+principal visibility. A future enforcement change must account for both the
+startup publication and outbox retry/recovery paths before treating this
+provenance as an authority boundary. No runtime behavior changed in this audit.
+
 Focused verification (Windows 11, Python 3.12.2):
 
 ```powershell
