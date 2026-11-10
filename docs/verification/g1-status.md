@@ -33,7 +33,7 @@ changed. The world-admin barrier correction is separately committed as
 
 The final cumulative baseline used
 `D:/Temp/paralls-g0-py312/Scripts/python.exe docs/verification/g0-939c6746/run_baseline.py --repo . --output D:/Temp/paralls-g1-economy-rejected-rerun --freeze`
-from the repository root. It collected 9,984 nodes: 9,939 passed, 39 failed,
+from the repository root. It collected 9,982 nodes: 9,939 passed, 39 failed,
 2 skipped and 2 xfailed. All 9,937 G0 nodes retain their outcomes; all 45
 accumulated added nodes pass; failure node/phase/error-type signatures match
 the approved 39-node G0 set. The known WebSocket timeout stack differs only in
