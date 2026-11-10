@@ -23,6 +23,19 @@ and emits an allowlisted projection. The latter currently receives no
 connection context; whether any additional outer gate applies needs a full
 route-specific test before drawing an access-control conclusion.
 
+The session-pull route is also used by the Godot verification probe and its
+backend runner; those currently connect without a session binding. Its domain
+service labels these events `session_public_safe`, publishes a room-scoped
+outbox projection, and excludes participant private terms. This establishes a
+compatibility dependency and a field allowlist, not principal/time-aware G2
+authorization. Neither the custom policy name nor the room audience alone
+specifies the v2 visibility class, observer eligibility or delivery delay.
+Changing this route needs a documented trusted binding and a compatible probe,
+plus tests of both the bus and stored-event fallback projections.
+On 2026-11-10, `D:/Temp/paralls-g0-py312/Scripts/python.exe -m pytest
+backend/tests/test_embodied_interaction_session.py -q` reported 7 passed with
+6 deprecation warnings; this is backend test evidence, not a Godot run.
+
 The session binding in `websocket_session_auth_service.py` carries a
 backend-issued `principal_ref`, actor scope, connection epoch and lease. A
 caller-supplied principal or a hardcoded debug name cannot replace that

@@ -70,9 +70,18 @@ cannot reliably separate scheduling from execution for individual reads.
 Disabling GC is solely an experiment, not a production recommendation. The
 earlier exceedance and the pause on expanding visibility coverage remain.
 
+An additional same-process run alternated GC enabled and disabled over 160
+pairs, with raw-first order balanced within each group. Normal-GC raw and
+filtered p95 were 32.12 and 32.31 ms; disabled-GC p95 were 31.01 and 31.37
+ms. Each pair was preceded by an explicit full collection, changing the normal
+GC workload, so these numbers are not comparable to the ordinary-read budget
+as a pass/fail test. They show an effect under the controlled setup, not the
+cause of the earlier exceedance. See `tail-diagnostic-interleaved-gc.json`.
+
 ```powershell
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_tail.py --output docs/verification/g2-visibility-budget/tail-diagnostic.json
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_tail.py --disable-gc --output docs/verification/g2-visibility-budget/tail-diagnostic-no-gc.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_tail.py --compare-gc --repeats 160 --output docs/verification/g2-visibility-budget/tail-diagnostic-interleaved-gc.json
 ```
 
 The output is `results.json` in this directory. The source script records the

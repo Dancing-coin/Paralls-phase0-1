@@ -33,9 +33,12 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=120)
     parser.add_argument("--disable-gc", action="store_true")
+    parser.add_argument("--compare-gc", action="store_true")
     args = parser.parse_args()
     if args.repeats <= 0:
         parser.error("repeats must be positive")
+    if args.disable_gc and args.compare_gc:
+        parser.error("choose one GC mode")
     store = build_store(4096)
     principal = "principal:debug-probe"
     if args.disable_gc:
@@ -50,11 +53,21 @@ def main() -> None:
         filtered()
     samples = []
     for index in range(args.repeats):
-        if index % 2:
+        if args.compare_gc:
+            gc.collect()
+            if index % 2:
+                gc.disable()
+            else:
+                gc.enable()
+        gc_enabled = gc.isenabled()
+        raw_first = (index // 2 if args.compare_gc else index) % 2 == 0
+        if not raw_first:
             filtered_sample, raw_sample = measure(filtered), measure(store.read_events)
         else:
             raw_sample, filtered_sample = measure(store.read_events), measure(filtered)
-        samples.append({"raw_first": index % 2 == 0, "raw": raw_sample, "filtered": filtered_sample})
+        samples.append({"gc_enabled": gc_enabled, "raw_first": raw_first, "raw": raw_sample, "filtered": filtered_sample})
+    if args.compare_gc:
+        gc.enable()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps({
         "measurement": "g2-visibility-tail-diagnostic",
@@ -64,6 +77,7 @@ def main() -> None:
         "event_count": 4096,
         "principal": principal,
         "gc_enabled": gc.isenabled(),
+        "compare_gc": args.compare_gc,
         "warmups": 10,
         "samples": samples,
     }, indent=2) + "\n", encoding="utf-8")
