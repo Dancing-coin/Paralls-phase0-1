@@ -212,6 +212,23 @@ def test_awareness_requires_evidence_of_both_actors_and_symmetric_mutual_access(
     assert graph.evaluate_awareness("b", "a", "conv-1", 110).awareness_level == "aware_present"
 
 
+def test_awareness_history_preserves_shared_knowledge_and_current_state() -> None:
+    graph = _graph()
+    for actor in ("a", "b"):
+        graph.evaluate_access(actor, "conv-1", 110)
+    graph.evaluate_awareness("a", "b", "conv-1", 110)
+    graph.register_information("shared", "statement", "a", 110, "conv-1")
+    for actor in ("a", "b"):
+        graph.evaluate_knowledge(actor, "shared", 110)
+    graph.evaluate_access("b", "conv-1", 120, 0, 0)
+    graph.evaluate_awareness("a", "b", "conv-1", 120)
+
+    assert graph.awareness_at("a", "b", "conv-1", 110) == "aware_mutual"
+    assert graph.evaluate_higher_order_knowledge("a", "b", "shared", 120).knowledge_state == "known"
+    graph.evaluate_awareness("a", "b", "conv-1", 105)
+    assert graph.awareness_at("a", "b", "conv-1", 120) == "unaware"
+
+
 def test_higher_order_knowledge_requires_observed_shared_access() -> None:
     graph = _graph()
     graph.evaluate_access("a", "conv-1", 110)

@@ -29,7 +29,7 @@ class SimingKnowledgeGraph:
         self._membership_updated_at: dict[tuple[str, str], int] = {}
         self._knowledge_claims: dict[tuple[str, str], KnowledgeClaim] = {}
         self._higher_order_claims: dict[tuple[str, str, str], KnowledgeClaim] = {}
-        self._awareness_relations: dict[tuple[str, str, str], AwarenessRelation] = {}
+        self._awareness_relations: dict[tuple[str, str, str], list[AwarenessRelation]] = {}
 
     def create_conversation(
         self,
@@ -135,13 +135,13 @@ class SimingKnowledgeGraph:
             level = "aware_mutual"
         else:
             level = "aware_present"
-        self._awareness_relations[(observer_id, observed_id, conversation_id)] = AwarenessRelation(
+        self._awareness_relations.setdefault((observer_id, observed_id, conversation_id), []).append(AwarenessRelation(
             observer_id=observer_id,
             observed_id=observed_id,
             conversation_id=conversation_id,
             awareness_level=level,
             updated_at=current_tick,
-        )
+        ))
         return AwarenessResolution(
             observer_id=observer_id,
             observed_id=observed_id,
@@ -168,7 +168,7 @@ class SimingKnowledgeGraph:
             membership_type, reason = "listener", f"access_quality={access.access_quality}"
         elif has_spoken:
             membership_type, reason = "active_member", "has_spoken"
-        elif access.access_quality == "full" and self._is_known_by_member(actor_id, conversation_id):
+        elif access.access_quality == "full" and self._is_known_by_member(actor_id, conversation_id, current_tick):
             membership_type, reason = "silent_member", "known_by_member"
         else:
             membership_type, reason = "candidate", f"access_quality={access.access_quality}"
@@ -344,10 +344,9 @@ class SimingKnowledgeGraph:
             and access.access_quality in ("full", "partial")
             and (subject_access := self._access_at(known_by_actor_id, info.conversation_id, info.revealed_at)) is not None
             and subject_access.access_quality in ("full", "partial")
-            and (awareness := self._awareness_relations.get(
-                (observer_id, known_by_actor_id, info.conversation_id)
+            and (awareness := self._awareness_at(
+                observer_id, known_by_actor_id, info.conversation_id, info.revealed_at
             )) is not None
-            and awareness.updated_at <= info.revealed_at
             and awareness.awareness_level in ("aware_present", "aware_mutual")
         )
         claim = KnowledgeClaim(
@@ -396,8 +395,8 @@ class SimingKnowledgeGraph:
                 if conversation.started_at <= current_tick and (conversation.ended_at is None or current_tick <= conversation.ended_at)]
 
     def awareness_at(self, observer_id: str, observed_id: str, conversation_id: str, current_tick: int) -> AwarenessLevel:
-        relation = self._awareness_relations.get((observer_id, observed_id, conversation_id))
-        return relation.awareness_level if relation and relation.updated_at <= current_tick else "unaware"
+        relation = self._awareness_at(observer_id, observed_id, conversation_id, current_tick)
+        return relation.awareness_level if relation else "unaware"
 
     def has_secret(self, conversation_id: str, current_tick: int) -> bool:
         return any(item.conversation_id == conversation_id and item.content_type == "secret" and item.revealed_at <= current_tick for item in self._information_items.values())
@@ -417,15 +416,22 @@ class SimingKnowledgeGraph:
             if conv_id == conversation_id and member.membership_type == "listener"
         )
 
-    def _is_known_by_member(self, actor_id: str, conversation_id: str) -> bool:
+    def _is_known_by_member(self, actor_id: str, conversation_id: str, current_tick: int) -> bool:
         return any(
-            relation.conversation_id == conversation_id
-            and relation.observed_id == actor_id
+            conv_id == conversation_id
+            and observed_id == actor_id
+            and (relation := self._awareness_at(observer_id, observed_id, conv_id, current_tick)) is not None
             and relation.awareness_level in ("aware_present", "aware_mutual")
             and (membership := self._membership_states.get((relation.observer_id, conversation_id))) is not None
             and membership.membership_type in ("active_member", "silent_member")
-            for relation in self._awareness_relations.values()
+            and self._membership_updated_at[(observer_id, conversation_id)] <= current_tick
+            for observer_id, observed_id, conv_id in self._awareness_relations
         )
+
+    def _awareness_at(self, observer_id: str, observed_id: str, conversation_id: str, at: int) -> AwarenessRelation | None:
+        records = self._awareness_relations.get((observer_id, observed_id, conversation_id), [])
+        return max((record for record in reversed(records) if record.updated_at <= at),
+                   key=lambda record: record.updated_at, default=None)
 
     def _require_conversation(self, conversation_id: str) -> Conversation:
         conversation = self._conversations.get(conversation_id)
