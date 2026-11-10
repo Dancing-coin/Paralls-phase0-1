@@ -154,3 +154,33 @@ engineering budget for the synthetic fixture, not evidence that any real
 principal-facing implementation meets it. D6 remains open for production
 volume, tail latency, caching and paired measurements; D2-D5 and D7-D10 are
 also open. G1 remains complete only for its selected twelve-unit batch.
+
+### Unbound pull experiment
+
+An experimental dispatch check denied an unbound session pull with the same
+response for an existing and a missing session. The new denial test passed,
+but the session test file reported 6 failed and 11 passed: two durable-reopen
+cases, three forged-bus cases and the full probe relied on unbound pulls. A
+binding-only check would also leave bound but unauthorized readers able to
+read, and did not revalidate permission before sending. The experimental
+runtime and test changes were withdrawn; this is not an authorization fix.
+
+The existing endpoint therefore still exposes session projection data to an
+unbound connection that knows a session ID, as demonstrated by the earlier
+component probe above. It does not satisfy the approved product rule. Safe
+replacement requires a real trusted disclosure and time path and migration of
+the real probe while retaining the durable recovery and forged-bus protections.
+Do not treat a fixed room, a client assertion, or a test-only bypass as that
+path. No new baseline or runtime acceptance is claimed by this experiment.
+
+After withdrawal, the session and runner suites reported 18 passed and 7
+warnings on Windows 11 with the G0 Python 3.12.2 interpreter. One warning was
+pytest failing to remove an existing temporary garbage directory. The command
+was:
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' -m pytest backend/tests/test_embodied_interaction_session.py backend/tests/test_embodied_interaction_session_runner.py -q
+```
+
+This documentation-only record can be reverted independently; it changes no
+runtime behavior. No full baseline was rerun for the withdrawn experiment.
