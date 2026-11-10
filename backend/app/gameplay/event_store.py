@@ -8,6 +8,7 @@ import os
 import sqlite3
 from sys import getsizeof
 from contextlib import closing, contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 import tempfile
 from threading import RLock
@@ -899,6 +900,7 @@ class DurableGameplayEventStore(GameplayEventStore):
         self._closed = False
         self._json_text_cache: OrderedDict[bytes, tuple[str, int]] = OrderedDict()
         self._json_text_cache_bytes = 0
+        self._cache_scan_admission = ContextVar("gameplay_cache_scan_admission", default=True)
         restored = None
         if self._snapshot_path.exists():
             with self._snapshot_path.open("rb") as stream:
@@ -1002,7 +1004,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                     self._json_text_cache.move_to_end(body)
                     return cached[0]
         text = decode_durable_json(body)
-        if type(body) is bytes and type(text) is str:
+        if type(body) is bytes and type(text) is str and self._cache_scan_admission.get():
             self._remember_json_text(body, text)
         return text
 
@@ -1244,8 +1246,15 @@ class DurableGameplayEventStore(GameplayEventStore):
             sql += " LIMIT ?"
             parameters += (_limit(limit),)
         try:
-            return [model.model_validate_json(self._decode_json(row[0]))
-                    for row in self._rows(sql, parameters)]
+            rows = self._rows(sql, parameters)
+            # A scan larger than the cache otherwise evicts hot point reads.
+            bypass = model is GameplayEvent and len(rows) > self._JSON_TEXT_CACHE_ENTRIES
+            token = self._cache_scan_admission.set(False) if bypass else None
+            try:
+                return [model.model_validate_json(self._decode_json(row[0])) for row in rows]
+            finally:
+                if token is not None:
+                    self._cache_scan_admission.reset(token)
         except GameplayEventStoreSnapshotError:
             # Preserve store lifecycle/read failures raised by _rows.  These
             # are not malformed persisted rows and callers rely on the exact

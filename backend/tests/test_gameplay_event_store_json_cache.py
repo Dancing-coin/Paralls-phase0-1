@@ -1,5 +1,7 @@
 from contextlib import closing
+from concurrent.futures import ThreadPoolExecutor
 import sqlite3
+from threading import Event, current_thread
 
 import pytest
 
@@ -157,3 +159,72 @@ def test_close_clears_cached_content_and_prefetched_decode_does_not_retain_it(st
     assert store._json_text_cache_bytes == 0
     with pytest.raises(GameplayEventStoreSnapshotError, match="^gameplay_snapshot_closed$"):
         store.get_event("evt:session:reserved")
+
+
+def test_large_event_scan_preserves_point_read_cache_and_isolation(store, decompressions):
+    assert store.append_batch(_batch()).committed
+    store._JSON_TEXT_CACHE_ENTRIES = 1
+    store._json_text_cache.clear()
+    store._json_text_cache_bytes = 0
+    hot = store.get_event("evt:session:reserved")
+    with closing(sqlite3.connect(store._snapshot_path)) as connection:
+        hot_body = connection.execute("SELECT full_value FROM events WHERE event_id=?", (hot.event_id,)).fetchone()[0]
+    assert hot_body in store._json_text_cache
+    decompressions.clear()
+
+    first = store.read_events()
+    first[0].payload["session_id"] = "caller mutation"
+    assert store.get_event(hot.event_id).payload["session_id"] == "session:handoff:1"
+    assert hot_body in store._json_text_cache
+    assert len(decompressions) == 1
+
+    assert store.get_event("evt:body:reserved").payload["session_id"] == "session:handoff:1"
+    assert len(decompressions) == 2
+    assert store.get_event("evt:body:reserved").payload["session_id"] == "session:handoff:1"
+    assert len(decompressions) == 2
+
+
+def test_corrupt_large_scan_fails_and_next_point_read_caches(store, decompressions):
+    assert store.append_batch(_batch()).committed
+    store._JSON_TEXT_CACHE_ENTRIES = 1
+    store._json_text_cache.clear()
+    store._json_text_cache_bytes = 0
+    with closing(sqlite3.connect(store._snapshot_path)) as connection, connection:
+        body = connection.execute("SELECT full_value FROM events WHERE event_id=?", ("evt:body:reserved",)).fetchone()[0]
+        connection.execute("UPDATE events SET full_value=? WHERE event_id=?", (body[:-1], "evt:body:reserved"))
+    with pytest.raises(GameplayEventStoreSnapshotError, match="^gameplay_snapshot_json_codec_invalid$"):
+        store.read_events()
+    with closing(sqlite3.connect(store._snapshot_path)) as connection, connection:
+        connection.execute("UPDATE events SET full_value=? WHERE event_id=?", (body, "evt:body:reserved"))
+    decompressions.clear()
+    store.get_event("evt:body:reserved")
+    store.get_event("evt:body:reserved")
+    assert len(decompressions) == 1
+
+
+def test_large_scan_does_not_disable_concurrent_point_read_cache(store, monkeypatch, decompressions):
+    assert store.append_batch(_batch()).committed
+    store._JSON_TEXT_CACHE_ENTRIES = 1
+    store._json_text_cache.clear()
+    store._json_text_cache_bytes = 0
+    started, resume = Event(), Event()
+    original = GameplayEvent.model_validate_json.__func__
+
+    def validate(cls, value, *args, **kwargs):
+        if current_thread().name.startswith("scan-test"):
+            started.set()
+            assert resume.wait(timeout=10)
+        return original(cls, value, *args, **kwargs)
+
+    monkeypatch.setattr(GameplayEvent, "model_validate_json", classmethod(validate))
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="scan-test") as executor:
+        future = executor.submit(store.read_events)
+        try:
+            assert started.wait(timeout=10)
+            decompressions.clear()
+            store.get_event("evt:body:reserved")
+            store.get_event("evt:body:reserved")
+            assert len(decompressions) == 1
+        finally:
+            resume.set()
+        assert len(future.result(timeout=10)) == 2
