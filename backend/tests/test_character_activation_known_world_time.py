@@ -143,3 +143,27 @@ def test_candidate_identity_can_be_updated_within_same_world(world):
     assert runtime.apply_character_continuity_command(second).status == "committed"
     assert runtime.apply_character_continuity_command(second).status == "idempotent_replay"
     runtime.close()
+
+
+@pytest.mark.parametrize("original_world", ["world:bakery", None])
+def test_legacy_conflicting_candidate_world_is_not_materialized(tmp_path, monkeypatch, original_world):
+    clock = {"world:bakery": 100, "world:other": 1000}
+    runtime = CharacterAgentRuntime(storage_root=tmp_path, memory_known_time_provider=clock.get)
+    first = command_for_char_a(world_ref=original_world)
+    committed = runtime.apply_character_continuity_command(first)
+    second = first.model_copy(update={
+        "command_id": "continuity:legacy-second", "idempotency_key": "continuity:legacy-second",
+        "expected_character_revision": committed.character_revision_after, "world_ref": "world:other",
+    })
+    # Recreate history accepted by the runtime before candidate-world fencing.
+    with monkeypatch.context() as legacy:
+        legacy.setattr(runtime._session_store, "has_candidate", lambda *_: False)
+        assert runtime.apply_character_continuity_command(second).status == "committed"
+    runtime.close()
+
+    runtime = CharacterAgentRuntime(storage_root=tmp_path, memory_known_time_provider=clock.get)
+    assert runtime.apply_character_continuity_command(second).status == "idempotent_replay"
+    result = runtime.materialize_pending_seed_memories("char_a", 100000)[0]
+    assert result.refusal_reason == "temporal_knowledge_denied"
+    assert runtime.get_memory_bundle("char_a")["event_memories"] == []
+    runtime.close()

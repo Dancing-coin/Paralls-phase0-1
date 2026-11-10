@@ -2650,17 +2650,21 @@ class CharacterAgentRuntime:
         candidates = {value["candidate_id"]: CharacterMemoryCandidate.model_validate(value) for value in self.get_pending_seed_candidates(actor_id)}
         candidate_worlds: dict[str, str] = {}
         if candidates and self._memory_known_time_provider is not None:
+            observed_worlds: dict[str, str | None] = {}
+            conflicting_worlds: set[str] = set()
             for event in self._session_store.list_events(actor_id):
                 commit = event.get("payload", {}).get("continuity_commit", {})
                 if not isinstance(commit, dict):
                     continue
                 world_ref = commit.get("memory_world_ref")
+                world = world_ref if isinstance(world_ref, str) and world_ref else None
                 for raw in commit.get("memory_candidates", []):
                     candidate_id = raw.get("candidate_id")
-                    if isinstance(world_ref, str) and world_ref:
-                        candidate_worlds[candidate_id] = world_ref
-                    else:
-                        candidate_worlds.pop(candidate_id, None)
+                    if candidate_id in observed_worlds and observed_worlds[candidate_id] != world:
+                        conflicting_worlds.add(candidate_id)
+                    observed_worlds[candidate_id] = world
+            candidate_worlds = {candidate_id: world for candidate_id, world in observed_worlds.items()
+                                if world is not None and candidate_id not in conflicting_worlds}
         receipts: list[CharacterMemoryMaterializationReceipt] = []
         for candidate_id, candidate in list(candidates.items()):
             authorization_tick = producer_ts
