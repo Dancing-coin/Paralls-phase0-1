@@ -42,19 +42,19 @@ _IMMUTABLE_SCALAR_TYPES = (str, int, float, bool, type(None))
 def _copy_event_for_read(event: GameplayEvent) -> GameplayEvent:
     values = event.__dict__
     payload = values.get("payload")
-    if (
-        type(event) is GameplayEvent
-        and values.keys() == _EVENT_FIELDS
-        and event.__pydantic_extra__ is None
-        and event.__pydantic_private__ is None
-        and type(payload) is dict
-        and all(type(key) is str and type(value) in _IMMUTABLE_SCALAR_TYPES for key, value in payload.items())
-        and all(type(value) in _IMMUTABLE_SCALAR_TYPES for key, value in values.items() if key != "payload")
-    ):
-        copied = event.model_copy()
-        copied.__dict__["payload"] = payload.copy()
-        return copied
-    return event.model_copy(deep=True)
+    if (type(event) is not GameplayEvent or values.keys() != _EVENT_FIELDS
+            or event.__pydantic_extra__ is not None or event.__pydantic_private__ is not None
+            or type(payload) is not dict):
+        return event.model_copy(deep=True)
+    for key, value in payload.items():
+        if type(key) is not str or type(value) not in _IMMUTABLE_SCALAR_TYPES:
+            return event.model_copy(deep=True)
+    for key, value in values.items():
+        if key != "payload" and type(value) not in _IMMUTABLE_SCALAR_TYPES:
+            return event.model_copy(deep=True)
+    copied = event.model_copy()
+    copied.__dict__["payload"] = payload.copy()
+    return copied
 
 
 def encode_durable_json(value: str) -> bytes:
