@@ -22,3 +22,7 @@ is in `results.json`; alternating paired runs are in `paired-results.json` and
 so no runtime visibility implementation has started. See [report.md](report.md).
 Additional per-sample normal-GC and no-GC diagnostics are recorded there;
 they do not explain away the earlier exceedance.
+
+The report also records two measurements of the existing session-bound Godot
+mirror service with synthetic cached state. Those exercise a real access path
+but do not implement or benchmark the proposed event-level `read_as` contract.

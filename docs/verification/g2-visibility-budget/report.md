@@ -139,3 +139,46 @@ not necessarily used by every caller or deployment.
 ```powershell
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_paired.py --gc-threshold0 21000 --output docs/verification/g2-visibility-budget/paired-owner-gc.json
 ```
+
+## Existing Mirror Access Measurement
+
+The existing Godot mirror is a real principal-facing path with a live
+backend-issued session binding and actor scope. It uses an already filtered
+state-group view, not the proposed event-level `read_as` contract. The
+following diagnostic uses the actual session authentication, mirror access,
+subscription registry, serializer and state-group projector with synthetic
+cached state. Each of two independent processes recorded 1,000 samples after
+50 warmups per operation and rotated operation order. Individual samples,
+environment and source hashes are in `mirror-access-results.json` and
+`mirror-access-results-repeat.json`.
+
+| Synthetic groups | Run | Raw cached snapshot p95 | Bound principal p95 | Ratio |
+|---:|---:|---:|---:|---:|
+| 1 | 1 | 0.0281 ms | 0.0299 ms | 1.064 |
+| 1 | 2 | 0.0341 ms | 0.0381 ms | 1.117 |
+| 8 | 1 | 0.1209 ms | 0.1209 ms | 1.000 |
+| 8 | 2 | 0.1109 ms | 0.1145 ms | 1.032 |
+| 32 | 1 | 0.4390 ms | 0.4352 ms | 0.991 |
+| 32 | 2 | 0.4444 ms | 0.4459 ms | 1.003 |
+
+The fixture verifies the allowed snapshot and field allowlist, and checks that
+out-of-scope and expired bindings reject before producing a snapshot. Those
+rejection timings are in the raw data and are not comparable to a successful
+full snapshot. Separate `authority_view` and `godot_field_filter` timings
+measure real projector calls with different output field sets; they are not a
+controlled measurement of incremental filtering alone. Group counts and values
+are synthetic; the cached source excludes event-store reads, refresh, socket
+transport and client rendering. This is not an end-to-end Godot run or a
+production workload/SLO. Ratios of separately sampled p95 values are noisy;
+the 1-group second run exceeds 10%, and neither run erases the previous
+4,096-event exceedance. D6 and the existing event visibility gate remain open.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_mirror_access.py --output docs/verification/g2-visibility-budget/mirror-access-results.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_mirror_access.py --output docs/verification/g2-visibility-budget/mirror-access-results-repeat.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' -m pytest backend/tests/test_gameplay_mirror_session_access_service.py backend/tests/test_godot_gameplay_mirror_delivery.py backend/tests/test_state_group_views.py -q
+```
+
+The existing targeted tests reported 35 passed, 2 warnings. No runtime code
+was changed by this diagnostic. Roll back this measurement independently by
+reverting its commit; it changes no event or snapshot format.
