@@ -98,6 +98,17 @@ per-field disclosure or historical observer authorization for session pulls.
 These observations are static code inspection, not an end-to-end authorization
 test; they do not implement or accept the approved product rule.
 
+The session owner has several actual writers: the harness handshake coordinator,
+handoff authority and carry/place authority. `InteractionSession` carries a
+scene revision but no world, scene-instance identity or event time. The
+handshake harness itself automatically accepts for the other participants and
+uses fixed trace timestamps; neither those actions nor timestamps establish
+authenticated participant disclosure or historical perception. Handoff also
+automatically invokes acceptance. Any disclosure provenance must be integrated
+with the relevant real command and trusted clock boundary, not inferred from
+this harness flow or added solely to one caller. Existing historic sessions
+lacking that evidence must remain unknown under the approved rule.
+
 The session binding in `websocket_session_auth_service.py` carries a
 backend-issued `principal_ref`, actor scope, connection epoch and lease. A
 caller-supplied principal or a hardcoded debug name cannot replace that
