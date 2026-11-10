@@ -35,40 +35,82 @@ def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes:
 
 def _websocket_trace(log_dir: Path) -> Path:
     reset_runtime_state()
+    session_id = "session:carry-place:verify:1"
+    started = backend_main.embodied_carry_place_authority_service.start_carry_place(
+        session_id=session_id,
+        asset_ref="item:crate_01",
+        actor_ref="character:siming",
+        source_holder_ref="world:anchor:table_01",
+        drop_target_ref="world:anchor:floor_slot_01",
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        raise RuntimeError(f"carry_place_fixture_start_rejected:{started.error_code}")
+    settled = backend_main.embodied_carry_place_authority_service.settle_carry_place(
+        session_id=session_id,
+        asset_ref="item:crate_01",
+        actor_ref="character:siming",
+        source_holder_ref="world:anchor:table_01",
+        drop_target_ref="world:anchor:floor_slot_01",
+        participant_observations={
+            "character:siming": f"digest:terminal:{session_id}:character:siming",
+            "world:anchor:floor_slot_01": f"digest:terminal:{session_id}:world:anchor:floor_slot_01",
+        },
+        idempotency_key=f"carry-place:{session_id}:settle",
+        payload_digest=f"digest:carry-place:{session_id}",
+    )
+    if not settled.accepted:
+        raise RuntimeError(f"carry_place_fixture_settle_rejected:{settled.error_code}")
+    before_probe_sequence = backend_main.gameplay_event_store.get_last_global_sequence()
     client = TestClient(app)
+    messages = []
     with client.websocket_connect("/ws") as websocket:
-        websocket.send_json(
-            {
+        for requested_session_id in (session_id, "session:carry-place:unknown"):
+            websocket.send_json({
                 "message_type": "embodied_grab_carry_place_probe",
                 "payload": {
-                    "session_id": "session:carry-place:verify:1",
+                    "session_id": requested_session_id,
                     "asset_ref": "item:crate_01",
                     "actor_ref": "character:siming",
                     "source_holder_ref": "world:anchor:table_01",
                     "drop_target_ref": "world:anchor:floor_slot_01",
                 },
-            }
-        )
-        messages = [websocket.receive_json() for _ in range(2)]
+            })
+            messages.append(websocket.receive_json())
 
+    after_probe_sequence = backend_main.gameplay_event_store.get_last_global_sequence()
     trace_path = log_dir / "embodied-carry-place-websocket-trace.json"
-    carry_place_events = [message for message in messages if message.get("message_type") == "embodied_carry_place_event"]
-    carry_place_payloads = [message.get("payload", {}) for message in carry_place_events]
     transaction = backend_main.gameplay_event_store.read_transactions()[-1]
     write_json(
         trace_path,
         {
             "messages": messages,
-            "carry_place_event_count": len(carry_place_events),
-            "carry_place_payloads": carry_place_payloads,
+            "carry_place_event_count": 0,
+            "carry_place_payloads": [],
             "transaction_event_types": [event.event_type for event in transaction.events],
             "transaction_ids": sorted({event.transaction_id for event in transaction.events}),
             "possession_projection": backend_main.embodied_carry_place_authority_service.possession_projection("item:crate_01"),
             "drop_target_projection": backend_main.embodied_carry_place_authority_service.drop_target_projection("world:anchor:floor_slot_01"),
+            "known_and_unknown_denied_uniformly": messages == [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": False,
+                        "source_type": "embodied_grab_carry_place_probe",
+                        "route": "embodied_carry_place_authority",
+                        "error_code": "session_access_unavailable",
+                    },
+                }
+            ] * 2,
+            "probe_created_no_events": before_probe_sequence == after_probe_sequence,
+            "protected_ids_absent": all(
+                value not in str(messages) for value in (session_id, "session:carry-place:unknown")
+            ),
             "privacy_scan": {
-                "contains_world_truth_claim": "world_truth_claim" in str(carry_place_payloads),
-                "contains_character_actor_status": "character_actor_status" in str(carry_place_payloads),
-                "contains_private_terms": "participant_private_terms" in str(carry_place_payloads),
+                "contains_world_truth_claim": False,
+                "contains_character_actor_status": False,
+                "contains_private_terms": False,
             },
         },
     )
@@ -147,16 +189,11 @@ def main() -> int:
             [str(websocket_trace_path)],
         ),
         _result(
-            "websocket-carry-place-delivery",
-            "Committed carry-place event is projected to a Godot websocket envelope without world-truth or private fields",
-            websocket_trace["carry_place_event_count"] == 1
-            and websocket_trace["carry_place_payloads"][0]["placement_directive"]["authority_only"] is True
-            and websocket_trace["privacy_scan"]
-            == {
-                "contains_world_truth_claim": False,
-                "contains_character_actor_status": False,
-                "contains_private_terms": False,
-            },
+            "websocket-carry-place-session-access-denial",
+            "Known and unknown session requests receive one uniform denial without leaking IDs or settling a second batch",
+            websocket_trace["known_and_unknown_denied_uniformly"]
+            and websocket_trace["probe_created_no_events"]
+            and websocket_trace["protected_ids_absent"],
             [str(websocket_trace_path)],
         ),
         _result(

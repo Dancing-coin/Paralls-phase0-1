@@ -192,50 +192,43 @@ def test_handoff_revision_conflict_rejects_without_partial_cross_domain_commit()
 
 def test_websocket_handoff_probe_delivers_authority_only_mirror_directive_without_world_truth_claim() -> None:
     reset_runtime_state()
+    started = main.embodied_handoff_authority_service.start_handoff(
+        session_id="known-handoff-session",
+        asset_ref="item:letter_01",
+        from_actor_ref="character:siming",
+        to_actor_ref="character:maya",
+        causation_id="cmd:known-handoff:start",
+        correlation_id="corr:known-handoff",
+    )
+    assert started.accepted
+    before_sequence = main.gameplay_event_store.get_last_global_sequence()
     client = TestClient(app)
+    responses = []
     with client.websocket_connect("/ws") as websocket:
-        websocket.send_json(
-            {
+        for session_id in ("known-handoff-session", "unknown-handoff-session"):
+            websocket.send_json({
                 "message_type": "embodied_handoff_probe",
                 "payload": {
-                    "session_id": "session:handoff:websocket:1",
+                    "session_id": session_id,
                     "asset_ref": "item:letter_01",
                     "from_actor_ref": "character:siming",
                     "to_actor_ref": "character:maya",
                 },
-            }
-        )
+            })
+            responses.append(websocket.receive_json())
 
-        received = [websocket.receive_json() for _ in range(2)]
-
-    ack = received[0]
-    handoff_event = received[1]
-    payload = handoff_event["payload"]
-    handoff_store_events = main.gameplay_event_store.read_stream("embodied:handoff:session:handoff:websocket:1")
-
-    assert ack == {
+    expected = {
         "message_type": "ack",
         "payload": {
-            "accepted": True,
+            "accepted": False,
             "source_type": "embodied_handoff_probe",
             "route": "embodied_handoff_authority",
+            "error_code": "session_access_unavailable",
         },
     }
-    assert handoff_event["message_type"] == "embodied_handoff_event"
-    assert payload["event_type"] == "embodied.handoff.settled"
-    assert payload["asset_ref"] == "item:letter_01"
-    assert payload["to_actor_ref"] == "character:maya"
-    assert payload["custody_holder_ref"] == "character:maya"
-    assert payload["owner_ref"] == "character:maya"
-    assert payload["transaction_id"].startswith("tx:session:handoff:websocket:1:handoff:")
-    assert payload["global_sequence"] > 0
-    assert payload["attachment_directive"] == {
-        "mode": "attach_for_presentation",
-        "asset_ref": "item:letter_01",
-        "attach_to_ref": "character:maya",
-        "authority_only": True,
-    }
-    assert [event.event_type for event in handoff_store_events] == ["embodied.handoff.settled"]
-    assert "world_truth_claim" not in str(payload)
-    assert "character_actor_status" not in str(payload)
-    assert "participant_private_terms" not in str(payload)
+    assert responses == [expected, expected]
+    assert main.gameplay_event_store.get_last_global_sequence() == before_sequence
+    assert main.gameplay_event_store.read_stream("embodied:handoff:known-handoff-session") == []
+    assert main.gameplay_event_store.read_stream("embodied:handoff:unknown-handoff-session") == []
+    assert "known-handoff-session" not in str(responses)
+    assert "unknown-handoff-session" not in str(responses)

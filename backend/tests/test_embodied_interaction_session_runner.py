@@ -49,6 +49,7 @@ async def _receive_session_events() -> list[dict]:
 
 @pytest.mark.parametrize("enforce_wall_clock", [False, True], ids=["isolated-storage", "wall-clock"])
 def test_profile_repeated_in_one_run_receives_fresh_events(monkeypatch, enforce_wall_clock):
+    monkeypatch.syspath_prepend(str(ROOT))
     monkeypatch.syspath_prepend(str(ROOT / "scripts/verification"))
     gate = importlib.import_module("scripts.verification.verify_embodied_interaction_session")
     from run_context import attempt_scope, run_scope
@@ -81,13 +82,16 @@ def test_profile_repeated_in_one_run_receives_fresh_events(monkeypatch, enforce_
             assert 8 < kwargs["timeout_seconds"] <= 30
         messages = asyncio.run(_receive_session_events())
         events = [row["payload"] for row in messages if row["message_type"] == "embodied_interaction_session_event"]
-        observations.append(events)
+        observations.append(messages)
         live_ok = len(events) == 4 and events[-1]["state"] == "realizing"
         # 只替代前端报告；消息必须从原Uvicorn/owner进程的真实WS收到。
         gate.write_json(verification_dir(ROOT) / "embodied-interaction-session-godot-runtime.json", {
-            "status": "godot-runtime-interaction-session-verified" if live_ok else "test-client-failed",
+            "status": "godot-runtime-interaction-session-verified" if live_ok else "session-projection-denied",
             "bridge_route_ok": True, "bus_signal_ok": True, "bridge_legacy_reuse": False,
-            "live_backend": {"accepted": live_ok},
+            "live_backend": {
+                "accepted": live_ok,
+                "denial_code": messages[0].get("payload", {}).get("error_code", "") if messages else "",
+            },
         })
         return subprocess.CompletedProcess(command, 0, "", "")
 
@@ -95,11 +99,17 @@ def test_profile_repeated_in_one_run_receives_fresh_events(monkeypatch, enforce_
     with run_scope(ROOT) as context:
         for profile in ("harness-embodied-task", "embodied-interaction-session"):
             with attempt_scope(context, profile, 1):
-                assert gate.main() == 0
+                assert gate.main() == 1
     assert len(observations) == 2
     assert len(set(storage_paths)) == 2
     assert all(not path.parent.exists() for path in storage_paths)
-    assert all([row["event_type"] for row in events] == [
-        "embodied.interaction_session.proposed", "embodied.interaction_session.accepted",
-        "embodied.interaction_session.authorized", "embodied.interaction_session.realizing",
-    ] for events in observations)
+    assert all(len(messages) == 1 for messages in observations)
+    assert all(messages[0] == {
+        "message_type": "ack",
+        "payload": {
+            "accepted": False,
+            "source_type": "embodied_interaction_session_probe",
+            "route": "embodied_interaction_session",
+            "error_code": "session_access_unavailable",
+        },
+    } for messages in observations)

@@ -12,7 +12,115 @@ from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
+from app.services.websocket_session_auth_service import WebSocketConnectionContext, WebSocketSessionEnrollment
 from app.ws_protocol import Envelope
+
+
+def test_websocket_session_probe_denies_without_creating_or_recovering_a_session() -> None:
+    reset_runtime_state()
+    assert _propose(main.embodied_interaction_session_service, session_id="known-session").accepted
+    before_sequence = main.gameplay_event_store.get_last_global_sequence()
+    expected = {
+        "message_type": "ack",
+        "payload": {
+            "accepted": False,
+            "source_type": "embodied_interaction_session_probe",
+            "route": "embodied_interaction_session",
+            "error_code": "session_access_unavailable",
+        },
+    }
+    responses = []
+
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        for session_id in ("known-session", "unknown-session"):
+            websocket.send_json({"message_type": "embodied_interaction_session_probe", "payload": {
+                "session_id": session_id,
+                "semantic_action": "handshake",
+                "initiator_ref": "character:client-forged",
+                "participant_refs": ["character:client-forged", "character:other"],
+            }})
+            responses.append(websocket.receive_json())
+
+    assert responses == [expected, expected]
+    assert main.gameplay_event_store.get_last_global_sequence() == before_sequence
+    assert main.gameplay_event_store.read_stream("session:unknown-session") == []
+
+
+def test_websocket_session_projection_denial_does_not_disclose_session_or_cursor(monkeypatch) -> None:
+    reset_runtime_state()
+    assert _propose(main.embodied_interaction_session_service, session_id="known-session").accepted
+    expected = {
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }
+    responses = []
+
+    def unexpected_read(_stream_id):
+        pytest.fail("session stream was read before principal visibility evidence was available")
+
+    monkeypatch.setattr(main.gameplay_event_store, "read_stream", unexpected_read)
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        for session_id, cursor in (
+            ("known-session", 0),
+            ("unknown-session", 0),
+            ("known-session", 999),
+            ("unknown-session", 999),
+        ):
+            websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
+                "session_id": session_id,
+                "after_global_sequence": cursor,
+            }})
+            responses.append(websocket.receive_json())
+
+    assert responses == [expected, expected, expected, expected]
+    assert "known-session" not in str(responses)
+    assert "unknown-session" not in str(responses)
+    assert "after_global_sequence" not in str(responses)
+    assert "999" not in str(responses)
+
+
+def test_authenticated_actor_binding_without_session_disclosure_evidence_is_denied(monkeypatch) -> None:
+    reset_runtime_state()
+    now = 100
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player",
+        allowed_actor_refs=("character:siming",),
+        issued_at=now,
+        expires_at=now + 60,
+    )
+    bound = main.websocket_session_auth_service.bind_session(
+        WebSocketSessionEnrollment(
+            credential_kind="trusted_local_launch",
+            credential=credential,
+            protocol_version=1,
+        ),
+        remote_host="127.0.0.1",
+        now=now,
+    )
+    assert bound.accepted and bound.binding is not None
+    context = WebSocketConnectionContext(
+        remote_host="127.0.0.1",
+        observed_at=now,
+        connection_ref="connection:bound-session-reader",
+        binding=bound.binding,
+    )
+
+    def unexpected_read(_stream_id):
+        pytest.fail("session lookup ran before disclosure evidence was available")
+
+    monkeypatch.setattr(main.gameplay_event_store, "read_stream", unexpected_read)
+    response = main._handle_envelope(
+        Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": "client-known-session",
+            "after_global_sequence": 4,
+        }),
+        connection_context=context,
+    )
+
+    assert response == [{
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }]
 
 
 @pytest.mark.parametrize("outbox_available", [True, False])
@@ -34,19 +142,22 @@ def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_pat
             def missing_outbox(outbox_id):
                 raise KeyError(outbox_id)
             monkeypatch.setattr(reopened, "get_outbox", missing_outbox)
+        restored_projection = main._build_committed_session_event_projection(event)
+        assert restored_projection is not None
+        assert restored_projection["payload"]["event_id"] == event.event_id
+        if outbox_available:
+            assert restored_projection["payload"]["slot_assignments"] == expected_projection["slot_assignments"]
+            assert restored_projection["payload"]["participant_refs"] == expected_projection["participant_refs"]
         with TestClient(app).websocket_connect("/ws") as websocket:
             websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
                 "session_id": "restart-session", "after_global_sequence": 0,
             }})
             response = websocket.receive_json()
-        assert response["message_type"] == "embodied_interaction_session_event", response
-        assert response["payload"]["event_id"] == event.event_id
-        assert response["payload"]["global_sequence"] == event.global_sequence
-        assert response["payload"]["session_id"] == "restart-session"
-        if outbox_available:
-            assert response["payload"]["slot_assignments"] == expected_projection["slot_assignments"]
-            assert response["payload"]["participant_refs"] == expected_projection["participant_refs"]
-        assert "private initiator memory" not in str(response)
+        assert response == {
+            "message_type": "embodied_interaction_session_projection_denied",
+            "payload": {"error_code": "session_access_unavailable"},
+        }
+        assert "restart-session" not in str(response)
     finally:
         reopened.close()
 
@@ -71,13 +182,20 @@ def test_websocket_session_pull_ignores_forged_bus_projection(monkeypatch, outbo
     elif outbox_state == "mismatched":
         entry = main.gameplay_event_store.get_outbox(f"outbox:{event.event_id}")
         monkeypatch.setattr(main.gameplay_event_store, "get_outbox", lambda _: entry.model_copy(update={"topic": "other"}))
+    internal_projection = main._build_committed_session_event_projection(event)
+    assert internal_projection is not None
+    assert internal_projection["payload"]["global_sequence"] == event.global_sequence
+    assert "private-forged-value" not in str(internal_projection)
     with TestClient(app).websocket_connect("/ws") as websocket:
         websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
             "session_id": "forged-session", "after_global_sequence": 0,
         }})
         response = websocket.receive_json()
-    assert response["message_type"] == "embodied_interaction_session_event"
-    assert response["payload"]["global_sequence"] == event.global_sequence
+    assert response == {
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }
+    assert "forged-session" not in str(response)
     assert "private-forged-value" not in str(response)
 
 
@@ -104,6 +222,9 @@ def test_websocket_session_pull_rejects_authority_only_event(dispatch, event_typ
             audience="godot_room", payload_projection={"payload": {"reason_code": "secret-value"}},
         )]
     assert main.gameplay_event_store.append_batch(batch).committed
+    assert main._build_committed_session_event_projection(
+        main.gameplay_event_store.read_stream("session:private-session")[-1]
+    ) is None
     if dispatch:
         assert GameplayOutboxDispatcher(store=main.gameplay_event_store, bus=main.authority_event_bus).dispatch_pending().failed_count == 0
     with TestClient(app).websocket_connect("/ws") as websocket:
@@ -111,7 +232,11 @@ def test_websocket_session_pull_rejects_authority_only_event(dispatch, event_typ
             "session_id": "private-session", "after_global_sequence": head,
         }})
         response = websocket.receive_json()
-    assert response["message_type"] == "embodied_interaction_session_projection_denied", response
+    assert response == {
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }
+    assert "private-session" not in str(response)
     assert "secret-value" not in str(response)
 
 
@@ -354,70 +479,42 @@ def test_websocket_session_probe_delivers_committed_session_events_from_gameplay
         ack = websocket.receive_json()
         store_events = main.gameplay_event_store.read_stream("session:session:handshake:websocket")
         session_messages = []
-        cursor = 0
-        for _ in store_events:
+        for _ in range(4):
             websocket.send_json(
                 {
                     "message_type": "embodied_interaction_session_projection_pull",
                     "payload": {
                         "session_id": "session:handshake:websocket",
-                        "after_global_sequence": cursor,
+                        "after_global_sequence": 0,
                     },
                 }
             )
             message = websocket.receive_json()
             session_messages.append(message)
-            cursor = int(message["payload"]["global_sequence"])
+    assert ack == {
+        "message_type": "ack",
+        "payload": {
+            "accepted": False,
+            "source_type": "embodied_interaction_session_probe",
+            "route": "embodied_interaction_session",
+            "error_code": "session_access_unavailable",
+        },
+    }
+    assert store_events == []
+    assert all(message == {
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    } for message in session_messages)
+    assert main.gameplay_event_store.read_stream("session:session:handshake:websocket") == []
+    assert "session:handshake:websocket" not in str([ack, session_messages])
 
-    session_payloads = [message["payload"] for message in session_messages]
     bus_events = [
         event
         for event in main.authority_event_bus.list_events()
         if event.payload.get("session_id") == "session:handshake:websocket"
     ]
 
-    assert ack == {
-        "message_type": "ack",
-        "payload": {
-            "accepted": True,
-            "source_type": "embodied_interaction_session_probe",
-            "route": "embodied_interaction_session",
-        },
-    }
-    assert [event.event_type for event in store_events] == [
-        "embodied.interaction_session.proposed",
-        "embodied.interaction_session.accepted",
-        "embodied.interaction_session.authorized",
-        "embodied.interaction_session.realizing",
-    ]
-    assert [event.event_type for event in bus_events] == [event.event_type for event in store_events]
-    assert [message["message_type"] for message in session_messages] == [
-        "embodied_interaction_session_event" for _ in store_events
-    ]
-    assert [payload["event_type"] for payload in session_payloads] == [event.event_type for event in store_events]
-    assert [payload["global_sequence"] for payload in session_payloads] == [
-        event.global_sequence for event in store_events
-    ]
-    assert [payload["stream_revision"] for payload in session_payloads] == [1, 2, 3, 4]
-    assert all(payload["session_id"] == "session:handshake:websocket" for payload in session_payloads)
-    assert all(payload["semantic_action"] == "handshake" for payload in session_payloads)
-    assert session_payloads[-1]["state"] == "realizing"
-    assert session_payloads[-1]["safe_phase"] == "realizing"
-    assert session_payloads[-1]["sync_status"] == "realizing"
-    assert session_payloads[-1]["slot_assignments"][1]["participant_ref"] == "character:maya"
-    assert all(payload["transaction_id"].startswith("tx:session:handshake:websocket:") for payload in session_payloads)
-    assert all(payload["event_id"].startswith("evt:session:handshake:websocket:") for payload in session_payloads)
-    task_trace = main.embodied_harness_task_coordinator.trace.get_trace("session:handshake:websocket")
-    projection_rows = [row for row in task_trace if row.stage == "godot_projection"]
-    assert projection_rows
-    assert projection_rows[-1].metadata["projection_refs"]
-    assert all("participant_private_terms" not in str(row.metadata) for row in task_trace)
-    assert "participant_private_terms" not in str(session_payloads)
-    assert "private initiator memory" not in str(session_payloads)
-    assert "private target context" not in str(session_payloads)
-    assert "character_actor_status" not in str(session_payloads)
-    assert "bone_transforms" not in str(session_payloads)
-    assert "rigid_body_velocity" not in str(session_payloads)
+    assert bus_events == []
 
 
 def test_websocket_session_probe_returns_only_admission_ack_before_projection_pulls() -> None:
@@ -439,9 +536,11 @@ def test_websocket_session_probe_returns_only_admission_ack_before_projection_pu
         {
             "message_type": "ack",
             "payload": {
-                "accepted": True,
+                "accepted": False,
                 "source_type": "embodied_interaction_session_probe",
                 "route": "embodied_interaction_session",
+                "error_code": "session_access_unavailable",
             },
         }
     ]
+    assert main.gameplay_event_store.read_stream("session:session:handshake:projection-pull") == []

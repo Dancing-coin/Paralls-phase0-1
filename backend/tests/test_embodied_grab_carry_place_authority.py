@@ -243,51 +243,45 @@ def test_carry_place_revision_conflict_rejects_without_partial_cross_domain_comm
 
 def test_websocket_carry_place_probe_delivers_authority_only_projection_without_unsafe_fields() -> None:
     reset_runtime_state()
+    started = main.embodied_carry_place_authority_service.start_carry_place(
+        session_id="known-place-session",
+        asset_ref="item:crate_01",
+        actor_ref="character:siming",
+        source_holder_ref="world:anchor:table_01",
+        drop_target_ref="world:anchor:floor_slot_01",
+        causation_id="cmd:known-place:start",
+        correlation_id="corr:known-place",
+    )
+    assert started.accepted
+    before_sequence = main.gameplay_event_store.get_last_global_sequence()
     client = TestClient(app)
+    responses = []
     with client.websocket_connect("/ws") as websocket:
-        websocket.send_json(
-            {
+        for session_id in ("known-place-session", "unknown-place-session"):
+            websocket.send_json({
                 "message_type": "embodied_grab_carry_place_probe",
                 "payload": {
-                    "session_id": "session:carry-place:websocket:1",
+                    "session_id": session_id,
                     "asset_ref": "item:crate_01",
                     "actor_ref": "character:siming",
                     "source_holder_ref": "world:anchor:table_01",
                     "drop_target_ref": "world:anchor:floor_slot_01",
                 },
-            }
-        )
+            })
+            responses.append(websocket.receive_json())
 
-        received = [websocket.receive_json() for _ in range(2)]
-
-    ack = received[0]
-    carry_place_event = received[1]
-    payload = carry_place_event["payload"]
-    place_store_events = main.gameplay_event_store.read_stream("embodied:place:session:carry-place:websocket:1")
-
-    assert ack == {
+    expected = {
         "message_type": "ack",
         "payload": {
-            "accepted": True,
+            "accepted": False,
             "source_type": "embodied_grab_carry_place_probe",
             "route": "embodied_carry_place_authority",
+            "error_code": "session_access_unavailable",
         },
     }
-    assert carry_place_event["message_type"] == "embodied_carry_place_event"
-    assert payload["event_type"] == "embodied.place.settled"
-    assert payload["asset_ref"] == "item:crate_01"
-    assert payload["actor_ref"] == "character:siming"
-    assert payload["custody_holder_ref"] == "world:anchor:floor_slot_01"
-    assert payload["drop_target_ref"] == "world:anchor:floor_slot_01"
-    assert payload["transaction_id"].startswith("tx:session:carry-place:websocket:1:carry-place:")
-    assert payload["global_sequence"] > 0
-    assert payload["placement_directive"] == {
-        "mode": "place_for_presentation",
-        "asset_ref": "item:crate_01",
-        "place_at_ref": "world:anchor:floor_slot_01",
-        "authority_only": True,
-    }
-    assert [event.event_type for event in place_store_events] == ["embodied.place.settled"]
-    assert "world_truth_claim" not in str(payload)
-    assert "character_actor_status" not in str(payload)
-    assert "participant_private_terms" not in str(payload)
+    assert responses == [expected, expected]
+    assert main.gameplay_event_store.get_last_global_sequence() == before_sequence
+    assert main.gameplay_event_store.read_stream("embodied:place:known-place-session") == []
+    assert main.gameplay_event_store.read_stream("embodied:place:unknown-place-session") == []
+    assert "known-place-session" not in str(responses)
+    assert "unknown-place-session" not in str(responses)

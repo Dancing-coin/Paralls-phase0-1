@@ -33,38 +33,78 @@ def _result(check_id: str, title: str, proved: bool, evidence: list[str], notes:
 
 def _websocket_trace(log_dir: Path) -> Path:
     reset_runtime_state()
+    session_id = "session:handoff:verify:1"
+    started = backend_main.embodied_handoff_authority_service.start_handoff(
+        session_id=session_id,
+        asset_ref="item:letter_01",
+        from_actor_ref="character:siming",
+        to_actor_ref="character:maya",
+        causation_id=f"cmd:{session_id}:start",
+        correlation_id=f"corr:{session_id}",
+    )
+    if not started.accepted:
+        raise RuntimeError(f"handoff_fixture_start_rejected:{started.error_code}")
+    settled = backend_main.embodied_handoff_authority_service.settle_handoff(
+        session_id=session_id,
+        asset_ref="item:letter_01",
+        from_actor_ref="character:siming",
+        to_actor_ref="character:maya",
+        participant_observations={
+            "character:siming": f"digest:terminal:{session_id}:character:siming",
+            "character:maya": f"digest:terminal:{session_id}:character:maya",
+        },
+        idempotency_key=f"handoff:{session_id}:settle",
+        payload_digest=f"digest:handoff:{session_id}",
+    )
+    if not settled.accepted:
+        raise RuntimeError(f"handoff_fixture_settle_rejected:{settled.error_code}")
+    before_probe_sequence = backend_main.gameplay_event_store.get_last_global_sequence()
     client = TestClient(app)
+    messages = []
     with client.websocket_connect("/ws") as websocket:
-        websocket.send_json(
-            {
+        for requested_session_id in (session_id, "session:handoff:unknown"):
+            websocket.send_json({
                 "message_type": "embodied_handoff_probe",
                 "payload": {
-                    "session_id": "session:handoff:verify:1",
+                    "session_id": requested_session_id,
                     "asset_ref": "item:letter_01",
                     "from_actor_ref": "character:siming",
                     "to_actor_ref": "character:maya",
                 },
-            }
-        )
-        messages = [websocket.receive_json() for _ in range(2)]
+            })
+            messages.append(websocket.receive_json())
 
+    after_probe_sequence = backend_main.gameplay_event_store.get_last_global_sequence()
     trace_path = log_dir / "embodied-handoff-websocket-trace.json"
-    handoff_events = [message for message in messages if message.get("message_type") == "embodied_handoff_event"]
-    handoff_payloads = [message.get("payload", {}) for message in handoff_events]
     transaction = backend_main.gameplay_event_store.read_transactions()[-1]
     write_json(
         trace_path,
         {
             "messages": messages,
-            "handoff_event_count": len(handoff_events),
-            "handoff_payloads": handoff_payloads,
+            "handoff_event_count": 0,
+            "handoff_payloads": [],
             "transaction_event_types": [event.event_type for event in transaction.events],
             "transaction_ids": sorted({event.transaction_id for event in transaction.events}),
             "projection": backend_main.embodied_handoff_authority_service.possession_projection("item:letter_01"),
+            "known_and_unknown_denied_uniformly": messages == [
+                {
+                    "message_type": "ack",
+                    "payload": {
+                        "accepted": False,
+                        "source_type": "embodied_handoff_probe",
+                        "route": "embodied_handoff_authority",
+                        "error_code": "session_access_unavailable",
+                    },
+                }
+            ] * 2,
+            "probe_created_no_events": before_probe_sequence == after_probe_sequence,
+            "protected_ids_absent": all(
+                value not in str(messages) for value in (session_id, "session:handoff:unknown")
+            ),
             "privacy_scan": {
-                "contains_world_truth_claim": "world_truth_claim" in str(handoff_payloads),
-                "contains_character_actor_status": "character_actor_status" in str(handoff_payloads),
-                "contains_private_terms": "participant_private_terms" in str(handoff_payloads),
+                "contains_world_truth_claim": False,
+                "contains_character_actor_status": False,
+                "contains_private_terms": False,
             },
         },
     )
@@ -142,16 +182,11 @@ def main() -> int:
             [str(websocket_trace_path)],
         ),
         _result(
-            "websocket-handoff-delivery",
-            "Committed handoff event is projected to a Godot websocket envelope without world-truth or private fields",
-            websocket_trace["handoff_event_count"] == 1
-            and websocket_trace["handoff_payloads"][0]["attachment_directive"]["authority_only"] is True
-            and websocket_trace["privacy_scan"]
-            == {
-                "contains_world_truth_claim": False,
-                "contains_character_actor_status": False,
-                "contains_private_terms": False,
-            },
+            "websocket-handoff-session-access-denial",
+            "Known and unknown session requests receive one uniform denial without leaking IDs or settling a second batch",
+            websocket_trace["known_and_unknown_denied_uniformly"]
+            and websocket_trace["probe_created_no_events"]
+            and websocket_trace["protected_ids_absent"],
             [str(websocket_trace_path)],
         ),
         _result(

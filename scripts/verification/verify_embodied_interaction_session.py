@@ -107,70 +107,88 @@ def _trace(log_dir: Path) -> Path:
 
 
 def _websocket_trace(log_dir: Path) -> Path:
-    # This trace exercises the in-process FastAPI adapter after the real external
-    # backend probe.  Keep it on a fresh in-memory character store so repeated
-    # profiles cannot load a stale durable actor sidecar from a prior run.
+    # Keep this on a fresh in-memory actor store so repeated profiles cannot
+    # load a stale durable sidecar from a prior run. A domain-owned session is
+    # used to verify that the transport denies known and unknown IDs equally.
     previous_graph_path = backend_main.settings.heavenly_graph_path
     backend_main.settings.heavenly_graph_path = ":memory:"
     try:
         reset_runtime_state()
+        session_id = "session:handshake:websocket-verify"
+        proposed = backend_main.embodied_interaction_session_service.propose(
+            session_id=session_id,
+            semantic_action="handshake",
+            initiator_ref="character:siming",
+            participant_refs=["character:siming", "character:maya"],
+            target_refs=["character:maya"],
+            authority_preflight_ref=f"preflight:{session_id}",
+            policy_revision=3,
+            scene_revision=11,
+            causation_id=f"cmd:{session_id}:propose",
+            correlation_id=f"corr:{session_id}",
+        )
+        if not proposed.accepted:
+            raise RuntimeError(f"session_fixture_rejected:{proposed.error_code}")
+        before_probe_sequence = backend_main.gameplay_event_store.get_last_global_sequence()
         client = TestClient(app)
         with client.websocket_connect("/ws") as websocket:
-            websocket.send_json(
-                {
+            messages = []
+            for requested_session_id in (session_id, "session:handshake:unknown"):
+                websocket.send_json({
                     "message_type": "embodied_interaction_session_probe",
                     "payload": {
-                        "session_id": "session:handshake:websocket-verify",
+                        "session_id": requested_session_id,
                         "semantic_action": "handshake",
-                        "initiator_ref": "character:siming",
-                        "participant_refs": ["character:siming", "character:maya"],
+                        "initiator_ref": "character:client-forged",
+                        "participant_refs": ["character:client-forged", "character:maya"],
                         "target_refs": ["character:maya"],
-                        "participant_private_terms": {
-                            "character:siming": {"relationship_note": "private initiator memory"},
-                            "character:maya": {"consent_note": "private target context"},
-                        },
                     },
-                }
-            )
-            messages = [websocket.receive_json()]
-            cursor = 0
-            for _ in range(4):
+                })
+                messages.append(websocket.receive_json())
+            for requested_session_id in (session_id, "session:handshake:unknown"):
                 websocket.send_json(
                     {
                         "message_type": "embodied_interaction_session_projection_pull",
                         "payload": {
-                            "session_id": "session:handshake:websocket-verify",
-                            "after_global_sequence": cursor,
+                            "session_id": requested_session_id,
+                            "after_global_sequence": 0,
                         },
                     }
                 )
-                message = websocket.receive_json()
-                messages.append(message)
-                cursor = int(message["payload"]["global_sequence"])
+                messages.append(websocket.receive_json())
+        after_probe_sequence = backend_main.gameplay_event_store.get_last_global_sequence()
     finally:
         backend_main.settings.heavenly_graph_path = previous_graph_path
 
-    session_messages = [message for message in messages if message.get("message_type") == "embodied_interaction_session_event"]
-    session_payloads = [message.get("payload", {}) for message in session_messages]
-    bus_events = [
-        event
-        for event in backend_main.authority_event_bus.list_events()
-        if event.payload.get("session_id") == "session:handshake:websocket-verify"
-    ]
-    store_events = backend_main.gameplay_event_store.read_stream("session:session:handshake:websocket-verify")
+    expected_probe_denial = {
+        "message_type": "ack",
+        "payload": {
+            "accepted": False,
+            "source_type": "embodied_interaction_session_probe",
+            "route": "embodied_interaction_session",
+            "error_code": "session_access_unavailable",
+        },
+    }
+    expected_pull_denial = {
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }
+    denied_uniformly = messages == [expected_probe_denial, expected_probe_denial,
+                                    expected_pull_denial, expected_pull_denial]
+    protected_values_absent = all(
+        value not in str(messages)
+        for value in (session_id, "session:handshake:unknown", "after_global_sequence")
+    )
+    unknown_stream_events = backend_main.gameplay_event_store.read_stream("session:session:handshake:unknown")
     trace_path = log_dir / "embodied-interaction-session-websocket-trace.json"
     write_json(
         trace_path,
         {
             "messages": messages,
-            "session_event_types": [payload.get("event_type", "") for payload in session_payloads if isinstance(payload, dict)],
-            "session_global_sequences": [payload.get("global_sequence", 0) for payload in session_payloads if isinstance(payload, dict)],
-            "store_event_types": [event.event_type for event in store_events],
-            "bus_event_types": [event.event_type for event in bus_events],
-            "privacy_scan": {
-                "websocket_contains_private_terms": "private target context" in str(session_payloads),
-                "websocket_reuses_character_actor_status": "character_actor_status" in str(session_payloads),
-            },
+            "known_and_unknown_denied_uniformly": denied_uniformly,
+            "protected_values_absent": protected_values_absent,
+            "probe_created_no_events": before_probe_sequence == after_probe_sequence,
+            "probe_created_no_unknown_session": unknown_stream_events == [],
         },
     )
     return trace_path
@@ -233,13 +251,6 @@ def main() -> int:
             trace["global_sequences"][0] + len(trace["global_sequences"]),
         )
     )
-    expected_websocket_sequence = list(
-        range(
-            websocket_trace["session_global_sequences"][0],
-            websocket_trace["session_global_sequences"][0]
-            + len(websocket_trace["session_global_sequences"]),
-        )
-    )
     results = [
         _result(
             "focused-pytest-pass",
@@ -269,22 +280,12 @@ def main() -> int:
             [str(trace_path)],
         ),
         _result(
-            "websocket-session-delivery",
-            "Committed outbox/bus session events are projected to Godot websocket envelopes without private terms",
-            websocket_trace["session_event_types"]
-            == [
-                "embodied.interaction_session.proposed",
-                "embodied.interaction_session.accepted",
-                "embodied.interaction_session.authorized",
-                "embodied.interaction_session.realizing",
-            ]
-            and websocket_trace["session_global_sequences"] == expected_websocket_sequence
-            and websocket_trace["store_event_types"] == websocket_trace["bus_event_types"]
-            and websocket_trace["privacy_scan"]
-            == {
-                "websocket_contains_private_terms": False,
-                "websocket_reuses_character_actor_status": False,
-            },
+            "websocket-session-authorization-denial",
+            "Known and unknown session IDs receive the same denial without returning identifiers or creating a session",
+            websocket_trace["known_and_unknown_denied_uniformly"]
+            and websocket_trace["protected_values_absent"]
+            and websocket_trace["probe_created_no_events"]
+            and websocket_trace["probe_created_no_unknown_session"],
             [str(websocket_trace_path)],
         ),
         _result(
@@ -328,7 +329,7 @@ def main() -> int:
     report = {
         "overall_embodied_interaction_session_passed": overall,
         "godot_runtime_verified": godot_report.get("status") == "godot-runtime-interaction-session-verified",
-        "scope": "backend-authority InteractionSession lifecycle over Gameplay event spine plus websocket delivery to Godot runtime slot consumer",
+        "scope": "backend-authority InteractionSession lifecycle plus uniform websocket denial until trusted session visibility evidence is available",
         "results": results,
         "artifacts": {
             "pytest_log": str(pytest_log),

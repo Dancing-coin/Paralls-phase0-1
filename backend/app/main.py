@@ -6744,53 +6744,16 @@ def _error_code(exc: Exception) -> str:
 
 
 def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[str, object]]:
-    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
-    session_id = str(payload.get("session_id", "") or "session:handshake:websocket")
-    semantic_action = str(payload.get("semantic_action", "") or "handshake")
-    initiator_ref = str(payload.get("initiator_ref", "") or "character:siming")
-    participant_refs = [str(item) for item in payload.get("participant_refs", [])] if isinstance(payload.get("participant_refs", []), list) else []
-    if not participant_refs:
-        participant_refs = [initiator_ref, "character:maya"]
-    target_refs = [str(item) for item in payload.get("target_refs", [])] if isinstance(payload.get("target_refs", []), list) else []
-    participant_private_terms = payload.get("participant_private_terms")
-    if participant_private_terms is not None and not isinstance(participant_private_terms, dict):
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, "invalid_participant_private_terms")
-
-    bus_start = authority_event_bus.cursor()
-    task_result = embodied_harness_task_coordinator.run_handshake(
-        session_id=session_id,
-        semantic_action=semantic_action,
-        initiator_ref=initiator_ref,
-        participant_refs=participant_refs,
-        target_refs=target_refs,
-        authority_preflight_ref=str(payload.get("authority_preflight_ref", "") or f"preflight:{session_id}"),
-        policy_revision=int(payload.get("policy_revision", 3) or 3),
-        scene_revision=int(payload.get("scene_revision", 11) or 11),
-        causation_id=str(payload.get("causation_id", "") or f"cmd:{session_id}:propose"),
-        correlation_id=str(payload.get("correlation_id", "") or f"corr:{session_id}"),
-        participant_private_terms=participant_private_terms,
-        complete=False,
-    )
-    if not task_result.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, task_result.error_code)
-
-    session_messages = [
-        outbound
-        for event in authority_event_bus.list_events(after_cursor=bus_start)
-        if (outbound := _embodied_session_event_envelope_from_authority_event(event)) is not None
-    ]
-    embodied_harness_task_coordinator.record_godot_projection(
-        session_id,
-        session_messages,
-        producer_ts=int(payload.get("producer_ts", 0) or 0),
-    )
+    # This harness path accepts client-chosen participants and auto-accepts them;
+    # it cannot establish participant disclosure or consent authority.
     return [
         _as_envelope(
             "ack",
             {
-                "accepted": True,
+                "accepted": False,
                 "source_type": "embodied_interaction_session_probe",
                 "route": "embodied_interaction_session",
+                "error_code": "session_access_unavailable",
             },
         ),
     ]
@@ -6825,91 +6788,62 @@ def _handle_unified_character_action_foundation_probe(envelope: Envelope) -> lis
 
 
 def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> list[dict[str, object]]:
-    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
-    session_id = str(payload.get("session_id", "") or "")
-    after_global_sequence = payload.get("after_global_sequence")
-    if not session_id:
-        return EmbodiedExecutionIngress.protocol_error(
-            envelope.message_type,
-            "session_id_required",
-        )
-    if (
-        not isinstance(after_global_sequence, int)
-        or isinstance(after_global_sequence, bool)
-        or after_global_sequence < 0
-    ):
-        return EmbodiedExecutionIngress.protocol_error(
-            envelope.message_type,
-            "after_global_sequence_invalid",
-        )
+    # The stream has no principal-specific disclosure or trustworthy known-time
+    # evidence.  Neither a client-supplied session ID nor session_public_safe
+    # can authorize this pull, so fail closed before looking up the stream.
+    return [_as_envelope("embodied_interaction_session_projection_denied", {
+        "error_code": "session_access_unavailable",
+    })]
 
-    stream_events = gameplay_event_store.read_stream(f"session:{session_id}")
-    if not stream_events:
-        return EmbodiedExecutionIngress.protocol_error(
-            envelope.message_type,
-            "session_projection_unknown",
-        )
-    next_event = next(
-        (event for event in stream_events if event.global_sequence > after_global_sequence),
-        None,
-    )
-    if next_event is None:
-        return [
-            _as_envelope(
-                "embodied_interaction_session_projection_exhausted",
-                {
-                    "session_id": session_id,
-                    "after_global_sequence": after_global_sequence,
-                },
-            )
-        ]
-    if (next_event.visibility_policy != "session_public_safe"
-            or not next_event.event_type.startswith("embodied.interaction_session.")):
-        return [_as_envelope("embodied_interaction_session_projection_denied", {
-            "error_code": "session_projection_visibility_denied",
-        })]
+
+def _build_committed_session_event_projection(event: object) -> dict[str, object] | None:
+    """Build an integrity-checked internal projection, not a caller authorization decision."""
+    if (getattr(event, "visibility_policy", "") != "session_public_safe"
+            or not str(getattr(event, "event_type", "")).startswith("embodied.interaction_session.")):
+        return None
     try:
-        outbox = gameplay_event_store.get_outbox(f"outbox:{next_event.event_id}")
+        outbox = gameplay_event_store.get_outbox(f"outbox:{event.event_id}")
     except KeyError:
         outbox = None
     expected_payload = None
-    if (outbox is not None and outbox.event_id == next_event.event_id
-            and outbox.transaction_id == next_event.transaction_id
-            and outbox.global_sequence == next_event.global_sequence
-            and outbox.topic == next_event.event_type and outbox.audience == "godot_room"):
+    if (outbox is not None and outbox.event_id == event.event_id
+            and outbox.transaction_id == event.transaction_id
+            and outbox.global_sequence == event.global_sequence
+            and outbox.topic == event.event_type and outbox.audience == "godot_room"):
         projection = outbox.payload_projection.get("payload")
         if isinstance(projection, dict):
             expected_payload = {
                 **projection,
                 "outbox_id": outbox.outbox_id,
-                "transaction_id": next_event.transaction_id,
-                "event_id": next_event.event_id,
-                "stream_id": next_event.stream_id,
-                "stream_revision": next_event.stream_revision,
-                "global_sequence": next_event.global_sequence,
-                "committed_payload": next_event.payload,
+                "transaction_id": event.transaction_id,
+                "event_id": event.event_id,
+                "stream_id": event.stream_id,
+                "stream_revision": event.stream_revision,
+                "global_sequence": event.global_sequence,
+                "committed_payload": event.payload,
             }
     matching_authority_event = next(
         (
-            event
-            for event in authority_event_bus.list_events()
+            authority_event
+            for authority_event in authority_event_bus.list_events()
             if expected_payload is not None
-            and event.event_id == next_event.event_id
-            and event.event_type == next_event.event_type
-            and event.payload == expected_payload
+            and authority_event.event_id == event.event_id
+            and authority_event.event_type == event.event_type
+            and authority_event.payload == expected_payload
         ),
         None,
     )
     if matching_authority_event is not None:
         projected = _embodied_session_event_envelope_from_authority_event(matching_authority_event)
         if projected is not None:
-            return [projected]
-    if expected_payload is not None and not embodied_interaction_session_service.session_state(session_id):
-        restored = GameplayOutboxDispatcher._authority_event_for(outbox, next_event)
+            return projected
+    session_id = str(event.payload.get("session_id", "") or "")
+    if expected_payload is not None and session_id and not embodied_interaction_session_service.session_state(session_id):
+        restored = GameplayOutboxDispatcher._authority_event_for(outbox, event)
         projected = _embodied_session_event_envelope_from_authority_event(restored)
         if projected is not None:
-            return [projected]
-    return [_embodied_session_event_envelope_from_gameplay_event(next_event)]
+            return projected
+    return _embodied_session_event_envelope_from_gameplay_event(event)
 
 
 def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
@@ -7010,51 +6944,19 @@ def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[
 
 
 def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]]:
-    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
-    session_id = str(payload.get("session_id", "") or "session:handoff:websocket:1")
-    asset_ref = str(payload.get("asset_ref", "") or "item:letter_01")
-    from_actor_ref = str(payload.get("from_actor_ref", "") or "character:siming")
-    to_actor_ref = str(payload.get("to_actor_ref", "") or "character:maya")
-    bus_start = authority_event_bus.cursor()
-    started = embodied_handoff_authority_service.start_handoff(
-        session_id=session_id,
-        asset_ref=asset_ref,
-        from_actor_ref=from_actor_ref,
-        to_actor_ref=to_actor_ref,
-        causation_id=f"cmd:{session_id}:start",
-        correlation_id=f"corr:{session_id}",
-    )
-    if not started.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, started.error_code)
-    settled = embodied_handoff_authority_service.settle_handoff(
-        session_id=session_id,
-        asset_ref=asset_ref,
-        from_actor_ref=from_actor_ref,
-        to_actor_ref=to_actor_ref,
-        participant_observations={
-            from_actor_ref: f"digest:terminal:{session_id}:{from_actor_ref}",
-            to_actor_ref: f"digest:terminal:{session_id}:{to_actor_ref}",
-        },
-        idempotency_key=f"handoff:{session_id}:settle",
-        payload_digest=f"digest:handoff:{session_id}",
-    )
-    if not settled.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
-    handoff_messages = [
-        outbound
-        for event in authority_event_bus.list_events(after_cursor=bus_start)
-        if (outbound := _embodied_handoff_event_envelope_from_authority_event(event)) is not None
-    ]
+    # This probe accepts client-selected actors and synthesizes both terminal
+    # observations. Keep the network path closed until those facts have trusted
+    # command, participant and presentation evidence.
     return [
         _as_envelope(
             "ack",
             {
-                "accepted": True,
+                "accepted": False,
                 "source_type": "embodied_handoff_probe",
                 "route": "embodied_handoff_authority",
+                "error_code": "session_access_unavailable",
             },
         ),
-        *handoff_messages,
     ]
 
 
@@ -7092,54 +6994,18 @@ def _embodied_handoff_event_envelope_from_authority_event(event: AuthorityEvent)
 
 
 def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str, object]]:
-    payload = envelope.payload if isinstance(envelope.payload, dict) else {}
-    session_id = str(payload.get("session_id", "") or "session:carry-place:websocket:1")
-    asset_ref = str(payload.get("asset_ref", "") or "item:crate_01")
-    actor_ref = str(payload.get("actor_ref", "") or "character:siming")
-    source_holder_ref = str(payload.get("source_holder_ref", "") or "world:anchor:table_01")
-    drop_target_ref = str(payload.get("drop_target_ref", "") or "world:anchor:floor_slot_01")
-    bus_start = authority_event_bus.cursor()
-    started = embodied_carry_place_authority_service.start_carry_place(
-        session_id=session_id,
-        asset_ref=asset_ref,
-        actor_ref=actor_ref,
-        source_holder_ref=source_holder_ref,
-        drop_target_ref=drop_target_ref,
-        causation_id=f"cmd:{session_id}:start",
-        correlation_id=f"corr:{session_id}",
-    )
-    if not started.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, started.error_code)
-    settled = embodied_carry_place_authority_service.settle_carry_place(
-        session_id=session_id,
-        asset_ref=asset_ref,
-        actor_ref=actor_ref,
-        source_holder_ref=source_holder_ref,
-        drop_target_ref=drop_target_ref,
-        participant_observations={
-            actor_ref: f"digest:terminal:{session_id}:{actor_ref}",
-            drop_target_ref: f"digest:terminal:{session_id}:{drop_target_ref}",
-        },
-        idempotency_key=f"carry-place:{session_id}:settle",
-        payload_digest=f"digest:carry-place:{session_id}",
-    )
-    if not settled.accepted:
-        return EmbodiedExecutionIngress.protocol_error(envelope.message_type, settled.error_code)
-    carry_place_messages = [
-        outbound
-        for event in authority_event_bus.list_events(after_cursor=bus_start)
-        if (outbound := _embodied_carry_place_event_envelope_from_authority_event(event)) is not None
-    ]
+    # This probe accepts client-selected actor and scene references and
+    # synthesizes completion observations; it cannot authorize a live settlement.
     return [
         _as_envelope(
             "ack",
             {
-                "accepted": True,
+                "accepted": False,
                 "source_type": "embodied_grab_carry_place_probe",
                 "route": "embodied_carry_place_authority",
+                "error_code": "session_access_unavailable",
             },
         ),
-        *carry_place_messages,
     ]
 
 
