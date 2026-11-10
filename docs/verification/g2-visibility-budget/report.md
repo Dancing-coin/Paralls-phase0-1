@@ -182,3 +182,42 @@ the 1-group second run exceeds 10%, and neither run erases the previous
 The existing targeted tests reported 35 passed, 2 warnings. No runtime code
 was changed by this diagnostic. Roll back this measurement independently by
 reverting its commit; it changes no event or snapshot format.
+
+## Filter Order Experiment
+
+`measure_filter_before_copy.py` compares raw in-memory reads with two fixture
+operations: copying all events before filtering, and filtering under the
+store lock before deep-copying each selected event. The fixture uses the
+existing store builder, adds nested mutable payloads, and varies the private
+owner independently of policy and stream. The script checks equal results and
+that mutating a returned nested payload does not affect a subsequent read.
+Each of four independent runs uses 60 samples after six warmups, rotating the
+three operation orders. Full individual samples and script SHA-256 are in
+`filter-order-results*.json` and `filter-order-all-results*.json`.
+
+| Fixture | Events / selected | Run | Raw p95 | Copy then filter p95 | Filter then copy p95 |
+|---|---:|---:|---:|---:|---:|
+| Mixed | 4,096 / 1,366 | 1 | 49.15 ms | 50.74 ms | 15.39 ms |
+| Mixed | 4,096 / 1,366 | 2 | 53.31 ms | 56.52 ms | 20.49 ms |
+| All selected | 4,096 / 4,096 | 1 | 48.93 ms | 49.07 ms | 49.03 ms |
+| All selected | 4,096 / 4,096 | 2 | 51.18 ms | 51.30 ms | 50.27 ms |
+
+At 1,024 all-selected events, filter-then-copy p95 was 14.16 and 14.11 ms,
+against raw 11.03 and 10.93 ms respectively. Both exceed a 1.10 p95 ratio;
+the all-selected 4,096 rows also exceed 40 ms. The fixture has more nested
+data than the earlier baseline, so these are not directly comparable runs.
+The all-selected predicate is a constant-true shortcut, not real authority
+resolution. The experiment accesses private store fields and only exercises
+the in-memory store; durable SQLite reads use a different implementation.
+It models neither refusal semantics nor trusted identity, time, distortion,
+pagination, concurrency or projection construction. It suggests a possible
+optimization for selective reads, but is not a production implementation or
+evidence that the visibility budget passes. D6 and the existing gate remain
+open. Reverting the experiment commit removes the diagnostic only.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_filter_before_copy.py --output docs/verification/g2-visibility-budget/filter-order-results.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_filter_before_copy.py --output docs/verification/g2-visibility-budget/filter-order-results-repeat.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_filter_before_copy.py --all-visible --output docs/verification/g2-visibility-budget/filter-order-all-results.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_filter_before_copy.py --all-visible --output docs/verification/g2-visibility-budget/filter-order-all-results-repeat.json
+```
