@@ -1147,6 +1147,7 @@ class PopulationSimulationCapability:
                     continue
                 command = CharacterContinuityCommand(
                     command_id=f"continuity:{seed.seed_id}", actor_ref=seed.actor_ref,
+                    world_ref=seed.world_ref if seed.memory_candidates else None,
                     source_owner_receipt_refs=seed.source_owner_receipt_refs,
                     expected_character_revision=next_actor_revisions[seed.actor_ref],
                     from_tick=seed.from_tick,

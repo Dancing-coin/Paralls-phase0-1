@@ -8,7 +8,8 @@ Godot millisecond `producer_ts` to the comparison, while Population candidate
 knowledge time can use seconds-based window ticks. The tests below use matching
 synthetic values and do not establish that those production time domains match.
 Delayed memory may become visible early; a trusted mapping and production-path
-regression are still required.
+regression were required. The follow-up production-path correction and its
+remaining limitations are recorded in [g2-memory-world-time.md](g2-memory-world-time.md).
 
 On 2026-11-10 an in-memory exercise called the actual activation entry with
 `producer_ts=100000` and a pending candidate whose `knowledge_available_at`

@@ -318,6 +318,14 @@ physics_contact_receipt_authority: PhysicsContactReceiptAuthority | None = None
 durable_embodied_combat_adapter: DurableEmbodiedCombatAdapter | None = None
 
 
+def _character_memory_known_time(world_ref: str) -> int | None:
+    driver = _population_runtime_driver
+    if (driver is None or driver.world_runtime.mode.world_ref != world_ref
+            or driver.migration_pending):
+        return None
+    return driver.current_tick
+
+
 def _social_delivery_replay_binding():
     """Return recipients proven by committed notice binding or delivery facts."""
     authority = social_delivery_caller.authority if social_delivery_caller else None
@@ -1486,6 +1494,7 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
         learning_authority=learning_reader,
         learning_world_ref=_bakery_population_mode().world_ref if learning_reader is not None else None,
         memory_store=memory_router,
+        memory_known_time_provider=_character_memory_known_time,
         continuity_store=continuity_store,
         state_group_registry=state_group_registry,
         behavior_turn_recorder=BehaviorTurnRecorder(heavenly_graph),

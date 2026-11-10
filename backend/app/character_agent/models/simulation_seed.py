@@ -113,9 +113,13 @@ class CharacterContinuityCommand(ContinuityModel):
     world_effect_required: bool = False
     activation_lock_ref: str | None = Field(default=None, min_length=1, strict=True)
     activation_lock_revision: int | None = Field(default=None, ge=0, strict=True)
+    # Persisted separately from the legacy command digest.
+    world_ref: str | None = Field(default=None, min_length=1, strict=True)
 
     @model_validator(mode="after")
     def validate_command(self) -> "CharacterContinuityCommand":
+        if self.world_ref is not None and not self.memory_candidate_refs:
+            raise ValueError("command_memory_world_without_candidates")
         if (self.activation_lock_ref is None) != (self.activation_lock_revision is None):
             raise ValueError("command_activation_credential_incomplete")
         if self.to_tick < self.from_tick or self.simulation_tick_cursor < self.to_tick:
@@ -139,6 +143,8 @@ class CharacterContinuityCommand(ContinuityModel):
         if self.activation_lock_ref is None and self.activation_lock_revision is None:
             data.pop("activation_lock_ref", None)
             data.pop("activation_lock_revision", None)
+        if self.world_ref is None:
+            data.pop("world_ref", None)
         return data
 
 

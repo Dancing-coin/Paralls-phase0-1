@@ -161,6 +161,7 @@ class CharacterAgentRuntime:
         memory_correction_authorizer: Callable[[str, MemoryCorrectionRequest], bool] | None = None,
         memory_source_resolver: Callable[[str], MemorySourceRecord | None] | None = None,
         memory_now_ts_provider: Callable[[], int] | None = None,
+        memory_known_time_provider: Callable[[str], int | None] | None = None,
         state_group_registry: StateGroupRegistry | None = None,
         target_catalog_resolver: Callable[[CharacterPrivateWorldSnapshot], list[dict[str, object]]] | None = None,
     ) -> None:
@@ -187,6 +188,7 @@ class CharacterAgentRuntime:
         self._memory_correction_authorizer = memory_correction_authorizer
         self._memory_source_resolver = memory_source_resolver
         self._memory_now_ts_provider = memory_now_ts_provider
+        self._memory_known_time_provider = memory_known_time_provider
         self._supported_actor_ids = set(self._profile_registry.actor_ids())
         self._continuity_actor_ids = set(continuity_actor_ids or ())
         self._activation_world_ref = "world:default"
@@ -2646,13 +2648,31 @@ class CharacterAgentRuntime:
     ) -> list[CharacterMemoryMaterializationReceipt]:
         self._validate_materialization_tick(producer_ts)
         candidates = {value["candidate_id"]: CharacterMemoryCandidate.model_validate(value) for value in self.get_pending_seed_candidates(actor_id)}
+        candidate_worlds: dict[str, str] = {}
+        if candidates and self._memory_known_time_provider is not None:
+            for event in self._session_store.list_events(actor_id):
+                commit = event.get("payload", {}).get("continuity_commit", {})
+                if not isinstance(commit, dict):
+                    continue
+                world_ref = commit.get("memory_world_ref")
+                for raw in commit.get("memory_candidates", []):
+                    candidate_id = raw.get("candidate_id")
+                    if isinstance(world_ref, str) and world_ref:
+                        candidate_worlds[candidate_id] = world_ref
+                    else:
+                        candidate_worlds.pop(candidate_id, None)
         receipts: list[CharacterMemoryMaterializationReceipt] = []
         for candidate_id, candidate in list(candidates.items()):
+            authorization_tick = producer_ts
+            if self._memory_known_time_provider is not None:
+                world_ref = candidate_worlds.get(candidate_id)
+                known_time = self._memory_known_time_provider(world_ref) if world_ref else None
+                authorization_tick = known_time if type(known_time) is int else -1
             receipt_kind = "materialization"
             prior_payload = self._session_store.read_receipt(actor_id, kind=receipt_kind, key=candidate_id)
             prior = CharacterMemoryMaterializationReceipt.model_validate(prior_payload) if prior_payload else None
             if prior is not None and prior.status == "rejected" and prior.refusal_reason == "temporal_knowledge_denied":
-                if producer_ts < candidate.knowledge_available_at:
+                if authorization_tick < candidate.knowledge_available_at:
                     receipts.append(prior.model_copy(update={"status": "idempotent_replay"}))
                     continue
                 receipt_kind = "materialization_after_defer"
@@ -2663,6 +2683,11 @@ class CharacterAgentRuntime:
                     committed_event = self._session_store.read_committed_event_for_receipt(actor_id, kind=receipt_kind, key=candidate_id)
                     if committed_event is None:
                         raise ValueError("character_materialization_commit_missing")
+                    if authorization_tick < candidate.knowledge_available_at:
+                        receipts.append(CharacterMemoryMaterializationReceipt(
+                            candidate_id=candidate_id, actor_ref=actor_id, status="rejected",
+                            refusal_reason="temporal_knowledge_denied"))
+                        continue
                     self._project_session_event(committed_event)
                 receipts.append(
                     prior.model_copy(update={"status": "idempotent_replay"})
@@ -2683,7 +2708,7 @@ class CharacterAgentRuntime:
                 self._remember_materialization_receipt(candidate_id, receipt)
                 receipts.append(receipt)
                 continue
-            if producer_ts < candidate.knowledge_available_at:
+            if authorization_tick < candidate.knowledge_available_at:
                 receipt = CharacterMemoryMaterializationReceipt(
                     candidate_id=candidate_id,
                     actor_ref=actor_id,
@@ -2760,9 +2785,12 @@ class CharacterAgentRuntime:
             if event is None:
                 raise ValueError('character_continuity_commit_missing')
             commit = event['payload']['continuity_commit']
+            stored_world = commit.get('memory_world_ref')
+            if stored_world is not None and command.world_ref != stored_world:
+                raise ValueError('character_continuity_world_conflict')
             digest = commit.get('command_digest')
             if digest is not None:
-                matches = digest == self._cognition_digest(command.model_dump(mode='json', exclude={'expected_character_revision'}))
+                matches = digest == self._cognition_digest(command.model_dump(mode='json', exclude={'expected_character_revision', 'world_ref'}))
             else:
                 # 旧事件没有 digest，只比较当时确实持久化的命令事实。
                 delta = deepcopy(command.state_delta)
@@ -2935,13 +2963,14 @@ class CharacterAgentRuntime:
                 **projection,
                 "continuity_commit": {
                     "idempotency_key": command.idempotency_key,
-                    "command_digest": self._cognition_digest(command.model_dump(mode='json', exclude={'expected_character_revision'})),
+                    "command_digest": self._cognition_digest(command.model_dump(mode='json', exclude={'expected_character_revision', 'world_ref'})),
                     "receipt": receipt.model_dump(mode="json"),
                     "need_tension_delta": deepcopy(need_delta) if isinstance(need_delta, dict) else {},
                     "dynamic_state_delta": deepcopy(dynamic_delta) if isinstance(dynamic_delta, dict) else {},
                     "memory_candidates": [
                         candidate.model_dump(mode="json") for candidate in staged_candidates
                     ],
+                    **({"memory_world_ref": command.world_ref} if staged_candidates and command.world_ref else {}),
                 },
             },
         )

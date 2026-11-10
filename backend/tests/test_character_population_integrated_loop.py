@@ -40,6 +40,21 @@ def test_public_capability_forwards_current_personal_lock_credential(public_hand
     assert public_handoff_case.core.get_character_activation_lock("char_a") == lock
 
 
+def test_population_seed_preserves_world_for_memory_time_authorization(public_handoff_case):
+    lock = public_handoff_case.take_lock()
+    inputs = personal_inputs(lock, exposure_basis="affected_directly", knowledge_available_at=11)
+    capability = PopulationSimulationCapability(continuity_port=CharacterRuntimeContinuityPort(public_handoff_case.core))
+    cycle = capability.run_default_decision_cycle(inputs.cadence, inputs)
+    assert cycle.status == "accepted"
+    assert cycle.continuity_receipts[0].status == "committed"
+    assert public_handoff_case.release(lock).committed
+    clock = {"world:bakery": 10, "world:other": 100000}
+    public_handoff_case.core._memory_known_time_provider = clock.get
+    assert public_handoff_case.core.materialize_pending_seed_memories("char_a", 100000)[0].refusal_reason == "temporal_knowledge_denied"
+    clock["world:bakery"] = 11
+    assert public_handoff_case.core.materialize_pending_seed_memories("char_a", 100001)[0].status == "committed"
+
+
 @pytest.mark.parametrize("updates", [
     {"activation_lock_ref": "lock:other:character:char_a"},
     {"activation_lock_revision": 999}, {"activation_lock_revision": True},
