@@ -62,6 +62,24 @@ events and other economy invariants and tracks the economy stream revision.
 The durable type index also requires separate consideration of corrupt or
 inconsistent index data. No validation or runtime behavior was changed.
 
+The general `GameplayProjectionReplay.continue_replay` checks each stream's
+revision but does not prove that a global interval is complete. The isolated
+`probe_replay_continuity.py` demonstrates a successful continuation from
+sequence 1 to 3 with sequence 2 on a different stream omitted: the cursor is
+3 in both results, but applied IDs and hashes differ. The world checkpoint
+wrapper in `world_runtime/replay_checkpoint.py` separately validates the
+complete interval before invoking replay. Other callers intentionally pass
+scoped or type-filtered event sets, so adding unconditional global-contiguity
+checks to the generic replay would change those contracts. An economy cache
+needs an explicit complete global cut, atomic state publication, retained
+cross-domain provenance and equivalence/failure tests; a successful generic
+replay alone is insufficient evidence. This probe does not establish a live
+production incident or implement the cache.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/probe_replay_continuity.py
+```
+
 ```powershell
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_economy_components.py --output D:/Temp/g2-economy-components-a.json
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_economy_components.py --output D:/Temp/g2-economy-components-b.json
