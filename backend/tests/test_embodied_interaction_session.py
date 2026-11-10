@@ -1,15 +1,52 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
+import pytest
 
 import app.main as main
 from app.main import component_app as app, reset_runtime_state
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.models import GameplayOutboxEntry
+from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
 from app.ws_protocol import Envelope
+
+
+@pytest.mark.parametrize("dispatch", [False, True])
+@pytest.mark.parametrize("event_type,policy", [
+    ("embodied.interaction_session.private", "authority_only"),
+    ("other.private", "session_public_safe"),
+])
+def test_websocket_session_pull_rejects_authority_only_event(dispatch, event_type, policy):
+    reset_runtime_state()
+    assert _propose(main.embodied_interaction_session_service, session_id="private-session").accepted
+    head = main.gameplay_event_store.get_last_global_sequence()
+    batch = build_atomic_event_batch(
+        command_id="private:session", principal_ref="authority", stream_id="session:private-session",
+        expected_revision=main.gameplay_event_store.get_stream_head("session:private-session"), event_specs=[(event_type, {
+            "session_id": "private-session", "reason_code": "secret-value",
+        })], idempotency_key="private:session", causation_id="private:session", correlation_id="private:session",
+    )
+    batch.events[0].visibility_policy = policy
+    if dispatch:
+        batch.outbox_entries = [GameplayOutboxEntry(
+            outbox_id="outbox:private-session", transaction_id=batch.transaction_id,
+            event_id=batch.events[0].event_id, global_sequence=0, topic=event_type,
+            audience="godot_room", payload_projection={"payload": {"reason_code": "secret-value"}},
+        )]
+    assert main.gameplay_event_store.append_batch(batch).committed
+    if dispatch:
+        assert GameplayOutboxDispatcher(store=main.gameplay_event_store, bus=main.authority_event_bus).dispatch_pending().failed_count == 0
+    with TestClient(app).websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
+            "session_id": "private-session", "after_global_sequence": head,
+        }})
+        response = websocket.receive_json()
+    assert response["message_type"] == "embodied_interaction_session_projection_denied", response
+    assert "secret-value" not in str(response)
 
 
 def _service() -> tuple[EmbodiedInteractionSessionService, GameplayEventStore, InMemoryAuthorityEventBus, EmbodiedEvidenceLedger]:

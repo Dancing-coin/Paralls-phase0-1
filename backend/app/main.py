@@ -6863,11 +6863,18 @@ def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> 
                 },
             )
         ]
+    if (next_event.visibility_policy != "session_public_safe"
+            or not next_event.event_type.startswith("embodied.interaction_session.")):
+        return [_as_envelope("embodied_interaction_session_projection_denied", {
+            "error_code": "session_projection_visibility_denied",
+        })]
     matching_authority_event = next(
         (
             event
             for event in authority_event_bus.list_events()
             if event.event_id == next_event.event_id
+            and event.event_type == next_event.event_type
+            and event.payload.get("committed_payload") == next_event.payload
         ),
         None,
     )
