@@ -6,13 +6,49 @@ import pytest
 import app.main as main
 from app.main import component_app as app, reset_runtime_state
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.models import GameplayOutboxEntry
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
 from app.ws_protocol import Envelope
+
+
+@pytest.mark.parametrize("outbox_available", [True, False])
+def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_path, monkeypatch, outbox_available):
+    reset_runtime_state()
+    path = tmp_path / "session.db"
+    store = DurableGameplayEventStore(path)
+    service = EmbodiedInteractionSessionService(store=store)
+    assert _propose(service, session_id="restart-session").accepted
+    event = store.read_stream("session:restart-session")[0]
+    expected_projection = store.get_outbox(f"outbox:{event.event_id}").payload_projection["payload"]
+    store.close()
+    reopened = DurableGameplayEventStore(path)
+    try:
+        monkeypatch.setattr(main, "gameplay_event_store", reopened)
+        monkeypatch.setattr(main, "authority_event_bus", InMemoryAuthorityEventBus())
+        monkeypatch.setattr(main, "embodied_interaction_session_service", EmbodiedInteractionSessionService(store=reopened))
+        if not outbox_available:
+            def missing_outbox(outbox_id):
+                raise KeyError(outbox_id)
+            monkeypatch.setattr(reopened, "get_outbox", missing_outbox)
+        with TestClient(app).websocket_connect("/ws") as websocket:
+            websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
+                "session_id": "restart-session", "after_global_sequence": 0,
+            }})
+            response = websocket.receive_json()
+        assert response["message_type"] == "embodied_interaction_session_event", response
+        assert response["payload"]["event_id"] == event.event_id
+        assert response["payload"]["global_sequence"] == event.global_sequence
+        assert response["payload"]["session_id"] == "restart-session"
+        if outbox_available:
+            assert response["payload"]["slot_assignments"] == expected_projection["slot_assignments"]
+            assert response["payload"]["participant_refs"] == expected_projection["participant_refs"]
+        assert "private initiator memory" not in str(response)
+    finally:
+        reopened.close()
 
 
 @pytest.mark.parametrize("outbox_state", ["valid", "missing", "mismatched"])

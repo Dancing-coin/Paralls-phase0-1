@@ -6904,6 +6904,11 @@ def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> 
         projected = _embodied_session_event_envelope_from_authority_event(matching_authority_event)
         if projected is not None:
             return [projected]
+    if expected_payload is not None and not embodied_interaction_session_service.session_state(session_id):
+        restored = GameplayOutboxDispatcher._authority_event_for(outbox, next_event)
+        projected = _embodied_session_event_envelope_from_authority_event(restored)
+        if projected is not None:
+            return [projected]
     return [_embodied_session_event_envelope_from_gameplay_event(next_event)]
 
 
@@ -6974,7 +6979,7 @@ def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[
     }
     session_projection = (
         embodied_interaction_session_service.public_projection(safe_payload["session_id"])
-        if safe_payload["session_id"]
+        if safe_payload["session_id"] and embodied_interaction_session_service.session_state(safe_payload["session_id"])
         else {}
     )
     for field_name in ("semantic_action", "participant_refs", "target_refs"):
