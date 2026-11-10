@@ -38,6 +38,35 @@ gate, and historical exceedances remain in force. No runtime behavior changed.
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_economy_principals.py --output D:/Temp/g2-economy-principals-20261110-repeat.json
 ```
 
+### Economy View Component Diagnostic
+
+`diagnose_economy_components.py` separately times a full in-memory event
+read, rebuilding the economy projection from an already copied list, and the
+owner's complete redacted view. It uses the same 4,096-event fixture, 120
+samples after 10 warmups, rotating and reversing call order. Two independent
+processes produced the following measurements in milliseconds:
+
+| Run | Read median / p95 | Projection median / p95 | View median / p95 |
+|---:|---:|---:|---:|
+| 1 | 51.48 / 130.11 | 2.49 / 8.81 | 54.09 / 139.65 |
+| 2 | 65.66 / 144.07 | 3.66 / 9.20 | 71.93 / 158.25 |
+
+The full samples and environment are in `economy-components-a.json` and
+`economy-components-b.json`. The large variation and tails are not explained
+by this experiment; the retained event list also affects memory and GC, and
+the components are not additive measurements of a single request. The data
+points to investigating copying before projection on this fixture, not to a
+production latency conclusion. Filtering to account event types is not a
+semantics-preserving shortcut: `EconomyProjector` validates cross-domain source
+events and other economy invariants and tracks the economy stream revision.
+The durable type index also requires separate consideration of corrupt or
+inconsistent index data. No validation or runtime behavior was changed.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_economy_components.py --output D:/Temp/g2-economy-components-a.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_economy_components.py --output D:/Temp/g2-economy-components-b.json
+```
+
 Command, from the repository root:
 
 ```powershell
