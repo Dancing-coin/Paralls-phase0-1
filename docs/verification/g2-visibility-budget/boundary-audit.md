@@ -184,3 +184,26 @@ was:
 
 This documentation-only record can be reverted independently; it changes no
 runtime behavior. No full baseline was rerun for the withdrawn experiment.
+
+### Sibling probe existence oracle
+
+On 2026-11-10 `probe_session_existence.py` used a fresh component process and
+an unbound `TestClient` connection. It first created a session directly via
+the session service, without a harness task record. A subsequent WebSocket
+`embodied_interaction_session_probe` for that ID returned a rejected ack with
+`session_exists`; the same request for a new ID returned an accepted ack and
+created a session. Both requests use client-supplied IDs. An exact repeat of a
+session created through the harness instead returns an accepted recovery ack,
+so this observation applies to the tested source and is not a claim that all
+existing sessions produce the same error. The test changes isolated in-process
+state and does not connect to a running production process.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/probe_session_existence.py
+```
+
+This sibling command path must be considered with the pull route when enforcing
+the approved non-disclosure rule: protecting only the pull leaves this observed
+oracle. The experiment changes no runtime behavior and does not establish
+network exposure or a complete list of sibling routes. Revert its commit to
+remove the script and record independently.
