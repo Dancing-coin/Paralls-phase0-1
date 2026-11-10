@@ -1,0 +1,167 @@
+{
+  "schema": "paralls-g2-current-head-principal-view-budget-v1",
+  "branch": "codex/g0-b3-ingress-20261109",
+  "head": "0b587890ba732686b3d1d565a73848e83640701a",
+  "commit_time": "2026-11-10T23:23:03+08:00",
+  "measurement_date": "2026-11-11",
+  "command": "& D:/Temp/paralls-g0-py312/Scripts/python.exe docs/verification/g2-visibility-budget/measure_economy_principals.py --repeats 60 --warmups 5 --output <new JSON path>",
+  "candidate_budget": {
+    "p95_relative_overhead_max": 0.1,
+    "p95_absolute_ms_max_at_4096_events": 40.0
+  },
+  "script_sha256": "62859be6ffc674202a7a0fa901286b3bade83f94c7fe7a2d70b8bd90ea4b93e3",
+  "runs": [
+    {
+      "file": "principal-view-run1.json",
+      "warmups": 5,
+      "repeats": 60,
+      "ordering": "alternating",
+      "rows": [
+        {
+          "events": 256,
+          "principal": "actor:owner",
+          "raw_p95_ms": 0.7219,
+          "domain_view_p95_ms": 0.7205,
+          "p95_ratio": 0.9980606732234382
+        },
+        {
+          "events": 256,
+          "principal": "authority:economy",
+          "raw_p95_ms": 0.7281,
+          "domain_view_p95_ms": 0.7181,
+          "p95_ratio": 0.9862656228540035
+        },
+        {
+          "events": 256,
+          "principal": "actor:other",
+          "raw_p95_ms": 0.7287,
+          "domain_view_p95_ms": 0.7246,
+          "p95_ratio": 0.9943735419239742
+        },
+        {
+          "events": 1024,
+          "principal": "actor:owner",
+          "raw_p95_ms": 3.0685,
+          "domain_view_p95_ms": 2.9646,
+          "p95_ratio": 0.9661398077236435
+        },
+        {
+          "events": 1024,
+          "principal": "authority:economy",
+          "raw_p95_ms": 3.2717,
+          "domain_view_p95_ms": 3.1612,
+          "p95_ratio": 0.9662255096738699
+        },
+        {
+          "events": 1024,
+          "principal": "actor:other",
+          "raw_p95_ms": 3.2672,
+          "domain_view_p95_ms": 3.2984,
+          "p95_ratio": 1.0095494613124387
+        },
+        {
+          "events": 4096,
+          "principal": "actor:owner",
+          "raw_p95_ms": 23.0795,
+          "domain_view_p95_ms": 23.6432,
+          "p95_ratio": 1.0244242726228905
+        },
+        {
+          "events": 4096,
+          "principal": "authority:economy",
+          "raw_p95_ms": 23.1387,
+          "domain_view_p95_ms": 23.0626,
+          "p95_ratio": 0.9967111376179302
+        },
+        {
+          "events": 4096,
+          "principal": "actor:other",
+          "raw_p95_ms": 23.1968,
+          "domain_view_p95_ms": 23.2062,
+          "p95_ratio": 1.0004052283073528
+        }
+      ]
+    },
+    {
+      "file": "principal-view-run2.json",
+      "warmups": 5,
+      "repeats": 60,
+      "ordering": "alternating",
+      "rows": [
+        {
+          "events": 256,
+          "principal": "actor:owner",
+          "raw_p95_ms": 0.693,
+          "domain_view_p95_ms": 0.6967,
+          "p95_ratio": 1.0053391053391054
+        },
+        {
+          "events": 256,
+          "principal": "authority:economy",
+          "raw_p95_ms": 0.7091,
+          "domain_view_p95_ms": 0.7089,
+          "p95_ratio": 0.9997179523339444
+        },
+        {
+          "events": 256,
+          "principal": "actor:other",
+          "raw_p95_ms": 0.7061,
+          "domain_view_p95_ms": 0.7074,
+          "p95_ratio": 1.0018410989944768
+        },
+        {
+          "events": 1024,
+          "principal": "actor:owner",
+          "raw_p95_ms": 2.9564,
+          "domain_view_p95_ms": 2.9925,
+          "p95_ratio": 1.0122107969151672
+        },
+        {
+          "events": 1024,
+          "principal": "authority:economy",
+          "raw_p95_ms": 3.1576,
+          "domain_view_p95_ms": 3.246,
+          "p95_ratio": 1.0279959462883204
+        },
+        {
+          "events": 1024,
+          "principal": "actor:other",
+          "raw_p95_ms": 3.1555,
+          "domain_view_p95_ms": 3.2065,
+          "p95_ratio": 1.0161622563777533
+        },
+        {
+          "events": 4096,
+          "principal": "actor:owner",
+          "raw_p95_ms": 24.3831,
+          "domain_view_p95_ms": 24.4832,
+          "p95_ratio": 1.0041053024430857
+        },
+        {
+          "events": 4096,
+          "principal": "authority:economy",
+          "raw_p95_ms": 23.7456,
+          "domain_view_p95_ms": 23.7776,
+          "p95_ratio": 1.0013476180850347
+        },
+        {
+          "events": 4096,
+          "principal": "actor:other",
+          "raw_p95_ms": 22.7442,
+          "domain_view_p95_ms": 23.0443,
+          "p95_ratio": 1.0131945726822662
+        }
+      ]
+    }
+  ],
+  "max_ratio": 1.0279959462883204,
+  "max_4096_view_p95_ms": 24.4832,
+  "all_rows_within_10_percent": true,
+  "all_4096_rows_within_40_ms": true,
+  "measures_session_read_as": false,
+  "limitations": "Measures existing in-memory EconomyPrivacyQueryService domain views for owner, authority and denied principals. It does not measure authenticated WebSocket session disclosure, event-store read_as, transport, historical replay, or production storage contention.",
+  "artifact_sha256": {
+    "principal-view-run1.json": "65e4bf527a7538b0a4982cdf3126c7161d6bcfc4e37f1c078e9b6a4440b049e3",
+    "principal-view-run2.json": "f2e101e4a89c794424d77376a7b8296e38d7af46ff809ab75d5beca4d60fc0d5"
+  }
+}

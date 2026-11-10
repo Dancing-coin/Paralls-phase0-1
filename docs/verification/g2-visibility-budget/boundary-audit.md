@@ -207,3 +207,50 @@ the approved non-disclosure rule: protecting only the pull leaves this observed
 oracle. The experiment changes no runtime behavior and does not establish
 network exposure or a complete list of sibling routes. Revert its commit to
 remove the script and record independently.
+
+### Uniform WebSocket denial while authorization evidence is absent
+
+Commit `0b587890ba732686b3d1d565a73848e83640701a` closes the three inspected
+unbound harness routes at the WebSocket boundary. Session proposal probes no
+longer create or auto-accept a session from client-supplied IDs and actors;
+session projection pulls return the same denial before reading a stream;
+handoff and carry/place probes no longer synthesize completion observations or
+settle a domain transaction. Each route returns a fixed denial that omits the
+requested ID and cursor. The session tests also cover a valid backend binding
+without session disclosure evidence; it is denied before lookup.
+
+This is a fail-closed boundary repair, not an implementation of the positive
+participant, observer, delivery-recipient or debug projections. The session
+owner still has no committed per-principal field disclosure and known-time
+record, and the inspected perception and delivery sources do not provide the
+required historical evidence. The internal committed-event projection builder
+remains available to trusted recovery and integrity tests; the WebSocket pull
+does not expose it. Direct domain Owner APIs and their transactions remain
+covered by their domain tests, but the Godot harness flows that depended on
+these untrusted probes are intentionally not accepted as end-to-end features.
+
+On Windows 11 `10.0.26200`, Python 3.12.2, and the same dependency hash as G0,
+the focused command over session, runner, handoff, carry/place and WebSocket
+binding tests reported **43 passed, 6 deprecation warnings**. The frozen full
+backend run at the commit collected 10,044 nodes: 10,001 passed, 39 failed,
+2 skipped and 2 xfailed. Relative to G0, all 9,937 outcomes and all 39 failure
+causes remain unchanged after normalizing pytest temporary-directory IDs and
+AnyIO's random cancellation-scope ID; all 107 added nodes pass. Relative to
+the preceding 10,041-node G2 run, the three added nodes all pass and all prior
+outcomes remain unchanged. Raw, normalized and JUnit evidence is archived in
+[`g2-session-visibility-denial`](../g2-session-visibility-denial/README.md).
+
+The authorized candidate budget remains 10% p95 overhead and 40 ms p95 at
+4,096 events. Earlier principal-specific economy view runs exceeded those
+limits. Two new alternating runs at current HEAD exercised owner, authority
+and denied principals on the existing economy domain view; maximum 4,096-event
+view p95 was 24.49 ms and maximum p95 ratio across all rows was 1.028. That
+fixture meets the candidate thresholds, but it uses a caller-supplied principal
+and is not the approved session `read_as` route. The actual positive session
+path, disclosure evidence and send-time authorization are still unavailable
+and have not been measured. The fixed WebSocket denial does not scan the event
+store, but its fast-path latency does not demonstrate authorized projection
+performance. Keep the session visibility gate open until its actual principal
+path is available for a measured run. Earlier durable-store and other fixture
+exceedances remain valid evidence. D2–D10 remain OPEN; B3 client sampling,
+credential renewal and end-to-end interaction remain unaccepted.

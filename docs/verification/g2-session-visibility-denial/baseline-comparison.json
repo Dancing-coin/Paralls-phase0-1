@@ -1,0 +1,168 @@
+{
+  "schema": "paralls-g2-session-denial-baseline-comparison-v1",
+  "branch": "codex/g0-b3-ingress-20261109",
+  "current_commit": "0b587890ba732686b3d1d565a73848e83640701a",
+  "g0_baseline_commit": "4c6418763dfaa2efdbefccb7b1c31d612cabf2f1",
+  "g0_runs": [
+    {
+      "run": 1,
+      "collected": 9937,
+      "counts": {
+        "passed": 9894,
+        "failed": 39,
+        "skipped": 4
+      },
+      "failure_count": 39
+    },
+    {
+      "run": 2,
+      "collected": 9937,
+      "counts": {
+        "passed": 9894,
+        "failed": 39,
+        "skipped": 4
+      },
+      "failure_count": 39
+    }
+  ],
+  "previous_g2_commit": "59084f369ec6c19672b91e26770b81d9e17ef510",
+  "previous_g2": {
+    "collected": 10041,
+    "counts": {
+      "passed": 9998,
+      "failed": 39,
+      "skipped": 4
+    }
+  },
+  "current": {
+    "collected": 10044,
+    "counts": {
+      "passed": 10001,
+      "failed": 39,
+      "skipped": 4
+    },
+    "exit_code": 1,
+    "collection_errors": 0
+  },
+  "inventory_comparison": {
+    "g0_run1_equals_g0_run2": true,
+    "all_g0_nodes_present_current": true,
+    "g0_common_node_outcomes_and_phases_unchanged": true,
+    "nodes_added_since_g0": 107,
+    "added_since_g0_all_passed": true,
+    "all_previous_g2_nodes_present_current": true,
+    "previous_g2_common_node_outcomes_and_phases_unchanged": true,
+    "nodes_added_since_previous_g2": 3,
+    "added_since_previous_g2_all_passed": true,
+    "added_since_previous_g2_nodeids": [
+      "tests/test_embodied_interaction_session.py::test_authenticated_actor_binding_without_session_disclosure_evidence_is_denied",
+      "tests/test_embodied_interaction_session.py::test_websocket_session_probe_denies_without_creating_or_recovering_a_session",
+      "tests/test_embodied_interaction_session.py::test_websocket_session_projection_denial_does_not_disclose_session_or_cursor"
+    ],
+    "removed_nodeids": []
+  },
+  "failure_comparison": {
+    "failure_test_name_sets_identical_to_g0": true,
+    "failure_test_name_sets_identical_to_previous_g2": true,
+    "all_phase_and_error_type_pairs_unchanged": true,
+    "canonicalized_message_and_normalized_stack_equal_g0": true,
+    "raw_failure_field_differences_vs_g0": [
+      {
+        "test_name": "tests/test_character_cognition_admission.py::test_child_admission_survives_process_exit_before_parent_receipt",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_siming_admission.py::test_process_exit_recovery_keeps_atomic_admission_and_stage[after_commit]",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_siming_admission.py::test_process_exit_recovery_keeps_atomic_admission_and_stage[before_commit]",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_siming_admission.py::test_process_exit_recovery_keeps_atomic_admission_and_stage[result_ready]",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_ws_protocol.py::test_websocket_character_agent_execution_emits_scheduling_round_trace",
+        "changed_fields": [
+          "stack_hash",
+          "normalized_stack"
+        ]
+      }
+    ],
+    "raw_failure_field_differences_vs_previous_g2": [
+      {
+        "test_name": "tests/test_character_cognition_admission.py::test_child_admission_survives_process_exit_before_parent_receipt",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_siming_admission.py::test_process_exit_recovery_keeps_atomic_admission_and_stage[after_commit]",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_siming_admission.py::test_process_exit_recovery_keeps_atomic_admission_and_stage[before_commit]",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_siming_admission.py::test_process_exit_recovery_keeps_atomic_admission_and_stage[result_ready]",
+        "changed_fields": [
+          "message"
+        ]
+      },
+      {
+        "test_name": "tests/test_ws_protocol.py::test_websocket_character_agent_execution_emits_scheduling_round_trace",
+        "changed_fields": [
+          "stack_hash",
+          "normalized_stack"
+        ]
+      }
+    ],
+    "normalization": "Messages replace pytest-NNNN temporary directory IDs with a run placeholder. Normalized AnyIO stack replaces its random cancellation-scope hex ID. No failure test, phase, error type, or stable normalized stack changed."
+  },
+  "junit_classification": {
+    "skipped": [
+      {
+        "test_name": "test_persistent_runtime_moves_wal_checkpoints_to_one_owned_worker",
+        "message": "concurrent WAL checkpoint requires SQLite 3.51.3+"
+      },
+      {
+        "test_name": "test_background_checkpoint_moves_wal_work_off_writer_and_stops_cleanly",
+        "message": "concurrent WAL checkpoint requires SQLite 3.51.3+"
+      }
+    ],
+    "xfailed": [
+      {
+        "test_name": "test_identity_owner_reports_presence_despawn_and_new_incarnation",
+        "message": "Respawn through the activation service needs a named Life adapter; until then PopulationPresenceAuthority rejects any life history (owner contract, see test_presence_owner_admission::test_any_life_history_blocks_new_spawn_without_a_named_life_adapter)."
+      },
+      {
+        "test_name": "test_presence_despawn_and_new_incarnation_do_not_repeat_alive_transition",
+        "message": "Respawn through the activation service needs a named Life adapter; until then PopulationPresenceAuthority rejects any life history (owner contract, see test_presence_owner_admission::test_any_life_history_blocks_new_spawn_without_a_named_life_adapter)."
+      }
+    ]
+  },
+  "package_sha256_equal_g0": true,
+  "artifact_sha256": {
+    "full-run-10044.zip": "91f9f0c1eaa510f054e3cb6021a8236b2d5dc68c6d9b76ff7e0411c02d6da63d",
+    "targeted-junit.xml": "1f9e1afae38955d863e74a96b0185599fd20bdb83594c513dc084bef69acbc35",
+    "targeted-tests.log": "a9d31e1c0a24924eb01f735c25edc26197dcf1f1b7d690eb0e1f6c841569a102",
+    "verification-script-junit.xml": "960f2f2ea2ac02b71ea96e72846206d711ca90d0f12d477fdba1190c4f709959",
+    "verification-script-tests.log": "6750e4f66247d5b8f4eaa44a72186bfdbfb4bfaf46353b5111eeadd472cf30d9"
+  },
+  "archived_text_log_normalization": "Only trailing whitespace at line ends was removed from copied pytest text logs so the evidence files pass git diff --check; test content, counts and warning messages were preserved."
+}

@@ -1,6 +1,34 @@
 # G2 visibility budget measurement
 
-Status: two paired runs complete; one exceeds the provisional budget and G2 visibility expansion is paused.
+Status: historical paired runs include budget exceedances. A current-HEAD rerun of the existing principal-aware economy domain view met the provisional budget in both samples; the session/WebSocket `read_as` path is not implemented and has not been performance-tested, so the G2 performance gate remains open.
+
+## Current-HEAD Principal View Rerun (2026-11-11)
+
+At code HEAD `0b587890ba732686b3d1d565a73848e83640701a`, the same
+principal-aware economy domain-view script was rerun in two independent
+processes. Each run used 5 warmups and 60 alternating samples for
+`actor:owner`, `authority:economy`, and the denied `actor:other` at 256, 1,024,
+and 4,096 events. At 4,096 events, owner view p95 was 23.64/24.48 ms,
+authority view 23.06/23.78 ms, and denied view 23.21/23.04 ms across the two
+runs. Across all rows, maximum p95 ratio was 1.028 and maximum 4,096-event
+view p95 was 24.49 ms. This existing in-memory domain view is within the
+provisional 10% relative and 40 ms absolute thresholds in these runs.
+
+Raw samples and a per-principal comparison are archived in
+`docs/verification/g2-session-visibility-denial/principal-view-run1.json`,
+`principal-view-run2.json`, and `performance-comparison.json`. Commands were:
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_economy_principals.py --repeats 60 --warmups 5 --output D:/Temp/g2-session-visibility-denial-baseline-20261110-r1/principal-view-run1.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_economy_principals.py --repeats 60 --warmups 5 --output D:/Temp/g2-session-visibility-denial-baseline-20261110-r1/principal-view-run2.json
+```
+
+The measurement uses an in-memory economy fixture and a caller-supplied
+principal string. It does not exercise a bound WebSocket identity, the session
+Owner's missing disclosure facts, the approved historical authorization rules,
+transport, durable-store contention or the positive session projection path.
+Thus it updates the measured cost of this existing domain view but does not
+close the session visibility budget gate or justify serving session events.
 
 ## Existing Economy Principal View
 
