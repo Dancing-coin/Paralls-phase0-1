@@ -1011,6 +1011,12 @@ class DurableGameplayEventStore(GameplayEventStore):
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_closed")
         return sqlite3.connect(self._snapshot_path)
 
+    @staticmethod
+    def _require_current_schema(connection: sqlite3.Connection) -> None:
+        row = connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()
+        if row != ("3",):
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+
     @contextmanager
     def _transaction(self, connection: sqlite3.Connection | None = None):
         if connection is not None:
@@ -1025,6 +1031,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             try:
                 with self._database_connection() as owned:
                     owned.execute("BEGIN IMMEDIATE")
+                    self._require_current_schema(owned)
                     yield owned
             except BaseException:
                 # 原事务退出已回滚；失败连接不带入下一次重试。
@@ -1042,6 +1049,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             connection = self._database_connection()
             try:
                 connection.execute("BEGIN IMMEDIATE")
+                self._require_current_schema(connection)
                 self._group_connection = connection
                 self._group_failed = False
                 yield

@@ -82,6 +82,43 @@ def test_reused_connection_preserves_full_durability_and_cross_thread_reads(tmp_
             store.close()
 
 
+@pytest.mark.parametrize("schema", ["4", None])
+def test_open_writer_rejects_changed_schema_before_append(tmp_path, schema):
+    path = tmp_path / "schema-changed.db"
+    store = DurableGameplayEventStore(path)
+    try:
+        assert store.get_last_global_sequence() == 0
+        with closing(sqlite3.connect(path)) as connection, connection:
+            if schema is None:
+                connection.execute("DELETE FROM metadata WHERE key='schema'")
+            else:
+                connection.execute("UPDATE metadata SET value=? WHERE key='schema'", (schema,))
+        result = store.append_batch(_batch())
+        assert not result.committed
+        assert result.failure.error_code == "durable_persistence_failed"
+        assert store.get_last_global_sequence() == 0
+        assert store.read_events() == []
+        assert store.list_outbox(include_delivered=True) == []
+    finally:
+        store.close()
+
+
+def test_open_group_commit_rejects_changed_schema_before_writes(tmp_path):
+    path = tmp_path / "group-schema-changed.db"
+    store = DurableGameplayEventStore(path)
+    try:
+        assert store.get_last_global_sequence() == 0
+        with closing(sqlite3.connect(path)) as connection, connection:
+            connection.execute("UPDATE metadata SET value='4' WHERE key='schema'")
+        with pytest.raises(GameplayEventStoreSnapshotError, match="gameplay_snapshot_schema_unsupported"):
+            with store.group_commit():
+                store.append_batch(_batch())
+        assert store.read_events() == []
+        assert store.list_outbox(include_delivered=True) == []
+    finally:
+        store.close()
+
+
 def test_group_commit_persists_independent_batches_with_one_sqlite_commit(tmp_path):
     path = tmp_path / "group-success.db"
     store = DurableGameplayEventStore(path)
