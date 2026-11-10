@@ -86,6 +86,8 @@ access, transport, real-world workload, or production storage contention.
   & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_social_delivery_known_time.py --repeats 60 --output docs/verification/g2-social-delivery-known-time/performance-f.json
   ```
 
-This is one independently revertible unit. Revert the code-and-evidence commit
-that introduced this report with `git revert <unit-commit>`; no migration or
-data rewrite is required. Previously written `@1` events stay intact.
+This is one independently revertible runtime unit. Its code and focused tests
+are in commit `7309af8b`; revert them with `git revert 7309af8b`. The full-run
+and performance archive is in commits `1dcb4934` and `e1e6a093` and remains as
+audit evidence. No migration or data rewrite is required. Previously written
+`@1` events stay intact.
