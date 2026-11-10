@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import math
 import platform
@@ -34,9 +35,15 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--repeats", type=int, default=60)
     parser.add_argument("--warmups", type=int, default=5)
+    parser.add_argument("--gc-threshold0", type=int)
     args = parser.parse_args()
     if args.repeats <= 0 or args.warmups <= 0:
         parser.error("repeats and warmups must be positive")
+    if args.gc_threshold0 is not None:
+        if args.gc_threshold0 <= 0:
+            parser.error("gc-threshold0 must be positive")
+        _, generation_one, generation_two = gc.get_threshold()
+        gc.set_threshold(args.gc_threshold0, generation_one, generation_two)
 
     rows = []
     for count in (256, 1024, 4096):
@@ -76,6 +83,7 @@ def main() -> None:
         "repeat_count": args.repeats,
         "warmup_count": args.warmups,
         "ordering": "alternating_raw_first_and_filtered_first",
+        "gc_thresholds": gc.get_threshold(),
         "rows": rows,
     }, indent=2) + "\n", encoding="utf-8")
 

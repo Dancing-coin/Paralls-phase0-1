@@ -118,3 +118,24 @@ expanding visibility remain in force.
 ```powershell
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_components.py --output docs/verification/g2-visibility-budget/component-diagnostic.json
 ```
+
+## Owner Process GC Configuration
+
+`backend/app/services/runtime_process.py` sets the generation-zero GC
+threshold to 21,000 in the spawned runtime owner process. Earlier measurements
+used the interpreter default. A further synthetic paired run explicitly used
+`(21000, 10, 10)` and retained 60 samples per row after five warmups; its
+aggregates are in `paired-owner-gc.json`.
+
+At 4,096 events, filtered p95 ranged from 30.04 to 30.49 ms and the largest
+p95 ratio was 1.024. However, the 256-event private-owner row measured raw
+p95 2.165 ms and filtered p95 3.002 ms, a 1.387 ratio. The complete run
+therefore did not meet the 10% candidate for every row. Since GC and system
+load were not controlled between this and prior processes, these values do not
+isolate the effect of the threshold. They do not erase previous failures or
+demonstrate a production principal-facing path. The runtime owner setting is
+not necessarily used by every caller or deployment.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_paired.py --gc-threshold0 21000 --output docs/verification/g2-visibility-budget/paired-owner-gc.json
+```
