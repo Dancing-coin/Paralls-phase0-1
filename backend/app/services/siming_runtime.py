@@ -26,6 +26,8 @@ from app.models.siming_runtime_state import (
 )
 from app.services.siming_fact_core import SimingFactCore
 from app.services.siming_knowledge_graph import SimingKnowledgeGraph
+from app.services.siming_balance import SimingBalanceSystem
+from app.services.siming_conflict_generator import SimingConflictGenerator
 from app.services.siming_fairness_audit import SimingFairnessAuditEngine
 from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_feasibility import SimingExecutionFeasibility
@@ -136,6 +138,8 @@ class SimingRuntime:
         actor_pin_reader=None,
         source_pin_reader=None,
         knowledge_graph: SimingKnowledgeGraph | None = None,
+        balance_system: SimingBalanceSystem | None = None,
+        conflict_generator: SimingConflictGenerator | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -146,6 +150,8 @@ class SimingRuntime:
         self._observe_pipeline = observe_pipeline or SimingObservePipeline()
         self._fact_core = fact_core or SimingFactCore()
         self._knowledge_graph = knowledge_graph or SimingKnowledgeGraph()
+        self._balance_system = balance_system if balance_system is not None else SimingBalanceSystem(self._knowledge_graph)
+        self._conflict_generator = conflict_generator if conflict_generator is not None else SimingConflictGenerator(self._knowledge_graph)
         self._state_tree = state_tree or InMemorySimingStateTree()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(
             self._feature_registry
@@ -193,6 +199,14 @@ class SimingRuntime:
     @property
     def knowledge_graph(self) -> SimingKnowledgeGraph:
         return self._knowledge_graph
+
+    @property
+    def balance_system(self) -> SimingBalanceSystem:
+        return self._balance_system
+
+    @property
+    def conflict_generator(self) -> SimingConflictGenerator:
+        return self._conflict_generator
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         # 兼容工具入口；与异步入口共用下面的显式阶段，串行 drain。

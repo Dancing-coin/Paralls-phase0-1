@@ -1,6 +1,8 @@
 import pytest
 
 from app.services.siming_knowledge_graph import SimingKnowledgeGraph
+from app.services.siming_balance import SimingBalanceSystem
+from app.services.siming_conflict_generator import SimingConflictGenerator
 from app.services.siming_runtime import SimingRuntime
 
 
@@ -129,6 +131,29 @@ def test_runtime_accepts_an_injected_knowledge_graph_without_changing_tick_api()
     runtime = SimingRuntime(knowledge_graph=graph)
     assert runtime.knowledge_graph is graph
     assert SimingRuntime().knowledge_graph is not None
+
+
+def test_runtime_assembles_capabilities_with_shared_graph_and_accepts_injection() -> None:
+    graph = _graph()
+    graph.evaluate_access("a", "conv-1", 110)
+    graph.evaluate_membership("a", "conv-1", 110, has_spoken=True)
+    graph.evaluate_access("b", "conv-1", 110)
+    graph.evaluate_membership("b", "conv-1", 110, has_spoken=True)
+    graph.evaluate_awareness("a", "b", "conv-1", 110)
+    runtime = SimingRuntime(knowledge_graph=graph)
+
+    fairness = runtime.balance_system.evaluate_fairness(["a", "b"], 110)
+    assert fairness.participation_distribution.actor_scores == {"a": 1.0, "b": 1.0}
+    opportunities = runtime.conflict_generator.generate_opportunities(
+        ["a", "b"], 110, motivations={"a"}, physical_presence={"a", "b"}
+    )
+    assert any(item.opportunity_type == "confrontation" and item.feasible for item in opportunities)
+
+    balance = SimingBalanceSystem(graph)
+    generator = SimingConflictGenerator(graph)
+    injected = SimingRuntime(knowledge_graph=graph, balance_system=balance, conflict_generator=generator)
+    assert injected.balance_system is balance
+    assert injected.conflict_generator is generator
 
 
 def test_late_arrival_does_not_learn_earlier_information() -> None:
