@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import os
 import socket
@@ -244,7 +245,7 @@ def get_health(url: str = "http://127.0.0.1:8000/health") -> dict[str, object] |
     try:
         with urllib.request.urlopen(url, timeout=1.0) as response:
             return json.loads(response.read().decode("utf-8"))
-    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError):
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, OSError, http.client.BadStatusLine):
         return None
 
 

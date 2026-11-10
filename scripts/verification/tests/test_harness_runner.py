@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http.client
 import json
 import sys
 import threading
@@ -344,6 +345,14 @@ def test_get_health_treats_connection_reset_as_unhealthy(monkeypatch) -> None:
 
     assert get_health() is None
 
+
+def test_get_health_treats_invalid_http_status_as_unhealthy(monkeypatch) -> None:
+    def fake_urlopen(_url: str, timeout: float = 1.0):
+        raise http.client.BadStatusLine("GET /health HTTP/1.1")
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    assert get_health() is None
 
 
 

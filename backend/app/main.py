@@ -433,7 +433,9 @@ def _handle_siming_authority_event(event):
     if driver is None or event.event_type == 'population_cadence_event':
         return siming_event_pipeline.handle_event(event)
     now = time()
-    receipt = driver.coordinator.admit_event(event, now=now, expires_at=now+30.,
+    # One provider call may use the full timeout, and the driver permits three retries.
+    admission_ttl = max(30., 4 * settings.siming_llm_timeout_seconds + 30.)
+    receipt = driver.coordinator.admit_event(event, now=now, expires_at=now+admission_ttl,
         policy_version='production-siming-v1')
     origin = _cognition_origin.get()
     if (not receipt.replayed and origin is not None and origin.binding_pin
