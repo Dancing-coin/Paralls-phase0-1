@@ -300,3 +300,30 @@ $fixture = (Get-Content docs/verification/g2-visibility-budget/durable-read-resu
 $fixture = (Get-Content docs/verification/g2-visibility-budget/durable-read-results-repeat.json -Raw | ConvertFrom-Json).fixture_directory
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_cache_admission.py --database (Join-Path $fixture 'events-4096.db') --output docs/verification/g2-visibility-budget/cache-admission-results-repeat.json
 ```
+
+## Decoder Comparison
+
+`measure_decoder_comparison.py` reads the two existing 4,096-event SQLite
+fixtures in read-only mode and compares the standard-library decoder with the
+already-installed `zlib-ng` decoder. Each run alternates decoder order for
+100 samples after 10 warmups and checks every decoded body against the
+standard-library output. The two independent fixture databases have the same
+compressed-body hash. Median times were 6.69/6.19 ms and 6.80/6.28 ms
+(standard/native). The fixture's truncated and checksum-damaged sample was
+rejected by both; both accepted the sampled trailing byte. These three cases
+are not a proof of full decoder equivalence.
+
+This measures decompression only, without SQLite query time, UTF-8 decoding,
+model validation, cache, authorization, time filtering or projections. The
+roughly 0.5 ms median difference cannot establish the 40 ms or 10% gates, and
+does not justify changing the existing decoder without broader compatibility
+and end-to-end evidence. Historical exceedances remain valid; D6 stays open.
+The scripts and individual samples can be removed by reverting this diagnostic
+commit; no runtime or archive format changed.
+
+```powershell
+$fixture = (Get-Content docs/verification/g2-visibility-budget/durable-read-results.json -Raw | ConvertFrom-Json).fixture_directory
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_decoder_comparison.py --database (Join-Path $fixture 'events-4096.db') --output docs/verification/g2-visibility-budget/decoder-comparison.json
+$fixture = (Get-Content docs/verification/g2-visibility-budget/durable-read-results-repeat.json -Raw | ConvertFrom-Json).fixture_directory
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_decoder_comparison.py --database (Join-Path $fixture 'events-4096.db') --output docs/verification/g2-visibility-budget/decoder-comparison-repeat.json
+```
