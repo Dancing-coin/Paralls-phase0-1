@@ -45,6 +45,34 @@ On 2026-11-10, `D:/Temp/paralls-g0-py312/Scripts/python.exe -m pytest
 backend/tests/test_embodied_interaction_session.py -q` reported 7 passed with
 6 deprecation warnings; this is backend test evidence, not a Godot run.
 
+## Proposed session audience contract (product confirmation pending)
+
+On 2026-11-10 the user supplied an implementation proposal, explicitly still
+subject to product confirmation. It distinguishes authenticated participants,
+observers with authoritative perception, recipients with authorized delivery,
+and separately authorized and audited debug access. Each fact requires
+principal-specific field eligibility and known time; missing evidence denies
+access. Public action does not imply identity disclosure. Historical replay
+uses historical perception and delivery, not a reader's current location.
+Bindings, leases and permission must be checked on pull and immediately before
+send. Denial, response and cursor must not reveal protected session existence.
+An unbound connection, client-supplied actor or session ID, fixed demo room,
+and the drought-advisory jurisdiction scope are not authorization evidence.
+
+The existing binding has a backend-issued principal, actor scope, connection
+epoch and lease; the session owner's proposed event includes participant refs.
+These two facts alone do not establish which other identities or fields were
+disclosed to each participant, a per-principal known time, historical perception
+or authorized delivery. The session's `participant_observed` event concerns
+terminal participant observation, not proof of a third party's perception.
+The projection pull currently receives no connection context. Before changing
+the route, trace authoritative disclosure, world and scene instance, perception
+and delivery records and their historical revisions, plus the actual send-time
+binding recheck. Freeze participant, observer, delayed delivery, private field,
+revocation, expiry, reconnect and historical replay cases. No implementation or
+product approval is implied by this proposal; performance expansion remains
+paused under the recorded gate, and D2–D10 remain open.
+
 The session binding in `websocket_session_auth_service.py` carries a
 backend-issued `principal_ref`, actor scope, connection epoch and lease. A
 caller-supplied principal or a hardcoded debug name cannot replace that
