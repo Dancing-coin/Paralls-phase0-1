@@ -1,0 +1,71 @@
+{
+  "full_run": {
+    "collected_count": 10041,
+    "counts": {
+      "passed": 9998,
+      "failed": 39,
+      "skipped": 4
+    },
+    "collection_errors": []
+  },
+  "comparison_to_g0": {
+    "missing_node_count": 0,
+    "added_node_count": 104,
+    "added_node_outcomes": {
+      "passed": 104
+    },
+    "changed_outcome_count": 0,
+    "removed_failure_count": 0,
+    "added_failure_count": 0,
+    "normalized_stack_difference_count": 0
+  },
+  "comparison_to_previous_g2": {
+    "missing_node_count": 0,
+    "added_node_count": 7,
+    "added_node_outcomes": {
+      "passed": 7
+    },
+    "changed_outcome_count": 0,
+    "removed_failure_count": 0,
+    "added_failure_count": 0,
+    "normalized_stack_difference_count": 0
+  },
+  "environment_same_as_previous_g2": {
+    "python": true,
+    "executable": true,
+    "os": true,
+    "packages_sha256": true,
+    "dependency_files": true,
+    "pytest_env": true
+  },
+  "source_stable_during_run": {
+    "source_unchanged": true,
+    "head_before": "59084f369ec6c19672b91e26770b81d9e17ef510",
+    "head_after": "59084f369ec6c19672b91e26770b81d9e17ef510",
+    "worktree_status_stable": true
+  },
+  "head_at_run": "59084f369ec6c19672b91e26770b81d9e17ef510",
+  "test_command": {
+    "cwd": "D:\\Temp\\paralls-g0-b3-ingress-20261109\\backend",
+    "sys_path_prepend": [
+      "D:\\Temp\\paralls-g0-b3-ingress-20261109\\backend",
+      "D:\\Temp\\paralls-g0-b3-ingress-20261109"
+    ],
+    "pytest_args": [
+      "tests",
+      "-v",
+      "--tb=short",
+      "-p",
+      "no:cacheprovider",
+      "--junitxml=D:\\Temp\\g2-social-known-time-baseline-20261110\\junit.xml"
+    ],
+    "runner_argv": [
+      "docs/verification/g0-939c6746/run_baseline.py",
+      "--repo",
+      ".",
+      "--output",
+      "D:/Temp/g2-social-known-time-baseline-20261110",
+      "--freeze"
+    ]
+  }
+}
