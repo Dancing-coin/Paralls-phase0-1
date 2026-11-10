@@ -1,6 +1,6 @@
 # G2 visibility budget measurement
 
-Status: measurement complete; provisional budget accepted for implementation.
+Status: two paired runs complete; one exceeds the provisional budget and G2 visibility expansion is paused.
 
 Command, from the repository root:
 
@@ -14,7 +14,7 @@ streams and four provisional principals. The script measures the current
 `read_events()` deep-copy cost and a separate metadata scan; it does not change
 the runtime or claim that the provisional scan is the G2 contract.
 
-The latest rerun's largest observed p95 values were:
+The first grouped rerun's largest observed p95 values were:
 
 | Events | Raw read p95 | Provisional principal scan p95 | Max ratio |
 |---:|---:|---:|---:|
@@ -22,18 +22,39 @@ The latest rerun's largest observed p95 values were:
 | 1,024 | 10.17 ms | 8.42 ms | 0.828x |
 | 4,096 | 36.41 ms | 37.87 ms | 1.040x |
 
-The 4,096-event public-observer row produced the maximum ratio. These values
-are a local baseline, not a production SLO. Proposed budget for review: the
-principal visibility step stays within 10% p95 overhead over the same raw
-read, and the 4,096-event fixture stays below 40 ms p95. The technical lead
-accepted this candidate budget for the next implementation step on 2026-11-10.
-It remains a provisional engineering budget until paired production-shaped
-sampling and real event-volume evidence are available. The final contract
-still needs real visibility classes, delay/time semantics and unauthorized-read
-behavior.
+The 4,096-event public-observer row produced the maximum ratio in that
+grouped run. Because raw and filtered calls were sampled in separate groups,
+the result was repeated with alternating paired calls. The paired rerun is
+stored in `paired-results.json` and was run with 60 samples after 5 warmups.
+Its largest rows were:
+
+| Events | Principal | Raw p95 | Paired filtered p95 | p95 ratio |
+|---:|---|---:|---:|---:|
+| 256 | `principal:town-authority` | 2.11 ms | 2.08 ms | 0.99x |
+| 1,024 | `principal:debug-probe` | 11.23 ms | 12.40 ms | 1.104x |
+| 4,096 | `principal:debug-probe` | 45.68 ms | 46.70 ms | 1.022x |
+
+The paired 4,096-event row exceeds the provisional 40 ms absolute budget, and
+the 1,024-event debug row exceeds the 10% relative budget. The provisional
+budget is therefore not met in that run. A second paired run, preserved as
+`paired-results-rerun.json`, met both provisional limits for all fixture rows;
+its highest 4,096-event filtered p95 was 37.79 ms and its highest p95 ratio was
+1.03x. The difference between runs makes the tail estimate unstable; a passing
+rerun does not erase the exceedance. Expansion of G2 visibility coverage is
+paused while the variance is investigated; no runtime visibility code has
+been installed. These are local synthetic measurements, not production SLOs.
+The final contract still needs real visibility classes, delay/time semantics
+and unauthorized-read behavior.
+
+Paired measurement command:
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_paired.py --output docs/verification/g2-visibility-budget/paired-results.json
+```
 
 The output is `results.json` in this directory. The source script records the
 fixture, principals, policies, environment and median/p95/p99 aggregates.
-Raw and filtered reads are sampled in separate groups, so scheduling noise can
-affect their ratio; repeat the measurement and use paired sampling before
-making a production budget decision.
+The grouped run sampled raw and filtered reads separately. The paired runs
+alternate order but remain sensitive to scheduling noise; repeat against the
+real implementation and production-shaped workload before making a production
+budget decision.

@@ -1,0 +1,251 @@
+{
+  "measurement": "g2-visibility-paired-synthetic-baseline",
+  "contract_status": "provisional_fixture_not_production_enforcement",
+  "python": "3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "repeat_count": 60,
+  "warmup_count": 5,
+  "ordering": "alternating_raw_first_and_filtered_first",
+  "rows": [
+    {
+      "event_count": 256,
+      "principal": "principal:public-observer",
+      "raw_ms": {
+        "median": 1.9367,
+        "p95": 2.0501,
+        "p99": 2.127
+      },
+      "filtered_ms": {
+        "median": 1.9259,
+        "p95": 2.075,
+        "p99": 5.2787
+      },
+      "paired_difference_ms": {
+        "median": 0.016149999999999998,
+        "p95": 0.1825000000000001,
+        "p99": 3.3156999999999996
+      },
+      "p95_ratio": 1.0121457489878543
+    },
+    {
+      "event_count": 256,
+      "principal": "principal:town-authority",
+      "raw_ms": {
+        "median": 1.9508,
+        "p95": 2.11,
+        "p99": 5.2342
+      },
+      "filtered_ms": {
+        "median": 1.899,
+        "p95": 2.0784,
+        "p99": 2.0925
+      },
+      "paired_difference_ms": {
+        "median": 0.014100000000000001,
+        "p95": 0.12240000000000006,
+        "p99": 0.22550000000000003
+      },
+      "p95_ratio": 0.9850236966824644
+    },
+    {
+      "event_count": 256,
+      "principal": "principal:private-owner",
+      "raw_ms": {
+        "median": 1.9332500000000001,
+        "p95": 2.0922,
+        "p99": 5.4407
+      },
+      "filtered_ms": {
+        "median": 1.95175,
+        "p95": 2.0804,
+        "p99": 2.1119
+      },
+      "paired_difference_ms": {
+        "median": 0.03139999999999987,
+        "p95": 0.1533,
+        "p99": 0.2637999999999998
+      },
+      "p95_ratio": 0.9943600038237262
+    },
+    {
+      "event_count": 256,
+      "principal": "principal:debug-probe",
+      "raw_ms": {
+        "median": 1.9552,
+        "p95": 2.1069,
+        "p99": 2.2569
+      },
+      "filtered_ms": {
+        "median": 1.8914499999999999,
+        "p95": 2.0589,
+        "p99": 5.1907
+      },
+      "paired_difference_ms": {
+        "median": 0.012799999999999923,
+        "p95": 0.137,
+        "p99": 3.0723999999999996
+      },
+      "p95_ratio": 0.9772177132279652
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:public-observer",
+      "raw_ms": {
+        "median": 7.7688500000000005,
+        "p95": 8.1934,
+        "p99": 11.5312
+      },
+      "filtered_ms": {
+        "median": 7.8616,
+        "p95": 8.2119,
+        "p99": 11.4705
+      },
+      "paired_difference_ms": {
+        "median": 0.09180000000000055,
+        "p95": 0.5926,
+        "p99": 3.6022
+      },
+      "p95_ratio": 1.0022579149071202
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:town-authority",
+      "raw_ms": {
+        "median": 7.72665,
+        "p95": 7.9735,
+        "p99": 11.3661
+      },
+      "filtered_ms": {
+        "median": 7.8027999999999995,
+        "p95": 8.2038,
+        "p99": 11.6597
+      },
+      "paired_difference_ms": {
+        "median": 0.03995000000000015,
+        "p95": 0.6780000000000008,
+        "p99": 3.961400000000001
+      },
+      "p95_ratio": 1.0288831755189063
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:private-owner",
+      "raw_ms": {
+        "median": 7.539899999999999,
+        "p95": 7.8423,
+        "p99": 11.2456
+      },
+      "filtered_ms": {
+        "median": 7.6159,
+        "p95": 7.9178,
+        "p99": 11.6184
+      },
+      "paired_difference_ms": {
+        "median": 0.06484999999999985,
+        "p95": 0.3057999999999996,
+        "p99": 4.007199999999999
+      },
+      "p95_ratio": 1.0096272777118958
+    },
+    {
+      "event_count": 1024,
+      "principal": "principal:debug-probe",
+      "raw_ms": {
+        "median": 7.545,
+        "p95": 11.2254,
+        "p99": 14.4813
+      },
+      "filtered_ms": {
+        "median": 7.62635,
+        "p95": 12.3973,
+        "p99": 14.4462
+      },
+      "paired_difference_ms": {
+        "median": 0.0932000000000004,
+        "p95": 0.9480000000000004,
+        "p99": 6.0896
+      },
+      "p95_ratio": 1.1043971707021576
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:public-observer",
+      "raw_ms": {
+        "median": 30.98925,
+        "p95": 36.7675,
+        "p99": 57.2109
+      },
+      "filtered_ms": {
+        "median": 31.4944,
+        "p95": 37.4675,
+        "p99": 53.4975
+      },
+      "paired_difference_ms": {
+        "median": 0.40940000000000154,
+        "p95": 6.056900000000002,
+        "p99": 6.348300000000002
+      },
+      "p95_ratio": 1.0190385530699668
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:town-authority",
+      "raw_ms": {
+        "median": 31.9197,
+        "p95": 36.7755,
+        "p99": 36.9458
+      },
+      "filtered_ms": {
+        "median": 32.1927,
+        "p95": 37.438,
+        "p99": 37.9919
+      },
+      "paired_difference_ms": {
+        "median": 0.34644999999999726,
+        "p95": 5.804300000000001,
+        "p99": 6.2727
+      },
+      "p95_ratio": 1.0180147108808855
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:private-owner",
+      "raw_ms": {
+        "median": 31.965899999999998,
+        "p95": 37.6305,
+        "p99": 48.7606
+      },
+      "filtered_ms": {
+        "median": 32.21615,
+        "p95": 37.619,
+        "p99": 67.5013
+      },
+      "paired_difference_ms": {
+        "median": 0.26144999999999996,
+        "p95": 5.616199999999999,
+        "p99": 21.171300000000002
+      },
+      "p95_ratio": 0.9996943968323568
+    },
+    {
+      "event_count": 4096,
+      "principal": "principal:debug-probe",
+      "raw_ms": {
+        "median": 31.7565,
+        "p95": 45.6751,
+        "p99": 52.0138
+      },
+      "filtered_ms": {
+        "median": 32.08235,
+        "p95": 46.6952,
+        "p99": 58.6397
+      },
+      "paired_difference_ms": {
+        "median": 0.38269999999999804,
+        "p95": 6.978200000000005,
+        "p99": 12.274099999999997
+      },
+      "p95_ratio": 1.0223338317814301
+    }
+  ]
+}

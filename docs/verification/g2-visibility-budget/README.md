@@ -16,6 +16,7 @@ Run from the repository root with the G0 interpreter:
 
 The output records median, p95 and p99 milliseconds for 256, 1024 and 4096
 events across public, authority, private-owner and debug principals. It also
-records the p95 ratio against the current raw read. The harness does not enforce
-a threshold; the provisional implementation budget and its limitations are
-recorded in [report.md](report.md).
+records the p95 ratio against the current raw read. The initial grouped result
+is in `results.json`; alternating paired runs are in `paired-results.json` and
+`paired-results-rerun.json`. One paired run exceeded the provisional budget,
+so no runtime visibility implementation has started. See [report.md](report.md).
