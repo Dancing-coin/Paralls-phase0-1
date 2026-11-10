@@ -81,6 +81,18 @@ inspected adapter does not itself establish a committed, replayable session
 field disclosure or identity-recognition grant. Its inputs and producer trust
 must be traced before using a frame as authorization.
 
+The inspected `/ws` raw-fact path calls `_admit_local_coordination_signal`,
+which authenticates the optional coordination signal and strips that signal
+when admission fails; it does not by itself reject the enclosing raw fact.
+`_ingest_l1_world_fact_foundation` can update the in-memory occupancy service
+from spatial-access facts, and `_messages_from_projected_l1_facts` supplies
+its current snapshot to the perception bridge. `SpatialOccupancySnapshot`
+contains field and zone state but no world, scene-instance identity or
+authority revision. This static trace does not prove an external exploit or
+assess all upstream gates. It does establish that an adapter which treats the
+current snapshot or bridge frame alone as historical, authenticated session
+perception would not satisfy the approved provenance requirement.
+
 `SocialDeliveryAuthority.record_delivery` commits a source event reference,
 recipient and effective window. It checks `world_now` against that window but
 does not record `world_now` in the delivery event. Consequently the window's
