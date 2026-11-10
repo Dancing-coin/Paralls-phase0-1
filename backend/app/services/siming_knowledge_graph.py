@@ -366,6 +366,19 @@ class SimingKnowledgeGraph:
             if claimed_info == info_id and claim.knowledge_state == "known"
         )
 
+    def fairness_observations(self, actor_id: str, current_tick: int) -> tuple[int, int, list[str], int]:
+        """Return known information, participation, access qualities and known evidence."""
+        claims = [claim for (actor, _), claim in self._knowledge_claims.items()
+                  if actor == actor_id and claim.knowledge_state == "known"
+                  and claim.acquired_at is not None and claim.acquired_at <= current_tick]
+        participation = sum(1 for (actor, _), membership in self._membership_states.items()
+                            if actor == actor_id and membership.membership_type in ("active_member", "silent_member")
+                            and membership.joined_at is not None and membership.joined_at <= current_tick)
+        access = [record.access_quality for (actor, conversation), _ in self._access_history.items()
+                  if actor == actor_id and (record := self._access_at(actor, conversation, current_tick)) is not None]
+        evidence = sum(1 for claim in claims if self._information_items[claim.info_id].content_type == "evidence")
+        return len(claims), participation, access, evidence
+
     def who_is_in_conversation(self, conversation_id: str) -> list[str]:
         return sorted(
             actor_id

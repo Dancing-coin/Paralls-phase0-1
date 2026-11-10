@@ -98,6 +98,16 @@ InterventionEffectiveness = Literal[
 ]
 
 
+class FairnessDistribution(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    metric_name: str
+    actor_scores: dict[str, float] = Field(default_factory=dict)
+    gini_coefficient: float = Field(ge=0, le=1)
+    imbalance_level: Literal["balanced", "slight_tilt", "moderate_tilt", "severe_tilt", "critical"] = "balanced"
+    marginalized_actors: list[str] = Field(default_factory=list)
+    dominant_actors: list[str] = Field(default_factory=list)
+
+
 class FairnessStateSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -119,6 +129,14 @@ class FairnessStateSnapshot(BaseModel):
     global_imbalance_score: float | None = Field(default=None, ge=0.0, le=1.0)
     dominant_imbalance_type: DominantImbalanceType | None = None
     imbalance_reasons: list[str] = Field(default_factory=list)
+    information_distribution: FairnessDistribution | None = None
+    participation_distribution: FairnessDistribution | None = None
+    conversation_access_fairness: FairnessDistribution | None = None
+    suspicion_heat_distribution: FairnessDistribution | None = None
+    evidence_visibility_distribution: FairnessDistribution | None = None
+    overall_fairness_score: float = Field(default=1.0, ge=0, le=1)
+    needs_intervention: bool = False
+    intervention_urgency: Literal["none", "low", "medium", "high", "critical"] = "none"
 
 
 class InterventionCandidate(BaseModel):
