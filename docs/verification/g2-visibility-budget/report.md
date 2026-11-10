@@ -36,7 +36,9 @@ Its largest rows were:
 
 The paired 4,096-event row exceeds the provisional 40 ms absolute budget, and
 the 1,024-event debug row exceeds the 10% relative budget. The provisional
-budget is therefore not met in that run. A second paired run, preserved as
+budget is therefore not met in that run. The 4,096-event raw read itself was
+45.68 ms p95 in that row, so its absolute threshold exceedance cannot be
+attributed solely to the provisional filter. A second paired run, preserved as
 `paired-results-rerun.json`, met both provisional limits for all fixture rows;
 its highest 4,096-event filtered p95 was 37.79 ms and its highest p95 ratio was
 1.03x. The difference between runs makes the tail estimate unstable; a passing
