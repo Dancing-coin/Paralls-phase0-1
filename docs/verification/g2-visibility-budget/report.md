@@ -92,3 +92,29 @@ The grouped run sampled raw and filtered reads separately. The paired runs
 alternate order but remain sensitive to scheduling noise; repeat against the
 real implementation and production-shaped workload before making a production
 budget decision.
+
+## Component diagnostic
+
+`diagnose_components.py` records 200 alternating 4,096-event raw/filtered
+pairs, individual GC callbacks, thread CPU time and a separate scan of an
+already copied event list. On the same Windows/Python environment, raw wall
+p95 was 39.20 ms, filtered p95 was 39.30 ms, and the scan alone was 0.42 ms.
+Among filtered calls, 33 with a generation-2 collection had a 38.98 ms median
+and 40.24 ms p95; 167 without one had a 32.54 ms median and 33.16 ms p95.
+The filtered call's aggregate GC callback durations had a 7.72 ms p95.
+These observations support a GC contribution in this run; they do not prove
+the cause of the earlier 46.70 ms result. Thread CPU measurements still
+occurred in 15.625 ms increments and cannot resolve individual scheduling
+delays. Raw samples are in `component-diagnostic.json`.
+
+This is diagnostic evidence, not another budget pass: it registers GC
+callbacks and retains an extra copied event list, both of which may affect the
+workload. The fixture also correlates policy, stream and owner by the same
+index; the scan counts visible events rather than building a production
+projection. Its timing cannot establish performance or correctness of the
+actual principal-aware contract. The earlier exceedance and the gate on
+expanding visibility remain in force.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/diagnose_components.py --output docs/verification/g2-visibility-budget/component-diagnostic.json
+```
