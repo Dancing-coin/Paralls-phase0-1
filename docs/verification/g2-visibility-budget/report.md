@@ -2,6 +2,42 @@
 
 Status: two paired runs complete; one exceeds the provisional budget and G2 visibility expansion is paused.
 
+## Existing Economy Principal View
+
+`measure_economy_principals.py` measures the existing
+`EconomyPrivacyQueryService.account_redacted_payload` for the account owner,
+the configured economy authority, and a denied unrelated actor. It compares
+each call with `EconomyProjector.rebuild(store.read_events())` and account
+lookup, alternating order for 60 samples after five warmups. The harness checks
+the returned balance and owner-field redaction, and verifies the denied error.
+The fixture contains one real economy account event and 255, 1,023 or 4,095
+synthetic unrelated events, held in the in-memory store. Two independent
+processes ran on Windows 11 / Python 3.12.2; individual samples and environment
+are retained in `economy-principals-results.json` and its `-repeat` companion.
+
+| Events | Run | Baseline p95 range | View p95 range | Maximum p95 ratio |
+|---:|---:|---:|---:|---:|
+| 256 | 1 | 1.95-2.45 ms | 1.94-2.07 ms | 1.00 |
+| 256 | 2 | 1.94-3.27 ms | 1.96-2.95 ms | 1.01 |
+| 1,024 | 1 | 10.25-12.07 ms | 9.39-12.09 ms | 1.00 |
+| 1,024 | 2 | 7.98-13.27 ms | 7.98-19.13 ms | 1.44 |
+| 4,096 | 1 | 66.47-76.80 ms | 71.79-79.44 ms | 1.14 |
+| 4,096 | 2 | 69.17-76.65 ms | 71.46-76.15 ms | 1.03 |
+
+These are real domain authorization and redaction calls, but the caller supplies
+the principal string and the query is not a production-authenticated `read_as`
+route. The fixture, hot in-memory store and one account are not representative
+production traffic. The view includes full domain reconstruction, unlike the
+earlier metadata scan; their absolute times and budgets are not interchangeable.
+Ratios of independently computed p95 values are sensitive to scheduling and do
+not establish marginal cost. Neither measurement satisfies the G2 performance
+gate, and historical exceedances remain in force. No runtime behavior changed.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_economy_principals.py --output D:/Temp/g2-economy-principals-20261110.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/measure_economy_principals.py --output D:/Temp/g2-economy-principals-20261110-repeat.json
+```
+
 Command, from the repository root:
 
 ```powershell
