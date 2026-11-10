@@ -127,3 +127,23 @@ constructing another store over a similarly modified database raised
 `gameplay_snapshot_schema_unsupported`. This demonstrates the open-connection
 gap in the current implementation; schema 4 here was an experimental marker,
 not a proposed or implemented migration. No project database was modified.
+
+### Existing Runtime Lease
+
+Production startup acquires `RuntimeStorageLease` for the configured graph
+path before restoring runtime state. The Gameplay SQLite path is derived from
+that graph path by appending `.gameplay.json`. The lease uses an OS file lock
+and is released by runtime resource closure after the execution owner drains;
+shutdown retains the execution instance when its drain times out. Existing
+`test_runtime_storage_lease.py` exercises process exclusion and OS release
+after process exit. `RuntimeCadencePublisher._restore` separately verifies
+checkpoint/receipt anchors, bounded history and pending outbox state.
+
+These mechanisms provide useful inputs for a future exclusive migration of a
+single runtime archive. They do not issue a per-stream epoch, authenticate a
+canonical writer at append, or prevent a direct store connection that does not
+hold the graph lease. A crash also releases the OS lease without recording a
+completed drain; recovery must inspect durable pending work and unknown outcomes
+before any authority transfer. A migration relying on this lease must verify
+that every participating writer uses the same resolved graph identity and that
+old or external connections cannot bypass the fence.
