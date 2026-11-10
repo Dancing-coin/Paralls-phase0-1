@@ -3,6 +3,13 @@
 Status: one existing character-memory path corrected; this is not completion
 of G2 visibility, three-time semantics or authority fencing.
 
+Subsequent call-chain inspection found that real player activation may pass a
+Godot millisecond `producer_ts` to the comparison, while Population candidate
+knowledge time can use seconds-based window ticks. The tests below use matching
+synthetic values and do not establish that those production time domains match.
+Delayed memory may become visible early; a trusted mapping and production-path
+regression are still required.
+
 An early materialization attempt previously persisted a permanent
 `temporal_knowledge_denied` receipt. The same candidate then replayed that
 refusal after its knowledge time, including after restart. New early attempts

@@ -2,9 +2,17 @@
 
 This unit validates the existing character-memory materialization input; it
 does not establish a trusted world clock or complete G2 visibility and epoch
-enforcement. A materialization tick must be a non-negative integer, excluding
+enforcement. The `producer_ts` input must be a non-negative integer, excluding
 booleans. Invalid inputs raise `materialization_tick_invalid` before reading
 candidates or writing timeline, memory, cursor or receipts.
+
+Subsequent call-chain inspection found that production player input can supply
+Godot `Time.get_ticks_msec()` as `producer_ts`, while seed candidate
+`knowledge_available_at` can originate from Population's seconds-based window.
+This check validates only the representation, not the clock domain or source.
+Comparing those values may materialize delayed memory early. G2 known-time
+enforcement remains open until a trusted, explicitly mapped world time is used
+and the real entry paths and recovery are tested.
 
 Focused command, from the repository root:
 
