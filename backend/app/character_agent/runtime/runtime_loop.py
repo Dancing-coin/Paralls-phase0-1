@@ -2637,6 +2637,8 @@ class CharacterAgentRuntime:
     def materialize_pending_seed_memories(
         self, actor_id: str, producer_ts: int
     ) -> list[CharacterMemoryMaterializationReceipt]:
+        if type(producer_ts) is not int or producer_ts < 0:
+            raise ValueError("materialization_tick_invalid")
         candidates = {value["candidate_id"]: CharacterMemoryCandidate.model_validate(value) for value in self.get_pending_seed_candidates(actor_id)}
         receipts: list[CharacterMemoryMaterializationReceipt] = []
         for candidate_id, candidate in list(candidates.items()):

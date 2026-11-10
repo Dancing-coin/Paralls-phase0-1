@@ -435,6 +435,19 @@ def test_delayed_memory_becomes_known_after_early_attempt_and_restart(tmp_path: 
     restored.close()
 
 
+@pytest.mark.parametrize("invalid_tick", [True, -1, 100.5, float("nan"), float("inf"), "101", None])
+def test_materialization_rejects_invalid_clock_before_any_write(invalid_tick: object) -> None:
+    runtime = CharacterAgentRuntime()
+    runtime.apply_character_continuity_command(command_for_char_a())
+    before = runtime.get_session_timeline("char_a")
+    with pytest.raises(ValueError, match="materialization_tick_invalid"):
+        runtime.materialize_pending_seed_memories("char_a", producer_ts=invalid_tick)
+    assert runtime.get_session_timeline("char_a") == before
+    assert runtime.get_memory_bundle("char_a")["event_memories"] == []
+    assert runtime.get_character_memory_cursor("char_a") == 0
+    runtime.close()
+
+
 def test_legacy_temporal_refusal_preserved_and_memory_delivered_once(tmp_path: Path) -> None:
     runtime = CharacterAgentRuntime(storage_root=tmp_path)
     runtime.apply_character_continuity_command(command_for_char_a())
