@@ -106,6 +106,34 @@ The exact trusted authority and freeze/drain owner for a first real stream
 remain to be traced before enabling it. This matrix is a design constraint,
 not an implementation or evidence of G2 acceptance.
 
+## SQLite Freeze Feasibility Probe
+
+On Windows 11 and Python 3.12.2, `probe_sqlite_freeze.py` created an isolated
+database, committed a session-shaped test batch, opened the store connection,
+then installed a persistent `BEFORE INSERT` trigger on the events table from a
+second connection. The existing connection's exact retry returned its original
+receipt. A new protected-stream batch was rejected with the existing generic
+`durable_persistence_failed` result; a mixed batch with an unprotected event
+first also rolled back its transaction, events, outbox and stream head. A raw
+SQLite insert was rejected. After removing the trigger, a new batch committed.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-visibility-budget/probe_sqlite_freeze.py --database D:/Temp/g2-epoch-trigger-probe-20261110-b.db
+```
+
+This is a freeze of all writers for a single stream, not an epoch fence. It
+does not authenticate a writer, cover other SQL mutation paths, persist pending
+handoff work, or distinguish stale epoch from storage failure. Any connection
+with schema modification rights can remove the trigger, as the probe itself
+does. The isolated run uses the current store code, not an actual old-version
+process; it does not prove migration correctness under concurrent long-running
+transactions, old application code or direct database modification. The
+earlier open-connection example predates `6383df5a`; current writers also check
+schema within the write transaction. These results warrant testing a database
+guard as one component of an exclusive migration, not enabling a production
+fence or declaring handoff complete. The test database is left at the named
+temporary path. Revert the diagnostic commit to remove this probe and record.
+
 ## Population Candidate And Old-Connection Check
 
 The production assembly in `backend/app/main.py:_build_population_driver`
