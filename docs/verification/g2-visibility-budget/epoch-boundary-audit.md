@@ -105,3 +105,25 @@ An implementation unit must include all of these observable cases:
 The exact trusted authority and freeze/drain owner for a first real stream
 remain to be traced before enabling it. This matrix is a design constraint,
 not an implementation or evidence of G2 acceptance.
+
+## Population Candidate And Old-Connection Check
+
+The production assembly in `backend/app/main.py:_build_population_driver`
+constructs a `RuntimeCadencePublisher` and a `PopulationCadenceDriver` over
+the shared Gameplay store. The publisher's real stream is
+`population-cadence:<world_ref>`, with idempotency principal
+`world_runtime.cadence`. Its `_restore` validates checkpoint and receipt
+anchors, replays a bounded tail, and tracks outbox delivery. The driver's
+timeline currently sets `epoch_ref` to the constant `population-runtime:v1`;
+neither this constant nor the idempotency principal establishes a persisted
+canonical writer or a freeze/drain handoff. Recovery evidence is useful input
+to a future handoff, but does not alone establish that other writers stopped.
+
+On Windows 11, Python 3.12.2, an isolated temporary SQLite store was opened
+and made to establish its connection. A second SQLite connection changed only
+`metadata.schema` from `3` to `4` and committed. The already-open store then
+successfully appended the existing two-event `_batch()` fixture. After close,
+constructing another store over a similarly modified database raised
+`gameplay_snapshot_schema_unsupported`. This demonstrates the open-connection
+gap in the current implementation; schema 4 here was an experimental marker,
+not a proposed or implemented migration. No project database was modified.
