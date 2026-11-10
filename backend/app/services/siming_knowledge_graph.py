@@ -379,6 +379,17 @@ class SimingKnowledgeGraph:
         evidence = sum(1 for claim in claims if self._information_items[claim.info_id].content_type == "evidence")
         return len(claims), participation, access, evidence
 
+    def active_conversations(self, current_tick: int) -> list[Conversation]:
+        return [conversation.model_copy(deep=True) for conversation in self._conversations.values()
+                if conversation.started_at <= current_tick and (conversation.ended_at is None or current_tick <= conversation.ended_at)]
+
+    def awareness_at(self, observer_id: str, observed_id: str, conversation_id: str, current_tick: int) -> AwarenessLevel:
+        relation = self._awareness_relations.get((observer_id, observed_id, conversation_id))
+        return relation.awareness_level if relation and relation.updated_at <= current_tick else "unaware"
+
+    def has_secret(self, conversation_id: str, current_tick: int) -> bool:
+        return any(item.conversation_id == conversation_id and item.content_type == "secret" and item.revealed_at <= current_tick for item in self._information_items.values())
+
     def who_is_in_conversation(self, conversation_id: str) -> list[str]:
         return sorted(
             actor_id
