@@ -122,3 +122,45 @@ async def test_committed_receipt_repairs_failed_clock_activation(application, mo
     receipt = await asyncio.wrap_future(main.submit_temporal_profile_migration(**args))
     assert receipt.committed and driver.clock.tick == 129600
     assert len([e for e in await _events(main) if e.event_type.endswith("time_migrated")]) == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fail_after_update", [False, True])
+async def test_committed_receipt_repairs_failed_binding_update(application, monkeypatch, fail_after_update):
+    main, start, advance = application
+    await start()
+    await _apply(main, "timed", duration=86401)
+    await advance(86400)
+    args = request(main)
+    driver = main._population_runtime_driver
+    from app.world_runtime import temporal_migration
+
+    original = temporal_migration._bindings
+    def fail_binding(*values):
+        if fail_after_update:
+            original(*values)
+        raise RuntimeError("binding_fault")
+
+    monkeypatch.setattr(temporal_migration, "_bindings", fail_binding)
+    with pytest.raises(RuntimeError, match="binding_fault"):
+        await asyncio.wrap_future(main.submit_temporal_profile_migration(**args))
+    assert driver.clock.tick == 129600
+    assert driver.migration_pending
+    monkeypatch.setattr(temporal_migration, "_bindings", original)
+
+    actor, binding = next(iter(main.status_temporal_consumer.bindings.items()))
+    main.status_temporal_consumer.bindings[actor] = binding.model_copy(update={"profile_revision": "invalid"})
+    with pytest.raises(ValueError, match="status_time_binding_mismatch"):
+        await asyncio.wrap_future(main.submit_temporal_profile_migration(**args))
+    assert driver.migration_pending
+    main.status_temporal_consumer.bindings[actor] = binding
+
+    receipt = await asyncio.wrap_future(main.submit_temporal_profile_migration(**args))
+    assert receipt.committed
+    assert not driver.migration_pending
+    assert all(binding.profile_revision == args["profile"].revision
+               and binding.mapping_revision == args["mapping"].revision
+               for binding in main.status_temporal_consumer.bindings.values())
+    assert len([e for e in await _events(main) if e.event_type.endswith("time_migrated")]) == 1
+    await advance(172800)
+    assert main.status_temporal_consumer.pending_work() == ()

@@ -97,15 +97,21 @@ def restore_clock(driver):
 def _bindings(consumer, driver, request):
     old = _profile(request["old_profile"])
     old_mapping = _mapping(request["old_mapping"])
+    pins = driver._time_pins(driver.current_tick)
     for actor in request["actors"]:
         binding = consumer.bindings.get(actor)
+        if binding is not None and all(
+            getattr(binding, key) == value
+            for key, value in dict(pins, world_ref=driver.world_runtime.mode.world_ref).items()
+            if key in type(binding).model_fields
+        ):
+            continue
         if binding is None or (binding.profile_revision, binding.mapping_revision,
                                binding.step_duration) != (
                 old.revision, old_mapping.revision, f"{old.step_duration.numerator}/{old.step_duration.denominator}"):
             raise ValueError("status_time_binding_mismatch")
-        pins = driver._time_pins(driver.current_tick)
         consumer.bindings[actor] = binding.model_copy(update={
-            key: pins[key] for key in binding.model_fields if key in pins})
+            key: pins[key] for key in type(binding).model_fields if key in pins})
 
 
 def _finish(driver, consumer, request):
@@ -155,9 +161,11 @@ def submit_migration(driver, consumer, *, migration_id, advancement_owner_ref, b
             if any(request[key] != value for key, value in identity.items()):
                 raise ValueError("temporal_migration_identity_reused")
             if event.event_type.endswith(".committed"):
-                if driver.clock.temporal_profile.revision != request["profile"]["revision"]:
+                needs_activation = driver.clock.temporal_profile.revision != request["profile"]["revision"]
+                if needs_activation:
                     new, mapping = _profile(request["profile"]), _mapping(request["mapping"])
                     driver.activate_migration(new, mapping, boundary=request["boundary"])
+                if needs_activation or driver.migration_pending:
                     _bindings(consumer, driver, request)
                     driver.migration_pending = False
                 return driver.world_runtime.store.get_by_idempotency(
