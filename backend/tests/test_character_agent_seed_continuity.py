@@ -489,6 +489,32 @@ def test_legacy_deferred_materialization_recovers_projection_failure(tmp_path: P
     runtime.close()
 
 
+def test_legacy_deferred_memory_survives_graph_checkpoint_restore() -> None:
+    graph = InMemoryHeavenlyGraphAdapter()
+    continuity = CharacterGraphContinuityStore(
+        graph,
+        scope_resolver=lambda actor_id: HeavenlyGraphScope(
+            world_id="world:continuity", session_id="session:continuity",
+            story_branch_id="branch:main", graph_namespace="actor_private",
+            owner_actor_id=actor_id,
+        ),
+    )
+    runtime = CharacterAgentRuntime(continuity_store=continuity)
+    runtime.apply_character_continuity_command(command_for_char_a())
+    candidate_id = "memory:char_a:default"
+    runtime._remember_materialization_receipt(candidate_id, CharacterMemoryMaterializationReceipt(
+        candidate_id=candidate_id, actor_ref="char_a", status="rejected",
+        refusal_reason="temporal_knowledge_denied",
+    ))
+    assert runtime.materialize_pending_seed_memories("char_a", producer_ts=101)[0].status == "committed"
+    restored = CharacterAgentRuntime(continuity_store=continuity)
+    assert restored.materialize_pending_seed_memories("char_a", producer_ts=102)[0].status == "idempotent_replay"
+    assert restored.get_character_memory_cursor("char_a") == 101
+    assert len(restored.get_memory_bundle("char_a")["event_memories"]) == 1
+    restored.close()
+    runtime.close()
+
+
 def test_materialization_memory_failure_retries_committed_fact_without_duplicate(
     tmp_path: Path, monkeypatch
 ) -> None:

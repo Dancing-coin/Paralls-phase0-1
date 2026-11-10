@@ -22,6 +22,11 @@ attempt followed by restart and delivery, legacy refusal preservation and
 restart, and projection failure after a deferred commit. A separate in-memory
 graph checkpoint restore exercise verified replay and one memory after the
 legacy path; it was not a Godot or production deployment test.
+The graph checkpoint exercise is now also a regression test:
+`python -m pytest backend/tests/test_character_agent_seed_continuity.py::test_legacy_deferred_memory_survives_graph_checkpoint_restore backend/tests/test_character_agent_seed_continuity.py::test_legacy_temporal_refusal_preserved_and_memory_delivered_once -q`
+with the same Python 3.12 interpreter reported 2 passed and 2 deprecation
+warnings. The full baseline below predates this additional test; runtime code
+has not changed since that run.
 
 Full G0-range command:
 
