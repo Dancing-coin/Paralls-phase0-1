@@ -26,6 +26,7 @@ class SimingKnowledgeGraph:
         self._access_history: dict[tuple[str, str], list[PerceptionAccess]] = {}
         self._latest_access: dict[tuple[str, str], PerceptionAccess] = {}
         self._membership_states: dict[tuple[str, str], MembershipState] = {}
+        self._membership_history: dict[tuple[str, str], list[tuple[int, MembershipState]]] = {}
         self._membership_updated_at: dict[tuple[str, str], int] = {}
         self._knowledge_claims: dict[tuple[str, str], KnowledgeClaim] = {}
         self._higher_order_claims: dict[tuple[str, str, str], KnowledgeClaim] = {}
@@ -191,6 +192,7 @@ class SimingKnowledgeGraph:
                 membership_type=membership_type, joined_at=joined_at, reason=reason,
             )
         self._membership_states[key] = state
+        self._membership_history.setdefault(key, []).append((current_tick, state))
         self._membership_updated_at[key] = current_tick
         members = set(conversation.participant_ids)
         listeners = set(conversation.listener_ids)
@@ -382,9 +384,10 @@ class SimingKnowledgeGraph:
         claims = [claim for (actor, _), claim in self._knowledge_claims.items()
                   if actor == actor_id and claim.knowledge_state == "known"
                   and claim.acquired_at is not None and claim.acquired_at <= current_tick]
-        participation = sum(1 for (actor, _), membership in self._membership_states.items()
-                            if actor == actor_id and membership.membership_type in ("active_member", "silent_member")
-                            and membership.joined_at is not None and membership.joined_at <= current_tick)
+        participation = sum(1 for actor, conversation in self._membership_history
+                            if actor == actor_id
+                            and (membership := self._membership_at(actor, conversation, current_tick)) is not None
+                            and membership.membership_type in ("active_member", "silent_member"))
         access = [record.access_quality for (actor, conversation), _ in self._access_history.items()
                   if actor == actor_id and (record := self._access_at(actor, conversation, current_tick)) is not None]
         evidence = sum(1 for claim in claims if self._information_items[claim.info_id].content_type == "evidence")
@@ -438,6 +441,12 @@ class SimingKnowledgeGraph:
         if conversation is None:
             raise KeyError(f"unknown conversation: {conversation_id}")
         return conversation
+
+    def _membership_at(self, actor_id: str, conversation_id: str, at: int) -> MembershipState | None:
+        records = self._membership_history.get((actor_id, conversation_id), [])
+        latest = max((record for record in reversed(records) if record[0] <= at),
+                     key=lambda record: record[0], default=None)
+        return latest[1] if latest is not None else None
 
     def _access_at(self, actor_id: str, conversation_id: str, at: int) -> PerceptionAccess | None:
         return max(
