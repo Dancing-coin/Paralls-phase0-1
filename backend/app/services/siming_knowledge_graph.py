@@ -1,6 +1,7 @@
 """基于会话接入维护司命的有限阶知识状态。"""
 
 from app.models.siming_knowledge_graph import (
+    AccessQuality,
     AccessResolution,
     AwarenessLevel,
     AwarenessRelation,
@@ -404,19 +405,26 @@ class SimingKnowledgeGraph:
     def has_secret(self, conversation_id: str, current_tick: int) -> bool:
         return any(item.conversation_id == conversation_id and item.content_type == "secret" and item.revealed_at <= current_tick for item in self._information_items.values())
 
-    def who_is_in_conversation(self, conversation_id: str) -> list[str]:
+    def access_quality_at(self, actor_id: str, conversation_id: str, current_tick: int) -> AccessQuality:
+        access = self._access_at(actor_id, conversation_id, current_tick)
+        return access.access_quality if access is not None else "none"
+
+    def who_is_in_conversation(self, conversation_id: str, current_tick: int | None = None) -> list[str]:
         return sorted(
             actor_id
-            for (actor_id, conv_id), member in self._membership_states.items()
+            for (actor_id, conv_id), latest in self._membership_states.items()
             if conv_id == conversation_id
+            and (member := latest if current_tick is None else self._membership_at(actor_id, conv_id, current_tick)) is not None
             and member.membership_type in ("candidate", "silent_member", "active_member")
         )
 
-    def who_is_listening(self, conversation_id: str) -> list[str]:
+    def who_is_listening(self, conversation_id: str, current_tick: int | None = None) -> list[str]:
         return sorted(
             actor_id
-            for (actor_id, conv_id), member in self._membership_states.items()
-            if conv_id == conversation_id and member.membership_type == "listener"
+            for (actor_id, conv_id), latest in self._membership_states.items()
+            if conv_id == conversation_id
+            and (member := latest if current_tick is None else self._membership_at(actor_id, conv_id, current_tick)) is not None
+            and member.membership_type == "listener"
         )
 
     def _is_known_by_member(self, actor_id: str, conversation_id: str, current_tick: int) -> bool:

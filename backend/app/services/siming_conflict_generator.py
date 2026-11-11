@@ -28,7 +28,8 @@ class SimingConflictGenerator:
         self._knowledge_graph = knowledge_graph
 
     def approve_candidate(self, opportunity: OpportunityCandidate, *, snapshot: FairnessStateSnapshot, policy: SimingInterventionPolicy) -> InterventionCandidate | None:
-        if not opportunity.feasible or not opportunity.actor_ids:
+        if not (opportunity.feasible and opportunity.motivation_check
+                and opportunity.knowledge_check and opportunity.physical_check) or not opportunity.actor_ids:
             return None
         for actor in opportunity.actor_ids:
             candidate = InterventionCandidate(candidate_id=f"{opportunity.opportunity_id}:{actor}", room_id=snapshot.room_id, scene_id=snapshot.scene_id, zone_id=snapshot.zone_id, causation_id=snapshot.causation_id, correlation_id=snapshot.correlation_id, proposed_band="opportunity", target_actor_id=actor, explanation=opportunity.reason, confidence=opportunity.narrative_value)
@@ -49,15 +50,16 @@ class SimingConflictGenerator:
 
         for conversation in self._knowledge_graph.active_conversations(current_tick):
             cid = conversation.conversation_id
-            members = sorted(actors.intersection(self._knowledge_graph.who_is_in_conversation(cid)))
-            listeners = sorted(actors.intersection(self._knowledge_graph.who_is_listening(cid)))
+            members = sorted(actors.intersection(self._knowledge_graph.who_is_in_conversation(cid, current_tick)))
+            listeners = sorted(actors.intersection(self._knowledge_graph.who_is_listening(cid, current_tick)))
             for first, second in combinations(members, 2):
                 aware = any(self._knowledge_graph.awareness_at(a, b, cid, current_tick) != "unaware" for a, b in ((first, second), (second, first)))
                 add("confrontation", f"{cid}:{first}:{second}", [first, second], aware, {first, second} <= present, .7)
             if members and listeners and self._knowledge_graph.has_secret(cid, current_tick):
                 for listener in listeners:
                     hidden = all(self._knowledge_graph.awareness_at(member, listener, cid, current_tick) == "unaware" for member in members)
-                    add("secret_exposure", f"{cid}:{listener}", members + [listener], hidden, set(members + [listener]) <= present, .8)
+                    can_hear = self._knowledge_graph.access_quality_at(listener, cid, current_tick) != "none"
+                    add("secret_exposure", f"{cid}:{listener}", members + [listener], hidden and can_hear, set(members + [listener]) <= present, .8)
         for actor in sorted(actors & isolated):
             add("isolation", actor, [actor], True, actor in present, .4)
         return candidates
