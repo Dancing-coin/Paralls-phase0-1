@@ -132,6 +132,8 @@ def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_pat
     assert _propose(service, session_id="restart-session").accepted
     event = store.read_stream("session:restart-session")[0]
     expected_projection = store.get_outbox(f"outbox:{event.event_id}").payload_projection["payload"]
+    monkeypatch.setattr(main, "gameplay_event_store", store)
+    before_reopen = main._build_committed_session_event_projection(event.event_id)
     store.close()
     reopened = DurableGameplayEventStore(path)
     try:
@@ -142,12 +144,15 @@ def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_pat
             def missing_outbox(outbox_id):
                 raise KeyError(outbox_id)
             monkeypatch.setattr(reopened, "get_outbox", missing_outbox)
-        restored_projection = main._build_committed_session_event_projection(event)
-        assert restored_projection is not None
-        assert restored_projection["payload"]["event_id"] == event.event_id
         if outbox_available:
+            restored_projection = main._build_committed_session_event_projection(event.event_id)
+            assert restored_projection == before_reopen
+            assert restored_projection["payload"]["event_id"] == event.event_id
             assert restored_projection["payload"]["slot_assignments"] == expected_projection["slot_assignments"]
             assert restored_projection["payload"]["participant_refs"] == expected_projection["participant_refs"]
+        else:
+            with pytest.raises(ValueError, match="^session_access_unavailable$"):
+                main._build_committed_session_event_projection(event.event_id)
         with TestClient(app).websocket_connect("/ws") as websocket:
             websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
                 "session_id": "restart-session", "after_global_sequence": 0,
@@ -162,7 +167,7 @@ def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_pat
         reopened.close()
 
 
-@pytest.mark.parametrize("outbox_state", ["valid", "missing", "mismatched"])
+@pytest.mark.parametrize("outbox_state", ["valid", "missing", "event_id", "transaction_id", "global_sequence", "topic", "audience"])
 def test_websocket_session_pull_ignores_forged_bus_projection(monkeypatch, outbox_state):
     reset_runtime_state()
     assert _propose(main.embodied_interaction_session_service, session_id="forged-session").accepted
@@ -179,13 +184,17 @@ def test_websocket_session_pull_ignores_forged_bus_projection(monkeypatch, outbo
         def missing_outbox(outbox_id):
             raise KeyError(outbox_id)
         monkeypatch.setattr(main.gameplay_event_store, "get_outbox", missing_outbox)
-    elif outbox_state == "mismatched":
+    elif outbox_state != "valid":
         entry = main.gameplay_event_store.get_outbox(f"outbox:{event.event_id}")
-        monkeypatch.setattr(main.gameplay_event_store, "get_outbox", lambda _: entry.model_copy(update={"topic": "other"}))
-    internal_projection = main._build_committed_session_event_projection(event)
-    assert internal_projection is not None
-    assert internal_projection["payload"]["global_sequence"] == event.global_sequence
-    assert "private-forged-value" not in str(internal_projection)
+        wrong_value = -1 if outbox_state == "global_sequence" else "other"
+        monkeypatch.setattr(main.gameplay_event_store, "get_outbox", lambda _: entry.model_copy(update={outbox_state: wrong_value}))
+    if outbox_state == "valid":
+        internal_projection = main._build_committed_session_event_projection(event.event_id)
+        assert internal_projection["payload"]["global_sequence"] == event.global_sequence
+        assert "private-forged-value" not in str(internal_projection)
+    else:
+        with pytest.raises(ValueError, match="^session_access_unavailable$"):
+            main._build_committed_session_event_projection(event.event_id)
     with TestClient(app).websocket_connect("/ws") as websocket:
         websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
             "session_id": "forged-session", "after_global_sequence": 0,
@@ -222,9 +231,8 @@ def test_websocket_session_pull_rejects_authority_only_event(dispatch, event_typ
             audience="godot_room", payload_projection={"payload": {"reason_code": "secret-value"}},
         )]
     assert main.gameplay_event_store.append_batch(batch).committed
-    assert main._build_committed_session_event_projection(
-        main.gameplay_event_store.read_stream("session:private-session")[-1]
-    ) is None
+    with pytest.raises(ValueError, match="^session_access_unavailable$"):
+        main._build_committed_session_event_projection(batch.events[0].event_id)
     if dispatch:
         assert GameplayOutboxDispatcher(store=main.gameplay_event_store, bus=main.authority_event_bus).dispatch_pending().failed_count == 0
     with TestClient(app).websocket_connect("/ws") as websocket:
@@ -238,6 +246,12 @@ def test_websocket_session_pull_rejects_authority_only_event(dispatch, event_typ
     }
     assert "private-session" not in str(response)
     assert "secret-value" not in str(response)
+
+
+def test_committed_session_projection_rejects_unknown_event():
+    reset_runtime_state()
+    with pytest.raises(ValueError, match="^session_access_unavailable$"):
+        main._build_committed_session_event_projection("unknown-event")
 
 
 def _service() -> tuple[EmbodiedInteractionSessionService, GameplayEventStore, InMemoryAuthorityEventBus, EmbodiedEvidenceLedger]:

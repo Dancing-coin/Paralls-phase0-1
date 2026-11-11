@@ -6796,59 +6796,28 @@ def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> 
     })]
 
 
-def _build_committed_session_event_projection(event: object) -> dict[str, object] | None:
-    """Build an integrity-checked internal projection, not a caller authorization decision."""
-    if (getattr(event, "visibility_policy", "") != "session_public_safe"
-            or not str(getattr(event, "event_type", "")).startswith("embodied.interaction_session.")):
-        return None
+def _build_committed_session_event_projection(event_id: str) -> dict[str, object]:
+    """Build an unintegrated projection from committed facts, without authorizing disclosure.
+
+    Before integration into a read path, principal-specific disclosure must be
+    decided for participants, observers, recipients, or authorized debugging.
+    """
     try:
-        outbox = gameplay_event_store.get_outbox(f"outbox:{event.event_id}")
-    except KeyError:
-        outbox = None
-    expected_payload = None
-    if (outbox is not None and outbox.event_id == event.event_id
-            and outbox.transaction_id == event.transaction_id
-            and outbox.global_sequence == event.global_sequence
-            and outbox.topic == event.event_type and outbox.audience == "godot_room"):
-        projection = outbox.payload_projection.get("payload")
-        if isinstance(projection, dict):
-            expected_payload = {
-                **projection,
-                "outbox_id": outbox.outbox_id,
-                "transaction_id": event.transaction_id,
-                "event_id": event.event_id,
-                "stream_id": event.stream_id,
-                "stream_revision": event.stream_revision,
-                "global_sequence": event.global_sequence,
-                "committed_payload": event.payload,
-            }
-    matching_authority_event = next(
-        (
-            authority_event
-            for authority_event in authority_event_bus.list_events()
-            if expected_payload is not None
-            and authority_event.event_id == event.event_id
-            and authority_event.event_type == event.event_type
-            and authority_event.payload == expected_payload
-        ),
-        None,
-    )
-    if matching_authority_event is not None:
-        projected = _embodied_session_event_envelope_from_authority_event(matching_authority_event)
-        if projected is not None:
-            return projected
-    session_id = str(event.payload.get("session_id", "") or "")
-    if expected_payload is not None and session_id and not embodied_interaction_session_service.session_state(session_id):
-        restored = GameplayOutboxDispatcher._authority_event_for(outbox, event)
-        projected = _embodied_session_event_envelope_from_authority_event(restored)
-        if projected is not None:
-            return projected
-    return _embodied_session_event_envelope_from_gameplay_event(event)
-
-
-def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent) -> dict[str, object] | None:
-    if not event.event_type.startswith("embodied.interaction_session."):
-        return None
+        committed_event = gameplay_event_store.get_event(event_id)
+        outbox = gameplay_event_store.get_outbox(f"outbox:{event_id}")
+    except KeyError as exc:
+        raise ValueError("session_access_unavailable") from exc
+    if (committed_event.event_id != event_id
+            or committed_event.visibility_policy != "session_public_safe"
+            or not committed_event.event_type.startswith("embodied.interaction_session.")
+            or outbox.event_id != committed_event.event_id
+            or outbox.transaction_id != committed_event.transaction_id
+            or outbox.global_sequence != committed_event.global_sequence
+            or outbox.topic != committed_event.event_type
+            or outbox.audience != "godot_room"
+            or not isinstance(outbox.payload_projection.get("payload"), dict)):
+        raise ValueError("session_access_unavailable")
+    event = GameplayOutboxDispatcher._authority_event_for(outbox, committed_event)
     payload = dict(event.payload)
     committed_payload = payload.get("committed_payload", {})
     if not isinstance(committed_payload, dict):
@@ -6890,56 +6859,6 @@ def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent)
             safe_payload[field_name] = payload[field_name]
         elif field_name in committed_payload:
             safe_payload[field_name] = committed_payload[field_name]
-    return _as_envelope("embodied_interaction_session_event", safe_payload)
-
-
-def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[str, object]:
-    event_type = str(getattr(event, "event_type", "") or "")
-    event_payload = getattr(event, "payload", {})
-    payload = dict(event_payload) if isinstance(event_payload, dict) else {}
-    state = str(payload.get("state", "") or "")
-    safe_payload: dict[str, object] = {
-        "event_type": event_type,
-        "session_id": str(payload.get("session_id", "") or ""),
-        "semantic_action": str(payload.get("semantic_action", "") or ""),
-        "state": state,
-        "safe_phase": state,
-        "sync_status": state,
-        "transaction_id": str(getattr(event, "transaction_id", "") or ""),
-        "event_id": str(getattr(event, "event_id", "") or ""),
-        "stream_id": str(getattr(event, "stream_id", "") or ""),
-        "stream_revision": int(getattr(event, "stream_revision", 0) or 0),
-        "global_sequence": int(getattr(event, "global_sequence", 0) or 0),
-    }
-    session_projection = (
-        embodied_interaction_session_service.public_projection(safe_payload["session_id"])
-        if safe_payload["session_id"] and embodied_interaction_session_service.session_state(safe_payload["session_id"])
-        else {}
-    )
-    for field_name in ("semantic_action", "participant_refs", "target_refs"):
-        if not safe_payload.get(field_name) and field_name in session_projection:
-            safe_payload[field_name] = session_projection[field_name]
-    allowed_projection_fields = {
-        "initiator_ref",
-        "participant_ref",
-        "participant_refs",
-        "target_refs",
-        "slot_assignments",
-        "reservation_refs",
-        "actor_ref",
-        "target_ref",
-        "reason_code",
-        "attempt_ref",
-        "attempt_refs",
-        "terminal_status",
-        "settlement_ref",
-        "policy_revision",
-        "scene_revision",
-        "visibility_policy",
-    }
-    for field_name in allowed_projection_fields:
-        if field_name in payload:
-            safe_payload[field_name] = payload[field_name]
     return _as_envelope("embodied_interaction_session_event", safe_payload)
 
 

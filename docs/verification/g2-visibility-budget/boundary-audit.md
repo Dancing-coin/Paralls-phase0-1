@@ -262,3 +262,10 @@ performance. Keep the session visibility gate open until its actual principal
 path is available for a measured run. Earlier durable-store and other fixture
 exceedances remain valid evidence. D2–D10 remain OPEN; B3 client sampling,
 credential renewal and end-to-end interaction remain unaccepted.
+
+The unintegrated session projection helper now resolves the event by ID and
+requires a matching committed outbox before constructing the projection. It
+no longer falls back to bus events, gameplay events alone, or live session
+state. Principal-specific disclosure remains a prerequisite for any future
+read-path integration. This change affects only direct tests of the helper;
+the fixed WebSocket denial remains unchanged.
