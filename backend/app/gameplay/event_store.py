@@ -193,7 +193,26 @@ class GameplayEventStore:
             row = self._authority_streams.get(stream_id)
             return dict(row) if row is not None else None
 
-    def append_batch(self, payload: AtomicEventBatch | dict[str, Any]) -> AppendBatchResult:
+    def register_authority_stream(self, stream_id: str, scope_ref: str, epoch: int, writer_ref: str) -> None:
+        row = {"stream_id": stream_id, "scope_ref": scope_ref, "epoch": epoch, "writer_ref": writer_ref}
+        _authority_streams([row])
+        with self._lock:
+            existing = self._authority_streams.get(stream_id)
+            if existing is not None and existing != row:
+                raise GameplayEventStoreSnapshotError("authority_stream_already_registered")
+            self._authority_streams[stream_id] = row
+
+    def update_authority_stream(self, stream_id: str, scope_ref: str, epoch: int, writer_ref: str, new_epoch: int, new_writer_ref: str) -> None:
+        old = {"stream_id": stream_id, "scope_ref": scope_ref, "epoch": epoch, "writer_ref": writer_ref}
+        new = {"stream_id": stream_id, "scope_ref": scope_ref, "epoch": new_epoch, "writer_ref": new_writer_ref}
+        _authority_streams([old])
+        _authority_streams([new])
+        with self._lock:
+            if self._authority_streams.get(stream_id) != old or new_epoch <= epoch:
+                raise GameplayEventStoreSnapshotError("authority_stream_update_conflict")
+            self._authority_streams[stream_id] = new
+
+    def append_batch(self, payload: AtomicEventBatch | dict[str, Any], *, authority_contexts: object = None) -> AppendBatchResult:
         with self._lock:
             batch = self._validate_append_payload(payload)
             if isinstance(batch, AppendBatchResult):
@@ -208,6 +227,7 @@ class GameplayEventStore:
                 existing_event_ids={event.event_id for event in batch.events if event.event_id in self._events_by_id},
                 existing_outbox_ids={entry.outbox_id for entry in batch.outbox_entries if entry.outbox_id in self._outbox_by_id},
                 last_global_sequence=len(self._events),
+                authority_streams=self._authority_streams, authority_contexts=authority_contexts,
             )
             if isinstance(prepared, AppendBatchResult):
                 return prepared
@@ -258,6 +278,7 @@ class GameplayEventStore:
         existing_result: AppendBatchResult | None, stream_heads: dict[str, int],
         transaction_exists: bool, existing_event_ids: set[str], existing_outbox_ids: set[str],
         last_global_sequence: int, isolate_stored_fields: bool = True,
+        authority_streams: dict[str, dict[str, Any]] | None = None, authority_contexts: object = None,
     ) -> tuple[AtomicEventBatch, AppendBatchResult] | AppendBatchResult:
         """两种存储共用的纯准备阶段，只接收当前批次涉及的已有值。"""
         if existing_record is not None:
@@ -271,6 +292,17 @@ class GameplayEventStore:
                 message="idempotency key was reused with a different payload digest",
                 failed_stage="idempotency",
             )
+
+        protected = {event.stream_id: authority_streams[event.stream_id] for event in batch.events
+                     if authority_streams and event.stream_id in authority_streams}
+        try:
+            contexts = {} if authority_contexts is None else _authority_streams(authority_contexts)
+            if contexts != protected:
+                raise ValueError("authority context mismatch")
+        except (ValueError, TypeError, GameplayEventStoreSnapshotError):
+            return _empty_result(transaction_id=batch.transaction_id, command_id=batch.command_id,
+                error_code="authority_context_invalid", message="authority context is missing or invalid",
+                failed_stage="authority_epoch")
 
         for event in batch.events:
             if event.stream_id not in batch.expected_stream_revisions:
@@ -1097,6 +1129,19 @@ class DurableGameplayEventStore(GameplayEventStore):
                 return None
             return _authority_streams([dict(zip(("stream_id", "scope_ref", "epoch", "writer_ref"), row))])[stream_id]
 
+    def update_authority_stream(self, stream_id: str, scope_ref: str, epoch: int, writer_ref: str, new_epoch: int, new_writer_ref: str) -> None:
+        _authority_streams([{"stream_id": stream_id, "scope_ref": scope_ref, "epoch": epoch, "writer_ref": writer_ref}])
+        _authority_streams([{"stream_id": stream_id, "scope_ref": scope_ref, "epoch": new_epoch, "writer_ref": new_writer_ref}])
+        if new_epoch <= epoch:
+            raise GameplayEventStoreSnapshotError("authority_stream_update_conflict")
+        with self._transaction() as connection:
+            if connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone() != ("4",):
+                raise GameplayEventStoreSnapshotError("authority_stream_update_conflict")
+            result = connection.execute("UPDATE authority_streams SET epoch=?,writer_ref=? WHERE stream_id=? AND scope_ref=? AND epoch=? AND writer_ref=?",
+                (new_epoch, new_writer_ref, stream_id, scope_ref, epoch, writer_ref))
+            if result.rowcount != 1:
+                raise GameplayEventStoreSnapshotError("authority_stream_update_conflict")
+
     def restore_snapshot(self, snapshot: object) -> None:
         restored = GameplayEventStore.from_snapshot(snapshot, event_schema_registry=self._event_schema_registry)
         with self._transaction() as connection:
@@ -1284,7 +1329,7 @@ class DurableGameplayEventStore(GameplayEventStore):
             rows.extend(connection.execute(f"SELECT {selected} FROM {table} WHERE {column} IN ({','.join('?' for _ in page)})", page))
         return rows
 
-    def append_batch(self, payload: AtomicEventBatch | dict[str, Any]) -> AppendBatchResult:
+    def append_batch(self, payload: AtomicEventBatch | dict[str, Any], *, authority_contexts: object = None) -> AppendBatchResult:
         with self._lock:
             batch = self._validate_append_payload(payload)
             if isinstance(batch, AppendBatchResult):
@@ -1294,6 +1339,10 @@ class DurableGameplayEventStore(GameplayEventStore):
                     key = batch.idempotency_record
                     previous = connection.execute("SELECT payload_digest, result FROM transactions WHERE principal_ref=? AND idempotency_key=?",
                         (key.principal_ref, key.idempotency_key)).fetchone()
+                    authority_streams = {}
+                    if previous is None and connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone() == ("4",):
+                        rows = self._matching_rows(connection, "authority_streams", "stream_id", list({event.stream_id for event in batch.events}), "stream_id,scope_ref,epoch,writer_ref")
+                        authority_streams = _authority_streams([dict(zip(("stream_id", "scope_ref", "epoch", "writer_ref"), row)) for row in rows])
                     streams = list(batch.expected_stream_revisions.keys() | batch.read_stream_revisions.keys())
                     prepared = self._prepare_append(batch,
                         existing_record=IdempotencyRecord(principal_ref=key.principal_ref, idempotency_key=key.idempotency_key, payload_digest=previous[0]) if previous else None,
@@ -1306,6 +1355,7 @@ class DurableGameplayEventStore(GameplayEventStore):
                         existing_outbox_ids={row[0] for row in self._matching_rows(connection, "outbox", "id", [entry.outbox_id for entry in batch.outbox_entries], "id")},
                         last_global_sequence=int(connection.execute("SELECT value FROM metadata WHERE key='last_global_sequence'").fetchone()[0]),
                         isolate_stored_fields=False,
+                        authority_streams=authority_streams, authority_contexts=authority_contexts,
                     )
                     if isinstance(prepared, AppendBatchResult):
                         return prepared
