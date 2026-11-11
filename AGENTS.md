@@ -28,6 +28,7 @@ These rules cut speculative code. They do not relax any authority, privacy, idem
 - Never swallow an error to make a test or a run pass. Handle it, return it through the existing path, or let it propagate.
 - Tests should cover user-visible behavior, system invariants and real failure risks (rejection, replay, stale revision, leakage). Do not add tests that restate the implementation or stack them on low-risk edits; when refactoring, keep tests that protect an existing guarantee.
 - Before editing, read the current implementation and `git status`. Keep the change focused, do not overwrite or revert uncommitted changes you did not make, and keep behavior-preserving refactors separate from semantic fixes.
+- Before changing a persisted event's type name, schema version or payload fields, list its readers first (`rg` over `backend/app`, tests, `scripts/` and probes; include other owners that match on `event_type` or read its payload) and say which would break. Prefer a purely additive change that keeps the type name; renaming a type breaks every exact-match reader. If a reader outside your owner would need to change, stop and ask rather than editing that owner.
 
 ## Verification
 
