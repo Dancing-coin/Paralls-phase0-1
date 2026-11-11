@@ -17,6 +17,18 @@ This repository implements the `world-character-Siming-authority` mainline runti
 - Do not expand into full role cognition, full Siming, multi-scene story flow, or Phase 1 architecture cleanup unless explicitly requested.
 - Prefer small, targeted edits and existing patterns. Do not copy design documents into code comments.
 
+### Implementation Judgment
+
+These rules cut speculative code. They do not relax any authority, privacy, idempotency, revision, replay-validation, fail-closed or rollback requirement in this file, in folder `AGENTS.md` files, or in the architecture contracts.
+
+- Implement the simplest change that meets the confirmed requirement, using existing APIs, types and project patterns before adding helpers, abstractions or options. A new abstraction needs at least two real call sites or a contract that requires it.
+- Validate at real trust boundaries (WebSocket/HTTP input, Godot/UE messages, files, saves, persisted events, other owners' commands) and at invariants the contract names. Do not re-check conditions an internal caller or the type system already guarantees; if you suspect a guarantee is missing, confirm it in code and fix it at its source.
+- Do not add layered fallbacks, broad `except Exception`, automatic retries, duplicate copies of state, compatibility shims or "just in case" branches without a stated requirement. Where retry, recovery or compatibility is required (for example exact idempotent retry, replay of older event versions), implement it as the contract describes, in one place.
+- Do not turn unknown or invalid input into a silent default. Reject what must be rejected with an explicit error code through the existing error and receipt path; unknown stays unknown rather than becoming zero, empty or "allowed".
+- Never swallow an error to make a test or a run pass. Handle it, return it through the existing path, or let it propagate.
+- Tests should cover user-visible behavior, system invariants and real failure risks (rejection, replay, stale revision, leakage). Do not add tests that restate the implementation or stack them on low-risk edits; when refactoring, keep tests that protect an existing guarantee.
+- Before editing, read the current implementation and `git status`. Keep the change focused, do not overwrite or revert uncommitted changes you did not make, and keep behavior-preserving refactors separate from semantic fixes.
+
 ## Verification
 
 - Backend: run `python -m pytest -v`.
