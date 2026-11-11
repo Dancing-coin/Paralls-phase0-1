@@ -1250,6 +1250,19 @@ print(dict(sorted(counts.items())), 'total=', sum(counts.values()), 'files=', fi
 
 ## 检查范围与限制
 
+### G2 归档中六个不再收集的 session 节点（2026-11-11）
+
+对照 `docs/verification/g2-session-visibility-denial/full-run-10044.zip` 的 `results.json` 与当前 `D:/Temp/paralls-g0-py312/Scripts/python.exe -m pytest backend/tests/test_embodied_interaction_session.py --collect-only -q`（23 个节点），再查 `git show 5db3b59d` 和 `git show caf9bf91`。以下 ID 的共同前缀均为 `tests/test_embodied_interaction_session.py::`；分类按原节点的具体行为，不把名称相似视作保证完全相同。
+
+- `test_authenticated_actor_binding_without_session_disclosure_evidence_is_denied`：`caf9bf91` 替换为 `test_authenticated_binding_is_checked_before_unknown_session_lookup`。原保证是已绑定但无披露证据时拒绝且完全不读 session 流；新测试在绑定后读取未知 session 再拒绝，保留拒绝但不保留“不读流”的断言。此变化与发起者正向路径需要读取已提交事实有关；现存未绑定测试仍检查未绑定时不读流，不能证明已绑定者也不读流。
+- `test_websocket_session_pull_ignores_forged_bus_projection[valid]`：`caf9bf91` 合并替换为 `test_websocket_session_pull_uses_committed_event_not_bus_or_outbox`；新测试禁止调用 bus 列表和 outbox 读取，检查来自已提交事件的结果，不再注入伪造 bus 消息，也不再验证 v1 有效 outbox 的原投影。
+- `test_websocket_session_pull_ignores_forged_bus_projection[missing]`：同在 `caf9bf91` 合并替换；原版本检查 outbox 缺失时 helper 拒绝、未绑定 pull 拒绝；新测试检查 v2 直接从已提交事件构造且不读取 outbox，未绑定拒绝由 `test_websocket_session_projection_denial_does_not_disclose_session_or_cursor` 覆盖。原 helper 因缺 outbox 而拒绝的行为已不适用于 v2，未作为同等覆盖声称。
+- `test_websocket_session_pull_ignores_forged_bus_projection[mismatched]`：`5db3b59d` 将该参数拆成 `event_id`、`transaction_id`、`global_sequence`、`topic`、`audience` 五个参数；`caf9bf91` 将参数化测试合并替换为上述不读取 bus/outbox 的测试。原来注入错误 topic outbox 并检查伪造 bus 内容不进入输出；现无同等的错误 outbox 注入或伪造 bus 注入测试，v2 路径的静态设计和新测试改为不读取这两者。
+- `test_websocket_session_pull_replays_after_durable_reopen_without_bus[True]`：`caf9bf91` 与 `[False]` 合并替换为无参数的同名测试。原测试检查重开后有效 outbox 投影一致及未绑定拒绝；新测试检查 v2 已提交事件在重开后投影一致、没有 bus/outbox 读取且绑定发起者可读。原 `slot_assignments` 的回显断言已删除，符合当前字段排除决定；未绑定拒绝由上述拒绝测试单独覆盖。
+- `test_websocket_session_pull_replays_after_durable_reopen_without_bus[False]`：同在 `caf9bf91` 合并替换。原测试检查重开后缺 outbox 时 helper 明确拒绝及未绑定 pull 拒绝；新测试禁止任何 outbox 读取并验证 v2 重放一致，未绑定拒绝另有覆盖；不再测试旧 helper 的缺 outbox 拒绝。
+
+未保留的原保证或测试手段是：已绑定而无披露证据时完全不读取 session 流、旧 helper 对缺失/不匹配 outbox 的拒绝、向真实 bus 注入伪造消息后验证其不进入结果，以及 `slot_assignments` 回显。前两项与现有首切片的读取和 v2 不使用 outbox 的行为不同，最后一项已由字段决定排除；伪造 bus 的注入式回归测试没有等价保留，是否另补由项目负责人决定。这里只做节点收集与源码/提交静态对照，没有运行这些测试。
+
 本次增量：只重新判定 session 切片实际触达的 `main.py` 两个读取点（`read_stream` 与 `get_event`），并通过定向测试检查真实 pull/send 路径；本文件上方全库统计仍是切片前基线，没有重新执行全量 AST 盘点。已验证的范围不构成 G2 通过结论。
 
 本切片较早一次验证记录（2026-11-11）：PowerShell 命令 `$files = rg -l 'session_service|interaction_session' backend/tests -g 'test_*.py'; & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' -m pytest -q $files` 扫描并运行 9 个测试文件，记录为 **107 passed**、6 warnings。全量命令为 `D:/Temp/paralls-g0-py312/Scripts/python.exe docs/verification/g0-939c6746/run_baseline.py --repo . --output D:/Temp/paralls-session-slice-20261111 --freeze`；该次结果文件记录 10,048 项：10,005 passed、39 failed、2 skipped、2 xfailed（结果 JSON 将后二者汇总为 4 skipped）。该记录早于下方重跑，不能代表最新工作树结果。
