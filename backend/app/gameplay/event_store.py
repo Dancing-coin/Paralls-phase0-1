@@ -34,6 +34,19 @@ class GameplayEventStoreSnapshotError(ValueError):
     pass
 
 
+def _authority_streams(value: object) -> dict[str, dict[str, Any]]:
+    if not isinstance(value, list):
+        raise GameplayEventStoreSnapshotError("authority_snapshot_invalid")
+    result = {}
+    for row in value:
+        if (not isinstance(row, dict) or set(row) != {"stream_id", "scope_ref", "epoch", "writer_ref"}
+                or any(type(row[key]) is not str or not row[key] for key in ("stream_id", "scope_ref", "writer_ref"))
+                or type(row["epoch"]) is not int or row["epoch"] < 1 or row["stream_id"] in result):
+            raise GameplayEventStoreSnapshotError("authority_snapshot_invalid")
+        result[row["stream_id"]] = dict(row)
+    return result
+
+
 _DURABLE_JSON_PREFIX = b"paralls-json-zlib-v1\0"
 _EVENT_FIELDS = frozenset(GameplayEvent.model_fields)
 _IMMUTABLE_SCALAR_TYPES = (str, int, float, bool, type(None))
@@ -168,11 +181,17 @@ class GameplayEventStore:
         self._projection_checkpoints: dict[str, ProjectionCheckpoint] = {}
         self._write_ready = True
         self._lock = RLock()
+        self._authority_streams: dict[str, dict[str, Any]] = {}
 
     @contextmanager
     def group_commit(self):
         """为无需物理提交的内存账本提供统一批处理边界。"""
         yield
+
+    def get_authority_stream(self, stream_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._authority_streams.get(stream_id)
+            return dict(row) if row is not None else None
 
     def append_batch(self, payload: AtomicEventBatch | dict[str, Any]) -> AppendBatchResult:
         with self._lock:
@@ -581,7 +600,7 @@ class GameplayEventStore:
     def export_snapshot(self) -> dict[str, Any]:
         """Return a versioned, JSON-safe durable checkpoint of authority truth."""
         with self._lock:
-            return {
+            snapshot = {
                 "snapshot_schema_version": 2,
                 "events": [event.model_dump(mode="json") for event in self._events],
                 "transactions": [batch.model_dump(mode="json") for batch in self._transactions],
@@ -605,6 +624,10 @@ class GameplayEventStore:
                     self._event_schema_registry.export_snapshot() if self._event_schema_registry is not None else None
                 ),
             }
+            if self._authority_streams:
+                snapshot["snapshot_schema_version"] = 3
+                snapshot["authority_streams"] = [dict(row) for _, row in sorted(self._authority_streams.items())]
+            return snapshot
 
     def save_snapshot(self, path: str | Path) -> None:
         target = Path(path)
@@ -644,8 +667,11 @@ class GameplayEventStore:
         *,
         event_schema_registry: EventSchemaRegistry | None = None,
     ) -> "GameplayEventStore":
-        if not isinstance(snapshot, dict) or snapshot.get("snapshot_schema_version") not in {1, 2}:
+        if not isinstance(snapshot, dict) or snapshot.get("snapshot_schema_version") not in {1, 2, 3}:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+        authority_streams = _authority_streams(snapshot.get("authority_streams")) if snapshot["snapshot_schema_version"] == 3 else {}
+        if snapshot["snapshot_schema_version"] != 3 and "authority_streams" in snapshot:
+            raise GameplayEventStoreSnapshotError("authority_snapshot_invalid")
         try:
             events = [GameplayEvent.model_validate(value) for value in _snapshot_list(snapshot, "events")]
             transactions = [AtomicEventBatch.model_validate(value) for value in _snapshot_list(snapshot, "transactions")]
@@ -774,7 +800,7 @@ class GameplayEventStore:
                 raise GameplayEventStoreSnapshotError("gameplay_snapshot_outbox_invalid")
 
         snapshot_registry: EventSchemaRegistry | None = None
-        if snapshot.get("snapshot_schema_version") == 2:
+        if snapshot.get("snapshot_schema_version") in {2, 3}:
             registry_snapshot = snapshot.get("event_schema_registry")
             if registry_snapshot is not None:
                 try:
@@ -791,6 +817,7 @@ class GameplayEventStore:
             except EventSchemaRegistryError as exc:
                 raise GameplayEventStoreSnapshotError("gameplay_snapshot_event_schema_registry_invalid") from exc
         store = cls(event_schema_registry=snapshot_registry or event_schema_registry)
+        store._authority_streams = authority_streams
         store._events = events
         store._events_by_id = {event.event_id: event for event in events}
         store._events_by_stream = defaultdict(list)
@@ -941,9 +968,12 @@ class DurableGameplayEventStore(GameplayEventStore):
                 connection.execute(f"PRAGMA wal_autocheckpoint={self._WAL_AUTOCHECKPOINT_PAGES}")
                 for statement in self._SCHEMA:
                     connection.execute(statement)
+                if restored is not None and restored._authority_streams:
+                    connection.execute("CREATE TABLE authority_streams (stream_id TEXT PRIMARY KEY, scope_ref TEXT NOT NULL, epoch INTEGER NOT NULL, writer_ref TEXT NOT NULL)")
+                    connection.executemany("INSERT INTO authority_streams VALUES (:stream_id,:scope_ref,:epoch,:writer_ref)", restored._authority_streams.values())
                 registry_json = self._event_schema_registry._snapshot_json() if self._event_schema_registry else "null"
                 connection.executemany("INSERT INTO metadata VALUES (?, ?)",
-                    [("schema", "3"), ("registry", registry_json), ("last_global_sequence", "0")])
+                    [("schema", "4" if restored is not None and restored._authority_streams else "3"), ("registry", registry_json), ("last_global_sequence", "0")])
                 if restored is not None:
                     for batch in restored._transactions:
                         self._write_delta(connection=connection, batch=batch, result=restored._transaction_results[batch.transaction_id])
@@ -1036,8 +1066,73 @@ class DurableGameplayEventStore(GameplayEventStore):
     @staticmethod
     def _require_current_schema(connection: sqlite3.Connection) -> None:
         row = connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()
-        if row != ("3",):
+        if row not in {("3",), ("4",)}:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+        if row == ("4",) and connection.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='authority_streams'").fetchone() is None:
+            raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+
+    def register_authority_stream(self, stream_id: str, scope_ref: str, epoch: int, writer_ref: str) -> None:
+        row = {"stream_id": stream_id, "scope_ref": scope_ref, "epoch": epoch, "writer_ref": writer_ref}
+        _authority_streams([row])
+        with self._transaction() as connection:
+            schema = connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone()
+            if schema == ("3",):
+                connection.execute("CREATE TABLE authority_streams (stream_id TEXT PRIMARY KEY, scope_ref TEXT NOT NULL, epoch INTEGER NOT NULL, writer_ref TEXT NOT NULL)")
+                connection.execute("UPDATE metadata SET value='4' WHERE key='schema'")
+            existing = connection.execute("SELECT scope_ref,epoch,writer_ref FROM authority_streams WHERE stream_id=?", (stream_id,)).fetchone()
+            if existing is not None:
+                if existing == (scope_ref, epoch, writer_ref):
+                    return
+                raise GameplayEventStoreSnapshotError("authority_stream_already_registered")
+            connection.execute("INSERT INTO authority_streams VALUES (:stream_id,:scope_ref,:epoch,:writer_ref)", row)
+
+    def get_authority_stream(self, stream_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            connection = self._database_connection()
+            self._require_current_schema(connection)
+            if connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone() == ("3",):
+                return None
+            row = connection.execute("SELECT stream_id,scope_ref,epoch,writer_ref FROM authority_streams WHERE stream_id=?", (stream_id,)).fetchone()
+            if row is None:
+                return None
+            return _authority_streams([dict(zip(("stream_id", "scope_ref", "epoch", "writer_ref"), row))])[stream_id]
+
+    def restore_snapshot(self, snapshot: object) -> None:
+        restored = GameplayEventStore.from_snapshot(snapshot, event_schema_registry=self._event_schema_registry)
+        with self._transaction() as connection:
+            existing_snapshot = self._snapshot_from_connection(connection)
+            if existing_snapshot["events"]:
+                incoming = restored.export_snapshot()
+                for key in ("events", "transactions", "transaction_results", "idempotency", "outbox", "projection_checkpoints", "pending_projection_refresh_ids"):
+                    if existing_snapshot[key] != incoming[key]:
+                        raise GameplayEventStoreSnapshotError("gameplay_snapshot_target_conflict")
+            if connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone() == ("4",):
+                rows = connection.execute("SELECT stream_id,scope_ref,epoch,writer_ref FROM authority_streams").fetchall()
+                current = _authority_streams([dict(zip(("stream_id", "scope_ref", "epoch", "writer_ref"), row)) for row in rows])
+                for stream_id, old in current.items():
+                    new = restored._authority_streams.get(stream_id)
+                    if (new is None or new["scope_ref"] != old["scope_ref"] or new["epoch"] < old["epoch"]
+                            or (new["epoch"] == old["epoch"] and new["writer_ref"] != old["writer_ref"])):
+                        raise GameplayEventStoreSnapshotError("authority_snapshot_rollback")
+            for table in ("outbox", "events", "stream_heads", "transactions", "checkpoints"):
+                connection.execute(f"DELETE FROM {table}")
+            connection.execute("UPDATE metadata SET value='0' WHERE key='last_global_sequence'")
+            registry_json = restored._event_schema_registry._snapshot_json() if restored._event_schema_registry else "null"
+            connection.execute("UPDATE metadata SET value=? WHERE key='registry'", (registry_json,))
+            for batch in restored._transactions:
+                self._write_delta(connection=connection, batch=batch, result=restored._transaction_results[batch.transaction_id])
+            for entry in restored._outbox:
+                self._write_delta(connection=connection, outbox=entry)
+            for batch in restored._transactions:
+                if (batch.outbox_entries or batch.projection_refresh_hints) and batch.transaction_id not in restored._pending_projection_refresh:
+                    connection.execute("UPDATE transactions SET refresh_state='done' WHERE transaction_id=?", (batch.transaction_id,))
+            self._write_delta(connection=connection, checkpoints=list(restored._projection_checkpoints.values()))
+            if restored._authority_streams:
+                connection.execute("CREATE TABLE IF NOT EXISTS authority_streams (stream_id TEXT PRIMARY KEY, scope_ref TEXT NOT NULL, epoch INTEGER NOT NULL, writer_ref TEXT NOT NULL)")
+                connection.execute("DELETE FROM authority_streams")
+                connection.executemany("INSERT INTO authority_streams VALUES (:stream_id,:scope_ref,:epoch,:writer_ref)", restored._authority_streams.values())
+                connection.execute("UPDATE metadata SET value='4' WHERE key='schema'")
+        self._event_schema_registry = restored._event_schema_registry
 
     @contextmanager
     def _transaction(self, connection: sqlite3.Connection | None = None):
@@ -1099,8 +1194,11 @@ class DurableGameplayEventStore(GameplayEventStore):
                 if metadata.get("schema") == "2":
                     self._migrate_schema_two(connection)
                     metadata = dict(connection.execute("SELECT key, value FROM metadata"))
-                if metadata.get("schema") != "3":
+                if metadata.get("schema") not in {"3", "4"}:
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_schema_unsupported")
+                if metadata.get("schema") == "4":
+                    rows = connection.execute("SELECT stream_id,scope_ref,epoch,writer_ref FROM authority_streams").fetchall()
+                    _authority_streams([dict(zip(("stream_id", "scope_ref", "epoch", "writer_ref"), row)) for row in rows])
                 if int(metadata["last_global_sequence"]) < 0:
                     raise GameplayEventStoreSnapshotError("gameplay_snapshot_sequence_invalid")
                 saved_registry = json.loads(metadata["registry"])
@@ -1460,6 +1558,11 @@ class DurableGameplayEventStore(GameplayEventStore):
         if not legacy:
             snapshot["pending_projection_refresh_ids"] = sorted(row[0] for row in connection.execute(
                 "SELECT transaction_id FROM transactions WHERE refresh_state='pending'"))
+            if connection.execute("SELECT value FROM metadata WHERE key='schema'").fetchone() == ("4",):
+                rows = connection.execute("SELECT stream_id,scope_ref,epoch,writer_ref FROM authority_streams ORDER BY stream_id")
+                snapshot["snapshot_schema_version"] = 3
+                snapshot["authority_streams"] = [dict(zip(("stream_id", "scope_ref", "epoch", "writer_ref"), row)) for row in rows]
+                _authority_streams(snapshot["authority_streams"])
         return snapshot
 
     def export_snapshot(self) -> dict[str, Any]:
