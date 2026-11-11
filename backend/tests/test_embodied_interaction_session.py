@@ -18,6 +18,7 @@ from app.ws_protocol import Envelope
 
 def test_websocket_session_probe_denies_without_creating_or_recovering_a_session() -> None:
     reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
     assert _propose(main.embodied_interaction_session_service, session_id="known-session").accepted
     before_sequence = main.gameplay_event_store.get_last_global_sequence()
     expected = {
@@ -48,6 +49,7 @@ def test_websocket_session_probe_denies_without_creating_or_recovering_a_session
 
 def test_websocket_session_projection_denial_does_not_disclose_session_or_cursor(monkeypatch) -> None:
     reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
     assert _propose(main.embodied_interaction_session_service, session_id="known-session").accepted
     expected = {
         "message_type": "embodied_interaction_session_projection_denied",
@@ -79,7 +81,7 @@ def test_websocket_session_projection_denial_does_not_disclose_session_or_cursor
     assert "999" not in str(responses)
 
 
-def test_authenticated_actor_binding_without_session_disclosure_evidence_is_denied(monkeypatch) -> None:
+def test_authenticated_binding_is_checked_before_unknown_session_lookup(monkeypatch) -> None:
     reset_runtime_state()
     now = 100
     credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
@@ -105,10 +107,14 @@ def test_authenticated_actor_binding_without_session_disclosure_evidence_is_deni
         binding=bound.binding,
     )
 
-    def unexpected_read(_stream_id):
-        pytest.fail("session lookup ran before disclosure evidence was available")
+    reads = []
+    monkeypatch.setattr(main, "time", lambda: now)
 
-    monkeypatch.setattr(main.gameplay_event_store, "read_stream", unexpected_read)
+    def record_read(stream_id):
+        reads.append(stream_id)
+        return []
+
+    monkeypatch.setattr(main.gameplay_event_store, "read_stream", record_read)
     response = main._handle_envelope(
         Envelope(message_type="embodied_interaction_session_projection_pull", payload={
             "session_id": "client-known-session",
@@ -121,17 +127,212 @@ def test_authenticated_actor_binding_without_session_disclosure_evidence_is_deni
         "message_type": "embodied_interaction_session_projection_denied",
         "payload": {"error_code": "session_access_unavailable"},
     }]
+    assert reads == ["session:client-known-session"]
 
 
-@pytest.mark.parametrize("outbox_available", [True, False])
-def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_path, monkeypatch, outbox_available):
+def _bound_session_context(actor_refs: tuple[str, ...], *, now: int | None = None) -> WebSocketConnectionContext:
+    now = int(main.time()) if now is None else now
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:session-reader",
+        allowed_actor_refs=actor_refs,
+        issued_at=now,
+        expires_at=now + 60,
+    )
+    bound = main.websocket_session_auth_service.bind_session(
+        WebSocketSessionEnrollment(
+            credential_kind="trusted_local_launch",
+            credential=credential,
+            protocol_version=1,
+        ),
+        remote_host="127.0.0.1",
+        now=now,
+    )
+    assert bound.accepted and bound.binding is not None
+    return WebSocketConnectionContext(
+        remote_host="127.0.0.1",
+        observed_at=now,
+        connection_ref="connection:session-reader",
+        binding=bound.binding,
+    )
+
+
+def test_bound_initiator_reads_only_proposal_fields_and_committed_world_tick(monkeypatch) -> None:
+    reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
+    assert _propose(main.embodied_interaction_session_service, session_id="known-session").accepted
+    context = _bound_session_context(("character:siming",))
+
+    response = main._handle_envelope(
+        Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": "known-session", "after_global_sequence": 0,
+        }),
+        connection_context=context,
+    )
+
+    assert len(response) == 1
+    assert response[0]["message_type"] == "embodied_interaction_session_event"
+    payload = response[0]["payload"]
+    event = main.gameplay_event_store.read_stream("session:known-session")[0]
+    assert payload == {
+        "session_id": "known-session",
+        "semantic_action": "handshake",
+        "state": "awaiting_responses",
+        "safe_phase": "awaiting_responses",
+        "initiator_ref": "character:siming",
+        "participant_refs": ["character:siming", "character:maya"],
+        "known_time": 481,
+        "event_id": event.event_id,
+        "global_sequence": event.global_sequence,
+        "next_global_sequence": event.global_sequence,
+    }
+    for forbidden in ("target_refs", "slot_assignments", "reservation_refs", "participant_private_terms"):
+        assert forbidden not in str(payload)
+
+
+def test_unbound_wrong_actor_and_unknown_session_have_identical_denial(monkeypatch) -> None:
+    reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
+    assert _propose(main.embodied_interaction_session_service, session_id="known-session").accepted
+    expected = [{
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }]
+    unbound = WebSocketConnectionContext(
+        remote_host="127.0.0.1", observed_at=100, connection_ref="connection:unbound",
+    )
+    wrong_actor = _bound_session_context(("character:maya",))
+
+    responses = [
+        main._handle_envelope(Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": "known-session", "after_global_sequence": 0,
+        }), connection_context=unbound),
+        main._handle_envelope(Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": "known-session", "after_global_sequence": 0,
+        }), connection_context=wrong_actor),
+        main._handle_envelope(Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": "unknown-session", "after_global_sequence": 0,
+        }), connection_context=_bound_session_context(("character:siming",))),
+    ]
+
+    assert responses == [expected, expected, expected]
+
+
+def test_legacy_proposal_is_replayable_but_not_projected(monkeypatch) -> None:
+    reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
+    assert _propose(main.embodied_interaction_session_service, session_id="legacy-session").accepted
+    stream_id = "session:legacy-session"
+    legacy = main.gameplay_event_store.read_stream(stream_id)[0]
+    legacy.event_type = "embodied.interaction_session.proposed"
+    legacy.schema_version = 1
+    legacy.payload.pop("known_time", None)
+    legacy.payload.pop("participant_private_terms", None)
+    main.gameplay_event_store._events_by_id[legacy.event_id] = legacy
+    main.gameplay_event_store._events_by_stream[stream_id][0] = legacy
+    response = main._handle_envelope(
+        Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": "legacy-session", "after_global_sequence": 0,
+        }),
+        connection_context=_bound_session_context(("character:siming",)),
+    )
+    assert response == [{
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }]
+
+
+def test_proposal_without_world_clock_keeps_legacy_write_and_is_not_projected() -> None:
+    reset_runtime_state()
+    store = GameplayEventStore()
+    service = EmbodiedInteractionSessionService(store=store)
+
+    result = _propose(service, session_id="legacy-write-session")
+
+    assert result.accepted is True
+    assert result.projection_status == "currently_unprojectable"
+    event = store.read_stream("session:legacy-write-session")[0]
+    assert event.event_type == "embodied.interaction_session.proposed"
+    assert event.schema_version == 1
+    assert event.payload["target_refs"] == ["character:maya"]
+    assert "known_time" not in event.payload
+    assert "participant_private_terms" not in event.payload
+    import app.main as runtime_main
+    previous_store = runtime_main.gameplay_event_store
+    runtime_main.gameplay_event_store = store
+    try:
+        with pytest.raises(ValueError, match="^session_access_unavailable$"):
+            runtime_main._build_committed_session_event_projection(event.event_id)
+    finally:
+        runtime_main.gameplay_event_store = previous_store
+
+
+def test_proposal_with_invalid_world_tick_is_rejected_without_legacy_fallback() -> None:
+    store = GameplayEventStore()
+    service = EmbodiedInteractionSessionService(store=store, world_tick_provider=lambda: -1)
+
+    result = _propose(service, session_id="invalid-clock-session")
+
+    assert result.accepted is False
+    assert result.error_code == "session_world_time_unavailable"
+    assert store.read_stream("session:invalid-clock-session") == []
+
+
+def test_revocation_after_pull_prevents_session_projection_send(monkeypatch) -> None:
+    reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
+    assert _propose(main.embodied_interaction_session_service, session_id="revoked-session").accepted
+    original_resolve = main.websocket_session_auth_service.resolve_binding
+    armed = False
+    resolutions = 0
+
+    def revoke_after_pull(session_ref):
+        nonlocal resolutions
+        if armed:
+            resolutions += 1
+        if armed and resolutions == 2:
+            main.websocket_session_auth_service.revoke_session(
+                session_ref, reason_code="test_revocation", now=101,
+            )
+        return original_resolve(session_ref)
+
+    monkeypatch.setattr(main.websocket_session_auth_service, "resolve_binding", revoke_after_pull)
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:session-reader",
+        allowed_actor_refs=("character:siming",),
+        issued_at=0,
+        expires_at=int(main.time()) + 60,
+    )
+    with TestClient(app, client=("127.0.0.1", 47114)).websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "websocket_session_bind", "payload": {
+            "credential_kind": "trusted_local_launch", "credential": credential,
+            "protocol_version": 2,
+            "capability_offer": main.GameplayMirrorCapabilityOffer(
+                protocol_version=2, supports_snapshot=True, supports_receipt=True,
+                projection_schemas=("gameplay_runtime_state.godot.v1",),
+            ).model_dump(),
+        }})
+        bind_ack = websocket.receive_json()
+        assert bind_ack["payload"]["accepted"] is True, bind_ack
+        assert websocket.receive_json()["message_type"] == "websocket_session_bound"
+        armed = True
+        websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
+            "session_id": "revoked-session", "after_global_sequence": 0,
+        }})
+        response = websocket.receive_json()
+    assert response == {
+        "message_type": "embodied_interaction_session_projection_denied",
+        "payload": {"error_code": "session_access_unavailable"},
+    }
+    assert "revoked-session" not in str(response)
+
+
+def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_path, monkeypatch):
     reset_runtime_state()
     path = tmp_path / "session.db"
     store = DurableGameplayEventStore(path)
-    service = EmbodiedInteractionSessionService(store=store)
+    service = EmbodiedInteractionSessionService(store=store, world_tick_provider=lambda: 481)
     assert _propose(service, session_id="restart-session").accepted
     event = store.read_stream("session:restart-session")[0]
-    expected_projection = store.get_outbox(f"outbox:{event.event_id}").payload_projection["payload"]
     monkeypatch.setattr(main, "gameplay_event_store", store)
     before_reopen = main._build_committed_session_event_projection(event.event_id)
     store.close()
@@ -139,72 +340,85 @@ def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_pat
     try:
         monkeypatch.setattr(main, "gameplay_event_store", reopened)
         monkeypatch.setattr(main, "authority_event_bus", InMemoryAuthorityEventBus())
-        monkeypatch.setattr(main, "embodied_interaction_session_service", EmbodiedInteractionSessionService(store=reopened))
-        if not outbox_available:
-            def missing_outbox(outbox_id):
-                raise KeyError(outbox_id)
-            monkeypatch.setattr(reopened, "get_outbox", missing_outbox)
-        if outbox_available:
-            restored_projection = main._build_committed_session_event_projection(event.event_id)
-            assert restored_projection == before_reopen
-            assert restored_projection["payload"]["event_id"] == event.event_id
-            assert restored_projection["payload"]["slot_assignments"] == expected_projection["slot_assignments"]
-            assert restored_projection["payload"]["participant_refs"] == expected_projection["participant_refs"]
-        else:
-            with pytest.raises(ValueError, match="^session_access_unavailable$"):
-                main._build_committed_session_event_projection(event.event_id)
-        with TestClient(app).websocket_connect("/ws") as websocket:
+        monkeypatch.setattr(main, "embodied_interaction_session_service", EmbodiedInteractionSessionService(
+            store=reopened, world_tick_provider=lambda: 481,
+        ))
+        def unexpected_outbox_read(_outbox_id):
+            pytest.fail("session projection must be reconstructed from the committed event")
+        monkeypatch.setattr(reopened, "get_outbox", unexpected_outbox_read)
+        restored_projection = main._build_committed_session_event_projection(event.event_id)
+        assert restored_projection == before_reopen
+        assert restored_projection["payload"]["event_id"] == event.event_id
+        assert restored_projection["payload"]["known_time"] == 481
+        assert restored_projection["payload"]["participant_refs"] == ["character:siming", "character:maya"]
+        with TestClient(app, client=("127.0.0.1", 47113)).websocket_connect("/ws") as websocket:
+            now = int(main.time())
+            credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+                principal_ref="principal:session-reader",
+                allowed_actor_refs=("character:siming",),
+                issued_at=0,
+                expires_at=now + 60,
+            )
+            websocket.send_json({"message_type": "websocket_session_bind", "payload": {
+                "credential_kind": "trusted_local_launch", "credential": credential,
+                "protocol_version": 2,
+                "capability_offer": main.GameplayMirrorCapabilityOffer(
+                    protocol_version=2, supports_snapshot=True, supports_receipt=True,
+                    projection_schemas=("gameplay_runtime_state.godot.v1",),
+                ).model_dump(),
+            }})
+            bind_ack = websocket.receive_json()
+            assert bind_ack["payload"]["accepted"] is True, bind_ack
+            assert websocket.receive_json()["message_type"] == "websocket_session_bound"
             websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
                 "session_id": "restart-session", "after_global_sequence": 0,
             }})
             response = websocket.receive_json()
-        assert response == {
-            "message_type": "embodied_interaction_session_projection_denied",
-            "payload": {"error_code": "session_access_unavailable"},
-        }
-        assert "restart-session" not in str(response)
+        assert response["message_type"] == "embodied_interaction_session_event"
+        assert response["payload"] == restored_projection["payload"]
     finally:
         reopened.close()
 
 
-@pytest.mark.parametrize("outbox_state", ["valid", "missing", "event_id", "transaction_id", "global_sequence", "topic", "audience"])
-def test_websocket_session_pull_ignores_forged_bus_projection(monkeypatch, outbox_state):
+def test_websocket_session_pull_uses_committed_event_not_bus_or_outbox(monkeypatch):
     reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
     assert _propose(main.embodied_interaction_session_service, session_id="forged-session").accepted
     event = main.gameplay_event_store.read_stream("session:forged-session")[0]
-    legitimate = next(item for item in main.authority_event_bus.list_events() if item.event_id == event.event_id)
-    forged = legitimate.model_copy(deep=True)
-    forged.payload["reason_code"] = "private-forged-value"
-    forged.payload["global_sequence"] = 999999
-    bus = InMemoryAuthorityEventBus()
-    bus.publish(forged)
-    bus.publish(legitimate)
-    monkeypatch.setattr(main, "authority_event_bus", bus)
-    if outbox_state == "missing":
-        def missing_outbox(outbox_id):
-            raise KeyError(outbox_id)
-        monkeypatch.setattr(main.gameplay_event_store, "get_outbox", missing_outbox)
-    elif outbox_state != "valid":
-        entry = main.gameplay_event_store.get_outbox(f"outbox:{event.event_id}")
-        wrong_value = -1 if outbox_state == "global_sequence" else "other"
-        monkeypatch.setattr(main.gameplay_event_store, "get_outbox", lambda _: entry.model_copy(update={outbox_state: wrong_value}))
-    if outbox_state == "valid":
-        internal_projection = main._build_committed_session_event_projection(event.event_id)
-        assert internal_projection["payload"]["global_sequence"] == event.global_sequence
-        assert "private-forged-value" not in str(internal_projection)
-    else:
-        with pytest.raises(ValueError, match="^session_access_unavailable$"):
-            main._build_committed_session_event_projection(event.event_id)
-    with TestClient(app).websocket_connect("/ws") as websocket:
+    def unexpected_bus_read():
+        pytest.fail("session pull must not consume authority bus projections")
+    def unexpected_outbox_read(_outbox_id):
+        pytest.fail("session pull must not consume outbox projections")
+    monkeypatch.setattr(main.authority_event_bus, "list_events", unexpected_bus_read)
+    monkeypatch.setattr(main.gameplay_event_store, "get_outbox", unexpected_outbox_read)
+    internal_projection = main._build_committed_session_event_projection(event.event_id)
+    assert internal_projection["payload"]["global_sequence"] == event.global_sequence
+    assert "private-forged-value" not in str(internal_projection)
+    with TestClient(app, client=("127.0.0.1", 47114)).websocket_connect("/ws") as websocket:
+        now = int(main.time())
+        credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+            principal_ref="principal:session-reader",
+            allowed_actor_refs=("character:siming",),
+            issued_at=0,
+            expires_at=now + 60,
+        )
+        websocket.send_json({"message_type": "websocket_session_bind", "payload": {
+            "credential_kind": "trusted_local_launch", "credential": credential,
+            "protocol_version": 2,
+            "capability_offer": main.GameplayMirrorCapabilityOffer(
+                protocol_version=2, supports_snapshot=True, supports_receipt=True,
+                projection_schemas=("gameplay_runtime_state.godot.v1",),
+            ).model_dump(),
+        }})
+        bind_ack = websocket.receive_json()
+        assert bind_ack["payload"]["accepted"] is True, bind_ack
+        assert websocket.receive_json()["message_type"] == "websocket_session_bound"
         websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
             "session_id": "forged-session", "after_global_sequence": 0,
         }})
         response = websocket.receive_json()
-    assert response == {
-        "message_type": "embodied_interaction_session_projection_denied",
-        "payload": {"error_code": "session_access_unavailable"},
-    }
-    assert "forged-session" not in str(response)
+    assert response["message_type"] == "embodied_interaction_session_event"
+    assert response["payload"] == internal_projection["payload"]
     assert "private-forged-value" not in str(response)
 
 
@@ -215,6 +429,7 @@ def test_websocket_session_pull_ignores_forged_bus_projection(monkeypatch, outbo
 ])
 def test_websocket_session_pull_rejects_authority_only_event(dispatch, event_type, policy):
     reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
     assert _propose(main.embodied_interaction_session_service, session_id="private-session").accepted
     head = main.gameplay_event_store.get_last_global_sequence()
     batch = build_atomic_event_batch(
@@ -254,7 +469,7 @@ def test_committed_session_projection_rejects_unknown_event():
         main._build_committed_session_event_projection("unknown-event")
 
 
-def _service() -> tuple[EmbodiedInteractionSessionService, GameplayEventStore, InMemoryAuthorityEventBus, EmbodiedEvidenceLedger]:
+def _service(*, with_world_clock: bool = True) -> tuple[EmbodiedInteractionSessionService, GameplayEventStore, InMemoryAuthorityEventBus, EmbodiedEvidenceLedger]:
     store = GameplayEventStore()
     bus = InMemoryAuthorityEventBus()
     ledger = EmbodiedEvidenceLedger()
@@ -262,8 +477,13 @@ def _service() -> tuple[EmbodiedInteractionSessionService, GameplayEventStore, I
         store=store,
         dispatcher=GameplayOutboxDispatcher(store=store, bus=bus),
         evidence_ledger=ledger,
+        world_tick_provider=(lambda: 481) if with_world_clock else None,
     )
     return service, store, bus, ledger
+
+
+def _set_world_tick(service: EmbodiedInteractionSessionService, tick: int = 481) -> None:
+    service._world_tick_provider = lambda: tick
 
 
 def _propose(service: EmbodiedInteractionSessionService, *, session_id: str = "session:handshake:1") -> object:
@@ -463,7 +683,12 @@ def test_session_projection_and_bus_delivery_filter_private_participant_terms() 
         "sync_status": "authorized",
     }
     assert "participant_private_terms" not in str(public_projection)
-    assert "private initiator memory" not in str(store_payloads)
+    proposal = store_payloads[0]
+    assert store.read_stream("session:session:handshake:1")[0].event_type == "embodied.interaction_session.proposed"
+    assert proposal["target_refs"] == ["character:maya"]
+    assert proposal["known_time"] == 481
+    assert "participant_private_terms" not in proposal
+    assert "private target context" not in str(proposal)
     assert "private target context" not in str(store_payloads)
     assert "private initiator memory" not in str(bus_payloads)
     assert "private target context" not in str(bus_payloads)

@@ -326,6 +326,13 @@ def _character_memory_known_time(world_ref: str) -> int | None:
     return driver.current_tick
 
 
+def _session_world_clock_tick() -> int | None:
+    driver = _population_runtime_driver
+    if driver is None or driver.migration_pending:
+        return None
+    return driver.current_tick
+
+
 def _social_delivery_replay_binding():
     """Return recipients proven by committed notice binding or delivery facts."""
     authority = social_delivery_caller.authority if social_delivery_caller else None
@@ -2117,6 +2124,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         store=gameplay_event_store,
         dispatcher=gameplay_outbox_dispatcher,
         evidence_ledger=embodied_evidence_ledger,
+        world_tick_provider=_session_world_clock_tick,
     )
     harness_capability_store = (
         None
@@ -3701,6 +3709,20 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
 
     async def send_batch(messages: list[dict[str, object]]) -> None:
         for message in project_outbound_messages(messages, stream_mode=stream_mode):
+            if message.get("message_type") == "embodied_interaction_session_event":
+                payload = message.get("payload")
+                async with send_lock:
+                    current = None
+                    if isinstance(payload, dict) and isinstance(payload.get("session_id"), str):
+                        current = _session_initiator_event(
+                            payload["session_id"], connection_context, now=int(time()),
+                        )
+                    if (current is None or current.event_id != payload.get("event_id")
+                            or current.global_sequence != payload.get("global_sequence")):
+                        await websocket.send_json(_session_projection_denied()[0])
+                    else:
+                        await websocket.send_json(message)
+                continue
             await send(message)
 
     async def send_cognition_output(payload, closed):
@@ -5161,7 +5183,7 @@ def _handle_envelope(
         return _handle_unified_character_action_foundation_probe(envelope)
 
     if envelope.message_type == "embodied_interaction_session_projection_pull":
-        return _handle_embodied_interaction_session_projection_pull(envelope)
+        return _handle_embodied_interaction_session_projection_pull(envelope, connection_context)
 
     if envelope.message_type == "embodied_handoff_probe":
         return _handle_embodied_handoff_probe(envelope)
@@ -6787,78 +6809,98 @@ def _handle_unified_character_action_foundation_probe(envelope: Envelope) -> lis
     ]
 
 
-def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) -> list[dict[str, object]]:
-    # The stream has no principal-specific disclosure or trustworthy known-time
-    # evidence.  Neither a client-supplied session ID nor session_public_safe
-    # can authorize this pull, so fail closed before looking up the stream.
+def _session_initiator_event(
+    session_id: str,
+    connection_context: WebSocketConnectionContext,
+    *,
+    now: int,
+):
+    presented = connection_context.binding
+    if presented is None:
+        return None
+    current = websocket_session_auth_service.resolve_binding(presented.session_ref)
+    if (current is None or current != presented or current.binding_state != "bound_active"
+            or now >= current.lease_expires_at or not current.principal_ref):
+        return None
+    events = gameplay_event_store.read_stream(f"session:{session_id}")
+    event = next((item for item in events
+                  if item.event_type == "embodied.interaction_session.proposed"), None)
+    if event is None or event.schema_version != 2:
+        return None
+    payload = event.payload
+    initiator_ref = payload.get("initiator_ref")
+    participants = payload.get("participant_refs")
+    if (payload.get("session_id") != session_id or not isinstance(initiator_ref, str)
+            or not initiator_ref or not isinstance(participants, list)
+            or any(not isinstance(actor, str) or not actor for actor in participants)
+            or not participants.count(initiator_ref) == 1):
+        return None
+    roles = set(participants).intersection(current.allowed_actor_refs)
+    if roles != {initiator_ref}:
+        return None
+    return event
+
+
+def _session_projection_denied() -> list[dict[str, object]]:
     return [_as_envelope("embodied_interaction_session_projection_denied", {
         "error_code": "session_access_unavailable",
     })]
 
 
-def _build_committed_session_event_projection(event_id: str) -> dict[str, object]:
-    """Build an unintegrated projection from committed facts, without authorizing disclosure.
+def _handle_embodied_interaction_session_projection_pull(
+    envelope: Envelope,
+    connection_context: WebSocketConnectionContext,
+) -> list[dict[str, object]]:
+    payload = envelope.payload
+    if (not isinstance(payload, dict) or set(payload) != {"session_id", "after_global_sequence"}
+            or not isinstance(payload["session_id"], str) or not payload["session_id"]
+            or type(payload["after_global_sequence"]) is not int
+            or payload["after_global_sequence"] < 0):
+        return _session_projection_denied()
+    event = _session_initiator_event(
+        payload["session_id"], connection_context, now=int(time()),
+    )
+    if event is None:
+        return _session_projection_denied()
+    if event.global_sequence <= payload["after_global_sequence"]:
+        return []
+    projection = _build_committed_session_event_projection(event.event_id)
+    return [projection]
 
-    Before integration into a read path, principal-specific disclosure must be
-    decided for participants, observers, recipients, or authorized debugging.
-    """
+
+def _build_committed_session_event_projection(event_id: str) -> dict[str, object]:
+    """Build the initiator proposal projection from one committed v2 event."""
     try:
         committed_event = gameplay_event_store.get_event(event_id)
-        outbox = gameplay_event_store.get_outbox(f"outbox:{event_id}")
     except KeyError as exc:
         raise ValueError("session_access_unavailable") from exc
+    payload = committed_event.payload
+    session_id = payload.get("session_id")
     if (committed_event.event_id != event_id
+            or committed_event.schema_version != 2
+            or committed_event.event_type != "embodied.interaction_session.proposed"
+            or committed_event.stream_id != f"session:{session_id}"
             or committed_event.visibility_policy != "session_public_safe"
-            or not committed_event.event_type.startswith("embodied.interaction_session.")
-            or outbox.event_id != committed_event.event_id
-            or outbox.transaction_id != committed_event.transaction_id
-            or outbox.global_sequence != committed_event.global_sequence
-            or outbox.topic != committed_event.event_type
-            or outbox.audience != "godot_room"
-            or not isinstance(outbox.payload_projection.get("payload"), dict)):
+            or type(payload.get("known_time")) is not int
+            or payload["known_time"] < 0
+            or not isinstance(payload.get("participant_refs"), list)
+            or not isinstance(payload.get("initiator_ref"), str)):
         raise ValueError("session_access_unavailable")
-    event = GameplayOutboxDispatcher._authority_event_for(outbox, committed_event)
-    payload = dict(event.payload)
-    committed_payload = payload.get("committed_payload", {})
-    if not isinstance(committed_payload, dict):
-        committed_payload = {}
-    state = str(payload.get("state", "") or committed_payload.get("state", "") or "")
+    state = payload.get("state")
+    if not isinstance(state, str) or not state:
+        raise ValueError("session_access_unavailable")
     safe_payload: dict[str, object] = {
-        "event_type": event.event_type,
-        "session_id": str(payload.get("session_id", "") or committed_payload.get("session_id", "") or ""),
-        "semantic_action": str(payload.get("semantic_action", "") or committed_payload.get("semantic_action", "") or ""),
+        "session_id": session_id,
+        "semantic_action": payload.get("semantic_action"),
         "state": state,
-        "safe_phase": str(payload.get("safe_phase", "") or state),
-        "sync_status": str(payload.get("sync_status", "") or state),
-        "transaction_id": str(payload.get("transaction_id", "") or ""),
-        "event_id": str(payload.get("event_id", "") or event.event_id),
-        "stream_id": str(payload.get("stream_id", "") or ""),
-        "stream_revision": int(payload.get("stream_revision", 0) or 0),
-        "global_sequence": int(payload.get("global_sequence", 0) or 0),
+        "safe_phase": state,
+        "initiator_ref": payload["initiator_ref"],
+        "participant_refs": payload["participant_refs"],
+        "known_time": payload["known_time"],
+        "event_id": committed_event.event_id,
+        "global_sequence": committed_event.global_sequence,
+        "next_global_sequence": committed_event.global_sequence,
     }
-    allowed_projection_fields = {
-        "initiator_ref",
-        "participant_ref",
-        "participant_refs",
-        "target_refs",
-        "slot_assignments",
-        "reservation_refs",
-        "actor_ref",
-        "target_ref",
-        "reason_code",
-        "attempt_ref",
-        "attempt_refs",
-        "terminal_status",
-        "settlement_ref",
-        "policy_revision",
-        "scene_revision",
-        "visibility_policy",
-    }
-    for field_name in allowed_projection_fields:
-        if field_name in payload:
-            safe_payload[field_name] = payload[field_name]
-        elif field_name in committed_payload:
-            safe_payload[field_name] = committed_payload[field_name]
     return _as_envelope("embodied_interaction_session_event", safe_payload)
 
 
