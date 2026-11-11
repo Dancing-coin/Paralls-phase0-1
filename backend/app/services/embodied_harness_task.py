@@ -117,6 +117,7 @@ class EmbodiedHarnessTaskResult(BaseModel):
     failure_kind: str = ""
     authority_event_ids: list[str] = Field(default_factory=list)
     evidence_refs: list[str] = Field(default_factory=list)
+    projection_status: Literal["currently_unprojectable"] | None = None
 
 
 class EmbodiedHarnessTaskCoordinator:
@@ -217,6 +218,7 @@ class EmbodiedHarnessTaskCoordinator:
         authority_event_ids.extend(proposed.committed_event_ids)
         if not proposed.accepted:
             return self._fail(session_id, proposed.error_code, producer_ts=2, authority_event_ids=authority_event_ids)
+        projection_status = proposed.projection_status
         self.trace.record(session_id, stage="propose", status="committed", producer_ts=2, metadata=authority_metadata(proposed))
 
         self.gate.consume("approve", **gate_args)
@@ -231,7 +233,13 @@ class EmbodiedHarnessTaskCoordinator:
             )
             authority_event_ids.extend(accepted.committed_event_ids)
             if not accepted.accepted:
-                return self._fail(session_id, accepted.error_code, producer_ts=3, authority_event_ids=authority_event_ids)
+                return self._fail(
+                    session_id,
+                    accepted.error_code,
+                    producer_ts=3,
+                    authority_event_ids=authority_event_ids,
+                    projection_status=projection_status,
+                )
         self.trace.record(session_id, stage="approve", status="committed", producer_ts=3, metadata=authority_metadata(accepted))
 
         self.gate.consume("commit", **gate_args)
@@ -241,7 +249,13 @@ class EmbodiedHarnessTaskCoordinator:
         )
         authority_event_ids.extend(realizing.committed_event_ids)
         if not realizing.accepted:
-            return self._fail(session_id, realizing.error_code, producer_ts=4, authority_event_ids=authority_event_ids)
+            return self._fail(
+                session_id,
+                realizing.error_code,
+                producer_ts=4,
+                authority_event_ids=authority_event_ids,
+                projection_status=projection_status,
+            )
         self.trace.record(session_id, stage="commit", status="realizing", producer_ts=4, metadata=authority_metadata(realizing))
 
         if not complete:
@@ -252,6 +266,7 @@ class EmbodiedHarnessTaskCoordinator:
                 task_id=session_id,
                 phase=envelope.phase,
                 authority_event_ids=authority_event_ids,
+                projection_status=projection_status,
             )
 
         for participant_ref in participant_refs:
@@ -264,7 +279,13 @@ class EmbodiedHarnessTaskCoordinator:
             )
             authority_event_ids.extend(observation.committed_event_ids)
             if not observation.accepted:
-                return self._fail(session_id, observation.error_code, producer_ts=5, authority_event_ids=authority_event_ids)
+                return self._fail(
+                    session_id,
+                    observation.error_code,
+                    producer_ts=5,
+                    authority_event_ids=authority_event_ids,
+                    projection_status=projection_status,
+                )
 
         self.gate.consume("verify", **gate_args)
         evidence_refs = self._evidence_refs(session_id)
@@ -291,6 +312,7 @@ class EmbodiedHarnessTaskCoordinator:
             phase=envelope.phase,
             authority_event_ids=authority_event_ids,
             evidence_refs=evidence_refs,
+            projection_status=projection_status,
         )
 
     def recover(self, task_id: str) -> EmbodiedHarnessTaskResult:
@@ -393,7 +415,15 @@ class EmbodiedHarnessTaskCoordinator:
             },
         )
 
-    def _fail(self, task_id: str, error_code: str, *, producer_ts: int, authority_event_ids: list[str]) -> EmbodiedHarnessTaskResult:
+    def _fail(
+        self,
+        task_id: str,
+        error_code: str,
+        *,
+        producer_ts: int,
+        authority_event_ids: list[str],
+        projection_status: Literal["currently_unprojectable"] | None = None,
+    ) -> EmbodiedHarnessTaskResult:
         disposition = map_embodied_failure(error_code)
         envelope = self.trace.transition(task_id, "failed", producer_ts=producer_ts, failure_kind=disposition.kind)  # type: ignore[arg-type]
         return EmbodiedHarnessTaskResult(
@@ -403,6 +433,7 @@ class EmbodiedHarnessTaskCoordinator:
             error_code=error_code,
             failure_kind=disposition.kind,
             authority_event_ids=authority_event_ids,
+            projection_status=projection_status,
         )
 
     def _evidence_refs(self, session_id: str) -> list[str]:

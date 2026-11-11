@@ -54,6 +54,7 @@ def test_embodied_task_runs_real_session_authority_and_evidence_chain() -> None:
 
     assert result.accepted is True
     assert result.phase == "committed"
+    assert result.projection_status == "currently_unprojectable"
     assert [event.event_type for event in store.read_stream("session:session:harness:1")][-1] == "embodied.interaction_session.committed"
     assert len(evidence.events_for_attempt("session:harness:1")) >= 1
     trace = coordinator.trace.get_trace("session:harness:1")

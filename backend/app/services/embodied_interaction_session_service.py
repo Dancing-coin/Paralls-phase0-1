@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from hashlib import sha256
-from typing import Literal
+from typing import Callable, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -25,6 +25,7 @@ class InteractionSessionCommandResult(BaseModel):
     append_result: AppendBatchResult | None = None
     error_code: str = ""
     committed_event_ids: list[str] = Field(default_factory=list)
+    projection_status: Literal["currently_unprojectable"] | None = None
 
 
 class EmbodiedInteractionSessionService:
@@ -36,10 +37,12 @@ class EmbodiedInteractionSessionService:
         store: GameplayEventStore,
         dispatcher: GameplayOutboxDispatcher | None = None,
         evidence_ledger: EmbodiedEvidenceLedger | None = None,
+        world_tick_provider: Callable[[], int | None] | None = None,
     ) -> None:
         self._store = store
         self._dispatcher = dispatcher
         self._evidence_ledger = evidence_ledger or EmbodiedEvidenceLedger()
+        self._world_tick_provider = world_tick_provider
         self._sessions: dict[str, InteractionSession] = {}
         self._terminal_observations: dict[str, dict[str, InteractionSessionTerminalObservation]] = {}
         self._evidence_source_sequences: dict[str, int] = {}
@@ -61,6 +64,10 @@ class EmbodiedInteractionSessionService:
     ) -> InteractionSessionCommandResult:
         if session_id in self._sessions:
             return self._reject("session_exists")
+        world_tick = self._world_tick_provider() if self._world_tick_provider is not None else None
+        if world_tick is not None and (type(world_tick) is not int or world_tick < 0):
+            return self._reject("session_world_time_unavailable")
+        has_world_tick = world_tick is not None
         if participant_private_terms:
             unknown_private_terms = set(participant_private_terms).difference(participant_refs)
             if unknown_private_terms:
@@ -89,7 +96,7 @@ class EmbodiedInteractionSessionService:
             correlation_id=correlation_id,
             visibility_policy="session_public_safe",
         )
-        return self._commit_transition(
+        result = self._commit_transition(
             session=session,
             causation_id=causation_id,
             event_payloads=[
@@ -102,6 +109,7 @@ class EmbodiedInteractionSessionService:
                         "initiator_ref": initiator_ref,
                         "participant_refs": participant_refs,
                         "target_refs": target_refs,
+                        **({"known_time": world_tick} if has_world_tick else {}),
                         "policy_revision": policy_revision,
                         "scene_revision": scene_revision,
                     },
@@ -111,6 +119,9 @@ class EmbodiedInteractionSessionService:
             payload_digest=self._digest({"session_id": session_id, "causation_id": causation_id}),
             evidence_kinds=["session_lifecycle"],
         )
+        if result.accepted and not has_world_tick:
+            return result.model_copy(update={"projection_status": "currently_unprojectable"})
+        return result
 
     def accept(
         self,
@@ -518,6 +529,9 @@ class EmbodiedInteractionSessionService:
         events = []
         outbox_entries = []
         for index, (event_type, payload) in enumerate(event_payloads, start=1):
+            schema_version = (
+                2 if event_type == "embodied.interaction_session.proposed" and "known_time" in payload else 1
+            )
             event_id = f"evt:{session.session_id}:{self._event_suffix(event_type)}:{self._store.get_stream_head(stream_id) + index}"
             safe_payload = dict(payload)
             safe_payload.update(
@@ -531,7 +545,7 @@ class EmbodiedInteractionSessionService:
                 {
                     "event_id": event_id,
                     "event_type": event_type,
-                    "schema_version": 1,
+                    "schema_version": schema_version,
                     "stream_id": stream_id,
                     "stream_revision": 0,
                     "global_sequence": 0,
@@ -556,33 +570,34 @@ class EmbodiedInteractionSessionService:
             }
             if session.settlement_ref is not None:
                 public_outbox_payload["settlement_ref"] = session.settlement_ref
-            outbox_entries.append(
-                {
-                    "outbox_id": f"outbox:{event_id}",
-                    "transaction_id": transaction_id,
-                    "event_id": event_id,
-                    "global_sequence": 0,
-                    "topic": event_type,
-                    "audience": "godot_room",
-                    "payload_projection": {
-                        "room_id": "room_demo",
-                        "scene_id": "scene_demo",
-                        "zone_id": "zone_focus",
-                        "source": {"layer": "embodied", "system": "interaction_session"},
-                        "routing": {
-                            "audience_mode": "room",
-                            "routing_mode": "event_type",
-                            "target_ids": ["godot_mirror", "observatory"],
+            if schema_version != 2 or event_type != "embodied.interaction_session.proposed":
+                outbox_entries.append(
+                    {
+                        "outbox_id": f"outbox:{event_id}",
+                        "transaction_id": transaction_id,
+                        "event_id": event_id,
+                        "global_sequence": 0,
+                        "topic": event_type,
+                        "audience": "godot_room",
+                        "payload_projection": {
+                            "room_id": "room_demo",
+                            "scene_id": "scene_demo",
+                            "zone_id": "zone_focus",
+                            "source": {"layer": "embodied", "system": "interaction_session"},
+                            "routing": {
+                                "audience_mode": "room",
+                                "routing_mode": "event_type",
+                                "target_ids": ["godot_mirror", "observatory"],
+                            },
+                            "priority": "p1",
+                            "durability": "replayable",
+                            "payload": public_outbox_payload,
                         },
-                        "priority": "p1",
-                        "durability": "replayable",
-                        "payload": public_outbox_payload,
-                    },
-                    "delivery_state": "pending",
-                    "attempt_count": 0,
-                    "last_error": None,
-                }
-            )
+                        "delivery_state": "pending",
+                        "attempt_count": 0,
+                        "last_error": None,
+                    }
+                )
 
         append_result = self._store.append_batch(
             {
