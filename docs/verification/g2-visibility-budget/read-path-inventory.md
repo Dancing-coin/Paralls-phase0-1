@@ -1,7 +1,7 @@
 # G2 读取路径盘点（只读）
 
 - 日期：2026-11-11。
-- 源码快照：`1177f1e03d71bbdca7328e61cb4c57d8b6390f09`；工作区 `D:/Temp/paralls-g0-b3-ingress-20261109`，分支 `codex/g0-b3-ingress-20261109`。
+- 全量统计源码快照：`1177f1e03d71bbdca7328e61cb4c57d8b6390f09`；以下全库计数是本切片接入前的盘点基线，不代表当前代码树的重新全量计数。工作区 `D:/Temp/paralls-g0-b3-ingress-20261109`，分支 `codex/g0-b3-ingress-20261109`。
 - 范围：`backend/app` 下非测试 Python 源码；不扫描 `backend/build/`。本轮仅静态源码、调用点与局部调用边检查；没有运行后端、网络、Godot、性能或全量测试。
 - 总计 **987 个调用点 / 113 个文件**：`read_stream=260`、`read_events=319`、`get_event=408`。当前前两项相加恰为 579；未核对上一轮原始统计命令，不能断言历史差异来源。
 - 分类：可信权威/恢复 **67**；面向主体 **49**；未判定 **871**。分类是当前证据标签，不是已通过授权的标签；G2 通过也只证明约定切片，不证明全部读取路径已强制。
@@ -77,7 +77,7 @@ print(dict(sorted(counts.items())), 'total=', sum(counts.values()), 'files=', fi
 | `backend/app/gameplay/p5/social_knowledge.py:157` `SocialFactAuthority.scripted_mystery_statement_view` | recipient statement 投影返回调用方 | recipient_ref 显式参数；未证明绑定 |
 | `backend/app/gameplay/p5/social_knowledge.py:1738` `SocialFactAuthority.view_for` | SocialRecipientView 返回调用方 | recipient_ref + now；未证明绑定 |
 | `backend/app/main.py:8720` `_actor_target_action_settlement` | social_spatial_owner result 返回 _handle_envelope world_result / Agent settlement | execution_contract.actor_id；函数无 connection_context |
-| `backend/app/main.py:6799` `_build_committed_session_event_projection` | embodied_interaction_session_event 候选 envelope；当前未接入 pull | 只有 event_id，无 principal；当前 pull 一律拒绝 |
+| `backend/app/main.py:6874` `_build_committed_session_event_projection` | `embodied_interaction_session_event` pull response；只从已提交 v2 proposal event 构造 | pull handler 先校验当前 websocket binding、lease、principal 和唯一匹配的 initiator actor；`send_batch` 持 `send_lock` 在实际发送前复验 |
 
 ## 面向主体调用点明细
 
@@ -132,7 +132,8 @@ print(dict(sorted(counts.items())), 'total=', sum(counts.values()), 'files=', fi
 | `backend/app/main.py:5841:43` | `get_event` / `prior.committed_event_ids[0] 索引的已提交 social_spatial 事件` | 精确重试 source_read_set/source_context -> owner.submit -> ack/world_result | execution_contract.actor_id；无本点 principal/context 参数 |
 | `backend/app/main.py:5866:33` | `get_event` / `receipt.committed_event_ids[0] 索引的 social_spatial 事件` | record_settlement_result(Agent) + ack/world_result/social runtime result | execution_contract.actor_id；本分支无连接主体参数 |
 | `backend/app/main.py:6168:22` | `read_stream` / `receipt.resulting_stream_revisions 的对象流` | L1 occupancy 更新 / object_state world_result | 控制器绑定+唯一 deployment scope；按对象入口校验，非会话披露授权 |
-| `backend/app/main.py:6806:27` | `get_event` / `event_id` | embodied_interaction_session_event 候选 envelope；当前未接入 pull；_build_committed_session_event_projection | 只有 event_id，无 principal；当前 pull 一律拒绝 |
+| `backend/app/main.py:6825:14` | `read_stream` / `session:{session_id}` | 已强制：WebSocket `embodied_interaction_session_projection_pull` -> `_session_initiator_event` -> `embodied_interaction_session_event` response | 读取前已校验当前 binding、lease、principal 和 initiator actor；发送前在 `send_batch` 再校验 |
+| `backend/app/main.py:6874:27` | `get_event` / `event_id` | 已强制：`_build_committed_session_event_projection` 从已提交 v2 proposal event 构造同一 pull response | 主体门在投影构造前；实际发送前再校验 binding、lease 和 initiator 资格 |
 | `backend/app/main.py:8764:21` | `get_event` / `receipt.committed_event_ids[0]` | social_spatial_owner result 返回 _handle_envelope world_result / Agent settlement；_actor_target_action_settlement | execution_contract.actor_id；函数无 connection_context |
 
 ## 逐文件聚合
@@ -1249,7 +1250,31 @@ print(dict(sorted(counts.items())), 'total=', sum(counts.values()), 'files=', fi
 
 ## 检查范围与限制
 
-已执行：AST 枚举和语法解析、`rg` 行数交叉核对、逐文件/模块计数、主体根入口与所列同类 helper 调用边检查。未执行：运行时集成、权限正反例、连接租约/撤销、真实网络发送、性能、全量测试；没有据此给出 G2 验收结论。
+本次增量：只重新判定 session 切片实际触达的 `main.py` 两个读取点（`read_stream` 与 `get_event`），并通过定向测试检查真实 pull/send 路径；本文件上方全库统计仍是切片前基线，没有重新执行全量 AST 盘点。已验证的范围不构成 G2 通过结论。
+
+本切片较早一次验证记录（2026-11-11）：PowerShell 命令 `$files = rg -l 'session_service|interaction_session' backend/tests -g 'test_*.py'; & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' -m pytest -q $files` 扫描并运行 9 个测试文件，记录为 **107 passed**、6 warnings。全量命令为 `D:/Temp/paralls-g0-py312/Scripts/python.exe docs/verification/g0-939c6746/run_baseline.py --repo . --output D:/Temp/paralls-session-slice-20261111 --freeze`；该次结果文件记录 10,048 项：10,005 passed、39 failed、2 skipped、2 xfailed（结果 JSON 将后二者汇总为 4 skipped）。该记录早于下方重跑，不能代表最新工作树结果。
+
+此前失败工作树的诊断运行：`D:/Temp/paralls-g0-py312/Scripts/python.exe docs/verification/g0-939c6746/run_baseline.py --repo . --output D:/Temp/paralls-session-slice-20261111-final --freeze`，结果 **10,048 collected：10,002 passed、42 failed、2 skipped、2 xfailed**，此运行不作为当前基线依据。三个新增 P5 失败经执行追踪实际先因 proposal 事件类型 `proposed@2` 与旧类型精确匹配不同而拒绝，尚未读到缺失的 `target_refs`；此前只归因于 target 字段的判断不准确。此次改回同类型 schema 2，并将 `target_refs` 恢复到事件，不加入主体投影。
+
+本次提交前全量对照：`D:/Temp/paralls-g0-py312/Scripts/python.exe docs/verification/g0-939c6746/run_baseline.py --repo . --output D:/Temp/paralls-session-slice-20261111-corrected-precommit --freeze`，10,048 项中 10,005 passed、39 failed、2 skipped、2 xfailed，无收集错误，运行期间受监测源码未变化。与 G0 `full-4c641876.zip` 的 run2 对照，9,937 个原节点的 outcome 和各阶段结果均相同，新增 111 项全部通过；39 个失败的节点、阶段、异常类型相同，消息和堆栈仅有 pytest 临时目录编号或 AnyIO cancel scope 地址差异。与此前 G2 `full-run-10044.zip` 比较，共同节点的 outcome 和阶段结果相同；6 个旧 session 测试节点因切片测试重构不再收集，新增 10 个节点，不能声称此前 G2 全部节点仍存在。未收集的节点为 `test_authenticated_actor_binding_without_session_disclosure_evidence_is_denied`、`test_websocket_session_pull_ignores_forged_bus_projection` 的三个参数和 `test_websocket_session_pull_replays_after_durable_reopen_without_bus` 的两个参数，均位于 `tests/test_embodied_interaction_session.py`。
+
+性能样本只覆盖拒绝或极小的已认证发起者读取路径，不能作为放行依据；本轮测量没有建立相对基线的 10% 开销结论。不可区分性验收不含时序：当前只验证未绑定、错误角色和未知 session 的响应内容与游标不泄露，没有验证响应时序不可区分。若将时序不可区分纳入契约/验收，或接入远程身份，须触发复查。known_time 目前只有写入侧记录；没有其他参与者的历史披露事实或送达记录。远程身份接入前必须复查主体与历史获知时间的权威来源。
+
+本切片只覆盖已认证发起者对自己提出事件的直接获知；参与者正向路径阻塞于在场证据的权威来源，观察者、送达者和调试授权仍拒绝。项目负责人已决定：其他参与者的 known_time 来自 session Owner 记录的世界层披露事实，首版仅支持当面渠道且获知时间等于事件 tick；网络到达属于 G5 的 presented_time。`EmbodiedInteractionSessionService.propose` 接受 `participant_refs` 与 `authority_preflight_ref`，但不校验前置引用或参与者在场；其他参与者 consent slot 初始为 pending，reservation 要到接受齐备后才创建（`backend/app/services/embodied_interaction_session_service.py:50`、`:75`、`:154`）。
+
+条款存储核查：此前 `participant_private_terms` 只作为 `propose` 的可选调用参数传入，`InteractionSession` 的 `participant_terms` 保存的是 consent 状态/响应引用，并非这些私有条款。项目负责人决定不回显发起者条款；v2 提案事件与主体投影均不含私有条款，不新增引用存储。`target_refs` 保留在 v1/v2 提案账本中供权威读取，主体投影不含该字段。v2 保持 `embodied.interaction_session.proposed` 类型并使用 schema version 2，payload 在 v1 基础上增加 `known_time`；没有世界时钟时写 v1 且命令结果标记不可投影。v2 提案不创建 `godot_room` outbox。
+
+### 提案类型读取和转发盘点
+
+搜索命令：`rg -n --hidden -F 'embodied.interaction_session.proposed' backend/app backend/tests scripts scenes .harness -g '!*.uid' -g '!*.pyc'`，并追踪通用 outbox、WebSocket 及 Godot 路由。精确类型读取点：`backend/app/gameplay/p5/social_knowledge.py:628` 校验完整 session 事件类型序列，后续校验 proposal 的参与者、initiator 与 target；不检查 proposal schema version。`backend/app/main.py:6825`、`:6879` 是本切片投影门，要求类型、v2 和合法 known_time。测试序列断言位于 `backend/tests/test_embodied_interaction_session.py:551`、`test_embodied_handoff_authority.py:185`、`test_embodied_grab_carry_place_authority.py:235`；`test_embodied_interaction_session.py:226`、`:254` 检查旧事件。`scripts/verification/verify_embodied_interaction_session.py:262` 对无时钟 v1 trace 的事件类型序列和总线序列作比较；`scripts/verification/EmbodiedInteractionSessionProbe.gd:30` 用旧类型合成本地 consumer 输入。此盘点是静态范围，不证明所有动态事件消费者的安全性。
+
+原样转发风险：`backend/app/gameplay/dispatcher.py:102`、`:113` 对有 outbox 的事件将整个 `event.payload` 放进 `committed_payload` 并发布到 bus；v2 proposal 无 outbox，v1 与其他 lifecycle 事件仍有。同文件 `:165` 的通用 `resync_from_store` 直接返回全局事件列表，可包含该类型，调用者信任边界须另判。`scripts/autoload/BackendBridge.gd:334` 对收到的 session envelope 原样记录和发出 payload，`scripts/interaction/InteractionSessionSlotConsumer.gd:36` 消费该 payload；`backend/app/transport_projection.py:31` 不裁剪传入消息字段。主体 pull 投影在 `main.py` 单独按白名单构造，不经该 outbox 原样转发。
+
+Godot live probe `scripts/verification/EmbodiedInteractionSessionProbe.gd` / `scenes/phase0/EmbodiedInteractionSessionProbe.tscn` 在 `:142` 以未绑定连接发 probe 并期待四个事件；当前被拒。要适配需先通过可信 credential 完成 WebSocket 身份绑定，并按 initiator 资格、租约与发送复验使用 pull；当前 slice 只提供 initiator proposal，既不提供该 probe 所期望的完整生命周期，也不向其 `character:maya` 参与者提供正向投影。`InteractionSessionSlotConsumer.gd:53` 还要求 payload 有 `event_type`，当前首切片的主体投影未包含此字段；即使以后通过绑定，既有 consumer 仍需与经批准的投影契约对齐。`test_embodied_interaction_session_runner.py` 的 Python 替代客户端同样未绑定，现以拒绝为预期；未运行 Godot，不放宽权限。
+
+### 在场证据只读调研
+
+`backend/app/population_continuity/presence_runtime.py:66`、`:138`、`:151` 管理角色在 world 内的 spawn/despawn 和 incarnation；`:233`、`:247` 的历史 cut 是 global sequence，不记录地点或世界 tick，不能证明两人在某个 tick 同处一地。`backend/app/world_runtime/embodied_spatial_source.py:75`、`:177` 持久化控制器授权的单角色位置和 physics tick；`:239`、`:262` 的当前读取验证绑定、进程 epoch 与时效并返回 event ref 和 `read_stream_revisions`。它提供 revision pin 的候选输入，但尚无两人同世界 tick 的共同时间映射或历史共同在场事实；读取仅接受当前进程最新有效样本。session 的 `backend/app/services/embodied_interaction_session_service.py:607` 当前只 pin policy/scene，没有空间流 read revision。不能仅凭现有 pin 声称同处一地，需先确定有权产生世界层同处事实及其时间来源；本轮未实现或授权 session 自行断言。
 
 `未判定` 是后续读取边界审查需要补足的证据清单。当前工作到盘点结束；其余面向主体路径接入属于后续独立工作，本文件没有授权实现。
 
