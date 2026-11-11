@@ -210,6 +210,14 @@ remove the script and record independently.
 
 ### Uniform WebSocket denial while authorization evidence is absent
 
+Classification: `0b587890` is a separate security defect fix with intentional
+network behavior changes. It counts toward neither G1 behavior-preserving
+migration nor completion of G2 visibility, time or epoch mechanisms. All four
+message routes, including requests by bound participants, are unavailable.
+Existing Godot live probes still expect accepted acks and projection events;
+their former live success contract is incompatible with this repair. See the
+[route and caller impact table](../g2-session-visibility-denial/README.md#network-compatibility-impact).
+
 Commit `0b587890ba732686b3d1d565a73848e83640701a` closes the three inspected
 unbound harness routes at the WebSocket boundary. Session proposal probes no
 longer create or auto-accept a session from client-supplied IDs and actors;

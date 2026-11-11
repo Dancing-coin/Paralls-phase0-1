@@ -1,6 +1,51 @@
 # G2 visibility budget measurement
 
-Status: historical paired runs include budget exceedances. A current-HEAD rerun of the existing principal-aware economy domain view met the provisional budget in both samples; the session/WebSocket `read_as` path is not implemented and has not been performance-tested, so the G2 performance gate remains open.
+Status: historical paired runs include budget exceedances. The recorded economy domain-view samples at `0b587890` are numerically below the candidate thresholds, not a performance acceptance result. The session/WebSocket `read_as` path is not implemented and has not been performance-tested; no positive session reads may be enabled using these samples.
+
+## Review correction: implementation versions and budget status (2026-11-11)
+
+The 71.46–79.44 ms economy samples were archived at `e3fb3fda`. The later
+23–24.49 ms samples used the same benchmark script and economy view source,
+but a different event-store implementation: `f60a487c` added scalar event
+copying in place of deep copying on eligible reads, and `59084f36` simplified
+its guard loops. The fixture contains 4,095 unrelated scalar-payload events
+and one economy event, so this difference affects almost the entire scan.
+Comparing these numbers without the code versions overstated comparability.
+
+To isolate the copy change, `g2-session-visibility-denial/compare_copy_paths.py`
+measured the same 4,096-event store and domain view in one process, alternating
+the current read-copy helper with `event.model_copy(deep=True)` for each
+principal. Each independent run used five warmups and 60 pairs; event digests,
+allowed results, redaction and denied results were equal across the paths.
+Only the helper is temporarily replaced inside the isolated diagnostic
+process; no production code or historical events are changed.
+
+| Run | Deep-copy median range | Current-copy median range | Deep-copy p95 range | Current-copy p95 range |
+|---:|---:|---:|---:|---:|
+| 1 | 32.75–33.37 ms | 12.37–12.57 ms | 43.73–43.99 ms | 23.32–23.39 ms |
+| 2 | 32.72–33.08 ms | 12.53–12.57 ms | 43.43–44.71 ms | 23.89–24.48 ms |
+
+Median deep/current ratios were 2.61–2.66. This supports a substantial copy
+cost contribution; it does not explain the full historical latency gap. In
+particular, this deep-copy rerun did not reproduce the historical 71–79 ms
+p95. It is a helper substitution on current code, not an exact historical
+checkout rerun. Shared-process allocation/GC and uncontrolled system load
+remain limitations. The old component experiment's unexplained tails also
+remain unresolved. Raw samples, source hashes and fixture hash are retained
+in `g2-session-visibility-denial/copy-path-comparison-run1.json` and `-run2.json`.
+
+Keep 40 ms / 10% as an unchanged candidate target, not a current release
+gate pass. A release decision needs fixed code/dependency/fixture identities,
+GC and load conditions, repeated measurements with rejection and allowed
+principals, and coverage of the actual storage and authenticated session
+path. These diagnostics do not provide that evidence. Do not replace the
+target with a looser number to accommodate historical samples, and do not
+enable positive session reads on the strength of the 24.49 ms result.
+
+```powershell
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-session-visibility-denial/compare_copy_paths.py --output docs/verification/g2-session-visibility-denial/copy-path-comparison-run1.json
+& 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g2-session-visibility-denial/compare_copy_paths.py --output docs/verification/g2-session-visibility-denial/copy-path-comparison-run2.json
+```
 
 ## Current-HEAD Principal View Rerun (2026-11-11)
 
