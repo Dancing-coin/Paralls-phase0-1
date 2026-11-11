@@ -441,7 +441,7 @@ class SimingKnowledgeGraph:
 
     def _access_at(self, actor_id: str, conversation_id: str, at: int) -> PerceptionAccess | None:
         return max(
-            (access for access in self._access_history.get((actor_id, conversation_id), [])
+            (access for access in reversed(self._access_history.get((actor_id, conversation_id), []))
              if access.access_started_at <= at),
             key=lambda access: access.access_started_at,
             default=None,

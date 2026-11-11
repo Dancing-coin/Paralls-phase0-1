@@ -33,6 +33,19 @@ def test_access_requires_existing_conversation_and_bounded_scores() -> None:
         graph.evaluate_access("a", "conv-1", 110, 1.1, 1)
 
 
+def test_latest_access_wins_when_records_share_a_tick() -> None:
+    graph = _graph()
+    graph.evaluate_access("a", "conv-1", 110, 1, 1)
+    graph.evaluate_access("a", "conv-1", 110, 0, 0)
+
+    membership = graph.evaluate_membership("a", "conv-1", 110)
+    graph.register_information("fact", "statement", "b", 110, "conv-1")
+    knowledge = graph.evaluate_knowledge("a", "fact", 110)
+
+    assert membership.membership_type == "listener"
+    assert knowledge.knowledge_state == "unknown"
+
+
 def test_membership_depends_on_access_and_speech() -> None:
     graph = _graph()
     assert graph.evaluate_membership("a", "conv-1", 110).membership_type == "listener"
