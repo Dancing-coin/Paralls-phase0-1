@@ -9,6 +9,7 @@ from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.models import GameplayOutboxEntry
 from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.models.authority_event import AuthorityEvent
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.embodied_evidence_ledger import EmbodiedEvidenceLedger
 from app.services.embodied_interaction_session_service import EmbodiedInteractionSessionService
@@ -378,6 +379,51 @@ def test_websocket_session_pull_replays_after_durable_reopen_without_bus(tmp_pat
         assert response["payload"] == restored_projection["payload"]
     finally:
         reopened.close()
+
+
+def test_websocket_session_pull_excludes_injected_forged_bus_event():
+    reset_runtime_state()
+    _set_world_tick(main.embodied_interaction_session_service)
+    assert _propose(main.embodied_interaction_session_service, session_id="forged-bus-session").accepted
+    event = main.gameplay_event_store.read_stream("session:forged-bus-session")[0]
+    forged = AuthorityEvent.model_validate({
+        "event_id": event.event_id,
+        "event_type": "embodied.interaction_session.proposed",
+        "producer_ts": event.global_sequence,
+        "room_id": "room_demo", "scene_id": "scene_demo", "zone_id": "zone_focus",
+        "source": {"layer": "embodied", "system": "interaction_session"},
+        "routing": {"audience_mode": "broadcast", "routing_mode": "event_type"},
+        "priority": "p1", "durability": "replayable",
+        "causation_id": event.causation_id, "correlation_id": event.correlation_id,
+        "payload": {"session_id": "forged-bus-session", "event_id": event.event_id,
+                    "semantic_action": "forged-action", "known_time": 999999},
+    })
+    main.authority_event_bus.publish(forged)
+    assert any(item.payload == forged.payload for item in main.authority_event_bus.list_events())
+    with TestClient(app, client=("127.0.0.1", 47114)).websocket_connect("/ws") as websocket:
+        credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+            principal_ref="principal:session-reader", allowed_actor_refs=("character:siming",),
+            issued_at=0, expires_at=int(main.time()) + 60,
+        )
+        websocket.send_json({"message_type": "websocket_session_bind", "payload": {
+            "credential_kind": "trusted_local_launch", "credential": credential,
+            "protocol_version": 2,
+            "capability_offer": main.GameplayMirrorCapabilityOffer(
+                protocol_version=2, supports_snapshot=True, supports_receipt=True,
+                projection_schemas=("gameplay_runtime_state.godot.v1",),
+            ).model_dump(),
+        }})
+        assert websocket.receive_json()["payload"]["accepted"] is True
+        assert websocket.receive_json()["message_type"] == "websocket_session_bound"
+        websocket.send_json({"message_type": "embodied_interaction_session_projection_pull", "payload": {
+            "session_id": "forged-bus-session", "after_global_sequence": 0,
+        }})
+        response = websocket.receive_json()
+    assert response["message_type"] == "embodied_interaction_session_event"
+    assert response["payload"]["event_id"] == event.event_id
+    assert response["payload"]["semantic_action"] == "handshake"
+    assert response["payload"]["known_time"] == 481
+    assert "forged-action" not in str(response)
 
 
 def test_websocket_session_pull_uses_committed_event_not_bus_or_outbox(monkeypatch):
