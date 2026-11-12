@@ -1,4 +1,4 @@
-"""Two rounds only: bound session pulls over a real loopback WebSocket.
+"""Original two rounds, or one explicitly selected post-filter code round.
 
 No runtime source is edited. Historical handler code is loaded from a detached
 worktree; both handlers share the current component transport and send gate.
@@ -6,6 +6,7 @@ worktree; both handlers share the current component transport and send gate.
 from __future__ import annotations
 
 import ast
+import argparse
 import gc
 import hashlib
 import json
@@ -112,7 +113,7 @@ def distribution(samples: list[dict]) -> dict:
                 gc_starts=sum(item["gc_starts"] for item in samples))
 
 
-def measure(legacy: dict, url: str, event_count: int, round_number: int, gc_events: list) -> dict:
+def measure(legacy: dict, url: str, event_count: int, round_number: int, gc_events: list, *, direct_gate=False) -> dict:
     session_id = f"g2-perf-{round_number}-{event_count}"
     seed(event_count, session_id)
     # Rebind the historical functions' globals to this fixture's actual services.
@@ -127,6 +128,7 @@ def measure(legacy: dict, url: str, event_count: int, round_number: int, gc_even
     handlers = {"current": current_handler, "historical_handler": legacy_handler}
     raw = {name: [] for name in handlers}
     warmups = {name: [] for name in handlers}
+    direct = {"raw": [], "warmups": []}
     with connect(url, proxy=None, open_timeout=10, close_timeout=10) as ws:
         bind(ws)
         request = json.dumps({"message_type": MESSAGE_TYPE, "payload": {
@@ -151,19 +153,56 @@ def measure(legacy: dict, url: str, event_count: int, round_number: int, gc_even
                     raise RuntimeError("current_projection_contract_failed")
                 item = dict(pair_index=index, ms=elapsed, gc_starts=len(gc_events) - gc_before)
                 (warmups if index < 10 else raw)[name].append(item)
+        if direct_gate:
+            context = contexts[-1]
+            original_read = main.gameplay_event_store.read_stream
+            read_ms = []
+            def timed_read(*args, **kwargs):
+                started = time.perf_counter_ns()
+                result = original_read(*args, **kwargs)
+                read_ms.append((time.perf_counter_ns() - started) / 1_000_000)
+                return result
+            main.gameplay_event_store.read_stream = timed_read
+            try:
+                for index in range(70):
+                    gc_before = len(gc_events)
+                    started = time.perf_counter_ns()
+                    event = main._session_initiator_event(session_id, context, now=int(main.time()))
+                    elapsed = (time.perf_counter_ns() - started) / 1_000_000
+                    if event is None or event.payload["known_time"] != 481:
+                        raise RuntimeError("direct_gate_positive_failed")
+                    item = dict(pair_index=index, ms=elapsed, read_ms=read_ms[-1],
+                                gc_starts=len(gc_events) - gc_before)
+                    direct["warmups" if index < 10 else "raw"].append(item)
+            finally:
+                main.gameplay_event_store.read_stream = original_read
     if not contexts or contexts[-1].binding is None:
         raise RuntimeError("bound_context_not_observed")
     summaries = {name: distribution(samples) for name, samples in raw.items()}
     ratio = summaries["current"]["p95_ms"] / summaries["historical_handler"]["p95_ms"]
-    return dict(round=round_number, event_count=event_count, summary=summaries,
+    result = dict(round=round_number, event_count=event_count, summary=summaries,
                 p95_ratio_diagnostic=ratio, raw=raw, warmups=warmups,
                 bound_context_observed=True,
                 candidate_relative_exceeded=ratio > 1.10,
                 candidate_absolute_exceeded=event_count == 4096 and summaries["current"]["p95_ms"] >= 40)
+    if direct_gate:
+        direct["summary"] = distribution(direct["raw"])
+        direct["read_summary"] = distribution([dict(ms=x["read_ms"], gc_starts=0) for x in direct["raw"]])
+        direct["read_summary"].pop("gc_starts")
+        result["direct_gate"] = direct
+        # New budget wording is a proposal for the project lead, not a pass gate.
+        result.pop("candidate_relative_exceeded")
+        result.pop("candidate_absolute_exceeded")
+    return result
 
 
 def run() -> None:
-    if OUTPUT.exists():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--post-filter", action="store_true",
+                        help="one new-code round at 10/20/100/4096; preserve original two-round file")
+    args = parser.parse_args()
+    output = OUTPUT.with_name("session-websocket-pull-post-filter-round1.json") if args.post_filter else OUTPUT
+    if output.exists():
         raise RuntimeError("refusing_to_overwrite_samples")
     # Use the same stub/in-memory configuration as the session test fixture.
     configured = Settings(dialogue_mode="stub", character_model_provider_kind="local",
@@ -195,11 +234,12 @@ def run() -> None:
             if not thread.is_alive() or time.monotonic() >= deadline:
                 raise RuntimeError("loopback_server_start_failed")
             time.sleep(.01)
-        for round_number in (1, 2):
-            for count in (100, 4096):
-                result = measure(legacy, f"ws://127.0.0.1:{port}/ws", count, round_number, gc_events)
+        for round_number in ((1,) if args.post_filter else (1, 2)):
+            for count in ((10, 20, 100, 4096) if args.post_filter else (100, 4096)):
+                result = measure(legacy, f"ws://127.0.0.1:{port}/ws", count, round_number, gc_events,
+                                 direct_gate=args.post_filter)
                 runs.append(result)
-                print(json.dumps({key: value for key, value in result.items() if key not in ("raw", "warmups")}), flush=True)
+                print(json.dumps({key: value for key, value in result.items() if key not in ("raw", "warmups", "direct_gate")}), flush=True)
         if original_head != git("rev-parse", "HEAD"):
             raise RuntimeError("source_head_changed_during_measurement")
     finally:
@@ -218,7 +258,10 @@ def run() -> None:
         baseline="historical handler only, shares current Store, binding and send gate; not full historical server",
         fixture="one real Owner v2 proposal plus Store-committed synthetic lifecycle-shaped events in its stream",
         gc_enabled=gc.isenabled(), gc_thresholds=gc.get_threshold(), gc_starts=len(gc_events)), runs=runs)
-    OUTPUT.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    if args.post_filter:
+        result["measurement_series"] = "post-filter new code round 1"
+        result["budget_status"] = "待项目负责人定；10% 相对增量本路径不适用；历史 handler 比例仅诊断"
+    output.write_bytes((json.dumps(result, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
 
 
 if __name__ == "__main__":

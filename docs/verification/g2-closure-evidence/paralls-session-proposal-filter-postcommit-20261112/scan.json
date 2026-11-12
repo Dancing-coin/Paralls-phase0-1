@@ -1,0 +1,36 @@
+{
+  "files": [
+    {
+      "file": "results.json",
+      "credential_pattern_hits": 0,
+      "bytes": 3233243
+    },
+    {
+      "file": "invocation.json",
+      "credential_pattern_hits": 0,
+      "bytes": 608
+    },
+    {
+      "file": "environment.json",
+      "credential_pattern_hits": 0,
+      "bytes": 75180
+    },
+    {
+      "file": "junit.xml",
+      "credential_pattern_hits": 0,
+      "bytes": 1929366
+    },
+    {
+      "file": "failures.jsonl",
+      "credential_pattern_hits": 0,
+      "bytes": 213720
+    }
+  ],
+  "pytest_env_names": [
+    "PYTHONHASHSEED",
+    "PYTHONPATH",
+    "PYTEST_ADDOPTS",
+    "PYTEST_DISABLE_PLUGIN_AUTOLOAD"
+  ],
+  "secret_like_env_names": []
+}

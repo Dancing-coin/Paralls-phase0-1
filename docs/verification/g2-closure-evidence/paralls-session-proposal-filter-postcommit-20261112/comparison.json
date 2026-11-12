@@ -1,0 +1,31 @@
+{
+  "head": "38e571198deae2767d0d0e91142cbf2ebccb347a",
+  "collected": 10079,
+  "counts": {
+    "passed": 10036,
+    "failed": 39,
+    "skipped": 4
+  },
+  "source_unchanged": true,
+  "comparisons": [
+    {
+      "baseline": "G0",
+      "missing": 0,
+      "changed": 0,
+      "added": 142,
+      "new_not_passed": 0,
+      "failure_keys_equal": true,
+      "failure_signature_changes": 0
+    },
+    {
+      "baseline": "56ac6eb5",
+      "missing": 0,
+      "changed": 0,
+      "added": 2,
+      "new_not_passed": 0,
+      "failure_keys_equal": true,
+      "failure_signature_changes": 0
+    }
+  ],
+  "normalization": "pytest temp number, hex address, AnyIO cancel-scope ID"
+}

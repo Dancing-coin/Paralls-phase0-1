@@ -1,0 +1,23 @@
+{
+  "cwd": "D:\\Temp\\paralls-g0-b3-ingress-20261109\\backend",
+  "sys_path_prepend": [
+    "D:\\Temp\\paralls-g0-b3-ingress-20261109\\backend",
+    "D:\\Temp\\paralls-g0-b3-ingress-20261109"
+  ],
+  "pytest_args": [
+    "tests",
+    "-v",
+    "--tb=short",
+    "-p",
+    "no:cacheprovider",
+    "--junitxml=D:\\Temp\\paralls-session-proposal-filter-postcommit-20261112\\junit.xml"
+  ],
+  "runner_argv": [
+    "docs/verification/g0-939c6746/run_baseline.py",
+    "--repo",
+    ".",
+    "--output",
+    "D:/Temp/paralls-session-proposal-filter-postcommit-20261112",
+    "--freeze"
+  ]
+}
