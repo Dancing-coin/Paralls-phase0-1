@@ -16,7 +16,14 @@ cache and codec behavior.
 & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' docs/verification/g0-939c6746/run_baseline.py --repo . --output D:/Temp/g2-copy-loop-baseline-20261110 --freeze
 ```
 
-The full serial G0-range comparison collected 10,034 nodes: 9,991 passed,
+Archive provenance correction (2026-11-12): the evidence archive's
+`baseline/results.json` records HEAD
+`3985e98675d916e33136dc0b8503c3f44154747f`, the parent of optimization commit
+`59084f369ec6c19672b91e26770b81d9e17ef510`. The counts below describe that
+recorded run. This archive alone does not establish a full-suite run on the
+committed `59084f36` tree; no equality of source trees is asserted here.
+
+The archived serial G0-range comparison collected 10,034 nodes: 9,991 passed,
 39 failed, 2 skipped and 2 xfailed. All G0 nodes and the 10,033 nodes in the
 previous full run retained setup, call and teardown outcomes. Failure node,
 phase and type signatures and stacks match after normalizing pytest temporary

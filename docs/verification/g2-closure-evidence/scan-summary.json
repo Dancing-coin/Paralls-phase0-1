@@ -1,0 +1,121 @@
+{
+  "scope": "all closure evidence text files excluding __pycache__; literal credential patterns and environment object keys; no matched values retained",
+  "files": [
+    {
+      "file": ".gitattributes",
+      "hits": {}
+    },
+    {
+      "file": "archive-verification.json",
+      "hits": {}
+    },
+    {
+      "file": "closure-checks.md",
+      "hits": {}
+    },
+    {
+      "file": "paralls-epoch-fence-postcommit-20261111/environment.json",
+      "hits": {},
+      "environment_variable_names": [
+        "PYTHONHASHSEED",
+        "PYTHONPATH",
+        "PYTEST_ADDOPTS",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD"
+      ],
+      "secret_like_environment_variable_names": []
+    },
+    {
+      "file": "paralls-epoch-fence-postcommit-20261111/failures.jsonl",
+      "hits": {}
+    },
+    {
+      "file": "paralls-epoch-fence-postcommit-20261111/invocation.json",
+      "hits": {},
+      "environment_variable_names": [],
+      "secret_like_environment_variable_names": []
+    },
+    {
+      "file": "paralls-epoch-fence-postcommit-20261111/junit.xml",
+      "hits": {}
+    },
+    {
+      "file": "paralls-epoch-fence-postcommit-20261111/results.json",
+      "hits": {}
+    },
+    {
+      "file": "paralls-epoch-registry-postcommit-20261111/environment.json",
+      "hits": {},
+      "environment_variable_names": [
+        "PYTHONHASHSEED",
+        "PYTHONPATH",
+        "PYTEST_ADDOPTS",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD"
+      ],
+      "secret_like_environment_variable_names": []
+    },
+    {
+      "file": "paralls-epoch-registry-postcommit-20261111/failures.jsonl",
+      "hits": {}
+    },
+    {
+      "file": "paralls-epoch-registry-postcommit-20261111/invocation.json",
+      "hits": {},
+      "environment_variable_names": [],
+      "secret_like_environment_variable_names": []
+    },
+    {
+      "file": "paralls-epoch-registry-postcommit-20261111/junit.xml",
+      "hits": {}
+    },
+    {
+      "file": "paralls-epoch-registry-postcommit-20261111/results.json",
+      "hits": {}
+    },
+    {
+      "file": "paralls-session-slice-20261111-corrected-postcommit/environment.json",
+      "hits": {},
+      "environment_variable_names": [
+        "PYTHONHASHSEED",
+        "PYTHONPATH",
+        "PYTEST_ADDOPTS",
+        "PYTEST_DISABLE_PLUGIN_AUTOLOAD"
+      ],
+      "secret_like_environment_variable_names": []
+    },
+    {
+      "file": "paralls-session-slice-20261111-corrected-postcommit/failures.jsonl",
+      "hits": {}
+    },
+    {
+      "file": "paralls-session-slice-20261111-corrected-postcommit/invocation.json",
+      "hits": {},
+      "environment_variable_names": [],
+      "secret_like_environment_variable_names": []
+    },
+    {
+      "file": "paralls-session-slice-20261111-corrected-postcommit/junit.xml",
+      "hits": {}
+    },
+    {
+      "file": "paralls-session-slice-20261111-corrected-postcommit/results.json",
+      "hits": {}
+    },
+    {
+      "file": "perf/measure_session_websocket_pull.py",
+      "hits": {}
+    },
+    {
+      "file": "perf/README.md",
+      "hits": {}
+    },
+    {
+      "file": "perf/session-websocket-pull-results.json",
+      "hits": {}
+    },
+    {
+      "file": "README.md",
+      "hits": {}
+    }
+  ],
+  "credential_hits": 0
+}

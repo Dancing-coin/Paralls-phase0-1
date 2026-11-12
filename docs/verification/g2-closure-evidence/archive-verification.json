@@ -1,0 +1,149 @@
+{
+  "method": "G0 run2 node outcome+phases; failures error_type/message/normalized_stack after pytest-N, 0xADDR and AnyIO cancel-scope hex-ID normalization; original archived bytes unchanged",
+  "runs": [
+    {
+      "run": "paralls-epoch-fence-postcommit-20261111",
+      "head": "56ac6eb558444e4867cbcd688b214140b0d370ca",
+      "collected": 10077,
+      "counts": {
+        "passed": 10034,
+        "failed": 39,
+        "skipped": 4
+      },
+      "collection_errors": 0,
+      "g0_missing": 0,
+      "g0_changed": 0,
+      "added": 140,
+      "added_not_passed": 0,
+      "failure_signature_changes": 0,
+      "files": [
+        {
+          "name": "results.json",
+          "bytes": 3232650,
+          "sha256": "d4fc995a38fffddd0370d74b12e382ab893d218313eae452572312ef27ec02b9",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "invocation.json",
+          "bytes": 584,
+          "sha256": "a9b64ceef57741e013795e3c007c8201d94d8ee6d328288ffcc7b2900e09bbe7",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "environment.json",
+          "bytes": 75009,
+          "sha256": "cd24545cce54b8a131d48e04ac97d88fcb54220b06174c840e9a1c97cf7a2fc1",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "junit.xml",
+          "bytes": 1929057,
+          "sha256": "f29025427b5d02695238d717e2f7102f3ef6ebb76191e799def885dcfec72323",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "failures.jsonl",
+          "bytes": 213720,
+          "sha256": "20986ad3ce71670d05ecd2f68acaeec3f40e9af1f1ba59167dfa3973d7f876dd",
+          "source_and_committed_identical": true
+        }
+      ]
+    },
+    {
+      "run": "paralls-epoch-registry-postcommit-20261111",
+      "head": "e8c430b2767728cceb789b4a8b40c91529aa3c60",
+      "collected": 10052,
+      "counts": {
+        "passed": 10009,
+        "failed": 39,
+        "skipped": 4
+      },
+      "collection_errors": 0,
+      "g0_missing": 0,
+      "g0_changed": 0,
+      "added": 115,
+      "added_not_passed": 0,
+      "failure_signature_changes": 0,
+      "files": [
+        {
+          "name": "results.json",
+          "bytes": 3225530,
+          "sha256": "4ffc153dcf23cb757efe6a34fd1b2f2832c40636cbe5df44905dd9c48d5434ea",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "invocation.json",
+          "bytes": 590,
+          "sha256": "e5c22bf8556a08dca3a9c696a8be3afa1f98bbdb396279460c6da1b8eefdfa0a",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "environment.json",
+          "bytes": 75023,
+          "sha256": "6a37aea54b0a625f1a98840ef5cf592e5b68483bc3f265465b81666af923732e",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "junit.xml",
+          "bytes": 1925414,
+          "sha256": "2b69315fbd6489174014f61f22dbe0e5dd35068fdd458396a3e00a2bdfff14b6",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "failures.jsonl",
+          "bytes": 213720,
+          "sha256": "04429bc5a039a08fb4abf0dc29a34863f5d9e6ba78d065fded1b6e5f29cea9c8",
+          "source_and_committed_identical": true
+        }
+      ]
+    },
+    {
+      "run": "paralls-session-slice-20261111-corrected-postcommit",
+      "head": "84c237d3fea5b6060a3d98688c10566924948e9c",
+      "collected": 10048,
+      "counts": {
+        "passed": 10005,
+        "failed": 39,
+        "skipped": 4
+      },
+      "collection_errors": 0,
+      "g0_missing": 0,
+      "g0_changed": 0,
+      "added": 111,
+      "added_not_passed": 0,
+      "failure_signature_changes": 0,
+      "files": [
+        {
+          "name": "results.json",
+          "bytes": 3224409,
+          "sha256": "0c296862861d406e64f6f96da6aac2482567d8787a87e794cccbff7b9657cb1b",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "invocation.json",
+          "bytes": 608,
+          "sha256": "a483f84923698caf96dfe227742b311d4ceac9f6e095ce3af7ea50ec2519d2dc",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "environment.json",
+          "bytes": 75165,
+          "sha256": "b1af5a6268552e3756b2b41afa218d99487a09033ee89dcdab7cfe47cf4883d5",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "junit.xml",
+          "bytes": 1924847,
+          "sha256": "094534d172627f2eab6c678b817661f1b355afcb67c63afa9f8b9520b71a24aa",
+          "source_and_committed_identical": true
+        },
+        {
+          "name": "failures.jsonl",
+          "bytes": 213720,
+          "sha256": "a7dfb4bb448c5e88d92f58fc4552bd7f9aa3dd7b7119f4f0b87fa1855baacfd4",
+          "source_and_committed_identical": true
+        }
+      ]
+    }
+  ]
+}
