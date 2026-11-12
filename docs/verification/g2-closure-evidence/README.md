@@ -4,6 +4,8 @@
 
 三次运行的 `invocation.json`、`environment.json` 与其他归档文件均已扫描令牌、私钥、凭证赋值及授权头模式，未命中。逐个扫描的 `invocation.json` 与 `environment.json` 文件均无上述命中；`environment.json` 中未发现密钥类环境变量名。扫描基于模式，不能证明不存在所有形式的凭证。结果、JUnit 和失败清单中含本机用户名路径，按项目负责人决定原样保留。
 
+补充核对：本轮对这三份运行文件执行的 `盘符:/Users/用户名` 形式模式扫描未命中；上段“含本机用户名路径”沿用此前记录和负责人要求的保守披露口径，不能据本轮模式扫描独立证实具体路径。归档保持原样，仍按含此类路径处理。
+
 以下命令均使用 `D:/Temp/paralls-g0-py312/Scripts/python.exe` 运行 `docs/verification/g0-939c6746/run_baseline.py --repo . --output <对应 D:/Temp 运行目录> --freeze`。原始结果中 xfail 计入 skipped；以下拆分为 2 skipped、2 xfailed。
 
 | 运行目录 | HEAD | 收集 | passed | failed | skipped | xfailed |
