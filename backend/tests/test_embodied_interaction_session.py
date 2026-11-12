@@ -111,7 +111,7 @@ def test_authenticated_binding_is_checked_before_unknown_session_lookup(monkeypa
     reads = []
     monkeypatch.setattr(main, "time", lambda: now)
 
-    def record_read(stream_id):
+    def record_read(stream_id, **query):
         reads.append(stream_id)
         return []
 
@@ -155,6 +155,82 @@ def _bound_session_context(actor_refs: tuple[str, ...], *, now: int | None = Non
         connection_ref="connection:session-reader",
         binding=bound.binding,
     )
+
+
+@pytest.mark.parametrize("durable", [False, True], ids=["memory", "durable"])
+def test_session_pull_selects_first_proposal_across_stream_histories(tmp_path, monkeypatch, durable):
+    reset_runtime_state()
+    store = DurableGameplayEventStore(tmp_path / "session.sqlite") if durable else GameplayEventStore()
+    monkeypatch.setattr(main, "gameplay_event_store", store)
+    context = _bound_session_context(("character:siming",))
+    def pull(session_id):
+        return main._handle_envelope(Envelope(message_type="embodied_interaction_session_projection_pull", payload={
+            "session_id": session_id, "after_global_sequence": 0,
+        }), connection_context=context)
+    def append_prior(session_id):
+        from test_gameplay_event_store_contract import _batch, _event
+        stream = f"session:{session_id}"
+        tx = f"prior:{session_id}"
+        event = _event(f"event:{tx}", stream_id=stream, tx=tx, command_id=tx)
+        batch = _batch(tx=tx, command_id=tx, key=tx, events=[event], expected={stream: 0})
+        batch["outbox_entries"] = []
+        assert store.append_batch(batch).committed
+    def propose(session_id, tick=481, causation="first"):
+        service = EmbodiedInteractionSessionService(store=store, world_tick_provider=lambda: tick)
+        return service.propose(session_id=session_id, semantic_action="handshake",
+            initiator_ref="character:siming", participant_refs=["character:siming", "character:maya"],
+            target_refs=["character:maya"], authority_preflight_ref="preflight:test", policy_revision=3,
+            scene_revision=11, causation_id=causation, correlation_id="corr:test")
+    denied = [{"message_type": "embodied_interaction_session_projection_denied",
+               "payload": {"error_code": "session_access_unavailable"}}]
+    try:
+        assert pull("empty") == denied
+        append_prior("no-proposal")
+        assert pull("no-proposal") == denied
+        append_prior("multi")
+        assert propose("multi").accepted
+        stream = store.read_stream("session:multi")
+        first = stream[1]
+        assert first.stream_revision == 2
+        before = pull("multi")
+        assert before == [{"message_type": "embodied_interaction_session_event", "payload": {
+            "session_id": "multi", "semantic_action": "handshake", "state": "awaiting_responses",
+            "safe_phase": "awaiting_responses", "initiator_ref": "character:siming",
+            "participant_refs": ["character:siming", "character:maya"], "known_time": 481,
+            "event_id": first.event_id, "global_sequence": first.global_sequence,
+            "next_global_sequence": first.global_sequence,
+        }}]
+        # A new Owner instance loses session state, but the durable idempotency
+        # key still protects the proposal already committed to this Store.
+        retry = propose("multi", causation="second")
+        assert not retry.accepted
+        assert retry.error_code == "idempotency_key_reused"
+        from test_gameplay_event_store_contract import _batch
+        tx = "fixture:second-proposal"
+        duplicate = first.model_copy(update={"event_id": tx, "transaction_id": tx,
+            "command_id": tx, "stream_revision": 0, "global_sequence": 0,
+            "payload": {**first.payload, "known_time": 999}}, deep=True)
+        batch = _batch(tx=tx, command_id=tx, key=tx, events=[duplicate.model_dump()],
+                       expected={"session:multi": 2})
+        batch["outbox_entries"] = []
+        assert store.append_batch(batch).committed
+        assert pull("multi") == before
+        legacy = EmbodiedInteractionSessionService(store=store)
+        assert _propose(legacy, session_id="legacy-v1").accepted
+        assert pull("legacy-v1") == denied
+        legacy_first = store.read_stream("session:legacy-v1")[0]
+        tx = "fixture:v2-after-v1"
+        after_v1 = legacy_first.model_copy(update={"event_id": tx, "transaction_id": tx,
+            "command_id": tx, "schema_version": 2, "stream_revision": 0, "global_sequence": 0,
+            "payload": {**legacy_first.payload, "known_time": 481}}, deep=True)
+        batch = _batch(tx=tx, command_id=tx, key=tx, events=[after_v1.model_dump()],
+                       expected={"session:legacy-v1": 1})
+        batch["outbox_entries"] = []
+        assert store.append_batch(batch).committed
+        assert pull("legacy-v1") == denied
+    finally:
+        if durable:
+            store.close()
 
 
 def test_bound_initiator_reads_only_proposal_fields_and_committed_world_tick(monkeypatch) -> None:

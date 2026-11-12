@@ -6822,7 +6822,9 @@ def _session_initiator_event(
     if (current is None or current != presented or current.binding_state != "bound_active"
             or now >= current.lease_expires_at or not current.principal_ref):
         return None
-    events = gameplay_event_store.read_stream(f"session:{session_id}")
+    events = gameplay_event_store.read_stream(
+        f"session:{session_id}", event_type="embodied.interaction_session.proposed", limit=1,
+    )
     event = next((item for item in events
                   if item.event_type == "embodied.interaction_session.proposed"), None)
     if event is None or event.schema_version != 2:
