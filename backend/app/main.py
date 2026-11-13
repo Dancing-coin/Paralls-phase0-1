@@ -2331,30 +2331,14 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
 
 
 def _handle_siming_environment_request(event: AuthorityEvent) -> None:
-    """Protocol 09 stub: forward siming.environment_request to ESM.
+    """Protocol 09：ESM 结果校验后回流总线，失败只回报约束。"""
+    from app.services.siming_environment_protocol import SimingEnvironmentProtocol
 
-    Receives siming.environment_request from the authority bus (produced by
-    siming_event_producer when selected_path == "environment_change_path") and
-    resolves it through ESM, publishing the resulting world_result authority event.
-    """
-    payload = event.payload
-    request = EnvironmentRequest(
-        request_id=f"siming:{event.causation_id}",
-        room_id=event.room_id,
-        scene_id=event.scene_id,
-        zone_id=event.zone_id,
-        source={"system": "siming", "event_id": event.event_id},
-        target_entity_refs={"environment_ids": [str(payload.get("target_environment_id", "") or "env_default")]},
-        goal=str(payload.get("goal", "") or "environment_change"),
-        requested_change_type=str(payload.get("requested_change_type", "") or "light_level_drop"),
-        requested_strength=str(payload.get("requested_strength", "medium") or "medium"),
-        reason_tag="siming_environment_request",
-        producer_ts=event.producer_ts,
-        causation_id=event.causation_id,
-        correlation_id=event.correlation_id,
-    )
-    resolution, _environment_result = esm_service.resolve_environment_request(request)
-    _publish_world_result_authority_event(resolution, source_event=request)
+    request, resolution, environment_result = SimingEnvironmentProtocol().resolve(event, esm=esm_service)
+    _publish_world_result_authority_event(resolution, source_event=request, drain_frontend=False)
+    if environment_result is not None:
+        l1_occupancy_service.apply_environment_result(environment_result)
+        _publish_world_result_authority_event(environment_result, source_event=request, drain_frontend=False)
 
 
 def _ack_siming_staging_request_from_origin(event: AuthorityEvent) -> None:
@@ -8945,6 +8929,7 @@ def _publish_world_result_authority_event(
     result: WorldResultBase,
     *,
     source_event: object,
+    drain_frontend: bool = True,
 ) -> list[dict[str, object]]:
     if (getattr(result, "read_content", None) and getattr(result, "read_source_ref", None)
         and result.actor_id == getattr(source_event, "actor_id", None)):
@@ -8954,7 +8939,7 @@ def _publish_world_result_authority_event(
     frontend_authority_event_projector.handle_event(authority_event)
     authority_event_bus.publish(authority_event)
     event_trace.record(authority_event.event_type)
-    return _drain_frontend_authority_events()
+    return _drain_frontend_authority_events() if drain_frontend else []
 
 
 def _publish_candidate_authority_event(event: ConversationCandidateEvent) -> list[dict[str, object]]:
