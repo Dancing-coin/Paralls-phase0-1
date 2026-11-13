@@ -153,6 +153,14 @@ class SimingQualityMonitor:
                 )
             )
 
+        visual_evidence_refs = state_tree.environment.summary.get("visual_evidence_refs", [])
+        if visual_evidence_refs:
+            signals.append(QualitySignal(
+                signal_id=f"quality:{state_tree.snapshot_id}:visual_evidence",
+                dimension="evidence_visibility_distribution", severity="medium",
+                evidence_refs=list(visual_evidence_refs), suggested_action_band="fact_reveal",
+                reason="validated visual evidence requires an observation window",
+            ))
         if narrative.seeds:
             signals.append(
                 QualitySignal(
@@ -258,4 +266,5 @@ class SimingQualityMonitor:
             score=score,
             reason="; ".join(signal.reason for signal in signals),
             mapped_to_policy=True,
+            evidence_refs=list(dict.fromkeys(ref for signal in signals for ref in signal.evidence_refs if ref)),
         )

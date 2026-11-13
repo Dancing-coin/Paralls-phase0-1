@@ -321,11 +321,15 @@ class SimingCoordinator:
         if reason is not None:
             self._reconcile_only(entry, head, now=now, reason=reason)
             return SimingAdvance(status="zero_write", reason=reason)
-        prepared, heavenly_frame, request = self.runtime.heavenly_support.prepare_request(frame.siming_input)
+        observed_input = frame.siming_input.model_copy(update={
+            "source_event": frame.observed[-1].authority_event,
+        }) if frame.observed else frame.siming_input
+        prepared, heavenly_frame, request = self.runtime.heavenly_support.prepare_request(observed_input)
         if prepared is not None or request is None:
             self._reconcile_only(entry, head, now=now, reason="adaptive_refresh_unavailable")
             return SimingAdvance(status="zero_write", reason="adaptive_refresh_unavailable")
-        frame.heavenly_frame, frame.request = heavenly_frame, request
+        frame.heavenly_frame = heavenly_frame
+        frame.request = request.model_copy(update={"event": frame.siming_input.source_event})
         frame.actor_ids = self.runtime.heavenly_support.prepared_actor_ids(heavenly_frame)
         if self.runtime._capture_siming_pin(frame) != current:
             self._reconcile_only(entry, head, now=now, reason="stale_pin")

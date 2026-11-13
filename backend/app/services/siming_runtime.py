@@ -377,20 +377,34 @@ class SimingRuntime:
             )
             return
 
+        if event.event_type == "visual_fact_event":
+            from app.services.siming_visual_protocol import SimingVisualFactProtocol
+            try:
+                visual = SimingVisualFactProtocol.project(event, self._state_tree.latest_snapshot)
+            except ValueError as error:
+                result.outputs.append(self._no_action(event, reason=str(error)))
+                result.audit_records.append(self._audit(event, status="no_action", reason=str(error)))
+                return
+            event = event.model_copy(update={"payload": {**event.payload,
+                "established_fact_id": visual["established_fact_id"],
+                "visible_actor_ids": visual["visible_actor_ids"]}})
+            observed = [item.model_copy(update={"payload": dict(event.payload), "authority_event": event})
+                        for item in observed]
         frame.observed = observed
         if self._heavenly_support is not None:
             prepared, heavenly_frame, request = self._heavenly_support.prepare_request(
-                siming_input, planned_batches=None if effects is None else effects.batches)
+                siming_input.model_copy(update={"source_event": event}),
+                planned_batches=None if effects is None else effects.batches)
             frame.heavenly_frame = heavenly_frame
             if request is not None:
-                frame.stage, frame.request = "adaptive", request
+                frame.stage, frame.request = "adaptive", request.model_copy(update={"event": frame.siming_input.source_event})
                 frame.actor_ids = self._heavenly_support.prepared_actor_ids(heavenly_frame)
                 return
             frame.prepared = prepared.model_dump(mode="json")
         self._after_heavenly(frame, effects)
 
     def _after_heavenly(self, frame: SimingTurnFrame, effects=None) -> None:
-        event, result, observed = frame.siming_input.source_event, frame.result, frame.observed
+        event, result, observed = frame.observed[-1].authority_event, frame.result, frame.observed
         prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
         frame.stage = "completed"
         if (prepared is not None and prepared.mode == "active"
@@ -552,7 +566,7 @@ class SimingRuntime:
             frame.guardrail_summary = guardrail_summary
             frame.policy_snapshot = policy_snapshot
             frame.stage = "candidate"
-            frame.request = SimingProviderRequest(stage="candidate", event=event, snapshot=policy_snapshot)
+            frame.request = SimingProviderRequest(stage="candidate", event=frame.siming_input.source_event, snapshot=policy_snapshot)
             frame.actor_ids = sorted(set(policy_snapshot.eligible_actor_ids))
             if os.getenv("SIMING_LLM_ADVISORY_DISABLED", "").strip() == "1":
                 self._finish_candidate(frame, [], [], effects)
@@ -768,7 +782,7 @@ class SimingRuntime:
         )
 
     def _finish_candidate(self, frame, llm_candidates, llm_audit, effects=None) -> None:
-        event, result = frame.siming_input.source_event, frame.result
+        event, result = frame.observed[-1].authority_event, frame.result
         prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
         state_tree, fairness_snapshot, storyline, projection = frame.state_tree, frame.fairness_snapshot, frame.storyline, frame.projection
         narrative_summary, quality_summary, guardrail_summary = frame.narrative_summary, frame.quality_summary, frame.guardrail_summary
@@ -1536,6 +1550,7 @@ class SimingRuntime:
         if reason_scope != "":
             payload["reason_scope"] = reason_scope
         if selected_path == "visual_fact_path":
+            payload.update(self._visual_request_evidence(event))
             payload["established_fact_id"] = (
                 candidate.established_fact_ids[0]
                 if candidate.established_fact_ids
@@ -1582,6 +1597,14 @@ class SimingRuntime:
             payload={"decision_id": f"decision_{event.event_id}"},
         )
 
+    @staticmethod
+    def _visual_request_evidence(event: AuthorityEvent) -> dict:
+        source_key = ("source_visual_fact_event_id" if event.event_type == "visual_fact_event"
+                      else "source_fact_event_id")
+        return {source_key: event.payload.get("source_visual_fact_event_id") or event.event_id,
+                "observability_goal": "make established fact observable",
+                "presentation_budget": "subtle"}
+
     def _visual_fact_dispatch(self, event: AuthorityEvent) -> SimingOutput:
         established_fact_id = str(
             event.payload.get("established_fact_id", event.event_id)
@@ -1598,6 +1621,7 @@ class SimingRuntime:
             intervention_band="fact_reveal",
             payload={
                 "established_fact_id": established_fact_id,
+                **self._visual_request_evidence(event),
                 "presentation_hint": "increase observability for established light change",
                 # S8: char_b placeholder. In Phase 2, should use roster resolution.
                 # TODO: Replace with actual character from roster system.
@@ -2252,7 +2276,7 @@ class SimingRuntime:
         prepared = plan.after.prepared
         if prepared is not None and prepared.get("compiled_context") is not None:
             pin["heavenly"] = self._heavenly_support.capture_prepared_pin({
-                "event": plan.after.siming_input.source_event.model_dump(mode="json"),
+                "event": plan.after.observed[-1].authority_event.model_dump(mode="json"),
                 "context": prepared["compiled_context"],
             })
         return pin
