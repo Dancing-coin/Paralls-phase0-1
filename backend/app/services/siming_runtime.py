@@ -1508,9 +1508,9 @@ class SimingRuntime:
             target_actor_id=target, established_fact_ids=refs,
             reason_tags=list(event.payload.get("reason_tags", [])),
         )
-        # shortcut: 兼容既有 char_b 演示角色；正式名册接入后移除此有限回退。
+        # shortcut: 兼容既有三名演示角色；正式名册接入后移除此有限回退。
         if not snapshot.eligible_actor_ids:
-            snapshot = snapshot.model_copy(update={"eligible_actor_ids": ["char_b"]})
+            snapshot = snapshot.model_copy(update={"eligible_actor_ids": ["char_a", "char_b", "char_c"]})
         policy = self._policy.evaluate(candidate, snapshot=snapshot)
         feasibility = self._feasibility.evaluate(candidate) if policy.accepted else None
         if not policy.accepted or not feasibility.accepted:
