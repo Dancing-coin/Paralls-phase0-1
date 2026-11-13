@@ -178,6 +178,9 @@ class SimingCharacterCompatibilityInput(BaseModel):
     actor_id: str
     input_type: BridgeInputType
     band: BridgeBand
+    evidence_refs: list[str] = Field(default_factory=list)
+    impulse_axis: Literal["narrative", "relation", "action"] | None = None
+    impulse_label: str | None = None
     producer_ts: int
     room_id: str
     scene_id: str

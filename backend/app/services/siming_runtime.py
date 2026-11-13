@@ -559,7 +559,14 @@ class SimingRuntime:
             return
 
         if self._is_environment_attention_event(event):
-            result.outputs.append(self._environment_attention_dispatch(event))
+            output = self._environment_attention_dispatch(event)
+            if not self._accept_rule_catalyst(event, output, fairness_snapshot, result):
+                self._finalize_tick_state(result, effects=effects, event=event, prepared=prepared,
+                    state_tree=state_tree, fairness_snapshot=fairness_snapshot, storyline=storyline,
+                    projection=projection, narrative_summary=narrative_summary,
+                    quality_summary=quality_summary, guardrail_summary=guardrail_summary)
+                return
+            result.outputs.append(output)
             result.audit_records.append(
                 self._audit(
                     event,
@@ -613,7 +620,14 @@ class SimingRuntime:
             event.event_type == "conversation_resolution_event"
             and self._has_conversation_candidate(event)
         ):
-            result.outputs.append(self._conversation_fact_reveal(event))
+            output = self._conversation_fact_reveal(event)
+            if not self._accept_rule_catalyst(event, output, fairness_snapshot, result):
+                self._finalize_tick_state(result, effects=effects, event=event, prepared=prepared,
+                    state_tree=state_tree, fairness_snapshot=fairness_snapshot, storyline=storyline,
+                    projection=projection, narrative_summary=narrative_summary,
+                    quality_summary=quality_summary, guardrail_summary=guardrail_summary)
+                return
+            result.outputs.append(output)
             result.audit_records.append(
                 self._audit(
                     event,
@@ -1467,6 +1481,34 @@ class SimingRuntime:
             },
         )
 
+    def _accept_rule_catalyst(self, event, output, snapshot, result) -> bool:
+        # 规则分支与模型候选共用策略和可执行性裁决，事实核心已在 tick 入口先行校验。
+        if output.selected_path != "character_input_path":
+            return True
+        target = output.payload["target_actor_id"]
+        refs = list(snapshot.known_fact_ids)
+        candidate = InterventionCandidate(
+            candidate_id=f"rule:{event.event_id}", room_id=event.room_id,
+            scene_id=event.scene_id, zone_id=event.zone_id, causation_id=event.event_id,
+            correlation_id=event.correlation_id, proposed_band=output.intervention_band,
+            target_actor_id=target, established_fact_ids=refs,
+            reason_tags=list(event.payload.get("reason_tags", [])),
+        )
+        # shortcut: 兼容既有 char_b 演示角色；正式名册接入后移除此有限回退。
+        if not snapshot.eligible_actor_ids:
+            snapshot = snapshot.model_copy(update={"eligible_actor_ids": ["char_b"]})
+        policy = self._policy.evaluate(candidate, snapshot=snapshot)
+        feasibility = self._feasibility.evaluate(candidate) if policy.accepted else None
+        if not policy.accepted or not feasibility.accepted:
+            status = "policy_rejected" if not policy.accepted else "feasibility_rejected"
+            reasons = policy.reasons if not policy.accepted else feasibility.reasons
+            result.outputs.append(self._no_action(event, reason=";".join(reasons)))
+            result.audit_records.append(self._audit(event, status=status, reason=";".join(reasons)))
+            return False
+        output.payload.update(evidence_refs=refs or [event.event_id], candidate_ref=candidate.candidate_id,
+                              decision_ref=f"decision_{candidate.candidate_id}")
+        return True
+
     def _dispatch_output(
         self,
         event: AuthorityEvent,
@@ -1479,6 +1521,11 @@ class SimingRuntime:
             "target_object_id": candidate.target_object_id,
             "target_environment_id": candidate.target_environment_id,
         }
+        payload.update(evidence_refs=list(candidate.established_fact_ids),
+                       candidate_ref=candidate.candidate_id, decision_ref=f"decision_{candidate.candidate_id}")
+        if candidate.proposed_band == "impulse":
+            payload.update(impulse_axis="narrative", impulse_label=candidate.explanation,
+                           situation_snapshot_id=f"fairness:{event.event_id}")
         pressure_hint = str(getattr(candidate, "pressure_hint", "") or "").strip()
         if pressure_hint != "":
             payload["pressure_hint"] = pressure_hint
