@@ -6,7 +6,8 @@ from app.models.authority_event import AuthorityEvent
 
 class SimingVisualFactProtocol:
     PRIMARY_TYPES = {'visual_character_fact', 'visual_object_fact', 'visual_environment_fact', 'visual_spatial_relation_fact'}
-    LEGACY_TYPES = {'light_level_drop': 'visual_environment_fact', 'object_state_change': 'visual_object_fact'}
+    LEGACY_TYPES = {'light_level_drop': 'visual_environment_fact', 'object_state_change': 'visual_object_fact',
+                    'fixed_gaze_on_target': 'visual_character_fact'}
     FORBIDDEN_FIELDS = {'skeleton_transforms', 'face_pose_weights', 'role_belief_truth',
                         'psychology_truth', 'raw_pose', 'bone_transforms', 'au_weights'}
 
