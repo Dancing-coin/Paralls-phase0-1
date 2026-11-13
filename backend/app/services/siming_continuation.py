@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.authority_event import AuthorityEvent
+from app.models.siming_fact_core import SimingFactCoreState
 from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
 from app.models.siming_narrative import NarrativeRoomState
 from app.models.siming_runtime_state import NarrativeObligationLedgerSnapshot
@@ -170,6 +171,7 @@ class SimingCompletionValidation(BaseModel):
 
 class SimingStageEffects(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    fact_core_states: list[SimingFactCoreState] = Field(default_factory=list)
     batches: list[HeavenlyGraphWriteBatch] = Field(default_factory=list)
     observatory_messages: list[dict] = Field(default_factory=list)
     narrative_state: NarrativeRoomState | None = None

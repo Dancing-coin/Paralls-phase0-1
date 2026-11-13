@@ -378,6 +378,7 @@ class SimingCoordinator:
         committed = self.admissions.read(entry.key, revision=entry.commit_revision).entry
         expected = deepcopy(next(effect for effect in committed.transition.effects if effect.kind == "runtime_state").payload["plan_pin"])
         current = self.runtime.capture_plan_pin(plan)
+        expected["fact_core"] = digest([state.model_dump(mode="json") for state in plan.effects.fact_core_states])
         narrative = plan.effects.narrative_state
         if narrative is not None:
             expected["narrative"] = [narrative.revision, narrative.open_count]

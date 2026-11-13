@@ -365,7 +365,7 @@ class SimingRuntime:
         if not observed:
             return
 
-        fact_result = self._fact_core.evaluate(observed)
+        fact_result = self._fact_core.plan_evaluate(observed)
         if not fact_result.accepted:
             result.outputs.append(self._no_action(event))
             result.audit_records.append(
@@ -390,6 +390,13 @@ class SimingRuntime:
                 "visible_actor_ids": visual["visible_actor_ids"]}})
             observed = [item.model_copy(update={"payload": dict(event.payload), "authority_event": event})
                         for item in observed]
+        if effects is None:
+            for state in fact_result.states:
+                self._fact_core.install_snapshot(state)
+        elif fact_result.states:
+            merged = {state.scene_id: state for state in effects.fact_core_states}
+            merged.update({state.scene_id: state for state in fact_result.states})
+            effects.fact_core_states = [merged[key] for key in sorted(merged)]
         frame.observed = observed
         if self._heavenly_support is not None:
             prepared, heavenly_frame, request = self._heavenly_support.prepare_request(
@@ -2253,6 +2260,7 @@ class SimingRuntime:
             "source_live": self._source_pin_reader(event.model_copy(deep=True)) if self._source_pin_reader else None,
             "actors": {actor: self._actor_pin_reader(actor) for actor in frame.actor_ids} if self._actor_pin_reader else {},
             "provider": self._provider_identity(provider), "schema": 1,
+            "fact_core": digest([state.model_dump(mode="json") for state in self._fact_core.snapshots_for_room(event.room_id)]),
             "policy": {"dimensions": [asdict(item) for item in self._feature_registry.fairness_dimensions()],
                        "mappings": {key: asdict(value) for key, value in self._feature_registry._policy_mappings.items()}},
             # 注入的决策 policy 可以使用独立 registry，必须冻结实际 evaluate 读取的配置。
@@ -2323,7 +2331,7 @@ class SimingRuntime:
         if siming_input.input_type == "population_cadence_input":
             raise ValueError("siming_initial_plan_not_supported")
         frame = SimingTurnFrame(turn_id=uuid4().hex, siming_input=siming_input.model_copy(deep=True))
-        effects = SimingStageEffects()
+        effects = SimingStageEffects(fact_core_states=self._fact_core.snapshots_for_room(siming_input.source_event.room_id))
         if self._heavenly_support is not None:
             effects.batches.extend(self._heavenly_support.plan_authority_outcome(siming_input.source_event).batches)
         self._start_tick(frame, effects)
@@ -2331,6 +2339,8 @@ class SimingRuntime:
 
     def install_planned_state(self, effects: SimingStageEffects) -> None:
         self._assert_siming_owner()
+        for state in effects.fact_core_states:
+            self._fact_core.install_snapshot(state)
         if effects.narrative_state is not None:
             self._narrative_core.install_room_state(effects.narrative_state)
         if effects.state_tree is not None:
@@ -2349,7 +2359,7 @@ class SimingRuntime:
             raise ValueError("siming_accepted_stage_not_supported")
         if frame.job is None or completion.request_digest != hashlib.sha256(frame.job.request_json).hexdigest():
             raise ValueError("siming_accepted_request_mismatch")
-        effects = SimingStageEffects()
+        effects = SimingStageEffects(fact_core_states=self._fact_core.snapshots_for_room(frame.siming_input.source_event.room_id))
         self._resume_tick(frame, completion, effects)
         return SimingAcceptedPlan(after=frame, effects=effects)
 
