@@ -74,7 +74,8 @@ flowchart LR
 
 - 最终司命范围：1317 passed、8736 deselected，退出码 0；日志 `D:/HarnessEvidence/siming-p2-regression-final-20261113.log`。
 - 全后端：10045 passed、6 skipped、2 xfailed，1970.44 秒。
-- phase0：失败，退出码 1；不是档案门失败。观测台 `dialogue_pair_count=0`，`observatory_panels_populated`、`observatory_ledger_pairwise`、`observatory_ledger_siming_pressure` 三项缺失；其余结果见报告。未确定与本次变更的因果关系，不宣称既有或间歇性。
-- 证据：`D:/HarnessEvidence/siming-p2-phase0-20261113/harness-run-report.json`；本轮清理状态 passed。旧中断目录未动。
-- all：按任务约定单列“被档案门阻塞”，本轮未执行，不声称通过。
-- 下一步：定位观测台缺少对话配对的原因，再执行完整 phase0；当前仅实现与后端验收完成，整体验收尚未完成。
+- phase0 首次运行：失败，退出码 1；观测台 `dialogue_pair_count=0`，面板、关系台账与司命压力三项缺失。该结果不单独证明由本次改动引入。
+- 随后当前提交上的观测台专项复测通过：`dialogue_pair_count=2`，面板和两项台账指标均通过，表明该失败具有间歇性。
+- phase0 最终复跑：通过，退出码 0；全后端 10045 passed、6 skipped、2 xfailed，Godot 验证通过，清理通过。证据：`D:/HarnessEvidence/siming-p2-phase0-final-20261114/harness-run-report.json`。
+- all：本轮未执行；按已知档案门阻塞状态单列为“被档案门阻塞”，不声称通过。档案门仍由独立线排查。
+- 旧中断目录未动。
