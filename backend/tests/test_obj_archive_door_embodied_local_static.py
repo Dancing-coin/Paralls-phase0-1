@@ -48,7 +48,7 @@ def test_door_host_refreshes_forced_facing_from_the_live_contact_geometry() -> N
 
     refresh = "player_bridge.set_forced_facing_yaw(desired_yaw)"
     assert refresh in align_body
-    assert align_body.index(refresh) < align_body.index("if absf(wrapf(_actor_yaw(actor) - desired_yaw")
+    assert align_body.index(refresh) < align_body.index("if actor_forward.normalized().dot(facing.normalized())")
 
 
 def test_door_contact_alignment_uses_the_character_motor_forward_convention() -> None:

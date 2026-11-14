@@ -28,6 +28,8 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 		return {"accepted": false, "reason": "tag_rejected", "rejected_tags": tag_result["rejected"]}
 	var move: Variant = raw.get("move_local", Vector2.ZERO)
 	var facing := float(raw.get("desired_facing_yaw", 0.0))
+	var target_ref: Variant = raw.get("target_ref", "")
+	var target_name: StringName = target_ref if target_ref is StringName else StringName(target_ref) if target_ref is String else &""
 	return {
 		"accepted": true,
 		"source_id": source_id,
@@ -37,7 +39,7 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 		"move_local": move if move is Vector2 else Vector2.ZERO,
 		"desired_facing_yaw": facing,
 		"action_id": StringName(raw.get("action_id", "")),
-		"target_ref": StringName(raw.get("target_ref", "")),
+		"target_ref": target_name,
 		"claims": raw.get("claims", []).duplicate(),
 		"locomotion_relation": StringName(raw.get("locomotion_relation", "coexist")),
 		"priority": int(raw.get("priority", 0)),

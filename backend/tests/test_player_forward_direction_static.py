@@ -17,7 +17,8 @@ def test_player_bridge_uses_motor_forward_convention_for_move_and_look() -> None
     assert "func _forward_from_yaw(yaw: float) -> Vector3:" in helper_source
     assert "return -Vector3.FORWARD.rotated(Vector3.UP, yaw).normalized()" in helper_source
     assert "CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, desired_facing_yaw)" in helper_source
-    assert "return player.global_position + _forward_from_yaw(" in helper_source
+    assert "forward_origin = (character_c as Node3D).global_position" in helper_source
+    assert "return forward_origin + _forward_from_yaw(" in helper_source
     assert "return _forward_from_yaw(" in helper_source
     assert "ViewAnchorResolverRef" in bridge_source
 
@@ -42,3 +43,16 @@ def test_player_shell_normalizes_w_as_positive_local_forward() -> None:
     assert "move_forward_action" in player_shell_source
     assert "move_backward_action" in player_shell_source
     assert "return Vector2(raw_move_local.x, -raw_move_local.y)" in player_shell_source
+
+
+def test_archive_door_alignment_compares_actor_forward_with_target_direction() -> None:
+    host_source = (
+        ROOT / "scripts" / "interaction" / "ArchiveDoorEmbodiedActionHost.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'var actor_forward_value: Variant = actor.call("get_embodied_forward_vector")' in host_source
+    assert "if not actor_forward_value is Vector3:" in host_source
+    assert "actor_forward.normalized().dot(facing.normalized())" in host_source
+    assert "cos(FACING_TOLERANCE_RAD)" in host_source
+    assert "if actor_forward.normalized().dot(facing.normalized()) < cos(FACING_TOLERANCE_RAD):" in host_source
+    assert "_actor_yaw(actor) - desired_yaw" not in host_source
