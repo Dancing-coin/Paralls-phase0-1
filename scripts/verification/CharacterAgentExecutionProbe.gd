@@ -78,12 +78,12 @@ func _run_probe() -> void:
 			"source": {
 				"layer": "L1",
 				"system": "godot.raw_fact_emitter",
-				"actor_id": "char_c",
+				"actor_id": "char_a",
 				"object_id": "",
 				"environment_id": "",
 			},
 			"targets": {
-				"actor_id": "char_a",
+				"actor_id": "char_b",
 				"object_id": "",
 				"environment_id": "",
 			},
@@ -96,8 +96,8 @@ func _run_probe() -> void:
 			"acoustics": {},
 			"effect_kind": "pulse",
 			"subject_key": "",
-			"causation_id": "vf:901",
-			"correlation_id": "vf:901",
+			"causation_id": "vf:character-agent-execution:901",
+			"correlation_id": "character-agent-execution:901",
 		},
 	}
 	var err: int = bridge.send_envelope(envelope)
