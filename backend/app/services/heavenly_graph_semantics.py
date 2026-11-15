@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from pydantic import TypeAdapter
 
 from app.models.siming_heavenly_graph import (
     GraphCorrectionRequest,
@@ -77,6 +78,24 @@ class HeavenlyNodeTypeRegistry:
 
     def __init__(self, rules: dict[str, _NodeRule] | None = None) -> None:
         self.rules = dict(rules or self.DEFAULT_RULES)
+
+    def register(
+        self, node_type: str, *,
+        allowed_namespaces: tuple[GraphNamespace, ...],
+        allowed_record_kinds: tuple[GraphRecordKind, ...],
+        allowed_visibility_scopes: tuple[GraphVisibilityScope, ...],
+    ) -> None:
+        """S4: extend this instance without replacing existing or reserved rules."""
+        if (not node_type.strip() or node_type != node_type.strip()
+                or node_type in self.rules or self._legacy_rule(node_type) is not None):
+            raise ValueError(f"node type is already registered or reserved: {node_type}")
+        if not all((allowed_namespaces, allowed_record_kinds, allowed_visibility_scopes)):
+            raise ValueError("node rule requires nonempty admission constraints")
+        self.rules[node_type] = TypeAdapter(_NodeRule).validate_python({
+            "allowed_namespaces": allowed_namespaces,
+            "allowed_record_kinds": allowed_record_kinds,
+            "allowed_visibility_scopes": allowed_visibility_scopes,
+        })
 
     def rule_for(self, fact_type: FactType) -> _NodeRule:
         node_type = {
