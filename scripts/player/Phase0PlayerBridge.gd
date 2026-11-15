@@ -16,6 +16,8 @@ const ViewAnchorResolverRef = preload("res://scripts/player/Phase0ViewAnchorReso
 
 var current_intent_frame: Dictionary = {}
 var desired_facing_yaw := 0.0
+var forced_look_target := Vector3.ZERO
+var forced_look_target_active := false
 var sword_swing_pressed := false
 var shield_block_pressed := false
 var character_shell_sync = CharacterShellSyncRef.new()
@@ -131,6 +133,14 @@ func clear_forced_facing_yaw() -> void:
 	if player and player.has_method("clear_forced_facing_yaw"):
 		player.clear_forced_facing_yaw()
 
+func set_forced_look_target(world_target: Vector3) -> void:
+	forced_look_target = world_target
+	forced_look_target_active = true
+
+func clear_forced_look_target() -> void:
+	forced_look_target = Vector3.ZERO
+	forced_look_target_active = false
+
 func trigger_forced_jump(jump_type: String) -> void:
 	var _program_frame := build_program_intent_frame(
 		{
@@ -224,6 +234,8 @@ func get_camera() -> Camera3D:
 	return _find_camera()
 
 func _resolve_player_look_target() -> Vector3:
+	if forced_look_target_active:
+		return forced_look_target
 	return view_anchor_resolver.resolve_player_look_target(
 		player,
 		program_control_state,

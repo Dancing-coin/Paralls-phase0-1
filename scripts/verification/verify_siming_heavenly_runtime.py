@@ -7,10 +7,14 @@ import queue
 import re
 import sqlite3
 import subprocess
+import sys
 import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from common import (
     ensure_backend,
@@ -24,6 +28,18 @@ from common import (
     write_json,
     write_markdown,
 )
+from scripts.launch_trusted_local_gameplay_mirror import request_enrollment
+from app.services.trusted_local_gameplay_mirror_launcher import GameplayMirrorGodotLaunchHandoff
+
+
+def _probe_enrollment_env() -> dict[str, str]:
+    enrollment = request_enrollment(backend_http_url="http://127.0.0.1:8000",
+        launch_profile_ref="siming-heavenly-runtime", launcher_secret="siming-heavenly-verifier")
+    return GameplayMirrorGodotLaunchHandoff(enrollment=enrollment).child_environment()
+
+
+def _write_restart_enrollment(path: Path) -> None:
+    path.write_text(_probe_enrollment_env()['PARALLS_GAMEPLAY_MIRROR_ENROLLMENT_JSON'], encoding='utf-8')
 
 
 RESULT_IDS = (
@@ -721,6 +737,12 @@ def main() -> int:
         # post-restart phase switches character cognition to the real provider
         # and proves that the recovered context drives the visible reaction.
         runtime_env = {
+            "GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET": "siming-heavenly-verifier",
+            "GAMEPLAY_MIRROR_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON": json.dumps([{
+                "profile_ref": "siming-heavenly-runtime", "principal_ref": "principal:siming-heavenly-runtime",
+                "allowed_actor_refs": ["character:char_a", "character:char_b", "character:char_c"],
+                "credential_ttl_seconds": 300,
+            }]),
             "SIMING_HEAVENLY_MODE": "active",
             "SIMING_LLM_MODE": "http",
             "SIMING_LLM_ADVISORY_DISABLED": "1",
@@ -757,7 +779,8 @@ def main() -> int:
             "CHARACTER_MODEL_TIMEOUT_SECONDS": _effective_siming_config()["timeout"],
         }
         _, backend_process = _ensure_live_backend(root, python_exe, runtime_env)
-        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe", "--rendering-method", "gl_compatibility"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", runtime_env)
+        restart_enrollment = db_path.parent / 'restart-enrollment.json'
+        godot_process, lines = _start_logged_process([str(godot_exe), "--path", str(root), "--scene", "res://scenes/phase0/MainDemo.tscn", "--render-thread", "safe", "--rendering-method", "gl_compatibility"], root, verification_dir(root) / "siming-heavenly-runtime-godot.log", {**runtime_env, **_probe_enrollment_env(), 'SIMING_RESTART_ENROLLMENT_PATH': str(restart_enrollment)})
         runtime_failure: dict[str, str] = {}
         if not _wait_marker(godot_process, lines, "siming_heavenly_restart_ready", 900, failure_state=runtime_failure):
             return _write_report(root, None, preflight, runtime_failure or "godot_restart_marker_missing")
@@ -767,6 +790,7 @@ def main() -> int:
         backend_process = None
         wait_for_backend_release()
         _, backend_process = _ensure_live_backend(root, python_exe, online_character_env)
+        _write_restart_enrollment(restart_enrollment)
         runtime_failure = {}
         if not _wait_marker(godot_process, lines, "siming_heavenly_godot_complete", 900, failure_state=runtime_failure):
             return _write_report(root, None, preflight, runtime_failure or "godot_complete_marker_missing")

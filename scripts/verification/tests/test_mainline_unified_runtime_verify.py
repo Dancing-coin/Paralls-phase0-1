@@ -169,7 +169,7 @@ def test_mainline_unified_runtime_verifier_includes_scheduling_round_trace_runti
     source = Path(verifier.__file__).read_text(encoding="utf-8")
 
     assert (
-        "test_character_agent_execution_route_emits_scheduling_round_trace"
+        "test_legacy_social_spatial_bundle_fails_closed_without_runtime_writes"
         in source
     )
 

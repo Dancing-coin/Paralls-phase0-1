@@ -1,5 +1,7 @@
 extends Node
 
+const MIRROR_BRIDGE := preload("res://scripts/interaction/GameplayMirrorBridge.gd")
+
 @export var backend_url := "ws://127.0.0.1:8000/ws"
 
 var _mode := "main"
@@ -15,6 +17,7 @@ var _runtime_delta_count := 0
 var _candidate_count := 0
 var _siming_count := 0
 var _backend_connected := false
+var _session_bound := false
 
 
 func _ready() -> void:
@@ -49,6 +52,13 @@ func _run_probe() -> void:
 		bus.siming_output_received.connect(_on_siming_output_received)
 	if bus.has_signal("backend_connected"):
 		bus.backend_connected.connect(_on_backend_connected)
+	bus.websocket_session_bound_received.connect(_on_session_bound)
+	var mirror_bridge := MIRROR_BRIDGE.new()
+	add_child(mirror_bridge)
+	if mirror_bridge.load_session_enrollment_from_environment() != OK:
+		push_error("phase1_slice_runtime_probe:enrollment_missing")
+		get_tree().quit(1)
+		return
 
 	var bridge := get_node_or_null("/root/BackendBridge")
 	if bridge == null or not bridge.has_method("connect_to_backend"):
@@ -64,6 +74,17 @@ func _run_probe() -> void:
 
 	if not await _wait_for_backend_connected(5000):
 		push_error("phase1_slice_runtime_probe:backend_connect_timeout")
+		get_tree().quit(1)
+		return
+	if mirror_bridge.bind_session() != OK:
+		push_error("phase1_slice_runtime_probe:bind_failed")
+		get_tree().quit(1)
+		return
+	var deadline := Time.get_ticks_msec() + 5000
+	while not _session_bound and Time.get_ticks_msec() < deadline:
+		await get_tree().process_frame
+	if not _session_bound:
+		push_error("phase1_slice_runtime_probe:bind_timeout")
 		get_tree().quit(1)
 		return
 	await get_tree().process_frame
@@ -197,6 +218,10 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 
 func _on_backend_connected(_url: String) -> void:
 	_backend_connected = true
+
+
+func _on_session_bound(payload: Dictionary) -> void:
+	_session_bound = not str(payload.get("session_ref", "")).is_empty()
 
 
 func _on_character_runtime_state_delta_received(payload: Dictionary) -> void:

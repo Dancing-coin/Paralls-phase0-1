@@ -11,6 +11,7 @@ from time import time
 class CognitionOrigin:
     connection_ref: str
     binding_pin: tuple
+    source_actor_id: str = ''
 
 
 class CognitionOutputRoutes:

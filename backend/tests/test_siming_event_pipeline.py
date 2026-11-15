@@ -17,6 +17,7 @@ from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.frontend_authority_event_projection import FrontendAuthorityEventProjector
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
+from app.services.siming_knowledge_graph import SimingKnowledgeGraph
 from app.services.siming_runtime import SimingRuntime
 from app.world_runtime.intelligence_upgrade import SampleInputRef
 from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
@@ -349,6 +350,25 @@ def test_pipeline_materializes_nonempty_population_outputs() -> None:
     assert [
         event.event_type for event in bus.list_events(event_type="siming.fact_reveal")
     ] == ["siming.fact_reveal"]
+
+
+def test_pipeline_preserves_visual_fact_output_with_injected_knowledge_graph() -> None:
+    graph = SimingKnowledgeGraph()
+    graph.create_conversation("conversation", "room_demo", "scene_demo", 100)
+    bus = InMemoryAuthorityEventBus()
+    pipeline = SimingEventPipeline(
+        bus=bus,
+        consumer=SimingEventConsumer(),
+        runtime=SimingRuntime(knowledge_graph=graph),
+        producer=SimingEventProducer(bus),
+        audit_writer=SimingAuditWriter(),
+    )
+    bus.subscribe("visual_fact_event", pipeline.handle_event)
+
+    bus.publish(make_visual_fact_event())
+
+    assert bus.list_events(event_type="siming.visual_observability_request")
+    assert graph.get_conversation("conversation") is not None
 
 
 def test_pipeline_publishes_visual_observability_event_from_visual_fact_input() -> None:

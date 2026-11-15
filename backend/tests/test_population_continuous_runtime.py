@@ -50,8 +50,14 @@ async def test_daily_runtime_advances_all_residents_and_resumes_after_restart(mo
                    for event in runtime.get_session_timeline(actor)[timeline_sizes[actor]:]
                    if event["event_type"] == "character_simulation_seed_event")
         appended = main.gameplay_event_store.read_events()[truth_before:]
-        assert len(appended) == 12
-        assert {event.event_type for event in appended} == {"population.cadence.admitted"}
+        cadence_events = [event for event in appended if event.event_type == "population.cadence.admitted"]
+        rhythm_initialized = [event for event in appended if event.event_type == "daily_rhythm.initialized"]
+        rhythm_updates = [event for event in appended if event.event_type == "daily_rhythm.state_updated"]
+        assert len(cadence_events) == 12
+        assert len(rhythm_initialized) == len(SAMPLE_ACTOR_IDS)
+        assert len(rhythm_updates) == 12 * len(SAMPLE_ACTOR_IDS)
+        assert len(appended) == len(cadence_events) + len(rhythm_initialized) + len(rhythm_updates)
+        assert {event.payload["actor_id"] for event in rhythm_initialized} == set(SAMPLE_ACTOR_IDS)
         assert all(not runtime.supports_actor(actor) for actor in SAMPLE_ACTOR_IDS if actor.startswith("resident_"))
         windows = [event.payload["population_cadence"] for event in observed]
         assert all(row["selector_revision"] == "selector:generic:population:v1" for row in windows)

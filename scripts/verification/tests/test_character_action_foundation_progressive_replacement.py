@@ -28,6 +28,8 @@ def read_active_callers() -> list[str]:
         for path in root.rglob("*"):
             if not path.is_file() or path.suffix not in {".gd", ".tscn", ".py"}:
                 continue
+            if path.is_relative_to(ROOT / "backend" / "build"):
+                continue
             if path.relative_to(ROOT).as_posix() in historical_tests:
                 continue
             text = path.read_text(encoding="utf-8", errors="ignore")
@@ -125,6 +127,15 @@ def test_retirement_verifier_rejects_unregistered_runtime_caller(tmp_path: Path)
     result = retirement_verifier.evaluate(tmp_path, None, True)
     assert result["unregistered_callers"] == ["scripts/NewCaller.gd"]
     assert "unregistered_callers" in result["failed_checks"]
+
+
+def test_retirement_inventory_ignores_wheel_build_copies(tmp_path: Path) -> None:
+    source = tmp_path / "backend/app/caller.py"
+    built = tmp_path / "backend/build/lib/app/caller.py"
+    for path in (source, built):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('legacy_character_replica = True\n', encoding="utf-8")
+    assert retirement_verifier.inventory(tmp_path)[0] == ["backend/app/caller.py"]
 
 
 def test_retirement_verifier_rejects_active_matrix_state(tmp_path: Path) -> None:

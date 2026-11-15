@@ -101,6 +101,18 @@ def _runtime_owner_ids() -> tuple[set[str], bool, bool]:
 
 
 def _tax_trace_invariants() -> tuple[bool, dict[str, object]]:
+    import app.main as runtime_main
+
+    previous_path = runtime_main.settings.heavenly_graph_path
+    try:
+        runtime_main.settings.heavenly_graph_path = ":memory:"
+        return _isolated_tax_trace_invariants()
+    finally:
+        runtime_main.close_runtime_resources()
+        runtime_main.settings.heavenly_graph_path = previous_path
+
+
+def _isolated_tax_trace_invariants() -> tuple[bool, dict[str, object]]:
     from test_siming_population_authorized_cadence_publication import _tax_runtime_fixture
     from app.population_continuity.siming_contracts import PopulationCadenceInput
     from app.services.siming_population_capability import default_population_read_set_builder

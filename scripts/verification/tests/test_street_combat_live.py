@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 import subprocess
+import sys
 import pytest
 
 from scripts.verification.common import ensure_backend, stop_backend
@@ -38,7 +39,7 @@ def test_player_and_agent_combat_cross_live_websocket() -> None:
     env.update({"PARALLS_STREET_PROBE": "2", "PARALLS_HEAVENLY_GRAPH_PATH": ":memory:", "PARALLS_BACKEND_WS_URL": "ws://127.0.0.1:8000/ws?stream_mode=runtime_only", "SIMING_HEAVENLY_AUTOTEST_SETUP": "1"})
     backend = None
     try:
-        _, backend = ensure_backend(ROOT, r"C:\Anaconda3\python.exe", prefer_fresh_backend=True, env=env)
+        _, backend = ensure_backend(ROOT, sys.executable, prefer_fresh_backend=True, env=env)
         result = subprocess.run(
             [str(GODOT), "--headless", "--path", str(ROOT), "--scene", "res://scenes/phase0/StreetCombatDemo.tscn", "--quit-after", "30000", "--render-thread", "safe", "--rendering-method", "gl_compatibility"],
             cwd=ROOT, env=env, text=True, capture_output=True, timeout=60,

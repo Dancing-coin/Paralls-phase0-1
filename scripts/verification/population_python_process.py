@@ -17,12 +17,14 @@ def python_process(arguments, environment):
     executable = sys.executable
     if os.name == 'nt':
         executable = sys._base_executable
+        if not site.ENABLE_USER_SITE:
+            # base interpreter 不继承父进程的 site 禁用状态，必须显式传递。
+            env['PYTHONNOUSERSITE'] = '1'
+        if sys.prefix == sys.base_prefix:
+            return [executable, *map(str, arguments)], env
         # base executable 不经过 venv launcher；保留当前环境的真实依赖目录。
         paths = [env.get('PYTHONPATH', '')]
         paths.extend(sysconfig.get_path(name) for name in ('purelib', 'platlib'))
-        if not site.ENABLE_USER_SITE:
-            # base interpreter 不继承父 venv 的 site 禁用状态，必须显式传递。
-            env['PYTHONNOUSERSITE'] = '1'
         if site.ENABLE_USER_SITE and not env.get('PYTHONNOUSERSITE'):
             paths.append(site.getusersitepackages())
         env['PYTHONPATH'] = os.pathsep.join(dict.fromkeys(path for path in paths if path))

@@ -353,7 +353,7 @@ func set_motion_profile(state_name: String, profile_name: String) -> void:
 	_apply_motion_profile(profile_name)
 
 
-func resolve_motion_realization(semantic_action_id: String) -> Dictionary:
+func resolve_motion_realization(semantic_action_id: String, _claims: Array[StringName] = []) -> Dictionary:
 	var clip_name := ""
 	match semantic_action_id:
 		"action:melee.sword_slash":
@@ -543,7 +543,7 @@ func set_focus_highlight(is_focused: bool) -> void:
 		if mesh:
 			mesh.material_overlay = focus_overlay if is_focused else null
 
-func apply_presentation_input(next_input: Dictionary) -> void:
+func apply_presentation_input(next_input: Dictionary) -> Dictionary:
 	current_presentation_contract = CharacterPresentationInputRef.normalize(next_input)
 	var move_local_actual := CharacterPresentationInputRef.get_motion_move_local_actual(current_presentation_contract)
 	var velocity_world := CharacterPresentationInputRef.get_motion_velocity_world(current_presentation_contract)
@@ -567,6 +567,7 @@ func apply_presentation_input(next_input: Dictionary) -> void:
 	var stage2_role_state := _resolve_stage2_contract_role_state(current_presentation_contract)
 	var stage2_motion_profile := _resolve_stage2_motion_profile(presentation_gait)
 	_apply_stage2_contract_expression(stage2_role_state, stage2_motion_profile)
+	return {"accepted": true, "state": stage2_role_state}
 
 
 func play_qualified_profile(profile: Dictionary) -> Dictionary:

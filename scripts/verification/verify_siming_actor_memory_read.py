@@ -55,7 +55,8 @@ def main() -> int:
         first_runtime = app_main.character_agent_runtime
         first_runtime._memory_store.write_event(_event("char_b"))
         first_bundle = first_runtime.get_memory_record_bundle("char_b")
-        first_runtime._memory_store.write_event(_event("char_a"))
+        event_a = _event("char_a")
+        first_runtime._session_store.append_event("char_a", event_a["event_type"], event_a["producer_ts"], event_a["payload"])
         char_a_bundle = first_runtime.get_memory_record_bundle("char_a")
 
         app_main.reset_runtime_state()

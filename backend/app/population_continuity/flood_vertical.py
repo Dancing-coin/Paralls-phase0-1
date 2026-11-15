@@ -1,4 +1,12 @@
-"""固定洪灾样板装配：使用原 World、Siming、Owner 和 Core。"""
+"""固定洪灾样板装配：使用原 World、Siming、Owner 和 Core。
+
+TEST FIXTURE: This module provides a pre-configured flood scenario for integration
+testing of the population simulation pipeline. It is NOT part of the production
+runtime and should remain in the test/fixture domain.
+
+Used by: backend/tests/test_population_*.py for end-to-end verification of the
+Siming-led population simulation flow with a known scenario.
+"""
 from pathlib import Path
 from tempfile import TemporaryDirectory
 

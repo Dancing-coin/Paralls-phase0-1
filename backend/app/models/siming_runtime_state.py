@@ -147,6 +147,7 @@ class FairnessDimensionSnapshot(BaseModel):
     score: float
     reason: str
     mapped_to_policy: bool
+    evidence_refs: list[str] = Field(default_factory=list)
 
 
 class ProjectionRunSnapshot(BaseModel):

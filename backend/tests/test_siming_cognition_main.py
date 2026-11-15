@@ -65,7 +65,10 @@ async def run():
                     main.authority_event_bus.publish(event)
                     coordinator = main._siming_cognition_driver.coordinator
                     from app.models.siming_heavenly_memory import SimingAdmissionKey
-                    return get_ident(), SimingAdmissionKey(scope=main.SimingHeavenlyRuntimeSupport._scope_for(event), source_event_id=event.event_id), event
+                    key = SimingAdmissionKey(scope=main.SimingHeavenlyRuntimeSupport._scope_for(event), source_event_id=event.event_id)
+                    admitted = coordinator.admissions.read(key).entry
+                    assert admitted.expires_at - admitted.admitted_at >= max(30., 4 * main.settings.siming_llm_timeout_seconds + 30.)
+                    return get_ident(), key, event
                 owner, key, event = await asyncio.wait_for(asyncio.wrap_future(main.runtime_execution.submit(publish)), 2)
                 assert main._siming_cognition_driver.slots is main._dialogue_provider_slots
                 if sys.argv[2] != "staging":

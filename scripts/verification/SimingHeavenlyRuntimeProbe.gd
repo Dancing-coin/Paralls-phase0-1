@@ -8,6 +8,7 @@ var _destroyed := false
 var _inspection_applied := false
 var _staging_request: Dictionary = {}
 var _char_b_reaction_count := 0
+var _dialogue_failed := false
 var _char_b_had_line_of_sight := false
 var _char_b_observation_acknowledged := false
 var _staging_ack_backend_acknowledged := false
@@ -16,6 +17,7 @@ var _destruction_correlation_id := ""
 var _authority_scope: Dictionary = {}
 var _backend_connection_count := 0
 var _backend_connection_target := 0
+var _backend_bound_count := 0
 var _post_restart_reaction_window := false
 var _move_request_id := ""
 var _acknowledged_request_ids: Dictionary = {}
@@ -38,8 +40,10 @@ func _ready() -> void:
 			bus.siming_debug_event_received.connect(_on_siming_debug_event_received)
 			bus.character_agent_execution_received.connect(_on_character_agent_execution_received)
 			bus.dialogue_received.connect(_on_dialogue_received)
+			bus.dialogue_stream_ended.connect(_on_dialogue_stream_ended)
 			bus.backend_ack_received.connect(_on_backend_ack_received)
 			bus.backend_connected.connect(_on_backend_connected)
+			bus.websocket_session_bound_received.connect(_on_session_bound)
 		call_deferred("_run")
 
 func _run() -> void:
@@ -113,6 +117,9 @@ func _run() -> void:
 	_controller._emit_dialogue_request("char_b", "The letter is gone.")
 	if not (await _wait_until(Callable(self, "_char_b_reacted"), RUNTIME_EVENT_TIMEOUT_MS)):
 		_finish("siming_heavenly_char_b_reaction_timeout")
+		return
+	if _dialogue_failed:
+		_finish("siming_heavenly_dialogue_failed")
 		return
 	await get_tree().create_timer(0.5).timeout
 	if _char_b_reaction_count != 1:
@@ -207,6 +214,13 @@ func _on_backend_ack_received(payload: Dictionary) -> void:
 func _on_backend_connected(_payload: String) -> void:
 	_backend_connection_count += 1
 
+func _on_dialogue_stream_ended(payload: Dictionary) -> void:
+	if _post_restart_reaction_window and str(payload.get("status", "")) == "failed":
+		_dialogue_failed = true
+
+func _on_session_bound(_payload: Dictionary) -> void:
+	_backend_bound_count += 1
+
 func _destruction_applied() -> bool:
 	var visual_root := _letter.get_node("VisualRoot") as Node3D
 	var collision_shape := _letter.get_node("InteractionCollider/CollisionShape3D") as CollisionShape3D
@@ -219,7 +233,7 @@ func _has_staging_request() -> bool:
 	return not _staging_request.is_empty()
 
 func _backend_reconnected() -> bool:
-	return _backend_connection_count >= _backend_connection_target
+	return _backend_connection_count >= _backend_connection_target and _backend_bound_count >= _backend_connection_target
 
 func _move_request_acknowledged() -> bool:
 	return bool(_acknowledged_request_ids.get(_move_request_id, false))
@@ -231,7 +245,7 @@ func _staging_ack_backend_ready() -> bool:
 	return _staging_ack_backend_acknowledged
 
 func _char_b_reacted() -> bool:
-	return _char_b_reaction_count == 1
+	return _char_b_reaction_count == 1 or _dialogue_failed
 
 func _emit_char_b_observation() -> void:
 	if not _char_b_had_line_of_sight or _destruction_result_ref.is_empty():

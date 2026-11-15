@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shutil
 import sys
@@ -8,6 +9,7 @@ import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.verification_audit import evaluate_phase0_audit
 
@@ -29,6 +31,8 @@ from common import (
     write_markdown,
 )
 from runtime_trace import write_runtime_trace
+from scripts.launch_trusted_local_gameplay_mirror import request_enrollment
+from app.services.trusted_local_gameplay_mirror_launcher import GameplayMirrorGodotLaunchHandoff
 
 SCENE_LOAD_QUIT_AFTER = "120"
 FOCUS_AUTOTEST_QUIT_AFTER = "180"
@@ -43,6 +47,12 @@ PHASE0_VERIFY_ENV = {
     "TTS_MODE": "stub",
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
+    "GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET": "phase0-verifier",
+    "GAMEPLAY_MIRROR_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON": json.dumps([{
+        "profile_ref": "phase0", "principal_ref": "principal:phase0",
+        "allowed_actor_refs": ["character:char_a", "character:char_b", "character:char_c"],
+        "credential_ttl_seconds": 300,
+    }]),
 }
 PHASE0_PYTEST_TIMEOUT_SECONDS = float(os.environ.get("PHASE0_PYTEST_TIMEOUT_SECONDS", "2400"))
 # Phase0's imported throne-hall asset exceeds the available D3D12 test-device
@@ -141,6 +151,11 @@ def main() -> int:
         )
         ensure_godot_import(project_root, godot_exe, "phase0-godot-import.log")
 
+        def enrollment_env():
+            enrollment = request_enrollment(backend_http_url="http://127.0.0.1:8000",
+                launch_profile_ref="phase0", launcher_secret="phase0-verifier")
+            return GameplayMirrorGodotLaunchHandoff(enrollment=enrollment).child_environment()
+
         scene_log = log_dir / "phase0-scene-load.log"
         scene_result = run_command(
             [
@@ -188,6 +203,7 @@ def main() -> int:
             success_markers=["phase0_autotest_complete"],
             timeout_seconds=MAIN_AUTOTEST_MARKER_TIMEOUT_SECONDS,
             env={
+                **enrollment_env(),
                 "PHASE0_AUTOTEST": "1",
                 "PHASE0_FOCUS_AUTOTEST": "",
                 "PHASE0_AUTOTEST_SCREENSHOT": str(main_screenshot),
@@ -216,6 +232,7 @@ def main() -> int:
             success_markers=["phase0_focus_autotest_complete"],
             timeout_seconds=FOCUS_AUTOTEST_MARKER_TIMEOUT_SECONDS,
             env={
+                **enrollment_env(),
                 "PHASE0_AUTOTEST": "",
                 "PHASE0_FOCUS_AUTOTEST": "1",
                 "PHASE0_AUTOTEST_SCREENSHOT": str(focus_screenshot),

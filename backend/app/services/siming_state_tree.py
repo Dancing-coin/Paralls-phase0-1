@@ -44,6 +44,8 @@ class InMemorySimingStateTree:
             observed_events, "established_fact_id"
         )
 
+        from app.services.siming_visual_protocol import SimingVisualFactProtocol
+        visual = SimingVisualFactProtocol.project(current_event.authority_event, self._latest_snapshot)
         snapshot = StateTreeSnapshot(
             snapshot_id=f"state_tree:{current_event.room_id}:{sim_tick_ts}",
             schema_version=1,
@@ -62,7 +64,10 @@ class InMemorySimingStateTree:
                 status="fresh" if environment_id else "partial",
                 summary={
                     "target_environment_id": environment_id,
-                    "established_fact_id": established_fact_id,
+                    **visual,
+                    "established_fact_id": (visual["established_fact_id"]
+                        if current_event.payload.get("fact_type") == "visual_evidence_projection"
+                        else established_fact_id),
                 },
             ),
             character=StateTreeNode(

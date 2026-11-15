@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.authority_event import AuthorityEvent
+from app.models.siming_fact_core import SimingFactCoreState
 from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
 from app.models.siming_narrative import NarrativeRoomState
 from app.models.siming_runtime_state import NarrativeObligationLedgerSnapshot
@@ -26,6 +27,7 @@ def digest(value: object) -> str:
 
 
 CANDIDATE_TIMELINE_REQUEUE = "candidate_timeline_changed"
+ADAPTIVE_ACTOR_REQUEUE = "adaptive_actor_changed"
 RETRYABLE_SIMING_PROVIDER_ERRORS = frozenset({
     "SimingLlmProviderError",
     "SimingLlmProviderInvalidOutput",
@@ -51,6 +53,12 @@ def candidate_timeline_changed(previous: dict, current: dict) -> bool:
                 return False
             pin["actors"][actor] = [pair for pair in value if pair[0] != "timeline"]
     return left == right
+
+
+def adaptive_actor_changed(previous: dict, current: dict) -> bool:
+    return (previous.get("actors") != current.get("actors")
+            and previous.keys() == current.keys()
+            and all(previous[key] == current[key] for key in previous if key != "actors"))
 
 
 class SimingCandidate(InterventionCandidate):
@@ -163,6 +171,7 @@ class SimingCompletionValidation(BaseModel):
 
 class SimingStageEffects(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    fact_core_states: list[SimingFactCoreState] = Field(default_factory=list)
     batches: list[HeavenlyGraphWriteBatch] = Field(default_factory=list)
     observatory_messages: list[dict] = Field(default_factory=list)
     narrative_state: NarrativeRoomState | None = None

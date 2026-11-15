@@ -32,6 +32,19 @@ def test_non_windows_preserves_venv_symlink_executable(monkeypatch):
     assert environment == {'PYTHONPATH': 'backend'}
 
 
+def test_windows_base_interpreter_preserves_native_package_order(monkeypatch):
+    from scripts.verification import population_python_process as launch
+    monkeypatch.setattr(launch, 'os', SimpleNamespace(name='nt', pathsep=os.pathsep))
+    monkeypatch.setattr(launch.sys, 'prefix', launch.sys.base_prefix)
+    monkeypatch.setattr(launch.site, 'ENABLE_USER_SITE', True)
+    original = {'PYTHONPATH': 'backend'}
+
+    command, environment = launch.python_process(['script.py'], original)
+
+    assert command[0] == sys._base_executable
+    assert environment == original
+
+
 @pytest.mark.parametrize('user_enabled,child_disabled', [(True, False), (False, False), (True, True)])
 def test_windows_child_keeps_venv_priority_and_respects_disabled_user_site(tmp_path, monkeypatch, user_enabled, child_disabled):
     from scripts.verification import population_python_process as launch
@@ -41,6 +54,7 @@ def test_windows_child_keeps_venv_priority_and_respects_disabled_user_site(tmp_p
         directory.mkdir()
         (directory / 'dependency_priority_probe.py').write_text(f'origin = {value!r}', encoding='utf-8')
     monkeypatch.setattr(launch, 'os', SimpleNamespace(name='nt', pathsep=os.pathsep))
+    monkeypatch.setattr(launch.sys, 'prefix', str(tmp_path / 'venv'))
     monkeypatch.setattr(launch.site, 'ENABLE_USER_SITE', user_enabled)
     monkeypatch.setattr(launch.site, 'getusersitepackages', lambda: str(user_site))
     monkeypatch.setattr(launch.sysconfig, 'get_path', lambda _: str(venv_site))

@@ -25,6 +25,9 @@ from app.models.siming_runtime_state import (
     StorylineStateSnapshot,
 )
 from app.services.siming_fact_core import SimingFactCore
+from app.services.siming_knowledge_graph import SimingKnowledgeGraph
+from app.services.siming_balance import SimingBalanceSystem
+from app.services.siming_conflict_generator import SimingConflictGenerator
 from app.services.siming_fairness_audit import SimingFairnessAuditEngine
 from app.services.siming_feature_registry import SimingFeatureRegistry
 from app.services.siming_feasibility import SimingExecutionFeasibility
@@ -134,6 +137,9 @@ class SimingRuntime:
         population_model_observer=None,
         actor_pin_reader=None,
         source_pin_reader=None,
+        knowledge_graph: SimingKnowledgeGraph | None = None,
+        balance_system: SimingBalanceSystem | None = None,
+        conflict_generator: SimingConflictGenerator | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
@@ -143,6 +149,9 @@ class SimingRuntime:
         self._feasibility = feasibility or SimingExecutionFeasibility()
         self._observe_pipeline = observe_pipeline or SimingObservePipeline()
         self._fact_core = fact_core or SimingFactCore()
+        self._knowledge_graph = knowledge_graph or SimingKnowledgeGraph()
+        self._balance_system = balance_system if balance_system is not None else SimingBalanceSystem(self._knowledge_graph)
+        self._conflict_generator = conflict_generator if conflict_generator is not None else SimingConflictGenerator(self._knowledge_graph)
         self._state_tree = state_tree or InMemorySimingStateTree()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(
             self._feature_registry
@@ -186,6 +195,18 @@ class SimingRuntime:
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:
         return self._heavenly_support
+
+    @property
+    def knowledge_graph(self) -> SimingKnowledgeGraph:
+        return self._knowledge_graph
+
+    @property
+    def balance_system(self) -> SimingBalanceSystem:
+        return self._balance_system
+
+    @property
+    def conflict_generator(self) -> SimingConflictGenerator:
+        return self._conflict_generator
 
     def tick(self, inputs: list[SimingInput]) -> SimingTickResult:
         # 兼容工具入口；与异步入口共用下面的显式阶段，串行 drain。
@@ -344,7 +365,7 @@ class SimingRuntime:
         if not observed:
             return
 
-        fact_result = self._fact_core.evaluate(observed)
+        fact_result = self._fact_core.plan_evaluate(observed)
         if not fact_result.accepted:
             result.outputs.append(self._no_action(event))
             result.audit_records.append(
@@ -356,20 +377,41 @@ class SimingRuntime:
             )
             return
 
+        if event.event_type == "visual_fact_event":
+            from app.services.siming_visual_protocol import SimingVisualFactProtocol
+            try:
+                visual = SimingVisualFactProtocol.project(event, self._state_tree.latest_snapshot)
+            except ValueError as error:
+                result.outputs.append(self._no_action(event, reason=str(error)))
+                result.audit_records.append(self._audit(event, status="no_action", reason=str(error)))
+                return
+            event = event.model_copy(update={"payload": {**event.payload,
+                "established_fact_id": visual["established_fact_id"],
+                "visible_actor_ids": visual["visible_actor_ids"]}})
+            observed = [item.model_copy(update={"payload": dict(event.payload), "authority_event": event})
+                        for item in observed]
+        if effects is None:
+            for state in fact_result.states:
+                self._fact_core.install_snapshot(state)
+        elif fact_result.states:
+            merged = {state.scene_id: state for state in effects.fact_core_states}
+            merged.update({state.scene_id: state for state in fact_result.states})
+            effects.fact_core_states = [merged[key] for key in sorted(merged)]
         frame.observed = observed
         if self._heavenly_support is not None:
             prepared, heavenly_frame, request = self._heavenly_support.prepare_request(
-                siming_input, planned_batches=None if effects is None else effects.batches)
+                siming_input.model_copy(update={"source_event": event}),
+                planned_batches=None if effects is None else effects.batches)
             frame.heavenly_frame = heavenly_frame
             if request is not None:
-                frame.stage, frame.request = "adaptive", request
+                frame.stage, frame.request = "adaptive", request.model_copy(update={"event": frame.siming_input.source_event})
                 frame.actor_ids = self._heavenly_support.prepared_actor_ids(heavenly_frame)
                 return
             frame.prepared = prepared.model_dump(mode="json")
         self._after_heavenly(frame, effects)
 
     def _after_heavenly(self, frame: SimingTurnFrame, effects=None) -> None:
-        event, result, observed = frame.siming_input.source_event, frame.result, frame.observed
+        event, result, observed = frame.observed[-1].authority_event, frame.result, frame.observed
         prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
         frame.stage = "completed"
         if (prepared is not None and prepared.mode == "active"
@@ -531,14 +573,21 @@ class SimingRuntime:
             frame.guardrail_summary = guardrail_summary
             frame.policy_snapshot = policy_snapshot
             frame.stage = "candidate"
-            frame.request = SimingProviderRequest(stage="candidate", event=event, snapshot=policy_snapshot)
+            frame.request = SimingProviderRequest(stage="candidate", event=frame.siming_input.source_event, snapshot=policy_snapshot)
             frame.actor_ids = sorted(set(policy_snapshot.eligible_actor_ids))
             if os.getenv("SIMING_LLM_ADVISORY_DISABLED", "").strip() == "1":
                 self._finish_candidate(frame, [], [], effects)
             return
 
         if self._is_environment_attention_event(event):
-            result.outputs.append(self._environment_attention_dispatch(event))
+            output = self._environment_attention_dispatch(event)
+            if not self._accept_rule_catalyst(event, output, fairness_snapshot, result):
+                self._finalize_tick_state(result, effects=effects, event=event, prepared=prepared,
+                    state_tree=state_tree, fairness_snapshot=fairness_snapshot, storyline=storyline,
+                    projection=projection, narrative_summary=narrative_summary,
+                    quality_summary=quality_summary, guardrail_summary=guardrail_summary)
+                return
+            result.outputs.append(output)
             result.audit_records.append(
                 self._audit(
                     event,
@@ -592,7 +641,14 @@ class SimingRuntime:
             event.event_type == "conversation_resolution_event"
             and self._has_conversation_candidate(event)
         ):
-            result.outputs.append(self._conversation_fact_reveal(event))
+            output = self._conversation_fact_reveal(event)
+            if not self._accept_rule_catalyst(event, output, fairness_snapshot, result):
+                self._finalize_tick_state(result, effects=effects, event=event, prepared=prepared,
+                    state_tree=state_tree, fairness_snapshot=fairness_snapshot, storyline=storyline,
+                    projection=projection, narrative_summary=narrative_summary,
+                    quality_summary=quality_summary, guardrail_summary=guardrail_summary)
+                return
+            result.outputs.append(output)
             result.audit_records.append(
                 self._audit(
                     event,
@@ -733,7 +789,7 @@ class SimingRuntime:
         )
 
     def _finish_candidate(self, frame, llm_candidates, llm_audit, effects=None) -> None:
-        event, result = frame.siming_input.source_event, frame.result
+        event, result = frame.observed[-1].authority_event, frame.result
         prepared = PreparedHeavenlyDecision.model_validate(frame.prepared) if frame.prepared is not None else None
         state_tree, fairness_snapshot, storyline, projection = frame.state_tree, frame.fairness_snapshot, frame.storyline, frame.projection
         narrative_summary, quality_summary, guardrail_summary = frame.narrative_summary, frame.quality_summary, frame.guardrail_summary
@@ -1446,6 +1502,34 @@ class SimingRuntime:
             },
         )
 
+    def _accept_rule_catalyst(self, event, output, snapshot, result) -> bool:
+        # 规则分支与模型候选共用策略和可执行性裁决，事实核心已在 tick 入口先行校验。
+        if output.selected_path != "character_input_path":
+            return True
+        target = output.payload["target_actor_id"]
+        refs = list(snapshot.known_fact_ids)
+        candidate = InterventionCandidate(
+            candidate_id=f"rule:{event.event_id}", room_id=event.room_id,
+            scene_id=event.scene_id, zone_id=event.zone_id, causation_id=event.event_id,
+            correlation_id=event.correlation_id, proposed_band=output.intervention_band,
+            target_actor_id=target, established_fact_ids=refs,
+            reason_tags=list(event.payload.get("reason_tags", [])),
+        )
+        # shortcut: 兼容既有三名演示角色；正式名册接入后移除此有限回退。
+        if not snapshot.eligible_actor_ids:
+            snapshot = snapshot.model_copy(update={"eligible_actor_ids": ["char_a", "char_b", "char_c"]})
+        policy = self._policy.evaluate(candidate, snapshot=snapshot)
+        feasibility = self._feasibility.evaluate(candidate) if policy.accepted else None
+        if not policy.accepted or not feasibility.accepted:
+            status = "policy_rejected" if not policy.accepted else "feasibility_rejected"
+            reasons = policy.reasons if not policy.accepted else feasibility.reasons
+            result.outputs.append(self._no_action(event, reason=";".join(reasons)))
+            result.audit_records.append(self._audit(event, status=status, reason=";".join(reasons)))
+            return False
+        output.payload.update(evidence_refs=refs or [event.event_id], candidate_ref=candidate.candidate_id,
+                              decision_ref=f"decision_{candidate.candidate_id}")
+        return True
+
     def _dispatch_output(
         self,
         event: AuthorityEvent,
@@ -1458,6 +1542,11 @@ class SimingRuntime:
             "target_object_id": candidate.target_object_id,
             "target_environment_id": candidate.target_environment_id,
         }
+        payload.update(evidence_refs=list(candidate.established_fact_ids),
+                       candidate_ref=candidate.candidate_id, decision_ref=f"decision_{candidate.candidate_id}")
+        if candidate.proposed_band == "impulse":
+            payload.update(impulse_axis="narrative", impulse_label=candidate.explanation,
+                           situation_snapshot_id=f"fairness:{event.event_id}")
         pressure_hint = str(getattr(candidate, "pressure_hint", "") or "").strip()
         if pressure_hint != "":
             payload["pressure_hint"] = pressure_hint
@@ -1468,6 +1557,7 @@ class SimingRuntime:
         if reason_scope != "":
             payload["reason_scope"] = reason_scope
         if selected_path == "visual_fact_path":
+            payload.update(self._visual_request_evidence(event))
             payload["established_fact_id"] = (
                 candidate.established_fact_ids[0]
                 if candidate.established_fact_ids
@@ -1514,6 +1604,14 @@ class SimingRuntime:
             payload={"decision_id": f"decision_{event.event_id}"},
         )
 
+    @staticmethod
+    def _visual_request_evidence(event: AuthorityEvent) -> dict:
+        source_key = ("source_visual_fact_event_id" if event.event_type == "visual_fact_event"
+                      else "source_fact_event_id")
+        return {source_key: event.payload.get("source_visual_fact_event_id") or event.event_id,
+                "observability_goal": "make established fact observable",
+                "presentation_budget": "subtle"}
+
     def _visual_fact_dispatch(self, event: AuthorityEvent) -> SimingOutput:
         established_fact_id = str(
             event.payload.get("established_fact_id", event.event_id)
@@ -1530,6 +1628,7 @@ class SimingRuntime:
             intervention_band="fact_reveal",
             payload={
                 "established_fact_id": established_fact_id,
+                **self._visual_request_evidence(event),
                 "presentation_hint": "increase observability for established light change",
                 # S8: char_b placeholder. In Phase 2, should use roster resolution.
                 # TODO: Replace with actual character from roster system.
@@ -2161,6 +2260,7 @@ class SimingRuntime:
             "source_live": self._source_pin_reader(event.model_copy(deep=True)) if self._source_pin_reader else None,
             "actors": {actor: self._actor_pin_reader(actor) for actor in frame.actor_ids} if self._actor_pin_reader else {},
             "provider": self._provider_identity(provider), "schema": 1,
+            "fact_core": digest([state.model_dump(mode="json") for state in self._fact_core.snapshots_for_room(event.room_id)]),
             "policy": {"dimensions": [asdict(item) for item in self._feature_registry.fairness_dimensions()],
                        "mappings": {key: asdict(value) for key, value in self._feature_registry._policy_mappings.items()}},
             # 注入的决策 policy 可以使用独立 registry，必须冻结实际 evaluate 读取的配置。
@@ -2184,7 +2284,7 @@ class SimingRuntime:
         prepared = plan.after.prepared
         if prepared is not None and prepared.get("compiled_context") is not None:
             pin["heavenly"] = self._heavenly_support.capture_prepared_pin({
-                "event": plan.after.siming_input.source_event.model_dump(mode="json"),
+                "event": plan.after.observed[-1].authority_event.model_dump(mode="json"),
                 "context": prepared["compiled_context"],
             })
         return pin
@@ -2231,7 +2331,7 @@ class SimingRuntime:
         if siming_input.input_type == "population_cadence_input":
             raise ValueError("siming_initial_plan_not_supported")
         frame = SimingTurnFrame(turn_id=uuid4().hex, siming_input=siming_input.model_copy(deep=True))
-        effects = SimingStageEffects()
+        effects = SimingStageEffects(fact_core_states=self._fact_core.snapshots_for_room(siming_input.source_event.room_id))
         if self._heavenly_support is not None:
             effects.batches.extend(self._heavenly_support.plan_authority_outcome(siming_input.source_event).batches)
         self._start_tick(frame, effects)
@@ -2239,6 +2339,8 @@ class SimingRuntime:
 
     def install_planned_state(self, effects: SimingStageEffects) -> None:
         self._assert_siming_owner()
+        for state in effects.fact_core_states:
+            self._fact_core.install_snapshot(state)
         if effects.narrative_state is not None:
             self._narrative_core.install_room_state(effects.narrative_state)
         if effects.state_tree is not None:
@@ -2257,7 +2359,7 @@ class SimingRuntime:
             raise ValueError("siming_accepted_stage_not_supported")
         if frame.job is None or completion.request_digest != hashlib.sha256(frame.job.request_json).hexdigest():
             raise ValueError("siming_accepted_request_mismatch")
-        effects = SimingStageEffects()
+        effects = SimingStageEffects(fact_core_states=self._fact_core.snapshots_for_room(frame.siming_input.source_event.room_id))
         self._resume_tick(frame, completion, effects)
         return SimingAcceptedPlan(after=frame, effects=effects)
 

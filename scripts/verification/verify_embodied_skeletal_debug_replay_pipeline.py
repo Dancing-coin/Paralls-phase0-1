@@ -59,7 +59,7 @@ def _runtime_binding_ok(payload: dict[str, object]) -> bool:
     return (
         isinstance(binding, dict)
         and binding.get("runtime_binding_verified") is True
-        and "CharacterActor" in str(binding.get("character_actor_path", ""))
+        and "CharacterActor" in str(binding.get("actor_node_path", ""))
         and "Skeleton3D" in str(binding.get("skeleton_path", ""))
         and int(binding.get("bone_count", 0)) > 0
     )
@@ -176,7 +176,7 @@ def main() -> int:
         {
             "id": "godot-runtime-binding-verified",
             "title": "Godot probe binds PlayerCharacter, CharacterActor and Skeleton3D",
-            "status": "proved" if binding_ok else godot_status,
+            "status": "proved" if binding_ok else "godot-runtime-binding-unverified",
             "evidence": [str(godot_log), str(runtime_artifact)] if godot_exe is not None else [],
             "notes": "" if binding_ok else "Godot executable unavailable or runtime binding did not prove Skeleton3D/CharacterActor.",
         },

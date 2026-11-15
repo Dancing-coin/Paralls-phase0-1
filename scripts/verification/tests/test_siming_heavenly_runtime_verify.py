@@ -26,6 +26,23 @@ def project_root() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
+def test_live_probe_enrolls_authorized_connection(monkeypatch):
+    calls = []
+    monkeypatch.setattr(verifier, 'request_enrollment', lambda **kwargs: calls.append(kwargs) or 'enrollment')
+    monkeypatch.setattr(verifier, 'GameplayMirrorGodotLaunchHandoff',
+        lambda *, enrollment: type('Handoff', (), {'child_environment': lambda self: {'credential': enrollment}})())
+    assert verifier._probe_enrollment_env() == {'credential': 'enrollment'}
+    assert calls[0]['launch_profile_ref'] == 'siming-heavenly-runtime'
+
+
+def test_restart_enrollment_is_written_for_the_probe(tmp_path, monkeypatch):
+    monkeypatch.setattr(verifier, '_probe_enrollment_env', lambda: {
+        'PARALLS_GAMEPLAY_MIRROR_ENROLLMENT_JSON': '{"credential":"fresh"}'})
+    path = tmp_path / 'restart-enrollment.json'
+    verifier._write_restart_enrollment(path)
+    assert json.loads(path.read_text(encoding='utf-8')) == {'credential': 'fresh'}
+
+
 def valid_live_evidence(tmp_path: Path) -> LiveEvidence:
     captures = []
     for name in (
@@ -73,6 +90,7 @@ def valid_live_evidence(tmp_path: Path) -> LiveEvidence:
 
 
 def test_preflight_rejects_disabled_or_fake_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CHARACTER_MODEL_PROVIDER_KIND", "local")
     monkeypatch.setenv("SIMING_LLM_MODE", "disabled")
     result = live_preflight(project_root())
     assert result.ok is False
