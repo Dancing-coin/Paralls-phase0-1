@@ -44,11 +44,12 @@ class HeavenlyAuthorityEventProjector:
         payload = deepcopy(event.payload)
         owner_ref = str(payload.get("owner_ref", "") or event.source.system)
         source_vector = payload.get("source_revision_vector", {})
-        source_revision = int(event.payload.get("global_sequence", event.producer_ts) or 0)
-        if isinstance(source_vector, dict):
-            source_revision = max(
-                [source_revision, *[int(value) for value in source_vector.values() if isinstance(value, int)]]
-            )
+        # Q2: only Owner revisions are revisions; clocks and replay positions are not.
+        # Phase 2: reconcile the complete Owner vector through OwnerFactQuery.
+        source_revision = max(
+            (value for value in source_vector.values() if type(value) is int and value >= 0),
+            default=0,
+        ) if isinstance(source_vector, dict) else 0
         node = HeavenlyGraphNode(
             node_id=f"authority-projection:{event.event_id}",
             node_type="causal_event",

@@ -223,8 +223,7 @@ from app.world_runtime.l1_runtime_perception_bridge import (
 )
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
-from app.models.fact_type import FACT_TYPE_REGISTRY
-from app.gameplay.event_schema_registry import gameplay_schema_event_types
+from app.models.fact_type import FACT_TYPE_REGISTRY, FactType
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.population_continuity.prepared_frame import native_method
 from app.services.siming_event_producer import SimingEventProducer
@@ -2267,29 +2266,18 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         heavenly_graph,
         scope_resolver=siming_scope_for_event,
     )
-    # TODO: Q2 (05-Owner重构影响评估.md 第三章)
-    #   决策：A（短期）+ C（长期路线图）
-    #   短期（Phase 0-1）：
-    #     - 改 "*" 通配为按 FactType 枚举订阅
-    #     - authority_graph_projector.py:22-32 前缀表改为 FactType 声明
-    #     - revision 改读真 Owner revision（不再混推 max(payload, producer_ts)）
-    #   长期（Phase 2+）：
-    #     - 迁移到混合架构：图只存边（关系），事实走 OwnerFactQuery
-    #     - 图专注"谁在哪""谁影响谁"，不存事实副本（单一真相）
-    #     - 需先完成：OwnerFactQuery 接口落地 + 图 schema 重设计
-    gameplay_event_types = set(gameplay_schema_event_types())
-    gameplay_event_types.update(
+    # Q2: explicit typed subscriptions; the projector validates schema coverage at startup.
+    # Phase 2: graph relations plus OwnerFactQuery, with full revision reconciliation.
+    gameplay_event_types = (
         event_type for event_type in FACT_TYPE_REGISTRY.event_types()
         if event_type.startswith("gameplay.")
     )
-    for event_type in sorted(gameplay_event_types):
-        if FACT_TYPE_REGISTRY.from_event_type(event_type) is None:
-            raise RuntimeError(f"fact_type_registry_missing:{event_type}")
+    for event_type in gameplay_event_types:
         authority_event_bus.subscribe(event_type, authority_graph_projector.project)
     for fact_type in (
-        "world_fact_event", "visual_fact_event", "esm_result_event",
-        "character_behavior_event", "conversation_resolution_event",
-        "constraint_state_event",
+        FactType.WORLD_FACT, FactType.VISUAL_FACT, FactType.ESM_RESULT,
+        FactType.CHARACTER_BEHAVIOR, FactType.CONVERSATION_RESOLUTION,
+        FactType.CONSTRAINT_STATE,
     ):
         authority_event_bus.subscribe(fact_type, authority_graph_projector.project)
     character_agent_l4_executor = CharacterAgentL4Executor()
