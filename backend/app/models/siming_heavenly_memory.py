@@ -43,24 +43,20 @@ class StrictMemoryModel(BaseModel):
 
 
 class WorldFactMemoryEntry(StrictMemoryModel):
-    """World fact memory entry for Siming's Heavenly Memory.
+    """S5: fact_type_ref links the cached value to its registered source type.
 
-    NOTE: S5 断点（05-待决问题与缺陷登记.md 第四章断点清单）
-    当前实现：缺少 fact_type_ref 字段（过渡期方案）
-
-    短期方案（Q2-A）：
-      - 保持 state_key/state_value 泛型存储
-      - state_key 是字符串，不是 FactType enum
-      - authority_result_ref 指向 Authority 事件，无法追溯到 Owner FactType
-
-    长期目标（Q2-C，Phase 2+）：
-      - 增加 fact_type_ref: str 字段，映射到 Owner FactType 声明
-      - state_key/state_value 保留用于快速访问，但语义由 fact_type_ref 定义
-      - 支持 OwnerFactQuery 接口，可通过 fact_type_ref 查询 Owner 真相
-
-    See: docs/reference/phase1-siming/Q1-Q2-decisions.md
+    Phase 2: resolve OwnerFactQuery declarations; legacy records may omit the ref.
     """
-    # TODO: S5 长期 - 增加 fact_type_ref 字段（Phase 2）
+    fact_type_ref: str | None = None
+
+    @field_validator("fact_type_ref")
+    @classmethod
+    def require_registered_fact_type(cls, value: str | None) -> str | None:
+        from app.models.fact_type import FACT_TYPE_REGISTRY
+        if value is not None and FACT_TYPE_REGISTRY.from_event_type(value) is None:
+            raise ValueError("fact_type_ref must reference a registered fact type")
+        return value
+
     domain: Literal["world_fact"] = "world_fact"
     entry_id: str
     world_anchor_id: str

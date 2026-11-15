@@ -46,6 +46,7 @@ def _entries() -> list[SimingHeavenlyMemoryEntry]:
             world_anchor_id="obj_letter",
             state_key="surface_state",
             state_value="removed_from_surface",
+            fact_type_ref="esm_result_event",
             authority_result_ref="authority:letter:removed",
             evidence_refs=["visual:letter:removed"],
         ),
