@@ -50,9 +50,7 @@ def test_archive_door_alignment_compares_actor_forward_with_target_direction() -
         ROOT / "scripts" / "interaction" / "ArchiveDoorEmbodiedActionHost.gd"
     ).read_text(encoding="utf-8")
 
-    assert 'var actor_forward_value: Variant = actor.call("get_embodied_forward_vector")' in host_source
-    assert "if not actor_forward_value is Vector3:" in host_source
-    assert "actor_forward.normalized().dot(facing.normalized())" in host_source
-    assert "cos(FACING_TOLERANCE_RAD)" in host_source
-    assert "if actor_forward.normalized().dot(facing.normalized()) < cos(FACING_TOLERANCE_RAD):" in host_source
-    assert "_actor_yaw(actor) - desired_yaw" not in host_source
+    assert "player_bridge.set_forced_look_target(contact.global_position)" in host_source
+    assert "var actor_yaw_target := Basis.looking_at(facing.normalized(), Vector3.UP).get_euler().y" in host_source
+    assert "if absf(wrapf(_actor_yaw(actor) - actor_yaw_target, -PI, PI)) > FACING_TOLERANCE_RAD:" in host_source
+    assert "FACING_TOLERANCE_RAD" in host_source
