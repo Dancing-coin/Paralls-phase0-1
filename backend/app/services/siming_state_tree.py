@@ -1,3 +1,7 @@
+from collections.abc import Mapping
+from dataclasses import dataclass
+
+from app.models.fact_type import FACT_TYPE_REGISTRY, FactType, FactTypeRef
 from app.models.siming_runtime_state import (
     GroupSimulationBranchSnapshot,
     ObservedSimingEvent,
@@ -6,9 +10,27 @@ from app.models.siming_runtime_state import (
 )
 
 
+@dataclass(frozen=True)
+class SimingPayloadSchema:
+    environment_key: str = "target_environment_id"
+    actor_key: str = "target_actor_id"
+    fact_key: str = "established_fact_id"
+    object_key: str = "target_object_id"
+
+
+# S1: aggregate event contracts; unknown gameplay payloads require a declaration.
+# Phase 2: load these bindings from Owner FactType schemas when available.
+_PAYLOAD_SCHEMAS = {fact: SimingPayloadSchema() for fact in (
+    FactType.WORLD_FACT, FactType.VISUAL_FACT, FactType.ESM_RESULT,
+    FactType.CHARACTER_BEHAVIOR, FactType.CONVERSATION_RESOLUTION,
+    FactType.CONSTRAINT_STATE, FactType.POPULATION_CADENCE,
+)}
+
+
 class InMemorySimingStateTree:
-    def __init__(self) -> None:
+    def __init__(self, *, payload_schemas: Mapping[FactType | FactTypeRef, SimingPayloadSchema] | None = None) -> None:
         self._latest_snapshot: StateTreeSnapshot | None = None
+        self._payload_schemas = dict(_PAYLOAD_SCHEMAS if payload_schemas is None else payload_schemas)
 
     def update_from_observed(
         self,
@@ -32,16 +54,14 @@ class InMemorySimingStateTree:
         if not observed_events:
             raise ValueError("at least one observed event is required")
 
-        # TODO: S1 (05-待决问题与缺陷登记.md - 司命断点)
-        #   Three payload keys are hardcoded: target_environment_id, target_actor_id, established_fact_id
-        #   Should be replaced with structured FactType contract in Phase 2.
         current_event = observed_events[-1]
         environment_id = self._latest_non_empty_payload_value(
-            observed_events, "target_environment_id"
+            observed_events, "environment_key"
         )
-        actor_id = self._latest_non_empty_payload_value(observed_events, "target_actor_id")
+        actor_id = self._latest_non_empty_payload_value(observed_events, "actor_key")
+        object_id = self._latest_non_empty_payload_value(observed_events, "object_key")
         established_fact_id = self._latest_non_empty_payload_value(
-            observed_events, "established_fact_id"
+            observed_events, "fact_key"
         )
 
         from app.services.siming_visual_protocol import SimingVisualFactProtocol
@@ -64,6 +84,7 @@ class InMemorySimingStateTree:
                 status="fresh" if environment_id else "partial",
                 summary={
                     "target_environment_id": environment_id,
+                    "target_object_id": object_id,
                     **visual,
                     "established_fact_id": (visual["established_fact_id"]
                         if current_event.payload.get("fact_type") == "visual_evidence_projection"
@@ -106,7 +127,10 @@ class InMemorySimingStateTree:
     ) -> str | None:
         latest_value: str | None = None
         for event in observed_events:
-            value = self._optional_payload_value(event, key)
+            schema = self._payload_schemas.get(FACT_TYPE_REGISTRY.from_event_type(event.event_type))
+            if schema is None:
+                continue
+            value = self._optional_payload_value(event, getattr(schema, key))
             if value is not None:
                 latest_value = value
         return latest_value
