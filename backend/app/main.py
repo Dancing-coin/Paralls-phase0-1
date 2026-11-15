@@ -1685,7 +1685,7 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
         character_agent_runtime=character_agent_runtime,
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
-            actor_roster_resolver=lambda event: character_agent_runtime.get_schedulable_actor_ids(),
+            actor_roster_resolver=lambda event: character_agent_runtime._profile_registry.actor_ids(),
             heavenly_support=support,
             population_capability=PopulationSimulationCapability(
                 owner_executor=population_owner,

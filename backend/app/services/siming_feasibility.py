@@ -19,7 +19,7 @@ class SimingExecutionFeasibility:
                 True, "environment_change_path", ["esm_result_required_for_success"]
             )
 
-        if candidate.proposed_band == "fact_reveal" and candidate.target_environment_id:
+        if candidate.proposed_band == "fact_reveal" and (candidate.target_environment_id or candidate.target_object_id):
             return SimingFeasibilityResult(True, "visual_fact_path", ["visual_fact_path_available"])
 
         if candidate.proposed_band in {"impulse", "opportunity", "fact_reveal"} and candidate.target_actor_id:

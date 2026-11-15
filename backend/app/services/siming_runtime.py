@@ -645,7 +645,8 @@ class SimingRuntime:
             and self._has_conversation_candidate(event)
         ):
             output = self._conversation_fact_reveal(event)
-            if not self._accept_rule_catalyst(event, output, fairness_snapshot, result):
+            policy_snapshot = self._policy_snapshot_for_event(event, fairness_snapshot)
+            if not self._accept_rule_catalyst(event, output, policy_snapshot, result):
                 self._finalize_tick_state(result, effects=effects, event=event, prepared=prepared,
                     state_tree=state_tree, fairness_snapshot=fairness_snapshot, storyline=storyline,
                     projection=projection, narrative_summary=narrative_summary,
@@ -1514,8 +1515,6 @@ class SimingRuntime:
 
     def _accept_rule_catalyst(self, event, output, snapshot, result) -> bool:
         # 规则分支与模型候选共用策略和可执行性裁决，事实核心已在 tick 入口先行校验。
-        if output.selected_path != "character_input_path":
-            return True
         target = output.payload["target_actor_id"]
         refs = list(snapshot.known_fact_ids)
         candidate = InterventionCandidate(
@@ -1523,9 +1522,11 @@ class SimingRuntime:
             scene_id=event.scene_id, zone_id=event.zone_id, causation_id=event.event_id,
             correlation_id=event.correlation_id, proposed_band=output.intervention_band,
             target_actor_id=target, established_fact_ids=refs,
+            target_environment_id=output.payload.get("target_environment_id"),
+            target_object_id=output.payload.get("target_object_id"),
             reason_tags=list(event.payload.get("reason_tags", [])),
         )
-        if target is None:
+        if target is None and output.selected_path == "character_input_path":
             result.outputs.append(self._no_action(event, reason="no_eligible_actor"))
             result.audit_records.append(self._audit(event, status="policy_rejected", reason="no_eligible_actor"))
             return False
@@ -2070,7 +2071,8 @@ class SimingRuntime:
         actors = set(snapshot.eligible_actor_ids)
         if self._actor_roster_resolver is not None:
             roster = set(self._actor_roster_resolver(event))
-            actors = actors & roster if actors else roster
+            # An ambient fact's source is already an observer, not a reveal target.
+            actors = actors & roster if actors else roster - {event.source.actor_id}
         actors.difference_update(snapshot.blocked_actor_ids)
         return snapshot.model_copy(update={"eligible_actor_ids": sorted(actors)})
 

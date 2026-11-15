@@ -19,6 +19,7 @@ from app.services.frontend_authority_event_projection import FrontendAuthorityEv
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
 from app.services.siming_knowledge_graph import SimingKnowledgeGraph
 from app.services.siming_runtime import SimingRuntime
+from app.services.siming_policy import EntityEligibilityRegistry, SimingInterventionPolicy
 from app.world_runtime.intelligence_upgrade import SampleInputRef
 from app.world_runtime.l1_perception_frame import L1PerceptionFrameService
 
@@ -747,7 +748,8 @@ def test_pipeline_routes_object_only_conversation_fact_reveal_to_visual_observab
     pipeline = SimingEventPipeline(
         bus=bus,
         consumer=SimingEventConsumer(),
-        runtime=SimingRuntime(),
+        runtime=SimingRuntime(policy=SimingInterventionPolicy(
+            entity_registry=EntityEligibilityRegistry(objects=("obj_letter",)))),
         producer=SimingEventProducer(bus),
         audit_writer=audit_writer,
         character_dispatch_adapter=SimingCharacterDispatchAdapter(runtime=character_runtime),

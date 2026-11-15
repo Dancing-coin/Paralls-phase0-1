@@ -126,3 +126,68 @@ def test_s8_roster_changes_invalidate_provider_pin():
     outcome = runtime.commit_provider_result(pending.job, completion)
     assert outcome.status == "zero_write"
     assert outcome.reason == "stale_pin"
+
+
+def test_s8_ambient_observer_roster_excludes_actor_already_observing_fact():
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_llm_policy import make_snapshot
+    from test_siming_llm_runtime import make_visual_fact_event
+    event = make_visual_fact_event(target_actor_id=None)
+    snapshot = SimingRuntime(actor_roster_resolver=lambda _: ["char_c", "actor_observer"])._policy_snapshot_for_event(
+        event, make_snapshot(eligible_actor_ids=[]))
+    assert snapshot.eligible_actor_ids == ["actor_observer"]
+
+
+def test_s8_application_roster_membership_is_independent_of_scheduling_budget(monkeypatch):
+    from app import main
+    from test_siming_llm_policy import make_snapshot
+    from test_siming_llm_runtime import make_visual_fact_event
+    state = main.build_runtime_state(main.settings.model_copy(update={"heavenly_graph_path": ":memory:"}))
+    try:
+        monkeypatch.setattr(state.character_agent_runtime, "get_schedulable_actor_ids", lambda: [])
+        snapshot = state.siming_runtime._policy_snapshot_for_event(make_visual_fact_event(), make_snapshot())
+        assert snapshot.eligible_actor_ids == ["char_b"]
+    finally:
+        state.close()
+
+
+@pytest.mark.parametrize("actors, target, accepted", [(["actor_known"], None, True), ([], "actor_known", False)])
+def test_s8_conversation_rule_uses_roster_for_candidate_eligibility(actors, target, accepted):
+    from app.models.siming_event import SimingInput
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_agent_loop_runtime import make_visual_fact_event
+    event = make_visual_fact_event(event_type="conversation_resolution_event", payload_overrides={
+        "target_actor_id": target, "candidate_actor_ids": ["actor_known"]})
+    result = SimingRuntime(actor_roster_resolver=lambda _: actors).tick([
+        SimingInput(input_type="conversation_resolution_event", source_event=event)])
+    assert any(output.output_type == "dispatch_intent" for output in result.outputs) == accepted
+
+
+@pytest.mark.parametrize("kind", ["object", "environment"])
+@pytest.mark.parametrize("actor", [None, "actor_known"])
+def test_s6_rule_catalysts_reject_unqualified_non_actor_targets(kind, actor):
+    from app.models.siming_event import SimingInput
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_agent_loop_runtime import make_visual_fact_event
+    event = make_visual_fact_event(event_type="conversation_resolution_event", payload_overrides={
+        "target_actor_id": None, "target_environment_id": None,
+        "candidate_actor_ids": [actor] if actor else [],
+        f"candidate_{kind}_ids": [f"{kind}_unregistered"],
+    })
+    result = SimingRuntime(actor_roster_resolver=lambda _: ["actor_known"]).tick([
+        SimingInput(input_type="conversation_resolution_event", source_event=event)])
+    assert not any(output.output_type == "dispatch_intent" for output in result.outputs)
+    assert any(f"{kind}_not_eligible" in audit.reason for audit in result.audit_records)
+
+
+def test_s6_qualified_object_only_rule_retains_visual_path():
+    from app.models.siming_event import SimingInput
+    from app.services.siming_policy import SimingInterventionPolicy, EntityEligibilityRegistry
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_event_pipeline import make_conversation_resolution_event
+    runtime = SimingRuntime(policy=SimingInterventionPolicy(
+        entity_registry=EntityEligibilityRegistry(objects=("obj_letter",))))
+    result = runtime.tick([SimingInput(input_type="conversation_resolution_event",
+        source_event=make_conversation_resolution_event())])
+    dispatch = next(output for output in result.outputs if output.output_type == "dispatch_intent")
+    assert dispatch.selected_path == "visual_fact_path"

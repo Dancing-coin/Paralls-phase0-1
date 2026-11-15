@@ -53,7 +53,8 @@ def test_siming_character_protocol_filters_legacy_environment_attention(reject_s
         'payload': {'result_type': 'environment_state_result', 'target_environment_id': 'env_lamp',
                     'locked_fact_conflict': reject_stage == 'fact'},
     })
-    result = SimingRuntime(policy=Policy(), feasibility=Feasibility()).tick([
+    result = SimingRuntime(policy=Policy(), feasibility=Feasibility(),
+                           actor_roster_resolver=lambda _: ["actor_test"]).tick([
         SimingInput(input_type='esm_result_event', source_event=event),
     ])
     assert not any(item.output_type == 'dispatch_intent' for item in result.outputs)
