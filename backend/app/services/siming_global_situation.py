@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -154,7 +156,10 @@ class SimingGlobalSituationLayer:
         authority_pressure = 0.25 if world_results or authority_events else 0.0
         conflict_refs = self._conflict_refs(l1_projected_facts, world_results, vla_global_findings)
         fairness_pressure = min(1.0, max(imbalance, authority_pressure) + advisory_pressure)
-        snapshot_id = f"siming_situation:{room_id}:{scene_id}:{producer_ts}"
+        identity = json.dumps((room_id, scene_id, zone_id, context_id, producer_ts,
+            sorted(evidence.ref_id for evidence in evidence_chain)), separators=(",", ":"))
+        source_digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        snapshot_id = f"siming_situation:{room_id}:{scene_id}:{zone_id}:{producer_ts}:{source_digest}"
         snapshot = SimingGlobalSituationSnapshot(
             world_ts=producer_ts,
             sim_tick_ts=producer_ts + 1,

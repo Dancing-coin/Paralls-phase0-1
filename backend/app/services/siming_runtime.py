@@ -487,7 +487,7 @@ class SimingRuntime:
             authority_events=[event.model_dump(mode="json")],
             producer_ts=event.producer_ts, install=False,
         )
-        self._post_tick_validation(state_tree, situation, narrative.state, narrative_plan.after.revision)
+        self._post_tick_validation(state_tree, situation, narrative.state, narrative_plan.after)
         if effects is None:
             self._state_tree.install_snapshot(state_tree)
             self._narrative_core.install_room_state(narrative_plan.after)
@@ -2370,10 +2370,10 @@ class SimingRuntime:
         self._start_tick(frame, effects)
         return SimingAcceptedPlan(after=frame, effects=effects)
 
-    def _post_tick_validation(self, state_tree, situation, narrative, revision) -> None:
+    def _post_tick_validation(self, state_tree, situation, narrative, room_state) -> None:
         findings = self._consistency_validator.validate(
             state_tree, situation, narrative, current_tick=state_tree.sim_tick_ts,
-            narrative_revision=revision,
+            narrative_state=room_state,
         )
         if findings:
             import logging
@@ -2386,7 +2386,7 @@ class SimingRuntime:
             if effects.state_tree is None or effects.narrative_snapshot is None or effects.narrative_state is None:
                 raise ValueError("siming_consistency_projection_missing")
             self._post_tick_validation(effects.state_tree, effects.global_situation,
-                effects.narrative_snapshot, effects.narrative_state.revision)
+                effects.narrative_snapshot, effects.narrative_state)
         for state in effects.fact_core_states:
             self._fact_core.install_snapshot(state)
         if effects.narrative_state is not None:

@@ -17,7 +17,7 @@ def validate(plan):
     return SimingConsistencyValidator().validate(
         effects.state_tree, effects.global_situation, effects.narrative_snapshot,
         current_tick=effects.state_tree.sim_tick_ts,
-        narrative_revision=effects.narrative_state.revision,
+        narrative_state=effects.narrative_state,
     )
 
 
@@ -84,3 +84,27 @@ def test_sync_tick_and_empty_tick_validate_only_applicable_projections():
     runtime.tick([SimingInput(input_type="visual_fact_event", source_event=event)])
     assert runtime._global_situation.snapshots
     assert runtime._state_tree.latest_snapshot.source_event_id == event.event_id
+
+
+def test_room_state_scope_drift_blocks_all_installation():
+    from app.services.siming_consistency import SimingConsistencyError
+    runtime, plan = projected_plan()
+    plan.effects.narrative_state = plan.effects.narrative_state.model_copy(update={"room_id": "wrong_room"})
+    with pytest.raises(SimingConsistencyError):
+        runtime.install_planned_state(plan.effects)
+    assert runtime._narrative_core._revision_by_room == {}
+    assert runtime._state_tree.latest_snapshot is None
+
+
+def test_same_time_different_sources_and_zones_survive_idempotent_restore():
+    runtime = SimingRuntime()
+    plans = []
+    for index, zone in enumerate(("zone_one", "zone_two", "zone_two")):
+        event = make_visual_fact_event().model_copy(update={"zone_id": zone, "event_id": f"source:{index}"})
+        plan = runtime.plan_initial(SimingInput(input_type="visual_fact_event", source_event=event))
+        runtime.install_planned_state(plan.effects)
+        plans.append(plan)
+    assert len(runtime._global_situation.snapshots) == 3
+    assert {s.zone_id for s in runtime._global_situation.snapshots.values()} == {"zone_one", "zone_two"}
+    runtime.install_planned_state(plans[-1].effects)
+    assert len(runtime._global_situation.snapshots) == 3
