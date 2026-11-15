@@ -1,4 +1,4 @@
-"""Persistence and cache naming for the Phase-1 Siming data layer.
+"""Siming-owned persistent records, separate from the disposable hot cache.
 
 Two gaps motivated this module.  First, ``FairnessStateSnapshot``,
 ``InterventionCandidate`` and ``InterventionDecision`` were emitted as outputs and
@@ -93,7 +93,11 @@ def orchestrator_working_set_key(room_id: str) -> str:
 
 
 class SimingDataLayer:
-    """Room-scoped persistence for the three previously-ephemeral objects."""
+    """司命产出的持久事实层；不持有 Owner 世界真相，不等同于热缓存。
+
+    三模型当前通过图阶段 after-state 恢复；此处的统一恢复接口留待 Phase 2。
+    See docs/reference/phase1-siming/siming-data-layer-role.md.
+    """
 
     def __init__(self, path: str | Path) -> None:
         path = Path(path)
@@ -172,6 +176,18 @@ class SimingDataLayer:
             (room_id,),
         ).fetchone()
         return FairnessStateSnapshot.model_validate_json(row[0]) if row else None
+
+    def load_state_tree_snapshot(self, room_id: str, up_to_tick: int) -> dict:
+        # TODO: Phase 2: persist and restore scoped state-tree checkpoints.
+        raise NotImplementedError("Phase 2: state-tree recovery is not implemented")
+
+    def load_global_situation_snapshot(self, room_id: str, up_to_tick: int) -> dict:
+        # TODO: Phase 2: persist and restore public situation checkpoints.
+        raise NotImplementedError("Phase 2: global-situation recovery is not implemented")
+
+    def load_narrative_snapshot(self, room_id: str, up_to_tick: int) -> dict:
+        # TODO: Phase 2: persist and restore narrative checkpoints without replaying counters.
+        raise NotImplementedError("Phase 2: narrative recovery is not implemented")
 
     def decisions_for_room(self, room_id: str) -> list[InterventionDecision]:
         rows = self._connection.execute(
