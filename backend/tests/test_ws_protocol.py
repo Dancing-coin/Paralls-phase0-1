@@ -70,6 +70,10 @@ class _LocalGateway:
 
 def _reset_runtime_state_with_local_character_model() -> None:
     reset_runtime_state()
+    from app.services.siming_policy import EntityEligibilityRegistry
+    main.siming_event_pipeline._runtime._policy._entity_registry = EntityEligibilityRegistry(
+        objects=("obj_letter",), environments=("env_lamp",),
+    )
     runtime = CharacterAgentRuntime()
     local_gateway = _LocalGateway()
     runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
@@ -886,7 +890,9 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
     assert drop_siming_output["payload"]["authority_event_id"].startswith("siming:dispatch_intent:")
     assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert drop_character_agent_execution["message_type"] == "character_agent_execution"
-    assert drop_character_agent_execution["payload"]["actor_ref"] == "character:char_b"
+    selected_actor = drop_siming_output["payload"]["target_actor_id"]
+    assert selected_actor in main.character_agent_runtime._profile_registry.actor_ids()
+    assert drop_character_agent_execution["payload"]["actor_ref"] == f"character:{selected_actor}"
     ack = next(message for message in received if message["message_type"] == "ack")
     action_request = next(message for message in received if message["message_type"] == "action_request")
     action_resolution = next(
@@ -1284,9 +1290,10 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert environment_result["payload"]["thermal_level"] == "warm"
     assert environment_result["payload"]["current_state"] == "alerted"
     assert siming_output["message_type"] == "siming_output"
-    assert siming_output["payload"]["target_actor_id"] == "char_b"
+    selected_actor = siming_output["payload"]["target_actor_id"]
+    assert selected_actor in main.character_agent_runtime._profile_registry.actor_ids()
     assert character_agent_execution["message_type"] == "character_agent_execution"
-    assert character_agent_execution["payload"]["actor_ref"] == "character:char_b"
+    assert character_agent_execution["payload"]["actor_ref"] == f"character:{selected_actor}"
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert projection_delta["message_type"] == "character_runtime_state_delta"

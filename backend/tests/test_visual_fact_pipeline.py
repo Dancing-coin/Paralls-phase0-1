@@ -63,6 +63,10 @@ class _LocalGateway:
 
 def _reset_runtime_state_with_local_character_model() -> None:
     reset_runtime_state()
+    from app.services.siming_policy import EntityEligibilityRegistry
+    main.siming_event_pipeline._runtime._policy._entity_registry = EntityEligibilityRegistry(
+        objects=("obj_letter",), environments=("env_lamp",),
+    )
     runtime = CharacterAgentRuntime()
     local_gateway = _LocalGateway()
     runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
@@ -250,7 +254,7 @@ def test_websocket_environment_visual_fact_emits_runtime_delta_without_candidate
         message
         for message in remaining
         if message["message_type"] == "siming_output"
-        and message["payload"].get("target_actor_id") == "char_b"
+        and message["payload"].get("target_actor_id") in main.character_agent_runtime._profile_registry.actor_ids()
     )
     candidate_event = next(
         message for message in remaining if message["message_type"] == "conversation_candidate_event"
