@@ -94,6 +94,16 @@ class FactTypeRegistry:
     def event_types(self) -> tuple[str, ...]:
         return tuple(sorted(self._refs))
 
+    def validate_event_type_coverage(self) -> None:
+        """S3: fail startup when schema declarations outgrow Siming's mapping."""
+        from app.gameplay.event_schema_registry import gameplay_schema_event_types
+
+        for event_type in gameplay_schema_event_types():
+            ref = self.from_event_type(event_type)
+            if ref is None or self.domain_for(ref) in {"", "unknown"}:
+                raise RuntimeError(f"fact_type_registry_missing:{event_type}")
+        # Phase 2: consume explicit Owner domain declarations instead of schema-name domains.
+
 
 FACT_TYPE_REGISTRY = FactTypeRegistry()
 

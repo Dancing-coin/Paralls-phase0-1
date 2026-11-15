@@ -32,6 +32,7 @@ class HeavenlyAuthorityEventProjector:
         *,
         scope_resolver: Callable[[AuthorityEvent], HeavenlyGraphScope],
     ) -> None:
+        FACT_TYPE_REGISTRY.validate_event_type_coverage()
         self._graph = graph
         self._scope_resolver = scope_resolver
 
