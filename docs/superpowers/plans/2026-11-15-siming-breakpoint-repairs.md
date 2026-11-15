@@ -37,3 +37,13 @@
 - Ruling: S1 使用司命本地类型化聚合载荷契约，Owner schema 与查询待 Phase 2；无声明的 gameplay 字段不猜测。代价是这些类型暂不进入状态树实体字段。
 - Ruling: S5 旧记录的缺失类型引用保持 None，不伪造历史来源。代价是旧记录仍需后续受控补全。
 - Ruling: 无明确目标的事实揭示排除来源角色，明确指定的合格来源角色仍可成为目标。代价是单人名册、无明确目标时无动作。
+
+## 最终验收
+
+- 最终生产代码的单进程全量回归：10069 passed、5 failed、6 skipped、2 xfailed；5 项失败均为旧协议测试未声明非角色资格或固定期待 char_b。修复测试夹具及名册断言后，两文件重跑 79 passed，未放宽生产策略。
+- 修正后的全后端验收覆盖全部 1038 个测试文件，按文件轮转分成四组独立运行 pytest：2425 + 2494 + 2457 + 2698 = **10074 passed，6 skipped，2 xfailed**，四组退出码均为 0。
+- 验证脚本夹具的失败先行测试复现后，显式声明 char_b 名册和 obj_box 资格；脚本测试 7 passed。
+- authority-graph-projection、siming-behavior-turn-runtime、siming-six-domain-memory 验证通过；siming-backend-chain 组件验证通过。修复前的完整后端主链报告中在线模型场景通过，不把该旧报告作为修复后的完整主链通过证据。
+- 广泛 all 验证的 docs、boundaries、drift、backend-contract、godot-project 静态配置检查通过；随后因 Godot 可执行文件不存在而阻塞，未声称完成 Godot 运行时验收。
+- 原始验收日志和显式导出的报告保留于本轮系统临时目录 siming-final-shards、siming-breakpoints-*-final；Harness 自有运行目录回收通过。三份本轮 socket 诊断副本的递归清理被自动审批策略拒绝，暂留系统临时目录，未删除仓库已有证据。
+- B0 六字段与 Owner 设计未改；S1/S5 的 Owner 声明读取与旧数据补全、Q2 的混合图查询及完整版本对账继续保留 Phase 2 标记。全部修改在 main，未推送。
