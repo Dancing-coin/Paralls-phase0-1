@@ -142,3 +142,18 @@ def test_entity_eligibility_registry_covers_all_target_kinds():
     assert registry.is_eligible("actor", "char_b")
     assert registry.is_eligible("environment", "env_lamp")
     assert registry.is_eligible("object", "obj_letter")
+
+
+def test_s6_eligible_actor_cannot_bypass_environment_or_object_eligibility():
+    candidate = make_candidate(target_environment_id="env_unknown", target_object_id="obj_unknown")
+    result = SimingInterventionPolicy().evaluate(candidate, snapshot=make_snapshot())
+    assert not result.accepted
+    assert set(result.reasons) == {"environment_not_eligible", "object_not_eligible"}
+
+
+def test_s6_all_mixed_targets_can_be_explicitly_eligible():
+    result = SimingInterventionPolicy().evaluate(
+        make_candidate(target_environment_id="env_lamp", target_object_id="obj_letter"),
+        snapshot=make_snapshot(eligible_environment_ids=["env_lamp"], eligible_object_ids=["obj_letter"]),
+    )
+    assert result.accepted

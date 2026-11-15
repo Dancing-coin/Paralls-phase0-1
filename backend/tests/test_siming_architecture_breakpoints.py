@@ -26,3 +26,13 @@ def test_s2_observer_startup_rejects_unmapped_gameplay_schema(monkeypatch):
                         lambda: ("gameplay.new_owner.unmapped@1",))
     with pytest.raises(RuntimeError, match="gameplay.new_owner.unmapped@1"):
         SimingObservePipeline()
+
+
+def test_s6_fallback_audit_carries_non_actor_eligibility():
+    from test_siming_quality_monitor import make_state_tree
+    from app.services.siming_fairness_audit import SimingFairnessAuditEngine
+    tree = make_state_tree()
+    tree.environment.summary.update(target_environment_id="env_lamp", target_object_id="obj_letter")
+    snapshot = SimingFairnessAuditEngine().build_snapshot(tree)
+    assert snapshot.eligible_environment_ids == ["env_lamp"]
+    assert snapshot.eligible_object_ids == ["obj_letter"]

@@ -41,8 +41,7 @@ class SimingInterventionPolicy:
     def evaluate(
         self, candidate: InterventionCandidate, *, snapshot: FairnessStateSnapshot
     ) -> SimingPolicyResult:
-        # TODO: S6 (05-待决问题与缺陷登记.md - 司命断点)
-        #   Qualification judgment only checks actor_id. Should check full FactType eligibility in Phase 2.
+        # S6: every supplied target must independently pass eligibility.
         reasons: list[str] = []
 
         unknown_facts = [
@@ -67,10 +66,10 @@ class SimingInterventionPolicy:
         if self._entity_registry is not None:
             environments.update(self._entity_registry.environments)
             objects.update(self._entity_registry.objects)
-        if (candidate.target_environment_id and not candidate.target_actor_id
+        if (candidate.target_environment_id
                 and candidate.target_environment_id not in environments):
             reasons.append("environment_not_eligible")
-        if (candidate.target_object_id and not candidate.target_actor_id
+        if (candidate.target_object_id
                 and candidate.target_object_id not in objects):
             reasons.append("object_not_eligible")
 

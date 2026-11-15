@@ -94,6 +94,10 @@ class SimingQualityMonitor:
                 correlation_id=state_tree.correlation_id,
                 known_fact_ids=[str(established_fact_id)] if established_fact_id else [],
                 eligible_actor_ids=[str(target_actor_id)] if target_actor_id else [],
+                eligible_environment_ids=[str(state_tree.environment.summary["target_environment_id"])]
+                    if state_tree.environment.summary.get("target_environment_id") else [],
+                eligible_object_ids=[str(state_tree.environment.summary["target_object_id"])]
+                    if state_tree.environment.summary.get("target_object_id") else [],
                 blocked_actor_ids=[],
                 recent_intervention_ids=[],
                 dimensions=dimensions,
