@@ -57,6 +57,8 @@ from app.services.siming_read_model import (
     perception_identity_from_bundle,
 )
 from app.services.siming_state_tree import InMemorySimingStateTree
+from app.services.siming_global_situation import SimingGlobalSituationLayer
+from app.services.siming_consistency import SimingConsistencyValidator, SimingConsistencyError
 from app.services.siming_storyline import (
     InMemoryNarrativeObligationLedger,
     InMemoryStorylineState,
@@ -154,6 +156,8 @@ class SimingRuntime:
         self._balance_system = balance_system if balance_system is not None else SimingBalanceSystem(self._knowledge_graph)
         self._conflict_generator = conflict_generator if conflict_generator is not None else SimingConflictGenerator(self._knowledge_graph)
         self._state_tree = state_tree or InMemorySimingStateTree()
+        self._global_situation = SimingGlobalSituationLayer()
+        self._consistency_validator = SimingConsistencyValidator()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(
             self._feature_registry
         )
@@ -470,17 +474,28 @@ class SimingRuntime:
                 self._audit(event, status="recorded", reason="shadow_recorded")
             )
 
-        state_tree = (self._state_tree.update_from_observed if effects is None else self._state_tree.plan_from_observed)(
+        state_tree = self._state_tree.plan_from_observed(
             observed, sim_tick_ts=event.producer_ts + 1)
         state_tree.group_simulation = self._group_bridge.summarize(
             room_id=event.room_id
         )
+        narrative_plan = self._narrative_core.plan_update(observed)
+        narrative = narrative_plan.result
+        situation = self._global_situation.assemble_snapshot(
+            room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id,
+            context_id=f"siming_mm:{event.room_id}:{event.scene_id}:{event.zone_id}",
+            authority_events=[event.model_dump(mode="json")],
+            producer_ts=event.producer_ts, install=False,
+        )
+        self._post_tick_validation(state_tree, situation, narrative.state, narrative_plan.after.revision)
         if effects is None:
-            narrative = self._narrative_core.update(observed)
+            self._state_tree.install_snapshot(state_tree)
+            self._narrative_core.install_room_state(narrative_plan.after)
+            self._global_situation.install_snapshot(situation)
         else:
-            narrative_plan = self._narrative_core.plan_update(observed)
-            narrative = narrative_plan.result
             effects.narrative_state = narrative_plan.after
+            effects.narrative_snapshot = narrative.state
+            effects.global_situation = situation
         quality = self._quality_monitor.evaluate(
             state_tree=state_tree, narrative=narrative
         )
@@ -2355,14 +2370,31 @@ class SimingRuntime:
         self._start_tick(frame, effects)
         return SimingAcceptedPlan(after=frame, effects=effects)
 
+    def _post_tick_validation(self, state_tree, situation, narrative, revision) -> None:
+        findings = self._consistency_validator.validate(
+            state_tree, situation, narrative, current_tick=state_tree.sim_tick_ts,
+            narrative_revision=revision,
+        )
+        if findings:
+            import logging
+            logging.getLogger(__name__).error("siming_state_inconsistent:%s", findings)
+            raise SimingConsistencyError(findings)
+
     def install_planned_state(self, effects: SimingStageEffects) -> None:
         self._assert_siming_owner()
+        if effects.global_situation is not None:
+            if effects.state_tree is None or effects.narrative_snapshot is None or effects.narrative_state is None:
+                raise ValueError("siming_consistency_projection_missing")
+            self._post_tick_validation(effects.state_tree, effects.global_situation,
+                effects.narrative_snapshot, effects.narrative_state.revision)
         for state in effects.fact_core_states:
             self._fact_core.install_snapshot(state)
         if effects.narrative_state is not None:
             self._narrative_core.install_room_state(effects.narrative_state)
         if effects.state_tree is not None:
             self._state_tree.install_snapshot(effects.state_tree)
+        if effects.global_situation is not None:
+            self._global_situation.install_snapshot(effects.global_situation)
         if effects.storyline is not None:
             self._storyline_state.install_snapshot(effects.storyline)
         if effects.obligation_ledger is not None:

@@ -31,6 +31,9 @@ class NarrativeThread(BaseModel):
 class NarrativeStateSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    source_event_id: str = ""
+    actor_ids: list[str] = Field(default_factory=list)
+
     snapshot_id: str
     schema_version: int = 1
     producer_system: str = "siming.narrative_core"

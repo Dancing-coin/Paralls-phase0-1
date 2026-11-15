@@ -10,7 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.models.authority_event import AuthorityEvent
 from app.models.siming_fact_core import SimingFactCoreState
 from app.models.siming_heavenly_graph import HeavenlyGraphWriteBatch
-from app.models.siming_narrative import NarrativeRoomState
+from app.models.siming_narrative import NarrativeRoomState, NarrativeStateSnapshot
+from app.services.siming_global_situation import SimingGlobalSituationSnapshot
 from app.models.siming_runtime_state import NarrativeObligationLedgerSnapshot
 from app.models.siming_adaptive_bridge import GeneratedAdaptiveBridgeProposalBatch
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate, SimingInput, SimingTickResult
@@ -175,6 +176,8 @@ class SimingStageEffects(BaseModel):
     batches: list[HeavenlyGraphWriteBatch] = Field(default_factory=list)
     observatory_messages: list[dict] = Field(default_factory=list)
     narrative_state: NarrativeRoomState | None = None
+    narrative_snapshot: NarrativeStateSnapshot | None = None
+    global_situation: SimingGlobalSituationSnapshot | None = None
     state_tree: StateTreeSnapshot | None = None
     storyline: StorylineStateSnapshot | None = None
     obligation_ledger: NarrativeObligationLedgerSnapshot | None = None

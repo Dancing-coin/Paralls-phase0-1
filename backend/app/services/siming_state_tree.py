@@ -67,6 +67,7 @@ class InMemorySimingStateTree:
         from app.services.siming_visual_protocol import SimingVisualFactProtocol
         visual = SimingVisualFactProtocol.project(current_event.authority_event, self._latest_snapshot)
         snapshot = StateTreeSnapshot(
+            source_event_id=current_event.source_event_id,
             snapshot_id=f"state_tree:{current_event.room_id}:{sim_tick_ts}",
             schema_version=1,
             producer_system="siming.state_tree",

@@ -68,6 +68,8 @@ class GroupSimulationBranchSnapshot(BaseModel):
 class StateTreeSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    source_event_id: str = ""
+
     snapshot_id: str
     schema_version: int
     producer_system: str
