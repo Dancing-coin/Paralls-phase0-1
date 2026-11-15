@@ -267,7 +267,16 @@ func _process_align() -> void:
 	var player_bridge := _player_bridge()
 	if player_bridge != null:
 		player_bridge.set_forced_facing_yaw(desired_yaw)
-	if absf(wrapf(_actor_yaw(actor) - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
+	var actor_forward_value: Variant = actor.call("get_embodied_forward_vector")
+	if not actor_forward_value is Vector3:
+		_finalize_local_failure("failed_alignment", "actor_forward_unavailable")
+		return
+	var actor_forward: Vector3 = actor_forward_value
+	actor_forward.y = 0.0
+	if actor_forward.length() <= 0.001:
+		_finalize_local_failure("failed_alignment", "actor_forward_unavailable")
+		return
+	if actor_forward.normalized().dot(facing.normalized()) < cos(FACING_TOLERANCE_RAD):
 		return
 	if not _has_actor_capability(actor) or not actor.has_method("begin_right_hand_reach"):
 		_finalize_local_failure("failed_alignment", "capability_unavailable")
@@ -502,10 +511,6 @@ func _actor_position(actor: Node) -> Vector3:
 		if anchor is Vector3:
 			return anchor as Vector3
 	return actor.global_position if actor is Node3D else Vector3.ZERO
-
-
-func _actor_yaw(actor: Node) -> float:
-	return actor.global_rotation.y if actor is Node3D else 0.0
 
 
 func _door_bridge() -> Node:
