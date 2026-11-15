@@ -8,9 +8,9 @@
 | intervention_candidate | siming.intervention_candidate | 候选记录 |
 | intervention_decision | siming.intervention_decision | 决策记录 |
 | staging_request | siming.staging_request | 资源暂存协议 |
-| audit_recorded / no_action | siming.audit_recorded / siming.no_action_recorded | 审计，无下游执行 |
+| audit_record / no_action | siming.audit_recorded / siming.no_action_recorded | 审计，无下游执行 |
 | visual_fact_path | siming.visual_observability_request | 已成立事实的可见性请求 |
-| presentation_highlight_path | siming.presentation_highlight_request | 表现请求 |
+| l3_highlight_path | siming.presentation_highlight_request | 表现请求 |
 | environment_change_path | siming.environment_request | 主组合订阅，转交 ESM（实体状态机）校验结算 |
 | character_input_path | siming.impulse / siming.opportunity / siming.fact_reveal | 角色投递适配器，角色保留自治 |
 

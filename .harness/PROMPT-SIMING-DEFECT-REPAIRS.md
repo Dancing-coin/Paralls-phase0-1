@@ -405,7 +405,7 @@ Co-Authored-By: Claude 5.5 <noreply@anthropic.com>"
 
 ## 已知风险
 
-1. **Godot 缺失**：广泛运行时验收无法完成，只能验证后端测试
+1. **Godot 路径已确认**：`D:\godot\Godot_v4.6.3-stable_win64_console.exe`，需显式传入验证命令。本轮实际广泛验收限制见实施计划末尾记录。
 2. **三套副本实际类名可能不同**：需先 grep 确认真实类名
 3. **集成点可能需要调整**：如果 `siming_runtime.py` 没有明确的 tick 后钩子，需要找到合适的集成点
 
