@@ -85,6 +85,7 @@ def make_visual_fact_event(**overrides: object) -> AuthorityEvent:
         "payload": {
             "fact_type": "light_level_drop",
             "established_fact_id": "visual_fact:300:char_c:light_level_drop",
+            "target_actor_id": "char_b",
             "target_environment_id": "env_lamp",
         },
     }

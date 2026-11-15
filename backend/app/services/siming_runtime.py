@@ -137,6 +137,7 @@ class SimingRuntime:
         population_model_observer=None,
         actor_pin_reader=None,
         source_pin_reader=None,
+        actor_roster_resolver=None,
         knowledge_graph: SimingKnowledgeGraph | None = None,
         balance_system: SimingBalanceSystem | None = None,
         conflict_generator: SimingConflictGenerator | None = None,
@@ -179,6 +180,7 @@ class SimingRuntime:
         self._restored_observatory_message_digests: set[str] = set()
         self._actor_pin_reader = actor_pin_reader
         self._source_pin_reader = source_pin_reader
+        self._actor_roster_resolver = actor_roster_resolver
         self._siming_owner_thread = None
         self._siming_generation = uuid4().hex
         self._siming_pending = {}
@@ -580,8 +582,9 @@ class SimingRuntime:
             return
 
         if self._is_environment_attention_event(event):
-            output = self._environment_attention_dispatch(event)
-            if not self._accept_rule_catalyst(event, output, fairness_snapshot, result):
+            policy_snapshot = self._policy_snapshot_for_event(event, fairness_snapshot)
+            output = self._environment_attention_dispatch(event, policy_snapshot)
+            if not self._accept_rule_catalyst(event, output, policy_snapshot, result):
                 self._finalize_tick_state(result, effects=effects, event=event, prepared=prepared,
                     state_tree=state_tree, fairness_snapshot=fairness_snapshot, storyline=storyline,
                     projection=projection, narrative_summary=narrative_summary,
@@ -816,8 +819,9 @@ class SimingRuntime:
                 guardrail_summary=guardrail_summary,
             )
             return
-        if llm_audit:
-            result.outputs.append(self._no_action(event))
+        if llm_audit or not policy_snapshot.eligible_actor_ids:
+            result.outputs.append(self._no_action(event, reason="no_eligible_actor")
+                                  if not policy_snapshot.eligible_actor_ids else self._no_action(event))
             result.audit_records.extend(llm_audit)
             self._finalize_tick_state(
                 result,
@@ -846,7 +850,7 @@ class SimingRuntime:
                     selected_path="visual_fact_path",
                     intervention_band="fact_reveal",
                 ),
-                self._visual_fact_dispatch(event),
+                self._visual_fact_dispatch(event, policy_snapshot),
             ]
         )
         self._queue_event(
@@ -1158,6 +1162,12 @@ class SimingRuntime:
             eligible_actor_ids=[proposal.target_actor_id]
             if proposal.target_actor_id
             else [],
+            eligible_environment_ids=list(candidate_contract.staging_request.resource_match.capability.environment_ids)
+                if candidate_contract.staging_request.resource_match.accepted
+                and candidate_contract.staging_request.resource_match.capability is not None else [],
+            eligible_object_ids=list(candidate_contract.staging_request.resource_match.capability.object_ids)
+                if candidate_contract.staging_request.resource_match.accepted
+                and candidate_contract.staging_request.resource_match.capability is not None else [],
         )
         policy_result = self._policy.evaluate(candidate, snapshot=snapshot)
         if not policy_result.accepted:
@@ -1515,9 +1525,10 @@ class SimingRuntime:
             target_actor_id=target, established_fact_ids=refs,
             reason_tags=list(event.payload.get("reason_tags", [])),
         )
-        # shortcut: 兼容既有三名演示角色；正式名册接入后移除此有限回退。
-        if not snapshot.eligible_actor_ids:
-            snapshot = snapshot.model_copy(update={"eligible_actor_ids": ["char_a", "char_b", "char_c"]})
+        if target is None:
+            result.outputs.append(self._no_action(event, reason="no_eligible_actor"))
+            result.audit_records.append(self._audit(event, status="policy_rejected", reason="no_eligible_actor"))
+            return False
         policy = self._policy.evaluate(candidate, snapshot=snapshot)
         feasibility = self._feasibility.evaluate(candidate) if policy.accepted else None
         if not policy.accepted or not feasibility.accepted:
@@ -1612,7 +1623,7 @@ class SimingRuntime:
                 "observability_goal": "make established fact observable",
                 "presentation_budget": "subtle"}
 
-    def _visual_fact_dispatch(self, event: AuthorityEvent) -> SimingOutput:
+    def _visual_fact_dispatch(self, event: AuthorityEvent, snapshot: FairnessStateSnapshot) -> SimingOutput:
         established_fact_id = str(
             event.payload.get("established_fact_id", event.event_id)
         )
@@ -1630,14 +1641,12 @@ class SimingRuntime:
                 "established_fact_id": established_fact_id,
                 **self._visual_request_evidence(event),
                 "presentation_hint": "increase observability for established light change",
-                # S8: char_b placeholder. In Phase 2, should use roster resolution.
-                # TODO: Replace with actual character from roster system.
-                "target_actor_id": "char_b",
+                "target_actor_id": self._observer_actor(event, snapshot),
                 "target_environment_id": event.payload.get("target_environment_id"),
             },
         )
 
-    def _environment_attention_dispatch(self, event: AuthorityEvent) -> SimingOutput:
+    def _environment_attention_dispatch(self, event: AuthorityEvent, snapshot: FairnessStateSnapshot) -> SimingOutput:
         target_environment_id = event.payload.get("target_environment_id")
         target_object_id = event.payload.get("target_object_id")
         target_label = (
@@ -1658,9 +1667,7 @@ class SimingRuntime:
             intervention_band="fact_reveal",
             payload={
                 "presentation_hint": f"notice change around {target_label}",
-                # S8: char_b placeholder. In Phase 2, should use roster resolution.
-                # TODO: Replace with actual character from roster system.
-                "target_actor_id": "char_b",
+                "target_actor_id": self._observer_actor(event, snapshot),
                 "target_environment_id": target_environment_id,
                 "target_object_id": target_object_id,
             },
@@ -2059,11 +2066,19 @@ class SimingRuntime:
         event: AuthorityEvent,
         snapshot: FairnessStateSnapshot,
     ) -> FairnessStateSnapshot:
-        # S8: char_b fallback. In Phase 2, should use roster resolution.
-        # TODO: Replace with actual character from roster system.
-        if snapshot.eligible_actor_ids or not self._is_light_drop(event):
-            return snapshot
-        return snapshot.model_copy(update={"eligible_actor_ids": ["char_b"]})
+        # S8: explicit roster membership takes precedence over event target hints.
+        actors = set(snapshot.eligible_actor_ids)
+        if self._actor_roster_resolver is not None:
+            roster = set(self._actor_roster_resolver(event))
+            actors = actors & roster if actors else roster
+        actors.difference_update(snapshot.blocked_actor_ids)
+        return snapshot.model_copy(update={"eligible_actor_ids": sorted(actors)})
+
+    @staticmethod
+    def _observer_actor(event: AuthorityEvent, snapshot: FairnessStateSnapshot) -> str | None:
+        actors = snapshot.eligible_actor_ids
+        requested = event.payload.get("target_actor_id")
+        return requested if requested in actors else next(iter(actors), None)
 
     def _is_light_drop(self, event: AuthorityEvent) -> bool:
         return (
@@ -2258,6 +2273,7 @@ class SimingRuntime:
         pin = {
             "source": event.model_dump(mode="json"), "scope": SimingHeavenlyRuntimeSupport._scope_for(event).model_dump(mode="json"),
             "source_live": self._source_pin_reader(event.model_copy(deep=True)) if self._source_pin_reader else None,
+            "roster": sorted(set(self._actor_roster_resolver(event))) if self._actor_roster_resolver else None,
             "actors": {actor: self._actor_pin_reader(actor) for actor in frame.actor_ids} if self._actor_pin_reader else {},
             "provider": self._provider_identity(provider), "schema": 1,
             "fact_core": digest([state.model_dump(mode="json") for state in self._fact_core.snapshots_for_room(event.room_id)]),

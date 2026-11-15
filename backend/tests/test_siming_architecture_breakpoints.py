@@ -65,3 +65,64 @@ def test_s1_state_tree_does_not_guess_undeclared_gameplay_payload_fields():
     snapshot = InMemorySimingStateTree().plan_from_observed(
         [ObservedSimingEvent.from_authority_event(event)], sim_tick_ts=301)
     assert snapshot.character.summary["target_actor_id"] is None
+
+
+@pytest.mark.parametrize("actors, expected", [(["actor_z", "actor_a"], "actor_a"), ([], None)])
+def test_s8_visual_tick_uses_actual_roster_or_emits_no_action(actors, expected):
+    from app.models.siming_event import SimingInput
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_llm_runtime import make_visual_fact_event
+    runtime = SimingRuntime(actor_roster_resolver=lambda event: actors)
+    result = runtime.tick([SimingInput(input_type="visual_fact_event", source_event=make_visual_fact_event(target_actor_id=None))])
+    dispatches = [output for output in result.outputs if output.output_type == "dispatch_intent"]
+    if expected is None:
+        assert not dispatches
+        assert any(output.selected_path == "no_action" for output in result.outputs)
+    else:
+        assert dispatches[0].payload["target_actor_id"] == expected
+
+
+def test_s8_explicit_empty_roster_overrides_event_target_and_filters_blocked_actors():
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_llm_policy import make_snapshot
+    from test_siming_llm_runtime import make_visual_fact_event
+    event = make_visual_fact_event(target_actor_id="char_b")
+    snapshot = make_snapshot()
+    assert not SimingRuntime(actor_roster_resolver=lambda _: [])._policy_snapshot_for_event(event, snapshot).eligible_actor_ids
+    snapshot = make_snapshot(eligible_actor_ids=[], blocked_actor_ids=["actor_locked"])
+    result = SimingRuntime(actor_roster_resolver=lambda _: ["actor_locked", "actor_ok"])._policy_snapshot_for_event(event, snapshot)
+    assert result.eligible_actor_ids == ["actor_ok"]
+
+
+def test_s8_environment_attention_uses_roster_and_empty_roster_is_audited():
+    from app.models.siming_event import SimingInput
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_agent_loop_runtime import make_visual_fact_event
+    event = make_visual_fact_event(event_type="esm_result_event", payload_overrides={
+        "target_actor_id": None, "result_type": "environment_state_result"})
+    for actors in (["actor_custom"], []):
+        result = SimingRuntime(actor_roster_resolver=lambda _: actors).tick([
+            SimingInput(input_type="esm_result_event", source_event=event)])
+        dispatches = [output for output in result.outputs if output.output_type == "dispatch_intent"]
+        if actors:
+            assert dispatches[0].payload["target_actor_id"] == "actor_custom"
+        else:
+            assert not dispatches
+            assert any(audit.reason == "no_eligible_actor" for audit in result.audit_records)
+
+
+def test_s8_roster_changes_invalidate_provider_pin():
+    from app.models.siming_event import SimingInput
+    from app.services.siming_runtime import SimingRuntime
+    from test_siming_llm_runtime import make_visual_fact_event
+    actors = ["actor_first"]
+    runtime = SimingRuntime(actor_roster_resolver=lambda _: actors,
+                            actor_pin_reader=lambda _: 1, source_pin_reader=lambda _: True)
+    pending = runtime.prepare_tick(SimingInput(input_type="visual_fact_event",
+        source_event=make_visual_fact_event(target_actor_id=None)))
+    from app.services.siming_continuation import run_siming_provider
+    completion = run_siming_provider(runtime._llm_provider, pending.job.request_json)
+    actors[:] = ["actor_second"]
+    outcome = runtime.commit_provider_result(pending.job, completion)
+    assert outcome.status == "zero_write"
+    assert outcome.reason == "stale_pin"
