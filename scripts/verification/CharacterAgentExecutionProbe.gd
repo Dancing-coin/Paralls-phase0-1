@@ -107,8 +107,8 @@ func _run_probe() -> void:
 			"acoustics": {},
 			"effect_kind": "pulse",
 			"subject_key": "",
-			"causation_id": "vf:901",
-			"correlation_id": "vf:901",
+			"causation_id": "vf:character-agent-execution:901",
+			"correlation_id": "character-agent-execution:901",
 		},
 	}
 	var err: int = bridge.send_envelope(envelope)

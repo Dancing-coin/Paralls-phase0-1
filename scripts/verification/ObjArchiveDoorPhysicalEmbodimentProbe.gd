@@ -49,6 +49,9 @@ func _ready() -> void:
 	_runtime_path = OS.get_environment("PARALLS_OBJ_ARCHIVE_DOOR_RUNTIME_PATH")
 	_screenshot_path = OS.get_environment("PARALLS_OBJ_ARCHIVE_DOOR_SCREENSHOT_PATH")
 	_stage_path = OS.get_environment("PARALLS_OBJ_ARCHIVE_DOOR_STAGE_PATH")
+	main_demo.set("suspend_near_object_visual_fact", true)
+	main_demo.set("suspend_spatial_access_fact", true)
+	main_demo.call("_set_autotest_actor_local_perception_enabled", false)
 	_connect_bus()
 	await get_tree().process_frame
 	await _run_probe()

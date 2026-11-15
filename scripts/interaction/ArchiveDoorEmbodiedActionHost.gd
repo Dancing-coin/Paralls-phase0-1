@@ -504,10 +504,6 @@ func _actor_position(actor: Node) -> Vector3:
 	return actor.global_position if actor is Node3D else Vector3.ZERO
 
 
-func _actor_yaw(actor: Node) -> float:
-	return actor.global_rotation.y if actor is Node3D else 0.0
-
-
 func _door_bridge() -> Node:
 	return get_node_or_null(door_bridge_path)
 

@@ -62,6 +62,15 @@ def test_character_agent_execution_probe_script_targets_execution_contract() -> 
     assert 'character_agent_execution_probe:consumer_node_is_character_replica=%s' in script_text
 
 
+def test_character_agent_execution_probe_uses_a_scene_actor_as_the_fact_source() -> None:
+    script_text = (
+        ROOT / "scripts" / "verification" / "CharacterAgentExecutionProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert '"actor_id": "char_a"' in script_text
+    assert '"actor_id": "char_c"' not in script_text
+
+
 def test_l1_runtime_probe_enables_explicit_debug_logging_mode() -> None:
     script_text = (
         ROOT / "scripts" / "verification" / "L1RuntimeProbe.gd"
