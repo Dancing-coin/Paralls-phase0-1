@@ -126,9 +126,6 @@ class SimingEventProducer:
         )
 
     def _event_type_for(self, output: SimingOutput) -> str:
-        # TODO: S7 (05-待决问题与缺陷登记.md - 司命断点)
-        #   "siming.environment_request" path (line 146) is dead code - no subscribers.
-        #   Should be removed or connected to Owner domain in Phase 2.
         if output.output_type == "fairness_snapshot":
             return "siming.fairness_snapshot"
         if output.output_type == "intervention_candidate":
@@ -146,7 +143,7 @@ class SimingEventProducer:
         if output.selected_path == "l3_highlight_path":
             return "siming.presentation_highlight_request"
         # S7: environment_change_path routes to ESM (not dead despite the name)
-        # Routes to "environment_request" but target is ["esm"]. Clarify in Phase 2.
+        # Phase 2: replace the current Protocol 09 stub with the full ESM proposal contract.
         if output.selected_path == "environment_change_path":
             return "siming.environment_request"
         if (
