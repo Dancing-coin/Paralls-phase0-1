@@ -504,6 +504,17 @@ func _actor_position(actor: Node) -> Vector3:
 	return actor.global_position if actor is Node3D else Vector3.ZERO
 
 
+func _actor_yaw(actor: Node) -> float:
+	var forward_value: Variant = actor.call("get_embodied_forward_vector") if actor != null else null
+	if not forward_value is Vector3:
+		return 0.0
+	var forward: Vector3 = forward_value
+	forward.y = 0.0
+	if forward.length() <= 0.001:
+		return 0.0
+	return atan2(forward.x, forward.z)
+
+
 func _door_bridge() -> Node:
 	return get_node_or_null(door_bridge_path)
 
