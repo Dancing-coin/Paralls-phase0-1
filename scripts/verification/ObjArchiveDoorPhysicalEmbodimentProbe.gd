@@ -19,6 +19,7 @@ var _request_descriptor: Dictionary = {}
 var _action_request_payload: Dictionary = {}
 var _settlement_payload: Dictionary = {}
 var _local_outcome_payload: Dictionary = {}
+var _backend_transport_on_local_outcome: Dictionary = {}
 var _received_constraint: Dictionary = {}
 var _received_world_result: Dictionary = {}
 var _presentation_ack: Dictionary = {}
@@ -379,6 +380,7 @@ func _finish(ok: bool) -> void:
 		"player_end_position": _vec3_to_dict(_player_end_position),
 		"actual_movement_delta": _player_start_position.distance_to(_player_end_position),
 		"facing_error_rad": _current_facing_error_rad(),
+		"facing_diagnostic": _facing_diagnostic(),
 		"ik_runtime_kind": str(_contact_measurement.get("runtime_kind", "")),
 		"ik_chain_bones": _contact_measurement.get("chain_bones", []),
 		"ik_error_code": str(_contact_measurement.get("error_code", "")),
@@ -396,6 +398,8 @@ func _finish(ok: bool) -> void:
 		"received_settlement": _settlement_payload,
 		"received_world_result": _received_world_result,
 		"local_outcome": _local_outcome_payload,
+		"backend_transport_on_local_outcome": _backend_transport_on_local_outcome,
+		"backend_ack_payloads": _ack_payloads,
 		"presentation_ack": _presentation_ack,
 		"pre_snapshot": _pre_snapshot,
 		"final_snapshot": _final_snapshot,
@@ -464,16 +468,36 @@ func _approach_start_position() -> Vector3:
 
 
 func _current_facing_error_rad() -> float:
-	var player := _player()
+	var actor := _character_actor()
 	var contact_anchor := _contact_anchor()
-	if player == null or contact_anchor == null:
+	if actor == null or contact_anchor == null or not actor.has_method("get_focus_anchor_position"):
 		return INF
-	var facing := contact_anchor.global_position - player.global_position
+	var actor_anchor: Vector3 = actor.call("get_focus_anchor_position")
+	var facing: Vector3 = contact_anchor.global_position - actor_anchor
 	facing.y = 0.0
 	if facing.length() <= 0.001:
 		return 0.0
-	var desired_yaw := atan2(facing.x, facing.z)
-	return absf(wrapf(player.rotation.y - desired_yaw, -PI, PI))
+	var desired_yaw := Basis.looking_at(facing.normalized(), Vector3.UP).get_euler().y
+	return absf(wrapf(actor.global_rotation.y - desired_yaw, -PI, PI))
+
+
+func _facing_diagnostic() -> Dictionary:
+	var actor := _character_actor()
+	if actor == null or not actor.has_method("get_focus_anchor_position"):
+		return {}
+	var actor_anchor: Vector3 = actor.call("get_focus_anchor_position")
+	var contact_anchor := _contact_anchor()
+	if contact_anchor == null:
+		return {}
+	var facing: Vector3 = contact_anchor.global_position - actor_anchor
+	facing.y = 0.0
+	var look_target: Vector3 = actor.get("current_look_target")
+	return {
+		"actor_yaw": actor.global_rotation.y,
+		"actor_yaw_target": Basis.looking_at(facing.normalized(), Vector3.UP).get_euler().y,
+		"actor_look_target": _vec3_to_dict(look_target),
+		"actor_has_external_look_target": bool(actor.get("has_external_look_target")),
+	}
 
 
 func _snapshot() -> Dictionary:
@@ -524,6 +548,22 @@ func _on_phase_event_emitted(payload: Dictionary) -> void:
 
 func _on_local_outcome_emitted(payload: Dictionary) -> void:
 	_local_outcome_payload = payload.duplicate(true)
+	var bridge := get_node_or_null("/root/BackendBridge")
+	if bridge == null:
+		_backend_transport_on_local_outcome = {"bridge_present": false}
+		return
+	var peer_value: Variant = bridge.get("ws")
+	if not (peer_value is WebSocketPeer):
+		_backend_transport_on_local_outcome = {"bridge_present": true, "peer_available": false}
+		return
+	var peer := peer_value as WebSocketPeer
+	_backend_transport_on_local_outcome = {
+		"bridge_present": true,
+		"peer_available": true,
+		"ready_state": peer.get_ready_state(),
+		"is_open": peer.get_ready_state() == WebSocketPeer.STATE_OPEN,
+		"close_code": peer.get_close_code(),
+	}
 
 
 func _on_settlement_received(payload: Dictionary) -> void:

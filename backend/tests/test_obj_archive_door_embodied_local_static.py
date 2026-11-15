@@ -46,17 +46,24 @@ def test_door_host_refreshes_forced_facing_from_the_live_contact_geometry() -> N
         "func _process_contact() -> void:", maxsplit=1
     )[0]
 
-    refresh = "player_bridge.set_forced_facing_yaw(desired_yaw)"
+    refresh = "player_bridge.set_forced_look_target(contact.global_position)"
     assert refresh in align_body
-    assert align_body.index(refresh) < align_body.index("if absf(wrapf(_actor_yaw(actor) - desired_yaw")
+    assert align_body.index(refresh) < align_body.index("if absf(wrapf(_actor_yaw(actor) - actor_yaw_target")
 
 
 def test_door_contact_alignment_uses_the_character_motor_forward_convention() -> None:
     host = _read("scripts/interaction/ArchiveDoorEmbodiedActionHost.gd")
     probe = _read("scripts/verification/ObjArchiveDoorPhysicalEmbodimentProbe.gd")
 
-    assert "var desired_yaw := atan2(facing.x, facing.z)" in host
-    assert "var desired_yaw := atan2(facing.x, facing.z)" in probe
+    expected_actor_yaw = "Basis.looking_at(facing.normalized(), Vector3.UP).get_euler().y"
+    assert expected_actor_yaw in host
+    assert "var actor_yaw_target := Basis.looking_at(facing.normalized(), Vector3.UP).get_euler().y" in host
+    assert "_actor_yaw(actor) - actor_yaw_target" in host
+    assert expected_actor_yaw in probe
+    bridge = _read("scripts/player/Phase0PlayerBridge.gd")
+    assert "func set_forced_look_target(world_target: Vector3) -> void:" in bridge
+    assert "if forced_look_target_active:" in bridge
+    assert "player_bridge.clear_forced_look_target()" in host
 
 
 def test_door_binding_pins_the_reachable_contact_anchor_revision() -> None:

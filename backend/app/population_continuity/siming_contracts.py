@@ -72,11 +72,15 @@ class PopulationCadenceInput(ContinuityModel):
     @model_validator(mode="after")
     def validate_cadence(self) -> "PopulationCadenceInput":
         if self.window_end <= self.window_start:
-            raise ValueError("cadence_window_invalid")
+            raise ValueError(
+                f"cadence_window_invalid: window_end ({self.window_end}) must be > window_start ({self.window_start})"
+            )
         if not self.cadence_source_ref:
-            raise ValueError("cadence_source_pin_incomplete")
+            raise ValueError("cadence_source_pin_incomplete: cadence_source_ref is required")
         if isinstance(self.cadence_source_revision, bool) or self.cadence_source_revision < 0:
-            raise ValueError("cadence_source_pin_incomplete")
+            raise ValueError(
+                f"cadence_source_pin_incomplete: cadence_source_revision must be non-negative int, got {self.cadence_source_revision!r}"
+            )
         _check_vector(self.base_revision_vector)
         return self
 

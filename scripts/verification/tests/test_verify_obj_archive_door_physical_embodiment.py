@@ -269,6 +269,32 @@ def test_revision_injector_waits_for_the_godot_runtime_window_not_a_short_startu
     assert "_wait_for_authoritative_preflight(server, GODOT_TIMEOUT_SECONDS)" in revision_branch
 
 
+def test_live_probe_uses_process_timeout_instead_of_frame_count_quit() -> None:
+    verifier_text = (
+        ROOT
+        / "scripts"
+        / "verification"
+        / "verify_obj_archive_door_physical_embodiment.py"
+    ).read_text(encoding="utf-8")
+    run_probe = verifier_text.split("def _run_probe_scenario(", maxsplit=1)[1].split(
+        "def _backend_trace_for_scenario", maxsplit=1
+    )[0]
+
+    assert '"--quit-after"' not in run_probe
+    assert "deadline = time.time() + GODOT_TIMEOUT_SECONDS" in run_probe
+    assert "process.terminate()" in run_probe
+
+
+def test_probe_records_backend_transport_state_at_local_outcome() -> None:
+    script_text = (
+        ROOT / "scripts" / "verification" / "ObjArchiveDoorPhysicalEmbodimentProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'get_node_or_null("/root/BackendBridge")' in script_text
+    assert '"backend_transport_on_local_outcome"' in script_text
+    assert '"backend_ack_payloads"' in script_text
+
+
 def test_live_probe_uses_a_renderer_capable_of_capturing_the_required_png_evidence() -> None:
     verifier_text = (
         ROOT

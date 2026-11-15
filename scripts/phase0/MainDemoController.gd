@@ -125,6 +125,11 @@ func _ready() -> void:
 		_set_autotest_actor_local_perception_enabled(false)
 		if OS.get_environment("SIMING_HEAVENLY_AUTOTEST_SETUP") == "1":
 			autotest_transport_quiescent = true
+	if not OS.get_environment("PARALLS_OBJ_ARCHIVE_DOOR_SCENARIO").is_empty():
+		suspend_near_object_visual_fact = true
+		suspend_spatial_access_fact = true
+		autotest_transport_quiescent = true
+		_set_autotest_actor_local_perception_enabled(false)
 	var bus := _get_bus()
 	if bus:
 		if bus.has_method("set_debug_logging_enabled"):

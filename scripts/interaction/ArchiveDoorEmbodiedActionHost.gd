@@ -247,7 +247,6 @@ func _process_navigate() -> void:
 	if facing.length() <= 0.001:
 		_finalize_local_failure("failed_alignment", "contact_anchor_invalid")
 		return
-	player_bridge.set_forced_facing_yaw(atan2(facing.x, facing.z))
 	_stage = "align"
 
 
@@ -263,11 +262,11 @@ func _process_align() -> void:
 		return
 	var facing := contact.global_position - _actor_position(actor)
 	facing.y = 0.0
-	var desired_yaw := atan2(facing.x, facing.z)
 	var player_bridge := _player_bridge()
 	if player_bridge != null:
-		player_bridge.set_forced_facing_yaw(desired_yaw)
-	if absf(wrapf(_actor_yaw(actor) - desired_yaw, -PI, PI)) > FACING_TOLERANCE_RAD:
+		player_bridge.set_forced_look_target(contact.global_position)
+	var actor_yaw_target := Basis.looking_at(facing.normalized(), Vector3.UP).get_euler().y
+	if absf(wrapf(_actor_yaw(actor) - actor_yaw_target, -PI, PI)) > FACING_TOLERANCE_RAD:
 		return
 	if not _has_actor_capability(actor) or not actor.has_method("begin_right_hand_reach"):
 		_finalize_local_failure("failed_alignment", "capability_unavailable")
@@ -440,6 +439,7 @@ func _clear_local_ownership() -> void:
 	if player_bridge != null:
 		player_bridge.clear_forced_player_motion()
 		player_bridge.clear_forced_facing_yaw()
+		player_bridge.clear_forced_look_target()
 	var bridge := _door_bridge()
 	var player := get_parent() as CharacterBody3D
 	if bridge != null and bridge.has_method("release_stance_lease") and player != null:

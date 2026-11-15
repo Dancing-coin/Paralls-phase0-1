@@ -112,6 +112,7 @@ def main() -> int:
         "actor_ref": "actor:live-reconnect",
     }
     environment = {
+        "PARALLS_HEAVENLY_GRAPH_PATH": ":memory:",
         "GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET": secret,
         "GAMEPLAY_MIRROR_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON": json.dumps([
             {"profile_ref": "mirror-live-probe", "principal_ref": "principal:live-probe", "allowed_actor_refs": ["actor:live-probe"], "credential_ttl_seconds": 30},
