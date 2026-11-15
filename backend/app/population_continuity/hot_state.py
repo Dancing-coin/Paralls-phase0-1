@@ -18,6 +18,11 @@ HOT_FIELDS = frozenset(
         "starvation_credit",
     }
 )
+
+
+def get_starvation_credit_for_siming(actor_id: str, b0_row: Mapping[str, object]) -> float:
+    """Read-only Siming scheduler seam; B0 ownership and fields are unchanged."""
+    return float(b0_row.get("starvation_credit", 0.0))
 # daily_rhythm_runtime now publishes the canonical event stream; this table remains
 # a compatibility projection until OwnerFactQuery is available.
 
@@ -423,4 +428,4 @@ class PopulationDueIndex:
                      for (actor_id, obligation_id), entry in sorted(self._entries.items()))
 
 
-__all__ = ["HOT_FIELDS", "HotStateReceipt", "PopulationHotState", "PopulationDueIndex"]
+__all__ = ["HOT_FIELDS", "HotStateReceipt", "PopulationHotState", "PopulationDueIndex", "get_starvation_credit_for_siming"]
