@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class ConstraintProbe(BaseModel):
@@ -19,7 +19,7 @@ class ConstraintStateResult(BaseModel):
 
     state_id: str = Field(min_length=1)
     probe_ref: str = Field(min_length=1)
-    active_constraints: dict[str, object] = Field(default_factory=dict)
+    active_constraints: dict[str, JsonValue] = Field(default_factory=dict)
     cooldown_remaining: int = Field(ge=0)
     producer_ts: int = Field(ge=0)
     causation_id: str = Field(min_length=1)

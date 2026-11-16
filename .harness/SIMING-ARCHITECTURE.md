@@ -124,20 +124,12 @@ ALLOWED_EVENT_TYPES = {
 
 ---
 
-### ⚠️ 问题 5：环境请求路由不清（S7）
+### ✅ 问题 5：Protocol 09 环境协商已接线（S7，2026-11-16）
 
-**现状**：
-- `siming_event_producer._event_type_for()` 返回 `"siming.environment_request"`
-- 目标是 `["esm"]`
-- 文档不说明 ESM 如何处理
-
-**问题**：
-- 命名 environment_request 但实际走 ESM
-- 没有说明这是"环境变化通知"还是"请求"
-
-**Phase 2 改进**：
-- 改名为 `siming.environment_change_event` 更清晰
-- 添加文档说明 ESM 是订阅者
+默认发 `siming.environment_proposal`，ESM 只读评估后经司命决策周期发正式 `siming.environment_request`。
+`main.py` 显式订阅协议事件；正式请求仍经协议桥和 ESM 复验，只有真实结算结果可写环境真值。
+旧单阶段路径保留配置开关。目标约束采用 ESM 自有的局部登记，Owner 重构和事务回滚仍延期。
+三张图、接口与验证映射见 [ESM 提案契约](../docs/reference/api/esm-proposal-contract.md)。
 
 ---
 
@@ -235,8 +227,8 @@ fact_reveal
 ├─ target_ids: [character_actor_id, frontend_projector]
 └─ Subscriber: ?
 
-environment_change (S7)
-├─ event_type: siming.environment_request
+environment_change (S7; default proposal, configurable legacy direct request)
+├─ event_type: siming.environment_proposal → esm.feasibility_response → siming.environment_request
 ├─ target_ids: [esm]
 └─ Subscriber: ESM Service
 
@@ -274,7 +266,7 @@ Revision handling:
 
 ## 四、立即可改的项（Phase 1 补救）
 
-### S7：环境请求路由澄清
+### S7：环境请求路由澄清（历史补救记录）
 
 **文件**：siming_event_producer.py:146-149
 
@@ -287,7 +279,7 @@ if output.selected_path == "environment_change_path":
 改后：
 ```python
 # S7: environment_change_path routes to ESM
-# Routes to "environment_request" but target is ["esm"]. Clarify in Phase 2.
+# 历史单阶段基线；当前默认协商见上方 Protocol 09 实现状态。
 if output.selected_path == "environment_change_path":
     return "siming.environment_request"
 ```

@@ -36,6 +36,7 @@ class SimingCoordinator:
 
     def take_ready(self, *, now, limit=4):
         self._owner()
+        self.runtime.proposal_tracker.cleanup_old_proposals()
         if not 1 <= limit <= 4:
             raise ValueError("siming_ready_limit")
         page = self.admissions.list_pending_all(limit=32, cursor=self._cursor)

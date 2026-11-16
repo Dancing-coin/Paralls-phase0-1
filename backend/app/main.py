@@ -478,7 +478,6 @@ async def _run_siming_cognition():
     try:
         while True:
             await driver.poll()
-            driver.coordinator.runtime.proposal_tracker.cleanup_old_proposals()
             await asyncio.sleep(.02)
     except asyncio.CancelledError:
         raise
@@ -1992,6 +1991,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         for scope in settings.embodied_spatial_scopes
         if character_agent_runtime._learning_world_ref is not None
     })
+    esm_service.register_environment_target("room_demo", "scene_demo", "zone_focus", "env_lamp")
     harness_ledger_parent = (
         None
         if Path(settings.heavenly_graph_path).name == ":memory:"

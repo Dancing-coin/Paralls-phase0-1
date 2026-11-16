@@ -17,6 +17,7 @@ from test_siming_event_producer import make_output
 @pytest.fixture
 def protocol(monkeypatch):
     bus, esm, runtime = InMemoryAuthorityEventBus(), ESMService(), SimingRuntime()
+    esm.register_environment_target("room_demo", "scene_demo", "zone_focus", "env_lamp")
     producer = SimingEventProducer(bus)
     pipeline = SimingEventPipeline(bus=bus, consumer=SimingEventConsumer(), runtime=runtime,
         producer=producer, audit_writer=SimingAuditWriter())
@@ -68,6 +69,16 @@ def test_multiple_proposals_keep_distinct_identity(protocol):
         p.producer.emit_environment_proposal(make_output(causation_id=f"cause:{index}"))
     assert len(p.applied) == 20
     assert len({e.payload["proposal_id"] for e in p.bus.list_events(event_type="siming.environment_proposal")}) == 20
+
+
+def test_one_hundred_concurrent_proposals_do_not_interfere(protocol):
+    from concurrent.futures import ThreadPoolExecutor
+    p = protocol
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        events = list(pool.map(lambda index: p.producer.emit_environment_proposal(
+            make_output(causation_id=f"parallel:{index}")), range(100)))
+    assert len(p.applied) == 100
+    assert all(p.runtime.proposal_tracker.status(event.payload["proposal_id"]) == "executed" for event in events)
 
 
 def test_constraint_probe_returns_scoped_state_without_execution(protocol):

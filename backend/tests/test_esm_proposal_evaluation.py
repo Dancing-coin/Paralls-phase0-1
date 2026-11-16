@@ -8,6 +8,12 @@ from app.models.environment_proposal import EnvironmentProposal
 from app.services.esm_service import ESMService
 
 
+def make_esm():
+    esm = ESMService()
+    esm.register_environment_target("room", "scene", "zone", "env_lamp")
+    return esm
+
+
 def proposal(change_type="light_level_drop"):
     return EnvironmentProposal(
         proposal_id="proposal:1", candidate_ref="candidate:1", decision_ref="decision:1",
@@ -18,7 +24,7 @@ def proposal(change_type="light_level_drop"):
 
 
 def test_evaluation_is_read_only_and_estimate_is_coarse():
-    esm = ESMService()
+    esm = make_esm()
     before = esm.get_repo_local_workbench_snapshot(room_id="room", scene_id="scene", zone_id="zone")
     response = esm.evaluate_proposal(proposal())
     assert response.feasible is True
@@ -27,7 +33,7 @@ def test_evaluation_is_read_only_and_estimate_is_coarse():
 
 
 def test_unsupported_change_is_infeasible_without_execution():
-    esm = ESMService()
+    esm = make_esm()
     response = esm.evaluate_proposal(proposal("material_change"))
     assert response.feasible is False
     assert response.constraints == ["unsupported_change_type"]
@@ -35,7 +41,7 @@ def test_unsupported_change_is_infeasible_without_execution():
 
 
 def test_probe_reports_current_constraints_without_mutation():
-    esm = ESMService()
+    esm = make_esm()
     probe = ConstraintProbe(probe_id="probe:1", target_environment_id="env_lamp", constraint_type="all", producer_ts=100, causation_id="cause", correlation_id="corr")
     before = esm.get_repo_local_workbench_snapshot(room_id="room", scene_id="scene", zone_id="zone")
     result = esm.probe_constraints(probe, room_id="room", scene_id="scene", zone_id="zone")
@@ -52,7 +58,7 @@ def test_probe_reports_current_constraints_without_mutation():
     ({"spatial_allowed": False}, "spatial_blocked"),
 ])
 def test_authoritative_constraints_are_read_only_and_rechecked_at_execution(state, code):
-    esm = ESMService()
+    esm = make_esm()
     esm.register_environment_target("room", "scene", "zone", "env_lamp", **state)
     before = copy.deepcopy(esm._environment_targets)
     p = proposal()
@@ -67,12 +73,12 @@ def test_authoritative_constraints_are_read_only_and_rechecked_at_execution(stat
 
 
 def test_unknown_target_is_infeasible():
-    esm = ESMService()
+    esm = make_esm()
     assert esm.evaluate_proposal(proposal().model_copy(update={"target_environment_id": "missing"})).constraints == ["unknown_environment_target"]
 
 
 def test_cooldown_and_resources_change_only_on_execution():
-    esm = ESMService()
+    esm = make_esm()
     esm.register_environment_target("room", "scene", "zone", "env_lamp", cooldown_ms=1000, resource_available=2, resource_cost=1)
     assert esm.evaluate_proposal(proposal()).feasible
     p = proposal()
@@ -89,7 +95,7 @@ def test_cooldown_and_resources_change_only_on_execution():
 
 @pytest.mark.parametrize("change_type", sorted(ESMService.SUPPORTED_ENVIRONMENT_CHANGE_TYPES))
 def test_estimate_matches_real_coarse_effect(change_type):
-    esm = ESMService()
+    esm = make_esm()
     p = proposal(change_type)
     estimate = esm.evaluate_proposal(p).estimated_effect
     request = EnvironmentRequest(request_id="r", room_id=p.room_id, scene_id=p.scene_id, zone_id=p.zone_id,
@@ -101,7 +107,7 @@ def test_estimate_matches_real_coarse_effect(change_type):
 
 @pytest.mark.parametrize("kind", ["cooldown", "material", "resource", "spatial"])
 def test_probe_scope_and_selected_constraint(kind):
-    esm = ESMService()
+    esm = make_esm()
     probe = ConstraintProbe(probe_id="q", target_environment_id="custom", constraint_type=kind,
         producer_ts=100, causation_id="cause", correlation_id="corr")
     esm.register_environment_target("room", "scene", "zone", "custom")
@@ -110,8 +116,18 @@ def test_probe_scope_and_selected_constraint(kind):
 
 
 def test_failed_execution_confirmation_is_aborted():
-    esm = ESMService()
+    esm = make_esm()
     confirmation, state = esm.execute_with_confirmation(EnvironmentRequest(request_id="r", room_id="room",
         goal="test", requested_change_type="unsupported", producer_ts=100))
     assert confirmation.execution_state == "aborted"
     assert state is None
+
+
+def test_all_constraints_are_reported_without_state_or_resource_mutation():
+    esm = make_esm()
+    esm.register_environment_target("room", "scene", "zone", "env_lamp", cooldown_until_ts=200,
+        compatible_change_types=[], resource_available=0, resource_cost=1, spatial_allowed=False)
+    before = copy.deepcopy(esm._environment_targets)
+    assert esm.evaluate_proposal(proposal()).constraints == [
+        "cooldown_active", "material_incompatible", "resource_insufficient", "spatial_blocked"]
+    assert esm._environment_targets == before

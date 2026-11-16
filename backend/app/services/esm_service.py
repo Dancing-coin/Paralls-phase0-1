@@ -1432,10 +1432,7 @@ class ESMService:
             self._environment_targets[scope] = value.model_copy(deep=True)
 
     def _environment_target(self, scope):
-        target = self._environment_targets.get(scope)
-        if target is None and scope[-1] in {"env_lamp", "env_default"}:
-            target = EnvironmentTargetConstraints(compatible_change_types=sorted(self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES))
-        return target
+        return self._environment_targets.get(scope)
 
     def _environment_constraints(self, scope, change_type, producer_ts, *, require_target=True):
         if change_type not in self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES:

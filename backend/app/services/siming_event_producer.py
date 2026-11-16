@@ -1,4 +1,5 @@
 import hashlib
+import os
 
 from app.models.environment_proposal import EnvironmentProposal
 from app.services.siming_proposal_tracker import SimingProposalTracker
@@ -31,7 +32,9 @@ class SimingEventProducer:
     def materialize_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
         events: list[AuthorityEvent] = []
         for output in outputs:
-            event = self._to_authority_event(output)
+            event = (self._proposal_event(output) if output.selected_path == "environment_change_path"
+                and output.output_type == "dispatch_intent" and not output.payload.get("proposal_ref")
+                and self._use_proposal_protocol() else self._to_authority_event(output))
             validate_siming_authority_event(event)
             events.append(event)
         return events
@@ -49,6 +52,20 @@ class SimingEventProducer:
 
     def emit_environment_proposal(self, output: SimingOutput) -> AuthorityEvent:
         event = self._proposal_event(output)
+        self.publish_events([event])
+        return event
+
+    @staticmethod
+    def _use_proposal_protocol() -> bool:
+        return os.getenv("SIMING_USE_PROPOSAL_PROTOCOL", "true").lower() == "true"
+
+    def emit_environment_intervention(self, output: SimingOutput, *, use_proposal: bool | None = None) -> AuthorityEvent:
+        if use_proposal is None:
+            use_proposal = self._use_proposal_protocol()
+        if use_proposal:
+            return self.emit_environment_proposal(output)
+        event = self._to_authority_event(output)
+        validate_siming_authority_event(event)
         self.publish_events([event])
         return event
 
@@ -178,8 +195,7 @@ class SimingEventProducer:
             return "siming.visual_observability_request"
         if output.selected_path == "l3_highlight_path":
             return "siming.presentation_highlight_request"
-        # S7: environment_change_path routes to ESM (not dead despite the name)
-        # Phase 2: replace the current Protocol 09 stub with the full ESM proposal contract.
+        # 正式请求与旧快速通道共用；提案在 materialize_outputs 中包装。
         if output.selected_path == "environment_change_path":
             return "siming.environment_request"
         if (

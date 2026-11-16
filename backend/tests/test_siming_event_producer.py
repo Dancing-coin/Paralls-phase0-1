@@ -25,13 +25,34 @@ def make_output(**overrides: object) -> SimingOutput:
     return SimingOutput.model_validate(payload)
 
 
-def test_producer_maps_environment_request_without_claiming_success() -> None:
+def test_producer_maps_environment_request_without_claiming_success(monkeypatch) -> None:
+    monkeypatch.setenv("SIMING_USE_PROPOSAL_PROTOCOL", "false")
     bus = InMemoryAuthorityEventBus()
     SimingEventProducer(bus).publish_outputs([make_output()])
 
     event = bus.list_events(event_type="siming.environment_request")[0]
     assert event.routing.target_ids == ["esm"]
     assert "physical_success" not in event.payload
+
+
+@pytest.mark.parametrize("setting,event_type", [(None, "siming.environment_proposal"),
+    ("true", "siming.environment_proposal"), ("false", "siming.environment_request")])
+def test_producer_uses_configured_environment_protocol(monkeypatch, setting, event_type):
+    if setting is None:
+        monkeypatch.delenv("SIMING_USE_PROPOSAL_PROTOCOL", raising=False)
+    else:
+        monkeypatch.setenv("SIMING_USE_PROPOSAL_PROTOCOL", setting)
+    bus = InMemoryAuthorityEventBus()
+    producer = SimingEventProducer(bus)
+    producer.publish_outputs([make_output()])
+    assert bus.list_events()[0].event_type == event_type
+
+
+@pytest.mark.parametrize("use_proposal", [True, False])
+def test_explicit_protocol_override(use_proposal):
+    producer = SimingEventProducer(InMemoryAuthorityEventBus())
+    event = producer.emit_environment_intervention(make_output(), use_proposal=use_proposal)
+    assert event.event_type == ("siming.environment_proposal" if use_proposal else "siming.environment_request")
 
 
 def test_producer_rejects_forbidden_dispatch_requested_event_family() -> None:

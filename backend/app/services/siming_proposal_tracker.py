@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from threading import RLock
 from time import monotonic_ns
 from copy import deepcopy
+from hashlib import sha256
 
 from app.models.feasibility_response import FeasibilityResponse
 
@@ -18,6 +19,7 @@ class ProposalRecord:
 class SimingProposalTracker:
     def __init__(self, *, now_ts_provider=None) -> None:
         self._proposals: dict[str, ProposalRecord] = {}
+        self._proposal_receipts: dict[str, bytes] = {}
         self._lock = RLock()
         self.now_ts = now_ts_provider or (lambda: monotonic_ns() // 1_000_000)
 
@@ -25,10 +27,13 @@ class SimingProposalTracker:
         with self._lock:
             submitted_at = self.now_ts() if submitted_at is None else submitted_at
             self.cleanup_old_proposals(submitted_at)
-            if proposal_id in self._proposals:
-                if self._proposals[proposal_id].output != output:
+            encoded = output.model_dump_json() if hasattr(output, "model_dump_json") else repr(output)
+            fingerprint = sha256(encoded.encode()).digest()
+            if proposal_id in self._proposal_receipts:
+                if self._proposal_receipts[proposal_id] != fingerprint:
                     raise ValueError("duplicate_environment_proposal")
                 return False
+            self._proposal_receipts[proposal_id] = fingerprint
             self._proposals[proposal_id] = ProposalRecord(deepcopy(output), submitted_at)
             return True
 
@@ -64,8 +69,13 @@ class SimingProposalTracker:
             if record is None or record.status != "requested" or record.feasibility_response is None:
                 return False
             original, response = record.output, record.feasibility_response
-            if (self.now_ts() - record.submitted_at >= 5000
+            age = self.now_ts() - record.submitted_at
+            window = min(5000, original.ttl) if original.ttl is not None else 5000
+            if (age < 0 or age >= window
                     or event.payload.get("feasibility_ref") != response.response_id
+                    or event.producer_ts != max(original.producer_ts, response.producer_ts)
+                    or event.causation_id != response.response_id
+                    or event.source.layer != "L2" or not event.source.system.startswith("siming.")
                     or (event.room_id, event.scene_id, event.zone_id, event.correlation_id) !=
                        (original.room_id, original.scene_id, original.zone_id, original.correlation_id)
                     or any(event.payload.get(key) != value for key, value in original.payload.items())):

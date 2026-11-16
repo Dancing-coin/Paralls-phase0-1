@@ -90,8 +90,41 @@ def test_invalid_esm_source_cannot_dispatch():
     assert not runtime.tick([SimingInput(input_type="esm.feasibility_response", source_event=incoming)]).outputs
 
 
+def test_mismatched_response_clock_cannot_dispatch():
+    _, runtime, _, event = prepare()
+    incoming = answer(event)
+    incoming.payload["producer_ts"] = 0
+    assert not runtime.tick([SimingInput(input_type="esm.feasibility_response", source_event=incoming)]).outputs
+
+
 def test_pending_proposal_expires_without_response():
     clock, runtime, _, event = prepare()
     clock[0] += 5001
     runtime.proposal_tracker.cleanup_old_proposals()
     assert runtime.proposal_tracker.status(event.payload["proposal_id"]) == "aborted"
+
+
+def test_formal_execution_respects_original_short_ttl():
+    clock, runtime, producer, event = prepare()
+    event.ttl = 100
+    runtime.proposal_tracker = SimingProposalTracker(now_ts_provider=lambda: clock[0])
+    producer.proposal_tracker = runtime.proposal_tracker
+    runtime.proposal_tracker.register_proposal(event.payload["proposal_id"], event)
+    clock[0] += 50
+    result = runtime.tick([SimingInput(input_type="esm.feasibility_response", source_event=answer(event))])
+    request = producer.materialize_outputs(result.outputs)[0]
+    clock[0] += 150
+    assert not runtime.proposal_tracker.claim_execution(request)
+
+
+def test_old_proposal_replay_cannot_reopen_window_after_cleanup():
+    clock, runtime, producer, event = prepare()
+    incoming = SimingInput(input_type="esm.feasibility_response", source_event=answer(event))
+    request = producer.materialize_outputs(runtime.tick([incoming]).outputs)[0]
+    assert runtime.proposal_tracker.claim_execution(request)
+    runtime.proposal_tracker.complete_execution(event.payload["proposal_id"], success=True)
+    clock[0] += 60001
+    runtime.proposal_tracker.cleanup_old_proposals()
+    assert runtime.proposal_tracker.status(event.payload["proposal_id"]) is None
+    assert producer.publish_events([event]) == []
+    assert not runtime.tick([incoming]).outputs

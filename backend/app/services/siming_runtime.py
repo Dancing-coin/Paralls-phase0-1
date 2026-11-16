@@ -249,7 +249,8 @@ class SimingRuntime:
         try:
             if event.event_type == "esm.constraint_state":
                 state = ProbeConstraintStateResult.model_validate(event.payload)
-                if event.correlation_id != state.correlation_id or event.causation_id != state.causation_id:
+                if (event.correlation_id != state.correlation_id or event.causation_id != state.causation_id
+                        or event.producer_ts != state.producer_ts):
                     raise ValueError(reason)
                 key = (event.room_id, event.scene_id, event.zone_id, state.probe_ref)
                 self._environment_constraint_states[key] = state.model_copy(deep=True)
@@ -263,7 +264,8 @@ class SimingRuntime:
             proposal = record.output
             if ((event.room_id, event.scene_id, event.zone_id, event.correlation_id, response.correlation_id) !=
                     (proposal.room_id, proposal.scene_id, proposal.zone_id, proposal.correlation_id, proposal.correlation_id)
-                    or response.causation_id != response.proposal_ref or event.causation_id != response.proposal_ref):
+                    or response.causation_id != response.proposal_ref or event.causation_id != response.proposal_ref
+                    or response.producer_ts != event.producer_ts or response.producer_ts < proposal.producer_ts):
                 raise ValueError(reason)
             age = self.proposal_tracker.now_ts() - record.submitted_at
             if proposal.ttl is not None and age >= proposal.ttl:

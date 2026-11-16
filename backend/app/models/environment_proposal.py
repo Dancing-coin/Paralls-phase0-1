@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, JsonValue
 
 
 class EnvironmentProposal(BaseModel):
@@ -17,7 +17,7 @@ class EnvironmentProposal(BaseModel):
     requested_change_type: str = Field(min_length=1)
     requested_strength: Literal["weak", "medium", "strong"]
     constraints_known: list[str] = Field(default_factory=list)
-    fallback_options: list[dict[str, object]] = Field(default_factory=list)
+    fallback_options: list[dict[str, JsonValue]] = Field(default_factory=list)
     producer_ts: int = Field(ge=0)
     causation_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)

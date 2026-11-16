@@ -1,5 +1,14 @@
 # 09-司命与 ESM 协作协议
 
+## 2026-11-16 实现状态
+
+`[current]` 后端默认使用 `environment_proposal → feasibility_response → environment_request → ESM 结算` 三阶段协商，
+旧 `environment_request` 快速通道通过 `SIMING_USE_PROPOSAL_PROTOCOL=false` 保留。
+约束探测与执行确认已接入；`feasibility_query` 独立消息、复合请求和事务回滚仍为 `[deferred]`。
+完整字段、目标登记、来源验证、时钟语义、实现映射，以及架构图、时序图和数据流图见
+[ESM 提案契约](../api/esm-proposal-contract.md)。下文的原 Phase 1 单阶段描述作为兼容基线保留；
+其“预留”标记不覆盖上述新增实现状态。
+
 ## 1. 文档目标
 
 本文档冻结司命与 `ESM` 之间的正式协作边界：
