@@ -11,6 +11,11 @@ from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch
 
 from app.contracts.l1.action_request import ActionRequest
 from app.models.environment_request import EnvironmentRequest
+from app.models.environment_proposal import EnvironmentProposal
+from app.models.feasibility_response import FeasibilityResponse
+from app.models.constraint_probe import ConstraintProbe, ConstraintStateResult as ProbeConstraintStateResult
+from app.models.environment_target import EnvironmentTargetConstraints
+from app.models.esm_execution_state import ExecutionConfirmation
 from app.models.player_input import InteractIntent
 from app.models.environment_field import EnvironmentFieldState
 from app.models.state_machine_transition import StateMachineTransitionEvent
@@ -36,6 +41,13 @@ class ESMService:
     WORKBENCH_HISTORY_LIMIT = 2
     SUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"light_level_drop", "light_level_restore", "thermal_level_rise", "smoke_density_rise", "noise_level_rise"}
     UNSUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"thermal_spike"}
+    ENVIRONMENT_EFFECTS = {
+        "light_level_drop": {"light_level": "low", "noise_level": "elevated", "thermal_level": "warm", "smoke_density": "light", "visibility_level": "reduced"},
+        "light_level_restore": {},
+        "thermal_level_rise": {"thermal_level": "hot"},
+        "smoke_density_rise": {"smoke_density": "dense", "visibility_level": "reduced"},
+        "noise_level_rise": {"noise_level": "loud"},
+    }
     OBJECT_POSITIONS: dict[str, tuple[float, float, float]] = {
         "obj_letter": (0.0, 0.95, -2.0),
         "obj_plaque": (-2.2, 1.2, -2.0),
@@ -594,6 +606,8 @@ class ESMService:
                 raise ValueError("esm_learning_disclosure_scope_invalid")
         self._readable_records = {} if readable_records is None else readable_records
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
+        self._environment_targets: dict[tuple[str, str, str, str], EnvironmentTargetConstraints] = {}
+        self._environment_lock = RLock()
         self._latest_environment_result: EnvironmentStateResult | None = None
         self._latest_state_machine_transition: StateMachineTransitionEvent | None = None
         self._latest_environment_request: ActionRequest | None = None
@@ -1406,16 +1420,104 @@ class ESMService:
         self._push_history(self._recent_environment_results, result)
         return result
 
+    def register_environment_target(self, room_id: str, scene_id: str, zone_id: str,
+                                    target_environment_id: str, **constraints) -> None:
+        scope = (room_id, scene_id, zone_id, target_environment_id)
+        if any(not isinstance(part, str) or not part.strip() for part in scope):
+            raise ValueError("invalid_environment_scope")
+        value = EnvironmentTargetConstraints.model_validate({
+            "compatible_change_types": sorted(self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES), **constraints,
+        })
+        with self._environment_lock:
+            self._environment_targets[scope] = value.model_copy(deep=True)
+
+    def _environment_target(self, scope):
+        target = self._environment_targets.get(scope)
+        if target is None and scope[-1] in {"env_lamp", "env_default"}:
+            target = EnvironmentTargetConstraints(compatible_change_types=sorted(self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES))
+        return target
+
+    def _environment_constraints(self, scope, change_type, producer_ts, *, require_target=True):
+        if change_type not in self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES:
+            return ["unsupported_change_type"]
+        target = self._environment_target(scope)
+        if target is None:
+            return ["unknown_environment_target"] if require_target else []
+        constraints = []
+        if producer_ts < target.cooldown_until_ts:
+            constraints.append("cooldown_active")
+        if change_type not in target.compatible_change_types:
+            constraints.append("material_incompatible")
+        if target.resource_available < target.resource_cost:
+            constraints.append("resource_insufficient")
+        if not target.spatial_allowed:
+            constraints.append("spatial_blocked")
+        return constraints
+
+    def evaluate_proposal(self, proposal: EnvironmentProposal) -> FeasibilityResponse:
+        scope = (proposal.room_id, proposal.scene_id, proposal.zone_id, proposal.target_environment_id)
+        with self._environment_lock:
+            constraints = self._environment_constraints(scope, proposal.requested_change_type, proposal.producer_ts)
+        estimated = {}
+        if not constraints:
+            estimated = {"temperature": "ambient", "humidity": "stable", "light_level": "normal",
+                         "thermal_level": "neutral", "noise_level": "quiet", "smoke_density": "clear",
+                         "visibility_level": "clear", **self.ENVIRONMENT_EFFECTS[proposal.requested_change_type]}
+        return FeasibilityResponse(
+            response_id=f"feasibility:{proposal.proposal_id}",
+            proposal_ref=proposal.proposal_id,
+            feasible=not constraints,
+            constraints=constraints,
+            estimated_effect=estimated,
+            producer_ts=proposal.producer_ts + 1,
+            causation_id=proposal.proposal_id,
+            correlation_id=proposal.correlation_id,
+        )
+
+    def probe_constraints(self, probe: ConstraintProbe, *, room_id: str, scene_id: str, zone_id: str) -> ProbeConstraintStateResult:
+        kinds = ("cooldown", "material", "spatial", "resource") if probe.constraint_type == "all" else (probe.constraint_type,)
+        with self._environment_lock:
+            target = self._environment_target((room_id, scene_id, zone_id, probe.target_environment_id))
+            remaining = max(0, target.cooldown_until_ts - probe.producer_ts) if target else 0
+            states = {} if target is None else {
+                "cooldown": {"remaining": remaining},
+                "material": {"compatible_change_types": list(target.compatible_change_types)},
+                "spatial": {"allowed": target.spatial_allowed},
+                "resource": {"available": target.resource_available, "cost": target.resource_cost},
+            }
+        return ProbeConstraintStateResult(
+            state_id=f"constraint_state:{probe.probe_id}", probe_ref=probe.probe_id,
+            active_constraints={kind: states[kind] for kind in kinds} if target else {"target": {"exists": False}},
+            cooldown_remaining=remaining, producer_ts=probe.producer_ts + 1,
+            causation_id=probe.probe_id, correlation_id=probe.correlation_id,
+        )
+
     def resolve_environment_request(
         self,
         event: EnvironmentRequest,
     ) -> tuple[ActionResolutionResult | ConstraintStateResult, EnvironmentStateResult | None]:
+        with self._environment_lock:
+            return self._resolve_environment_request(event)
+
+    def execute_with_confirmation(self, request: EnvironmentRequest) -> tuple[ExecutionConfirmation, EnvironmentStateResult | None]:
+        resolution, state = self.resolve_environment_request(request)
+        return ExecutionConfirmation(
+            confirmation_id=f"exec_confirm:{request.request_id}", request_ref=request.request_id,
+            execution_state="confirmed" if state is not None else "aborted", rollback_token=None,
+            producer_ts=resolution.producer_ts, causation_id=request.causation_id or request.request_id,
+            correlation_id=request.correlation_id or request.request_id,
+        ), state
+
+    def _resolve_environment_request(self, event: EnvironmentRequest):
         request = self.build_environment_action_request(event)
         self._latest_environment_request = request
         self._push_history(self._recent_environment_requests, request)
         target_environment_ids = request.target_entity_refs.get("environment_ids", [])
         target_environment_id = target_environment_ids[0] if target_environment_ids else "env_default"
-        if event.requested_change_type not in self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES:
+        scope = (event.room_id, event.scene_id, event.zone_id, target_environment_id)
+        constraints = self._environment_constraints(scope, event.requested_change_type, event.producer_ts,
+            require_target=bool(getattr(event, "proposal_ref", "")))
+        if constraints:
             resolution = ConstraintStateResult(
                     request_ref=request.request_id,
                     result_id=f"constraint:{request.request_id}",
@@ -1431,8 +1533,8 @@ class ESMService:
                     correlation_id=event.correlation_id,
                     producer_ts=event.producer_ts + 1,
                     constraint_type="unsupported_environment_request",
-                    constraint_code="unsupported_change_type",
-                    constraint_summary=f"unsupported environment change type: {event.requested_change_type}",
+                    constraint_code=constraints[0],
+                    constraint_summary=", ".join(constraints),
                     blocking_entity_refs=[target_environment_id],
                     settlement_status="rejected",
             )
@@ -1492,6 +1594,12 @@ class ESMService:
             causation_id=event.causation_id,
             correlation_id=event.correlation_id,
         )
+        target = self._environment_target(scope)
+        if target is not None and (target.cooldown_ms or target.resource_cost):
+            self._environment_targets[scope] = target.model_copy(update={
+                "resource_available": target.resource_available - target.resource_cost,
+                "cooldown_until_ts": event.producer_ts + target.cooldown_ms,
+            })
         return resolution, environment_result
 
     def emit_action_resolution_result(
@@ -1770,19 +1878,9 @@ class ESMService:
         light_level = "normal"
         noise_level = "quiet"
         visibility_level = "clear"
-        if current_state == "alerted":
-            light_level = "low"
-            noise_level = "elevated"
-            thermal_level = "warm"
-            smoke_density = "light"
-            visibility_level = "reduced"
-        elif current_state == "heated":
-            thermal_level = "hot"
-        elif current_state == "smoke_rising":
-            smoke_density = "dense"
-            visibility_level = "reduced"
-        elif current_state == "noisy":
-            noise_level = "loud"
+        change_type = {"alerted": "light_level_drop", "heated": "thermal_level_rise",
+                       "smoke_rising": "smoke_density_rise", "noisy": "noise_level_rise"}.get(current_state)
+        effect = self.ENVIRONMENT_EFFECTS.get(change_type, {})
 
         field_state = EnvironmentFieldState(
             field_id=f"field:{room_id}:{scene_id}:{zone_id}",
@@ -1790,12 +1888,12 @@ class ESMService:
             scene_id=scene_id,
             zone_id=zone_id,
             temperature=temperature,
-            thermal_level=thermal_level,
+            thermal_level=effect.get("thermal_level", thermal_level),
             humidity=humidity,
-            smoke_density=smoke_density,
-            light_level=light_level,
-            noise_level=noise_level,
-            visibility_level=visibility_level,
+            smoke_density=effect.get("smoke_density", smoke_density),
+            light_level=effect.get("light_level", light_level),
+            noise_level=effect.get("noise_level", noise_level),
+            visibility_level=effect.get("visibility_level", visibility_level),
             producer_ts=producer_ts,
             updated_at=producer_ts,
             source_environment_id=target_environment_id,

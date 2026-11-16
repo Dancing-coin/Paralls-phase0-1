@@ -12,6 +12,7 @@ class SimingEnvironmentProtocol:
         request = EnvironmentRequest(
             request_id=event.event_id, candidate_ref=str(payload.get('candidate_ref', '')),
             decision_ref=str(payload.get('decision_ref', '')), room_id=event.room_id,
+            proposal_ref=str(payload.get('proposal_ref', '')), feasibility_ref=str(payload.get('feasibility_ref', '')),
             scene_id=event.scene_id, zone_id=event.zone_id,
             source={'layer': 'L2', 'system': 'siming', 'event_id': event.event_id},
             target_entity_refs={'environment_ids': [target] if isinstance(target, str) and target else []},

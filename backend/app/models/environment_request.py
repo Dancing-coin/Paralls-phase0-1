@@ -5,6 +5,8 @@ class EnvironmentRequest(BaseModel):
     request_id: str
     candidate_ref: str = ""
     decision_ref: str = ""
+    proposal_ref: str = ""
+    feasibility_ref: str = ""
     room_id: str
     scene_id: str = "scene_demo"
     zone_id: str = "zone_focus"
