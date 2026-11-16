@@ -1,15 +1,63 @@
 # G3 credential 首域 L2–L5：只读设计
 
 - 日期：2026-11-16；状态：`awaiting-user-review`。
-- 本提交只增加本文件；没有实现注册器、校验器、Resolver、规则包或回放改动。
+- 本轮为“第 2 步：仅文档，设计修订”；只修改本文件，没有实现注册器、校验器、Resolver、规则包或回放改动。原第 1 步记录在 `be16b1ac`。
 - 目标：以 credential 的真实提交与投影链路建立参考设计，为随后“只增加声明和规则包”的 FactType 探针准备可审查边界。本文件不宣布 G3 满足。
 - 起点仓库：`D:/Temp/paralls-g0-b3-ingress-20261109`。
 - 分支：`codex/g0-b3-ingress-20261109`。
-- 起点 HEAD：`d6c30d58bc6e89f042cd727643f494460f00451a`，与预期一致。
+- 本轮起点 HEAD：`be16b1acafcabe19c4201959e4f4e224445b04d7`，与预期一致；第 1 步代码基点为 `d6c30d58bc6e89f042cd727643f494460f00451a`。
 - 起点 `git status --porcelain=v1`：空输出，工作区干净。
-- 预算：仅文档、静态阅读与串行 Python 测试；不启动 UE/Godot，不操作美术资源。
+- 本轮预算：只读代码与 AST/存档文件静态扫描，提交前后只执行 `--collect-only`，不运行测试用例或全量测试，不启动 UE/Godot，不操作美术资源。
 
 ## 已验证
+
+### 本轮起点与收集证据
+
+cwd：`D:/Temp/paralls-g0-b3-ingress-20261109`。命令：
+
+```powershell
+git rev-parse HEAD
+git branch --show-current
+git status --porcelain=v1
+```
+
+原始输出（status 为空）：
+
+```text
+be16b1acafcabe19c4201959e4f4e224445b04d7
+codex/g0-b3-ingress-20261109
+```
+
+本轮提交前、后各串行收集五组，命令如下；前一次 `pre`，后一次改成 `post`。目录必须尚不存在：
+
+```powershell
+$g3RevEvidence = 'D:/Temp/g3-credential-design-revision-20261116'
+$g3RevRepo = (Get-Location).Path
+foreach ($g3RevGroup in @('ownership','modifier','equipment','inventory','shared-replay')) {
+    $g3RevArgs = @('docs/verification/g0-939c6746/run_baseline.py',
+        '--repo',$g3RevRepo,'--output',"$g3RevEvidence/pre-$g3RevGroup",'--collect-only')
+    foreach ($g3RevNode in Get-Content "docs/verification/g0-939c6746/G1-$g3RevGroup-nodeids.txt") {
+        if ($g3RevNode.Trim()) { $g3RevArgs += @('--test',$g3RevNode.Trim()) }
+    }
+    & 'D:/Temp/paralls-g0-py312/Scripts/python.exe' @g3RevArgs *> "$g3RevEvidence/pre-$g3RevGroup.log"
+    if ($LASTEXITCODE -ne 0) { throw "Stop collection: $g3RevGroup" }
+    Get-Content "$g3RevEvidence/pre-$g3RevGroup.log" -Tail 1
+}
+```
+
+提交前原始输出：
+
+```text
+========================= 5 tests collected in 0.21s ==========================
+========================= 11 tests collected in 0.31s =========================
+========================= 72 tests collected in 2.05s =========================
+========================= 49 tests collected in 1.00s =========================
+======================== 201 tests collected in 2.82s =========================
+```
+
+合计 338；精确收集 ID、命令、环境和原始日志保存在上述目录。提交后结果单独封存在 `post-*` 和 `final-collection-comparison.json`，由最终回报附原始输出；不能预写成已经执行。本轮不产生测试通过/失败结论，也不重跑 39 项基线失败。
+
+以下运行结果均为**第 1 步历史证据**，本轮没有重新执行这些用例。
 
 ### 来源与命令
 
@@ -147,16 +195,16 @@ tests/test_adventure_basic_mirror_source.py::test_remaining_scenario_mirror_stat
 | `gameplay.credential.revoked` | `credential_id`, `issuer_ref`, `reason` | revoke：1 |
 | `gameplay.credential.superseded` | `credential_id`, `replacement_credential_id`, `issuer_ref` | supersede：先 superseded 再 issued，共 2 |
 
-全部事件使用 `stream_id="gameplay:credentials"`、`visibility_policy="authority_only"`、`transaction_id="tx:<command_id>"`。保留这些持久契约；声明顺序不能重排 supersede 的两个事件。`issuer_ref` 与 link 的 issuer 比较是现有检查；不能把它描述为已经验证了外部调用者身份。
+当前全部事件使用 `stream_id="gameplay:credentials"`、`visibility_policy="authority_only"`、`transaction_id="tx:<command_id>"`。过渡方案 A 保留这些持久契约；终点 B 的版本和流映射变更仅在后文评估，未获实现授权。声明顺序不能重排 supersede 的两个事件。`issuer_ref` 与 link 的 issuer 比较是现有检查；不能把它描述为已经验证了外部调用者身份。
 
-### 三种事件的 FactType 声明草案
+### 单个 Machine FactType 声明草案
 
-以下是**待审的声明设计**，不是可加载的已实现规则包。Owner 元数据拟注册 `Credential`，domain 为 `credential`，映射到现有 `actor_gameplay.credential_domain`。三种事件分别映射到三类单向记录事实；最终有效状态仍由 credential 的跨事实不变量约束，不能把 revoked/superseded 当成 ownership 写权。
+以下是**待审的声明设计**，不是已加载的规则包。仅声明一个 FactType 模板 `fact:credential:*:link`，三种事件是同一类事实的不同转移。Owner 元数据拟注册 `Credential`，domain 为 `credential`，映射到现有 `actor_gameplay.credential_domain`，不取得 ownership 写权。
 
 `*` 仅用于模板；实例必须采用合法、无冒号的 scope 标识，并可确定性映射回原 `credential_id`，不得直接把带冒号的业务 ID 拼成五段以上 FactType ID。
 
 ```yaml
-"fact:credential:*:issued":
+"fact:credential:*:link":
   primitive: "machine"
   identity: "entity_ref"
   owner_ref: "Credential"
@@ -165,51 +213,46 @@ tests/test_adventure_basic_mirror_source.py::test_remaining_scenario_mirror_stat
     learnable_by: ["role:credential_authority"]
     channel: "direct"
     persistence: "permanent"
-  event_schema_ref: "gameplay.credential.issued@1"
-  invariant_refs: ["M1", "M2", "M3", "M4", "M5", "credential_issue_valid"]
-  state_set_ref: "machine_def/credential_issued@1"
-  cadence: "event"
-  host: "paralls"
-  unknown_policy: "reject"
-
-"fact:credential:*:revoked":
-  primitive: "machine"
-  identity: "entity_ref"
-  owner_ref: "Credential"
-  visibility:
-    class: "private"
-    learnable_by: ["role:credential_authority"]
-    channel: "direct"
-    persistence: "permanent"
-  event_schema_ref: "gameplay.credential.revoked@1"
-  invariant_refs: ["M1", "M2", "M3", "M4", "M5", "credential_revoke_valid"]
-  state_set_ref: "machine_def/credential_revoked@1"
-  cadence: "event"
-  host: "paralls"
-  unknown_policy: "reject"
-
-"fact:credential:*:superseded":
-  primitive: "machine"
-  identity: "entity_ref"
-  owner_ref: "Credential"
-  visibility:
-    class: "private"
-    learnable_by: ["role:credential_authority"]
-    channel: "direct"
-    persistence: "permanent"
-  event_schema_ref: "gameplay.credential.superseded@1"
-  invariant_refs: ["M1", "M2", "M3", "M4", "M5", "credential_supersede_valid"]
-  state_set_ref: "machine_def/credential_superseded@1"
+  event_schema_ref: "credential_link_legacy_v1"
+  invariant_refs: ["M1", "M2", "M3", "M4", "M5", "credential_link_valid"]
+  state_set_ref: "machine_def/credential_link@1"
   cadence: "event"
   host: "paralls"
   unknown_policy: "reject"
 ```
 
-各 machine 的候选状态集为 `absent / recorded`，对应一次单向记录；issued 的 attestation 不因当前 holder 变化而重写。上述 state set、domain invariant、Owner、角色选择器与 schema 引用均须在后续注册实现中真实解析，不得把示例引用当成已经存在。Machine 不声明仅适用于 pool/holdings 的 aggregation 字段。
+`credential_link_legacy_v1` 是拟议的 schema 集合引用，必须显式解析到三种原有 `(event_type, schema_version=1)`，不重命名或替换已有事件。state set、domain invariant、Owner 和 schema 集合注册均未实现，不能把这些引用当成已经存在。Machine 不声明仅适用于 pool/holdings 的 aggregation 字段。
 
-可见性草案只保留可信 authority 范围，不授权玩家或 Agent 读取；`role:credential_authority` 必须绑定真实受信 principal，不能仅靠字符串自报。现有 `authority_only` 的事件字段不变，不能声称此草案已完成新的可见性强制路径。
+状态集为 `absent / issued / revoked / superseded`；现有投影的 `status="active"` 在设计视图映射为 `issued`，不修改旧代码或 payload。
 
-**未满足的严格契约：** 三类事件目前共用一条 revision 流；FactType 定义 §五禁止跨 FactType 共享 revision。上面的三份草案尚不满足独立 revision/CAS，不能通过给同一个 head 起三个别名来冒充满足。Machine M3 所要求的 from/to/condition_ref/condition_revision 也不是现有事件的显式 payload；是否能从原 batch、pins 和前态派生完整证据须核对，不能补写持久字段后称为结构迁移。这些是进入真实链路前的设计决定，见末节。
+| from | to | 既有事件 | 限制 |
+|---|---|---|---|
+| absent | issued | `gameplay.credential.issued` | ID 在此前 links 中不存在 |
+| issued | revoked | `gameplay.credential.revoked` | active、issuer 一致、reason 非空 |
+| issued | superseded | `gameplay.credential.superseded` | active、issuer 一致、replacement ID 未使用 |
+
+revoked 与 superseded 是不可退出的终态（M5）。supersede 命令在一个原子批次中对**两个 FactType 实例**各做一次转移：旧凭证 `fact:credential:<old_scope>:link` 为 `issued→superseded`，新凭证 `fact:credential:<new_scope>:link` 为 `absent→issued`。不是同一实例连做两次转移，也不是两个 FactType 模板。两条既有事件仍按 superseded、issued 顺序排列；新凭证继承旧凭证的 right/kind/proves。
+
+**可见性限制：** `role:credential_authority` 仅是占位声明，未绑定真实 principal，**不构成可见性强制**。现有 `authority_only` 字段不变；占位角色不授权玩家或 Agent，不是外部身份认证证据。
+
+合并后仍是所有凭证实例共用旧流，**独立实例 revision 尚未实现**。一个模板并不消除跨实例共享 head 的偏离；完整过渡/终点方案见“流映射偏离”。
+
+### M3 证据可行性与停止点
+
+核对范围为 `be16b1ac` 中的现有代码，`credential_runtime.py` SHA256 为 `95983e0ed2038a977404540b0d5916b51768aa2916413582b34b5481fe772302`。六原语规格要求每次转移记录四项，事件 schema 另限定 `condition_revision` 为 `int ≥ 1`，不能拿任意 stream head 或 revision vector 代替它。
+
+| 字段 | 可用派生来源 | 证据与限制 |
+|---|---|---|
+| `from` | 同一 credential_id 在该事件之前的投影前态；无 link 为 absent，active 为 issued，其余终态原样保留 | `CredentialProjector.rebuild` 按 `(global_sequence,event_id)` 排序，66–99 行分别拒绝重复签发和非 active 退出。可确定性派生；不能按当前最终状态反推前态 |
+| `to` | issued / revoked / superseded 事件类型分别映射 issued / revoked / superseded | 66、86、93–99 行的分支及 status 赋值；supersede 的两个 payload 含不同 credential_id，231–232 行。可派生 |
+| `condition_ref` | 可以设计固定规则映射：issue、revoke、supersede 各对应该源码中被冻结的资格检查；supersede 的 replacement issued 必须先按同 transaction 的双事件识别，不能误用普通 issue 的 ownership 检查 | 186–201、209–213、221–234 行及 batch.command_id/transaction_id。**现有账本没有这个规则引用**；新解释器可定义有版本的 legacy 映射，但本轮未注册它，不能称为原事件已有审计字段 |
+| `condition_revision` | 应是上述条件规则的版本；现有 `schema_version=1` 只代表事件 schema，不固定条件实现版本 | `_event` 242 行只写 schema_version；`_append` 237 行只保存流 revision pins；命令 digest 没有规则版本；没有 condition 注册或历史版本 pin。**无法从现有持久证据唯一派生实际采用的条件规则 revision** |
+
+**停止结论：M3 尚不满足；缺少可追溯的 condition_revision（condition_ref 也只有候选解释映射）。** 现在为映射命名 `legacy_rule@1`，再令 revision=1，是新增解释约定，不能证明旧事件当时执行的是那个版本。源码 HEAD/hash 可固定本次审阅的规则，却不能反向替代每个旧事务未保存的规则版本证据。不能把 event.schema_version、event.stream_revision、issued_holder_inventory_revision 或 batch pins 改称 condition_revision 来凑齐 M3。
+
+现有 batch.expected_stream_revisions / pinned_revisions 可提供提交时流 CAS 证据：issue 含 credential、ownership、holder inventory；revoke 仅 credential；supersede 含 credential、replacement inventory。它们也没有保存 InventoryDefinitionRegistry 版本；当前多次 read_events 与读 head 的顺序不是统一冻结视图。因此不应声称可完整还原原始资格评估的输入与时点。
+
+按本轮停止条件，不新增持久字段，不创建固定映射或代码来补洞，不进入实现。后面的读取方与多流结论均来自发现停止点前已经完成的只读搜索，只记录现有证据；未继续运行 credential 链路或迁移实验。文档仍按用户授权单独提交，并完成要求的收集核对。
 
 ### reads 声明与现有资格检查的逐项对应
 
@@ -226,9 +269,7 @@ reads:
     scope_input: "holder_or_presenter_ref"
     fields: ["items.item_id", "locations.item_id", "locations.container_id"]
     revision_stream: "gameplay:inventory:{actor_ref}"
-  - fact_type_ref: "fact:credential:*:issued"
-  - fact_type_ref: "fact:credential:*:revoked"
-  - fact_type_ref: "fact:credential:*:superseded"
+  - fact_type_ref: "fact:credential:*:link"
 ```
 
 这里的 ownership/inventory 名称为拟定的只读输入注册项，实际取值来自现有 OwnershipProjector/InventoryProjector；两个外域不新增 credential FactType、不迁移、不改写主。表中的 `rights` 和 `items/locations` 是投影结构的选择描述，不声称当前代码已有此 reads 解析 API。
@@ -245,28 +286,190 @@ reads:
 
 **表达能力静态结论：满足现有资格检查的表达需求。** 上表没有需要读写外部 Owner 或任意脚本才能表达的判据。但是 reads 的加载校验、输入隔离与运行期访问约束尚未实现，不能声称已强制。Resolver 只接收固定输入，不得到 store、Owner 服务或无限制映射；非法读取需抛出 `resolver_input_undeclared`。仅靠模型自行填写 reads 而仍允许直接读 store，不满足要求。Python 任意代码的纯函数性不能靠一份清单静态证明，需配合固定入口、受限输入和真实负向测试。
 
+### 读取方清单：直接流引用
+
+在本轮起点 `be16b1ac`、编辑本文件之前执行：
+
+```powershell
+rg -n "gameplay:credentials" --glob "!backend/build/**"
+```
+
+原始输出（路径分隔符按 rg 原样保留；文档行号对应修改前）：
+
+```text
+docs\verification\g3-credential-design.md:150:全部事件使用 `stream_id="gameplay:credentials"`、`visibility_policy="authority_only"`、`transaction_id="tx:<command_id>"`。保留这些持久契约；声明顺序不能重排 supersede 的两个事件。`issuer_ref` 与 link 的 issuer 比较是现有检查；不能把它描述为已经验证了外部调用者身份。
+backend\tests\test_adventure_basic_scenario4.py:110:        batch["expected_stream_revisions"]["gameplay:credentials"] -= 1
+backend\tests\test_credential_runtime.py:193:        stream = "gameplay:ownership" if kind == "issue" else "gameplay:credentials"
+backend\app\gameplay\credential_runtime.py:147:    _STREAM = "gameplay:credentials"
+backend\app\gameplay\land_right_runtime.py:35:    _CREDENTIAL_STREAM = "gameplay:credentials"
+```
+
+| 引用方 | 读取/写入性质 | 依赖流名 | revision / pins 依赖 |
+|---|---|---|---|
+| `CredentialAuthorityService`，147、186–244 行 | 读取本域/外域；唯一发现的 credential 领域事件生成与授权提交方 | 是，`_STREAM` 写入 event.stream_id 并查 head | 是；issue/revoke/supersede 构造 expected/pinned revisions，store 为事件分配 stream_revision |
+| `LandRightTransferAuthority`，35、107–168 行 | 读取 credential；写的是 ownership 事件，**不是额外 credential 写入方** | 是，credential 读 CAS 键硬编码旧流 | 是；读取 source_revision_vector 的旧流 head，填 expected revisions 与名为 credentials 的 pin |
+| `test_credential_stale_commit_rejects_without_partial_writes`，193 行 | 测试拦截并转发原 authority 的 append，改变 expected revision 以验证拒绝；不是独立 credential 领域事件生成器 | 是 | 是；按旧流键注入 stale CAS，不读取新实例流 |
+| `test_land_right_stale_commit_rejects_without_partial_writes`，110 行 | 测试拦截 land-right 的 ownership 提交并改 credential 读 CAS；不生成 credential 事件 | 是 | 是；按旧流键注入 stale CAS |
+| 本设计文档 | 只读描述，无运行行为 | 文本引用 | 无运行依赖 |
+
+### 读取方清单：AST 间接读取与调用链
+
+搜索覆盖整个仓库可见的 Python 文件（含测试与 scripts，排除 `backend/build/`，不执行被分析模块）。用 `ast.walk` 遍历整棵树，包含函数内延迟 import；解析两个目标类的 import 别名、构造、局部变量和 `self` 属性上的方法调用。没有发现这两个类的函数内延迟 import，不能以只搜顶层 import 得出此结论。
+
+实际命令形状：以下 Python AST 代码通过 PowerShell here-string 管道交给
+`D:/Temp/paralls-g0-py312/Scripts/python.exe -` 执行。核心完整扫描命令如下（只写仓库外文本证据）：
+
+```python
+import ast, subprocess
+from pathlib import Path
+root = Path.cwd()
+files = subprocess.check_output([
+    'rg', '--files', '--hidden', '-g', '*.py', '-g', '!backend/build/**',
+    '-g', '!**/.git/**'], text=True).splitlines()
+targets = {'CredentialProjector', 'CredentialPresentationValidator'}
+lines = []
+for name in sorted(files):
+    try:
+        tree = ast.parse((root / name).read_text(encoding='utf-8-sig'))
+    except (SyntaxError, UnicodeError):
+        continue
+    aliases, attrs = {}, {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ImportFrom) and n.module == 'app.gameplay.credential_runtime':
+            for a in n.names:
+                if a.name in targets:
+                    aliases[a.asname or a.name] = a.name
+                    lines.append(f'{name.replace(chr(92),"/")}:{n.lineno}: import {a.name} as {a.asname or a.name} (any scope)')
+    def kind(n):
+        if isinstance(n, ast.Name):
+            return aliases.get(n.id, attrs.get(n.id, n.id if n.id in targets else None))
+        if isinstance(n, ast.Attribute):
+            return n.attr if n.attr in targets else attrs.get(ast.unparse(n))
+    for n in ast.walk(tree):
+        if isinstance(n, (ast.Assign, ast.AnnAssign)) and isinstance(n.value, ast.Call):
+            k = kind(n.value.func)
+            if k in targets:
+                for t in n.targets if isinstance(n, ast.Assign) else [n.target]:
+                    attrs[ast.unparse(t)] = k
+    for n in sorted(ast.walk(tree), key=lambda n: getattr(n, 'lineno', 0)):
+        if isinstance(n, ast.Call):
+            k = kind(n.func)
+            if k in targets:
+                lines.append(f'{name.replace(chr(92),"/")}:{n.lineno}: construct {k}: {ast.unparse(n.func)}')
+            elif isinstance(n.func, ast.Attribute):
+                v = n.func.value
+                k = kind(v.func) if isinstance(v, ast.Call) else kind(v)
+                if k in targets:
+                    lines.append(f'{name.replace(chr(92),"/")}:{n.lineno}: use {k}.{n.func.attr}')
+lines.append('scanned_python_files=' + str(len(files)))
+raw = '\n'.join(lines) + '\n'
+Path('D:/Temp/g3-credential-design-revision-20261116/ast-readers.txt').write_text(raw, encoding='utf-8')
+print(raw, end='')
+```
+
+原始输出：
+
+```text
+backend/app/gameplay/adventure_basic_closure.py:25: import CredentialProjector as CredentialProjector (any scope)
+backend/app/gameplay/adventure_basic_closure.py:253: use CredentialProjector.rebuild
+backend/app/gameplay/adventure_basic_closure.py:253: construct CredentialProjector: CredentialProjector
+backend/app/gameplay/credential_runtime.py:112: construct CredentialProjector: CredentialProjector
+backend/app/gameplay/credential_runtime.py:117: use CredentialProjector.rebuild
+backend/app/gameplay/credential_runtime.py:152: construct CredentialProjector: CredentialProjector
+backend/app/gameplay/credential_runtime.py:186: use CredentialProjector.rebuild
+backend/app/gameplay/credential_runtime.py:209: use CredentialProjector.rebuild
+backend/app/gameplay/credential_runtime.py:221: use CredentialProjector.rebuild
+backend/app/gameplay/land_right_runtime.py:10: import CredentialProjector as CredentialProjector (any scope)
+backend/app/gameplay/land_right_runtime.py:10: import CredentialPresentationValidator as CredentialPresentationValidator (any scope)
+backend/app/gameplay/land_right_runtime.py:47: construct CredentialProjector: CredentialProjector
+backend/app/gameplay/land_right_runtime.py:48: construct CredentialPresentationValidator: CredentialPresentationValidator
+backend/app/gameplay/land_right_runtime.py:107: use CredentialProjector.rebuild
+backend/app/gameplay/land_right_runtime.py:116: use CredentialPresentationValidator.verify_right_holder_presentation
+backend/tests/test_credential_runtime.py:5: import CredentialPresentationValidator as CredentialPresentationValidator (any scope)
+backend/tests/test_credential_runtime.py:5: import CredentialProjector as CredentialProjector (any scope)
+backend/tests/test_credential_runtime.py:48: use CredentialProjector.rebuild
+backend/tests/test_credential_runtime.py:48: construct CredentialProjector: CredentialProjector
+backend/tests/test_credential_runtime.py:57: use CredentialProjector.rebuild
+backend/tests/test_credential_runtime.py:57: construct CredentialProjector: CredentialProjector
+backend/tests/test_credential_runtime.py:71: use CredentialProjector.rebuild
+backend/tests/test_credential_runtime.py:71: construct CredentialProjector: CredentialProjector
+backend/tests/test_credential_runtime.py:91: use CredentialProjector.rebuild
+backend/tests/test_credential_runtime.py:91: construct CredentialProjector: CredentialProjector
+backend/tests/test_credential_runtime.py:100: use CredentialProjector.rebuild
+backend/tests/test_credential_runtime.py:100: construct CredentialProjector: CredentialProjector
+backend/tests/test_credential_runtime.py:118: construct CredentialPresentationValidator: CredentialPresentationValidator
+backend/tests/test_credential_runtime.py:119: use CredentialPresentationValidator.verify_right_holder_presentation
+backend/tests/test_credential_runtime.py:124: use CredentialPresentationValidator.verify_right_holder_presentation
+backend/tests/test_credential_runtime.py:130: use CredentialPresentationValidator.verify_right_holder_presentation
+scanned_python_files=2159
+```
+
+这些直接使用点经已阅读代码展开如下；“不依赖固定流名”不等于“不依赖 revision”：
+
+| 读取位置/上游调用者 | 读取/写入性质 | 固定流名依赖 | stream_revision / pins 依赖 |
+|---|---|---|---|
+| `CredentialProjector.rebuild` | 只读；按事件类型过滤，未按流名过滤，也未按 schema_version 严格分派 | 无；从 event.stream_id 取键 | 有：每个键取最大 event.stream_revision，形成 source_revision_vector；不能将它当作单实例前态 revision |
+| `CredentialPresentationValidator.__init__/verify_right_holder_presentation`（112、117 行） | 只读 credential/inventory/ownership | 无 credential 固定名 | 不直接读 credential head/pin，依赖 projector 状态；多次 read_events 非同一冻结向量 |
+| `CredentialAuthorityService.__init__/issue/revoke/supersede`（152、186、209、221 行） | 读投影并生成 credential 事件 | 有，见直接表 | 有，见直接表 |
+| `LandRightTransferAuthority.__init__/transfer`（47–48、107、116 行） | 读两个类的结果；仅写 ownership | 有 | 有，旧流 head 进入读 CAS/pin，B 需要跨 Owner 修改，当前不实施 |
+| `adventure_basic_closure._build_domain_facade` scenario-4（253 行） | 只读，调用 CredentialProjector | 无 | facade/hash 含整个 source_revision_vector，因此按实例改流会改变结果；其 generic replay/checkpoint 也记录流向量 |
+| `test_credential_runtime.py` 的五个 projector 构造点（48、57、71、91、100 行） | 读取断言；fixture 通过真实 authority 写入，不是另一个领域写入者 | projector 调用无固定名；stale 测试另有直接引用 | 57 行后的用例检查 issued_holder_inventory_revision；replay 用例比较 receipt，stale 用例依赖 CAS；其他 projector 断言主要依赖状态 |
+| 同文件 validator 点（118–130 行） | 读取判断；用 OwnershipAuthorityService 转让产权以验证资格变化 | 无 credential 固定名 | 不直接断言 credential stream_revision/pin |
+| `AdventureBasicScenario4`（reference.py:718、762–777、808 行）→ CredentialAuthorityService / LandRightTransferAuthority | 真实命令包装者，生成 credential 事件仍在 credential_runtime 内 | credential 路由本身不硬编码旧流 | 使用 expected_ownership_revision；transferred 的 credential CAS 由 land-right 负责 |
+| `test_adventure_basic_scenario4.py`、`scripts/verification/verify_adventure_basic.py` → Scenario4 | 场景/验证调用者，可触发真实命令 | 脚本无硬编码；scenario4 stale 测试有 | 测试通过原 authority 构造 batch，检查 receipt/事务与 stale revision；无另一个 credential 事件生成器 |
+| `capture_adventure_basic_closure` 与 `test_adventure_basic_closure_evidence.py` scenario-4 → facade | 只读凭证证据；测试前置数据用真实 Scenario4 命令创建 | 无 credential 固定名 | hash、通用 checkpoint provenance、revision vector 随流映射变化 |
+| `test_adventure_basic_mirror_source.py` → Scenario4 / mirror facade | 读派生界面；设置场景时调用真实 credential 命令 | 无 credential 固定名 | 不直接断言 credential revision，但依赖提交后 facade 的重建 |
+
+`rg -n 'gameplay\.credential\.(issued|revoked|superseded)' --glob '!backend/build/**' backend/app backend/tests scripts` 的代码命中仅在 `credential_runtime.py`，涵盖事件集合、分支和 `_event` 调用。未发现该模块之外生成 credential 领域事件的实现；store 的通用安装/恢复和测试对原 append 的拦截转发，不是第二个领域授权写入方。AST 清单是静态、有限的别名跟踪，不声称能穷尽任意动态反射；另以全部 Python 中的类名/模块名 rg 交叉核对，没有发现未解释的类使用点。
+
+### 流映射偏离：A 过渡与 B 终点
+
+**现状：** 一个 link FactType 模板的所有实例共用 `gameplay:credentials`。v2 规定实例 `stream_id = FactType ID`，例如 `fact:credential:<scope>:link`，每个实例各有 revision；scope 映射必须可逆且稳定，旧带冒号业务 ID 不能直接拼接。当前实现与该要求存在**已知偏离**。
+
+**过渡方案 A（未获实施批准）：** 保留旧 v1 类型、字段、流名及现有读 CAS；注册一个 Machine 模板，但把共享流记为已知偏离。不得将投影中的每个 credential_id 或每个模板别名包装成独立 CAS。A 的出口条件是：M3 的历史解释/版本证据边界先获决定；B 的 v1/v2 双读与旧存档样本验证、跨实例 supersede 原子性、land-right 读向量迁移、跨实例不变量和旧 writer 停写栅栏均有证据；再经用户授权切换新写入，不重写旧事件。
+
+**终点方案 B（仅静态评估，未实现）：** 同名新 credential 事件用 `schema_version=2`，新事件的 stream_id 按 link 实例；旧 v1 事件原样留在旧流；投影器显式支持三种类型的 v1/v2，按全局顺序合并。不能因为当前 projector 不检查版本而称为已支持 v2，也不能只改 schema_version 即声称 M3 证据问题已解决。
+
+| 评估项 | 代码依据及方案影响 | 静态结论/缺口 |
+|---|---|---|
+| 旧存档兼容 | `GameplayEventStore.from_snapshot` 重建原 event/transaction/result/revision；必须保留旧事件、receipt、ID、digest 和旧流序号。新 projector 对 v1 采用明确的兼容解释，对 v2 按实例流校验；旧已提交命令重试仍返回原 v1 receipt，不能改造成 v2 再写一次 | 结构上可保留旧账本；没有旧 credential 存档样本的运行证据，M3 的历史条件版本也未补齐 |
+| 现有存档静态扫描 | 使用 `rg --files --hidden -g '!backend/build/**' -g '!**/.git/**' -g '*.json' -g '*.jsonl' -g '*.db' -g '*.sqlite' -g '*.sqlite3'` 列文件，Python JSON 递归只统计含 `event_type` 和 `stream_id` 的 credential 事件对象，不输出 payload/认证内容 | 原始输出见下；未发现偏离旧流的 credential 事件，但样本中 credential 事件总数为 0，**不能证明真实旧存档均兼容**。ignored 文件、zip 内文件及仓库外用户存档未检查；未打开生产数据库 |
+| 多流原子批次 | `AtomicEventBatch.events` 为列表、expected_stream_revisions 为向量；store `_prepare_append` 先逐流校验，再逐 event.stream_id 分配 revision（215–235、315–358、385–411 行）。内存 store 在同一 lock 下整批安装；Durable 的 1332–1371 行用 `_transaction`，1182–1200 行在 SQLite `BEGIN IMMEDIATE`/上下文事务内 `_write_delta`，失败回滚 | 现有存储 API 静态支持一个 batch 的多个流，不需要为此修改存储核心；未执行 credential 多流用例 |
+| debt 参照 | `debt_runtime.py:860–899` 的 `_revisions/_append` 取 economy/contract/debt/commerce 向量，创建 DebtSettlementPlan 再 `to_atomic_event_batch()` 一次 append；其 193–198 行把 read/expected/pinned 向量放进同一 AtomicEventBatch | 这是现有多流批次使用方式；没有把 debt 改成 credential，也没有运行它作为替身 |
+| 跨 v1/v2 supersede | 对仅有 v1 历史的旧凭证，前态由 v1+v2 合并取得；这次两个**新**事件均为 v2，旧实例流可从 0 开始，写旧实例 superseded 与新实例 issued，各一次、同一 transaction。batch 同时 CAS 旧 aggregate head（防旧 writer）和两个实例 head，并保留 replacement inventory 读 CAS；旧 v1 已有 supersede batch 原样重放 | store 不要求一个 batch 的事件同流或同 schema_version；在存储结构上可行。不能把无 v2 前缀的旧实例误判为业务 absent；必须由兼容投影提供前态，且切换后冻结旧 v1 写入 |
+| 跨 v1/v2 同批表示 | 若过渡期另选择旧凭证仍发 v1、replacement 发 v2，store 也没有单一版本/单一流限制；需 batch 包含旧流、新实例流及库存向量 | 仅说明 API 能表达，不在本轮选择混发策略；B 的定义仍为新事件 v2 |
+| land-right expected revision | 当前 `expected_ownership_revision` 参数继续代表 ownership head，无需偷换为 credential head。`land_right_runtime.py:155–168` 的 credential 读 CAS 要从旧流单值改为相关实例流 head，并在兼容期同时保护旧流 head；pin 需能审计完整读向量，不能让 `credentials` 单一旧值掩盖新流 | 必须修改另一个 Owner 的读取/pin 约定；只记录所需变化，不实施。读 head=0 的 v1-only link 也要保护对应 v2 流从无到有的变化 |
+| 跨实例不变量 | issue 检查“同 item 不能有两条 active link”（credential_runtime.py:189–190）；旧 aggregate CAS 曾为所有 credential 写入制造共同冲突点。拆流后，两个并发新实例各自 CAS 不会因相同 item 自动冲突 | 需设计真实的跨实例不变量保护和统一冻结读取；不能假定读取旧 aggregate head 就会保护两个不写该 head 的 v2 writer。B 的完整并发正确性未证明，多流原子能力本身不解决它 |
+| 注册与严格校验 | 可选 EventSchemaRegistry 在 store:263–270 对每条 event 的类型/版本 require；B 需注册 v2。replay/历史版本策略及外部 reader 支持清单必须同步批准 | 当前不改注册器、其他 Owner、event_store.py 或 models.py；不得当作零行为改变迁移 |
+
+存档文件静态扫描原始汇总（完整列表/计数在仓库外 `saved-event-scan.json`）：
+
+```json
+{"candidate_count": 528, "json_documents": 680, "credential_events": 0, "off_stream_events": 0, "database_files": [], "invalid_json_files": [], "off_stream_locations": []}
+```
+
+因此，本轮未发现“旧存档中存在旧流以外 credential 事件”或“credential_runtime 之外的 credential 领域写入方”；受样本覆盖和静态工具边界限制，不能提升为生产账本的完整审计。多流批次 API 静态可行，B 的完整迁移仍需独立授权和实证；本轮已经因 M3 停止，不继续补齐这些机制。
+
 ### D2、D3、D4 与拟议文件位置
 
 - **D2 严格：** 每个 Resolver layer 的 owner 必须与每个输出 FactType 的 owner 相等；跨域读取不授予写权。supersede 的两个输出仍全部归 Credential。不能以管线顶层 owner 相等代替逐层检查。
 - **D3：** 代码模型与数据模型进入同一张注册表。代码项须有版本、输入/输出 schema、reads、writes_fact_types、确定性策略；只在 Python 中隐式定义一个函数不算注册。代码模型不能在规则包内放脚本。现有 authority service 有 IO，不能原样注册成纯 Resolver。
 - **D4：** 作者声明 `resolve_order`；编译器拓扑排序生成从 10 起、同 scope 稠密唯一的整数 `resolution_order`。缺声明与编译产物缺顺序都拒绝为 `facttype_resolution_order_missing`，不填默认值。排序用稳定 ID 作为无依赖顶点的确定性 tie-break。
 
-三种记录事实彼此不需要规定跨命令时间顺序，可以先声明：
+单个 link 模板不需要规定不同 FactType 之间的顺序，可以先声明：
 
 ```yaml
 resolve_order:
   before: []
   unrelated:
-    - "fact:credential:*:issued"
-    - "fact:credential:*:revoked"
-    - "fact:credential:*:superseded"
+    - "fact:credential:*:link"
 ```
 
 dependency graph 另保留 ownership/inventory 只读投影顶点到使用它们的 layer 的边，用于输入冻结与依赖校验；不把外域顶点冒充 credential 写事实。机器状态的命令先后、事件 global_sequence 和 supersede 原子批次顺序仍由账本决定，不能用 resolution_order 取代。
 
 位置沿用项目 `backend/app/gameplay/` 的领域模块与显式 registry 模式，测试在 `backend/tests/`。候选新文件为 `backend/app/gameplay/fact_type_registry.py`、`rule_pack_validator.py`、`credential_reference_chain.py` 以及对应测试；规则包按规格置于 `packs/credential_reference/pack.yaml` 与 `fact_types/`、`machine_defs/`、`models/`、`bindings/`。当前仓库没有此 packs 根目录，属于待审新增，不另建第二个存储层。不添加依赖；现有 PyYAML 的语法限制需在加载器中明确检查。
 
-第 2 步不改 `credential_runtime.py`；新 reference-chain 模块必须通过真实 CredentialAuthorityService/GameplayEventStore 完成授权提交并读取真实事件，不能让新模型输出直接进入存储、绕过 Owner。如何与严格独立 revision 契约兼容仍阻塞于末节决定。第 2 步的结构文件和真实链路职责应明确区分，不能用注册器单测取代链路验收。
+本轮第 2 步只修订设计，以上为未来实现的候选位置，不是当前获准改动。未来 reference-chain 模块必须通过真实 CredentialAuthorityService/GameplayEventStore 完成授权提交并读取真实事件，不能让新模型输出直接进入存储、绕过 Owner。M3 停点和实例流偏离未解除，不能用注册器单测取代链路验收。
 
 五个必须的拒绝测试各自独立反例：
 
@@ -366,12 +569,19 @@ flowchart TD
 
 先冻结真实链路与通用 fixture 驱动，再新增一个能通过既有原语、模型、命令绑定表达的 credential 相关事实。具体新增语义需在冻结时明确，不能把同一事件的别名或只注册不提交算成新事实。
 
+保留两个候选，**现在不选定**：
+
+| 候选 | 要验证什么 | 判据风险 |
+|---|---|---|
+| 给 `credential_kind` 增加一个取值 | 固定模型读取规则包允许集合，新增值能沿真实 Owner 链路执行 | 这本身只扩充现有 link 的值域，未必是新增 FactType；当前允许集合硬编码于 authority 与 projector。若冻结后还需改它们，探针不满足零代码改动，不能把新增 enum 值冒充新 FactType |
+| 规则包新增一个只读派生事实 | 以已声明的 link/ownership/inventory 输入，通过已冻结的通用模型得到 credential 相关的新派生事实 | 必须明确 authority、派生/持久化边界、缺失输入策略及所需回放证据；只加一个显示字段或仅注册不执行不算完整 L2–L5。不得借“只读”降低新增 FactType 判据 |
+
 探针只允许修改 FactType 注册数据和规则包，需从真实加载、Resolver、Owner 授权提交走到投影/回放。保存探针前后 commit/diff、`git diff --stat <frozen-head> --`、代码路径 `git diff --numstat <frozen-head> -- backend/app backend/tests scripts`、事件数量/类型、拒绝与 replay 证据。Owner/runtime/test driver 在探针阶段均不能新增分支；若必须写 Python、改持久事件或改其他 Owner，立即记录缺少的机制并停止，不以放宽判据补救。此处未运行探针，不承诺现有链路能达到零代码改动。
 
 ## 需要用户决定
 
-1. **第 1 步设计审核后是否进入第 2 步。** 本轮提交本文件并完成提交后五组回归后停下；这是用户指定的阶段门，不执行第 2–4 步。
-2. **三种事件与独立 FactType revision 的冲突如何解决。** 推荐先保留以上三份草案为待定，并明确真实链路的 revision 设计再接线。现有三个事件共同维护一个 credential link 生命周期；按现状视为一个事实类型、三种事件更贴近其 revision，但这不同于要求的三份独立 FactType。若坚持三份正式 FactType，必须先给出不共享 revision、保持旧事件兼容且无需改其他 Owner/存储核心的方案；没有证据前不能宣称满足 v2，也不能默许豁免。若方案需要改持久事件或 land-right 的读取/锁定约定，先枚举全部读取方并停止报告。
-3. **Machine 记录证据和可见性绑定。** 需要确认三类记录事实是否是所需事实粒度；后续实现须证明已有事件/batch 足以派生 Machine M3 证据，并把 authority 角色绑定到真实 principal。若必须新增持久字段，仍按停止条件报告，不能自行实施。
+1. **M3 停点如何处理。** 现有证据不能唯一恢复实际条件规则的 condition_revision；本轮没有自行赋值为 1、加持久字段或用 stream revision 替代。若未来选择固定 legacy 解释映射，需要显式决定其只是新的历史解释约定，以及什么历史样本/版本来源足以支持它；不能把该决定写成旧账本原有证据。
+2. **A 与 B 的推进边界。** A 沿用旧流并保留已知偏离；B 需要另行批准 v2 写入及 land-right 的读 CAS/pins 迁移，且仍欠跨实例不变量与旧 writer 切换设计。本轮仅记录静态方案，不选择迁移时机，不把模板合并视为实例流改造。
+3. **后续实现与探针。** 本轮按“仅文档，设计修订”单独提交并完成前后收集后停止，不进入实现。两个探针候选保留到链路冻结时再选；可见性占位角色仍需真实 principal 绑定。
 
-reads 的资格检查表达没有发现必须停止的缺口；其强制机制仍待实现。以上 revision/schema 差异保留为显式待决，不把“20 个现有测试通过”提升为 G3 或 v2 满足的结论。
+reads 的资格检查表达没有发现不可表达的判据；强制机制仍未实现。M3 不满足的停止原因和实例流已知偏离继续保留，不把第 1 步的“20 个现有测试通过”或本轮“338 个节点可收集”提升为 G3 或 v2 满足的结论。
