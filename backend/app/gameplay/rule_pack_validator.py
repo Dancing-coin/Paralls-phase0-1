@@ -106,7 +106,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                 reject("pack_contains_logic", k.value, path, k.start_mark.line + 1, "executable keys are forbidden")
             locations[k.value] = (str(path), k.start_mark.line + 1)
             result[k.value] = convert(v, k.value)
-        raw_files[str(path.relative_to(directory))] = result
+        raw_files[path.relative_to(directory).as_posix()] = result
         return result
 
     manifest_path = directory / "pack.yaml"
@@ -118,7 +118,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     for key in ("pack_id", "pack_version"):
         if not isinstance(manifest.get(key), str) or not manifest[key]:
             reject("pack_schema_invalid", key, manifest_path, 1, "declare nonempty pack identity and version")
-    if manifest.get("schema_version") != 1:
+    if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
         reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
     contents = manifest.get("contents", {})
     sections = {name: {} for name in ("fact_types", "machine_defs", "models")}
@@ -154,7 +154,10 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                     and isinstance(spec.get("terminal_states"), list) and all(isinstance(s, str) for s in spec["terminal_states"])
                     and isinstance(spec.get("transitions"), list) and all(isinstance(e, list) and len(e) == 2 and all(isinstance(s, str) for s in e) for e in spec["transitions"]))
             if valid and section == "models":
-                valid = (isinstance(spec.get("owner_ref"), str) and isinstance(spec.get("determinism_policy"), dict)
+                valid = (isinstance(spec.get("implementation"), str) and spec["implementation"] in ("code", "data")
+                    and all(isinstance(spec.get(key), str) and spec[key] for key in ("input_schema", "output_schema"))
+                    and (spec["implementation"] != "data" or isinstance(spec.get("evaluator_ref"), str) and bool(spec["evaluator_ref"]))
+                    and isinstance(spec.get("owner_ref"), str) and isinstance(spec.get("determinism_policy"), dict)
                     and all(isinstance(spec.get(key), list) and all(isinstance(s, str) for s in spec[key]) for key in ("reads", "writes_fact_types"))
                     and isinstance(spec.get("params", {}), dict) and isinstance(spec.get("layers", []), list)
                     and all(isinstance(layer, dict) and isinstance(layer.get("owner_ref"), str)
