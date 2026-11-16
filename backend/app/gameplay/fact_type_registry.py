@@ -1,0 +1,191 @@
+"""Fact and pure-model registrations for the opt-in credential reference slice."""
+from __future__ import annotations
+
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from dataclasses import dataclass, replace
+import heapq
+from types import MappingProxyType
+from typing import Any
+
+
+@dataclass(frozen=True)
+class Violation:
+    code: str
+    target: str
+    file: str
+    line: int
+    hint: str
+
+
+class RegistrationRejected(ValueError):
+    def __init__(self, violations: Sequence[Violation]):
+        self.violations = tuple(violations)
+        super().__init__(", ".join(v.code for v in violations))
+
+
+class ResolverInputError(ValueError):
+    pass
+
+
+def freeze(value: Any) -> Any:
+    """Copy a JSON-shaped input; reject capabilities and mutable objects."""
+    if value is None or type(value) in (str, bool, int):
+        return value
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise ResolverInputError("resolver_input_invalid")
+        return MappingProxyType({key: freeze(item) for key, item in value.items()})
+    if isinstance(value, (list, tuple)):
+        return tuple(freeze(item) for item in value)
+    raise ResolverInputError("resolver_input_invalid")
+
+
+class RestrictedInputs(Mapping[str, Any]):
+    """Only the declared input values survive construction."""
+    def __init__(self, values: Mapping[str, Any], reads: Sequence[str]):
+        self.__reads = frozenset(reads)
+        self.__values = freeze({key: values[key] for key in reads if key in values})
+
+    def __getitem__(self, key: str) -> Any:
+        if key not in self.__reads:
+            raise ResolverInputError("resolver_input_undeclared")
+        if key not in self.__values:
+            raise ResolverInputError("resolver_input_missing")
+        return self.__values[key]
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(sorted(self.__values))
+
+    def __len__(self) -> int:
+        return len(self.__values)
+
+
+@dataclass(frozen=True)
+class FactType:
+    fact_type_id: str
+    owner_ref: str
+    primitive: str
+    visibility: Mapping[str, Any]
+    state_set_ref: str
+    resolution_order: int
+
+
+@dataclass(frozen=True)
+class Model:
+    model_ref: str
+    owner_ref: str
+    implementation: str
+    reads: tuple[str, ...]
+    writes_fact_types: tuple[str, ...]
+    input_schema: str
+    output_schema: str
+    determinism_policy: Mapping[str, Any]
+    params: Mapping[str, Any]
+    handler: Callable[[RestrictedInputs, Mapping[str, Any]], Any]
+
+
+class FactTypeRegistry:
+    def __init__(self, facts: Mapping[str, FactType], models: Mapping[str, Model], machines: Mapping[str, Any]):
+        self.facts = MappingProxyType(dict(facts))
+        # Code and data models use this same table and evaluation entry point.
+        self.models = MappingProxyType(dict(models))
+        self.machines = freeze(machines)
+
+    @classmethod
+    def compile(cls, *, facts: Mapping[str, Any], models: Mapping[str, Any],
+                machines: Mapping[str, Any], owners: Sequence[str], resolve_order: Mapping[str, Any] | None,
+                handlers: Mapping[str, Callable], locations: Mapping[str, tuple[str, int]] | None = None) -> FactTypeRegistry:
+        issues: list[Violation] = []
+        def reject(code: str, target: str, hint: str) -> None:
+            file, line = (locations or {}).get(target, ("<declaration>", 1))
+            issues.append(Violation(code, target, file, line, hint))
+
+        for target, spec in facts.items():
+            if not spec.get("visibility"):
+                reject("facttype_visibility_missing", target, "visibility must be explicitly nonempty")
+            if spec.get("owner_ref") not in owners:
+                reject("facttype_owner_unknown", target, "register the fact owner first")
+            if spec.get("primitive") != "machine":
+                reject("facttype_primitive_unknown", target, "this reference slice supports machine facts")
+            if spec.get("state_set_ref") not in machines:
+                reject("facttype_schema_unknown", target, "register the machine state set")
+            parts = target.split(":")
+            if len(parts) != 4 or parts[0] != "fact" or not all(parts[1:]):
+                reject("facttype_naming_invalid", target, "use fact:domain:scope:name")
+
+        for target, machine in machines.items():
+            states = machine.get("states", [])
+            terminals = machine.get("terminal_states", [])
+            transitions = machine.get("transitions", [])
+            if (not states or len(set(states)) != len(states) or not set(terminals) <= set(states)
+                    or any(len(edge) != 2 or edge[0] not in states or edge[1] not in states or edge[0] in terminals for edge in transitions)):
+                reject("facttype_machine_invalid", target, "transitions must connect states and never leave a terminal")
+
+        edges = [] if resolve_order is None else resolve_order.get("before", [])
+        covered = set() if resolve_order is None else set(resolve_order.get("unrelated", []))
+        adjacency = {name: set() for name in facts}
+        degrees = {name: 0 for name in facts}
+        for edge in edges:
+            if len(edge) != 2 or any(name not in facts for name in edge):
+                reject("facttype_resolution_order_unknown", "resolve_order", "edges must name registered facts")
+                continue
+            left, right = edge
+            covered.update(edge)
+            if right not in adjacency[left]:
+                adjacency[left].add(right)
+                degrees[right] += 1
+        for target in facts:
+            if target not in covered:
+                reject("facttype_resolution_order_missing", target, "declare a before edge or explicit unrelated membership")
+        ready = [name for name, degree in degrees.items() if degree == 0]
+        heapq.heapify(ready)
+        ordered = []
+        while ready:
+            name = heapq.heappop(ready)
+            ordered.append(name)
+            for next_name in sorted(adjacency[name]):
+                degrees[next_name] -= 1
+                if degrees[next_name] == 0:
+                    heapq.heappush(ready, next_name)
+        if len(ordered) != len(facts):
+            reject("facttype_resolution_order_cycle", "resolve_order", "remove the dependency cycle")
+
+        compiled_models = {}
+        for target, spec in models.items():
+            writes = spec.get("writes_fact_types", [])
+            layers = spec.get("layers", [])
+            for layer in [spec, *layers]:
+                for fact in layer.get("writes_fact_types", []):
+                    if fact not in facts:
+                        reject("resolver_writes_undeclared", target, "register every output fact")
+                    elif facts[fact].get("owner_ref") in owners and layer.get("owner_ref") != facts[fact]["owner_ref"]:
+                        reject("resolver_owner_mismatch", target, "each resolver layer must match the output fact owner")
+                    if fact not in writes:
+                        reject("resolver_writes_undeclared", target, "layer outputs must belong to the model write set")
+            policy = spec.get("determinism_policy", {})
+            if (policy.get("iteration_order") != "resolution_order" or policy.get("random") != "none"
+                    or policy.get("numeric_precision") not in ("fixed_point", "decimal")
+                    or policy.get("rounding") not in ("half_up", "floor", "truncate")):
+                reject("resolver_missing_determinism", target, "pin precision, rounding, iteration order and randomness")
+            kind = spec.get("implementation")
+            handler_ref = target if kind == "code" else spec.get("evaluator_ref")
+            handler = handlers.get(handler_ref)
+            if kind not in ("code", "data") or handler is None:
+                reject("resolver_implementation_unknown", target, "provide a registered code or data evaluator")
+                continue
+            if not spec.get("input_schema") or not spec.get("output_schema"):
+                reject("resolver_schema_missing", target, "declare versioned input and output schemas")
+            compiled_models[target] = Model(target, spec["owner_ref"], kind, tuple(spec.get("reads", [])),
+                tuple(writes), spec.get("input_schema", ""), spec.get("output_schema", ""),
+                freeze(policy), freeze(spec.get("params", {})), handler)
+        if issues:
+            unique = {(v.code, v.target): v for v in issues}
+            raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
+        compiled = {name: FactType(name, facts[name]["owner_ref"], facts[name]["primitive"],
+            freeze(facts[name]["visibility"]), facts[name]["state_set_ref"], index + 10)
+            for index, name in enumerate(ordered)}
+        return cls(compiled, compiled_models, machines)
+
+    def evaluate(self, model_ref: str, values: Mapping[str, Any]) -> Any:
+        model = self.models[model_ref]
+        return model.handler(RestrictedInputs(values, model.reads), model.params)

@@ -1,0 +1,57 @@
+from copy import deepcopy
+
+import pytest
+
+from app.gameplay.fact_type_registry import FactTypeRegistry, RegistrationRejected
+
+FACT = "fact:credential:*:link"
+MACHINE = "machine_def/credential_link@1"
+
+
+def declarations():
+    return dict(
+        facts={FACT: dict(owner_ref="Credential", primitive="machine", visibility={"class": "private"}, state_set_ref=MACHINE)},
+        machines={MACHINE: dict(states=["absent", "issued", "revoked", "superseded"],
+            terminal_states=["revoked", "superseded"], transitions=[["absent", "issued"], ["issued", "revoked"], ["issued", "superseded"]])},
+        owners=["Credential"], resolve_order={"before": [], "unrelated": [FACT]}, models={}, handlers={},
+    )
+
+
+def test_machine_topology_and_terminal_invariant():
+    data = declarations()
+    registry = FactTypeRegistry.compile(**data)
+    assert registry.facts[FACT].resolution_order == 10
+    assert registry.machines[MACHINE]["terminal_states"] == ("revoked", "superseded")
+    data["machines"][MACHINE]["transitions"].append(["revoked", "issued"])
+    with pytest.raises(RegistrationRejected, match="facttype_machine_invalid"):
+        FactTypeRegistry.compile(**data)
+
+
+def test_topology_uses_stable_ids_and_dense_order_and_rejects_cycles():
+    data = declarations()
+    second = "fact:credential:*:attestation"
+    third = "fact:credential:*:review"
+    data["facts"] = {third: deepcopy(data["facts"][FACT]), FACT: data["facts"][FACT], second: deepcopy(data["facts"][FACT])}
+    data["resolve_order"] = {"before": [[third, second]], "unrelated": [FACT]}
+    first = FactTypeRegistry.compile(**data)
+    data["facts"] = dict(reversed(list(data["facts"].items())))
+    assert list(FactTypeRegistry.compile(**data).facts) == list(first.facts) == [FACT, third, second]
+    assert [f.resolution_order for f in first.facts.values()] == [10, 11, 12]
+    data["resolve_order"]["before"].append([second, third])
+    with pytest.raises(RegistrationRejected, match="facttype_resolution_order_cycle"):
+        FactTypeRegistry.compile(**data)
+
+
+def test_code_and_data_models_share_registration_and_evaluation():
+    data = declarations()
+    def condition(inputs, params):
+        return inputs["threshold"] >= params["minimum"]
+    common = dict(owner_ref="Credential", reads=["threshold"], writes_fact_types=[FACT],
+        input_schema="threshold@1", output_schema="condition@1", params={"minimum": 2},
+        determinism_policy=dict(numeric_precision="fixed_point", rounding="floor", iteration_order="resolution_order", random="none"))
+    data["models"] = {"code@1": dict(common, implementation="code"), "data@1": dict(common, implementation="data", evaluator_ref="compare@1")}
+    data["handlers"] = {"code@1": condition, "compare@1": condition}
+    registry = FactTypeRegistry.compile(**data)
+    assert set(registry.models) == {"code@1", "data@1"}
+    assert registry.evaluate("code@1", {"threshold": 2}) is True
+    assert registry.evaluate("data@1", {"threshold": 1}) is False
