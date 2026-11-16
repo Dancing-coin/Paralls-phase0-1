@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 import json
+import logging
 import os
 from collections import OrderedDict
 from collections.abc import Callable, Mapping
@@ -50,6 +51,10 @@ from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, Au
 from app.models.ai_output import DialogueResponse
 from app.models.character_perceived import CharacterPerceivedEvent
 from app.models.environment_request import EnvironmentRequest
+from app.models.environment_proposal import EnvironmentProposal
+from app.models.constraint_probe import ConstraintProbe
+from app.models.feasibility_response import FeasibilityResponse
+from app.models.esm_execution_state import ExecutionConfirmation
 from app.models.character_agent_runtime import CharacterGoalCommand
 from app.models.character_agent_runtime import CharacterSuggestionPacket
 from app.character_agent.models.character_execution import CharacterExecutionContract
@@ -473,6 +478,7 @@ async def _run_siming_cognition():
     try:
         while True:
             await driver.poll()
+            driver.coordinator.runtime.proposal_tracker.cleanup_old_proposals()
             await asyncio.sleep(.02)
     except asyncio.CancelledError:
         raise
@@ -2288,8 +2294,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     script_beat_projection = ScriptBeatProjection()
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
         authority_event_bus.subscribe(event_type, _project_siming_authority_event)
-    # Protocol 09: Siming → ESM (08-司命与ESM协作协议.md)
-    authority_event_bus.subscribe("siming.environment_request", _handle_siming_environment_request)
+    _subscribe_siming_environment_protocol()
     debug_stream.clear()
     _publish_population_cadence_at_game_start()
     # Startup composition is already committed; drain its presentation outbox
@@ -2319,11 +2324,94 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
         _cognition_origin.reset(token)
 
 
+def _subscribe_siming_environment_protocol() -> None:
+    for event_type, handler in (
+        ("siming.environment_request", _handle_siming_environment_request),
+        ("siming.environment_proposal", _handle_siming_environment_proposal),
+        ("siming.constraint_probe", _handle_siming_constraint_probe),
+        ("esm.feasibility_response", _handle_esm_feasibility_response),
+        ("esm.constraint_state", _handle_esm_constraint_state),
+    ):
+        authority_event_bus.subscribe(event_type, handler)
+
+
+def _publish_esm_protocol_response(event_type: str, response, source: AuthorityEvent) -> None:
+    identity = getattr(response, "response_id", None) or getattr(response, "state_id", None) or response.confirmation_id
+    authority_event_bus.publish(source.model_copy(update={
+        "event_id": f"{event_type}:{identity}", "event_type": event_type,
+        "producer_ts": response.producer_ts,
+        "source": AuthorityEventSource(layer="L1", system="esm"),
+        "routing": AuthorityEventRouting(audience_mode="targeted", routing_mode="event_type", target_ids=["siming"]),
+        "ttl": None, "durability": "replayable", "causation_id": response.causation_id,
+        "correlation_id": response.correlation_id, "payload": response.model_dump(mode="json"),
+    }))
+
+
+def _validate_siming_protocol_message(event: AuthorityEvent, message) -> None:
+    if (event.source.layer != "L2" or not event.source.system.startswith("siming.")
+            or "esm" not in event.routing.target_ids
+            or (event.producer_ts, event.causation_id, event.correlation_id) !=
+               (message.producer_ts, message.causation_id, message.correlation_id)
+            or (event.ttl is not None and event.ttl <= 0)):
+        raise ValueError("invalid_protocol_envelope")
+    if isinstance(message, EnvironmentProposal) and (event.room_id, event.scene_id, event.zone_id) != (message.room_id, message.scene_id, message.zone_id):
+        raise ValueError("invalid_protocol_scope")
+
+
+def _handle_siming_environment_proposal(event: AuthorityEvent) -> None:
+    try:
+        proposal = EnvironmentProposal.model_validate(event.payload)
+        _validate_siming_protocol_message(event, proposal)
+    except ValueError:
+        logging.getLogger(__name__).warning("protocol_09_rejected: malformed_proposal")
+        return
+    try:
+        response = esm_service.evaluate_proposal(proposal)
+    except (TimeoutError, RuntimeError, ValueError):
+        response = FeasibilityResponse(response_id=f"feasibility:{proposal.proposal_id}",
+            proposal_ref=proposal.proposal_id, feasible=False, constraints=["esm_unavailable"],
+            producer_ts=proposal.producer_ts + 1, causation_id=proposal.proposal_id,
+            correlation_id=proposal.correlation_id)
+    _publish_esm_protocol_response("esm.feasibility_response", response, event)
+
+
+def _handle_esm_feasibility_response(event: AuthorityEvent) -> None:
+    siming_event_pipeline.handle_event(event)
+
+
+def _handle_siming_constraint_probe(event: AuthorityEvent) -> None:
+    try:
+        probe = ConstraintProbe.model_validate(event.payload)
+        _validate_siming_protocol_message(event, probe)
+        state = esm_service.probe_constraints(probe, room_id=event.room_id, scene_id=event.scene_id, zone_id=event.zone_id)
+    except (ValueError, TimeoutError, RuntimeError):
+        logging.getLogger(__name__).warning("protocol_09_rejected: invalid_or_unavailable_probe")
+        return
+    _publish_esm_protocol_response("esm.constraint_state", state, event)
+
+
+def _handle_esm_constraint_state(event: AuthorityEvent) -> None:
+    siming_event_pipeline.handle_event(event)
+
+
 def _handle_siming_environment_request(event: AuthorityEvent) -> None:
     """Protocol 09：ESM 结果校验后回流总线，失败只回报约束。"""
     from app.services.siming_environment_protocol import SimingEnvironmentProtocol
 
-    request, resolution, environment_result = SimingEnvironmentProtocol().resolve(event, esm=esm_service)
+    proposal_ref = event.payload.get("proposal_ref")
+    tracker = siming_event_pipeline._runtime.proposal_tracker if proposal_ref else None
+    if tracker is not None and not tracker.claim_execution(event):
+        logging.getLogger(__name__).warning("protocol_09_rejected: repeated_or_invalid_formal_request")
+        return
+    request, resolution, environment_result = SimingEnvironmentProtocol().resolve(
+        event, esm=esm_service, now_ts=event.producer_ts if proposal_ref else None)
+    if tracker is not None:
+        tracker.complete_execution(proposal_ref, success=environment_result is not None)
+        confirmation = ExecutionConfirmation(confirmation_id=f"exec_confirm:{request.request_id}",
+            request_ref=request.request_id, execution_state="confirmed" if environment_result is not None else "aborted",
+            rollback_token=None, producer_ts=resolution.producer_ts, causation_id=request.causation_id,
+            correlation_id=request.correlation_id)
+        _publish_esm_protocol_response("esm.execution_confirmation", confirmation, event)
     _publish_world_result_authority_event(resolution, source_event=request, drain_frontend=False)
     if environment_result is not None:
         l1_occupancy_service.apply_environment_result(environment_result)
