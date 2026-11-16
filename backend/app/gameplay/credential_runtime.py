@@ -180,7 +180,7 @@ class CredentialAuthorityService:
             "issuer_ref": issuer_ref,
         }
         digest = _digest(command)
-        duplicate = self._duplicate(idempotency_key, digest)
+        duplicate = self._duplicate(idempotency_key, digest, command_id, ("gameplay.credential.issued",))
         if duplicate is not None:
             return duplicate
         projection = self._projector.rebuild(self._store.read_events())
@@ -203,7 +203,7 @@ class CredentialAuthorityService:
     def revoke_credential(self, *, command_id: str, credential_id: str, issuer_ref: str, reason: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
         command = {"kind": "revoke_credential", "command_id": command_id, "credential_id": credential_id, "issuer_ref": issuer_ref, "reason": reason}
         digest = _digest(command)
-        duplicate = self._duplicate(idempotency_key, digest)
+        duplicate = self._duplicate(idempotency_key, digest, command_id, ("gameplay.credential.revoked",))
         if duplicate is not None:
             return duplicate
         link = self._projector.rebuild(self._store.read_events()).links.get(credential_id)
@@ -215,7 +215,7 @@ class CredentialAuthorityService:
     def supersede_credential(self, *, command_id: str, prior_credential_id: str, replacement_credential_id: str, replacement_item_ref: str, replacement_holder_ref: str, issuer_ref: str, idempotency_key: str, causation_id: str, correlation_id: str) -> AppendBatchResult:
         command = {"kind": "supersede_credential", "command_id": command_id, "prior_credential_id": prior_credential_id, "replacement_credential_id": replacement_credential_id, "replacement_item_ref": replacement_item_ref, "replacement_holder_ref": replacement_holder_ref, "issuer_ref": issuer_ref}
         digest = _digest(command)
-        duplicate = self._duplicate(idempotency_key, digest)
+        duplicate = self._duplicate(idempotency_key, digest, command_id, ("gameplay.credential.superseded", "gameplay.credential.issued"))
         if duplicate is not None:
             return duplicate
         projection = self._projector.rebuild(self._store.read_events())
@@ -240,12 +240,40 @@ class CredentialAuthorityService:
     def _event(cls, command_id: str, index: int, event_type: str, payload: Mapping[str, object], causation_id: str, correlation_id: str) -> dict[str, object]:
         return {"event_id": f"evt:{command_id}:credential:{index}", "event_type": event_type, "schema_version": 1, "stream_id": cls._STREAM, "stream_revision": 0, "global_sequence": 0, "transaction_id": f"tx:{command_id}", "command_id": command_id, "causation_id": causation_id, "correlation_id": correlation_id, "visibility_policy": "authority_only", "payload": dict(payload)}
 
-    def _duplicate(self, idempotency_key: str, digest: str) -> AppendBatchResult | None:
-        return replay_duplicate(
+    def _duplicate(self, idempotency_key: str, digest: str, command_id: str,
+                   event_types: tuple[str, ...]) -> AppendBatchResult | None:
+        result = replay_duplicate(
             self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
             payload_digest=digest, error_factory=CredentialRuntimeError,
             missing_result_code="credential_idempotency_missing_result",
         )
+        if result is None:
+            return None
+        if not result.committed or result.command_id != command_id or result.transaction_id != f"tx:{command_id}":
+            raise CredentialRuntimeError("credential_replay_transaction_mismatch")
+        batch = self._store.get_transaction(result.transaction_id)
+        if (batch is None or batch.transaction_id != result.transaction_id or batch.command_id != command_id
+                or batch.idempotency_record.principal_ref != self._PRINCIPAL
+                or batch.idempotency_record.idempotency_key != idempotency_key
+                or batch.idempotency_record.payload_digest != digest):
+            raise CredentialRuntimeError("credential_replay_transaction_mismatch")
+        ids = result.committed_event_ids
+        if len(ids) != len(event_types) or len(set(ids)) != len(ids) or len(batch.events) != len(event_types):
+            raise CredentialRuntimeError("credential_replay_event_count_mismatch")
+        resolved = []
+        for event_id in ids:
+            try:
+                resolved.append(self._store.get_event(event_id))
+            except KeyError as error:
+                raise CredentialRuntimeError("credential_replay_event_missing") from error
+        if (ids != [event.event_id for event in batch.events]
+                or tuple(event.event_type for event in resolved) != event_types
+                or any(event != original or event.transaction_id != batch.transaction_id or event.command_id != command_id
+                       for event, original in zip(resolved, batch.events))
+                or result.global_sequence_range != (resolved[0].global_sequence, resolved[-1].global_sequence)
+                or result.resulting_stream_revisions != {event.stream_id: event.stream_revision for event in resolved}):
+            raise CredentialRuntimeError("credential_replay_transaction_mismatch")
+        return result
 
 
 def _text(payload: Mapping[str, object], key: str) -> str:
