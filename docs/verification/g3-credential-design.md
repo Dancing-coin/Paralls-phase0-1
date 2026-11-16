@@ -1,6 +1,6 @@
 # G3 credential 首域 L2–L5：只读设计
 
-- 日期：2026-11-16；状态：`awaiting-user-review`。
+- 日期：2026-11-16；状态：方案 A 的阶段 0–3 已获实施授权；方案 B 待阶段 4 闸门，禁止提前实施。
 - 本轮为“第 2 步：仅文档，设计修订”；只修改本文件，没有实现注册器、校验器、Resolver、规则包或回放改动。原第 1 步记录在 `be16b1ac`。
 - 目标：以 credential 的真实提交与投影链路建立参考设计，为随后“只增加声明和规则包”的 FactType 探针准备可审查边界。本文件不宣布 G3 满足。
 - 起点仓库：`D:/Temp/paralls-g0-b3-ingress-20261109`。
@@ -237,7 +237,7 @@ revoked 与 superseded 是不可退出的终态（M5）。supersede 命令在一
 
 合并后仍是所有凭证实例共用旧流，**独立实例 revision 尚未实现**。一个模板并不消除跨实例共享 head 的偏离；完整过渡/终点方案见“流映射偏离”。
 
-### M3 证据可行性与停止点
+### M3 裁定：历史约定 + v2 事件自带
 
 核对范围为 `be16b1ac` 中的现有代码，`credential_runtime.py` SHA256 为 `95983e0ed2038a977404540b0d5916b51768aa2916413582b34b5481fe772302`。六原语规格要求每次转移记录四项，事件 schema 另限定 `condition_revision` 为 `int ≥ 1`，不能拿任意 stream head 或 revision vector 代替它。
 
@@ -248,11 +248,26 @@ revoked 与 superseded 是不可退出的终态（M5）。supersede 命令在一
 | `condition_ref` | 可以设计固定规则映射：issue、revoke、supersede 各对应该源码中被冻结的资格检查；supersede 的 replacement issued 必须先按同 transaction 的双事件识别，不能误用普通 issue 的 ownership 检查 | 186–201、209–213、221–234 行及 batch.command_id/transaction_id。**现有账本没有这个规则引用**；新解释器可定义有版本的 legacy 映射，但本轮未注册它，不能称为原事件已有审计字段 |
 | `condition_revision` | 应是上述条件规则的版本；现有 `schema_version=1` 只代表事件 schema，不固定条件实现版本 | `_event` 242 行只写 schema_version；`_append` 237 行只保存流 revision pins；命令 digest 没有规则版本；没有 condition 注册或历史版本 pin。**无法从现有持久证据唯一派生实际采用的条件规则 revision** |
 
-**停止结论：M3 尚不满足；缺少可追溯的 condition_revision（condition_ref 也只有候选解释映射）。** 现在为映射命名 `legacy_rule@1`，再令 revision=1，是新增解释约定，不能证明旧事件当时执行的是那个版本。源码 HEAD/hash 可固定本次审阅的规则，却不能反向替代每个旧事务未保存的规则版本证据。不能把 event.schema_version、event.stream_revision、issued_holder_inventory_revision 或 batch pins 改称 condition_revision 来凑齐 M3。
+**已裁定：历史约定 + v2 事件自带。** 项目负责人批准：v1 历史事件统一按登记的 `credential_legacy_rule@1` 解释。该记录是**历史解释约定，不是原账本证据**，不证明当时执行过哪个规则版本。`condition_ref="credential_legacy_rule"`、`condition_revision=1` 来自本次明确登记，不由 event.schema_version 或流 revision 推断。
+
+登记内容：
+
+| 登记项 | 内容 |
+|---|---|
+| 规则标识/版本 | `credential_legacy_rule@1` |
+| 源码基点 | `35674f57` 的 `backend/app/gameplay/credential_runtime.py`（与前次核对源码相同） |
+| 源码 SHA256 | `95983e0ed2038a977404540b0d5916b51768aa2916413582b34b5481fe772302` |
+| 普通 issued | absent→issued；按该源码 issue 的 ID、item active 唯一性、kind/proves、ownership 存在与 inventory 在场检查解释 |
+| revoked | issued→revoked；issuer 一致、active、reason 非空 |
+| superseded + 同事务 replacement issued | 两个实例分别 issued→superseded、absent→issued；按 supersede 的 prior/replacement/inventory 检查解释；不额外要求 ownership |
+| 排序与来源 | `(global_sequence,event_id)`；保留 source_event_id、transaction_id 与原 batch pins |
+| 适用边界 | 只解释现有三种 v1 类型；**旧存档运行证据缺失**，不能扩大为生产历史完整验证 |
+
+方案 B 的 v2 新事件必须自带 `condition_ref/condition_revision`（字段方案在阶段 4 回报），不是运行时补猜；这属于持久事件改动，必须等用户确认闸门。当前不改 v1 的类型、版本、stream_id 或 payload。
 
 现有 batch.expected_stream_revisions / pinned_revisions 可提供提交时流 CAS 证据：issue 含 credential、ownership、holder inventory；revoke 仅 credential；supersede 含 credential、replacement inventory。它们也没有保存 InventoryDefinitionRegistry 版本；当前多次 read_events 与读 head 的顺序不是统一冻结视图。因此不应声称可完整还原原始资格评估的输入与时点。
 
-按本轮停止条件，不新增持久字段，不创建固定映射或代码来补洞，不进入实现。后面的读取方与多流结论均来自发现停止点前已经完成的只读搜索，只记录现有证据；未继续运行 credential 链路或迁移实验。文档仍按用户授权单独提交，并完成要求的收集核对。
+旧文档因无法从账本还原规则版本而停止；本轮用户已通过上述历史解释约定解除 M3 的这一停点。静态表中的“无法派生实际历史版本”仍是证据边界，不再作为方案 A 的实施阻塞。
 
 ### reads 声明与现有资格检查的逐项对应
 
@@ -426,13 +441,13 @@ scanned_python_files=2159
 
 **现状：** 一个 link FactType 模板的所有实例共用 `gameplay:credentials`。v2 规定实例 `stream_id = FactType ID`，例如 `fact:credential:<scope>:link`，每个实例各有 revision；scope 映射必须可逆且稳定，旧带冒号业务 ID 不能直接拼接。当前实现与该要求存在**已知偏离**。
 
-**过渡方案 A（未获实施批准）：** 保留旧 v1 类型、字段、流名及现有读 CAS；注册一个 Machine 模板，但把共享流记为已知偏离。不得将投影中的每个 credential_id 或每个模板别名包装成独立 CAS。A 的出口条件是：M3 的历史解释/版本证据边界先获决定；B 的 v1/v2 双读与旧存档样本验证、跨实例 supersede 原子性、land-right 读向量迁移、跨实例不变量和旧 writer 停写栅栏均有证据；再经用户授权切换新写入，不重写旧事件。
+**过渡方案 A（本轮获准）：** 保留旧 v1 类型、字段、流名及现有读 CAS；注册一个 Machine 模板，但把共享流记为已知偏离。不得将投影中的每个 credential_id 或每个模板别名包装成独立 CAS。A 的出口条件是：保留 credential_legacy_rule@1 历史解释边界；**v2 事件携带 condition_ref/condition_revision 字段**；B 的 v1/v2 双读与旧存档样本验证、跨实例 supersede 原子性、land-right 读向量迁移、跨实例不变量和旧 writer 停写栅栏均有证据；再经用户授权切换新写入，不重写旧事件。
 
 **终点方案 B（仅静态评估，未实现）：** 同名新 credential 事件用 `schema_version=2`，新事件的 stream_id 按 link 实例；旧 v1 事件原样留在旧流；投影器显式支持三种类型的 v1/v2，按全局顺序合并。不能因为当前 projector 不检查版本而称为已支持 v2，也不能只改 schema_version 即声称 M3 证据问题已解决。
 
 | 评估项 | 代码依据及方案影响 | 静态结论/缺口 |
 |---|---|---|
-| 旧存档兼容 | `GameplayEventStore.from_snapshot` 重建原 event/transaction/result/revision；必须保留旧事件、receipt、ID、digest 和旧流序号。新 projector 对 v1 采用明确的兼容解释，对 v2 按实例流校验；旧已提交命令重试仍返回原 v1 receipt，不能改造成 v2 再写一次 | 结构上可保留旧账本；没有旧 credential 存档样本的运行证据，M3 的历史条件版本也未补齐 |
+| 旧存档兼容 | `GameplayEventStore.from_snapshot` 重建原 event/transaction/result/revision；必须保留旧事件、receipt、ID、digest 和旧流序号。新 projector 对 v1 采用明确的兼容解释，对 v2 按实例流校验；旧已提交命令重试仍返回原 v1 receipt，不能改造成 v2 再写一次 | 结构上可保留旧账本；没有旧 credential 存档样本的运行证据，历史规则只按已裁定解释约定处理，不冒充旧账本版本证据 |
 | 现有存档静态扫描 | 使用 `rg --files --hidden -g '!backend/build/**' -g '!**/.git/**' -g '*.json' -g '*.jsonl' -g '*.db' -g '*.sqlite' -g '*.sqlite3'` 列文件，Python JSON 递归只统计含 `event_type` 和 `stream_id` 的 credential 事件对象，不输出 payload/认证内容 | 原始输出见下；未发现偏离旧流的 credential 事件，但样本中 credential 事件总数为 0，**不能证明真实旧存档均兼容**。ignored 文件、zip 内文件及仓库外用户存档未检查；未打开生产数据库 |
 | 多流原子批次 | `AtomicEventBatch.events` 为列表、expected_stream_revisions 为向量；store `_prepare_append` 先逐流校验，再逐 event.stream_id 分配 revision（215–235、315–358、385–411 行）。内存 store 在同一 lock 下整批安装；Durable 的 1332–1371 行用 `_transaction`，1182–1200 行在 SQLite `BEGIN IMMEDIATE`/上下文事务内 `_write_delta`，失败回滚 | 现有存储 API 静态支持一个 batch 的多个流，不需要为此修改存储核心；未执行 credential 多流用例 |
 | debt 参照 | `debt_runtime.py:860–899` 的 `_revisions/_append` 取 economy/contract/debt/commerce 向量，创建 DebtSettlementPlan 再 `to_atomic_event_batch()` 一次 append；其 193–198 行把 read/expected/pinned 向量放进同一 AtomicEventBatch | 这是现有多流批次使用方式；没有把 debt 改成 credential，也没有运行它作为替身 |
@@ -448,7 +463,7 @@ scanned_python_files=2159
 {"candidate_count": 528, "json_documents": 680, "credential_events": 0, "off_stream_events": 0, "database_files": [], "invalid_json_files": [], "off_stream_locations": []}
 ```
 
-因此，本轮未发现“旧存档中存在旧流以外 credential 事件”或“credential_runtime 之外的 credential 领域写入方”；受样本覆盖和静态工具边界限制，不能提升为生产账本的完整审计。多流批次 API 静态可行，B 的完整迁移仍需独立授权和实证；本轮已经因 M3 停止，不继续补齐这些机制。
+因此，本轮未发现“旧存档中存在旧流以外 credential 事件”或“credential_runtime 之外的 credential 领域写入方”；受样本覆盖和静态工具边界限制，不能提升为生产账本的完整审计。多流批次 API 静态可行，B 的完整迁移仍需独立授权和实证；M3 已裁定；B 的这些机制仍待独立闸门，不在当前方案 A 中实施。
 
 ### D2、D3、D4 与拟议文件位置
 
@@ -469,7 +484,7 @@ dependency graph 另保留 ownership/inventory 只读投影顶点到使用它们
 
 位置沿用项目 `backend/app/gameplay/` 的领域模块与显式 registry 模式，测试在 `backend/tests/`。候选新文件为 `backend/app/gameplay/fact_type_registry.py`、`rule_pack_validator.py`、`credential_reference_chain.py` 以及对应测试；规则包按规格置于 `packs/credential_reference/pack.yaml` 与 `fact_types/`、`machine_defs/`、`models/`、`bindings/`。当前仓库没有此 packs 根目录，属于待审新增，不另建第二个存储层。不添加依赖；现有 PyYAML 的语法限制需在加载器中明确检查。
 
-本轮第 2 步只修订设计，以上为未来实现的候选位置，不是当前获准改动。未来 reference-chain 模块必须通过真实 CredentialAuthorityService/GameplayEventStore 完成授权提交并读取真实事件，不能让新模型输出直接进入存储、绕过 Owner。M3 停点和实例流偏离未解除，不能用注册器单测取代链路验收。
+本轮按用户批准的阶段 1，在上述候选位置实现注册、校验及方案 A 参考链路。未来 reference-chain 模块必须通过真实 CredentialAuthorityService/GameplayEventStore 完成授权提交并读取真实事件，不能让新模型输出直接进入存储、绕过 Owner。M3 历史解释已裁定，但实例流偏离仍未解除，不能用注册器单测取代链路验收。
 
 五个必须的拒绝测试各自独立反例：
 
@@ -578,10 +593,25 @@ flowchart TD
 
 探针只允许修改 FactType 注册数据和规则包，需从真实加载、Resolver、Owner 授权提交走到投影/回放。保存探针前后 commit/diff、`git diff --stat <frozen-head> --`、代码路径 `git diff --numstat <frozen-head> -- backend/app backend/tests scripts`、事件数量/类型、拒绝与 replay 证据。Owner/runtime/test driver 在探针阶段均不能新增分支；若必须写 Python、改持久事件或改其他 Owner，立即记录缺少的机制并停止，不以放宽判据补救。此处未运行探针，不承诺现有链路能达到零代码改动。
 
+## 执行计划与提交边界（本轮用户已指定）
+
+| 提交 | 精确文件范围 | 验收 |
+|---|---|---|
+| 阶段 0 | 本文件 | M3 登记、A 出口、旧存档限制；无代码变更 |
+| 阶段 1.1 | fact_type_registry.py 与其新增测试 | 单个 link Machine、逐层 owner、代码/数据模型同表、稳定拓扑序 |
+| 阶段 1.2 | rule_pack_validator.py、packs/credential_reference/ 声明及新增测试 | 严格数据子集、定位错误、多错整包拒绝 |
+| 阶段 1.3 | 新增五个独立拒绝码测试文件 | 第五项实际访问未声明输入时拒绝 |
+| 阶段 1.4 | credential_reference_chain.py 与其新增测试 | 冻结真实投影、受限输入、通过真实 credential Owner 提交 |
+| 阶段 2 | 仅 credential_runtime.py 和新增 R2 测试 | 三类错误码、原 receipt 重试；行为改变，非结构迁移 |
+| 阶段 3 R3 | 新增 R3 测试 | 真实 checkpoint、去缓存 snapshot 恢复、完整状态及来源摘要 |
+| 阶段 3 探针 | 仅规则包取值 | 冻结后记录 diff；kind 新值若被既有 runtime 拒绝，记录缺口并立即停止 |
+
+每次提交前后重跑五组冻结列表，分别为 5/11/72/49/201，合计 338 次节点执行（列表间存在 8 个重复节点，不能去重后声称仍执行 338）。与 G0 的 39 项失败取交集比较，新增失败停止；新增测试累计执行。原第 1 步和文档修订的旧验证证据只作历史记录。执行命令、原始 stdout、results、invocation 和逐组比较封存在仓库外 `D:/Temp/g3-credential-implementation-20261116/`；不会用新收集替代本轮真实测试。
+
+本轮禁止改动其他 Owner、共享 replay_duplicate、event_store.py、models.py、land_right_runtime、adventure_basic_closure 或任何既有测试；新链路不得成为第二个事实写入者。新增代码模型只接收受限冻结输入；规则包只带数据。实现原子完整的加载和纯评估不等于证明任意 Python 代码已被沙箱隔离。
+
 ## 需要用户决定
 
-1. **M3 停点如何处理。** 现有证据不能唯一恢复实际条件规则的 condition_revision；本轮没有自行赋值为 1、加持久字段或用 stream revision 替代。若未来选择固定 legacy 解释映射，需要显式决定其只是新的历史解释约定，以及什么历史样本/版本来源足以支持它；不能把该决定写成旧账本原有证据。
-2. **A 与 B 的推进边界。** A 沿用旧流并保留已知偏离；B 需要另行批准 v2 写入及 land-right 的读 CAS/pins 迁移，且仍欠跨实例不变量与旧 writer 切换设计。本轮仅记录静态方案，不选择迁移时机，不把模板合并视为实例流改造。
-3. **后续实现与探针。** 本轮按“仅文档，设计修订”单独提交并完成前后收集后停止，不进入实现。两个探针候选保留到链路冻结时再选；可见性占位角色仍需真实 principal 绑定。
+M3 已按本轮决定闭合为“历史约定 + v2 事件自带”；**旧存档运行证据缺失**继续保留。方案 A 的共享流与可见性占位均为已知限制。阶段 3 选定 kind 扩展探针；若需要改 runtime，记录失败并停止，不迁就判据。
 
-reads 的资格检查表达没有发现不可表达的判据；强制机制仍未实现。M3 不满足的停止原因和实例流已知偏离继续保留，不把第 1 步的“20 个现有测试通过”或本轮“338 个节点可收集”提升为 G3 或 v2 满足的结论。
+阶段 4 必须停下，回报 v2 condition 字段、双流投影、land-right 读向量及旧存档样本方案，再等用户确认。不得提前实施 B，不把 enum 值扩展本身宣称为新增 FactType 的成功证明。
