@@ -20,6 +20,8 @@ SimingInputType = Literal[
     "constraint_state_event",
     "siming_staging_ack",
     "population_cadence_input",
+    "esm.feasibility_response",
+    "esm.constraint_state",
 ]
 
 SimingOutputType = Literal[

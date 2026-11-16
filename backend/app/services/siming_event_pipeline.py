@@ -42,6 +42,9 @@ class SimingEventPipeline:
         self._consumer = consumer
         self._runtime = runtime
         self._producer = producer
+        tracker = getattr(runtime, "proposal_tracker", None)
+        if tracker is not None:
+            self._producer.proposal_tracker = tracker
         self._audit_writer = audit_writer
         self._character_dispatch_adapter = character_dispatch_adapter
         self._ingress_lock = RLock()

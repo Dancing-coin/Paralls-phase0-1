@@ -1,3 +1,7 @@
+import hashlib
+
+from app.models.environment_proposal import EnvironmentProposal
+from app.services.siming_proposal_tracker import SimingProposalTracker
 from app.models.authority_event import (
     AuthorityEvent,
     AuthorityEventRouting,
@@ -14,10 +18,12 @@ class SimingEventProducer:
         bus: AuthorityEventBusPort | None = None,
         *,
         authority_event_bus: AuthorityEventBusPort | None = None,
+        proposal_tracker: SimingProposalTracker | None = None,
     ) -> None:
         self._bus = bus or authority_event_bus
         if self._bus is None:
             raise ValueError("SimingEventProducer requires an authority event bus")
+        self.proposal_tracker = proposal_tracker or SimingProposalTracker()
 
     def publish_outputs(self, outputs: list[SimingOutput]) -> list[AuthorityEvent]:
         return self.publish_events(self.materialize_outputs(outputs))
@@ -33,9 +39,39 @@ class SimingEventProducer:
     def publish_events(self, events: list[AuthorityEvent]) -> list[AuthorityEvent]:
         published_events: list[AuthorityEvent] = []
         for event in events:
+            if event.event_type == "siming.environment_proposal":
+                proposal = EnvironmentProposal.model_validate(event.payload)
+                if not self.proposal_tracker.register_proposal(proposal.proposal_id, event):
+                    continue
             self._bus.publish(event)
             published_events.append(event)
         return published_events
+
+    def emit_environment_proposal(self, output: SimingOutput) -> AuthorityEvent:
+        event = self._proposal_event(output)
+        self.publish_events([event])
+        return event
+
+    def _proposal_event(self, output: SimingOutput) -> AuthorityEvent:
+        event = self._to_authority_event(output)
+        validate_siming_authority_event(event)
+        if output.selected_path != "environment_change_path":
+            raise ValueError("environment_proposal_requires_environment_path")
+        payload = output.payload
+        proposal_id = "proposal:" + hashlib.sha256(event.model_dump_json().encode()).hexdigest()
+        proposal = EnvironmentProposal(
+            proposal_id=proposal_id, candidate_ref=payload.get("candidate_ref", ""),
+            decision_ref=payload.get("decision_ref", ""), room_id=output.room_id,
+            scene_id=output.scene_id, zone_id=output.zone_id,
+            target_environment_id=payload.get("target_environment_id", ""),
+            goal=payload.get("goal") or "environment_change",
+            requested_change_type=payload.get("requested_change_type") or "light_level_drop",
+            requested_strength=payload.get("requested_strength") or "medium",
+            constraints_known=payload.get("constraints_known", []), fallback_options=payload.get("fallback_options", []),
+            producer_ts=output.producer_ts, causation_id=output.causation_id, correlation_id=output.correlation_id,
+        )
+        return event.model_copy(update={"event_id": f"siming.environment_proposal:{proposal_id}",
+            "event_type": "siming.environment_proposal", "payload": proposal.model_dump(mode="json")})
 
     def publish_siming_event(
         self,

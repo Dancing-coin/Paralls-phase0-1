@@ -9,6 +9,10 @@ from app.services.siming_heavenly_runtime_support import PreparedHeavenlyDecisio
 from threading import RLock, get_ident
 
 from app.models.authority_event import AuthorityEvent
+from app.models.feasibility_response import FeasibilityResponse
+from app.models.constraint_probe import ConstraintStateResult as ProbeConstraintStateResult
+from app.services.siming_proposal_tracker import SimingProposalTracker
+from pydantic import ValidationError
 from app.models.siming_event import (
     FairnessStateSnapshot,
     InterventionCandidate,
@@ -145,6 +149,8 @@ class SimingRuntime:
         conflict_generator: SimingConflictGenerator | None = None,
     ) -> None:
         self._feature_registry = feature_registry or SimingFeatureRegistry()
+        self.proposal_tracker = SimingProposalTracker()
+        self._environment_constraint_states = OrderedDict()
         self._llm_provider = llm_provider or DisabledSimingLlmCandidateProvider()
         self._policy = policy or SimingInterventionPolicy(
             feature_registry=self._feature_registry
@@ -233,10 +239,64 @@ class SimingRuntime:
                     self._siming_pending.pop(frame.turn_id, None)
             return result
 
+    def _handle_environment_protocol_event(self, event: AuthorityEvent, result: SimingTickResult) -> None:
+        self.proposal_tracker.cleanup_old_proposals()
+        reason = "invalid_environment_protocol_response"
+        if (event.source.layer != "L1" or event.source.system != "esm"
+                or "siming" not in event.routing.target_ids):
+            result.audit_records.append(self._audit(event, status="no_action", reason=reason))
+            return
+        try:
+            if event.event_type == "esm.constraint_state":
+                state = ProbeConstraintStateResult.model_validate(event.payload)
+                if event.correlation_id != state.correlation_id or event.causation_id != state.causation_id:
+                    raise ValueError(reason)
+                key = (event.room_id, event.scene_id, event.zone_id, state.probe_ref)
+                self._environment_constraint_states[key] = state.model_copy(deep=True)
+                while len(self._environment_constraint_states) > 128:
+                    self._environment_constraint_states.popitem(last=False)
+                return
+            response = FeasibilityResponse.model_validate(event.payload)
+            record = self.proposal_tracker.get(response.proposal_ref)
+            if record is None:
+                raise ValueError("unknown_environment_proposal")
+            proposal = record.output
+            if ((event.room_id, event.scene_id, event.zone_id, event.correlation_id, response.correlation_id) !=
+                    (proposal.room_id, proposal.scene_id, proposal.zone_id, proposal.correlation_id, proposal.correlation_id)
+                    or response.causation_id != response.proposal_ref or event.causation_id != response.proposal_ref):
+                raise ValueError(reason)
+            age = self.proposal_tracker.now_ts() - record.submitted_at
+            if proposal.ttl is not None and age >= proposal.ttl:
+                self.proposal_tracker.abort_proposal(response.proposal_ref, "expired_ttl")
+            if response.feasible and (response.constraints or not response.estimated_effect):
+                self.proposal_tracker.abort_proposal(response.proposal_ref, "effect_not_valuable")
+            original = self.proposal_tracker.accept_response(response, self.proposal_tracker.now_ts())
+            if original is None:
+                reason = "proposal_aborted_or_already_requested"
+            else:
+                payload = {**original.payload, "proposal_ref": response.proposal_ref,
+                           "feasibility_ref": response.response_id}
+                result.outputs.append(SimingOutput(
+                    output_type="dispatch_intent", room_id=original.room_id, scene_id=original.scene_id,
+                    zone_id=original.zone_id, causation_id=response.response_id, correlation_id=original.correlation_id,
+                    producer_ts=max(original.producer_ts, response.producer_ts), selected_path="environment_change_path",
+                    intervention_band="environment_request", priority=original.priority,
+                    ttl=max(1, original.ttl - max(0, age)) if original.ttl is not None else None,
+                    durability=original.durability, payload=payload,
+                ))
+                result.audit_records.append(self._audit(event, status="recorded", reason="environment_proposal_proceed"))
+                return
+        except (ValidationError, ValueError) as exc:
+            reason = str(exc)
+        result.audit_records.append(self._audit(event, status="no_action", reason=reason))
+
     def _start_tick(self, frame: SimingTurnFrame, effects=None) -> None:
         siming_input, result = frame.siming_input, frame.result
         frame.stage = "completed"
         event = siming_input.source_event
+        if siming_input.input_type in {"esm.feasibility_response", "esm.constraint_state"}:
+            self._handle_environment_protocol_event(event, result)
+            return
         if siming_input.input_type == "population_cadence_input" and self._population_capability is not None:
             try:
                 parser = PopulationCadenceInput.from_authority_event
@@ -2244,7 +2304,7 @@ class SimingRuntime:
         if result is not None:
             frame.result = result
         # 无模型 owner 分支不占 provider 活跃帧，也不被四个等待中的模型阻塞。
-        if siming_input.input_type == "siming_staging_ack" or (
+        if siming_input.input_type in {"siming_staging_ack", "esm.feasibility_response", "esm.constraint_state"} or (
             siming_input.input_type == "population_cadence_input" and self._population_capability is not None
         ):
             return frame
