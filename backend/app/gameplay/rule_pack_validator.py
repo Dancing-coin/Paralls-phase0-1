@@ -1,0 +1,186 @@
+"""Atomic, offline YAML data-subset loader for the credential reference pack."""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from hashlib import sha256
+import json
+from pathlib import Path
+import re
+from typing import Any, Callable, Mapping
+
+import yaml
+from yaml.nodes import MappingNode, ScalarNode, SequenceNode
+from yaml.tokens import AliasToken, AnchorToken, TagToken
+
+from app.gameplay.fact_type_registry import FactTypeRegistry, RegistrationRejected, Violation, freeze
+
+
+@dataclass(frozen=True)
+class LoadedPack:
+    pack_id: str
+    version: str
+    content_hash: str
+    registry: FactTypeRegistry
+    legacy_rule: Mapping[str, Any]
+
+
+def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: bool = False) -> LoadedPack:
+    directory = directory.resolve()
+    issues: list[Violation] = []
+    locations: dict[str, tuple[str, int]] = {}
+    raw_files = {}
+
+    def reject(code, target, file, line, hint):
+        issues.append(Violation(code, target, str(file), line, hint))
+
+    def read(path: Path) -> dict:
+        if not path.is_file():
+            reject("pack_content_missing", path.name, path, 1, "declare an existing pack file")
+            return {}
+        if path.stat().st_size > 512 * 1024:
+            reject("pack_file_too_large", path.name, path, 1, "split files larger than 512 KB")
+            return {}
+        try:
+            text = path.read_text(encoding="utf-8")
+            forbidden = False
+            for token in yaml.scan(text):
+                if isinstance(token, (AnchorToken, AliasToken, TagToken)):
+                    forbidden = True
+                    reject("pack_yaml_feature_forbidden", path.name, path, token.start_mark.line + 1, "anchors, aliases and explicit tags are forbidden")
+            if forbidden:
+                return {}
+            node = yaml.compose(text, Loader=yaml.SafeLoader)
+        except (yaml.YAMLError, UnicodeError) as error:
+            mark = getattr(error, "problem_mark", None)
+            reject("pack_yaml_invalid", path.name, path, mark.line + 1 if mark else 1, "use one UTF-8 YAML mapping document")
+            return {}
+        if not isinstance(node, MappingNode):
+            reject("pack_schema_invalid", path.name, path, 1, "each file must be a mapping")
+            return {}
+
+        def convert(n, target, key=False):
+            line = n.start_mark.line + 1
+            if isinstance(n, MappingNode):
+                result = {}
+                for k, v in n.value:
+                    if not isinstance(k, ScalarNode) or k.tag != "tag:yaml.org,2002:str":
+                        reject("pack_key_invalid", target, path, line, "mapping keys must be strings")
+                        continue
+                    if k.value in result:
+                        reject("pack_key_duplicate", target, path, k.start_mark.line + 1, "duplicate keys are forbidden")
+                    if k.value in {"if", "loop", "script", "code"}:
+                        reject("pack_contains_logic", target, path, k.start_mark.line + 1, "use a registered model reference and data parameters")
+                    result[k.value] = convert(v, target)
+                return result
+            if isinstance(n, SequenceNode):
+                return [convert(item, target) for item in n.value]
+            if not isinstance(n, ScalarNode):
+                reject("pack_schema_invalid", target, path, line, "use scalar, sequence or mapping data")
+                return None
+            if n.tag == "tag:yaml.org,2002:float" or (n.style is None and re.fullmatch(r"[-+]?\d+(?:\.\d*)?(?:[eE][-+]?\d+)", n.value)):
+                reject("pack_float_forbidden", target, path, line, "use a quoted decimal with explicit precision")
+                return None
+            if n.tag == "tag:yaml.org,2002:int":
+                if not re.fullmatch(r"-?(0|[1-9][0-9]*)", n.value):
+                    reject("pack_number_invalid", target, path, line, "use a decimal integer literal")
+                    return None
+                return int(n.value)
+            if n.tag == "tag:yaml.org,2002:bool" and n.value in ("true", "false"):
+                return n.value == "true"
+            if n.tag == "tag:yaml.org,2002:null" and n.value == "null":
+                return None
+            if n.tag != "tag:yaml.org,2002:str" or n.style not in ('"', "'"):
+                reject("pack_scalar_invalid", target, path, line, "quote string values; only true, false, null and integers may be bare")
+            if "${" in n.value:
+                reject("pack_contains_logic", target, path, line, "environment substitution is forbidden")
+            return n.value
+
+        result = {}
+        for k, v in node.value:
+            if not isinstance(k, ScalarNode) or k.tag != "tag:yaml.org,2002:str":
+                reject("pack_key_invalid", path.name, path, 1, "mapping keys must be strings")
+                continue
+            if k.value in result:
+                reject("pack_key_duplicate", k.value, path, k.start_mark.line + 1, "duplicate entry")
+            if k.value in {"if", "loop", "script", "code"}:
+                reject("pack_contains_logic", k.value, path, k.start_mark.line + 1, "executable keys are forbidden")
+            locations[k.value] = (str(path), k.start_mark.line + 1)
+            result[k.value] = convert(v, k.value)
+        raw_files[str(path.relative_to(directory))] = result
+        return result
+
+    manifest_path = directory / "pack.yaml"
+    manifest = read(manifest_path)
+    if running:
+        reject("pack_runtime_reload_forbidden", "pack", manifest_path, 1, "load only before runtime starts")
+    if manifest.get("parent_pack") is not None:
+        reject("pack_parent_unsupported", "parent_pack", manifest_path, 1, "this reference slice requires a self-contained pack")
+    for key in ("pack_id", "pack_version"):
+        if not isinstance(manifest.get(key), str) or not manifest[key]:
+            reject("pack_schema_invalid", key, manifest_path, 1, "declare nonempty pack identity and version")
+    if manifest.get("schema_version") != 1:
+        reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
+    contents = manifest.get("contents", {})
+    sections = {name: {} for name in ("fact_types", "machine_defs", "models")}
+    declared = {"pack.yaml"}
+    if not isinstance(contents, dict):
+        reject("pack_schema_invalid", "contents", manifest_path, 1, "contents must be a mapping")
+        contents = {}
+    for section, names in contents.items():
+        if section not in sections or not isinstance(names, list) or any(not isinstance(n, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", n) for n in names):
+            reject("pack_schema_invalid", section, manifest_path, 1, "declare supported content sections and lowercase file stems")
+            continue
+        for name in names:
+            relative = f"{section}/{name}.yaml"
+            declared.add(relative)
+            for target, spec in read(directory / relative).items():
+                if target in sections[section]:
+                    reject("pack_entry_duplicate", target, directory / relative, 1, "entry IDs must be unique")
+                sections[section][target] = spec
+    for path in sorted(directory.rglob("*")):
+        if path.is_file() and path.relative_to(directory).as_posix() not in declared:
+            reject("pack_content_undeclared", path.name, path, 1, "list every content file in pack.yaml")
+
+    # Shape checks protect the compiler from untrusted YAML structures.
+    for section, entries in sections.items():
+        for target, spec in entries.items():
+            file, line = locations[target]
+            valid = isinstance(spec, dict)
+            if valid and section == "fact_types":
+                valid = (isinstance(spec.get("owner_ref"), str) and isinstance(spec.get("state_set_ref"), str)
+                    and ("visibility" not in spec or isinstance(spec["visibility"], dict)))
+            if valid and section == "machine_defs":
+                valid = (isinstance(spec.get("states"), list) and all(isinstance(s, str) for s in spec["states"])
+                    and isinstance(spec.get("terminal_states"), list) and all(isinstance(s, str) for s in spec["terminal_states"])
+                    and isinstance(spec.get("transitions"), list) and all(isinstance(e, list) and len(e) == 2 and all(isinstance(s, str) for s in e) for e in spec["transitions"]))
+            if valid and section == "models":
+                valid = (isinstance(spec.get("owner_ref"), str) and isinstance(spec.get("determinism_policy"), dict)
+                    and all(isinstance(spec.get(key), list) and all(isinstance(s, str) for s in spec[key]) for key in ("reads", "writes_fact_types"))
+                    and isinstance(spec.get("params", {}), dict) and isinstance(spec.get("layers", []), list)
+                    and all(isinstance(layer, dict) and isinstance(layer.get("owner_ref"), str)
+                        and isinstance(layer.get("writes_fact_types"), list) and all(isinstance(s, str) for s in layer["writes_fact_types"]) for layer in spec.get("layers", [])))
+            if not valid:
+                reject("pack_schema_invalid", target, file, line, "entry has the wrong field types")
+    order = manifest.get("resolve_order")
+    if order is not None and (not isinstance(order, dict)
+            or not isinstance(order.get("unrelated", []), list) or any(not isinstance(s, str) for s in order.get("unrelated", []))
+            or not isinstance(order.get("before", []), list) or any(not isinstance(e, list) or len(e) != 2 or any(not isinstance(s, str) for s in e) for e in order.get("before", []))):
+        reject("pack_schema_invalid", "resolve_order", manifest_path, 1, "declare lists of fact IDs and edge pairs")
+    owners = manifest.get("owners")
+    if not isinstance(owners, list) or any(not isinstance(o, str) for o in owners):
+        reject("pack_schema_invalid", "owners", manifest_path, 1, "declare owner identifiers")
+    elif owners != ["Credential"]:
+        reject("facttype_owner_unknown", "owners", manifest_path, 1, "the reference host registers only Credential; packs cannot create owners")
+    registry = None
+    if not issues:
+        try:
+            registry = FactTypeRegistry.compile(facts=sections["fact_types"], models=sections["models"],
+                machines=sections["machine_defs"], owners=owners, resolve_order=order, handlers=handlers, locations=locations)
+        except RegistrationRejected as error:
+            issues.extend(error.violations)
+    if issues:
+        unique = {(v.code, v.target, v.file, v.line): v for v in issues}
+        raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
+    assert registry is not None
+    content_hash = sha256(json.dumps(raw_files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return LoadedPack(manifest["pack_id"], manifest["pack_version"], content_hash, registry, freeze(manifest.get("legacy_rule", {})))

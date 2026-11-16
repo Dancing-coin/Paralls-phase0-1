@@ -1,0 +1,27 @@
+pack_id: "credential_reference"
+pack_version: "1.0.0"
+schema_version: 1
+parent_pack: null
+owners: ["Credential"]
+contents:
+  fact_types: ["credential_link"]
+  machine_defs: ["credential_link"]
+  models: ["credential_command"]
+resolve_order:
+  before: []
+  unrelated: ["fact:credential:*:link"]
+legacy_rule:
+  condition_ref: "credential_legacy_rule"
+  condition_revision: 1
+  provenance: "historical_interpretation_not_original_ledger_evidence"
+  source_commit: "35674f57c4c7fca93d2afb8e5871992f72c2aeef"
+  source_sha256: "95983e0ed2038a977404540b0d5916b51768aa2916413582b34b5481fe772302"
+  mappings:
+    issued: ["absent", "issued"]
+    revoked: ["issued", "revoked"]
+    superseded: ["issued", "superseded"]
+    replacement_issued: ["absent", "issued"]
+  replacement_requires_ownership: false
+known_deviations:
+  shared_revision_stream: "gameplay:credentials"
+  visibility_selector: "unbound_role_placeholder"
