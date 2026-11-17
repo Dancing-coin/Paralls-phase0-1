@@ -35,6 +35,10 @@ _SUPERSEDED_FIELDS = frozenset({
     "credential_id", "replacement_credential_id", "issuer_ref", "from_state",
     "to_state", "condition_ref", "condition_revision",
 })
+_HOLDER_EVENT_FIELDS = frozenset({
+    "credential_id", "item_ref", "from_state", "to_state",
+    "condition_ref", "condition_revision",
+})
 
 CREDENTIAL_V2_EVENT_SCHEMAS = (
     CredentialV2EventSchema(
@@ -54,6 +58,10 @@ CREDENTIAL_V2_EVENT_SCHEMAS = (
     ),
 )
 _SCHEMAS = {schema.event_type: schema for schema in CREDENTIAL_V2_EVENT_SCHEMAS}
+_HOLDER_TRANSITIONS = {
+    "gameplay.credential.item_claimed": ("absent", "occupied"),
+    "gameplay.credential.item_released": ("occupied", "absent"),
+}
 
 
 def credential_link_stream_id(credential_id: str) -> str:
@@ -66,6 +74,10 @@ def credential_link_stream_id(credential_id: str) -> str:
     if len(stream_id) > 128:
         raise CredentialV2EventSchemaError("credential_fact_scope_too_long")
     return stream_id
+
+
+def credential_holder_stream_id(item_ref: str) -> str:
+    return credential_link_stream_id(item_ref).removesuffix(":link") + ":holder"
 
 
 def register_credential_v2_event_schemas(registry: EventSchemaRegistry) -> None:
@@ -98,4 +110,25 @@ def validate_credential_v2_event(event: Mapping[str, object]) -> None:
     if (payload["from_state"], payload["to_state"]) != schema.transition:
         raise CredentialV2EventSchemaError("credential_v2_transition_invalid")
     if event.get("stream_id") != credential_link_stream_id(payload["credential_id"]):
+        raise CredentialV2EventSchemaError("credential_v2_stream_mismatch")
+
+
+def validate_credential_v2_holder_event(event: Mapping[str, object]) -> None:
+    if not isinstance(event, Mapping):
+        raise CredentialV2EventSchemaError("credential_v2_event_invalid")
+    event_type = event.get("event_type")
+    transition = _HOLDER_TRANSITIONS.get(event_type) if type(event_type) is str else None
+    if transition is None or event.get("schema_version") != 2:
+        raise CredentialV2EventSchemaError("credential_v2_event_unregistered")
+    payload = event.get("payload")
+    if not isinstance(payload, Mapping) or set(payload) != _HOLDER_EVENT_FIELDS:
+        raise CredentialV2EventSchemaError("credential_v2_payload_invalid")
+    for field in _HOLDER_EVENT_FIELDS - {"condition_revision"}:
+        if type(payload[field]) is not str or not payload[field]:
+            raise CredentialV2EventSchemaError("credential_v2_payload_invalid")
+    if type(payload["condition_revision"]) is not int or payload["condition_revision"] < 1:
+        raise CredentialV2EventSchemaError("credential_v2_condition_invalid")
+    if (payload["from_state"], payload["to_state"]) != transition:
+        raise CredentialV2EventSchemaError("credential_v2_transition_invalid")
+    if event.get("stream_id") != credential_holder_stream_id(payload["item_ref"]):
         raise CredentialV2EventSchemaError("credential_v2_stream_mismatch")

@@ -1009,3 +1009,8 @@ G2 栅栏只覆盖已登记的物理流。v2 credential link 实例流与 holder
 ```
 
 逐提交前后五组冻结节点都是 338；提交前后与 G0 39 项失败比较均新增失败 0、收集错误 0。提交 `21a25b96` 后 credential/runtime、G2 fence 与相关 Scenario 4 定向集为 `38 passed`。本节文档改动将独立提交；提交完成后工作区不应包含其他文件。
+
+
+### B-2 栅栏与写入切换的提交边界
+
+栅栏激活与 v2 写入切换合并提交：单独激活栅栏会使旧 v1 writer 不再合法，而尚未切换的服务仍尝试写 v1 流，无法正常签发。切换后旧服务尝试新写入时，CredentialAuthorityService 抛出 `CredentialRuntimeError("credential_authority_fence_mismatch")`，而非返回失败 receipt；外层调用者可包装该异常。测试断言异常发生时事件列表不变。v1 已提交命令在切换后的重试继续校验并返回原 receipt，幂等键改变内容仍拒绝。
