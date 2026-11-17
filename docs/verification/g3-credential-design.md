@@ -737,3 +737,207 @@ fixture 使用真实 store、OwnershipAuthorityService、InventoryAuthorityServi
 目前没有可供验证的真实旧 credential 存档样本。此前对候选保存文件的静态扫描记录为 `credential_events=0`，它既不是事件不存在证明，也不是历史兼容性运行证据。任何未来双读测试目前只能构造合成 v1 fixture 再与 v2 fixture 混读；这只能验证定义的兼容逻辑，**不能称为真实历史数据证据**。进入方案 B 前需要用户提供/批准可审阅的真实旧存档样本来源及脱敏覆盖范围；在此之前，旧格式分布、receipt/pins 和边界状态保持未知。
 
 以上四项及真实历史样本覆盖均待回答。不得据本表候选实施方案 B、修改 `land_right_runtime` 或改写 v1 事件。
+
+## G3 方案 B：B-0 设计与运行证据（2026-11-17）
+
+本节记录 B-0 自检证据；没有实施 B-1/B-2，也没有更改 v1 事件。本次 B-0 起点为 `f42c08ae49efcf00c345fbed53e54e93d6ac745a`，分支 `codex/g0-b3-ingress-20261109`，开始时 `git status --porcelain=v1` 与暂存区均为空。B-0 全部产物只应提交本文件。
+
+### 多流批次 CAS：真实内存 store 实验
+
+实验脚本位于仓库外 `D:/Temp/g3-b0-20261117/g3_b0_multistream_cas.py`，使用真实 `GameplayEventStore` 和 `AtomicEventBatch`，不替换或模拟 store。复跑命令（工作目录为运行时仓库）：
+
+```powershell
+$env:PYTHONPATH = 'D:\Temp\paralls-g0-b3-ingress-20261109\backend'
+& 'D:\Temp\paralls-g0-py312\Scripts\python.exe' 'D:\Temp\g3-b0-20261117\g3_b0_multistream_cas.py'
+```
+
+原始输出：
+
+```text
+CASE multi_stream_expected_current
+committed=True heads={X:1,Y:1} events=2
+CASE stale_Y_expected_is_all_or_none
+seed_committed=True rejected=True error=revision_conflict heads={X:0,Y:1} events=1
+CASE concurrent_same_stream_Y
+results=['committed', 'revision_conflict'] head_Y=1 events=1
+CASE facttype_scope_encoding_real_source_samples
+credential:deed:1 -> c-Y3JlZGVudGlhbDpkZWVkOjE -> credential:deed:1 fact_id_length=46
+credential:deed:2 -> c-Y3JlZGVudGlhbDpkZWVkOjI -> credential:deed:2 fact_id_length=46
+credential:g3:1 -> c-Y3JlZGVudGlhbDpnMzox -> credential:g3:1 fact_id_length=43
+credential:g3:2 -> c-Y3JlZGVudGlhbDpnMzoy -> credential:g3:2 fact_id_length=43
+credential:adventure-basic:archive-plot-deed -> c-Y3JlZGVudGlhbDphZHZlbnR1cmUtYmFzaWM6YXJjaGl2ZS1wbG90LWRlZWQ -> credential:adventure-basic:archive-plot-deed fact_id_length=82
+item:deed:1 -> c-aXRlbTpkZWVkOjE -> item:deed:1 fact_id_length=38
+item:deed:2 -> c-aXRlbTpkZWVkOjI -> item:deed:2 fact_id_length=38
+item:g3:1 -> c-aXRlbTpnMzox -> item:g3:1 fact_id_length=35
+item:adventure-basic:archive-plot-deed -> c-aXRlbTphZHZlbnR1cmUtYmFzaWM6YXJjaGl2ZS1wbG90LWRlZWQ -> item:adventure-basic:archive-plot-deed fact_id_length=74
+reject_empty=credential_fact_scope_invalid expected=credential_fact_scope_invalid
+reject_control=credential_fact_scope_invalid expected=credential_fact_scope_invalid
+reject_too-long=credential_fact_scope_too_long expected=credential_fact_scope_too_long
+CASE real_v1_fixture_from_CredentialAuthorityService
+committed=True event_count=1 event_type=gameplay.credential.issued schema_version=1 stream_id=gameplay:credentials credential_id=credential:adventure-basic:archive-plot-deed item_ref=item:adventure-basic:archive-plot-deed
+CASE G2_fence_on_legacy_credential_stream
+old_v1_writer_rejected=True error=authority_context_invalid credential_events=0
+registered_writer_context_accepted=True error=None
+```
+
+`GameplayEventStore.append_batch` 在同一个内存锁内收集 expected/read revision、调用 `_prepare_append` 校验整个 revision vector，成功后才 `_install_batch`；因此上述 X 零写和同 Y 互斥是运行结果，并与实现边界相符。此证据只覆盖内存实现；B-1 不改变存储核心，且 B-0 用户自检要求的最小实验满足。
+
+### holder 建模与跨事实唯一性
+
+**选择 Machine，不选择 Holdings。** 同 item 至多有一个 active credential 是排他状态和合法状态转移，不是可分割数量、守恒物料或带预留/转移的持有集合；Holdings 的 H1–H5 不能自然表达“至多一个 active link”。新 Machine 是按 item 编码的 `fact:credential:<item-scope>:holder`，状态集 `absent / occupied`，转移 `absent→occupied`、`occupied→absent`；`occupied→occupied` 不是普通 issue/revoke 转移。它只表示 active-link 的唯一性占用，不授予 item custody 或产权。
+
+| 声明项 | 设计 |
+|---|---|
+| FactType ID | `fact:credential:<encode(item_ref)>:holder`；与 `fact:credential:<encode(credential_id)>:link` 属于同一 credential Owner 的两个模板 |
+| primitive / owner | `machine` / `Credential`；holder 仍由 `CredentialAuthorityService` 这个 Owner 原子写，不改 Inventory 或 Ownership |
+| holder 状态与转移 | `absent→occupied` 表示该 item 有一个 active link；`occupied→absent` 表示 active link 已 revoked；没有普通 `occupied→occupied` 转移 |
+| reads | link Machine 读取其 credential link 前态；holder 的唯一性不变量读取冻结的相关 credential link 投影和当前 item holder 投影；两者都只读，store/Owner 服务不进入 Resolver 输入 |
+| 偏序 | holder occupancy 投影与 link 投影均在 Credential 命令资格 Resolver 前；解析两个独立 Machine 事实时无依赖按稳定 FactType ID 排序，事件提交仍由一个 Owner 批次完成 |
+
+holder 不复制 credential ID，也不冒充完整的 item→credential 映射；active credential 身份仍来自 link Machine，holder 仅是该 item 是否已占用的 CAS 锁。冻结读取 link 投影用于给出 `credential_item_already_linked`，但最终并发保证来自 holder 流的 CAS，而非 Resolver 的扫描。部署时必须先从旧 v1 projection 初始化既有 active item 的 holder 状态；初始化前不能开启 v2 issue。holder 状态与 link 状态的一致性是 Credential Owner 的跨事实不变量，按《跨事实不变式》§三在提交前、同一冻结 revision vector 上校验。
+
+| 命令 | 本批次写流 | 每条写流 expected_revision 来源 | 约束与并发反例 |
+|---|---|---|---|
+| issue item I / credential C | `link(C)` 与 `holder(I)` | 从同一次捕获的全局有序事件快照归约得到各自 head；holder absent 为 0，之后使用该 item holder head | 发现 active link 或 holder 已 occupied 时先报 `credential_item_already_linked`；两个不同 credential 并发 issue 同 item 时都读到 holder revision r，首批将其 CAS 到 r+1，另一批 `revision_conflict`，Owner 映射为同 item 冲突且无 link 局部写入。若只扫 projection 后分别写 link(C1)/link(C2)，两批会同时成功，唯一性丢失 |
+| revoke C（item I） | `link(C)` 与 `holder(I)` | 同一快照中的 C link head 与 I holder head；holder 只在当前 link 为 active 时释放 | 对终态 link 拒绝 `credential_not_active`；holder revision 过期时两流整批拒绝。无 holder 流会允许不同 C 对同 item 分别 revoke/issue 交错，不能保护同 item 唯一性 |
+| supersede C1→C2，旧 item I、新 item J | `link(C1)`、`link(C2)`、`holder(I)`、`holder(J)`；若 I=J，只写该 holder 一次且保持 occupied | 所有写流的 head 来自同一事件快照；C2 不存在时 revision 0；新旧 holder head 均纳入 CAS | 新旧 link 转移和 holder 释放/占用属于一个原子批次；任一 expected 过期则全拒绝。不同 item 且 J 被并发 issue 占用时，supersede 整批失败，C1 不会先变终态。相同 item 时 holder 锁维持 occupied，旧 link 终结、新 link 激活在同批内替换 |
+
+当前代码证据：`credential_runtime.py` issue 先扫 `CredentialProjector` 检查 `credential_item_already_linked`，再将共享 `gameplay:credentials` head 放入 pins/expected revision；因此同 item 两个并发签发争用共享 head，后到者失败。`credential_duplicate` 是投影器在同一 credential ID 出现重复 issued 时拒绝；v2 同样以 link(C) 的 CAS 和 absent→issued 转移保护。现有 supersede 把旧 `superseded`、新 `issued` 放在一批；B-2 需扩为上述最多四条流，同时 v1 历史兼容不允许把旧事件搬写进 holder 流。新旧账本交界必须从 v1 projection 一次性导入占用状态并以明确 cutover revision 固定；不能靠运行中双写旧 aggregate head。
+
+### 实例流 ID 编码与真实样例
+
+源码取样命令：
+
+```powershell
+rg -n 'land_deed_credential_id|credential_id="credential:|replacement_credential_id="credential:|credential_item_ref="item:|replacement_item_ref="item:' backend/app/gameplay/credential_runtime.py backend/app/gameplay/adventure_basic_reference.py backend/tests/test_credential_runtime.py backend/tests/g3_credential_fixture.py
+```
+
+原始输出：
+
+```text
+backend/tests/g3_credential_fixture.py:38:        return common | dict(credential_id="credential:g3:1", credential_item_ref="item:g3:1",
+backend/tests/g3_credential_fixture.py:41:        return common | dict(credential_id="credential:g3:2", reason="replaced")
+backend/tests/g3_credential_fixture.py:42:    return common | dict(prior_credential_id="credential:g3:1", replacement_credential_id="credential:g3:2",
+backend/tests/g3_credential_fixture.py:43:        replacement_item_ref="item:g3:2", replacement_holder_ref="actor:g3")
+backend/tests/test_credential_runtime.py:81:        prior_credential_id="credential:deed:1",
+backend/tests/test_credential_runtime.py:82:        replacement_credential_id="credential:deed:2",
+backend/tests/test_credential_runtime.py:83:        replacement_item_ref="item:deed:2",
+backend/app/gameplay/adventure_basic_reference.py:626:    land_deed_credential_id = "credential:adventure-basic:archive-plot-deed"
+backend/app/gameplay/adventure_basic_reference.py:766:                credential_id=self.land_deed_credential_id,
+backend/app/gameplay/adventure_basic_reference.py:767:                credential_item_ref=self.land_deed_item_id,
+```
+
+编码为 `scope = "c-" + base64url_no_padding(UTF8(identifier))`，按 UTF-8 字节编码，不做 Unicode 规范化；反解必须严格 UTF-8、重新编码后与输入 scope 完全相同。不同原字节串由 base64url 单射映射，不含冒号，首字符固定字母 `c`，满足 scope 标识不为空且不会改变 `fact:credential:<scope>:<name>` 的段数。与 holder 共用该编码。前述运行输出验证 5 个 credential ID 和 4 个 item_ref 往返且唯一，FactType ID 为 35–82 字符；空/控制字符用 `credential_fact_scope_invalid`，FactType ID 超过 128 用 `credential_fact_scope_too_long` 拒绝。此上限与拒绝码须由 B-1 的唯一编码 helper 实现并测试；不接受静默截断或摘要碰撞风险。
+
+### v1/v2 双读验收用例
+
+v1 输入必须通过现有 `AdventureBasicScenario4.create()` 与 `issue_deed_credential()`（内部真实 `CredentialAuthorityService`）产生，不能手写 v1 事件冒充生产写入。运行证据已显示产生 1 个 `gameplay.credential.issued`、`schema_version=1`、旧流 `gameplay:credentials`、credential/item 均为实际 Scenario 4 ID。未来单测可用真实 Authority Service 在内存 store 构造其余 v1 状态；这是确定性 fixture，不是旧存档证据。
+
+| 用例 | 构造与断言 |
+|---|---|
+| 只有 v1 | 由真实 Service issue/revoke/supersede；双读 projection 与 B-1 前 v1-only projection 的 canonical bytes 逐字节比较 |
+| 只有 v2 | 由 B-1 新 schema 的合法实例流事件组成，检查每个 `stream_revision` 和 FactType ID 映射 |
+| v1 issued + v2 revoked | 先由服务产生 v1 issued，再在其后追加 v2 link 转移；全局顺序后状态为 revoked |
+| v1 issued + v2 superseded，新凭证 v2 | 旧 link 在 v2 终态 superseded，新 link absent→issued；结果含新旧两个实例且源事件分别可追溯 |
+| 全局顺序合并 | 交错写入 v1 aggregate 与 v2 instance，按 `(global_sequence,event_id)` 排序；不按 stream 分组后串接 |
+| 跨版本重复 credential_id | v1/v2 对同 credential ID 重复 issued，按 canonical instance identity 以 `credential_duplicate` fail closed |
+
+现有真实 v1 Authority Service 与未来双读的 v1 fixture 只验证代码生成的确定性事件；没有真实旧存档样本，因此不代表生产历史事件覆盖。
+
+### v2 事件与 M3 字段
+
+保留三种既有 v1 event type/schema/payload 不变。v2 转移使用新的事件类型（候选命名 `gameplay.credential.link_issued`、`gameplay.credential.link_revoked`、`gameplay.credential.link_superseded`），各自 `schema_version=2`；不在旧 event type 下给 v1 消费者引入新增必填字段。这样既提供明确的 v2 事件版本，也遵守《事件 schema 规格》§六新增必填字段不得复用旧事件名的规则。精确名字须在 B-1 注册时与全局事件类型登记核对。v2 Machine 转移 payload 显式要求 `from_state`、`to_state`、`condition_ref`、`condition_revision`；`condition_revision` 是规则版本，不是 stream revision。M3 的 `from_state` 由实例 link 前态派生（不存在为 absent，已有 active 为 issued，终态保留其终态），`to_state` 由 v2 transition kind 固定映射。条件引用使用已登记规则 ID 与正整数版本，资格来源同时带相关 link、holder、ownership/inventory 投影 revision pins；缺失任何引用或 pin 时拒绝，不从运行时当前默认规则猜测。
+
+升级到 schema_version 2 的依据是新增的 credential v2 事件定义携带完整 M3 条件字段；旧 v1 replay 继续用 v1 解码与 `credential_legacy_rule@1` 历史解释约定，不 upcast 并改写账本。此处提出的是新类型/版本的设计，不表示已完成事件注册或修改任何持久事件。
+
+### B-1/B-2 文件、测试、回退与判据
+
+| 阶段/独立提交 | 预期文件与测试 | 回退方式与完成判据 |
+|---|---|---|
+| B-0 | 仅 `docs/verification/g3-credential-design.md` | `git revert <B-0 commit>`；多流 CAS 有运行证据、全部真实样例编码唯一可逆、holder 无需改 store 核心 |
+| B-1.1 v2 schema 注册 | `backend/app/gameplay/event_schema_registry.py`（若可扩展既有机制）、credential schema 声明及 schema tests；具体列表提交前以 rg/登记路径核实 | 单提交 revert；合法/非法 v1/v2 schema 验证，旧 writer 行为不变 |
+| B-1.2 双读投影 | `credential_runtime.py` 的投影/必要薄适配与 credential projector 测试；不改写事件 | 单提交 revert；本节六种混合用例通过，v1-only canonical bytes 与改前逐字节相同，R2/R3 混合账本成立 |
+| B-1.3 B-1 验收 | 仅新增专项测试/必要 fixture | 按该提交 revert；credential/land-right 定向与 338 冻结节点无新增失败，整个 B-1 提交序列可 revert 回 B-1 前 |
+| B-2.1 v2 写入 + holder | `credential_runtime.py`、credential schema/编码声明及专项 tests；每项持久行为独立提交并在消息中标注“持久事件行为改变” | 单项 revert；同批写 link/holder，旧 v1 writer 尚未开放切换前必须已有可验证拒绝边界；并发唯一性拒绝 |
+| B-2.2 v1 停写 fence | 复用已支持的 `register_authority_stream`、`authority_contexts` 与 `update_authority_stream`；只在核实 Owner 能构造登记上下文且旧调用被拒后实施，不扩写 store | 单提交 revert；旧提交明确报错，正确 epoch/writer context 通过，升级/回滚 epoch 行为有覆盖 |
+| B-2.3 land-right 读向量 | 若经闸门批准，修改 `backend/app/gameplay/land_right_runtime.py` 及其定向测试；该文件目前仍受禁止，B-2 前置问题未决时不得改 | 单提交 revert；列出并验证 legacy stream、credential link、holder/存在性 revision 全向量，land-right 全量专项通过 |
+| B-2.4 adventure-basic 核对 | `adventure_basic_reference.py` 仅在构造链路需传入同一 Owner/fence 上下文且得到授权后；本任务默认不修改 | 单提交 revert；Scenario 4 不绕过 Owner，v1 历史仍可读，R2/R3 与全组门槛满足 |
+
+每个提交前后依用户要求运行五组冻结节点，并把失败节点与 `docs/verification/g0-939c6746/run2/results.json` 的 39 项失败按 nodeid、阶段和错误类型比较；新增失败立即停止。B-1 的 v1-only 比较须将改前投影 canonical bytes 保存到仓库外证据，不只比较状态数量。B-2 前置问题中的真实旧存档样本仍无着落；合成 v1 fixture 不替代该证据。
+
+### B-0 验证记录
+
+起点检查命令及输出：
+
+```text
+git rev-parse HEAD
+git branch --show-current
+git status --porcelain=v1
+git diff --cached --name-only
+f42c08ae49efcf00c345fbed53e54e93d6ac745a
+codex/g0-b3-ingress-20261109
+<后两条为空输出>
+```
+
+冻结五组执行命令由 G0 runner 按五份 `G1-*-nodeids.txt` 逐条 `--test` 参数运行。命令模式为：
+
+```powershell
+$args = @('docs/verification/g0-939c6746/run_baseline.py','--repo',$repoRoot,'--output',$out)
+foreach ($node in Get-Content "docs/verification/g0-939c6746/G1-$group-nodeids.txt") {
+    if ($node.Trim()) { $args += @('--test',$node.Trim()) }
+}
+& $pythonExe @args
+```
+
+每组均与 G0 39 失败清单逐 nodeid 比较；原始结果摘要：
+
+```text
+ownership collected=5 exit_code=0 baseline_failures=39 in_scope_baseline_failures=0 new_failures=0 collection_errors=0
+modifier collected=11 exit_code=0 baseline_failures=39 in_scope_baseline_failures=0 new_failures=0 collection_errors=0
+equipment collected=72 exit_code=0 baseline_failures=39 in_scope_baseline_failures=0 new_failures=0 collection_errors=0
+inventory collected=49 exit_code=0 baseline_failures=39 in_scope_baseline_failures=0 new_failures=0 collection_errors=0
+shared-replay collected=201 exit_code=0 baseline_failures=39 in_scope_baseline_failures=0 new_failures=0 collection_errors=0
+======================== 5 passed, 2 warnings in 0.39s ========================
+======================= 11 passed, 2 warnings in 1.36s =======================
+======================= 72 passed, 6 warnings in 18.32s =======================
+======================= 49 passed, 6 warnings in 9.67s =======================
+================= 201 passed, 7 warnings in 66.36s (0:01:06) ==================
+```
+
+冻结组 runner 输出及 `results.json` 保存在仓库外 `D:/Temp/g3-b0-20261117/pre/`。credential 与 land-right 定向命令选取 `test_credential_runtime.py`、R2 integrity、R3 rebuild、reference chain、pack schema、kind admission、facttype rejection、Scenario 4、closure/mirror 与 `test_authority_epoch_fence.py`：
+
+```text
+======================= 108 passed, 3 warnings in 3.18s =======================
+{"collected_count":108,"counts":{"passed":108},"exit_code":0,"collection_errors":[]}
+```
+
+B-0 目前满足三项自检门：多流 CAS 真实内存实验通过；全部当前源码/测试样例无冲突可逆编码；holder 方案使用现有多流 AtomicEventBatch 与 expected revision，无需修改存储核心。此为本次执行者依据列明证据作出的状态记录，不替用户宣布 B-0/B-1/B-2 整体通过。
+
+### B-0 后自检
+
+```powershell
+git show --stat --oneline --summary <B-0-commit>
+git diff --numstat <B-0-parent> <B-0-commit> -- backend/app backend/tests scripts
+$env:PYTHONPATH = 'D:\Temp\paralls-g0-b3-ingress-20261109\backend'
+& 'D:\Temp\paralls-g0-py312\Scripts\python.exe' 'D:\Temp\g3-b0-20261117/g3_b0_multistream_cas.py'
+```
+
+最后一条是提交后独立重做的最小多流实验，不能以本节前面的首次输出代替；提交完成后把实际输出补录于下：
+
+```text
+<待提交后复跑并粘贴原始输出>
+```
+
+本阶段没有新增拒绝/并发测试，因此“抽 3 个新增测试临时破坏逻辑”的自检在 B-0 不适用；后续阶段一旦新增此类测试，必须逐项做破坏验证并恢复，不得提交破坏。
+
+## B-0 状态与待用户决定
+
+| 项目 | 状态 | 证据/限制 |
+|---|---|---|
+| 独立 revision | 满足（运行证据） | X/Y 同批各到 revision 1；Y 过期使整批拒绝且 X=0；同 Y 并发一成一拒。当前 B-0 未切换写入 |
+| M3 | 满足（设计裁定，v2 待实现） | v1 按 `credential_legacy_rule@1` 解释且明示不是原账本证据；v2 自带 from/to/condition 字段。v2 事件尚未实现 |
+| 旧存档兼容 | 不满足（证据缺失） | 没有真实旧存档样本；真实 Authority 生成的 fixture 只验证代码路径，不是历史样本 |
+| 停写栅栏 | 满足（适用于当前 store 机制的运行证据） | 注册 credential 旧流后旧 Service 写入返回 `authority_context_invalid`；真实 G2 fence 测试覆盖 memory/durable 与 epoch 更新，但 B-2 切换尚未实施 |
+| land-right 迁移 | 不满足（未实施） | 仍读取旧单流，expected/pins 向量尚未迁移；B-2 文件需在 gate 后评估 |
+
+B-0 文档提交完成后停在 B-1 前置点，用户需要审阅 holder 占用 Machine 的业务含义、v2 新事件类型与字段的 schema-version 兼容选择、fence 登记及 context 可信来源、以及未来提供真实旧存档样本的方式。B-2 任何持久切写或修改 `land_right_runtime` 之前必须明确这些边界；本次没有执行方案 B 的代码阶段。
