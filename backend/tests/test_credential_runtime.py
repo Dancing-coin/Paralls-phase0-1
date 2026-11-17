@@ -189,10 +189,10 @@ def test_credential_stale_commit_rejects_without_partial_writes(kind: str, monke
     before = store.read_events()
     append = store.append_batch
 
-    def append_with_stale_revision(batch):
+    def append_with_stale_revision(batch, **kwargs):
         stream = "gameplay:ownership" if kind == "issue" else "gameplay:credentials"
         batch["expected_stream_revisions"][stream] -= 1
-        return append(batch)
+        return append(batch, **kwargs)
 
     monkeypatch.setattr(store, "append_batch", append_with_stale_revision)
     result = command(**args)
