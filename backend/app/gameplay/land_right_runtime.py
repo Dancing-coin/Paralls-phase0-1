@@ -128,6 +128,30 @@ class LandRightTransferAuthority:
         ):
             raise LandRightRuntimeError("land_right_credential_required")
         transaction_id = f"tx:{command_id}"
+        credential_revision_vector = dict(credentials.source_revision_vector)
+        for source_event in events:
+            if source_event.event_type in {
+                "gameplay.credential.item_claimed",
+                "gameplay.credential.item_released",
+            }:
+                credential_revision_vector[source_event.stream_id] = max(
+                    credential_revision_vector.get(source_event.stream_id, 0),
+                    source_event.stream_revision,
+                )
+        v1_credential_revision = credential_revision_vector.pop(self._CREDENTIAL_STREAM, None)
+        expected_stream_revisions = {
+            self._OWNERSHIP_STREAM: ownership_revision,
+            inventory_stream: inventory.source_revision_vector.get(inventory_stream, 0),
+        }
+        if v1_credential_revision is not None:
+            expected_stream_revisions[self._CREDENTIAL_STREAM] = v1_credential_revision
+        pinned_revisions = {
+            "ownership": ownership_revision,
+            "inventory": inventory.source_revision_vector.get(inventory_stream, 0),
+        }
+        if v1_credential_revision is not None:
+            pinned_revisions["credentials"] = v1_credential_revision
+        pinned_revisions.update(credential_revision_vector)
         event = {
             "event_id": f"evt:{command_id}:land-right-transfer",
             "event_type": "gameplay.ownership.right_transferred",
@@ -153,19 +177,9 @@ class LandRightTransferAuthority:
             {
                 "transaction_id": transaction_id,
                 "command_id": command_id,
-                "expected_stream_revisions": {
-                    self._OWNERSHIP_STREAM: ownership_revision,
-                    self._CREDENTIAL_STREAM: credentials.source_revision_vector.get(
-                        self._CREDENTIAL_STREAM,
-                        0,
-                    ),
-                    inventory_stream: inventory.source_revision_vector.get(inventory_stream, 0),
-                },
-                "pinned_revisions": {
-                    "ownership": ownership_revision,
-                    "credentials": credentials.source_revision_vector.get(self._CREDENTIAL_STREAM, 0),
-                    "inventory": inventory.source_revision_vector.get(inventory_stream, 0),
-                },
+                "expected_stream_revisions": expected_stream_revisions,
+                "read_stream_revisions": credential_revision_vector,
+                "pinned_revisions": pinned_revisions,
                 "events": [event],
                 "idempotency_record": {
                     "principal_ref": self._PRINCIPAL,
