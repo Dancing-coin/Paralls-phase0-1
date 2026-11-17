@@ -91,7 +91,10 @@ class CredentialReferenceChain:
         heads = {}
         for event in events:
             heads[event.stream_id] = max(heads.get(event.stream_id, 0), event.stream_revision)
-        projection = CredentialProjector().rebuild(events)
+        model_params = self.pack.registry.models[MODEL].params
+        projection = CredentialProjector(
+            credential_kinds=model_params["credential_kinds"], proves=model_params["proves"]
+        ).rebuild(events)
         links = {key: asdict(link) | {"status": "issued" if link.status == "active" else link.status}
                  for key, link in projection.links.items()}
         values = {FACT: links, "command@1": dict(command) | {"kind": kind}}
@@ -118,8 +121,9 @@ class CredentialReferenceChain:
             raise CredentialRuntimeError("credential_command_unknown")
         # Retry identity and replay are the Owner's responsibility. Re-evaluating
         # an already committed issue would incorrectly reject its existing ID.
-        record = self._store.get_idempotency_record(self._owner._PRINCIPAL, command["idempotency_key"])
-        if record is None:
+        principals = (self._owner._PRINCIPAL, self._owner._V2_PRINCIPAL) if self._owner._v2_enabled else (self._owner._PRINCIPAL,)
+        records = (self._store.get_idempotency_record(principal, command["idempotency_key"]) for principal in principals)
+        if not any(record is not None for record in records):
             error = self.evaluate(self.freeze_inputs(kind, command))
             if error is not None:
                 raise CredentialRuntimeError(error)
