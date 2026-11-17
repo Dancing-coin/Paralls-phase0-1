@@ -700,3 +700,40 @@ packs\credential_reference\models\credential_command.yaml:17:    credential_kind
 | 5-1 | credential_runtime.py、reference chain 与新增测试；恢复 rule pack 五种 kind 基线 | 可选集合注入，默认保持既有五种 kind/三种 proves；仅 reference chain 注入规则包集合 |
 | 5-2 | 仅 `packs/credential_reference/models/credential_command.yaml` | 先测基线拒绝，再只改声明接受 permit；提交自身代码 numstat 必须为空 |
 | 5-3 | 本文档 | 仅记录 B 前置问题、候选与真实旧存档证据限制 |
+
+### 阶段 5-2 探针记录
+
+冻结基点为 `03356f0d48f28c4a9a3960f0196671a76752d7f7`，提交为 `bcf930566b3ef24ca00e4d0fbbef0c40b15612c7`。阶段开始时规则包恢复为五种基线 kind；同一 fixture、命令参数 `credential_kind="permit"` 在未加声明时由 Resolver 与真实 Owner 均以 `credential_invalid` 拒绝，源事件数 6，snapshot 不变。只把 `permit` 加入 `models/credential_command.yaml` 后，同一命令通过真实 CredentialAuthorityService 提交一条 `gameplay.credential.issued`，receipt 为 `new_commit`；重放返回相同 event ID，状态为 `duplicate_replayed`，CredentialProjector 重建结果含 `permit`。源事件从 6 增至 7。
+
+提交差异原始输出：
+
+```text
+> git diff --stat 03356f0d..bcf93056 --
+ packs/credential_reference/models/credential_command.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+> git diff --numstat 03356f0d..bcf93056 -- backend/app backend/tests scripts
+<空输出>
+> git show --stat --oneline --summary bcf93056
+bcf93056 G3 credential: prove permit admission through declaration-only probe
+ packs/credential_reference/models/credential_command.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+```
+
+fixture 使用真实 store、OwnershipAuthorityService、InventoryAuthorityService、CredentialAuthorityService 与 CredentialProjector；不是生产旧存档证据。命令、提交 receipt、事件完整 JSON 和 replay receipt 保存在仓库外 `D:/Temp/g3-credential-implementation-20261116/probe-result.json`；未加声明时的拒绝证据为 `probe-baseline.json`。提交前后冻结五组与 credential/G3 测试均由 `verify.py phase5-2-pre/post` 运行，详细原始输出在 `phase5-2-{pre,post}-GROUP.log` 及对应 results.json。
+
+## 阶段 5-3：方案 B 前置问题（待答，不实施）
+
+方案 B 仍未获本节授权，也没有改持久事件、流映射或任何其他 Owner。下列候选是待评估方向，不是已选择的方案。
+
+| 待答问题 | 当前代码证据 | 候选做法与未决点 |
+|---|---|---|
+| 1. 实例流 ID 的无冲突编码 | `credential_runtime.py` 的 `CredentialLink.credential_id` 和 `_text` 接受非空字符串；issued payload 原样保留 credential_id；现有 `_STREAM` 是共享常量。FactType 命名契约使用冒号分段，credential ID 本身可含冒号或特殊字符。 | 定义 `fact:credential:<encoded-id>:link` 的唯一规范。候选为 UTF-8 byte 百分号编码，并规定十六进制大小写、是否允许 unescaped 字节、空 ID/长度上限和 decode 后规范性校验；另可使用摘要作流键并在注册映射表保存原 ID。逐字拼接、非规范百分号编码或无映射的单向摘要均不能直接证明可逆、无冲突。需要测试冒号、百分号、Unicode、空值、规范化等价和长度边界。 |
+| 2. 跨实例同 item 唯一性 | `CredentialAuthorityService.issue_credential` 先从全量 credential 投影扫描同一 item 的 active link，再把 `gameplay:credentials` 当前 head 放入同一事务的 expected/pinned revisions。共同流 head 让并发签发争用相同 CAS。 | 按实例拆流后候选包括：真实、可 CAS 的 item 唯一索引/租约事实流；经治理的唯一性 Owner/序列化命令队列；或专门设计可原子检查并提交的约束存储。仅扫描冻结 projection 后写各自 instance stream 会发生竞态；同时读旧 aggregate head 但不递增它也不能让两个新 writer 相互冲突。选择须说明 supersede 释放旧 item 与 replacement item 的原子顺序和恢复语义。 |
+| 3. 旧 v1 writer 停写栅栏 | `CredentialAuthorityService._event` 仍生成 `schema_version=1` 和 `_STREAM="gameplay:credentials"`；`_append` 继续提交该事件。兼容双读期间仅靠发布新代码不能证明旧进程已退出。 | 候选为部署层 writer drain/版本门禁、显式切换状态拒绝旧命令，或账本/Owner 能验证的 writer epoch/capability 栅栏。需要定义多进程、回滚、离线命令及栅栏与最后一个 v1 batch 的原子边界；不能只靠文档约定或观察到一次 v2 写入。 |
+| 4. `land_right_runtime` 的读向量迁移 | `LandRightTransferAuthority.transfer_title` 从单次 `read_events()` 派生 credential source_revision_vector，随后 expected revisions 读取 `gameplay:credentials` 单个旧 key，pins 使用单个 `credentials` revision。`expected_ownership_revision` 独立代表 ownership stream head。 | 保持 `expected_ownership_revision` 含义不变。候选 credential read vector 包括 legacy aggregate head、被消费 link 的 instance head，以及任何校验依赖的关联事实流；包括显式 revision 0 以保护缺席到出现的变化。CAS 与 pins 必须传完整 stream→revision 对应关系，不可继续用单值 `credentials` 遮蔽向量。需要评估读投影和 append 前之间的并发窗口及 pin 审计格式。 |
+
+### 旧存档与双读证据边界
+
+目前没有可供验证的真实旧 credential 存档样本。此前对候选保存文件的静态扫描记录为 `credential_events=0`，它既不是事件不存在证明，也不是历史兼容性运行证据。任何未来双读测试目前只能构造合成 v1 fixture 再与 v2 fixture 混读；这只能验证定义的兼容逻辑，**不能称为真实历史数据证据**。进入方案 B 前需要用户提供/批准可审阅的真实旧存档样本来源及脱敏覆盖范围；在此之前，旧格式分布、receipt/pins 和边界状态保持未知。
+
+以上四项及真实历史样本覆盖均待回答。不得据本表候选实施方案 B、修改 `land_right_runtime` 或改写 v1 事件。
