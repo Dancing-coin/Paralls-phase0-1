@@ -74,7 +74,13 @@ class CredentialReferenceChain:
     def __init__(self, *, store: GameplayEventStore, inventory_registry: InventoryDefinitionRegistry, pack: LoadedPack):
         self._store = store
         self._inventory_registry = inventory_registry
-        self._owner = CredentialAuthorityService(store=store, inventory_registry=inventory_registry)
+        model_params = pack.registry.models[MODEL].params
+        self._owner = CredentialAuthorityService(
+            store=store,
+            inventory_registry=inventory_registry,
+            credential_kinds=model_params["credential_kinds"],
+            proves=model_params["proves"],
+        )
         self.pack = pack
 
     def freeze_inputs(self, kind: str, command: Mapping[str, Any]) -> EvaluationFrame:

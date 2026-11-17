@@ -50,11 +50,18 @@ class CredentialPresentationDecision:
 
 
 class CredentialProjector:
+    _DEFAULT_CREDENTIAL_KINDS = frozenset({"deed", "receipt", "certificate", "key", "contract_document"})
+    _DEFAULT_PROVES = frozenset({"evidence_only", "access_only", "evidence_and_access"})
     _EVENT_TYPES = {
         "gameplay.credential.issued",
         "gameplay.credential.revoked",
         "gameplay.credential.superseded",
     }
+
+    def __init__(self, *, credential_kinds: Sequence[str] | None = None,
+                 proves: Sequence[str] | None = None) -> None:
+        self._credential_kinds = frozenset(self._DEFAULT_CREDENTIAL_KINDS if credential_kinds is None else credential_kinds)
+        self._proves = frozenset(self._DEFAULT_PROVES if proves is None else proves)
 
     def rebuild(self, events: Sequence[GameplayEvent]) -> CredentialProjection:
         links: dict[str, CredentialLink] = {}
@@ -69,7 +76,7 @@ class CredentialProjector:
                     raise CredentialRuntimeError("credential_duplicate")
                 credential_kind = _text(payload, "credential_kind")
                 proves = _text(payload, "proves")
-                if credential_kind not in {"deed", "receipt", "certificate", "key", "contract_document"} or proves not in {"evidence_only", "access_only", "evidence_and_access"}:
+                if credential_kind not in self._credential_kinds or proves not in self._proves:
                     raise CredentialRuntimeError("credential_invalid")
                 links[credential_id] = CredentialLink(
                     credential_id=credential_id,
@@ -147,9 +154,13 @@ class CredentialAuthorityService:
     _STREAM = "gameplay:credentials"
     _OWNERSHIP_STREAM = "gameplay:ownership"
 
-    def __init__(self, *, store: GameplayEventStore, inventory_registry: InventoryDefinitionRegistry) -> None:
+    def __init__(self, *, store: GameplayEventStore, inventory_registry: InventoryDefinitionRegistry,
+                 credential_kinds: Sequence[str] | None = None,
+                 proves: Sequence[str] | None = None) -> None:
         self._store = store
-        self._projector = CredentialProjector()
+        self._credential_kinds = frozenset(CredentialProjector._DEFAULT_CREDENTIAL_KINDS if credential_kinds is None else credential_kinds)
+        self._proves = frozenset(CredentialProjector._DEFAULT_PROVES if proves is None else proves)
+        self._projector = CredentialProjector(credential_kinds=self._credential_kinds, proves=self._proves)
         self._ownership_projector = OwnershipProjector()
         self._inventory_projector = InventoryProjector(inventory_registry)
 
@@ -188,7 +199,7 @@ class CredentialAuthorityService:
             raise CredentialRuntimeError("credential_invalid")
         if any(link.credential_item_ref == credential_item_ref and link.status == "active" for link in projection.links.values()):
             raise CredentialRuntimeError("credential_item_already_linked")
-        if credential_kind not in {"deed", "receipt", "certificate", "key", "contract_document"} or proves not in {"evidence_only", "access_only", "evidence_and_access"}:
+        if credential_kind not in self._credential_kinds or proves not in self._proves:
             raise CredentialRuntimeError("credential_invalid")
         if right_id not in self._ownership_projector.rebuild(self._store.read_events()).rights:
             raise CredentialRuntimeError("ownership_right_missing")

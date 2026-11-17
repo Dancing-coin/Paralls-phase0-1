@@ -10,7 +10,7 @@ from app.gameplay.ownership_runtime import OwnershipAuthorityService
 PACK = Path(__file__).resolve().parents[2] / "packs" / "credential_reference"
 
 
-def setup_reference():
+def setup_reference(*, pack=None):
     store = GameplayEventStore()
     OwnershipAuthorityService(store=store).grant_initial_title(command_id="cmd:g3:title",
         asset_ref="land:g3", holder_ref="actor:g3", right_id="right:g3",
@@ -26,7 +26,8 @@ def setup_reference():
             item_id=f"item:g3:{number}", definition_id="item:g3:document", quantity=1,
             container_id="container:g3:bag", idempotency_key=f"g3:item:{number}",
             causation_id="cause:g3", correlation_id="corr:g3")
-    chain = CredentialReferenceChain(store=store, inventory_registry=registry, pack=load_credential_pack(PACK))
+    chain = CredentialReferenceChain(store=store, inventory_registry=registry,
+        pack=load_credential_pack(PACK) if pack is None else pack)
     return store, registry, chain
 
 
