@@ -13,6 +13,10 @@ from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, Inventor
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.ownership_runtime import OwnershipProjector
+from app.gameplay.credential_v2_event_schema import (
+    CredentialV2EventSchemaError,
+    validate_credential_v2_event,
+)
 
 
 class CredentialRuntimeError(ValueError):
@@ -56,7 +60,13 @@ class CredentialProjector:
         "gameplay.credential.issued",
         "gameplay.credential.revoked",
         "gameplay.credential.superseded",
+        "gameplay.credential.link_issued",
+        "gameplay.credential.link_revoked",
+        "gameplay.credential.link_superseded",
     }
+    _V2_ISSUED = "gameplay.credential.link_issued"
+    _V2_REVOKED = "gameplay.credential.link_revoked"
+    _V2_SUPERSEDED = "gameplay.credential.link_superseded"
 
     def __init__(self, *, credential_kinds: Sequence[str] | None = None,
                  proves: Sequence[str] | None = None) -> None:
@@ -69,8 +79,14 @@ class CredentialProjector:
         for event in sorted(events, key=lambda value: (value.global_sequence, value.event_id)):
             if event.event_type not in self._EVENT_TYPES:
                 continue
+            is_v2 = event.event_type in {self._V2_ISSUED, self._V2_REVOKED, self._V2_SUPERSEDED}
+            if is_v2:
+                try:
+                    validate_credential_v2_event(event.model_dump(mode="python"))
+                except CredentialV2EventSchemaError as error:
+                    raise CredentialRuntimeError(str(error)) from error
             payload = event.payload
-            if event.event_type == "gameplay.credential.issued":
+            if event.event_type in {"gameplay.credential.issued", self._V2_ISSUED}:
                 credential_id = _text(payload, "credential_id")
                 if credential_id in links:
                     raise CredentialRuntimeError("credential_duplicate")
@@ -90,7 +106,7 @@ class CredentialProjector:
                     status="active",
                     source_event_id=event.event_id,
                 )
-            elif event.event_type == "gameplay.credential.revoked":
+            elif event.event_type in {"gameplay.credential.revoked", self._V2_REVOKED}:
                 credential_id = _text(payload, "credential_id")
                 link = links.get(credential_id)
                 if link is None or link.status != "active" or link.issuer_ref != _text(payload, "issuer_ref"):
