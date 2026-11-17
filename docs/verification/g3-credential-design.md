@@ -1014,3 +1014,119 @@ G2 栅栏只覆盖已登记的物理流。v2 credential link 实例流与 holder
 ### B-2 栅栏与写入切换的提交边界
 
 栅栏激活与 v2 写入切换合并提交：单独激活栅栏会使旧 v1 writer 不再合法，而尚未切换的服务仍尝试写 v1 流，无法正常签发。切换后旧服务尝试新写入时，CredentialAuthorityService 抛出 `CredentialRuntimeError("credential_authority_fence_mismatch")`，而非返回失败 receipt；外层调用者可包装该异常。测试断言异常发生时事件列表不变。v1 已提交命令在切换后的重试继续校验并返回原 receipt，幂等键改变内容仍拒绝。
+
+## G3 credential 收尾验证（2026-11-18）
+
+### 声明种类与下游业务策略
+
+land-right 的 `seal` 用例验证凭证种类可被 Credential Owner 签发、重建和读取；它不意味着该凭证自动满足土地转让策略。land-right 对 `seal` 按 `LandRightRuntimeError("land_right_credential_required")` 拒绝是预期行为，且拒绝前后事件列表相同。同一规则包下签发 `deed` 并转让则成功。种类准入与下游业务策略保持分离。
+
+`CredentialProjector.rebuild` 读取侧现在只要求 `credential_kind` 与 `proves` 是非空字符串，不根据当前规则包集合重新解释已提交历史；写入准入仍由 `CredentialAuthorityService` 注入的集合控制。删除当前规则包中的种类不会令已有事件在投影时失效；新写入未声明种类仍以 `credential_invalid` 零写入拒绝。`land_right_runtime.py` 与 `adventure_basic_closure.py` 未修改。
+
+| 缺陷 | 修复提交 | B-2 测试未发现的原因 |
+|---|---|---|
+| reference chain 的 `freeze_inputs` 曾构造无参 projector；v2 重试曾只查 v1 principal | `d5c6f2fe` | 直接 Owner/v1 replay 测试没有让扩展 kind 穿过 reference chain 的冻结投影，也没有走 v2 principal 重试分支 |
+| presentation 未将声明集合传给 validator | `e8c2d278` | 既有 presentation 用例未在规则包扩展 kind 后签发并验证 |
+| land-right 与 closure 使用默认 projector，不能读取扩展 kind | `5ae74a71` | 原有消费者用例只覆盖默认五种 kind；没有以扩展 v2 事件运行 land-right 策略和 closure/hash 重建 |
+
+land-right 红测原始输出（`D:/Temp/g3-seal-policy-red.log`）：
+
+```text
+E                   app.gameplay.credential_runtime.CredentialRuntimeError: credential_invalid
+app\gameplay\credential_runtime.py:109: CredentialRuntimeError
+FAILED tests/test_credential_declared_replay_consumers.py::test_land_right_transfer_rejects_pack_declared_seal_as_business_policy
+1 failed, 2 warnings in 0.51s
+```
+
+修复后定向集覆盖 credential runtime、R2/R3、reference chain、pack/schema、准入、fence、dual-read、消费者/presentation、v2 write cutover、land-right revision vector、closure 与 Scenario 4：
+
+```text
+116 passed in 4.99s
+```
+
+### 干净 worktree 导入路径与冻结比较
+
+在干净 detached worktree `D:\Temp\g3-final-clean-5ae74a71`，使用 `C:\Anaconda3\python.exe`，在 `backend` cwd 检查导入；冻结和定向 pytest 前后重复，输出一致：
+
+```powershell
+python -c "import inspect, app; from app.gameplay.event_store import GameplayEventStore; from app.gameplay.credential_runtime import CredentialAuthorityService; print('app.__file__='+str(app.__file__)); print('GameplayEventStore='+inspect.getsourcefile(GameplayEventStore)); print('CredentialAuthorityService='+inspect.getsourcefile(CredentialAuthorityService)); print('sys.path[0:4]='+repr(__import__('sys').path[:4]))"
+```
+
+原始输出：
+
+```text
+app.__file__=D:\Temp\g3-final-clean-5ae74a71\backend\app\__init__.py
+GameplayEventStore=D:\Temp\g3-final-clean-5ae74a71\backend\app\gameplay\event_store.py
+CredentialAuthorityService=D:\Temp\g3-final-clean-5ae74a71\backend\app\gameplay\credential_runtime.py
+sys.path[0:4]=['', 'C:\\Anaconda3\\python313.zip', 'C:\\Anaconda3\\DLLs', 'C:\\Anaconda3\\Lib']
+```
+
+`run_baseline.py` 把 worktree 根与 `backend` 插入 `sys.path`，`backend` 排在根之前；`backend/conftest.py` 在 backend 路径缺失时插入它。实际三个模块均指向干净 worktree，没有导入旧 `app`。
+
+在该 worktree 的 backend cwd 执行 `python -u D:\Temp\g3-b2-frozen-compare.py`，与 `docs/verification/g0-939c6746/run2/results.json` 的 39 项基线失败比较，输出：
+
+```text
+330 passed, 4 warnings in 72.43s
+FROZEN=338 FAILED=0 BASELINE_FAILED_IN_SET=0 NEW_FAILURES=[] EXIT=0
+```
+
+五份冻结清单为 5、11、72、49、201 项，共 338。主工作树文档提交前复跑同一比较：
+
+```text
+330 passed, 4 warnings in 58.95s
+FROZEN=338 FAILED=0 BASELINE_FAILED_IN_SET=0 NEW_FAILURES=[] EXIT=0
+```
+
+### 方案 B 后声明探针
+
+探针只在干净 worktree 的 `packs/credential_reference/models/credential_command.yaml` 增加 `seal`。仓库外一次性脚本 `D:/Temp/g3-final-seal-probe.py` 经真实 reference chain、Credential Owner、land-right Owner、真实内存 store 和默认 `CredentialProjector` 执行。命令：
+
+```powershell
+Set-Location D:\Temp\g3-final-clean-5ae74a71\backend
+python -c "import sys; sys.path.insert(0, 'tests'); exec(compile(open(r'D:\Temp\g3-final-seal-probe.py', encoding='utf-8').read(), r'D:\Temp\g3-final-seal-probe.py', 'exec'))"
+```
+
+原始输出：
+
+```text
+UNDECLARED_REJECTED=credential_invalid event_count=6
+SEAL_ISSUE committed=True receipt_event_ids=['evt:cmd:g3:issue_credential:credential:1', 'evt:cmd:g3:issue_credential:credential:2'] batch_event_ids=['evt:cmd:g3:issue_credential:credential:1', 'evt:cmd:g3:issue_credential:credential:2'] types=['gameplay.credential.link_issued', 'gameplay.credential.item_claimed'] event_count=8
+SEAL_REPLAY status=duplicate_replayed event_ids=['evt:cmd:g3:issue_credential:credential:1', 'evt:cmd:g3:issue_credential:credential:2'] event_count=8
+SEAL_LAND_RIGHT=business_reject:land_right_credential_required event_count_before=8 event_count_after=8
+DEED_LAND_RIGHT=committed event_count=11 types=['gameplay.credential.link_issued', 'gameplay.credential.item_claimed', 'gameplay.ownership.right_transferred']
+SEAL_REVOKE committed=True event_ids=['evt:cmd:g3:seal-revoke:credential:1', 'evt:cmd:g3:seal-revoke:credential:2'] types=['gameplay.credential.link_revoked', 'gameplay.credential.item_released']
+R3 checkpoint_before=1 checkpoint_after=0 event_count=13 credential_links=2 source_revision_vector={'fact:credential:c-Y3JlZGVudGlhbDpnMzox:link': 2, 'fact:credential:c-Y3JlZGVudGlhbDpkZWVk:link': 1, 'fact:credential:c-aXRlbTpnMzox:holder': 2, 'fact:credential:c-aXRlbTpnMzoy:holder': 1} state_digest_before=3c1c9b514f0169f40deb037c19b58bbde82ea2344d9460c26554ab79541aa9fe state_digest_after=3c1c9b514f0169f40deb037c19b58bbde82ea2344d9460c26554ab79541aa9fe equal=True
+```
+
+`not_declared` 在 6 个源事件时被拒且 snapshot 不变。seal 写入产生 link-issued/item-claimed 两事件批次；重放返回原 event IDs，R2 duplicate 路径成功，receipt IDs 与原 transaction IDs 实际逐项一致，事件数保持 8。land-right 对 seal 业务拒绝且零写入；deed 转让成功；seal 吊销后仅移除 projection checkpoint，从 snapshot 恢复并全量重建，完整 links 与 source revision vector digest 一致。
+
+探针 diff：
+
+```text
+git diff --stat
+ packs/credential_reference/models/credential_command.yaml | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+git diff --numstat HEAD -- backend/app backend/tests scripts
+<无输出；backend/app、backend/tests、scripts 均为 0 行改动>
+```
+
+探针规则包改动已恢复；未改 Python、测试或脚本。fixture 是确定性构造数据，不是历史存档证据。
+
+### write-cutover 测试来源与覆盖
+
+`backend/tests/test_credential_v2_write_cutover.py` 首次随提交 `6e7271f5` 加入，是该分支为 v2 切换编写的测试。它覆盖 issue/supersede/revoke 在 link 与 holder 流的批次事件、精确 replay、旧 v1 writer 被 fence 拒绝、同 item 并发 issue 被 holder CAS 拒绝、切换后 v1 receipt replay 和幂等键复用冲突。它未覆盖 reference chain 的新增声明 kind、land-right 新 kind 业务策略或 closure 重建；这些由消费者测试与本节探针补足。
+
+### 状态与未验证项
+
+| 项目 | 状态 | 证据/限制 |
+|---|---|---|
+| 声明新增 kind 的写入和重放 | 满足（干净树探针） | 只改规则包增加 seal；真实 Owner 签发、精确重放；未声明种类零写入拒绝 |
+| land-right / closure 消费新 kind | 满足（定向测试与探针） | seal 业务拒绝且零写入，deed 转让成功，closure hash 重建通过 |
+| R3 checkpoint 删除后重建 | 满足（干净树探针） | 移除 projection checkpoint 后从 snapshot 恢复，完整 links 与 revision vector digest 一致 |
+| 冻结 338 比较 | 满足（干净 worktree 与文档前主树） | 两次均 `NEW_FAILURES=[]`；39 项基线在冻结集内新增失败为 0 |
+| 真实旧存档兼容 | 未验证 | 没有真实旧存档样本；构造 fixture 不是历史数据证据 |
+| 可见性强制 | 未验证 | `role:credential_authority` 仍是未绑定真实 principal 的占位声明 |
+| 其他 Owner 迁移 | 未验证 | 本次只验证 credential、land-right 与 closure 路径，其他 Owner 未迁移 |
+
+`v2 写入切换` 状态记录为**部分满足**：reference chain、presentation、land-right 与 closure 已发现的声明集合缺陷有对应修复，并由本次干净树定向集、冻结比较和探针验证；真实旧存档与可见性强制仍未验证。此记录不替用户作最终验收决定。
