@@ -1,5 +1,6 @@
 """The reference chain feeds declared kinds into the real credential Owner."""
 from pathlib import Path
+import re
 from shutil import copytree
 
 import pytest
@@ -16,9 +17,9 @@ def pack_with(tmp_path: Path, *, kinds: str, proves: str | None = None):
     copytree(PACK, directory)
     path = directory / "models/credential_command.yaml"
     text = path.read_text(encoding="utf-8")
-    old = '    credential_kinds: ["deed", "receipt", "certificate", "key", "contract_document"]'
-    assert old in text
-    text = text.replace(old, f'    credential_kinds: {kinds}')
+    pattern = r'(?m)^    credential_kinds: \[[^\r\n]*\]$'
+    assert re.search(pattern, text)
+    text = re.sub(pattern, f'    credential_kinds: {kinds}', text, count=1)
     if proves is not None:
         text = text.replace('    proves: ["evidence_only", "access_only", "evidence_and_access"]',
             f'    proves: {proves}')
