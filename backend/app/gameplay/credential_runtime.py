@@ -161,9 +161,11 @@ class CredentialProjector:
 class CredentialPresentationValidator:
     """Read-only policy precondition for an active credential plus right holder."""
 
-    def __init__(self, *, store: GameplayEventStore, inventory_registry: InventoryDefinitionRegistry) -> None:
+    def __init__(self, *, store: GameplayEventStore, inventory_registry: InventoryDefinitionRegistry,
+                 credential_kinds: Sequence[str] | None = None,
+                 proves: Sequence[str] | None = None) -> None:
         self._store = store
-        self._credential_projector = CredentialProjector()
+        self._credential_projector = CredentialProjector(credential_kinds=credential_kinds, proves=proves)
         self._inventory_projector = InventoryProjector(inventory_registry)
         self._ownership_projector = OwnershipProjector()
 
