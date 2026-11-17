@@ -105,8 +105,6 @@ class CredentialProjector:
                     raise CredentialRuntimeError("credential_duplicate")
                 credential_kind = _text(payload, "credential_kind")
                 proves = _text(payload, "proves")
-                if credential_kind not in self._credential_kinds or proves not in self._proves:
-                    raise CredentialRuntimeError("credential_invalid")
                 links[credential_id] = CredentialLink(
                     credential_id=credential_id,
                     credential_item_ref=_text(payload, "credential_item_ref"),
