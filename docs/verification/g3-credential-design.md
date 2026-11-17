@@ -941,3 +941,71 @@ $env:PYTHONPATH = 'D:\Temp\paralls-g0-b3-ingress-20261109\backend'
 | land-right 迁移 | 不满足（未实施） | 仍读取旧单流，expected/pins 向量尚未迁移；B-2 文件需在 gate 后评估 |
 
 B-0 文档提交完成后停在 B-1 前置点，用户需要审阅 holder 占用 Machine 的业务含义、v2 新事件类型与字段的 schema-version 兼容选择、fence 登记及 context 可信来源、以及未来提供真实旧存档样本的方式。B-2 任何持久切写或修改 `land_right_runtime` 之前必须明确这些边界；本次没有执行方案 B 的代码阶段。
+
+## G3 B-2：G2 authority stream API 核对（2026-11-17）
+
+本节是 B-2 第 4 条要求的只读核查，未改 `event_store.py`、models、其他 Owner，也未启用 credential 写入切换。
+
+### G2 设计依据
+
+读取 `docs/verification/g2-visibility-budget/epoch-design.md`。相关原文结论：
+
+```text
+G2，推断：只对显式登记的受保护流启用写入栅栏。每个受保护写入携带 (stream, scope, epoch, writer)；Store 在同一 SQLite BEGIN IMMEDIATE 事务内读取登记并校验。缺失、错误 scope、旧 epoch、同 epoch 不同 writer 均明确拒绝；跨多流批次全成或全不成。未登记流保持现有默认行为。
+
+可信后台装配为 publisher 提供明确 scope_ref、epoch 和代表该运行实例的 writer_ref；publisher 每次写入时以旁置 typed context 提供 tuple。数据来自受信后台配置及部署装配，不由 HTTP、WebSocket、Godot、Agent 或领域 payload 自称。
+
+G2 不实现或证明 B4 handoff、可信 control head 或远程 writer 真身。
+```
+
+### 当前 store API 代码核对
+
+| API | 内存 store | Durable store | 迁移含义 |
+|---|---|---|---|
+| `register_authority_stream(stream_id, scope_ref, epoch, writer_ref)` | 新登记成功；相同 tuple 可重复登记；已有流 tuple 不同则 `authority_stream_already_registered` | 在数据库事务中创建/更新 schema 4 登记；同 tuple 可重复，不同 tuple 拒绝 | 只能用于首次启用；不能用 register 覆盖旧 writer |
+| `get_authority_stream(stream_id)` | 返回当前 tuple 的副本或 `None` | 从当前 SQLite 登记表读取；旧 schema 3 返回 `None` | 可查询当前登记；不能把查询结果本身当成提交授权来源 |
+| `update_authority_stream(old tuple, new_epoch, new_writer_ref)` | 锁内要求登记完全等于旧 tuple 且 `new_epoch > epoch`，否则 `authority_stream_update_conflict` | 单数据库事务内按旧 `(stream, scope, epoch, writer)` 做条件 UPDATE，要求 schema 4 与 `new_epoch > epoch`，rowcount 必须为 1 | 支持递增 epoch 并更换 writer；不需增加第二套栅栏 |
+| `append_batch(..., authority_contexts=...)` | 已登记事件流必须由 context 精确匹配登记；否则 `authority_context_invalid` | 在 append 数据库事务内读取登记并校验；批次任一受保护流不匹配则整批拒绝 | 已登记 credential 流的旧调用会被明确拒绝；未登记流维持原行为 |
+
+重复幂等记录会在 `_prepare_append` 的 authority-context 校验之前返回原 receipt。这符合 G2 对“已提交精确重试不新增事件”的规定，不等同于放行新写。G2 的 context 是旁置可信装配数据；Store 不认证能够任意调用 Python API 或拥有任意 SQL 权限的程序身份，不能把 context 当远程 principal 身份证明。
+
+### 运行测试证据
+
+命令：
+
+```powershell
+$env:PYTHONPATH = 'D:\Temp\paralls-g0-ingress-20261109\backend;D:\Temp\paralls-g0-ingress-20261109\backend\tests'
+& 'D:\Temp\paralls-g0-py312\Scripts\python.exe' -m pytest backend/tests/test_authority_epoch_fence.py backend/tests/test_credential_authority_fence.py backend/tests/test_credential_runtime.py -q
+```
+
+原始输出：
+
+```text
+......................................                                   [100%]
+38 passed, 2 warnings in 1.00s
+```
+
+G2 既有测试覆盖 memory/durable 的缺失、错误和多流 context，精确 retry、同 key 异 digest、update-first/append-first、重开与 snapshot restore。新增 credential fence 测试验证构造阶段未登记、显式激活后旧 v1 Authority 可携带受信 context 写入，未携带 context 的旧式直接 append 以 `authority_context_invalid` 被拒。
+
+### 停写结论与切换约束
+
+**API 支持递增 epoch 与换 writer；实现时必须换 writer_ref。** 只把 epoch 从 1 增到 2、writer_ref 仍保留 `actor_gameplay.credential_domain`，不足以阻止一个存活的同版服务实例：当前 `_append` 每次读出最新登记，且其 principal 与登记 writer 相同，它可能随登记 epoch 更新继续构造 context。切换 v2 时须将 v1 `gameplay:credentials` 登记原子更新为更高 epoch 和新的 v2 writer_ref；旧服务要求 writer_ref 为自身 principal，故不能构造匹配 context，必须沿明确 `credential_authority_fence_mismatch` 路径拒绝。v2 Owner 使用独立 writer_ref 并通过可信装配提供登记 tuple。
+
+G2 栅栏只覆盖已登记的物理流。v2 credential link 实例流与 holder 流必须在首次写前逐流登记；缺登记时不能声称受保护。旧 v1 aggregate 流更新登记后，旧 schema 事件的精确 replay 可返回原 receipt，任何新的 v1 事务必须被拒绝。登记转换、旧 writer drain/离线停用与 v2 writer 激活仍需遵守 G2 设计的离线独占前置；G2 本身不提供在线 handoff 协调。
+
+**核对状态：支持，可沿用现有 G2 API。** 未发现必须修改 `event_store.py`、models 或存储核心才能表达 epoch 递增/换 writer；这里仅是 API 代码和现有测试证据，不代表 B-2 切换已经实施。后续 v2 写入和 land-right 读向量迁移尚未开始。
+
+### 本轮提交与工作区状态
+
+本轮恢复后两个独立提交：
+
+```text
+7a125c7e 测试垫片签名兼容 authority_contexts，断言未改
+  backend/tests/test_credential_runtime.py | 4 +--
+
+21a25b96 构造函数不再改 store
+  backend/app/gameplay/credential_runtime.py | 21 ++++++++++++++++++++ -
+  backend/tests/test_credential_authority_fence.py | 46 +++++++++++++++++++++++
+```
+
+逐提交前后五组冻结节点都是 338；提交前后与 G0 39 项失败比较均新增失败 0、收集错误 0。提交 `21a25b96` 后 credential/runtime、G2 fence 与相关 Scenario 4 定向集为 `38 passed`。本节文档改动将独立提交；提交完成后工作区不应包含其他文件。
