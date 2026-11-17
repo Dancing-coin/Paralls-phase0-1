@@ -169,6 +169,8 @@ class CredentialAuthorityService:
     _PRINCIPAL = "actor_gameplay.credential_domain"
     _STREAM = "gameplay:credentials"
     _OWNERSHIP_STREAM = "gameplay:ownership"
+    _AUTHORITY_SCOPE = "scope:credential-domain"
+    _AUTHORITY_EPOCH = 1
 
     def __init__(self, *, store: GameplayEventStore, inventory_registry: InventoryDefinitionRegistry,
                  credential_kinds: Sequence[str] | None = None,
@@ -179,6 +181,11 @@ class CredentialAuthorityService:
         self._projector = CredentialProjector(credential_kinds=self._credential_kinds, proves=self._proves)
         self._ownership_projector = OwnershipProjector()
         self._inventory_projector = InventoryProjector(inventory_registry)
+
+    def activate_authority_fence(self) -> None:
+        self._store.register_authority_stream(
+            self._STREAM, self._AUTHORITY_SCOPE, self._AUTHORITY_EPOCH, self._PRINCIPAL
+        )
 
     def issue_credential(
         self,
@@ -261,7 +268,19 @@ class CredentialAuthorityService:
         return self._append(command_id, idempotency_key, digest, events, {self._STREAM: self._store.get_stream_head(self._STREAM), inventory_stream: inventory_revision})
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, events: list[dict[str, object]], revisions: Mapping[str, int]) -> AppendBatchResult:
-        return self._store.append_batch({"transaction_id": f"tx:{command_id}", "command_id": command_id, "expected_stream_revisions": dict(revisions), "pinned_revisions": dict(revisions), "events": events, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": []})
+        stream_ids = sorted({str(event["stream_id"]) for event in events})
+        authority_contexts = []
+        for stream_id in stream_ids:
+            authority = self._store.get_authority_stream(stream_id)
+            if authority is None:
+                continue
+            if authority is None or authority["scope_ref"] != self._AUTHORITY_SCOPE or authority["writer_ref"] != self._PRINCIPAL:
+                raise CredentialRuntimeError("credential_authority_fence_mismatch")
+            authority_contexts.append(authority)
+        batch = {"transaction_id": f"tx:{command_id}", "command_id": command_id, "expected_stream_revisions": dict(revisions), "pinned_revisions": dict(revisions), "events": events, "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": []}
+        if authority_contexts:
+            return self._store.append_batch(batch, authority_contexts=authority_contexts)
+        return self._store.append_batch(batch)
 
     @classmethod
     def _event(cls, command_id: str, index: int, event_type: str, payload: Mapping[str, object], causation_id: str, correlation_id: str) -> dict[str, object]:
