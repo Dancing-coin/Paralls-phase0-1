@@ -5,7 +5,12 @@ from shutil import copytree
 from app.gameplay.adventure_basic_closure import capture_adventure_basic_closure
 from app.gameplay.adventure_basic_reference import AdventureBasicScenario4
 from app.gameplay.credential_reference_chain import CredentialReferenceChain, load_credential_pack
-from app.gameplay.land_right_runtime import LandRightTransferAuthority, LandRightTransferPolicy
+from app.gameplay.land_right_runtime import (
+    LandRightRuntimeError,
+    LandRightTransferAuthority,
+    LandRightTransferPolicy,
+)
+import pytest
 from g3_credential_fixture import PACK, command, setup_reference
 
 
@@ -22,7 +27,7 @@ def _pack_with_seal(tmp_path: Path):
     return load_credential_pack(directory)
 
 
-def test_land_right_transfer_reads_pack_declared_v2_credential_kind(tmp_path):
+def test_land_right_transfer_rejects_pack_declared_seal_as_business_policy(tmp_path):
     store, registry, chain = setup_reference(pack=_pack_with_seal(tmp_path))
     chain._owner.activate_v2_authority()
     args = command("issue_credential") | {"credential_kind": "seal"}
@@ -36,15 +41,46 @@ def test_land_right_transfer_reads_pack_declared_v2_credential_kind(tmp_path):
             credential_presence_container_ids=("container:g3:bag",),
         ),),
     )
+    before = store.read_events()
+    with pytest.raises(LandRightRuntimeError, match="^land_right_credential_required$"):
+        authority.transfer(
+            command_id="cmd:g3:seal-land-right-transfer",
+            asset_ref="land:g3",
+            right_id="right:g3",
+            from_holder_ref="actor:g3",
+            to_holder_ref="actor:g4",
+            credential_id=args["credential_id"],
+            expected_ownership_revision=store.get_stream_head("gameplay:ownership"),
+            idempotency_key="key:g3:seal-land-right-transfer",
+            causation_id="cause:g3",
+            correlation_id="corr:g3",
+        )
+    assert store.read_events() == before
+
+
+def test_land_right_transfer_accepts_deed_under_pack_that_also_declares_seal(tmp_path):
+    store, registry, chain = setup_reference(pack=_pack_with_seal(tmp_path))
+    chain._owner.activate_v2_authority()
+    args = command("issue_credential") | {"credential_kind": "deed"}
+    assert chain.execute("issue_credential", **args).committed
+
+    authority = LandRightTransferAuthority(
+        store=store,
+        inventory_registry=registry,
+        policies=(LandRightTransferPolicy(
+            asset_ref="land:g3",
+            credential_presence_container_ids=("container:g3:bag",),
+        ),),
+    )
     result = authority.transfer(
-        command_id="cmd:g3:seal-land-right-transfer",
+        command_id="cmd:g3:deed-land-right-transfer",
         asset_ref="land:g3",
         right_id="right:g3",
         from_holder_ref="actor:g3",
         to_holder_ref="actor:g4",
         credential_id=args["credential_id"],
         expected_ownership_revision=store.get_stream_head("gameplay:ownership"),
-        idempotency_key="key:g3:seal-land-right-transfer",
+        idempotency_key="key:g3:deed-land-right-transfer",
         causation_id="cause:g3",
         correlation_id="corr:g3",
     )
