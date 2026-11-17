@@ -615,3 +615,88 @@ flowchart TD
 M3 已按本轮决定闭合为“历史约定 + v2 事件自带”；**旧存档运行证据缺失**继续保留。方案 A 的共享流与可见性占位均为已知限制。阶段 3 选定 kind 扩展探针；若需要改 runtime，记录失败并停止，不迁就判据。
 
 阶段 4 必须停下，回报 v2 condition 字段、双流投影、land-right 读向量及旧存档样本方案，再等用户确认。不得提前实施 B，不把 enum 值扩展本身宣称为新增 FactType 的成功证明。
+
+## 阶段 5-0：运行时准入集合与构造点盘点
+
+本节只记录代码现状，为后续可选集合注入建立调用方基线。搜索范围为 `backend/app`、`backend/tests`、`scripts`，明确排除 `backend/build/`。函数内 import 也在搜索范围；构造器调用以类名的直接调用表达式为准。
+
+### CredentialAuthorityService 构造点
+
+执行命令：
+
+```powershell
+rg -n -C 2 'CredentialAuthorityService\s*\(' backend/app backend/tests scripts --glob '!backend/build/**'
+```
+
+原始输出：
+
+```text
+backend/app\gameplay\adventure_basic_reference.py-716-            inventory=inventory,
+backend/app\gameplay\adventure_basic_reference.py-717-            purchase_authority=purchase_authority,
+backend/app\gameplay\adventure_basic_reference.py:718:            credential_authority=CredentialAuthorityService(
+backend/app\gameplay\adventure_basic_reference.py-719-                store=base.store,
+backend/app\gameplay\adventure_basic_reference.py-720-                inventory_registry=base.inventory_registry,
+--
+backend/app\gameplay\credential_reference_chain.py-75-        self._store = store
+backend/app\gameplay\credential_reference_chain.py-76-        self._inventory_registry = inventory_registry
+backend/app\gameplay\credential_reference_chain.py:77:        self._owner = CredentialAuthorityService(store=store, inventory_registry=inventory_registry)
+backend/app\gameplay\credential_reference_chain.py-78-        self.pack = pack
+backend/app\gameplay\credential_reference_chain.py-79-
+--
+backend/tests\test_credential_replay_integrity.py-14-    if kind == "revoke_credential":
+backend/tests\test_credential_replay_integrity.py-15-        chain.execute("supersede_credential", **command("supersede_credential"))
+backend/tests\test_credential_replay_integrity.py:16:    service = CredentialAuthorityService(store=store, inventory_registry=registry)
+backend/tests\test_credential_replay_integrity.py-17-    invoke = getattr(service, kind)
+backend/tests\test_credential_replay_integrity.py-18-    args = command(kind)
+--
+backend/tests\test_credential_runtime.py-22-    for item_id in ("item:deed:1", "item:deed:2"):
+backend/tests\test_credential_runtime.py-23-        inventory.instantiate(command_id=f"cmd:{item_id}", actor_ref="actor:alice", item_id=item_id, definition_id="item:land-deed", quantity=1, container_id="container:alice-bag", idempotency_key=item_id, causation_id="cause", correlation_id="corr")
+backend/tests\test_credential_runtime.py:24:    return store, registry, CredentialAuthorityService(store=store, inventory_registry=registry)
+```
+
+这些是四个直接构造点。`adventure_basic_reference` 和两个既有 credential 测试不传允许集合；reference chain 是唯一会从 G3 规则包读取并向 Owner 注入的构造点。reference chain 的构造源码当前同样未注入。检索未发现函数内延迟 import 的额外构造表达式。
+
+### credential_kind / proves 集合与运行时路径
+
+执行命令：
+
+```powershell
+rg -n -C 1 'credential_kind not in|proves not in|credential_kind in \{|evidence_only|contract_document' backend/app/gameplay/credential_runtime.py backend/app/gameplay/adventure_basic_reference.py backend/app/gameplay/land_right_runtime.py --glob '!backend/build/**'
+rg -n -F 'credential_kinds:' packs backend --glob '!backend/build/**'
+```
+
+原始输出（第一条命令）：
+
+```text
+backend/app/gameplay/credential_runtime.py-71-                proves = _text(payload, "proves")
+backend/app/gameplay/credential_runtime.py:72:                if credential_kind not in {"deed", "receipt", "certificate", "key", "contract_document"} or proves not in {"evidence_only", "access_only", "evidence_and_access"}:
+backend/app/gameplay/credential_runtime.py-73-                    raise CredentialRuntimeError("credential_invalid")
+--
+backend/app/gameplay/credential_runtime.py-190-            raise CredentialRuntimeError("credential_item_already_linked")
+backend/app/gameplay/credential_runtime.py:191:        if credential_kind not in {"deed", "receipt", "certificate", "key", "contract_document"} or proves not in {"evidence_only", "access_only", "evidence_and_access"}:
+backend/app/gameplay/credential_runtime.py-192-            raise CredentialRuntimeError("credential_invalid")
+--
+backend/app/gameplay/land_right_runtime.py-25-    credential_kind: str = "deed"
+backend/app/gameplay/land_right_runtime.py:26:    credential_proves: str = "evidence_only"
+backend/app/gameplay/land_right_runtime.py-55-            or policy.credential_kind != "deed"
+backend/app/gameplay/land_right_runtime.py:56:            or policy.credential_proves not in {"evidence_only", "evidence_and_access"}
+```
+
+原始输出（第二条命令）：
+
+```text
+packs\credential_reference\models\credential_command.yaml:17:    credential_kinds: ["deed", "receipt", "certificate", "key", "contract_document", "permit"]
+```
+
+`CredentialProjector.rebuild` 在 `credential_runtime.py:72` 校验每个历史 issued payload 的 kind/proves；`CredentialAuthorityService.issue_credential` 在 `:191` 对新命令做相同集合检查。这两处各自硬编码五个 kind 和三个 proves。它们不是从包中读取。`land_right_runtime.py:55-56` 是 land-right policy 的窄业务约束（仅 deed，且限定两种证明能力），不是 credential Owner 的全局准入列表；阶段 5-1 不改此 Owner。
+
+规则包 loader 把 `models/credential_command.yaml` 的 `params.credential_kinds` 与 `params.proves` 编入 `credential_command@1` 注册模型；`CredentialReferenceChain.freeze_inputs/evaluate` 通过已加载 `LoadedPack.registry` 的模型参数读取它们。当前实例化链路只把 `store` 和 `inventory_registry` 传给 `CredentialAuthorityService`，故包集合只约束纯 Resolver 的预判，不控制 Owner 准入，也不控制 projector 对已提交事件的回放准入。上一轮 `permit` 探针正是因此通过 Resolver、随后在真实 Owner 以 `credential_invalid` 拒绝；事件数未增加。
+
+## 阶段 5 执行记录
+
+| 提交 | 文件范围 | 说明 |
+|---|---|---|
+| 5-0 | 本文档 | 构造点与集合流向静态盘点；附原始搜索输出 |
+| 5-1 | credential_runtime.py、reference chain 与新增测试；恢复 rule pack 五种 kind 基线 | 可选集合注入，默认保持既有五种 kind/三种 proves；仅 reference chain 注入规则包集合 |
+| 5-2 | 仅 `packs/credential_reference/models/credential_command.yaml` | 先测基线拒绝，再只改声明接受 permit；提交自身代码 numstat 必须为空 |
+| 5-3 | 本文档 | 仅记录 B 前置问题、候选与真实旧存档证据限制 |
