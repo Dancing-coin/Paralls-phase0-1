@@ -10,6 +10,9 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 	for field in FORBIDDEN_WORLD_FIELDS:
 		if raw.has(field):
 			return {"accepted": false, "reason": "world_write_forbidden:%s" % field}
+	var target_ref: Variant = raw.get("target_ref")
+	if target_ref != null and not (target_ref is String or target_ref is StringName):
+		return {"accepted": false, "reason": "invalid_target_ref"}
 	var raw_tags: Array[StringName] = []
 	var raw_intent_tags: Array[StringName] = []
 	var raw_context_tags: Array[StringName] = []
@@ -37,7 +40,7 @@ static func normalize(raw: Dictionary, source_id: StringName, control_mode: Stri
 		"move_local": move if move is Vector2 else Vector2.ZERO,
 		"desired_facing_yaw": facing,
 		"action_id": StringName(raw.get("action_id", "")),
-		"target_ref": StringName(str(raw.get("target_ref") if raw.get("target_ref") != null else "")),
+		"target_ref": StringName("" if target_ref == null else target_ref),
 		"claims": raw.get("claims", []).duplicate(),
 		"locomotion_relation": StringName(raw.get("locomotion_relation", "coexist")),
 		"priority": int(raw.get("priority", 0)),

@@ -667,6 +667,7 @@ class SimingHeavenlyRuntimeSupport:
             producer_system="system_l6",
         )
         fact = WorldFactMemoryEntry(
+            fact_type_ref=event.event_type,
             entry_id="fact:letter:removed",
             world_anchor_id="obj_letter",
             state_key="surface_state",

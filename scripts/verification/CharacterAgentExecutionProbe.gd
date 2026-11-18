@@ -4,6 +4,7 @@ const BACKEND_URL := "ws://127.0.0.1:8000/ws?stream_mode=runtime_only"
 const EXECUTION_PAYLOAD_DIRECT_MARKER := "character_agent_execution_probe:execution_payload_direct=true"
 const CONSUMER_SEEN_MARKER := "character_agent_execution_probe:consumer_seen=true"
 const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_complete=true"
+const IntentProposalRef = preload("res://scripts/character/IntentProposal.gd")
 
 var _execution_seen := false
 var _legacy_output_seen := false
@@ -22,6 +23,16 @@ func _ready() -> void:
 
 
 func _run_probe() -> void:
+	for raw_target in [{}, {"target_ref": null}, {"target_ref": "character:char_b"}]:
+		var proposal := IntentProposalRef.normalize(raw_target, &"agent", &"agent_controlled")
+		if not proposal.get("accepted", false) or proposal["target_ref"] != StringName(raw_target.get("target_ref") if raw_target.get("target_ref") != null else ""):
+			push_error("character_agent_execution_probe:target_ref_normalization_failed")
+			get_tree().quit(1)
+			return
+	if IntentProposalRef.normalize({"target_ref": 42}, &"agent", &"agent_controlled").get("accepted", false):
+		push_error("character_agent_execution_probe:invalid_target_ref_accepted")
+		get_tree().quit(1)
+		return
 	var bus := get_node_or_null("/root/LocalPresentationBus")
 	if bus == null:
 		push_error("character_agent_execution_probe:missing_local_presentation_bus")
@@ -96,8 +107,8 @@ func _run_probe() -> void:
 			"acoustics": {},
 			"effect_kind": "pulse",
 			"subject_key": "",
-			"causation_id": "vf:901",
-			"correlation_id": "vf:901",
+			"causation_id": "vf:character-agent-execution:901",
+			"correlation_id": "character-agent-execution:901",
 		},
 	}
 	var err: int = bridge.send_envelope(envelope)

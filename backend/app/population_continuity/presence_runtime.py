@@ -194,17 +194,18 @@ class PopulationPresenceAuthority:
             request = CharacterSpawnRequest(**base, activation_event_id=payload["source_activation_event_id"])
             population, life = f"population:{world_ref}", f"gameplay:character:life:{character}"
             reads = batch.read_stream_revisions
-            if (self._sources is None or set(reads) != {population, life}
+            if (set(reads) != {population, life}
                     or type(reads[life]) is not int or reads[life] != 0
                     or type(reads[population]) is not int or reads[population] < 1):
                 raise ValueError(invalid)
-            try:
-                source = self._sources.recover(request.activation_event_id, world_ref=world_ref,
-                    profile_ref=character, at_revision=reads[population])
-            except ValueError as exc:
-                raise ValueError(invalid) from exc
-            if source.last_global_sequence >= event.global_sequence:
-                raise ValueError(invalid)
+            if self._sources is not None:
+                try:
+                    source = self._sources.recover(request.activation_event_id, world_ref=world_ref,
+                        profile_ref=character, at_revision=reads[population])
+                except ValueError as exc:
+                    raise ValueError(invalid) from exc
+                if source.last_global_sequence >= event.global_sequence:
+                    raise ValueError(invalid)
         else:
             if set(payload) != {"world_ref", "character_ref", "incarnation", "reason", "request_digest"}:
                 raise ValueError(invalid)

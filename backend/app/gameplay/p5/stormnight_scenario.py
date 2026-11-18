@@ -70,8 +70,8 @@ class StormnightScenarioRunner:
         self._seed_spatial_source()
         actions = [
             self._resolve_action_window(window_index=0, expected_conflict_revision=0, node_ref="arrival", target_ref="location:stormnight:arrival@1", contact=False),
-            self._resolve_action_window(window_index=1, expected_conflict_revision=5, node_ref="investigate", target_ref="location:stormnight:records@1", contact=False),
-            self._resolve_action_window(window_index=2, expected_conflict_revision=10, node_ref="recover", target_ref="location:stormnight:courtyard@1", contact=outcome_kind == "investigator_captured"),
+            self._resolve_action_window(window_index=1, expected_conflict_revision=4, node_ref="investigate", target_ref="location:stormnight:records@1", contact=False),
+            self._resolve_action_window(window_index=2, expected_conflict_revision=8, node_ref="recover", target_ref="location:stormnight:courtyard@1", contact=outcome_kind == "investigator_captured"),
         ]
         action = actions[-1]
         phase_two = self.case.advance_phase(command_id="stormnight:phase-2", idempotency_key="stormnight:phase-2", phase_ref="phase:stormnight:investigation@1", expected_revision=1, causation_id="stormnight", correlation_id="stormnight")

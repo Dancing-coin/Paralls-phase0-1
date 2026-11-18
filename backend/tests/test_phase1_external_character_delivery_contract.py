@@ -6,10 +6,13 @@ import re
 import struct
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[2]
 ACTIVE = ROOT / "assets" / "active"
 REPORTS = ROOT / "assets" / "characters" / "qualification_reports"
+EXTERNAL_ART_ROOT = Path(r"D:/Users/User/Documents/paralls-art-assets")
 
 
 def _manifest(package_id: str) -> dict:
@@ -109,11 +112,11 @@ def test_female_bandage_source_provenance_is_preserved_after_runtime_promotion()
     package = ACTIVE / "female_bandage_external"
     manifest_path = package / "manifest.json"
     report_path = REPORTS / "female_bandage_external.json"
-    working_copy_manifest = Path(
-        r"D:/Users/User/Documents/paralls-art-assets/production-assets/characters/female_bandage_external/source/working-copy-manifest.json"
-    )
     assert manifest_path.is_file()
     assert report_path.is_file()
+    if not EXTERNAL_ART_ROOT.is_dir():
+        pytest.skip("external art source repository is unavailable")
+    working_copy_manifest = EXTERNAL_ART_ROOT / "production-assets/characters/female_bandage_external/source/working-copy-manifest.json"
     assert working_copy_manifest.is_file()
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -252,14 +255,15 @@ def test_delivery_copy_references_preserve_original_source_identity() -> None:
 
 
 def test_working_copies_are_declared_without_replacing_original_sources() -> None:
-    art_root = Path(r"D:/Users/User/Documents/paralls-art-assets")
+    if not EXTERNAL_ART_ROOT.is_dir():
+        pytest.skip("external art source repository is unavailable")
     for package_id in ("crusader_knight", "external_character_b"):
-        manifest_path = art_root / "production-assets" / "characters" / package_id / "source" / "working-copy-manifest.json"
+        manifest_path = EXTERNAL_ART_ROOT / "production-assets" / "characters" / package_id / "source" / "working-copy-manifest.json"
         assert manifest_path.is_file(), f"missing working-copy manifest: {manifest_path}"
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         assert manifest["package_id"] == package_id
         assert manifest["copy_policy"] == "new_file_only"
-        assert (art_root / manifest["working_copy"]).is_file()
+        assert (EXTERNAL_ART_ROOT / manifest["working_copy"]).is_file()
         assert manifest["original_source"]
 
 

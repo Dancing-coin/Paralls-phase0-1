@@ -415,6 +415,19 @@ def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegi
                 raise
 
 
+def gameplay_schema_event_types() -> tuple[str, ...]:
+    """Return all gameplay event types declared by this module's schema bundles."""
+    values: set[str] = set()
+    for value in globals().values():
+        if isinstance(value, tuple):
+            for item in value:
+                if isinstance(item, EventSchemaRegistration):
+                    values.add(item.event_type)
+                elif isinstance(item, str) and item.startswith("gameplay."):
+                    values.add(item)
+    return tuple(sorted(values))
+
+
 def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     from app.services.economy_random_command_service import ECONOMY_RANDOM_COMMAND_SCHEMAS
     registry = EventSchemaRegistry()

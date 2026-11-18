@@ -419,8 +419,6 @@ def _run_probe_scenario(
         PROBE_SCENE,
         "--rendering-method",
         "gl_compatibility",
-        "--quit-after",
-        "900",
         "--render-thread",
         "safe",
     ]

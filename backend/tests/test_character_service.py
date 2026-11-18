@@ -148,6 +148,10 @@ def test_agent_initiated_utterance_preserves_speaking_actor() -> None:
             request = json.loads(request_json)
             task_kind, context = request['task_kind'], request['context']
             route_override = request['route']['route_mode']
+            assert context['actor_id'] == 'char_a'
+            assert context['event']['target_actor_id'] == 'char_c'
+            assert context['control_mode'] == 'agent_initiated_utterance'
+            assert context['event']['intent_type'] == 'agent_initiated_utterance'
             return {
                 "content": "approach greeting",
                 "tone": "warm",

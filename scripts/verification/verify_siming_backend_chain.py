@@ -21,6 +21,7 @@ from app.services.siming_event_consumer import SimingEventConsumer
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.services.siming_event_producer import SimingEventProducer
 from app.services.siming_llm_provider import FakeSimingLlmCandidateProvider
+from app.services.siming_policy import EntityEligibilityRegistry, SimingInterventionPolicy
 from app.services.siming_runtime import SimingRuntime
 
 from common import repo_root, verification_dir, write_json, write_markdown
@@ -198,7 +199,13 @@ def _build_pipeline(
     pipeline = SimingEventPipeline(
         bus=bus,
         consumer=SimingEventConsumer(),
-        runtime=SimingRuntime(llm_provider=llm_provider),  # type: ignore[arg-type]
+        runtime=SimingRuntime(
+            llm_provider=llm_provider,  # type: ignore[arg-type]
+            actor_roster_resolver=lambda _: ["char_b"],
+            policy=SimingInterventionPolicy(
+                entity_registry=EntityEligibilityRegistry(objects=("obj_box",)),
+            ),
+        ),
         producer=SimingEventProducer(bus),
         audit_writer=audit_writer,
     )

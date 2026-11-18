@@ -6,6 +6,36 @@ import pytest
 from scripts.verification.population_godot_runner import child_environment
 
 
+@pytest.mark.parametrize('kind', ['environment', 'inner_prompt'])
+def test_async_projection_uses_origin_scope_and_preserves_message_kind(monkeypatch, kind):
+    from app import main
+    from app.services.cognition_output_route import CognitionOrigin
+    from test_siming_catalyst import make_siming_event
+
+    origin = CognitionOrigin('connection', ('session',), 'char_c')
+    posted = []
+    class Sink:
+        def post(self, payload): posted.append(payload)
+    monkeypatch.setattr(main._cognition_output_routes, 'resolve', lambda _: origin)
+    monkeypatch.setattr(main._cognition_output_routes, 'connections', {'connection': Sink()})
+    allowed = []
+    monkeypatch.setattr(main, '_cognition_origin_current', lambda _, actor: allowed.append(actor) or True)
+    event = make_siming_event(event_type='siming.inner_prompt' if kind == 'inner_prompt' else 'siming.fact_reveal')
+    if kind == 'inner_prompt':
+        event.payload.update(target_actor_id='char_b', prompt_text='Notice the letter', intensity=0.2,
+            evidence_refs=['fact:1'], player_facing=True, non_authoritative=True, presentation_effects=[])
+    else:
+        event.payload.update(target_environment_id='env_lamp')
+    token = main._async_siming_publication.set(True)
+    try:
+        main._project_siming_authority_event(event)
+    finally:
+        main._async_siming_publication.reset(token)
+    assert allowed == ['char_b' if kind == 'inner_prompt' else 'char_c']
+    assert [message['message_type'] for message in posted[0]['messages']] == (
+        ['siming_inner_prompt'] if kind == 'inner_prompt' else ['siming_output', 'authority_event'])
+
+
 @pytest.mark.parametrize('mode', ['auto', 'assisted', 'revoked', 'wrong_actor', 'disconnected', 'frame_revoke', 'queued_revoke', 'closed_after_post', 'blocked_send', 'raw'])
 def test_durable_siming_child_uses_only_original_authorized_socket(tmp_path, mode):
     (tmp_path/'roster.json').write_text(json.dumps({'actor_ids':['char_a','char_b','char_c',*[f'resident_{i:05d}' for i in range(97)]]}))
@@ -43,14 +73,15 @@ async def run():
                 if mode=='closed_after_post':
                     deliver=main.CognitionOutputSink._deliver
                     def close_then_deliver(sink,encoded):
-                        sink.close()
+                        if not json.loads(encoded)['child_key'].startswith('siming:'): sink.close()
                         return deliver(sink,encoded)
                     stack.enter_context(patch.object(main.CognitionOutputSink,'_deliver',close_then_deliver))
                 if mode=='queued_revoke':
                     original_post=main.CognitionOutputSink.post
                     def revoke_then_post(sink,payload):
-                        pin=payload['binding_pin']
-                        assert main._revoke_websocket_session_for_transport(session_ref=pin[0],connection_ref=payload['connection_ref'],reason_code='revoked',now=int(time.time()))
+                        if not payload['child_key'].startswith('siming:'):
+                            pin=payload['binding_pin']
+                            assert main._revoke_websocket_session_for_transport(session_ref=pin[0],connection_ref=payload['connection_ref'],reason_code='revoked',now=int(time.time()))
                         return original_post(sink,payload)
                     stack.enter_context(patch.object(main.CognitionOutputSink,'post',revoke_then_post))
                 now=int(time.time())
@@ -114,6 +145,10 @@ async def run():
                     assert rows
                 done.set();await tasks[1]
                 outputs=lambda socket:[row for row in socket.messages if ((row['message_type']=='character_agent_execution' and row['payload'].get('actor_ref')=='character:char_b') or (row['message_type']=='character_agent_suggestion' and row['payload'].get('actor_id')=='char_b'))]
+                siming=lambda socket:[row for row in socket.messages if row['message_type']=='siming_output' and row['payload'].get('target_actor_id')=='char_b']
+                assert not siming(sockets[1])
+                if mode in {'auto', 'raw'}:
+                    assert siming(sockets[0]), sockets[0].messages
                 assert not outputs(sockets[1])
                 actual=outputs(sockets[0])
                 assert bool(actual)==(mode in {'auto','assisted','frame_revoke','raw'}),(mode,sockets[0].messages)

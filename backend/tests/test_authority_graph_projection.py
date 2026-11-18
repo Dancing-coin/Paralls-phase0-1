@@ -46,7 +46,6 @@ def _event() -> AuthorityEvent:
     ("event_type", "domain"),
     [
         ("gameplay.inventory.item_moved", "inventory"),
-        ("gameplay.inventory.future_unlisted_event", "inventory"),
         ("constraint_state_event", "esm_world"),
         ("gameplay.organization.production_work_contribution_accepted", "organization"),
         ("gameplay.ownership.right_transferred", "ownership"),
@@ -65,7 +64,8 @@ def test_authority_domain_event_maps_to_typed_projection_domain(
     from app.services.authority_event_bus import InMemoryAuthorityEventBus
     bus = InMemoryAuthorityEventBus()
     bus.subscribe("*", projector.project, excluded_event_types=frozenset({"population_cadence_event"}))
-    assert projector._domain_for("population_cadence_event") is None
+    assert projector._domain_for("gameplay.inventory.future_unlisted_event") is None
+    assert projector._domain_for("population_cadence_event") == "population"
     bus.publish(event)
     nodes = graph.query_nodes(
         HeavenlyNodeQuery(scope=_scope(), valid_at=1, node_types=["causal_event"])
@@ -108,6 +108,21 @@ def test_committed_esm_event_is_projected_with_owner_source_and_replay(tmp_path:
     assert node.semantic_metadata.source_event_refs == ("esm_result_event:1",)
 
 
+@pytest.mark.parametrize("vector, expected", [({"world": 4}, 4), ({}, 0)])
+def test_q2_projection_revision_never_uses_clock_or_global_sequence(tmp_path, vector, expected):
+    graph = SQLiteHeavenlyGraphAdapter(tmp_path / "revision.sqlite3")
+    try:
+        projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _: _scope())
+        event = _event().model_copy(update={"producer_ts": 9000, "payload": {
+            "source_revision_vector": vector, "global_sequence": 8000}})
+        projector.project(event)
+        node = graph.query_nodes(HeavenlyNodeQuery(scope=_scope(), valid_at=9000, node_types=["causal_event"]))[0]
+        assert node.semantic_metadata.source_revision_vector.source_revision == expected
+        assert node.attributes["source_revision_vector"] == vector
+    finally:
+        graph.close()
+
+
 def test_application_authority_bus_projects_esm_event_to_shared_graph(tmp_path: Path) -> None:
     previous_path = main.settings.heavenly_graph_path
     main.settings = config_module.Settings(
@@ -131,6 +146,53 @@ def test_application_authority_bus_projects_esm_event_to_shared_graph(tmp_path: 
             )
         )
         assert any(node.provenance.source_ref == "esm_result_event:1" for node in result)
+    finally:
+        main.close_runtime_resources()
+        main.settings = config_module.Settings(heavenly_graph_path=previous_path)
+
+
+def test_q2_application_subscribes_registered_gameplay_types_only(tmp_path):
+    previous_settings = main.settings
+    main.settings = config_module.Settings(heavenly_graph_path=str(tmp_path / "typed-subscription.sqlite3"),
+                                          siming_heavenly_mode="off")
+    main.reset_runtime_state()
+    try:
+        for event_type in ("gameplay.inventory.item_instantiated@1", "gameplay.inventory.undeclared"):
+            main.authority_event_bus.publish(_event().model_copy(update={
+                "event_id": f"event:{event_type}", "event_type": event_type}))
+        nodes = main.heavenly_graph.query_nodes(HeavenlyNodeQuery(
+            scope=main.siming_scope_for_event(_event()), valid_at=1, node_types=["causal_event"]))
+        assert {node.provenance.source_ref for node in nodes} == {"event:gameplay.inventory.item_instantiated@1"}
+    finally:
+        main.close_runtime_resources()
+        main.settings = previous_settings
+
+
+def test_application_authority_bus_does_not_project_daily_rhythm_owner_events(tmp_path: Path) -> None:
+    previous_path = main.settings.heavenly_graph_path
+    main.settings = config_module.Settings(
+        heavenly_graph_path=str(tmp_path / "daily-rhythm.sqlite3"),
+        siming_heavenly_mode="off",
+    )
+    main.reset_runtime_state()
+    try:
+        from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime
+
+        DailyRhythmRuntime(main.authority_event_bus).initialize("char_a")
+        nodes = main.heavenly_graph.query_nodes(
+            HeavenlyNodeQuery(
+                scope=HeavenlyGraphScope(
+                    world_id="world:demo",
+                    session_id="session:demo",
+                    story_branch_id="branch:main",
+                    room_id="room:population",
+                    scene_id="scene:population",
+                ),
+                valid_at=0,
+                node_types=["causal_event"],
+            )
+        )
+        assert all(node.provenance.source_ref != "daily_rhythm.initialized:char_a:0:0" for node in nodes)
     finally:
         main.close_runtime_resources()
         main.settings = config_module.Settings(heavenly_graph_path=previous_path)

@@ -121,8 +121,9 @@ def prepare_v4(*, repo: Path, reviewer_input: dict[str, Any]) -> dict[str, Any]:
                 'candidate_mapping': compiled.by_wire_label, 'candidate_digest': compiled.digest,
                 'provider_revision': provider.PROVIDER_REVISION,
                 'frame': CharacterMindFrame.model_validate(frame),
-                'capability_envelope': {}, 'cognition_policy': {},
+                'capability_envelope': {},
             })
+            request['context']['cognition_policy'] = {}
             request = json.loads(CharacterModelGateway.freeze_prepared_request(request))
             wire = provider.build_wire_request(request)
             sources = {ref: file_sha(repo / ref) for ref in projection['source_refs'] if (repo / ref).is_file()}

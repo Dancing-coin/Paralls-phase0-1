@@ -829,10 +829,10 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
         interaction_source="",
         esm_service_source="",
         voice_controller_source="",
-        player_bridge_source="",
+        player_bridge_source="func set_human_intent_frame(frame: Dictionary) -> void:\n    pass\nfunc before_player_shell_move(delta):\n    _sync_character_c_control_frame(delta)\nfunc _sync_character_c_control_frame(delta):\n    character_shell_sync.sync_player_control_frame()",
         character_replica_source='func _update_movement(delta: float) -> void:\ncharacter_motor.apply_physics_command(self, command, delta)\n_log_root_motion_step("patrol_motion_step", false)',
-        player_shell_source="func _physics_process(delta: float) -> void:\ncharacter_motor.apply_intent_frame(self, current_intent_frame, delta)",
-        character_motor_source="func apply_physics_command(body: CharacterBody3D, command: Dictionary, delta: float) -> Dictionary:\nbody.move_and_slide()",
+        player_shell_source="func _physics_process(delta: float) -> void:\nexternal_motion_driver.set_human_intent_frame(current_intent_frame)\nexternal_motion_driver.before_player_shell_move(delta)",
+        character_motor_source="func apply_intent_frame():\n    return apply_physics_command()\nfunc apply_physics_command():\n    body.move_and_slide()",
     )
     results = _index_by_id(report["results"])
 

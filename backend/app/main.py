@@ -223,6 +223,7 @@ from app.world_runtime.l1_runtime_perception_bridge import (
 )
 from app.services.siming_character_dispatch_adapter import SimingCharacterDispatchAdapter, SimingCharacterDispatchResult
 from app.services.siming_event_consumer import SimingEventConsumer
+from app.models.fact_type import FACT_TYPE_REGISTRY, FactType
 from app.services.siming_event_pipeline import SimingEventPipeline
 from app.population_continuity.prepared_frame import native_method
 from app.services.siming_event_producer import SimingEventProducer
@@ -368,6 +369,33 @@ _character_cognition_failure = None
 _siming_cognition_driver = None
 _siming_cognition_task = None
 _siming_cognition_failure = None
+_async_siming_publication = ContextVar('async_siming_publication', default=False)
+
+
+def _publish_async_siming_event(event):
+    token = _async_siming_publication.set(True)
+    try:
+        siming_event_pipeline._producer.publish_events([event])
+    finally:
+        _async_siming_publication.reset(token)
+
+
+def _project_siming_authority_event(event):
+    if not _async_siming_publication.get():
+        return frontend_authority_event_projector.handle_event(event)
+    from app.services.frontend_authority_event_projection import project_authority_event_as_inner_prompt, project_authority_event_as_siming_output, project_authority_event_for_frontend
+    origin = _cognition_output_routes.resolve(event.causation_id)
+    actor_id = str(event.payload.get('target_actor_id') or (origin.source_actor_id if origin else ''))
+    sink = _cognition_output_routes.connections.get(origin.connection_ref) if origin is not None else None
+    if sink is None or not actor_id or not _cognition_origin_current(origin, actor_id):
+        return None
+    inner_prompt = project_authority_event_as_inner_prompt(event)
+    messages = [inner_prompt] if inner_prompt is not None else [message for message in (
+        project_authority_event_as_siming_output(event), project_authority_event_for_frontend(event)) if message is not None]
+    if messages:
+        sink.post({'child_key': 'siming:' + event.event_id, 'actor_id': actor_id,
+            'binding_pin': list(origin.binding_pin), 'connection_ref': origin.connection_ref, 'messages': messages})
+    return None
 
 
 def _build_siming_cognition(pipeline):
@@ -407,7 +435,7 @@ def _build_siming_cognition(pipeline):
         if character_agent_runtime.supports_actor(actor) else {'supported': False})
     coordinator = SimingCoordinator(runtime=rt, graph=heavenly_graph,
         admissions=SimingAdmissionService(SimingHeavenlyMemoryService(heavenly_graph)),
-        invalidation_reader=invalidation, output_pipeline=pipeline)
+        invalidation_reader=invalidation, output_pipeline=pipeline, publish_event=_publish_async_siming_event)
     async def owner_call(command):
         return await _dialogue_owner_call(runtime_execution, command)
     _siming_cognition_driver = SimingDriver(coordinator=coordinator, owner_call=owner_call,
@@ -419,12 +447,16 @@ def _handle_siming_authority_event(event):
     if driver is None or event.event_type == 'population_cadence_event':
         return siming_event_pipeline.handle_event(event)
     now = time()
-    receipt = driver.coordinator.admit_event(event, now=now, expires_at=now+30.,
+    # One provider call may use the full timeout, and the driver permits three retries.
+    admission_ttl = max(30., 4 * settings.siming_llm_timeout_seconds + 30.)
+    receipt = driver.coordinator.admit_event(event, now=now, expires_at=now+admission_ttl,
         policy_version='production-siming-v1')
     origin = _cognition_origin.get()
     if (not receipt.replayed and origin is not None and origin.binding_pin
             and _get_dialogue_coordinator()._connection_current(origin.connection_ref, origin.binding_pin)):
-        _cognition_output_routes.remember(event.event_id, origin, receipt.entry.expires_at)
+        source_actor_id = str(event.source.actor_id or event.payload.get('actor_id') or '')
+        _cognition_output_routes.remember(event.event_id, CognitionOrigin(
+            origin.connection_ref, origin.binding_pin, source_actor_id), receipt.entry.expires_at)
     return receipt
 
 
@@ -741,7 +773,13 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
     if "authority_event_bus" not in globals() or "gameplay_event_store" not in globals():
         return None
     mode = _bakery_population_mode()
-    world_runtime = WorldContinuityRuntime(store=gameplay_event_store, mode=mode, roster=population_roster)
+    world_runtime = WorldContinuityRuntime(
+        store=gameplay_event_store,
+        mode=mode,
+        roster=population_roster,
+        event_bus=authority_event_bus,
+        owner_store=gameplay_event_store,
+    )
     world_stream_ref = f"world:{mode.world_ref}"
     clock_profile = population_clock_profile(settings.population_runtime_profile)
     window_size = int(clock_profile["window_ticks"])
@@ -1663,6 +1701,7 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
         character_agent_runtime=character_agent_runtime,
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
+            actor_roster_resolver=lambda event: character_agent_runtime._profile_registry.actor_ids(),
             heavenly_support=support,
             population_capability=PopulationSimulationCapability(
                 owner_executor=population_owner,
@@ -2230,33 +2269,34 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         character_dispatch_adapter=FrontendSimingCharacterDispatchAdapter(runtime=character_agent_runtime),
     )
     _build_siming_cognition(siming_event_pipeline)
-    for event_type in SimingEventConsumer.ALLOWED_EVENT_TYPES:
+    for event_type in SimingEventConsumer.ALLOWED_FACT_TYPES:
         if (event_type == "population_cadence_event" and type(authority_event_bus) is InMemoryAuthorityEventBus
                 and _handle_siming_authority_event is _NATIVE_SIMING_AUTHORITY_HANDLER):
             authority_event_bus._subscribe_prepared_population(
                 _handle_siming_authority_event, _handle_prepared_siming_population)
         else:
             authority_event_bus.subscribe(event_type, _handle_siming_authority_event)
+    authority_event_bus.subscribe("siming_staging_ack", _handle_siming_authority_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
     authority_graph_projector = HeavenlyAuthorityEventProjector(
         heavenly_graph,
         scope_resolver=siming_scope_for_event,
     )
-    # TODO: Q2 (05-Owner重构影响评估.md 第三章)
-    #   决策：A（短期）+ C（长期路线图）
-    #   短期（Phase 0-1）：
-    #     - 改 "*" 通配为按 FactType 枚举订阅
-    #     - authority_graph_projector.py:22-32 前缀表改为 FactType 声明
-    #     - revision 改读真 Owner revision（不再混推 max(payload, producer_ts)）
-    #   长期（Phase 2+）：
-    #     - 迁移到混合架构：图只存边（关系），事实走 OwnerFactQuery
-    #     - 图专注"谁在哪""谁影响谁"，不存事实副本（单一真相）
-    #     - 需先完成：OwnerFactQuery 接口落地 + 图 schema 重设计
-    authority_event_bus.subscribe(
-        "*", authority_graph_projector.project,
-        excluded_event_types=frozenset({"population_cadence_event"}),
+    # Q2: explicit typed subscriptions; the projector validates schema coverage at startup.
+    # Phase 2: graph relations plus OwnerFactQuery, with full revision reconciliation.
+    gameplay_event_types = (
+        event_type for event_type in FACT_TYPE_REGISTRY.event_types()
+        if event_type.startswith("gameplay.")
     )
+    for event_type in gameplay_event_types:
+        authority_event_bus.subscribe(event_type, authority_graph_projector.project)
+    for fact_type in (
+        FactType.WORLD_FACT, FactType.VISUAL_FACT, FactType.ESM_RESULT,
+        FactType.CHARACTER_BEHAVIOR, FactType.CONVERSATION_RESOLUTION,
+        FactType.CONSTRAINT_STATE,
+    ):
+        authority_event_bus.subscribe(fact_type, authority_graph_projector.project)
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     character_agent_debug_projection = CharacterAgentDebugProjection()
@@ -2264,7 +2304,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     world_outcome_debug_projection = WorldOutcomeDebugProjection()
     script_beat_projection = ScriptBeatProjection()
     for event_type in FRONTEND_AUTHORITY_EVENT_TYPES:
-        authority_event_bus.subscribe(event_type, frontend_authority_event_projector.handle_event)
+        authority_event_bus.subscribe(event_type, _project_siming_authority_event)
     # Protocol 09: Siming → ESM (08-司命与ESM协作协议.md)
     authority_event_bus.subscribe("siming.environment_request", _handle_siming_environment_request)
     debug_stream.clear()
@@ -2297,30 +2337,14 @@ def _ack_siming_staging_request(event: AuthorityEvent) -> None:
 
 
 def _handle_siming_environment_request(event: AuthorityEvent) -> None:
-    """Protocol 09 stub: forward siming.environment_request to ESM.
+    """Protocol 09：ESM 结果校验后回流总线，失败只回报约束。"""
+    from app.services.siming_environment_protocol import SimingEnvironmentProtocol
 
-    Receives siming.environment_request from the authority bus (produced by
-    siming_event_producer when selected_path == "environment_change_path") and
-    resolves it through ESM, publishing the resulting world_result authority event.
-    """
-    payload = event.payload
-    request = EnvironmentRequest(
-        request_id=f"siming:{event.causation_id}",
-        room_id=event.room_id,
-        scene_id=event.scene_id,
-        zone_id=event.zone_id,
-        source={"system": "siming", "event_id": event.event_id},
-        target_entity_refs={"environment_ids": [str(payload.get("target_environment_id", "") or "env_default")]},
-        goal=str(payload.get("goal", "") or "environment_change"),
-        requested_change_type=str(payload.get("requested_change_type", "") or "light_level_drop"),
-        requested_strength=str(payload.get("requested_strength", "medium") or "medium"),
-        reason_tag="siming_environment_request",
-        producer_ts=event.producer_ts,
-        causation_id=event.causation_id,
-        correlation_id=event.correlation_id,
-    )
-    resolution, _environment_result = esm_service.resolve_environment_request(request)
-    _publish_world_result_authority_event(resolution, source_event=request)
+    request, resolution, environment_result = SimingEnvironmentProtocol().resolve(event, esm=esm_service)
+    _publish_world_result_authority_event(resolution, source_event=request, drain_frontend=False)
+    if environment_result is not None:
+        l1_occupancy_service.apply_environment_result(environment_result)
+        _publish_world_result_authority_event(environment_result, source_event=request, drain_frontend=False)
 
 
 def _ack_siming_staging_request_from_origin(event: AuthorityEvent) -> None:
@@ -3197,6 +3221,8 @@ def _commit_configured_trusted_local_gameplay_mirror_live_probe(
     lifecycle_stream = f"gameplay:state_groups:{actor_ref}"
     resource_stream = f"gameplay:resources:{actor_ref}"
     event_prefix = f"evt:trusted-local-mirror-live:{uuid4()}"
+    if os.getenv('GAMEPLAY_MIRROR_LIVE_PROBE_BACKPRESSURE') == '1' and gameplay_event_store.get_stream_head(resource_stream) > 0:
+        resource_delta = -1
     events = [
         {
             "event_id": f"{event_prefix}:materialize",
@@ -3605,6 +3631,8 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         actor_ref = str(delivery.get("payload", {}).get("actor_ref", ""))
         item = {**delivery, "_fence": (mirror_sink, actor_versions.get(actor_ref, 0))}
         if initial_ack is not None:
+            if initial_ack.get('payload', {}).get('source_type') == 'gameplay_mirror_snapshot_request':
+                mirror_delivery_queue.drop_actor(actor_ref)
             mirror_delivery_queue.enqueue_initial_batch(initial_ack, item)
         else:
             mirror_delivery_queue.enqueue_delivery(item)
@@ -5227,7 +5255,7 @@ def _handle_envelope(
         result = embodied_controller_auth_service.bind_controller(
             enrollment,
             remote_host=connection_context.remote_host,
-            now=(100 if connection_context.connection_ref == "direct_handler" else int(time())),
+            now=(100 if connection_context.connection_ref == "direct_handler" else connection_context.observed_at),
             connection_ref=connection_context.connection_ref,
         )
         if not result.accepted or result.binding is None:
@@ -8842,6 +8870,7 @@ def _publish_world_result_authority_event(
     result: WorldResultBase,
     *,
     source_event: object,
+    drain_frontend: bool = True,
 ) -> list[dict[str, object]]:
     if (getattr(result, "read_content", None) and getattr(result, "read_source_ref", None)
         and result.actor_id == getattr(source_event, "actor_id", None)):
@@ -8851,7 +8880,7 @@ def _publish_world_result_authority_event(
     frontend_authority_event_projector.handle_event(authority_event)
     authority_event_bus.publish(authority_event)
     event_trace.record(authority_event.event_type)
-    return _drain_frontend_authority_events()
+    return _drain_frontend_authority_events() if drain_frontend else []
 
 
 def _publish_candidate_authority_event(event: ConversationCandidateEvent) -> list[dict[str, object]]:

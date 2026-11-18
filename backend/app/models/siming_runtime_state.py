@@ -68,6 +68,8 @@ class GroupSimulationBranchSnapshot(BaseModel):
 class StateTreeSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    source_event_id: str = ""
+
     snapshot_id: str
     schema_version: int
     producer_system: str
@@ -147,6 +149,7 @@ class FairnessDimensionSnapshot(BaseModel):
     score: float
     reason: str
     mapped_to_policy: bool
+    evidence_refs: list[str] = Field(default_factory=list)
 
 
 class ProjectionRunSnapshot(BaseModel):

@@ -376,7 +376,7 @@ def test_parent_death_closes_child_even_when_result_queue_is_full(monkeypatch):
     asyncio.run(run())
 
 
-def abandoned_result_child(commands, controls, results, notifications, settings):
+def abandoned_result_child(commands, controls, results, notifications, settings, ready):
     from time import monotonic
     from app import main
     import app.services.runtime_process as module
@@ -391,6 +391,12 @@ def abandoned_result_child(commands, controls, results, notifications, settings)
     main._stop_population_runtime_on_shutdown = nothing
     main.runtime_execution = None
     main.health = lambda: {'status': 'ok', 'large': 'x' * (1024 * 1024)}
+    original_put = results.put_nowait
+    def put(value):
+        original_put(value)
+        if module._decode(value)['kind'] == 'ready':
+            ready.set()
+    results.put_nowait = put
     module.runtime_child_main(commands, controls, results, notifications, settings)
 
 
@@ -398,9 +404,12 @@ def test_real_spawn_abandons_result_feeder_only_after_parent_death():
     import multiprocessing
     context = multiprocessing.get_context('spawn')
     queues = [context.Queue(maxsize=1) for _ in range(4)]
-    process = context.Process(target=abandoned_result_child, args=(command_channel(queues[0]), *queues[1:], settings_json()))
+    ready = context.Event()
+    process = context.Process(target=abandoned_result_child, args=(command_channel(queues[0]), *queues[1:], settings_json(), ready))
     process.start()
     try:
+        # Windows spawn/import 不属于已就绪 child 的孤立退出期限。
+        assert ready.wait(20), 'child 未将真实 ready 放入无人读取的结果队列'
         process.join(5)
         assert not process.is_alive(), '无人读的结果 pipe 不得阻塞孤立 child 退出'
         assert process.exitcode == 0
@@ -413,7 +422,7 @@ def test_real_spawn_abandons_result_feeder_only_after_parent_death():
             queue.close()
 
 
-def parent_dies_after_stopped_child(commands, controls, results, notifications, settings):
+def parent_dies_after_stopped_child(commands, controls, results, notifications, settings, stopped):
     from app import main
     import app.services.runtime_process as module
     class Parent:
@@ -426,6 +435,7 @@ def parent_dies_after_stopped_child(commands, controls, results, notifications, 
         original_put(value)
         if module._decode(value)['kind'] == 'stopped':
             parent.alive = False
+            stopped.set()
     async def nothing():
         pass
     results.put_nowait = put
@@ -443,9 +453,11 @@ def test_real_spawn_monitors_parent_until_final_stopped_flush():
     context = multiprocessing.get_context('spawn')
     queues = [context.Queue(maxsize=128) for _ in range(4)]
     queues[1].put(_encode(dict(schema=1, kind='shutdown', generation=None)))
-    process = context.Process(target=parent_dies_after_stopped_child, args=(command_channel(queues[0]), *queues[1:], settings_json()))
+    stopped = context.Event()
+    process = context.Process(target=parent_dies_after_stopped_child, args=(command_channel(queues[0]), *queues[1:], settings_json(), stopped))
     process.start()
     try:
+        assert stopped.wait(20), 'child 未完成真实 STOPPED 入队及模拟 parent 死亡'
         process.join(5)
         assert not process.is_alive(), 'STOPPED 入队后仍需监督 parent 与实际 flush'
         assert process.exitcode == 0

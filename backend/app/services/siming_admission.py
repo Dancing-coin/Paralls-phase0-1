@@ -6,7 +6,7 @@ from app.models.siming_heavenly_memory import (
     SIMING_ADMISSION_TERMINAL, SimingAdmissionKey, SimingAdmissionMemoryEntry,
     SimingAdmissionReceipt, SimingAdmissionPage, SimingAdmissionCursor, SimingAdmissionTransition, SimingAdmissionEffectReceipt,
 )
-from app.services.siming_continuation import digest, SimingTurnFrame, SimingProviderRequest, SimingProviderCompletion, CANDIDATE_TIMELINE_REQUEUE, candidate_timeline_changed
+from app.services.siming_continuation import digest, SimingTurnFrame, SimingProviderRequest, SimingProviderCompletion, CANDIDATE_TIMELINE_REQUEUE, ADAPTIVE_ACTOR_REQUEUE, candidate_timeline_changed, adaptive_actor_changed
 from app.services.siming_heavenly_graph_port import HeavenlyGraphIdempotencyConflict, HeavenlyGraphRevisionConflict
 
 
@@ -156,6 +156,16 @@ class SimingAdmissionService:
                 raise ValueError('siming_admission_outstanding_effect')
         requeue = transition.state == 'requeued' and transition.reason == CANDIDATE_TIMELINE_REQUEUE
         retry = entry.state == 'requeued' and previous.reason == CANDIDATE_TIMELINE_REQUEUE
+        adaptive_requeue = transition.state == 'requeued' and transition.reason == ADAPTIVE_ACTOR_REQUEUE
+        adaptive_retry = entry.state == 'requeued' and previous.reason == ADAPTIVE_ACTOR_REQUEUE
+        if adaptive_requeue:
+            if (entry.state != 'provider_pending' or previous.stage != 'adaptive'
+                    or transition.stage != 'adaptive' or transition.ordinal != previous.ordinal
+                    or transition.provider != previous.provider or transition.room_head is not None
+                    or transition.due_at != now or now >= entry.expires_at):
+                raise ValueError('siming_admission_requeue_origin')
+        if adaptive_retry and transition.state not in {'provider_pending', 'stale', 'cancelled', 'failed'}:
+            raise ValueError('siming_admission_requeue_successor')
         if requeue:
             if entry.state != 'provider_pending' or previous.stage != 'candidate' or transition.provider is None:
                 raise ValueError('siming_admission_requeue_origin')
@@ -212,9 +222,19 @@ class SimingAdmissionService:
                         or frame.job.attempt != old.job.attempt + 1 or frame.job.token == old.job.token
                         or (frame.pin != old.pin and not candidate_timeline_changed(old.pin, frame.pin))):
                     raise ValueError('siming_admission_requeue_changed_request')
-        elif transition.provider is not None and not requeue:
+            if adaptive_retry:
+                old = SimingTurnFrame.model_validate_json(previous.provider.frame_json)
+                if (transition.stage != 'adaptive' or transition.ordinal != previous.ordinal + 1
+                        or provider.provider_identity != previous.provider.provider_identity
+                        or frame.model_dump(exclude={'turn_id', 'job', 'pin', 'expires_at'})
+                           != old.model_dump(exclude={'turn_id', 'job', 'pin', 'expires_at'})
+                        or frame.expires_at > min(old.expires_at, entry.expires_at)
+                        or frame.job.attempt != old.job.attempt + 1 or frame.job.token == old.job.token
+                        or not adaptive_actor_changed(old.pin, frame.pin)):
+                    raise ValueError('siming_admission_requeue_changed_request')
+        elif transition.provider is not None and not (requeue or adaptive_requeue):
             raise ValueError('siming_admission_unexpected_provider')
-        if transition.state == 'result_ready' or (requeue and transition.completion_json is not None):
+        if transition.state == 'result_ready' or ((requeue or adaptive_requeue) and transition.completion_json is not None):
             import hashlib
             if transition.completion_json is None or previous is None or previous.provider is None:
                 raise ValueError('siming_admission_completion_required')

@@ -73,6 +73,96 @@ The word `control` has two meanings and they must remain separate:
 The population capability is an internal deep module behind that interface.
 It must not become a new external runtime.
 
+### Architecture Diagram
+
+```mermaid
+graph TB
+    WorldRuntime[World Runtime] -->|population_cadence_input| SimingTick[SimingRuntime.tick]
+    SimingTick --> Observe[Public Observation]
+    Observe --> ReadSet[Immutable PopulationReadSet]
+    ReadSet --> Auth[Population Capability Authorization]
+    Auth --> Planner[PopulationPlanner.plan]
+    Planner --> Review[Report/Candidate Review]
+    Review --> Decision{Governed Decision}
+    Decision -->|accepted| Execute[Governed Execution]
+    Decision -->|rejected| NoOp[No-op/Requeue]
+    Execute --> Receipt[Owner Receipt / Continuity Receipt]
+    NoOp --> Audit[Bounded Audit]
+    Receipt --> Audit
+    Audit --> ReadModel[Read Model]
+    
+    style SimingTick fill:#f9f,stroke:#333,stroke-width:4px
+    style Planner fill:#bbf,stroke:#333,stroke-width:2px
+    style Decision fill:#ffa,stroke:#333,stroke-width:2px
+```
+
+### Sequence Diagram
+
+```mermaid
+sequenceDiagram
+    participant WR as World Runtime
+    participant SR as SimingRuntime
+    participant PC as PopulationCapability
+    participant PP as PopulationPlanner
+    participant Owner as Domain Owner
+    participant CC as Character Core
+    
+    WR->>SR: tick(population_cadence_input)
+    SR->>SR: Freeze PopulationReadSet
+    SR->>PC: run_cycle(cadence, read_set)
+    PC->>PP: plan_population_cycle(read_set)
+    PP-->>PC: PopulationBatchReport
+    PC->>PC: Classify candidates
+    alt owner_bound_intent
+        PC->>Owner: Submit intent
+        Owner-->>PC: Owner receipt
+    else activation_candidate
+        PC->>CC: CharacterContinuityCommand
+        CC-->>PC: Continuity receipt
+    else presentation_seed
+        PC->>PC: Generate presentation only
+    end
+    PC-->>SR: PopulationCycleResult
+    SR-->>WR: SimingTickResult + Audits
+```
+
+### Data Flow Diagram
+
+```mermaid
+graph LR
+    Input[Population Cadence Input] --> Freeze{Freeze Read Set}
+    Freeze --> Projections[Projections + Revision Vectors]
+    Projections --> Planner[PopulationPlanner]
+    Planner --> Classify{Classify Outcomes}
+    
+    Classify -->|presentation_seed| Presentation[Presentation Seeds]
+    Classify -->|activation_candidate| Activation[Activation Candidates]
+    Classify -->|owner_bound_intent| OwnerIntent[Owner-Bound Intents]
+    Classify -->|rejected| Rejected[Rejected Candidates]
+    
+    OwnerIntent --> Settlement[Owner Settlement]
+    Settlement --> OwnerReceipt[Owner Receipt]
+    
+    Activation --> ContinuityCmd[CharacterContinuityCommand]
+    ContinuityCmd --> CharacterCore[Character Core]
+    CharacterCore --> SeedDelta[SeedDelta + Memory]
+    
+    Presentation --> RenderHint[Render Hints Only]
+    
+    OwnerReceipt --> Audit[Audit Trail]
+    SeedDelta --> Audit
+    RenderHint --> Audit
+    Rejected --> Audit
+    
+    Audit --> ReadModel[Read Model Output]
+    
+    style Classify fill:#ffa,stroke:#333,stroke-width:2px
+    style CharacterCore fill:#afa,stroke:#333,stroke-width:2px
+    style Settlement fill:#aff,stroke:#333,stroke-width:2px
+```
+
+### Text Flow (Original)
+
 ```text
 existing world runtime
   -> population_cadence_input
@@ -252,6 +342,14 @@ seed projection
   -> L3 intent selection
   -> L4 structured execution plan
 ```
+
+**Implementation references:**
+
+- L3 intent selection: `backend/app/character_agent/planning/l3_planner.py`
+- Mind frame construction and seed ingestion: `backend/app/character_agent/runtime/runtime_loop.py` (`ingest_seed_projection` method)
+- Seed projection parsing contract: see `backend/tests/test_character_agent_seed_projection_parse.py`
+
+For the complete character agent planning architecture, refer to the modules in `backend/app/character_agent/planning/`.
 
 `siming_output` remains a high-level catalyst/presentation message. It must
 not carry private continuity data or impersonate a Character Core seed.

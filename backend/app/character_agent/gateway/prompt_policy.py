@@ -84,6 +84,7 @@ class CharacterPromptPolicy:
                 '"why_this_now", "role_consistency_hint", "active_goal_tags", "active_goal_frame", '
                 '"planning_status", "fallback_mode"] and no extra text. '
                 'candidate_intents must be a non-empty list of strings. selected_intent must be one of candidate_intents. '
+                'When context contains frozen_candidates, candidate_intents must contain only their exact wire_label values in original order, without duplicates. Do not invent or rewrite labels. '
                 'recommended_intents must be a non-empty list of strings and must include selected_intent. '
                 'active_goal_tags must be a list of strings. '
                 'active_goal_frame must be an object with keys '
@@ -92,6 +93,7 @@ class CharacterPromptPolicy:
                 '"preserved_goal_ids", "suppressed_goal_ids", "goal_arbitration_summary", "goal_portfolio"]. '
                 'goal_portfolio must be a list of goal objects and should preserve multiple concurrent motives, not only the dominant goal. '
                 'Use compact JSON without indentation and concise descriptions while preserving all concurrent goals. '
+                'Keep each descriptive string to a short phrase; do not repeat the same explanation across fields. '
                 'planning_status must be "model" on live success. fallback_mode must be JSON null on live success. '
                 'active_goal_frame.primary_goal cannot be empty. '
                 'active_goal_frame.urgency and each goal_portfolio urgency must be exactly one of "low", "medium", or "high"; do not use numbers. '
@@ -107,6 +109,7 @@ class CharacterPromptPolicy:
             '"ambiguity_level", "risk_level", "opportunity_level", "attention_target", '
             '"inner_prompt_candidate", "belief_deltas", "social_deltas", '
             '"higher_order_deltas", "dynamic_state_delta", "goal_hints", "reasoning_trace_summary"] and no extra text. '
+            'Use compact JSON without indentation. Keep descriptive strings to short phrases and avoid repeating the same explanation across fields. '
             'salience_score must be a JSON number from 0.0 to 1.0. '
             'ambiguity_level, risk_level, and opportunity_level must each be exactly one of "low", "medium", or "high"; do not use "moderate" or numbers. '
             'All confidence, strength, trust, suspicion, intimacy, dependency, and unresolved_tension values must be JSON numbers from 0.0 to 1.0, not words. '
@@ -140,6 +143,7 @@ class CharacterPromptPolicy:
         unresolved_tensions = context.get("unresolved_tensions", {})
         background_agenda_state = context.get("background_agenda_state", {})
         behavior_policy = context.get("behavior_policy", {})
+        frozen_candidates = context.get("frozen_candidates", [])
         profile_summary = self._profile_summary(profile if isinstance(profile, dict) else {})
         effective_profile_summary = self._profile_summary(
             effective_profile if isinstance(effective_profile, dict) else {}
@@ -180,6 +184,7 @@ class CharacterPromptPolicy:
             f"unresolved_tensions={unresolved_tension_summary}; "
             f"background_agenda_state={background_agenda_summary}; "
             f"behavior_policy={behavior_policy_summary}; "
+            f"frozen_candidates={json.dumps(frozen_candidates, ensure_ascii=False, separators=(',', ':'))}; "
             f"event_summary={event_summary}"
         )
 

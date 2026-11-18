@@ -82,3 +82,24 @@ def test_domain_verifier_refuses_an_extra_runtime_owner_capability(monkeypatch) 
                             .read_text(encoding="utf-8"))
         assert result["harness_checks"]["only_runtime_admitted_capability_ids_reach_owners"] is False
         assert "population:unadmitted:v1" in result["runtime_owner_capability_ids"]
+
+
+def test_domain_tax_trace_isolates_storage_and_restores_settings_on_failure(monkeypatch) -> None:
+    from types import SimpleNamespace
+    import app.main as runtime_main
+
+    verifier = importlib.import_module("verify_siming_population_domain_owner_adaptation")
+    settings = SimpleNamespace(heavenly_graph_path="must-not-open.sqlite3")
+    monkeypatch.setattr(runtime_main, "settings", settings)
+    closed = []
+    monkeypatch.setattr(runtime_main, "close_runtime_resources", lambda: closed.append(True))
+
+    def fail_trace():
+        assert settings.heavenly_graph_path == ":memory:"
+        raise RuntimeError("trace_failed")
+
+    monkeypatch.setattr(verifier, "_isolated_tax_trace_invariants", fail_trace)
+    with pytest.raises(RuntimeError, match="trace_failed"):
+        verifier._tax_trace_invariants()
+    assert settings.heavenly_graph_path == "must-not-open.sqlite3"
+    assert closed == [True]

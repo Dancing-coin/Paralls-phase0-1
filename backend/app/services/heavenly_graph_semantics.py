@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
+from pydantic import TypeAdapter
 
 from app.models.siming_heavenly_graph import (
     GraphCorrectionRequest,
@@ -13,6 +14,7 @@ from app.models.siming_heavenly_graph import (
     HeavenlyGraphNode,
     HeavenlyGraphRelation,
 )
+from app.models.fact_type import FactType
 
 
 @dataclass(frozen=True)
@@ -43,23 +45,10 @@ _BRANCH: GraphVisibilityScope = "branch_only"
 class HeavenlyNodeTypeRegistry:
     """Deterministic registry for the first-version Heavenly Graph node types.
 
-    NOTE: S4 断点（05-待决问题与缺陷登记.md 第四章断点清单）
-    当前实现：硬编码 node_type 注册表（过渡期方案）
-
-    短期方案（Q2-A）：
-      - DEFAULT_RULES 保持 dict[str, _NodeRule] 形式
-      - 这是显式的类型→规则映射，不是推断
-      - node_type 值需与 Owner domain 对齐（但不依赖 Owner 注册）
-
-    长期目标（Q2-C，Phase 2+）：
-      - 改为 FactType → GraphNodeType 声明式映射
-      - node_type 由 Owner domain 的 FactType registry 统一提供
-      - 图规则从 FactType metadata 派生
-
-    See: docs/reference/phase1-siming/Q1-Q2-decisions.md
+    FactType lookups provide the typed entry point while legacy node names
+    remain available for existing graph records.
     """
 
-    # TODO: S4 长期 - 改为 FactType → GraphNodeType 声明式映射（Phase 2）
     DEFAULT_RULES: dict[str, _NodeRule] = {
         "siming_admission": _NodeRule((_SIMING,), ("projection",), (_INTERNAL,)),
         "world_fact": _NodeRule((_SIMING, _RESOURCE), ("fact",), (_PUBLIC, _AUTHORITY, _BRANCH)),
@@ -89,6 +78,42 @@ class HeavenlyNodeTypeRegistry:
 
     def __init__(self, rules: dict[str, _NodeRule] | None = None) -> None:
         self.rules = dict(rules or self.DEFAULT_RULES)
+
+    def register(
+        self, node_type: str, *,
+        allowed_namespaces: tuple[GraphNamespace, ...],
+        allowed_record_kinds: tuple[GraphRecordKind, ...],
+        allowed_visibility_scopes: tuple[GraphVisibilityScope, ...],
+    ) -> None:
+        """S4: extend this instance without replacing existing or reserved rules."""
+        if (not node_type.strip() or node_type != node_type.strip()
+                or node_type in self.rules or self._legacy_rule(node_type) is not None):
+            raise ValueError(f"node type is already registered or reserved: {node_type}")
+        if not all((allowed_namespaces, allowed_record_kinds, allowed_visibility_scopes)):
+            raise ValueError("node rule requires nonempty admission constraints")
+        self.rules[node_type] = TypeAdapter(_NodeRule).validate_python({
+            "allowed_namespaces": allowed_namespaces,
+            "allowed_record_kinds": allowed_record_kinds,
+            "allowed_visibility_scopes": allowed_visibility_scopes,
+        })
+
+    def rule_for(self, fact_type: FactType) -> _NodeRule:
+        node_type = {
+            FactType.WORLD_FACT: "world_fact",
+            FactType.VISUAL_FACT: "world_fact",
+            FactType.ESM_RESULT: "causal_event",
+            FactType.CHARACTER_BEHAVIOR: "behavior_turn",
+            FactType.CONVERSATION_RESOLUTION: "causal_event",
+            FactType.CONSTRAINT_STATE: "causal_event",
+            FactType.POPULATION_CADENCE: "causal_event",
+            FactType.DAILY_RHYTHM_FATIGUE_STATE: "causal_event",
+            FactType.DAILY_RHYTHM_NEED_PRESSURE_STATE: "causal_event",
+            FactType.DAILY_RHYTHM_STARVATION_CREDIT_STATE: "causal_event",
+            FactType.DAILY_RHYTHM_ACTIVITY_PHASE_STATE: "causal_event",
+        }.get(fact_type)
+        if node_type is None:
+            raise ValueError(f"fact type has no graph node rule: {fact_type.value}")
+        return self.require(node_type)
 
     @property
     def node_types(self) -> tuple[str, ...]:

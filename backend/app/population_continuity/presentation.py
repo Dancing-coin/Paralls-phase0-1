@@ -16,7 +16,7 @@ from app.population_continuity.world import WorldContinuityRuntime
 
 
 _FIELDS = ("actor_id", "confirmed_tick", "presentation_position", "animation_tag", "public_digest")
-_ANIMATIONS = {"rest": "rest", "routine": "idle", "routine_work": "work", "leisure": "idle"}
+_ANIMATIONS = {"morning": "rest", "afternoon": "work", "evening": "work", "night": "idle", "rest": "rest", "routine": "idle", "routine_work": "work", "leisure": "idle"}
 _REGISTRY = StateGroupRegistry()
 _REGISTRY.register(StateGroupDefinition(group_id="population_public", definition_version="1", projection_schema_version=1))
 _BUILDER = CharacterGameRuntimeStateBuilder(_REGISTRY)

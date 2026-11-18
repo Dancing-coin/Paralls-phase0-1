@@ -49,6 +49,8 @@ class SimingNarrativeCore:
             for index, item in enumerate(obligations, start=1)
         ]
         state = NarrativeStateSnapshot(
+            source_event_id=event.source_event_id,
+            actor_ids=[str(event.payload["target_actor_id"])] if event.payload.get("target_actor_id") else [],
             snapshot_id=f"narrative:{room_id}:ts{event.producer_ts}:r{revision}",
             room_id=room_id,
             scene_id=event.scene_id,

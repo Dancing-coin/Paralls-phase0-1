@@ -50,6 +50,14 @@ class ESMService:
     # names it. The main demo's small policy catalog keeps the authority
     # boundary explicit while broader object-family ownership is still pending.
     INTERACTION_POLICIES: dict[str, dict[str, object]] = {
+        # Shared orchestration fixture; production scene objects remain explicit below.
+        "obj_box": {
+            "allowed_interactions": {"inspect", "take_object", "move_obstacle", "contact", "push", "grab"},
+            "machine_id": "generic_object",
+            "affordances": ["inspect", "take_object", "move_obstacle", "contact", "push", "grab"],
+            "occludes": False,
+            "environment_transition": "none",
+        },
         "obj_letter": {
             "allowed_interactions": {"inspect", "read", "destroy"},
             "machine_id": "visibility",

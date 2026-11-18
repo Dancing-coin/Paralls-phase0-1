@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import sys
@@ -159,9 +160,13 @@ def test_claimed_freeze_flags_cannot_turn_missing_live_inputs_into_quality_pass(
 
 def test_cli_exports_raw_diagnosis_and_cleans_owned_scope(tmp_path):
     exported = tmp_path / "evidence"
+    from scripts.verification.run_context import ENV_KEYS
+
+    # This CLI owns its export scope, even when pytest runs inside a harness.
+    child_env = {key: value for key, value in os.environ.items() if key not in ENV_KEYS}
     completed = subprocess.run(
         [sys.executable, str(SCRIPT), "--export-evidence", str(exported)],
-        cwd=REPO, text=True, encoding="utf-8", capture_output=True, timeout=30,
+        cwd=REPO, text=True, encoding="utf-8", capture_output=True, timeout=30, env=child_env,
     )
     assert completed.returncode == 2
     assert "harness_cleanup=passed" in completed.stdout

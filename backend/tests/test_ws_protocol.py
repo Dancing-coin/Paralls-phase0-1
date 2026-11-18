@@ -1,11 +1,12 @@
 from pathlib import Path
+from time import time
 
 import pytest
-
+from app.character_agent.models.character_execution import CharacterExecutionContract
 from app.character_agent.gateway.model_gateway import CharacterModelGateway
 from app.character_agent.planning.l3_planner import CharacterAgentL3Service
 from app.character_agent.reasoning.l2_reasoner import CharacterAgentL2Service
-from app.models.player_input import DialogueSubmit
+from app.models.player_input import DialogueSubmit, InteractIntent
 from app.models.ai_output import DialogueResponse
 from app.models.dialogue_audio import DialogueAudio
 from app.models.environment_request import EnvironmentRequest
@@ -70,6 +71,10 @@ class _LocalGateway:
 
 def _reset_runtime_state_with_local_character_model() -> None:
     reset_runtime_state()
+    from app.services.siming_policy import EntityEligibilityRegistry
+    main.siming_event_pipeline._runtime._policy._entity_registry = EntityEligibilityRegistry(
+        objects=("obj_letter",), environments=("env_lamp",),
+    )
     runtime = CharacterAgentRuntime()
     local_gateway = _LocalGateway()
     runtime._l2 = CharacterAgentL2Service(gateway=local_gateway, profile_registry=runtime._profile_registry)
@@ -886,7 +891,9 @@ def test_websocket_environment_request_accepts_light_level_restore_variant() -> 
     assert drop_siming_output["payload"]["authority_event_id"].startswith("siming:dispatch_intent:")
     assert drop_siming_output["payload"]["target_environment_id"] == "env_lamp"
     assert drop_character_agent_execution["message_type"] == "character_agent_execution"
-    assert drop_character_agent_execution["payload"]["actor_ref"] == "character:char_b"
+    selected_actor = drop_siming_output["payload"]["target_actor_id"]
+    assert selected_actor in main.character_agent_runtime._profile_registry.actor_ids()
+    assert drop_character_agent_execution["payload"]["actor_ref"] == f"character:{selected_actor}"
     ack = next(message for message in received if message["message_type"] == "ack")
     action_request = next(message for message in received if message["message_type"] == "action_request")
     action_resolution = next(
@@ -1284,9 +1291,10 @@ def test_websocket_interact_intent_emits_ack_action_resolution_transition_object
     assert environment_result["payload"]["thermal_level"] == "warm"
     assert environment_result["payload"]["current_state"] == "alerted"
     assert siming_output["message_type"] == "siming_output"
-    assert siming_output["payload"]["target_actor_id"] == "char_b"
+    selected_actor = siming_output["payload"]["target_actor_id"]
+    assert selected_actor in main.character_agent_runtime._profile_registry.actor_ids()
     assert character_agent_execution["message_type"] == "character_agent_execution"
-    assert character_agent_execution["payload"]["actor_ref"] == "character:char_b"
+    assert character_agent_execution["payload"]["actor_ref"] == f"character:{selected_actor}"
     assert runtime_snapshot["message_type"] == "character_runtime_state_snapshot"
     assert runtime_snapshot["payload"]["actor_id"] == "char_c"
     assert projection_delta["message_type"] == "character_runtime_state_delta"
@@ -1425,6 +1433,46 @@ def test_legacy_worktable_interaction_rejects_before_any_object_commit(action) -
     assert result[0]["payload"]["accepted"] is False
     assert result[0]["payload"]["error_code"] == "object_interaction_source_unavailable"
     assert not any(message.get("event_type") == "object_state_result" for message in result)
+    assert main.gameplay_event_store.get_last_global_sequence() == before
+
+
+def test_worktable_finish_use_requires_the_authority_committed_engaged_state_owner_level() -> None:
+    _reset_runtime_state_with_local_character_model()
+
+    scope = dict(room_id="room_demo", scene_id="scene_demo", zone_id="zone_focus",
+                 target_object_id="obj_worktable")
+
+    def interact(producer_ts: int, interaction_type: str):
+        # Owner-level regression; production pose/dispatch admission is covered by object execution tests.
+        event = InteractIntent(
+            player_id="character_agent", actor_id="char_c", intent_type="interact_intent",
+            producer_ts=producer_ts, interaction_type=interaction_type,
+            turn_id=f"turn:worktable:{producer_ts}",
+            execution_contract_ref=f"execution:worktable:{producer_ts}", **scope,
+        )
+        return main.esm_service.settle_object_interaction(
+            event, action_request=main.esm_service.build_action_request(event),
+            actor_position=main.esm_service.OBJECT_POSITIONS["obj_worktable"],
+        )
+
+    assert main.esm_service.interaction_state_for(**scope) == "ready"
+    engaged, engaged_receipt = interact(462, "use")
+    assert engaged.settlement_status == "committed" and engaged_receipt.committed
+    assert main.esm_service.interaction_state_for(**scope) == "engaged"
+    assert main.gameplay_event_store.get_event(engaged_receipt.committed_event_ids[0]).payload["current_state"] == "engaged"
+    assert interact(462, "use") == (engaged, engaged_receipt)
+
+    released, released_receipt = interact(463, "finish_use")
+    assert released.settlement_status == "committed" and released_receipt.committed
+    assert main.esm_service.interaction_state_for(**scope) == "ready"
+    assert main.gameplay_event_store.get_event(released_receipt.committed_event_ids[0]).payload["current_state"] == "ready"
+    before = main.gameplay_event_store.get_last_global_sequence()
+    assert interact(463, "finish_use") == (released, released_receipt)
+    state_constraint, rejected_receipt = interact(464, "finish_use")
+    assert state_constraint.constraint_type == "interaction_state_constraint"
+    assert state_constraint.constraint_code == "invalid_interaction_state"
+    assert rejected_receipt is None
+    assert main.esm_service.interaction_state_for(**scope) == "ready"
     assert main.gameplay_event_store.get_last_global_sequence() == before
 
 
@@ -1649,30 +1697,53 @@ def test_websocket_focus_target_change_emits_runtime_alignment_messages() -> Non
 
 def test_websocket_character_agent_execution_emits_scheduling_round_trace() -> None:
     _reset_runtime_state_with_local_character_model()
-    client = TestClient(app)
+    contract = CharacterExecutionContract(
+        turn_id="turn:char_b:scheduling", actor_ref="character:char_b",
+        source_ref="percept:scheduling", producer_ts=10,
+        target_refs=["character:char_a"], semantic_intent_id="speak_public",
+        semantic_action_id="action:speak", expected_revision_vector={"session:char_b": 1},
+        idempotency_key="execution:char_b:scheduling", causation_id="cause:scheduling",
+        correlation_id="corr:scheduling", privacy_scope="actor_private:char_b",
+        authority_scope="world:default", expected_observation={"summary": "Hello"},
+    )
+    now = int(time())
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="p1", allowed_actor_refs=("character:char_b",),
+        issued_at=now, expires_at=now + 60,
+    )
+    client = TestClient(app, client=("127.0.0.1", 50000))
     with client.websocket_connect("/ws") as websocket:
+        websocket.send_json({"message_type": "websocket_session_bind", "payload": {
+            "credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1,
+        }})
+        assert websocket.receive_json()["payload"]["accepted"] is True
+        assert websocket.receive_json()["message_type"] == "websocket_session_bound"
+        main.character_agent_runtime.record_execution_request(
+            actor_id="char_b", producer_ts=contract.producer_ts, payload=contract.model_dump(mode="json"),
+        )
         websocket.send_json(
             {
                 "message_type": "character_agent_execution",
-                "payload": {
-                    "actor_id": "char_b",
-                    "action_request_bundle": {
-                        "requested_actions": [
-                            {
-                                "request_type": "approach",
-                                "actor_id": "char_b",
-                                "target_actor_id": "char_a",
-                            }
-                        ]
-                    },
-                },
+                "payload": contract.model_dump(mode="json"),
             }
         )
-
-        received = [websocket.receive_json() for _ in range(13)]
+        websocket.send_json({"message_type": "transport_barrier", "payload": {
+            "request_id": "transport_barrier:scheduling", "producer_ts": 11,
+        }})
+        received = []
+        while True:
+            message = websocket.receive_json()
+            if message.get("payload", {}).get("request_id") == "transport_barrier:scheduling":
+                assert message["payload"]["accepted"] is True
+                break
+            received.append(message)
 
     traces = [message for message in received if message["message_type"] == "scheduling_round_trace"]
 
+    assert received[0]["payload"]["accepted"] is True
+    response = next(message["payload"] for message in received if message["message_type"] == "dialogue_response")
+    assert response["actor_id"] == "char_b"
+    assert response["turn_id"] == contract.turn_id
     assert traces
     assert traces[0]["payload"]["round_id"] == 1
     assert traces[0]["payload"]["lead_actor_id"] == "char_b"

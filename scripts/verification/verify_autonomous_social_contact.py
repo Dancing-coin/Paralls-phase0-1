@@ -14,6 +14,7 @@ from common import (
     resolve_godot_exe,
     resolve_python_exe,
     run_command_until_markers,
+    run_command,
     stop_backend,
     verification_dir,
     write_json,
@@ -100,8 +101,11 @@ def main() -> int:
     runtime_log_text = read_text(runtime_log_path)
 
     actor_source = read_text(project_root / "scripts" / "character" / "CharacterActor.gd")
-    service_source = read_text(project_root / "backend" / "app" / "services" / "character_service.py")
-    dialogue_source = read_text(project_root / "backend" / "app" / "services" / "dialogue_service.py")
+    ownership_log = log_dir / "autonomous-contact-utterance-ownership.log"
+    ownership_result = run_command(
+        [python_exe, "-m", "pytest", "backend/tests/test_character_service.py::test_agent_initiated_utterance_preserves_speaking_actor"],
+        project_root, ownership_log, env={"PYTHONPATH": str(project_root / "backend")},
+    )
 
     runtime_note = "" if runtime_log_text != "" else "Runtime probe did not produce a log."
 
@@ -154,20 +158,8 @@ def main() -> int:
         _result(
             "autonomous_contact_utterance_owned_by_initiator",
             "Agent-initiated utterance path preserves initiator ownership",
-            all(
-                token in service_source
-                for token in (
-                    'if event.player_id == "character_agent":',
-                    "actor_id=event.actor_id",
-                    "target_actor_id=event.target_actor_id",
-                    "self.dialogue.generate_utterance(",
-                )
-            )
-            and _dialogue_source_preserves_agent_initiated_context(dialogue_source),
-            [
-                "backend/app/services/character_service.py",
-                "backend/app/services/dialogue_service.py",
-            ],
+            ownership_result.returncode == 0,
+            [str(ownership_log)],
         ),
     ]
 

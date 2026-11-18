@@ -239,6 +239,16 @@ def test_live_probe_disables_unrelated_debug_event_flooding() -> None:
     assert '"PHASE0_DEBUG_LOGGING": "0"' in verifier_text
 
 
+def test_live_probe_suspends_unrelated_main_demo_fact_sampling() -> None:
+    probe_text = (
+        ROOT / "scripts" / "verification" / "ObjArchiveDoorPhysicalEmbodimentProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'main_demo.set("suspend_near_object_visual_fact", true)' in probe_text
+    assert 'main_demo.set("suspend_spatial_access_fact", true)' in probe_text
+    assert 'main_demo.call("_set_autotest_actor_local_perception_enabled", false)' in probe_text
+
+
 def test_revision_injector_reads_an_authoritative_live_preflight_before_mutating() -> None:
     service = SimpleNamespace(
         _attempts_by_grant={
@@ -267,6 +277,32 @@ def test_revision_injector_waits_for_the_godot_runtime_window_not_a_short_startu
     )[0]
 
     assert "_wait_for_authoritative_preflight(server, GODOT_TIMEOUT_SECONDS)" in revision_branch
+
+
+def test_live_probe_uses_process_timeout_instead_of_frame_count_quit() -> None:
+    verifier_text = (
+        ROOT
+        / "scripts"
+        / "verification"
+        / "verify_obj_archive_door_physical_embodiment.py"
+    ).read_text(encoding="utf-8")
+    run_probe = verifier_text.split("def _run_probe_scenario(", maxsplit=1)[1].split(
+        "def _backend_trace_for_scenario", maxsplit=1
+    )[0]
+
+    assert '"--quit-after"' not in run_probe
+    assert "deadline = time.time() + GODOT_TIMEOUT_SECONDS" in run_probe
+    assert "process.terminate()" in run_probe
+
+
+def test_probe_records_backend_transport_state_at_local_outcome() -> None:
+    script_text = (
+        ROOT / "scripts" / "verification" / "ObjArchiveDoorPhysicalEmbodimentProbe.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'get_node_or_null("/root/BackendBridge")' in script_text
+    assert '"backend_transport_on_local_outcome"' in script_text
+    assert '"backend_ack_payloads"' in script_text
 
 
 def test_live_probe_uses_a_renderer_capable_of_capturing_the_required_png_evidence() -> None:
@@ -301,6 +337,36 @@ def test_live_probe_directly_supervises_the_godot_child_after_launcher_handoff()
 
 def test_main_demo_probe_timeout_covers_cold_start_and_terminal_evidence_write() -> None:
     assert verifier.GODOT_TIMEOUT_SECONDS >= 120.0
+
+
+def test_live_probe_has_no_short_frame_exit_before_its_scenario_deadline() -> None:
+    verifier_text = (
+        ROOT
+        / "scripts"
+        / "verification"
+        / "verify_obj_archive_door_physical_embodiment.py"
+    ).read_text(encoding="utf-8")
+    run_probe = verifier_text.split("def _run_probe_scenario(", maxsplit=1)[1].split(
+        "def _backend_trace_for_scenario", maxsplit=1
+    )[0]
+
+    assert '"--quit-after"' not in run_probe
+    assert "deadline = time.time() + GODOT_TIMEOUT_SECONDS" in run_probe
+    assert "process.terminate()" in run_probe
+
+
+def test_archive_door_role_scene_uses_the_current_active_skin_contract() -> None:
+    scene_text = (
+        ROOT / "scenes" / "active" / "crusader_knight" / "KnightRoleSkin.tscn"
+    ).read_text(encoding="utf-8")
+    skin_text = (
+        ROOT / "scripts" / "character" / "KnightRoleSkin.gd"
+    ).read_text(encoding="utf-8")
+
+    assert 'path="res://assets/active/crusader_knight/crusader_knight.glb"' in scene_text
+    assert 'path="res://scripts/character/KnightRoleSkin.gd"' in scene_text
+    assert "func resolve_motion_realization(semantic_action_id: String, claims: Array[StringName] = []) -> Dictionary:" in skin_text
+    assert "func apply_presentation_input(next_input: Dictionary) -> Dictionary:" in skin_text
 
 
 def test_each_door_scenario_keeps_a_result_delivery_buffer_after_the_bounded_grant_window() -> None:

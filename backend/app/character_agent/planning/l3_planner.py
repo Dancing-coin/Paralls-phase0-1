@@ -645,10 +645,23 @@ class CharacterAgentL3Service:
         if frame is not None:
             if frame.actor_id != interpretation.actor_id:
                 raise ValueError("mind frame actor mismatch")
+            if frame.turn_id and turn_context is None:
+                # A complete frozen frame carries its own pins and digest; retain the
+                # legacy prepared-consumer path while rejecting unverifiable shells.
+                if not frame.frame_digest or not any(
+                    layer.cards
+                    for layer in (
+                        frame.enduring_truth,
+                        frame.memory_evidence,
+                        frame.runtime_state,
+                        frame.affordances,
+                    )
+                ):
+                    raise ValueError("mind frame turn context required")
+                if frame.frame_digest != frame._content_digest():
+                    raise ValueError("mind frame digest mismatch")
             if turn_context is not None:
                 frame = frame.bind_to_turn(turn_context)
-            elif frame.turn_id:
-                raise ValueError("mind frame turn context required")
         interpretation = self._normalize_interpretation(interpretation)
         normalized_snapshot = self._normalize_snapshot(snapshot)
         normalized_profile = self._normalize_profile(profile)
@@ -1835,7 +1848,7 @@ class CharacterAgentL3Service:
             "speak_public": "speak_public",
             "self_protect": "physiology_hint",
             "short_punch": "short_punch",
-            "stay_silent": "observe_target",
+            "stay_silent": "observe",
         }
         return mapping.get(candidate, "observe_target")
 

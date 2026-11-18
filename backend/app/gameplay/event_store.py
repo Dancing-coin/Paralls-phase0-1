@@ -1423,10 +1423,15 @@ class DurableGameplayEventStore(GameplayEventStore):
             finally:
                 if token is not None:
                     self._cache_scan_admission.reset(token)
-        except GameplayEventStoreSnapshotError:
+        except GameplayEventStoreSnapshotError as exc:
             # Preserve store lifecycle/read failures raised by _rows.  These
             # are not malformed persisted rows and callers rely on the exact
             # closed/read-failed diagnostic when recovering a Durable store.
+            if str(exc) == "gameplay_snapshot_closed":
+                raise
+            if str(exc) in {"gameplay_snapshot_json_codec_invalid",
+                            "gameplay_snapshot_json_codec_unsupported"}:
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
             raise
         except (ValueError, TypeError) as exc:
             raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
@@ -1476,7 +1481,12 @@ class DurableGameplayEventStore(GameplayEventStore):
         return int(self._rows("SELECT value FROM metadata WHERE key='last_global_sequence'")[0][0])
 
     def get_event(self, event_id: str) -> GameplayEvent:
-        values = self._models(GameplayEvent, "SELECT COALESCE(full_value,value) FROM events WHERE event_id=?", (event_id,))
+        try:
+            values = self._models(GameplayEvent, "SELECT COALESCE(full_value,value) FROM events WHERE event_id=?", (event_id,))
+        except GameplayEventStoreSnapshotError as exc:
+            if str(exc) == "gameplay_snapshot_closed":
+                raise GameplayEventStoreSnapshotError("gameplay_snapshot_row_invalid") from exc
+            raise
         if not values:
             raise KeyError(event_id)
         return values[0]

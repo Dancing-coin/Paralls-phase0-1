@@ -28,6 +28,7 @@ from .member_ledger import (
 )
 from .simulation_contracts import CharacterSimulationFrame, ParticipationResolution, simulation_digest
 from .handoff import prepare_intersection
+from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime
 
 
 @dataclass(frozen=True)
@@ -57,11 +58,18 @@ class WorldContinuityRuntime:
         mode: WorldModeProfile,
         authorized_actor_refs: frozenset[str] | None = None,
         roster: PopulationRoster | None = None,
+        event_bus=None,
+        owner_store=None,
     ) -> None:
         self.store = store
         self.mode = mode
         self.authorized_actor_refs = authorized_actor_refs
         self.roster = roster if roster is not None else load_population_roster()
+        self._daily_rhythm = DailyRhythmRuntime(event_bus, store=owner_store) if event_bus is not None else None
+        if self._daily_rhythm is not None:
+            for actor_id in self.roster.actor_ids:
+                if owner_store is None or owner_store.get_stream_head(f"daily-rhythm:{actor_id}") == 0:
+                    self._daily_rhythm.initialize(actor_id)
         from .recovery import population_kernel_digest
         self._population_kernel_digest = population_kernel_digest()
         self._cadence_cache: dict[tuple[object, ...], PopulationCadenceInput] = {}
@@ -786,6 +794,14 @@ class WorldContinuityRuntime:
             )
             for result in results
         )
+        if self._daily_rhythm is not None:
+            for result in results:
+                self._daily_rhythm.publish_state(
+                    result.actor_id,
+                    result.values,
+                    tick=result.to_tick,
+                    revision=result.actor_revision_before + 1,
+                )
         presentation_due_count = sum(len(result.due_ticks) for result in results)
         consumed_due = self._population_due_index.pop_due(
             cadence.window_end, obligation_id="b0:presentation-threshold", actor_ids=active_ids

@@ -16,7 +16,11 @@ func resolve_player_look_target(
 		return player.global_position + program_control_state.forced_move_direction.normalized()
 	var normalized_frame := CharacterControllerPortRef.normalize_intent_frame(current_intent_frame)
 	if _has_explicit_forward_intent(normalized_frame):
-		return player.global_position + _forward_from_yaw(
+		var forward_origin := player.global_position
+		var character_c := _get_character_actor(player)
+		if character_c is Node3D:
+			forward_origin = (character_c as Node3D).global_position
+		return forward_origin + _forward_from_yaw(
 			CharacterControllerPortRef.get_desired_facing_yaw(normalized_frame, desired_facing_yaw)
 		)
 	var camera_holder := player.get_node_or_null("CameraHolder")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import sys
 import tempfile
@@ -8,6 +9,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from app.verification_audit import evaluate_phase1_slice_audit
 
@@ -25,6 +27,8 @@ from common import (
     write_markdown,
 )
 from runtime_trace import write_runtime_trace
+from scripts.launch_trusted_local_gameplay_mirror import request_enrollment
+from app.services.trusted_local_gameplay_mirror_launcher import GameplayMirrorGodotLaunchHandoff
 
 PHASE1_SLICE_PROBE_SCENE = "res://scenes/phase0/Phase1SliceRuntimeProbe.tscn"
 PHASE1_SLICE_PROBE_SCENE_PATH = Path("scenes/phase0/Phase1SliceRuntimeProbe.tscn")
@@ -33,6 +37,12 @@ PHASE1_SLICE_VERIFY_ENV = {
     "CHARACTER_MODEL_ROUTE_OVERRIDE": "local_only",
     "SIMING_HEAVENLY_MODE": "off",
     "SIMING_LLM_MODE": "disabled",
+    "GAMEPLAY_MIRROR_LAUNCHER_BOOTSTRAP_SECRET": "phase1-slice-verifier",
+    "GAMEPLAY_MIRROR_TRUSTED_LOCAL_LAUNCH_PROFILES_JSON": json.dumps([{
+        "profile_ref": "phase1-slice", "principal_ref": "principal:phase1-slice",
+        "allowed_actor_refs": ["character:char_a", "character:char_b", "character:char_c"],
+        "credential_ttl_seconds": 60,
+    }]),
 }
 
 
@@ -92,6 +102,11 @@ def main() -> int:
         if pytest_result.returncode != 0:
             raise RuntimeError(f"phase1-slice pytest failed; see {pytest_log}")
 
+        def enrollment_env():
+            enrollment = request_enrollment(backend_http_url="http://127.0.0.1:8000",
+                launch_profile_ref="phase1-slice", launcher_secret="phase1-slice-verifier")
+            return GameplayMirrorGodotLaunchHandoff(enrollment=enrollment).child_environment()
+
         main_log = log_dir / "phase1-slice-main.log"
         main_result = run_command(
             [
@@ -109,6 +124,7 @@ def main() -> int:
             project_root,
             main_log,
             env={
+                **enrollment_env(),
                 "PHASE1_SLICE_PROBE_MODE": "main",
                 "PHASE1_SLICE_PROBE_RUN_ID": f"{run_id}-main",
                 "PARALLS_HEAVENLY_GRAPH_PATH": phase1_env["PARALLS_HEAVENLY_GRAPH_PATH"],
@@ -134,6 +150,7 @@ def main() -> int:
             project_root,
             focus_log,
             env={
+                **enrollment_env(),
                 "PHASE1_SLICE_PROBE_MODE": "focus",
                 "PHASE1_SLICE_PROBE_RUN_ID": f"{run_id}-focus",
                 "PARALLS_HEAVENLY_GRAPH_PATH": phase1_env["PARALLS_HEAVENLY_GRAPH_PATH"],

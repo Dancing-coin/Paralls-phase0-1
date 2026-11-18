@@ -23,6 +23,7 @@ from app.services.siming_heavenly_graph_port import (
     HeavenlyGraphIdempotencyConflict,
     HeavenlyGraphRevisionConflict,
 )
+from app.models.fact_type import FactType
 
 
 def _scope(namespace: str = "siming_heavenly", owner: str | None = None) -> HeavenlyGraphScope:
@@ -115,6 +116,12 @@ def test_node_registry_rejects_unknown_type_and_bad_namespace() -> None:
             record_kind="fact",
             visibility_scope="public",
         )
+
+
+def test_node_registry_derives_rules_for_registered_fact_types() -> None:
+    registry = HeavenlyNodeTypeRegistry()
+    assert registry.rule_for(FactType.WORLD_FACT) == registry.require("world_fact")
+    assert registry.rule_for(FactType.VISUAL_FACT) == registry.require("world_fact")
     with pytest.raises(ValueError, match="namespace"):
         registry.validate(
             node_type="world_fact",
@@ -122,6 +129,30 @@ def test_node_registry_rejects_unknown_type_and_bad_namespace() -> None:
             record_kind="fact",
             visibility_scope="public",
         )
+
+
+def test_s4_dynamic_node_registration_is_isolated_and_enforces_boundaries():
+    registry = HeavenlyNodeTypeRegistry()
+    registry.register("weather_projection", allowed_namespaces=("siming_heavenly",),
+                      allowed_record_kinds=("projection",), allowed_visibility_scopes=("siming_internal",))
+    registry.validate(node_type="weather_projection", namespace="siming_heavenly",
+                      record_kind="projection", visibility_scope="siming_internal")
+    with pytest.raises(ValueError, match="namespace"):
+        registry.validate(node_type="weather_projection", namespace="actor_private",
+                          record_kind="projection", visibility_scope="siming_internal")
+    with pytest.raises(ValueError, match="unregistered"):
+        HeavenlyNodeTypeRegistry().require("weather_projection")
+    with pytest.raises(ValueError, match="registered"):
+        registry.register("world_fact", allowed_namespaces=("siming_heavenly",),
+                          allowed_record_kinds=("projection",), allowed_visibility_scopes=("siming_internal",))
+
+
+def test_s4_dynamic_registration_rejects_invalid_and_reserved_rules():
+    registry = HeavenlyNodeTypeRegistry()
+    for name, namespaces in [("memory:unsafe", ("siming_heavenly",)), ("bad_namespace", ("unknown",))]:
+        with pytest.raises(ValueError):
+            registry.register(name, allowed_namespaces=namespaces,
+                              allowed_record_kinds=("projection",), allowed_visibility_scopes=("siming_internal",))
 
 
 def test_node_registry_enforces_actor_private_ownership_and_proposals() -> None:

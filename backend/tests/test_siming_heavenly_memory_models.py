@@ -16,6 +16,16 @@ from app.models.siming_heavenly_memory import (
 )
 
 
+def test_s5_world_fact_type_reference_roundtrips_and_validates_registration():
+    values = dict(entry_id="fact:typed", world_anchor_id="obj_letter", state_key="surface",
+                  state_value="removed", authority_result_ref="authority:result")
+    entry = WorldFactMemoryEntry(**values, fact_type_ref="gameplay.inventory.item_instantiated@1")
+    assert WorldFactMemoryEntry.model_validate_json(entry.model_dump_json()).fact_type_ref == "gameplay.inventory.item_instantiated@1"
+    assert WorldFactMemoryEntry(**values).fact_type_ref is None
+    with pytest.raises(ValidationError, match="fact_type_ref"):
+        WorldFactMemoryEntry(**values, fact_type_ref="gameplay.inventory.undeclared")
+
+
 def test_world_fact_requires_authority_result_ref() -> None:
     with pytest.raises(ValidationError, match="authority_result_ref"):
         WorldFactMemoryEntry(

@@ -220,6 +220,9 @@ func _advance_prediction() -> void:
 	var stamina: Dictionary = entries.get("core.stamina", {})
 	var current := int(stamina.get("current", -1))
 	if not _prediction_confirm_started:
+		# Wait for the initial authoritative delivery before starting the overlay.
+		if _consumer.last_delivery_sequence < 1:
+			return
 		if current != 6:
 			_finish(false, "prediction_initial_authority_snapshot_invalid")
 			return
@@ -238,7 +241,6 @@ func _advance_prediction() -> void:
 		if _consumer.pending_predictions.has("prediction:live:stamina-confirm"):
 			return
 		if current != 5 or _consumer.prediction_resolution_trace.is_empty():
-			_finish(false, "prediction_confirmation_authority_projection_missing")
 			return
 		var confirmed: Dictionary = _consumer.prediction_resolution_trace.back()
 		if str(confirmed.get("resolution", "")) != "confirmed" or str(confirmed.get("transaction_id", "")).is_empty():

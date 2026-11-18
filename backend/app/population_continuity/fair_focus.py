@@ -10,16 +10,18 @@ This module supplies the missing loop: it ranks by accumulated credit, resets th
 credit of whoever was actually served, and exposes coverage/starvation metrics so
 "nobody starved" is a measurable claim instead of an assumption.
 
-Phase 2 Work (Q1): This module manages starvation_credit from HOT_FIELDS without
-an explicit Owner assignment. When Q1 is resolved (B0 fields assigned to an Owner),
-this module should be updated to source credit from the Owner's event log rather
-than the direct HOT_FIELDS dictionary.
+FairFocusQueue owns only local scheduler credit. An optional read-only hot-state
+reader can seed it once through get_starvation_credit_for_siming; serving never
+writes B0 or replenishes spent credit from an unchanged row.
+Phase 2: authoritative query integration remains outside this scheduler.
 See: 05-待决问题与缺陷登记.md Q1
 """
 
 from __future__ import annotations
 
-from typing import Iterable, Literal
+from typing import Callable, Iterable, Literal, Mapping
+
+from app.population_continuity.hot_state import get_starvation_credit_for_siming
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -101,18 +103,24 @@ class FairFocusQueue:
     pure scheduler input.
     """
 
-    def __init__(self, *, ceiling: float = CREDIT_CEILING) -> None:
+    def __init__(self, *, ceiling: float = CREDIT_CEILING,
+                 hot_state_reader: Callable[[str], Mapping[str, object]] | None = None) -> None:
         self._credit: dict[str, float] = {}
         self._ceiling = ceiling
+        self._hot_state_reader = hot_state_reader
         self._served_total: dict[str, int] = {}
 
     def credit_for(self, actor_ref: str) -> float:
+        if actor_ref not in self._credit and self._hot_state_reader is not None:
+            # Bootstrap once; serving must not replenish credit from an unchanged B0 row.
+            self._credit[actor_ref] = min(self._ceiling, max(0.0,
+                get_starvation_credit_for_siming(actor_ref, self._hot_state_reader(actor_ref))))
         return self._credit.get(actor_ref, 0.0)
 
     def accrue(self, actor_refs: Iterable[str], *, amount: float = CREDIT_PER_CYCLE) -> None:
         """Advance credit for actors that were not served this cycle."""
         for actor_ref in actor_refs:
-            current = self._credit.get(actor_ref, 0.0)
+            current = self.credit_for(actor_ref)
             self._credit[actor_ref] = min(self._ceiling, current + amount)
 
     def observe_service(self, actor_refs: Iterable[str]) -> None:

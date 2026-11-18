@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "canonical_version": 1,
+  "context_digest": "sha256:5e40dca88c3bbb57cbd4f55b41d285e8f53dc87ba7f9afb1de6460555c39b789",
+  "kernel_digest": "sha256:82eec26922498aa0a0e49b9909f4ada4207bfa747f3cbf0029ca3e21dd50da48",
+  "cadence": {
+    "cadence_id": "cadence:world:900",
+    "world_ref": "world",
+    "world_mode_ref": "world-mode:world",
+    "world_mode_revision": "mode:v1",
+    "cadence_source_ref": "world:world",
+    "cadence_source_revision": 1,
+    "window_start": 900,
+    "window_end": 960,
+    "base_checkpoint_ref": "checkpoint:population:world:1",
+    "base_checkpoint_digest": "sha256:a430caaeda2ad3dd1a65f9e35744da88d22df809c59e806b385d26252f84c5f5",
+    "base_revision_vector": {
+      "world:world": 1
+    },
+    "policy_revision": "policy:population:v1",
+    "selector_revision": "selector:generic:population:v1",
+    "ruleset_revision": "rules:population:v1",
+    "deterministic_seed": "seed:world:900",
+    "catch_up_limit": 2,
+    "budget": 3,
+    "report_scope": "public"
+  },
+  "event_id": "event:population-runtime:cadence:world:900:1",
+  "cadence_stream_revision": 16,
+  "global_sequence": 17,
+  "record_digest": "sha256:18342f767265ce5ab813c3e92fcd00b1177017c26fd2357c8f14f11dd528872f",
+  "receipt": {
+    "cadence_id": "cadence:world:900",
+    "status": "committed",
+    "window_start": 900,
+    "window_end": 960,
+    "advanced_count": 2,
+    "presentation_due_count": 0,
+    "new_due_count": 0,
+    "due_count": 0,
+    "deferred_count": 0,
+    "rejected_count": 0,
+    "due_backlog_count": 0,
+    "projection_digest": "sha256:999a6d1a4d9965d6c61c26bec26e6c4a49e6321485f999bcf9f36edcfeaf33a7",
+    "result_digest": "sha256:6589887d0a248727007b9f63b16fcb0f59f5956b6d142e19aaa7771d81219f76"
+  },
+  "fingerprint": "sha256:c18cf5e0580fc45be09128715d6e3addca1a791e3e351b860902a2a23e3a18dc",
+  "recovery_state": {
+    "schema_version": 1,
+    "context_digest": "sha256:5e40dca88c3bbb57cbd4f55b41d285e8f53dc87ba7f9afb1de6460555c39b789",
+    "confirmed_tick": 960,
+    "rule_identity": [
+      "policy:population:v1",
+      "selector:generic:population:v1",
+      "rules:population:v1",
+      "public"
+    ],
+    "actors": [
+      {
+        "actor_id": "one",
+        "revision": 16,
+        "last_update_tick": 960,
+        "activity_phase": "rest",
+        "fatigue": 0.189333328,
+        "need_pressure": 0.102666672,
+        "next_due_tick": 21600,
+        "starvation_credit": 0.001111104
+      },
+      {
+        "actor_id": "two",
+        "revision": 16,
+        "last_update_tick": 960,
+        "activity_phase": "rest",
+        "fatigue": 0.189333328,
+        "need_pressure": 0.102666672,
+        "next_due_tick": 21600,
+        "starvation_credit": 0.001111104
+      }
+    ],
+    "due_entries": [
+      {
+        "actor_id": "one",
+        "obligation_id": "b0:presentation-threshold",
+        "due_tick": 21600,
+        "revision": 16
+      },
+      {
+        "actor_id": "two",
+        "obligation_id": "b0:presentation-threshold",
+        "due_tick": 21600,
+        "revision": 16
+      }
+    ],
+    "last_receipt": {
+      "cadence_id": "cadence:world:900",
+      "status": "committed",
+      "window_start": 900,
+      "window_end": 960,
+      "advanced_count": 2,
+      "presentation_due_count": 0,
+      "new_due_count": 0,
+      "due_count": 0,
+      "deferred_count": 0,
+      "rejected_count": 0,
+      "due_backlog_count": 0,
+      "projection_digest": "sha256:999a6d1a4d9965d6c61c26bec26e6c4a49e6321485f999bcf9f36edcfeaf33a7",
+      "result_digest": "sha256:6589887d0a248727007b9f63b16fcb0f59f5956b6d142e19aaa7771d81219f76"
+    },
+    "last_fingerprint": "sha256:c18cf5e0580fc45be09128715d6e3addca1a791e3e351b860902a2a23e3a18dc",
+    "state_digest": "sha256:0072d69db318ec74c13edbcb6fac21d2d84581cf2d7d03438bfd1d96cfe67b08"
+  }
+}

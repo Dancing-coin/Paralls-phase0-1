@@ -103,7 +103,7 @@ def test_runtime_dispatch_emits_global_fact_reveal_provenance_fields() -> None:
         producer_ts=90,
     )
 
-    assert snapshot.snapshot_id == "siming_situation:room_demo:scene_demo:90"
+    assert snapshot.snapshot_id.startswith("siming_situation:room_demo:scene_demo:zone_focus:90:")
     assert "authority_event:visual_fact:300" in snapshot.public_fact_refs
     assert "world_result:1" in snapshot.world_result_refs
     assert snapshot.conflict_refs
@@ -156,7 +156,7 @@ def test_global_situation_does_not_scan_prose_fields_for_private_ref_markers() -
         producer_ts=92,
     )
 
-    assert snapshot.snapshot_id == "siming_situation:room_demo:scene_demo:92"
+    assert snapshot.snapshot_id.startswith("siming_situation:room_demo:scene_demo:zone_focus:92:")
 
 
 def test_siming_global_situation_keeps_public_multi_actor_patch_anchor_without_private_context() -> None:

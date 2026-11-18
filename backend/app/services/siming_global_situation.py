@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import re
+import hashlib
+import json
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -71,6 +73,10 @@ class SituationEvidenceRef(BaseModel):
 class SimingGlobalSituationSnapshot(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    world_ts: int = 0
+    sim_tick_ts: int = 0
+    actor_ids: list[str] = Field(default_factory=list)
+
     snapshot_id: str
     context_id: str
     room_id: str
@@ -121,6 +127,7 @@ class SimingGlobalSituationLayer:
         vla_global_findings: list[dict[str, object]] | None = None,
         multi_actor_patch: dict[str, object] | None = None,
         producer_ts: int = 0,
+        install: bool = True,
     ) -> SimingGlobalSituationSnapshot:
         l1_projected_facts = l1_projected_facts or []
         authority_events = authority_events or []
@@ -149,8 +156,16 @@ class SimingGlobalSituationLayer:
         authority_pressure = 0.25 if world_results or authority_events else 0.0
         conflict_refs = self._conflict_refs(l1_projected_facts, world_results, vla_global_findings)
         fairness_pressure = min(1.0, max(imbalance, authority_pressure) + advisory_pressure)
-        snapshot_id = f"siming_situation:{room_id}:{scene_id}:{producer_ts}"
+        identity = json.dumps((room_id, scene_id, zone_id, context_id, producer_ts,
+            sorted(evidence.ref_id for evidence in evidence_chain)), separators=(",", ":"))
+        source_digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        snapshot_id = f"siming_situation:{room_id}:{scene_id}:{zone_id}:{producer_ts}:{source_digest}"
         snapshot = SimingGlobalSituationSnapshot(
+            world_ts=producer_ts,
+            sim_tick_ts=producer_ts + 1,
+            actor_ids=sorted({str(event["payload"]["target_actor_id"])
+                for event in authority_events if isinstance(event.get("payload"), dict)
+                and event["payload"].get("target_actor_id")}),
             snapshot_id=snapshot_id,
             context_id=context_id,
             room_id=room_id,
@@ -187,6 +202,11 @@ class SimingGlobalSituationLayer:
                 "context_id": context_id,
             },
         )
+        if install:
+            self.install_snapshot(snapshot)
+        return snapshot
+
+    def install_snapshot(self, snapshot: SimingGlobalSituationSnapshot) -> None:
         self.snapshots[snapshot.snapshot_id] = snapshot
         self.trace.append(
             {
@@ -198,8 +218,6 @@ class SimingGlobalSituationLayer:
                 "conflict_refs": list(snapshot.conflict_refs),
             }
         )
-        return snapshot
-
     def mark_stale(self, snapshot_id: str) -> SimingGlobalSituationSnapshot:
         snapshot = self.snapshots[snapshot_id].model_copy(update={"lifecycle_state": "stale", "freshness": "stale"})
         self.snapshots[snapshot_id] = snapshot

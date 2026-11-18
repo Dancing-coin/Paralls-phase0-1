@@ -321,7 +321,7 @@ class PopulationSimulationCapability:
                 ):
                     raise ValueError("b0_state_value_invalid")
                 if key == "activity_phase" and value not in {
-                    "rest", "routine", "routine_work", "leisure"
+                    "morning", "afternoon", "evening", "night", "rest", "routine", "routine_work", "leisure"
                 }:
                     raise ValueError("b0_state_value_invalid")
             delta_values = {
