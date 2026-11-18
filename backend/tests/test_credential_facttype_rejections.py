@@ -5,7 +5,7 @@ import pytest
 from app.gameplay.fact_type_registry import (
     FactTypeRegistry, RegistrationRejected, ResolverInputError,
 )
-from test_fact_type_registry import FACT, declarations
+from test_credential_fact_type_registry import FACT, declarations
 
 
 def model(reads):
