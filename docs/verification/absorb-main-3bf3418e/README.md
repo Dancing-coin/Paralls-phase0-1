@@ -50,8 +50,8 @@ SQLite 两个节点在 P/G/M1/M2 均以 `concurrent WAL checkpoint requires SQLi
 
 ## 已知缺口
 
-1. `gameplay.conflict.terminal_outcome_recorded` 在当前生产代码未发现写入者，相关读取方由测试夹具驱动；归司命线，非此次迁移引入。核对命令 `rg -n "terminal_outcome_recorded" backend/app/gameplay/p5 backend/app/gameplay`：命中 action graph 允许集合、schema 注册及读取校验，未命中构造该事件的写入点。
-2. `FACT_TYPE_REGISTRY` 对已登记事件从 schema 名第二段取域，与 v2 Owner 登记命名不同；main 的 `app.models.fact_type` 与 G3 的 `app.gameplay.fact_type_registry` 是不同机制。它不向未登记名称猜测域。
+1. `gameplay.conflict.terminal_outcome_recorded` 在当前生产代码未发现写入者，相关读取方由测试夹具驱动；归司命线，非此次迁移引入。来源提交：main `36a2f928`（2026-11-09，从普通窗口移除该事件）。核对命令 `rg -n "terminal_outcome_recorded" backend/app/gameplay/p5 backend/app/gameplay`：命中 action graph 允许集合、schema 注册及读取校验，未命中构造该事件的写入点。
+2. `FACT_TYPE_REGISTRY` 对已登记事件从 schema 名第二段取域，与 v2 Owner 登记命名不同；main 的 `app.models.fact_type` 与 G3 的 `app.gameplay.fact_type_registry` 是不同机制。它不向未登记名称猜测域。来源提交：main `2dc10780`（2026-11-09，FactType registry 替换字符串订阅）。
 
 ## 五组冻结选集
 
