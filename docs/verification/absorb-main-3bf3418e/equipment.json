@@ -1,0 +1,441 @@
+{
+  "head": "3bf3418e404af69f98f367acdaa2a59c8d4cdb20",
+  "description": "G0 frozen nodes plus M-collected tests from G3-touched test files",
+  "tests": [
+    {
+      "test_name": "tests/test_character_mind_frame_models.py::test_mind_frame_accepts_equipment_affordance_in_affordances",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_application.py::test_equipment_application_uses_shared_store_and_registered_content",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_application.py::test_equipment_prediction_deadline_uses_operational_time_without_population_driver[None]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_application.py::test_equipment_prediction_deadline_uses_operational_time_without_population_driver[driver1]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_application.py::test_equipment_prediction_invalid_request_is_zero_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_application.py::test_equipment_prediction_typed_ingress_recovers_same_durable_owner_receipt",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_content_source_change_before_append_is_rejected_without_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_controller_is_resolved_again_immediately_before_owner_append",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_despawned_actor_cannot_change_equipment",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_exact_replay_uses_persisted_content_pin_after_source_rotation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_owner_response_lost_then_exact_retry_recovers_and_unequips",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_presence_racing_owner_append_is_rejected_by_shared_store_read_pins",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_real_owner_chain_equips_and_replays_after_durable_close_reopen",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_registered_mana_focus_content_uses_production_admission_and_resource_bridge",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_tampered_receipt_is_rejected_without_new_writes[digest]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_tampered_receipt_is_rejected_without_new_writes[payload]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_tampered_receipt_is_rejected_without_new_writes[range]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_tampered_receipt_is_rejected_without_new_writes[vector]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_wrong_scope_or_incarnation_is_zero_write[change0-equipment_world_timeline_mismatch]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_wrong_scope_or_incarnation_is_zero_write[change1-equipment_world_timeline_mismatch]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_wrong_scope_or_incarnation_is_zero_write[change2-equipment_presence_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_command_service.py::test_wrong_scope_or_incarnation_is_zero_write[change3-controller_binding_subject_mismatch]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_equipment_prediction_durable_reopen_and_changed_duplicate",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_equipment_prediction_expiry_is_operational_deadline",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_equipment_prediction_rechecks_scope_and_revocation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_equipment_prediction_recovers_owner_commit_after_response_loss",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_equipment_preview_confirm_uses_real_owner_receipt",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_authority_revalidates_owner_receipt_on_first_and_duplicate_confirm[event_payload-False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_authority_revalidates_owner_receipt_on_first_and_duplicate_confirm[event_payload-True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_authority_revalidates_owner_receipt_on_first_and_duplicate_confirm[event_refs-False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_authority_revalidates_owner_receipt_on_first_and_duplicate_confirm[event_refs-True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_authority_revalidates_owner_receipt_on_first_and_duplicate_confirm[result_digest-False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_authority_revalidates_owner_receipt_on_first_and_duplicate_confirm[result_digest-True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_expiry_and_revoke_require_actor_scope",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_prediction_rejects_binding_epoch_replacement",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_preview_duplicate_keeps_original_deadline_after_clock_advances",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_preview_read_set_conflict_rejects_before_equipment_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_prediction_service.py::test_preview_receipt_tamper_rejects_zero_owner_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_added_after_cut_replays_without_recapture",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_event_scope_cannot_be_silently_dropped[schema]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_event_scope_cannot_be_silently_dropped[unknown_type]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_event_scope_cannot_be_silently_dropped[wrong_actor]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_event_scope_cannot_be_silently_dropped[wrong_stream]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_mixed_cut_restores_active_checkpoint_after_durable_reopen",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_participant_corruption_is_zero_write[decoder]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_participant_corruption_is_zero_write[digest]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_participant_corruption_is_zero_write[event_ref]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_participant_corruption_is_zero_write[omit]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_participant_corruption_is_zero_write[state]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_participant_corruption_is_zero_write[version_omitted]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_replay_participant.py::test_equipment_projector_checkpoint_tail_preserves_multislot_and_ended_history",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_changes_inventory_and_activation_streams_in_one_atomic_batch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_changed_causal_identity_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_corrupt_event_reference_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[duplicate_refs]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[empty_refs]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[event_causation]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[event_command]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[event_correlation]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[event_transaction]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[foreign_actor_stream]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[foreign_stream]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[missing_event]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[missing_transaction]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[reordered_transaction]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[uncommitted]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[visibility]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_each_invalid_receipt_boundary_without_writes[wrong_command]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_duplicate_rejects_event_type_moved_to_wrong_stream_contract",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_replays_the_same_idempotency_result_without_second_batch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_incompatible_slot_rejects_before_any_stream_changes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_multi_slot_conflict_in_a_secondary_slot_writes_nothing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_multi_slot_equipment_occupies_each_slot_through_one_activation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_stale_body_revision_rejects_before_any_stream_changes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_swap_rejects_before_mutating_the_current_loadout",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_swap_replaces_loadout_and_effect_sources_in_one_atomic_batch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_unavailable_body_function_rejects_before_any_stream_changes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_unequip_restores_inventory_placement_and_only_ends_that_activation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_stage3_recovery.py::test_equipment_durable_reopen_replays_receipt_and_unequip_preserves_learning",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_bridge_rejects_forged_or_unmapped_source_without_resource_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_equipment_lost_bridge_response_recovers_on_exact_duplicate",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_full_and_checkpoint_tail_replay_same_modifier_ledger",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_real_equipment_activation_bridges_mana_recovery_and_unequip_detaches",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_recovery_after_real_equipment_detach_uses_payload_source_transaction",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_recovery_duplicate_is_stable_after_durable_reopen_later_equipment_and_cadence",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_recovery_uses_first_population_boundary_after_equipment_source",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_resource_modifier_admission.py::test_rejected_equipment_append_does_not_attempt_resource_bridge",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

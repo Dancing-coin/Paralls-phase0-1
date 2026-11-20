@@ -1,0 +1,286 @@
+{
+  "head": "3bf3418e404af69f98f367acdaa2a59c8d4cdb20",
+  "description": "G0 frozen nodes plus M-collected tests from G3-touched test files",
+  "tests": [
+    {
+      "test_name": "tests/test_embodied_grab_carry_place_authority.py::test_carry_place_rejects_invalid_source_custody_without_partial_commit",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_embodied_grab_carry_place_authority.py::test_grab_carry_place_settles_custody_occupancy_and_mirror_directive_in_one_gameplay_batch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_embodied_grab_carry_place_authority.py::test_local_grab_carry_place_hint_never_changes_custody_or_occupancy_projection",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_embodied_handoff_authority.py::test_handoff_settles_session_custody_ownership_and_mirror_directive_in_one_gameplay_batch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_equip_changes_inventory_and_activation_streams_in_one_atomic_batch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_equipment_runtime.py::test_unequip_restores_inventory_placement_and_only_ends_that_activation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_infra_package_declared_negotiated_exchange.py::test_package_declared_exchange_commits_one_fixed_owner_vector_for_each_admitted_source_mode[inventory_success]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_durable_reopen_keeps_revocation_effective_for_original_inventory_owner",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_inventory_denies_untrusted_or_revoked_cadence_without_write[changed_cadence]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_inventory_denies_untrusted_or_revoked_cadence_without_write[revoked]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_inventory_denies_untrusted_or_revoked_cadence_without_write[unadmitted]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_original_admitted_cadence_reaches_inventory_and_replays_without_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_revocation_between_admission_check_and_inventory_append_is_zero_write[False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_cadence_revocation_commit.py::test_revocation_between_admission_check_and_inventory_append_is_zero_write[True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_condition_transport.py::test_condition_and_transport_lifecycle_replays_full_and_tail",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_condition_transport.py::test_transport_transition_rejects_missing_state_without_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_consumer_platform.py::test_inventory_recipe_mismatch_is_zero_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_consumer_platform.py::test_inventory_recipes_cover_all_declared_owner_bound_edges",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_incremental_authority.py::test_inventory_failed_append_never_installs_proposed_move",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_incremental_authority.py::test_inventory_incremental_resolves_old_cross_domain_source_and_rejects_bad_source",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_incremental_authority.py::test_inventory_tail_failure_keeps_prefix_and_lru_is_bounded",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_incremental_authority.py::test_warm_inventory_only_reads_tail_and_sees_other_owner_writes[False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_incremental_authority.py::test_warm_inventory_only_reads_tail_and_sees_other_owner_writes[True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_catalog.py::test_inventory_platform_catalog_has_exact_owner_bound_core_rows",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_content.py::test_inventory_package_content_rejects_container_parent_cycle",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_content.py::test_inventory_package_content_rejects_noncanonical_arrays_and_authority_shaped_payload",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_content.py::test_inventory_package_content_requires_versioned_refs_canonical_arrays_and_plain_data",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_runtime.py::test_inventory_events_are_admitted_by_registry_backed_store",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_runtime.py::test_inventory_instance_lot_nested_container_reservation_split_merge_replay",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_platform_runtime.py::test_inventory_reservation_capacity_and_cycle_fail_closed",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_presentation.py::test_inventory_projection_is_read_only_godot_safe",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_presentation.py::test_inventory_projection_rejects_non_godot_consumer",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_actor_added_after_cut_replays_without_recapture",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_corruption_is_zero_write[digest]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_corruption_is_zero_write[event_ref]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_corruption_is_zero_write[omit]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_corruption_is_zero_write[state]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_corruption_is_zero_write[version]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_event_scope_cannot_be_silently_dropped[schema]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_event_scope_cannot_be_silently_dropped[unknown_type]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_event_scope_cannot_be_silently_dropped[wrong_actor]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_domain_event_scope_cannot_be_silently_dropped[wrong_stream]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_replay_participant.py::test_inventory_full_projection_checkpoint_tail_after_durable_reopen",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_reservation.py::test_commerce_capacity_exact_retry_replays_after_reservation_exists",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_reservation.py::test_output_receipt_exact_retry_replays_after_item_is_materialized",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_reservation.py::test_output_receipt_materializes_the_produced_item_in_inventory_projection",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_reservation.py::test_release_rejects_unknown_reservation_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_reservation.py::test_reservation_lifecycle_rebuilds_remaining_quantity_and_is_idempotent",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_reservation.py::test_reservation_rejects_missing_location_and_insufficient_quantity_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_runtime.py::test_encumbrance_is_a_read_projection_of_carried_container_contents",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_runtime.py::test_exact_container_retry_replays_without_event_append",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_runtime.py::test_generic_inventory_exact_retry_rejects_corrupt_receipt_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_runtime.py::test_instantiation_and_move_are_event_derived_and_atomic",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_runtime.py::test_sealed_and_capacity_fail_before_event_append",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_startup_lookup.py::test_container_lookup_keeps_non_bootstrap_history_and_filters_before_limit[False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_inventory_startup_lookup.py::test_container_lookup_keeps_non_bootstrap_history_and_filters_before_limit[True]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

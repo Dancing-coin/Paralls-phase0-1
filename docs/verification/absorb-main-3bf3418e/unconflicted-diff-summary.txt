@@ -1,0 +1,134 @@
+
+backend/app/character_agent/planning/l3_planner.py
+main 16	3	backend/app/character_agent/planning/l3_planner.py
+@@ -647,0 +648,15 @@ class CharacterAgentL3Service:
+@@ -650,2 +664,0 @@ class CharacterAgentL3Service:
+@@ -1836 +1849 @@ class CharacterAgentL3Service:
+49f52dd5 2	0	backend/app/character_agent/planning/l3_planner.py
+@@ -703,0 +704 @@ class CharacterAgentL3Service:
+@@ -719,0 +721 @@ class CharacterAgentL3Service:
+
+backend/app/character_agent/runtime/runtime_loop.py
+main 9	5	backend/app/character_agent/runtime/runtime_loop.py
+@@ -12,0 +13 @@ import json
+@@ -753,2 +754,3 @@ class CharacterAgentRuntime:
+@@ -823,3 +825,4 @@ class CharacterAgentRuntime:
+@@ -2471,0 +2475 @@ class CharacterAgentRuntime:
+49f52dd5 73	8	backend/app/character_agent/runtime/runtime_loop.py
+@@ -163,0 +164 @@ class CharacterAgentRuntime:
+@@ -189,0 +191 @@ class CharacterAgentRuntime:
+@@ -1862 +1864,4 @@ class CharacterAgentRuntime:
+@@ -1865 +1870 @@ class CharacterAgentRuntime:
+@@ -1962,0 +1968,2 @@ class CharacterAgentRuntime:
+@@ -2633,0 +2641,5 @@ class CharacterAgentRuntime:
+@@ -2636,0 +2649 @@ class CharacterAgentRuntime:
+@@ -2637,0 +2651,17 @@ class CharacterAgentRuntime:
+@@ -2640 +2670,7 @@ class CharacterAgentRuntime:
+@@ -2641,0 +2678,7 @@ class CharacterAgentRuntime:
+@@ -2644 +2687 @@ class CharacterAgentRuntime:
+@@ -2646,0 +2690,5 @@ class CharacterAgentRuntime:
+@@ -2667 +2715 @@ class CharacterAgentRuntime:
+@@ -2674 +2721,0 @@ class CharacterAgentRuntime:
+@@ -2691,0 +2739 @@ class CharacterAgentRuntime:
+@@ -2743,0 +2792,3 @@ class CharacterAgentRuntime:
+@@ -2746 +2797 @@ class CharacterAgentRuntime:
+@@ -2847,0 +2899,13 @@ class CharacterAgentRuntime:
+@@ -2919 +2983 @@ class CharacterAgentRuntime:
+@@ -2925,0 +2990 @@ class CharacterAgentRuntime:
+
+backend/app/gameplay/event_schema_registry.py
+main 13	0	backend/app/gameplay/event_schema_registry.py
+@@ -412,0 +413,13 @@ def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegi
+49f52dd5 5	0	backend/app/gameplay/event_schema_registry.py
+@@ -51,0 +52,5 @@ SOCIAL_DELIVERY_EVENT_SCHEMAS = (
+
+backend/app/main.py
+main 74	45	backend/app/main.py
+@@ -225,0 +226 @@ from app.services.siming_event_consumer import SimingEventConsumer
+@@ -355,0 +357,27 @@ _siming_cognition_failure = None
+@@ -395 +423 @@ def _build_siming_cognition(pipeline):
+@@ -407 +435,3 @@ def _handle_siming_authority_event(event):
+@@ -412 +442,3 @@ def _handle_siming_authority_event(event):
+@@ -729 +761,7 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
+@@ -1649,0 +1688 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
+@@ -2216 +2255 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+@@ -2222,0 +2262 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+@@ -2229,14 +2269,14 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+@@ -2250 +2290 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+@@ -2283 +2323,2 @@ def _handle_siming_environment_request(event: AuthorityEvent) -> None:
+@@ -2285,22 +2326,5 @@ def _handle_siming_environment_request(event: AuthorityEvent) -> None:
+@@ -3182,0 +3207,2 @@ def _commit_configured_trusted_local_gameplay_mirror_live_probe(
+@@ -3590,0 +3617,2 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
+@@ -5187 +5215 @@ def _handle_envelope(
+@@ -8892,0 +8921 @@ def _publish_world_result_authority_event(
+@@ -8902 +8931 @@ def _publish_world_result_authority_event(
+49f52dd5 210	258	backend/app/main.py
+@@ -320,0 +321,15 @@ durable_embodied_combat_adapter: DurableEmbodiedCombatAdapter | None = None
+@@ -1488,0 +1504 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
+@@ -2110,0 +2127 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
+@@ -3694,0 +3712,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
+@@ -5155 +5186 @@ def _handle_envelope(
+@@ -5162,0 +5194,12 @@ def _handle_envelope(
+@@ -6097,0 +6141,68 @@ def _handle_envelope(
+@@ -6658,40 +6769,2 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
+@@ -6702 +6775 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
+@@ -6704,0 +6778 @@ def _handle_embodied_interaction_session_probe(envelope: Envelope) -> list[dict[
+@@ -6738,46 +6812,15 @@ def _handle_unified_character_action_foundation_probe(envelope: Envelope) -> lis
+@@ -6785,5 +6828,16 @@ def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) ->
+@@ -6792,45 +6846,25 @@ def _handle_embodied_interaction_session_projection_pull(envelope: Envelope) ->
+@@ -6839,5 +6873,21 @@ def _embodied_session_event_envelope_from_authority_event(event: AuthorityEvent)
+@@ -6845,3 +6895,2 @@ def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[
+@@ -6850,6 +6899,6 @@ def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[
+@@ -6857,29 +6905,0 @@ def _embodied_session_event_envelope_from_gameplay_event(event: object) -> dict[
+@@ -6890,35 +6910,3 @@ def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]
+@@ -6929 +6917 @@ def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]
+@@ -6931,0 +6920 @@ def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]
+@@ -6934 +6922,0 @@ def _handle_embodied_handoff_probe(envelope: Envelope) -> list[dict[str, object]
+@@ -6972,38 +6960,2 @@ def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str
+@@ -7014 +6966 @@ def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str
+@@ -7016,0 +6969 @@ def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str
+@@ -7019 +6971,0 @@ def _handle_embodied_grab_carry_place_probe(envelope: Envelope) -> list[dict[str
+
+backend/app/services/siming_population_capability.py
+main 1	1	backend/app/services/siming_population_capability.py
+@@ -324 +324 @@ class PopulationSimulationCapability:
+49f52dd5 1	0	backend/app/services/siming_population_capability.py
+@@ -1149,0 +1150 @@ class PopulationSimulationCapability:
+
+backend/app/world_runtime/replay_checkpoint.py
+main 6	0	backend/app/world_runtime/replay_checkpoint.py
+@@ -307,0 +308,6 @@ def replay_scoped_tail(*, store, checkpoint_ref, tail, expected_result_digest=No
+49f52dd5 1	0	backend/app/world_runtime/replay_checkpoint.py
+@@ -118,0 +119 @@ def _replay_readable_event(event):
+
+backend/tests/test_fact_type_registry.py
+main 34	0	backend/tests/test_fact_type_registry.py
+@@ -0,0 +1,34 @@
+49f52dd5 57	0	backend/tests/test_fact_type_registry.py
+@@ -0,0 +1,57 @@
+
+backend/tests/test_verification_audit.py
+main 3	3	backend/tests/test_verification_audit.py
+@@ -832 +832 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
+@@ -834,2 +834,2 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
+49f52dd5 18	0	backend/tests/test_verification_audit.py
+@@ -843,0 +844,18 @@ def test_phase0_audit_proves_motor_owned_forward_and_patrol_motion_from_runtime_
+
+scripts/verification/CharacterAgentExecutionProbe.gd
+main 15	4	scripts/verification/CharacterAgentExecutionProbe.gd
+@@ -6,0 +7 @@ const ALL_CHECKS_COMPLETE_MARKER := "character_agent_execution_probe:all_checks_
+@@ -24,0 +26,10 @@ func _run_probe() -> void:
+@@ -81 +92 @@ func _run_probe() -> void:
+@@ -86 +97 @@ func _run_probe() -> void:
+@@ -99,2 +110,2 @@ func _run_probe() -> void:
+49f52dd5 2	2	scripts/verification/CharacterAgentExecutionProbe.gd
+@@ -81 +81 @@ func _run_probe() -> void:
+@@ -86 +86 @@ func _run_probe() -> void:
+
+scripts/verification/run_character_development_v4.py
+main 2	1	scripts/verification/run_character_development_v4.py
+@@ -120 +120 @@ def prepare_v4(*, repo: Path, reviewer_input: dict[str, Any]) -> dict[str, Any]:
+@@ -121,0 +122 @@ def prepare_v4(*, repo: Path, reviewer_input: dict[str, Any]) -> dict[str, Any]:
+49f52dd5 5	1	scripts/verification/run_character_development_v4.py
+@@ -22,0 +23 @@ from app.character_agent.gateway.laya_provider import LayaSystemOneProvider
+@@ -107 +108,4 @@ def prepare_v4(*, repo: Path, reviewer_input: dict[str, Any]) -> dict[str, Any]:
