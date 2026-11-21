@@ -44,18 +44,21 @@ class OwnershipRight:
     asset_ref: str
     holder_ref: str
     source_event_id: str
+    bond_type: str
 
 
 @dataclass(frozen=True)
 class OwnershipProjection:
     rights: Mapping[str, OwnershipRight]
     active_right_by_asset: Mapping[str, str]
+    active_right_by_asset_and_type: Mapping[str, Mapping[str, tuple[str, ...]]]
     source_revision_vector: Mapping[str, int]
     projection_revision: str
 
 
 class OwnershipProjector:
     _EVENT_TYPES = {"gameplay.ownership.right_granted", "gameplay.ownership.right_transferred"}
+    _BOND_TYPES = frozenset({"ownership", "custody", "authority", "affiliation", "obligation"})
 
     def rebuild(
         self, events: Sequence[GameplayEvent], *, checkpoint_at: int | None = None
@@ -71,6 +74,10 @@ class OwnershipProjector:
             [event for event in events if event.global_sequence > checkpoint_at],
             rights=dict(prefix.rights),
             by_asset=dict(prefix.active_right_by_asset),
+            by_asset_and_type={
+                asset_ref: {bond_type: list(right_ids) for bond_type, right_ids in bond_types.items()}
+                for asset_ref, bond_types in prefix.active_right_by_asset_and_type.items()
+            },
             revisions=dict(prefix.source_revision_vector),
         )
 
@@ -80,10 +87,15 @@ class OwnershipProjector:
         *,
         rights: dict[str, OwnershipRight] | None = None,
         by_asset: dict[str, str] | None = None,
+        by_asset_and_type: dict[str, dict[str, list[str]]] | None = None,
         revisions: dict[str, int] | None = None,
     ) -> OwnershipProjection:
         rights = dict(rights or {})
         by_asset = dict(by_asset or {})
+        by_asset_and_type = {
+            asset_ref: {bond_type: list(right_ids) for bond_type, right_ids in bond_types.items()}
+            for asset_ref, bond_types in (by_asset_and_type or {}).items()
+        }
         revisions = dict(revisions or {})
         for event in sorted(events, key=lambda value: (value.global_sequence, value.event_id)):
             if event.event_type not in self._EVENT_TYPES:
@@ -92,22 +104,62 @@ class OwnershipProjector:
             right_id = _text(payload, "right_id")
             asset_ref = _text(payload, "asset_ref")
             if event.event_type == "gameplay.ownership.right_granted":
-                if right_id in rights or asset_ref in by_asset:
+                bond_type = payload.get("bond_type", "ownership")
+                if not isinstance(bond_type, str) or bond_type not in self._BOND_TYPES:
+                    raise OwnershipRuntimeError("ownership_right_type_invalid")
+                asset_bond_types = by_asset_and_type.setdefault(asset_ref, {})
+                holder_ref = _text(payload, "holder_ref")
+                active_right_ids = asset_bond_types.setdefault(bond_type, [])
+                if (
+                    right_id in rights
+                    or (bond_type == "ownership" and active_right_ids)
+                    or any(rights[active_id].holder_ref == holder_ref for active_id in active_right_ids)
+                ):
                     raise OwnershipRuntimeError("ownership_title_conflict")
-                rights[right_id] = OwnershipRight(right_id, asset_ref, _text(payload, "holder_ref"), event.event_id)
-                by_asset[asset_ref] = right_id
+                rights[right_id] = OwnershipRight(
+                    right_id, asset_ref, holder_ref, event.event_id, bond_type
+                )
+                active_right_ids.append(right_id)
+                if bond_type == "ownership":
+                    by_asset[asset_ref] = right_id
             else:
                 prior = rights.get(right_id)
                 if prior is None or prior.asset_ref != asset_ref:
                     raise OwnershipRuntimeError("ownership_right_missing")
                 if prior.holder_ref != _text(payload, "from_holder_ref"):
                     raise OwnershipRuntimeError("ownership_right_holder_mismatch")
-                rights[right_id] = OwnershipRight(right_id, asset_ref, _text(payload, "to_holder_ref"), event.event_id)
+                bond_type = payload.get("bond_type", prior.bond_type)
+                if not isinstance(bond_type, str) or bond_type not in self._BOND_TYPES:
+                    raise OwnershipRuntimeError("ownership_right_type_invalid")
+                if bond_type != prior.bond_type:
+                    raise OwnershipRuntimeError("ownership_right_type_mismatch")
+                to_holder_ref = _text(payload, "to_holder_ref")
+                if any(
+                    active_id != right_id and rights[active_id].holder_ref == to_holder_ref
+                    for active_id in by_asset_and_type.get(asset_ref, {}).get(prior.bond_type, [])
+                ):
+                    raise OwnershipRuntimeError("ownership_right_conflict")
+                rights[right_id] = OwnershipRight(
+                    right_id, asset_ref, to_holder_ref, event.event_id, prior.bond_type
+                )
             revisions[event.stream_id] = max(revisions.get(event.stream_id, 0), event.stream_revision)
         frozen_rights = MappingProxyType(dict(sorted(rights.items())))
         frozen_assets = MappingProxyType(dict(sorted(by_asset.items())))
+        frozen_asset_bond_types = MappingProxyType({
+            asset_ref: MappingProxyType({
+                bond_type: tuple(right_ids)
+                for bond_type, right_ids in sorted(bond_types.items())
+            })
+            for asset_ref, bond_types in sorted(by_asset_and_type.items())
+        })
         frozen_revisions = MappingProxyType(dict(sorted(revisions.items())))
-        return OwnershipProjection(frozen_rights, frozen_assets, frozen_revisions, f"ownership:{_digest([frozen_rights, frozen_assets, frozen_revisions])[:16]}")
+        return OwnershipProjection(
+            frozen_rights,
+            frozen_assets,
+            frozen_asset_bond_types,
+            frozen_revisions,
+            f"ownership:{_digest([frozen_rights, frozen_assets, frozen_asset_bond_types, frozen_revisions])[:16]}",
+        )
 
 
 class OwnershipAuthorityService:
@@ -153,9 +205,128 @@ class OwnershipAuthorityService:
         right = projection.rights.get(right_id)
         if right is None or right.asset_ref != asset_ref:
             raise OwnershipRuntimeError("ownership_right_missing")
+        if right.bond_type != "ownership":
+            raise OwnershipRuntimeError("ownership_right_type_mismatch")
         if right.holder_ref != from_holder_ref or not to_holder_ref:
             raise OwnershipRuntimeError("ownership_right_holder_mismatch")
         return self._append(command_id, idempotency_key, digest, "gameplay.ownership.right_transferred", {"right_id": right_id, "asset_ref": asset_ref, "from_holder_ref": from_holder_ref, "to_holder_ref": to_holder_ref}, causation_id, correlation_id, projection)
+
+    def grant_right(
+        self,
+        *,
+        command_id: str,
+        asset_ref: str,
+        holder_ref: str,
+        right_id: str,
+        bond_type: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        if not isinstance(bond_type, str) or bond_type not in OwnershipProjector._BOND_TYPES:
+            raise OwnershipRuntimeError("ownership_right_type_invalid")
+        if bond_type == "ownership" and (
+            asset_ref.startswith(self._MUNICIPAL_CERTIFICATE_ASSET_PREFIX)
+            or right_id.startswith(self._MUNICIPAL_CERTIFICATE_RIGHT_PREFIX)
+        ):
+            raise OwnershipRuntimeError("municipal_certificate_row_required")
+        command = {
+            "kind": "grant",
+            "command_id": command_id,
+            "asset_ref": asset_ref,
+            "holder_ref": holder_ref,
+            "right_id": right_id,
+            "bond_type": bond_type,
+        }
+        digest = _digest(command)
+        duplicate = self._duplicate(idempotency_key, digest)
+        if duplicate is not None:
+            return duplicate
+        projection = self._projector.rebuild(self._store.read_events())
+        active_by_type = projection.active_right_by_asset_and_type.get(asset_ref, {})
+        active_right_ids = active_by_type.get(bond_type, ())
+        if (
+            not asset_ref
+            or not holder_ref
+            or not right_id
+            or right_id in projection.rights
+            or (bond_type == "ownership" and active_right_ids)
+            or any(projection.rights[active_id].holder_ref == holder_ref for active_id in active_right_ids)
+        ):
+            raise OwnershipRuntimeError("ownership_right_conflict")
+        return self._append(
+            command_id,
+            idempotency_key,
+            digest,
+            "gameplay.ownership.right_granted",
+            {"right_id": right_id, "asset_ref": asset_ref, "holder_ref": holder_ref, "bond_type": bond_type},
+            causation_id,
+            correlation_id,
+            projection,
+        )
+
+    def transfer_right(
+        self,
+        *,
+        command_id: str,
+        asset_ref: str,
+        right_id: str,
+        bond_type: str,
+        from_holder_ref: str,
+        to_holder_ref: str,
+        idempotency_key: str,
+        causation_id: str,
+        correlation_id: str,
+    ) -> AppendBatchResult:
+        if not isinstance(bond_type, str) or bond_type not in OwnershipProjector._BOND_TYPES:
+            raise OwnershipRuntimeError("ownership_right_type_invalid")
+        if bond_type == "ownership" and (
+            asset_ref.startswith(self._MUNICIPAL_CERTIFICATE_ASSET_PREFIX)
+            or right_id.startswith(self._MUNICIPAL_CERTIFICATE_RIGHT_PREFIX)
+        ):
+            raise OwnershipRuntimeError("municipal_certificate_title_transfer_forbidden")
+        command = {
+            "kind": "transfer",
+            "command_id": command_id,
+            "asset_ref": asset_ref,
+            "right_id": right_id,
+            "bond_type": bond_type,
+            "from_holder_ref": from_holder_ref,
+            "to_holder_ref": to_holder_ref,
+        }
+        digest = _digest(command)
+        duplicate = self._duplicate(idempotency_key, digest)
+        if duplicate is not None:
+            return duplicate
+        projection = self._projector.rebuild(self._store.read_events())
+        right = projection.rights.get(right_id)
+        if right is None or right.asset_ref != asset_ref:
+            raise OwnershipRuntimeError("ownership_right_missing")
+        if right.bond_type != bond_type:
+            raise OwnershipRuntimeError("ownership_right_type_mismatch")
+        if right.holder_ref != from_holder_ref or not to_holder_ref:
+            raise OwnershipRuntimeError("ownership_right_holder_mismatch")
+        if any(
+            active_id != right_id and projection.rights[active_id].holder_ref == to_holder_ref
+            for active_id in projection.active_right_by_asset_and_type.get(asset_ref, {}).get(bond_type, ())
+        ):
+            raise OwnershipRuntimeError("ownership_right_conflict")
+        return self._append(
+            command_id,
+            idempotency_key,
+            digest,
+            "gameplay.ownership.right_transferred",
+            {
+                "right_id": right_id,
+                "asset_ref": asset_ref,
+                "from_holder_ref": from_holder_ref,
+                "to_holder_ref": to_holder_ref,
+                "bond_type": bond_type,
+            },
+            causation_id,
+            correlation_id,
+            projection,
+        )
 
     def grant_municipal_drought_assessment_certificate(
         self, intent: MunicipalDroughtAssessmentCertificateIntentV1

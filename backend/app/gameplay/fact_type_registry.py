@@ -8,6 +8,9 @@ from types import MappingProxyType
 from typing import Any
 
 
+REGISTERED_OWNER_IDS = frozenset({"Credential", "Ownership", "Economy / Market"})
+
+
 @dataclass(frozen=True)
 class Violation:
     code: str
@@ -99,6 +102,9 @@ class FactTypeRegistry:
         def reject(code: str, target: str, hint: str) -> None:
             file, line = (locations or {}).get(target, ("<declaration>", 1))
             issues.append(Violation(code, target, file, line, hint))
+
+        if any(owner not in REGISTERED_OWNER_IDS for owner in owners):
+            reject("facttype_owner_unknown", "owners", "reference a code-registered Owner ID")
 
         for target, spec in facts.items():
             if not spec.get("visibility"):
