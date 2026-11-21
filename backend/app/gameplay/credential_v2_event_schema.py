@@ -13,6 +13,13 @@ class CredentialV2EventSchemaError(ValueError):
     pass
 
 
+CREDENTIAL_V1_EVENT_TYPES = (
+    "gameplay.credential.issued",
+    "gameplay.credential.revoked",
+    "gameplay.credential.superseded",
+)
+
+
 @dataclass(frozen=True)
 class CredentialV2EventSchema:
     event_type: str
@@ -62,6 +69,7 @@ _HOLDER_TRANSITIONS = {
     "gameplay.credential.item_claimed": ("absent", "occupied"),
     "gameplay.credential.item_released": ("occupied", "absent"),
 }
+CREDENTIAL_V2_HOLDER_EVENT_TYPES = tuple(_HOLDER_TRANSITIONS)
 
 
 def credential_link_stream_id(credential_id: str) -> str:

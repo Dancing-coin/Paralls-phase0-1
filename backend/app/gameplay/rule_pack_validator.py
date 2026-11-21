@@ -12,7 +12,9 @@ import yaml
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 from yaml.tokens import AliasToken, AnchorToken, TagToken
 
-from app.gameplay.fact_type_registry import FactTypeRegistry, RegistrationRejected, Violation, freeze
+from app.gameplay.fact_type_registry import (
+    REGISTERED_OWNER_IDS, FactTypeRegistry, RegistrationRejected, Violation, freeze,
+)
 
 
 @dataclass(frozen=True)
@@ -172,8 +174,8 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     owners = manifest.get("owners")
     if not isinstance(owners, list) or any(not isinstance(o, str) for o in owners):
         reject("pack_schema_invalid", "owners", manifest_path, 1, "declare owner identifiers")
-    elif owners != ["Credential"]:
-        reject("facttype_owner_unknown", "owners", manifest_path, 1, "the reference host registers only Credential; packs cannot create owners")
+    elif any(owner not in REGISTERED_OWNER_IDS for owner in owners):
+        reject("facttype_owner_unknown", "owners", manifest_path, 1, "reference a code-registered Owner ID; packs cannot create owners")
     registry = None
     if not issues:
         try:

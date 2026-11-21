@@ -37,6 +37,16 @@ def test_facttype_owner_unknown():
         FactTypeRegistry.compile(**data)
 
 
+def test_direct_compile_cannot_register_an_unknown_owner():
+    data = declarations()
+    data["owners"] = ["Credential", "SelfRegisteredOwner"]
+
+    with pytest.raises(RegistrationRejected) as error:
+        FactTypeRegistry.compile(**data)
+
+    assert "facttype_owner_unknown" in {violation.code for violation in error.value.violations}
+
+
 def test_resolver_owner_mismatch_in_inner_layer():
     data = declarations()
     data["owners"].append("Inventory")

@@ -3,7 +3,9 @@ import pytest
 
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.siming_heavenly_graph import GraphReaderContext, HeavenlyGraphScope, HeavenlyNodeQuery, NodeLookupQuery
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from app import main
 from app import config as config_module
@@ -71,6 +73,34 @@ def test_authority_domain_event_maps_to_typed_projection_domain(
         HeavenlyNodeQuery(scope=_scope(), valid_at=1, node_types=["causal_event"])
     )
     graph.close()
+    assert len(nodes) == 1
+    assert nodes[0].attributes["domain"] == domain
+
+
+@pytest.mark.parametrize(
+    ("event_type", "domain"),
+    [
+        ("gameplay.credential.issued", "credential"),
+        ("gameplay.credential.revoked", "credential"),
+        ("gameplay.credential.superseded", "credential"),
+        ("gameplay.credential.link_issued", "credential"),
+        ("gameplay.credential.link_revoked", "credential"),
+        ("gameplay.credential.link_superseded", "credential"),
+        ("gameplay.credential.item_claimed", "credential"),
+        ("gameplay.credential.item_released", "credential"),
+        ("gameplay.ownership.right_granted", "ownership"),
+        ("gameplay.ownership.right_transferred", "ownership"),
+    ],
+)
+def test_domain_schema_events_are_discovered_and_projected(event_type, domain):
+    graph = InMemoryHeavenlyGraphAdapter()
+    projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _event: _scope())
+    event = _event().model_copy(update={"event_id": f"{event_type}:1", "event_type": event_type})
+
+    assert event_type in FACT_TYPE_REGISTRY.event_types()
+    projector.project(event)
+
+    nodes = graph.query_nodes(HeavenlyNodeQuery(scope=_scope(), valid_at=1, node_types=["causal_event"]))
     assert len(nodes) == 1
     assert nodes[0].attributes["domain"] == domain
 

@@ -25,6 +25,73 @@ def test_pack_load_is_repeatable_and_evaluates_registered_code():
     assert first.registry.facts["fact:credential:*:link"].resolution_order == 10
 
 
+def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
+    loaded = load_pack(PACK, handlers=HANDLERS)
+
+    fact = loaded.registry.facts["fact:credential:*:link"]
+    model = loaded.registry.models["credential_command@1"]
+
+    assert fact.owner_ref == "Ownership"
+    assert model.owner_ref == "Ownership"
+    assert model.writes_fact_types == ("fact:credential:*:link",)
+
+
+def test_pack_can_reference_another_registered_owner(tmp_path):
+    destination = tmp_path / "economy-market-pack"
+    shutil.copytree(PACK, destination)
+    manifest_path = destination / "pack.yaml"
+    manifest = manifest_path.read_text(encoding="utf-8")
+    manifest = manifest.replace('["Ownership"]', '["Economy / Market"]')
+    manifest_path.write_text(manifest, encoding="utf-8")
+
+    fact_path = destination / "fact_types/credential_link.yaml"
+    fact = fact_path.read_text(encoding="utf-8")
+    fact = fact.replace('"Ownership"', '"Economy / Market"')
+    fact_path.write_text(fact, encoding="utf-8")
+
+    model_path = destination / "models/credential_command.yaml"
+    model = model_path.read_text(encoding="utf-8")
+    model = model.replace('"Ownership"', '"Economy / Market"')
+    model_path.write_text(model, encoding="utf-8")
+
+    loaded = load_pack(destination, handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:*:link"].owner_ref == "Economy / Market"
+
+
+def test_legacy_credential_owner_pack_remains_loadable(tmp_path):
+    destination = tmp_path / "legacy-credential-pack"
+    shutil.copytree(PACK, destination)
+
+    for relative_path in (
+        "pack.yaml",
+        "fact_types/credential_link.yaml",
+        "models/credential_command.yaml",
+    ):
+        path = destination / relative_path
+        path.write_text(
+            path.read_text(encoding="utf-8").replace('"Ownership"', '"Credential"'),
+            encoding="utf-8",
+        )
+
+    loaded = load_pack(destination, handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:*:link"].owner_ref == "Credential"
+
+
+def test_pack_cannot_register_an_unknown_owner(tmp_path):
+    destination = tmp_path / "unknown-owner-pack"
+    shutil.copytree(PACK, destination)
+    manifest_path = destination / "pack.yaml"
+    manifest = manifest_path.read_text(encoding="utf-8").replace('["Ownership"]', '["UnknownOwner"]')
+    manifest_path.write_text(manifest, encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    assert "facttype_owner_unknown" in {violation.code for violation in error.value.violations}
+
+
 @pytest.mark.parametrize("suffix,code", [
     ('"bad": 0.1\n', "pack_float_forbidden"),
     ('"bad": &shared {"value": 1}\n"alias": *shared\n', "pack_yaml_feature_forbidden"),

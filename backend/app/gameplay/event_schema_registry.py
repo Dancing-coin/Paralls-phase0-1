@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import import_module
 import json
+from pathlib import Path
 from typing import Any
 
 
@@ -416,7 +418,7 @@ def register_stormnight_scripted_mystery_event_schemas(registry: EventSchemaRegi
 
 
 def gameplay_schema_event_types() -> tuple[str, ...]:
-    """Return all gameplay event types declared by this module's schema bundles."""
+    """Return gameplay event types declared by central and domain schema bundles."""
     values: set[str] = set()
     for value in globals().values():
         if isinstance(value, tuple):
@@ -425,6 +427,16 @@ def gameplay_schema_event_types() -> tuple[str, ...]:
                     values.add(item.event_type)
                 elif isinstance(item, str) and item.startswith("gameplay."):
                     values.add(item)
+    for schema_path in sorted(Path(__file__).parent.glob("*_event_schema.py")):
+        module = import_module(f"{__package__}.{schema_path.stem}")
+        for name, declarations in vars(module).items():
+            if (not name.endswith(("_EVENT_SCHEMAS", "_EVENT_TYPES"))
+                    or not isinstance(declarations, tuple)):
+                continue
+            for declaration in declarations:
+                event_type = declaration if isinstance(declaration, str) else getattr(declaration, "event_type", None)
+                if isinstance(event_type, str) and event_type.startswith("gameplay."):
+                    values.add(event_type)
     return tuple(sorted(values))
 
 

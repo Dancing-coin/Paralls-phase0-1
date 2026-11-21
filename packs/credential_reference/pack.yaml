@@ -2,7 +2,7 @@ pack_id: "credential_reference"
 pack_version: "1.0.0"
 schema_version: 1
 parent_pack: null
-owners: ["Credential"]
+owners: ["Ownership"]
 contents:
   fact_types: ["credential_link"]
   machine_defs: ["credential_link"]
