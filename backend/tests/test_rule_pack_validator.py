@@ -3,7 +3,7 @@ import shutil
 
 import pytest
 
-from app.gameplay.fact_type_registry import RegistrationRejected
+from app.gameplay.fact_type_registry import REGISTERED_OWNER_IDS, RegistrationRejected
 from app.gameplay.rule_pack_validator import load_pack
 
 PACK = Path(__file__).resolve().parents[2] / "packs/credential_reference"
@@ -14,6 +14,13 @@ def declared_kind_condition(inputs, params):
 
 
 HANDLERS = {"credential_command@1": declared_kind_condition}
+
+
+def test_registered_owner_ids_match_v2_short_names_and_legacy_credential():
+    assert len(REGISTERED_OWNER_IDS) == 23
+    assert "Credential" in REGISTERED_OWNER_IDS
+    assert "Combat" not in REGISTERED_OWNER_IDS
+    assert "Economy / Market" not in REGISTERED_OWNER_IDS
 
 
 def test_pack_load_is_repeatable_and_evaluates_registered_code():
@@ -36,27 +43,23 @@ def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
     assert model.writes_fact_types == ("fact:credential:*:link",)
 
 
-def test_pack_can_reference_another_registered_owner(tmp_path):
-    destination = tmp_path / "economy-market-pack"
+def _copy_pack_for_owner(tmp_path, owner_id):
+    destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
     manifest_path = destination / "pack.yaml"
-    manifest = manifest_path.read_text(encoding="utf-8")
-    manifest = manifest.replace('["Ownership"]', '["Economy / Market"]')
+    manifest = manifest_path.read_text(encoding="utf-8").replace(
+        '["Ownership"]', f'["{owner_id}"]'
+    )
     manifest_path.write_text(manifest, encoding="utf-8")
 
     fact_path = destination / "fact_types/credential_link.yaml"
-    fact = fact_path.read_text(encoding="utf-8")
-    fact = fact.replace('"Ownership"', '"Economy / Market"')
+    fact = fact_path.read_text(encoding="utf-8").replace('"Ownership"', f'"{owner_id}"')
     fact_path.write_text(fact, encoding="utf-8")
 
     model_path = destination / "models/credential_command.yaml"
-    model = model_path.read_text(encoding="utf-8")
-    model = model.replace('"Ownership"', '"Economy / Market"')
+    model = model_path.read_text(encoding="utf-8").replace('"Ownership"', f'"{owner_id}"')
     model_path.write_text(model, encoding="utf-8")
-
-    loaded = load_pack(destination, handlers=HANDLERS)
-
-    assert loaded.registry.facts["fact:credential:*:link"].owner_ref == "Economy / Market"
+    return destination
 
 
 def test_legacy_credential_owner_pack_remains_loadable(tmp_path):
@@ -70,22 +73,37 @@ def test_legacy_credential_owner_pack_remains_loadable(tmp_path):
     ):
         path = destination / relative_path
         path.write_text(
-            path.read_text(encoding="utf-8").replace('"Ownership"', '"Credential"'),
+            path.read_text(encoding="utf-8").replace('"Ownership"', f'"{owner_id}"'),
             encoding="utf-8",
         )
 
-    loaded = load_pack(destination, handlers=HANDLERS)
+    return destination
+
+
+@pytest.mark.parametrize("owner_id", [
+    "Body", "Equipment", "Inventory", "Ownership", "Production", "Morale",
+    "Presence", "LifeState", "Survival", "Status", "Transport", "Population",
+    "Command", "Organization", "Government", "Information", "Economy",
+    "Social", "Politics", "Territory", "Objective", "Campaign",
+])
+def test_pack_can_reference_a_registered_owner(tmp_path, owner_id):
+    loaded = load_pack(_copy_pack_for_owner(tmp_path, owner_id), handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:*:link"].owner_ref == owner_id
+    assert loaded.registry.models["credential_command@1"].owner_ref == owner_id
+
+
+def test_legacy_credential_owner_pack_remains_loadable(tmp_path):
+    loaded = load_pack(_copy_pack_for_owner(tmp_path, "Credential"), handlers=HANDLERS)
 
     assert loaded.registry.facts["fact:credential:*:link"].owner_ref == "Credential"
 
 
-def test_pack_cannot_register_an_unknown_owner(tmp_path):
-    destination = tmp_path / "unknown-owner-pack"
-    shutil.copytree(PACK, destination)
-    manifest_path = destination / "pack.yaml"
-    manifest = manifest_path.read_text(encoding="utf-8").replace('["Ownership"]', '["UnknownOwner"]')
-    manifest_path.write_text(manifest, encoding="utf-8")
-
+@pytest.mark.parametrize("owner_id", [
+    "UnknownOwner", "Combat", "Economy / Market", "Production / Facility", "ProductionFacility",
+])
+def test_pack_cannot_register_an_unknown_owner(tmp_path, owner_id):
+    destination = _copy_pack_for_owner(tmp_path, owner_id)
     with pytest.raises(RegistrationRejected) as error:
         load_pack(destination, handlers=HANDLERS)
 

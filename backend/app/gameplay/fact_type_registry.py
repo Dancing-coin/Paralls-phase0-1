@@ -8,7 +8,31 @@ from types import MappingProxyType
 from typing import Any
 
 
-REGISTERED_OWNER_IDS = frozenset({"Credential", "Ownership", "Economy / Market"})
+REGISTERED_OWNER_IDS = frozenset({
+    "Body",
+    "Equipment",
+    "Inventory",
+    "Ownership",
+    "Production",
+    "Morale",
+    "Presence",
+    "LifeState",
+    "Survival",
+    "Status",
+    "Transport",
+    "Population",
+    "Command",
+    "Organization",
+    "Government",
+    "Information",
+    "Economy",
+    "Social",
+    "Politics",
+    "Territory",
+    "Objective",
+    "Campaign",
+    "Credential",  # Legacy pack identifier; not a v2 domain Owner.
+})
 
 
 @dataclass(frozen=True)
