@@ -37,8 +37,8 @@
   gameplay.construction_production.maintenance_state_applied
   gameplay.construction_production.maintenance_state_dispelled
   ```
-- Registry query 2: `& 'D:\Temp\paralls-g0-py312\Scripts\python.exe' -c "import sys; sys.path.insert(0,'backend'); from app.models.fact_type import FACT_TYPE_REGISTRY as R; e=set(R.event_types()); print({x:x in e for x in ['gameplay.debt.created','gameplay.contract.evaluated','gameplay.combat.hit','gameplay.ownership.bond_granted']})"`
-- Raw output: `{'gameplay.debt.created': False, 'gameplay.contract.evaluated': False, 'gameplay.combat.hit': False, 'gameplay.ownership.bond_granted': False}`. This is registry membership only, not evidence of runtime projection behavior.
+- Registry query 2: `& 'D:\Temp\paralls-g0-py312\Scripts\python.exe' -c "import sys; sys.path.insert(0,'backend'); from app.models.fact_type import FACT_TYPE_REGISTRY as R; e=set(R.event_types()); xs=['gameplay.debt.claim_issued','gameplay.debt.payment_applied','gameplay.contract.record_created','gameplay.contract.service_completion_recorded','gameplay.commerce.debt_issued_settled']; print({x:x in e for x in xs})"`
+- Raw output: `{'gameplay.debt.claim_issued': False, 'gameplay.debt.payment_applied': False, 'gameplay.contract.record_created': False, 'gameplay.contract.service_completion_recorded': False, 'gameplay.commerce.debt_issued_settled': False}`. This is registry membership only, not evidence of runtime projection behavior.
 - Worktree check: branch `thread-b/debt-contract-20261121`, HEAD `0e67fe812280e7e518c84c27653153f5a69f2330`, clean before M0 documentation edits. The two named untracked source files were absent from the worktree. Copies already existed under `F:\paralls-verification\thread-b\m0-inputs-20261122\`; they were left in place. S-9's requested D: move was not repeated because the source paths are absent and the archived copies are already on F:.
 - Read-only inventory commands and outputs are summarized in the task files below. No file was written to D:. The Python executable itself remains at the user-specified D: path.
 
