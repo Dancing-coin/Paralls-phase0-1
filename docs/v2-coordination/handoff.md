@@ -95,3 +95,9 @@
 - `Economy / Market` 只在旧常量和测试生成的临时包中出现，未发现于持久事件、receipt、checkpoint 或黄金数据；规范名称为 `Economy`，旧别名被拒绝。
 - M0.5 代码与测试提交：`4b876f3d4dd92deba72aa2b49685fa4c39920ce2`。定向 validator 测试：37 passed，2 warnings；不是 Owner 迁移完成声明。
 - M1-1 已在 M0.5 之前形成两笔代码提交：`b700f8c8`（Bond 生命周期 + 多权利 + 属性行为，同一 `_bond_attributes` 函数不能跨提交拆分）与 `ae7d650e`（Credential v3）。详见 `docs/verification/m1-1-bond-slices-20261122.md`。两笔各自 detached 定向测试与 ownership/shared-replay 选集通过；分支 tip 全量为 24 failed、10,389 passed、2 skipped、2 xfailed，退出码 1，不能称全量通过。
+
+### H-A-005 | M2-2 `read_as` 前置缺口 | 2026-11-22
+- 状态：阻塞。依据 Architecture v2《可见性强制》与迁移计划 M2-2，`read_as(principal, scope, as_of_tick, fact_types)` 需按主体资格过滤可见性、基于 `event_time` 计算 `known_time`，对缺少授权证据的读取明确拒绝，并返回来源与时间投影。
+- 静态证据：`backend/app/gameplay/models.py:80` 的 `GameplayEvent` 无 `event_time` 字段；`credential_runtime.py` 与 `ownership_runtime.py` 的生产事件构造均使用 `visibility_policy="authority_only"`；`rg -n "read_as" backend/app` 未发现 gameplay 读取入口；`packs/credential_reference/fact_types/credential_link.yaml` 的 `learnable_by` 为 `role:credential_authority`，`known_deviations.visibility_selector` 明确记为 `unbound_role_placeholder`；`backend/app/gameplay/fact_type_registry.py` 只保存 FactType visibility，当前没有生产 event_type→FactType→Owner visibility 解析链；Architecture v2 尚无已完成域迁移，M2-2 计划要求的首批已迁移域读取消费者不存在。
+- 影响：仅按现存 `visibility_policy` 写通用 API 会把 `authority_only` 规则误当作主体授权，也不能计算 `known_time` 或满足来源投影；不具备正式合同要求的安全依据。没有修改存储核心、Owner runtime、事件或已有读取合同。
+- 继续条件：Owner/FactType 与 event type 的解析来源、principal selector/资格解析机制、event_time 来源及首个可迁移域面向主体读取点明确后，继续建立读取层并按 M2-2 接入；不得把 `authority_only` 解释为普通 principal 可读。
