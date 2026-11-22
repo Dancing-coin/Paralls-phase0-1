@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import re
 from types import MappingProxyType
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Iterator, Mapping
 
 import yaml
 from yaml.nodes import MappingNode, ScalarNode, SequenceNode
@@ -29,6 +29,7 @@ class LoadedPack:
     legacy_rule: Mapping[str, Any]
     pool_defs: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     entity_types: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+    impact_profiles: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -79,16 +80,80 @@ def _validate_pool_definition(target: str, spec: Any) -> None:
     )
 
 
+def _impact_violations(
+    spec: Any, *, registry: FactTypeRegistry, entity_types: Mapping[str, Any],
+    fact_specs: Mapping[str, Any],
+) -> Iterator[tuple[str, str]]:
+    fields = {"target_entity_type", "layers", "atomicity", "description", "version", "deprecated"}
+    if not isinstance(spec, dict) or spec.keys() - fields:
+        yield "pack_schema_invalid", "declare only impact routing fields"
+        return
+
+    target = spec.get("target_entity_type")
+    slot_patterns = None
+    if isinstance(target, str) and target in entity_types:
+        slot_patterns = {slot["fact_type_pattern"] for slot in entity_types[target]["slots"]}
+    else:
+        yield "impact_target_entity_unknown", "reference a declared entity type"
+
+    atomicity = spec.get("atomicity")
+    if "atomicity" in spec and atomicity not in ("atomic", "obligation"):
+        yield "impact_atomicity_invalid", "declare atomic or obligation"
+
+    layers = spec.get("layers")
+    if not isinstance(layers, list) or not layers:
+        yield "impact_layers_invalid", "declare a nonempty ordered list of routing layers"
+        return
+
+    orders = []
+    fact_orders = []
+    hosts = set()
+    for layer in layers:
+        if isinstance(layer, dict) and "owner_ref" in layer:
+            yield "impact_layer_owner_mismatch", "derive the writer from the registered FactType"
+            continue
+        if (not isinstance(layer, dict) or layer.keys() != {"order", "fact_type", "resolver"}
+                or type(layer["order"]) is not int or layer["order"] < 1
+                or not isinstance(layer["fact_type"], str) or not isinstance(layer["resolver"], str)):
+            yield "impact_layer_invalid", "each layer needs a positive order and FactType and Resolver references"
+            continue
+
+        orders.append(layer["order"])
+        fact_id = layer["fact_type"]
+        fact = registry.facts.get(fact_id)
+        model = registry.models.get(layer["resolver"])
+        if model is None:
+            yield "impact_layer_resolver_unknown", "reference a registered Resolver"
+        if fact is None:
+            yield "impact_layer_facttype_unknown", "reference a registered FactType"
+            continue
+        if slot_patterns is not None and fact_id not in slot_patterns:
+            yield "impact_layer_slot_unknown", "reference a FactType slot on the target entity type"
+        if model is not None and (model.owner_ref != fact.owner_ref or fact_id not in model.writes_fact_types):
+            yield "impact_layer_owner_mismatch", "the resolver must declare this FactType in its Owner write set"
+        fact_orders.append(fact.resolution_order)
+        host = fact_specs[fact_id].get("host")
+        if host not in ("ue", "paralls", "population", "either"):
+            yield "impact_layer_host_unknown", "declare a supported host on the layer FactType"
+        else:
+            hosts.add(host)
+
+    if orders != sorted(set(orders)) or fact_orders != sorted(set(fact_orders)):
+        yield "impact_layer_conflicts_order", "list unique layers in ascending FactType resolution order"
+    if len(layers) > 1 and (len(hosts) > 1 or "either" in hosts) and atomicity != "obligation":
+        yield "impact_atomic_cross_host", "use obligation unless all layers are pinned to the same host"
+
+
 def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: bool = False) -> LoadedPack:
     directory = directory.resolve()
     issues: list[Violation] = []
-    locations: dict[str, tuple[str, int]] = {}
+    locations: dict[tuple[str, str], tuple[str, int]] = {}
     raw_files = {}
 
     def reject(code, target, file, line, hint):
         issues.append(Violation(code, target, str(file), line, hint))
 
-    def read(path: Path) -> dict:
+    def read(path: Path, section: str) -> dict:
         if not path.is_file():
             reject("pack_content_missing", path.name, path, 1, "declare an existing pack file")
             return {}
@@ -159,13 +224,13 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                 reject("pack_key_duplicate", k.value, path, k.start_mark.line + 1, "duplicate entry")
             if k.value in {"if", "loop", "script", "code"}:
                 reject("pack_contains_logic", k.value, path, k.start_mark.line + 1, "executable keys are forbidden")
-            locations[k.value] = (str(path), k.start_mark.line + 1)
+            locations[section, k.value] = (str(path), k.start_mark.line + 1)
             result[k.value] = convert(v, k.value)
         raw_files[path.relative_to(directory).as_posix()] = result
         return result
 
     manifest_path = directory / "pack.yaml"
-    manifest = read(manifest_path)
+    manifest = read(manifest_path, "manifest")
     if running:
         reject("pack_runtime_reload_forbidden", "pack", manifest_path, 1, "load only before runtime starts")
     if manifest.get("parent_pack") is not None:
@@ -176,7 +241,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
         reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
     contents = manifest.get("contents", {})
-    sections = {name: {} for name in ("fact_types", "machine_defs", "models", "pool_defs", "entity_types")}
+    sections = {name: {} for name in ("fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles")}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
         reject("pack_schema_invalid", "contents", manifest_path, 1, "contents must be a mapping")
@@ -188,7 +253,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
         for name in names:
             relative = f"{section}/{name}.yaml"
             declared.add(relative)
-            for target, spec in read(directory / relative).items():
+            for target, spec in read(directory / relative, section).items():
                 if target in sections[section]:
                     reject("pack_entry_duplicate", target, directory / relative, 1, "entry IDs must be unique")
                 sections[section][target] = spec
@@ -196,7 +261,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                     try:
                         _validate_pool_definition(target, spec)
                     except PoolError as error:
-                        file, line = locations[target]
+                        file, line = locations[section, target]
                         reject(str(error), target, file, line, "declare a valid fixed-point pool definition")
     for path in sorted(directory.rglob("*")):
         if path.is_file() and path.relative_to(directory).as_posix() not in declared:
@@ -205,7 +270,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     # Shape checks protect the compiler from untrusted YAML structures.
     for section, entries in sections.items():
         for target, spec in entries.items():
-            file, line = locations[target]
+            file, line = locations[section, target]
             valid = isinstance(spec, dict)
             if valid and section == "entity_types":
                 slots = spec.get("slots")
@@ -256,9 +321,18 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     if not issues:
         try:
             registry = FactTypeRegistry.compile(facts=sections["fact_types"], models=sections["models"],
-                machines=sections["machine_defs"], owners=owners, resolve_order=order, handlers=handlers, locations=locations)
+                machines=sections["machine_defs"], owners=owners, resolve_order=order, handlers=handlers,
+                locations={target: location for (section, target), location in locations.items()
+                           if section in ("fact_types", "machine_defs", "models")})
         except RegistrationRejected as error:
             issues.extend(error.violations)
+    if registry is not None:
+        for target, spec in sections["impact_profiles"].items():
+            file, line = locations["impact_profiles", target]
+            for code, hint in _impact_violations(
+                spec, registry=registry, entity_types=sections["entity_types"], fact_specs=sections["fact_types"],
+            ):
+                reject(code, target, file, line, hint)
     if issues:
         unique = {(v.code, v.target, v.file, v.line): v for v in issues}
         raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
@@ -267,5 +341,5 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     return LoadedPack(
         manifest["pack_id"], manifest["pack_version"], content_hash, registry,
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
-        freeze(sections["entity_types"]),
+        freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
     )

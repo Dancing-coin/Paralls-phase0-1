@@ -165,6 +165,122 @@ def test_pack_rejects_invalid_entity_type_slots(tmp_path, declaration, code):
     assert [(v.target, Path(v.file).name, v.line) for v in matching] == [("deed", "deed.yaml", 1)]
 
 
+_IMPACT_PROFILE_DECLARATION = dedent("""\
+    "deed@1":
+      target_entity_type: "deed"
+      atomicity: "atomic"
+      layers:
+        - order: 10
+          fact_type: "fact:credential:*:link"
+          resolver: "credential_command@1"
+    """)
+
+
+def _pack_with_impact_profile(tmp_path, declaration):
+    destination = _pack_with_entity_type(tmp_path, _ENTITY_TYPE_DECLARATION)
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'contents:\n', 'contents:\n  impact_profiles: ["deed"]\n'
+        ),
+        encoding="utf-8",
+    )
+    profile_directory = destination / "impact_profiles"
+    profile_directory.mkdir()
+    (profile_directory / "deed.yaml").write_text(declaration, encoding="utf-8")
+    return destination
+
+
+def test_pack_loads_impact_profile_for_registered_slots(tmp_path):
+    destination = _pack_with_impact_profile(tmp_path, _IMPACT_PROFILE_DECLARATION)
+    loaded = load_pack(destination, handlers=HANDLERS)
+    profile = loaded.impact_profiles["deed@1"]
+    assert profile["target_entity_type"] in loaded.entity_types
+    assert profile["layers"][0]["resolver"] in loaded.registry.models
+    with pytest.raises(TypeError):
+        profile["layers"][0]["order"] = 20
+    assert not load_pack(PACK, handlers=HANDLERS).impact_profiles
+
+
+@pytest.mark.parametrize(("old", "new", "code"), [
+    pytest.param(
+        'target_entity_type: "deed"', 'target_entity_type: "record"',
+        "impact_target_entity_unknown", id="unknown-entity",
+    ),
+    pytest.param(
+        'fact:credential:*:link', 'fact:credential:*:missing',
+        "impact_layer_facttype_unknown", id="unknown-fact",
+    ),
+    pytest.param(
+        'resolver: "credential_command@1"', 'resolver: "missing@1"',
+        "impact_layer_resolver_unknown", id="unknown-resolver",
+    ),
+    pytest.param(
+        'atomicity: "atomic"', 'atomicity: "other"',
+        "impact_atomicity_invalid", id="invalid-atomicity",
+    ),
+    pytest.param(
+        'resolver: "credential_command@1"',
+        'resolver: "credential_command@1"\n      owner_ref: "Credential"',
+        "impact_layer_owner_mismatch", id="owner-override",
+    ),
+])
+def test_pack_rejects_invalid_impact_profile(tmp_path, old, new, code):
+    declaration = _IMPACT_PROFILE_DECLARATION.replace(old, new)
+    destination = _pack_with_impact_profile(tmp_path, declaration)
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+    matching = [violation for violation in error.value.violations if violation.code == code]
+    assert [(v.target, Path(v.file).parent.name, v.line) for v in matching] == [
+        ("deed@1", "impact_profiles", 1)
+    ]
+
+
+def test_pack_requires_obligation_when_impact_layers_cross_hosts(tmp_path):
+    destination = _pack_with_impact_profile(tmp_path, _IMPACT_PROFILE_DECLARATION)
+    fact_types = destination / "fact_types" / "credential_link.yaml"
+    facts = fact_types.read_text(encoding="utf-8")
+    fact_types.write_text(
+        facts + facts.replace(":link", ":mark").replace('"paralls"', '"ue"'),
+        encoding="utf-8",
+    )
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'before: []', 'before: [["fact:credential:*:link", "fact:credential:*:mark"]]'
+        ),
+        encoding="utf-8",
+    )
+    entity_file = destination / "entity_types" / "deed.yaml"
+    entity_file.write_text(
+        _ENTITY_TYPE_DECLARATION + '    - fact_type_pattern: "fact:credential:*:mark"\n',
+        encoding="utf-8",
+    )
+    model_file = destination / "models" / "credential_command.yaml"
+    model = model_file.read_text(encoding="utf-8")
+    model_file.write_text(
+        model.replace('["fact:credential:*:link"]', '["fact:credential:*:link", "fact:credential:*:mark"]'),
+        encoding="utf-8",
+    )
+    declaration = _IMPACT_PROFILE_DECLARATION + (
+        '    - order: 20\n'
+        '      fact_type: "fact:credential:*:mark"\n'
+        '      resolver: "credential_command@1"\n'
+    )
+    profile_file = destination / "impact_profiles" / "deed.yaml"
+    profile_file.write_text(declaration, encoding="utf-8")
+    with pytest.raises(RegistrationRejected, match="impact_atomic_cross_host"):
+        load_pack(destination, handlers=HANDLERS)
+
+    obligation = declaration.replace('"atomic"', '"obligation"')
+    profile_file.write_text(obligation, encoding="utf-8")
+    assert load_pack(destination, handlers=HANDLERS).impact_profiles["deed@1"]["atomicity"] == "obligation"
+
+    profile_file.write_text(obligation.replace("order: 20", "order: 5"), encoding="utf-8")
+    with pytest.raises(RegistrationRejected, match="impact_layer_conflicts_order"):
+        load_pack(destination, handlers=HANDLERS)
+
+
 def _copy_pack_for_owner(tmp_path, owner_id):
     destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
