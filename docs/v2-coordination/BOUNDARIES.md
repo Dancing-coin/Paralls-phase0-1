@@ -12,6 +12,7 @@
 | `backend/app/gameplay/rule_pack_validator.py` | 规则包校验器，**加载器 `load_pack` 在此文件内** |
 | `backend/app/models/fact_type.py` | main 的 FactType 注册机制，图投影器入口 |
 | `backend/app/gameplay/event_schema_registry.py` | **在 A 的 0.5 项完成前**属 A 独占；完成后 B 在自己的域模块里声明事件，不碰此文件 |
+| `backend/app/gameplay/l5_play_pattern.py`、`backend/tests/test_l5_play_pattern.py` | M6-4 玩法声明校验 |
 
 B 的调用不算修改：B 迁移 `debt`、`contract` 时导入并调用 `owner_runtime_base` 是允许的。B 需要这些文件发生变化时，走 `requests/thread-b.md`。
 
