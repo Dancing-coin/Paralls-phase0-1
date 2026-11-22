@@ -1,0 +1,20 @@
+"life_state_transition@1":
+  implementation: "code"
+  owner_ref: "LifeState"
+  input_schema: "life_state_transition_inputs@1"
+  output_schema: "life_state_transition_result@1"
+  reads: ["life_state_command@1"]
+  writes_fact_types: ["fact:character:*:lifestate"]
+  layers:
+    - owner_ref: "LifeState"
+      writes_fact_types: ["fact:character:*:lifestate"]
+  determinism_policy:
+    numeric_precision: "fixed_point"
+    rounding: "floor"
+    iteration_order: "resolution_order"
+    random: "none"
+  params:
+    transitions:
+      - ["unknown", "alive"]
+      - ["unknown", "dead"]
+      - ["alive", "dead"]

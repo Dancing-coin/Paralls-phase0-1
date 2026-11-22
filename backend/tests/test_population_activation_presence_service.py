@@ -101,6 +101,9 @@ def test_activation_presence_reuses_activation_receipt_after_partial_success():
     assert alive[0].payload["to_state"] == "alive"
     assert alive[0].payload["incarnation"] == 1
     assert alive[0].schema_version == 2
+    transaction = store.get_transaction(alive[0].transaction_id)
+    assert transaction is not None
+    assert [entry.topic for entry in transaction.outbox_entries] == ["gameplay.character.life_state_changed"]
 
 
 def test_activation_presence_rejects_without_existing_grant_and_writes_nothing():

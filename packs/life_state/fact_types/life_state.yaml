@@ -1,0 +1,8 @@
+"fact:character:*:lifestate":
+  owner_ref: "LifeState"
+  primitive: "machine"
+  identity: "entity_ref"
+  visibility:
+    class: "private"
+    persistence: "permanent"
+  state_set_ref: "machine_def/life_state@1"

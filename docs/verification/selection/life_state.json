@@ -1,0 +1,18 @@
+{
+  "head": "94d4aa20c3093904bb5ac1daa2af4f93c6981677",
+  "description": "LifeState admission, committed graph projection, receipt replay, rule-pack transitions, and checkpoint recovery",
+  "tests": [
+    {"test_name": "tests/test_life_state_case_death_caller.py::test_case_death_caller_writes_canonical_life_state", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_case_death_caller.py::test_committed_life_state_event_reaches_registered_graph_projector", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_case_death_caller.py::test_case_death_caller_exact_retry_changed_duplicate_and_stale_are_zero_write", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_case_death_caller.py::test_case_death_duplicate_rejects_corrupted_receipt_or_transaction[transaction]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_case_death_caller.py::test_case_death_life_state_durable_reopen_receipt_recovery_after_source_advance", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_case_death_caller.py::test_historical_schema1_death_receipt_retains_unknown_semantics", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_replay_participant.py::test_empty_life_state_checkpoint_accepts_first_owner_alive_tail", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_replay_participant.py::test_historical_schema1_case_death_rebuilds_as_dead", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_population_activation_presence_service.py::test_activation_presence_reuses_activation_receipt_after_partial_success", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_population_activation_presence_service.py::test_initial_alive_lifecycle_recovers_after_durable_reopen", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_population_activation_presence_service.py::test_initial_alive_owner_replays_its_durable_receipt_after_reopen", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_life_state_rule_pack.py::test_life_state_pack_loads_registered_owner_machine_and_transition_model", "outcome": "passed", "failures": []}
+  ]
+}

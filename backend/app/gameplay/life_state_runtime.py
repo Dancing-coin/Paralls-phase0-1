@@ -6,9 +6,11 @@ dead. This owner does not infer death from health or write Presence/Soul facts.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any, Mapping
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent
+from app.gameplay.models import AppendBatchResult, AtomicEventBatch, GameplayEvent, GameplayOutboxEntry
+from app.gameplay.owner_runtime_base import rejected_result
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
@@ -20,6 +22,16 @@ _POLICY_V2 = "policy:character-life-state-case-death@2"
 _SOURCE_PRINCIPAL = "authority:p5:investigation-conflict"
 _PRESENCE_PRINCIPAL = "population.presence_authority"
 _ALIVE_PRINCIPAL = "authority:character:life-state:presence-admission"
+_FACT = "fact:character:*:lifestate"
+_MODEL = "life_state_transition@1"
+
+
+def life_state_transition(inputs: Mapping[str, Any], params: Mapping[str, Any]) -> str:
+    command = inputs["life_state_command@1"]
+    transition = (command["from_state"], command["to_state"])
+    if transition not in params["transitions"]:
+        return "life_state_transition_invalid"
+    return command["to_state"]
 
 
 @dataclass(frozen=True)
@@ -114,7 +126,7 @@ class CanonicalLifeStateAuthority:
             pinned_revisions={"activation": expected_activation_revision,
                               "presence": expected_presence_revision},
         )
-        return self._store.append_batch(batch)
+        return self._store.append_batch(_with_graph_projection_outbox(batch))
 
     def _presence_owned(self, event: GameplayEvent) -> bool:
         batch = self._store.get_transaction(event.transaction_id)
@@ -221,7 +233,7 @@ class CanonicalLifeStateAuthority:
             correlation_id=correlation_id,
             pinned_revisions={"confirmation": expected_source_revision},
         )
-        return self._store.append_batch(batch)
+        return self._store.append_batch(_with_graph_projection_outbox(batch))
 
     def _state_at_cut(self, events: list[GameplayEvent]) -> str:
         """Return the latest admitted state before a new death append."""
@@ -295,14 +307,11 @@ class CanonicalLifeStateAuthority:
 
     @staticmethod
     def _reject(command_id: str, code: str) -> AppendBatchResult:
-        from app.gameplay.models import GameplayFailure
-
-        return AppendBatchResult(
-            committed=False,
-            transaction_id=f"transaction:{command_id}",
+        return rejected_result(
             command_id=command_id,
-            idempotency_status="rejected",
-            failure=GameplayFailure(error_code=code, message=code, failed_stage="life_state_admission"),
+            error_code=code,
+            stage="life_state_admission",
+            transaction_prefix="transaction",
         )
 
 
@@ -355,4 +364,27 @@ class CaseDeathLifeStateCaller:
         return LifeStateCallerResult(result, source.event_id)
 
 
-__all__ = ["CanonicalLifeStateAuthority", "CaseDeathLifeStateCaller", "LifeStateCallerResult"]
+def _with_graph_projection_outbox(batch: AtomicEventBatch) -> AtomicEventBatch:
+    event = batch.events[0]
+    entry = GameplayOutboxEntry(
+        outbox_id=f"outbox:{event.event_id}:authority-graph",
+        transaction_id=batch.transaction_id,
+        event_id=event.event_id,
+        global_sequence=0,
+        topic=event.event_type,
+        audience="project",
+        payload_projection={
+            "source": {"layer": "gameplay", "system": "life_state_authority"},
+            "routing": {"audience_mode": "authority", "routing_mode": "event_type"},
+            "durability": "replayable",
+        },
+    )
+    return batch.model_copy(update={"outbox_entries": [*batch.outbox_entries, entry]}, deep=True)
+
+
+__all__ = [
+    "CanonicalLifeStateAuthority",
+    "CaseDeathLifeStateCaller",
+    "LifeStateCallerResult",
+    "life_state_transition",
+]

@@ -10,6 +10,12 @@ from app.gameplay.p5.investigation_conflict import InvestigationConflictAuthorit
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 from test_p5_investigation_conflict import _registry
 from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.gameplay.dispatcher import GameplayOutboxDispatcher
+from app.models.fact_type import FACT_TYPE_REGISTRY
+from app.models.siming_heavenly_graph import HeavenlyGraphScope, HeavenlyNodeQuery
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
 
 def _seed(store=None, actor_ref="character:death:1") -> tuple[GameplayEventStore, str]:
@@ -94,6 +100,47 @@ def test_case_death_caller_writes_canonical_life_state() -> None:
     assert event.payload["actor_ref"] == "character:death:1"
     assert event.payload["from_state"] == "unknown"
     assert event.schema_version == 2
+
+
+def test_committed_life_state_event_reaches_registered_graph_projector() -> None:
+    store, confirmation_id = _seed()
+    result = CaseDeathLifeStateCaller(store=store).record_confirmed_case_death(
+        confirmation_event_id=confirmation_id,
+        expected_source_revision=2,
+        command_id="life-state:projected-death",
+        idempotency_key="life-state:projected-death",
+        causation_id=confirmation_id,
+        correlation_id="life-state:projected-death",
+    )
+    assert result.result.committed
+
+    event_type = "gameplay.character.life_state_changed"
+    assert event_type in FACT_TYPE_REGISTRY.event_types()
+    graph = InMemoryHeavenlyGraphAdapter()
+    projector = HeavenlyAuthorityEventProjector(
+        graph,
+        scope_resolver=lambda _event: HeavenlyGraphScope(
+            world_id="world:demo", session_id="session:demo", story_branch_id="branch:main"
+        ),
+    )
+    bus = InMemoryAuthorityEventBus()
+    bus.subscribe(event_type, projector.project)
+
+    dispatched = GameplayOutboxDispatcher(store=store, bus=bus).dispatch_pending()
+    assert dispatched.failed_count == 0
+    assert dispatched.published_count == 1
+    nodes = graph.query_nodes(
+        HeavenlyNodeQuery(
+            scope=HeavenlyGraphScope(
+                world_id="world:demo", session_id="session:demo", story_branch_id="branch:main"
+            ),
+            valid_at=100,
+            node_types=["causal_event"],
+        )
+    )
+    assert len(nodes) == 1
+    assert nodes[0].attributes["event_type"] == event_type
+    assert nodes[0].attributes["domain"] == "character"
 
 
 def test_case_death_caller_exact_retry_changed_duplicate_and_stale_are_zero_write() -> None:
