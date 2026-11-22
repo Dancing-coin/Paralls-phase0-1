@@ -14,12 +14,13 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 
 | 任务 | 归属 | 状态 | 产出 | 阻塞 / 放行条件 | 标准 |
 |---|---|---|---|---|---|
-| M0-1 runtime→Owner 映射（含 Combat 落点、Contract 事实清单） | B | 进行中 | `docs/verification/m0-inventory-20261122/m0-1-runtime-owner-map.md` | S-9 已交由 B 执行 | 1、2 |
-| M0-2 共享机制采用表 | B | 进行中 | 同目录 `m0-2-mechanism-adoption.md` | — | 3 |
-| M0-3 第二真相复核 | B | 进行中 | 同目录 `m0-3-second-truth.md` | — | 11 |
-| M0-4 读取方静态图 | B | 进行中 | 同目录 `m0-4-readers.md` | — | 4 |
-| M0-5 Command 信封抽查 | B | 进行中 | 同目录 `m0-5-command-envelope.md` | — | 1 |
-| M0-6 波次表 | B | 进行中 | 同目录 `m0-6-waves.md` | 需 M0-1、M0-2 结果 | 全部 |
+| M0-1 runtime→Owner 映射（含 Combat 落点、Contract 事实清单） | B | 待门禁 | `docs/verification/m0-inventory-20261122/m0-1-runtime-owner-map.md` | 提交 `a7a66301`；只读，未跑测试 | 1、2 |
+| M0-2 共享机制采用表 | B | 待门禁 | 同目录 `m0-2-mechanism-adoption.md` | 提交 `a7a66301` | 3 |
+| M0-3 第二真相复核 | B | 待门禁 | 同目录 `m0-3-second-truth.md` | 提交 `a7a66301` | 11 |
+| M0-4 读取方静态图 | B | 待门禁 | 同目录 `m0-4-readers.md` | 提交 `a7a66301`；993 调用 / 115 文件 | 4 |
+| M0-5 Command 信封抽查 | B | 待门禁 | 同目录 `m0-5-command-envelope.md` | 提交 `a7a66301` | 1 |
+| M0-6 波次表 | B | 待门禁 | 同目录 `m0-6-waves.md` | 提交 `a7a66301`、`c4a53e75`；静态输入，未验证 | 全部 |
+| **M0.5 Owner 登记名单扩展** | A | 待开工 | 名单 + fixture 测试 + 证据 | **阻塞全部域迁移**：`REGISTERED_OWNER_IDS` 仅 3 项，其余 Owner 的规则包被拒 | 1、2 |
 | M1-1 Bond 分片提交 | A | 待门禁 | 三个本地提交 + `docs/verification/m1-1-bond-slices-20261122.md` | 按 AUTONOMY §二、§三 自判；不推送 | 3 |
 | M1-2 Holdings 原语 | A | 待开工 | 原语实现 + 固定向量 | 由波次表决定是否需要 | 3 |
 | M1-3 Pool 原语 | A | 待开工 | 同上 | 同上 | 3 |
