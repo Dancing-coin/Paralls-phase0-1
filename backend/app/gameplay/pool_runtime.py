@@ -7,10 +7,10 @@ from decimal import Decimal, InvalidOperation
 from hashlib import sha256
 import json
 from types import MappingProxyType
-from typing import Iterable, Mapping, Sequence
+from typing import Callable, Iterable, Literal, Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayEvent
+from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment
 from app.gameplay.owner_runtime_base import OwnerCommitBuilder, replay_duplicate
 
 
@@ -38,6 +38,8 @@ class PoolDefinition:
     initial: Decimal
     rate_per_tick: Decimal = Decimal(0)
     thresholds: tuple[PoolThreshold, ...] = ()
+    aggregation_mode: Literal["none", "sum", "distribution", "ordered"] = "none"
+    refold_model_ref: str | None = None
 
     def __post_init__(self) -> None:
         if not self.fact_type or any(
@@ -48,9 +50,70 @@ class PoolDefinition:
             raise PoolError("pool_bounds_invalid")
         if not self.lower <= self.initial <= self.upper:
             raise PoolError("pool_initial_out_of_bounds")
+        if (not isinstance(self.aggregation_mode, str)
+                or self.aggregation_mode not in {"none", "sum", "distribution", "ordered"}):
+            raise PoolError("pool_aggregation_mode_invalid")
+        if self.aggregation_mode == "distribution":
+            if not isinstance(self.refold_model_ref, str) or not self.refold_model_ref:
+                raise PoolError("pool_refold_model_required")
+        elif self.refold_model_ref is not None:
+            raise PoolError("pool_refold_model_unexpected")
         refs = [threshold.threshold_ref for threshold in self.thresholds]
         if len(refs) != len(set(refs)):
             raise PoolError("pool_threshold_duplicate")
+
+
+PoolRefoldResolver = Callable[
+    [str, tuple[tuple[str, Decimal], ...], str, Mapping[str, int]], Decimal
+]
+
+
+def aggregate_pool_values(
+    values: Sequence[tuple[str, Decimal]],
+    *,
+    definition: PoolDefinition,
+    refold: PoolRefoldResolver | None = None,
+    trigger: str | None = None,
+    input_revision_vector: Mapping[str, int] | None = None,
+) -> Decimal | Mapping[str, Decimal] | tuple[tuple[str, Decimal], ...]:
+    members = tuple(values)
+    fact_types = [fact_type for fact_type, _ in members]
+    if len(set(fact_types)) != len(fact_types):
+        raise PoolError("pool_aggregate_member_duplicate")
+    for fact_type, value in members:
+        if not isinstance(fact_type, str) or not fact_type:
+            raise PoolError("pool_aggregate_member_invalid")
+        _finite_decimal(value, "pool_aggregate_value_invalid")
+        _require_in_bounds(value, definition.lower, definition.upper)
+
+    if definition.aggregation_mode in {"none", "ordered"}:
+        if definition.aggregation_mode == "none":
+            return MappingProxyType(dict(members))
+        return members
+    if definition.aggregation_mode == "sum":
+        total = sum((value for _, value in members), Decimal(0))
+        _finite_decimal(total, "pool_aggregate_value_invalid")
+        return total
+
+    if refold is None:
+        raise PoolError("pool_refold_resolver_required")
+    if trigger not in {"split", "merge", "fidelity_change", "scope_change"}:
+        raise PoolError("pool_refold_trigger_invalid")
+    if (not isinstance(input_revision_vector, Mapping)
+            or not set(fact_types).issubset(input_revision_vector)):
+        raise PoolError("pool_refold_revision_vector_invalid")
+    if any(type(revision) is not int or revision < 0 for revision in input_revision_vector.values()):
+        raise PoolError("pool_refold_revision_vector_invalid")
+
+    result = refold(
+        definition.refold_model_ref,
+        members,
+        trigger,
+        MappingProxyType(dict(sorted(input_revision_vector.items()))),
+    )
+    _finite_decimal(result, "pool_refold_result_invalid")
+    _require_in_bounds(result, definition.lower, definition.upper)
+    return result
 
 
 @dataclass(frozen=True)
@@ -265,12 +328,16 @@ class PoolProjector:
 
 class PoolAuthorityService:
     _PRINCIPAL = "owner:pool"
+    _SOURCE_RULE_REF = "pool-runtime:owner-command@1"
     _REASONS = frozenset({"damage", "heal", "integrate", "restore", "grant", "manual_authority"})
     _CONSUME_REASONS = frozenset({"action_cost", "recipe_input", "treatment", "decay", "spoilage"})
 
     def __init__(self, *, store: GameplayEventStore,
-                 definitions: Iterable[PoolDefinition] = ()) -> None:
+                 definitions: Iterable[PoolDefinition] = (), owner_ref: str | None = None) -> None:
+        if owner_ref is not None and (not isinstance(owner_ref, str) or not owner_ref):
+            raise PoolError("pool_owner_ref_invalid")
         self._store = store
+        self._owner_ref = owner_ref or self._PRINCIPAL
         self._projector = PoolProjector()
         self._definitions = {definition.fact_type: definition for definition in definitions}
 
@@ -297,15 +364,31 @@ class PoolAuthorityService:
     def adjust(self, *, fact_type: str, delta: Decimal, reason_code: str, command_id: str,
                idempotency_key: str, expected_revision: int, causation_id: str,
                correlation_id: str, window_ref: str | None = None, model_ref: str | None = None,
-               thresholds: tuple[PoolThreshold, ...] | None = None) -> AppendBatchResult:
+               thresholds: tuple[PoolThreshold, ...] | None = None,
+               input_revision_vector: Mapping[str, int] | None = None) -> AppendBatchResult:
         _finite_decimal(delta, "pool_delta_invalid")
         if reason_code not in self._REASONS:
             raise PoolError("pool_adjust_reason_invalid")
         if window_ref is not None and not window_ref:
             raise PoolError("pool_window_invalid")
+        if model_ref is not None and (not isinstance(model_ref, str) or not model_ref):
+            raise PoolError("pool_model_ref_invalid")
+        if model_ref is not None and input_revision_vector is None:
+            raise PoolError("pool_model_revision_vector_invalid")
+        if input_revision_vector is not None and (
+            not isinstance(input_revision_vector, Mapping) or not input_revision_vector
+            or any(
+                not isinstance(stream_id, str) or not stream_id
+                or type(revision) is not int or revision < 0
+                for stream_id, revision in input_revision_vector.items()
+            )
+        ):
+            raise PoolError("pool_model_revision_vector_invalid")
         digest_payload = {"kind": "adjust", "fact_type": fact_type, "delta": _decimal_text(delta),
                           "reason_code": reason_code, "window_ref": window_ref,
                           "model_ref": model_ref}
+        if input_revision_vector is not None:
+            digest_payload["input_revision_vector"] = dict(input_revision_vector)
         duplicate = self._duplicate(idempotency_key, digest_payload)
         if duplicate is not None:
             return duplicate
@@ -332,7 +415,7 @@ class PoolAuthorityService:
             fact_type=fact_type, command_id=command_id, idempotency_key=idempotency_key,
             causation_id=causation_id, correlation_id=correlation_id,
             event_specs=tuple(event_specs), expected_revision=expected_revision,
-            digest_payload=digest_payload,
+            digest_payload=digest_payload, input_revision_vector=input_revision_vector,
         )
 
     def integrate(self, *, fact_type: str, ticks: int, window_ref: str, command_id: str,
@@ -499,7 +582,8 @@ class PoolAuthorityService:
     def _append(self, *, fact_type: str, command_id: str, idempotency_key: str,
                 causation_id: str, correlation_id: str,
                 event_specs: Sequence[tuple[str, Mapping[str, object]]], expected_revision: int,
-                digest_payload: Mapping[str, object]) -> AppendBatchResult:
+                digest_payload: Mapping[str, object],
+                input_revision_vector: Mapping[str, int] | None = None) -> AppendBatchResult:
         if not command_id or not idempotency_key or not causation_id or not correlation_id:
             raise PoolError("pool_command_identity_invalid")
         digest = "sha256:" + sha256(_canonical_json(digest_payload)).hexdigest()
@@ -514,12 +598,35 @@ class PoolAuthorityService:
             "causation_id": causation_id, "correlation_id": correlation_id,
             "visibility_policy": "authority_only", "payload": dict(payload),
         } for index, (event_type, payload) in enumerate(event_specs)]
-        result = self._store.append_batch(OwnerCommitBuilder.build(
+        read_revisions = {fact_type: expected_revision}
+        if input_revision_vector is not None:
+            for stream_id, revision in input_revision_vector.items():
+                if stream_id in read_revisions and read_revisions[stream_id] != revision:
+                    raise PoolError("pool_model_revision_vector_invalid")
+                read_revisions[stream_id] = revision
+        fragment = OwnerAuthorizedFragment(
+            fragment_id=f"fragment:pool:{command_id}",
+            owner_principal_ref=self._owner_ref,
+            source_rule_ref=self._SOURCE_RULE_REF,
+            expected_revisions={fact_type: expected_revision},
+            read_set_revisions=read_revisions,
+            event_specs={fact_type: tuple(
+                (event_type, dict(payload)) for event_type, payload in event_specs
+            )},
+            event_visibility_policies={fact_type: tuple(
+                "authority_only" for _ in event_specs
+            )},
+            pinned_revisions=read_revisions,
+        )
+        batch = OwnerCommitBuilder.build(
             principal_ref=self._PRINCIPAL, command_id=command_id, transaction_id=transaction_id,
             idempotency_key=idempotency_key, payload_digest=digest, events=events,
             expected_stream_revisions={fact_type: expected_revision},
-            pinned_revisions={"pool": expected_revision}, result_digest=digest,
-        ))
+            pinned_revisions=read_revisions, result_digest=digest,
+            read_stream_revisions=read_revisions,
+        )
+        batch["owner_fragments"] = [fragment.model_dump(mode="python")]
+        result = self._store.append_batch(batch)
         if not result.committed:
             failure = result.failure
             raise PoolError(failure.error_code if failure is not None else "pool_append_rejected")

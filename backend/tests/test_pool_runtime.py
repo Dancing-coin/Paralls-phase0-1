@@ -11,6 +11,7 @@ from app.gameplay.pool_runtime import (
     PoolError,
     PoolProjector,
     PoolThreshold,
+    aggregate_pool_values,
 )
 
 
@@ -20,7 +21,7 @@ PRINCIPAL = "owner:body"
 
 def service_with_pool(*, initial: str = "50"):
     store = GameplayEventStore()
-    service = PoolAuthorityService(store=store)
+    service = PoolAuthorityService(store=store, owner_ref=PRINCIPAL)
     definition = PoolDefinition(
         fact_type=FACT_TYPE,
         lower=Decimal("0"),
@@ -87,6 +88,49 @@ def test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable():
         restored.read_stream(FACT_TYPE), definitions={FACT_TYPE: definition}
     )
     assert rebuilt == projection
+
+
+def test_pool_commits_persist_owner_fragment_contract_and_ordered_operations():
+    store, service, _ = service_with_pool()
+    initialization = store.get_transaction("tx:pool:init")
+
+    assert initialization is not None
+    fragment = initialization.owner_fragments[0]
+    assert fragment.owner_principal_ref == PRINCIPAL
+    assert fragment.source_rule_ref == "pool-runtime:owner-command@1"
+    assert fragment.expected_revisions == {FACT_TYPE: 0}
+    assert fragment.read_set_revisions == {FACT_TYPE: 0}
+    assert fragment.pinned_revisions == {FACT_TYPE: 0}
+    assert fragment.event_specs[FACT_TYPE] == (("gameplay.pool.initialized", {
+        "fact_type": FACT_TYPE,
+        "initial": "50",
+        "bound_lower": "0",
+        "bound_upper": "100",
+    }),)
+
+    adjusted = service.adjust(
+        fact_type=FACT_TYPE,
+        delta=Decimal("-25"),
+        reason_code="damage",
+        command_id="pool:adjust-crossing",
+        idempotency_key="pool:adjust-crossing",
+        expected_revision=1,
+        causation_id="evt:seed",
+        correlation_id="corr:pool",
+    )
+    assert adjusted.committed
+
+    transaction = store.get_transaction("tx:pool:adjust-crossing")
+    assert transaction is not None
+    operation_types = tuple(
+        event_type
+        for events in transaction.owner_fragments[0].event_specs.values()
+        for event_type, _ in events
+    )
+    assert operation_types == (
+        "gameplay.pool.adjusted",
+        "gameplay.pool.threshold_crossed",
+    )
 
 
 def test_pool_rejections_leave_event_stream_unchanged():
@@ -317,6 +361,167 @@ def test_pool_adjust_cannot_reduce_value_below_existing_reservations():
     assert PoolProjector().rebuild(
         store.read_stream(FACT_TYPE), definitions={FACT_TYPE: definition}
     ).available == Decimal("30")
+
+
+def test_pool_aggregation_modes_keep_their_declared_semantics():
+    values = (("fact:pool:first", Decimal("80")), ("fact:pool:second", Decimal("60")))
+
+    def definition(mode):
+        return PoolDefinition(
+            fact_type=FACT_TYPE,
+            lower=Decimal("0"),
+            upper=Decimal("100"),
+            initial=Decimal("50"),
+            aggregation_mode=mode,
+            refold_model_ref="morale_refold@1" if mode == "distribution" else None,
+        )
+
+    assert aggregate_pool_values(values, definition=definition("none")) == dict(values)
+    assert aggregate_pool_values(values, definition=definition("sum")) == Decimal("140")
+    assert aggregate_pool_values(values, definition=definition("ordered")) == values
+
+
+def test_pool_distribution_recomputes_through_refold_with_frozen_revisions():
+    values = (("fact:pool:first", Decimal("12")), ("fact:pool:second", Decimal("8")))
+    definition = PoolDefinition(
+        fact_type=FACT_TYPE,
+        lower=Decimal("0"),
+        upper=Decimal("100"),
+        initial=Decimal("50"),
+        aggregation_mode="distribution",
+        refold_model_ref="morale_refold@1",
+    )
+    calls = []
+
+    def refold(model_ref, members, trigger, input_revision_vector):
+        calls.append((model_ref, members, trigger, dict(input_revision_vector)))
+        return Decimal("11")
+
+    first = aggregate_pool_values(
+        values,
+        definition=definition,
+        refold=refold,
+        trigger="merge",
+        input_revision_vector={"fact:pool:first": 3, "fact:pool:second": 5},
+    )
+    second = aggregate_pool_values(
+        values,
+        definition=definition,
+        refold=refold,
+        trigger="merge",
+        input_revision_vector={"fact:pool:first": 3, "fact:pool:second": 5},
+    )
+
+    assert first == second == Decimal("11")
+    assert calls == [
+        ("morale_refold@1", values, "merge", {"fact:pool:first": 3, "fact:pool:second": 5}),
+        ("morale_refold@1", values, "merge", {"fact:pool:first": 3, "fact:pool:second": 5}),
+    ]
+
+
+def test_pool_model_adjustment_persists_and_checks_its_input_revision_vector():
+    store, service, _ = service_with_pool()
+    input_fact_type = "fact:unit:gate-east:morale-input"
+    result = service.adjust(
+        fact_type=FACT_TYPE,
+        delta=Decimal("-5"),
+        reason_code="integrate",
+        model_ref="morale_refold@1",
+        input_revision_vector={input_fact_type: 0},
+        command_id="pool:model-adjust",
+        idempotency_key="pool:model-adjust",
+        expected_revision=1,
+        causation_id="evt:seed",
+        correlation_id="corr:pool",
+    )
+
+    assert result.committed
+    transaction = store.get_transaction("tx:pool:model-adjust")
+    assert transaction is not None
+    fragment = transaction.owner_fragments[0]
+    expected_inputs = {FACT_TYPE: 1, input_fact_type: 0}
+    assert fragment.read_set_revisions == expected_inputs
+    assert fragment.pinned_revisions == expected_inputs
+    assert fragment.event_specs[FACT_TYPE][0][1]["model_ref"] == "morale_refold@1"
+
+    before = store.export_snapshot()
+    with pytest.raises(PoolError, match="^revision_conflict$"):
+        service.adjust(
+            fact_type=FACT_TYPE,
+            delta=Decimal("-1"),
+            reason_code="integrate",
+            model_ref="morale_refold@1",
+            input_revision_vector={input_fact_type: 1},
+            command_id="pool:model-adjust-stale",
+            idempotency_key="pool:model-adjust-stale",
+            expected_revision=2,
+            causation_id="evt:seed",
+            correlation_id="corr:pool",
+        )
+    assert store.export_snapshot() == before
+
+
+def test_pool_adjustment_can_pin_non_model_aggregation_inputs():
+    store, service, _ = service_with_pool()
+    input_fact_type = "fact:pool:ammunition:source"
+
+    result = service.adjust(
+        fact_type=FACT_TYPE,
+        delta=Decimal("5"),
+        reason_code="grant",
+        input_revision_vector={input_fact_type: 0},
+        command_id="pool:sum-adjust",
+        idempotency_key="pool:sum-adjust",
+        expected_revision=1,
+        causation_id="evt:seed",
+        correlation_id="corr:pool",
+    )
+
+    assert result.committed
+    transaction = store.get_transaction("tx:pool:sum-adjust")
+    assert transaction is not None
+    fragment = transaction.owner_fragments[0]
+    assert fragment.read_set_revisions == {FACT_TYPE: 1, input_fact_type: 0}
+    assert fragment.pinned_revisions == {FACT_TYPE: 1, input_fact_type: 0}
+
+
+def test_pool_distribution_rejects_missing_refold_inputs():
+    with pytest.raises(PoolError, match="^pool_refold_model_required$"):
+        PoolDefinition(
+            fact_type=FACT_TYPE,
+            lower=Decimal("0"),
+            upper=Decimal("100"),
+            initial=Decimal("50"),
+            aggregation_mode="distribution",
+        )
+
+
+def test_pool_rejects_invalid_aggregation_and_owner_fragment_inputs():
+    with pytest.raises(PoolError, match="^pool_aggregation_mode_invalid$"):
+        PoolDefinition(
+            fact_type=FACT_TYPE,
+            lower=Decimal("0"),
+            upper=Decimal("100"),
+            initial=Decimal("50"),
+            aggregation_mode=[],
+        )
+
+    with pytest.raises(PoolError, match="^pool_owner_ref_invalid$"):
+        PoolAuthorityService(store=GameplayEventStore(), owner_ref=object())
+
+    _, service, _ = service_with_pool()
+    with pytest.raises(PoolError, match="^pool_model_revision_vector_invalid$"):
+        service.adjust(
+            fact_type=FACT_TYPE,
+            delta=Decimal("1"),
+            reason_code="grant",
+            input_revision_vector=[("fact:pool:source", 0)],
+            command_id="pool:bad-input-vector",
+            idempotency_key="pool:bad-input-vector",
+            expected_revision=1,
+            causation_id="evt:seed",
+            correlation_id="corr:pool",
+        )
 
 
 def test_pool_events_are_visible_to_gameplay_graph_registry():
