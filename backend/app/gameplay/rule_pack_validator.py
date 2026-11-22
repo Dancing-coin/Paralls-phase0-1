@@ -30,6 +30,7 @@ class LoadedPack:
     pool_defs: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     entity_types: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     impact_profiles: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+    aggregation_models: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -144,6 +145,36 @@ def _impact_violations(
         yield "impact_atomic_cross_host", "use obligation unless all layers are pinned to the same host"
 
 
+def _aggregation_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[tuple[str, str]]:
+    fields = {"mode", "refold_model_ref", "refold_triggers", "description", "version", "deprecated"}
+    if not isinstance(spec, dict) or spec.keys() - fields:
+        yield "pack_schema_invalid", "declare only aggregation fields"
+        return
+
+    mode = spec.get("mode")
+    if mode not in ("none", "sum", "distribution", "ordered"):
+        yield "pack_aggregation_mode_invalid", "declare none, sum, distribution or ordered"
+        return
+    if mode != "distribution":
+        if {"refold_model_ref", "refold_triggers"} & spec.keys():
+            yield "pack_aggregation_refold_unexpected", "refold declarations apply only to distribution"
+        return
+
+    refold = spec.get("refold_model_ref")
+    if not isinstance(refold, str) or not refold:
+        yield "pack_aggregation_refold_missing", "distribution requires a refold Resolver"
+    elif refold not in registry.models:
+        yield "pack_aggregation_refold_unknown", "reference a registered refold Resolver"
+
+    if "refold_triggers" in spec:
+        triggers = spec["refold_triggers"]
+        supported = ("split", "merge", "fidelity_change", "scope_change")
+        if (not isinstance(triggers, list) or not triggers
+                or any(trigger not in supported for trigger in triggers)
+                or len(set(triggers)) != len(triggers)):
+            yield "pack_aggregation_triggers_invalid", "list unique distribution refold triggers"
+
+
 def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: bool = False) -> LoadedPack:
     directory = directory.resolve()
     issues: list[Violation] = []
@@ -241,7 +272,9 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
         reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
     contents = manifest.get("contents", {})
-    sections = {name: {} for name in ("fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles")}
+    sections = {name: {} for name in (
+        "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles", "aggregation_models",
+    )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
         reject("pack_schema_invalid", "contents", manifest_path, 1, "contents must be a mapping")
@@ -333,6 +366,10 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                 spec, registry=registry, entity_types=sections["entity_types"], fact_specs=sections["fact_types"],
             ):
                 reject(code, target, file, line, hint)
+        for target, spec in sections["aggregation_models"].items():
+            file, line = locations["aggregation_models", target]
+            for code, hint in _aggregation_violations(spec, registry):
+                reject(code, target, file, line, hint)
     if issues:
         unique = {(v.code, v.target, v.file, v.line): v for v in issues}
         raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
@@ -342,4 +379,5 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
         manifest["pack_id"], manifest["pack_version"], content_hash, registry,
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
+        freeze(sections["aggregation_models"]),
     )

@@ -281,6 +281,66 @@ def test_pack_requires_obligation_when_impact_layers_cross_hosts(tmp_path):
         load_pack(destination, handlers=HANDLERS)
 
 
+_AGGREGATION_DECLARATION = dedent("""\
+    "deed_refold@1":
+      mode: "distribution"
+      refold_model_ref: "credential_command@1"
+      refold_triggers: ["split", "merge", "fidelity_change", "scope_change"]
+    """)
+
+
+def _pack_with_aggregation_model(tmp_path, declaration):
+    destination = shutil.copytree(PACK, tmp_path / "aggregation-pack")
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'contents:\n', 'contents:\n  aggregation_models: ["deed_refold"]\n'
+        ),
+        encoding="utf-8",
+    )
+    aggregation = destination / "aggregation_models"
+    aggregation.mkdir()
+    (aggregation / "deed_refold.yaml").write_text(declaration, encoding="utf-8")
+    return destination
+
+
+def test_pack_loads_aggregation_modes_and_registered_refold(tmp_path):
+    declaration = _AGGREGATION_DECLARATION + (
+        'quantity:\n  mode: "sum"\n'
+        'queue:\n  mode: "ordered"\n'
+        'independent:\n  mode: "none"\n'
+    )
+    destination = _pack_with_aggregation_model(tmp_path, declaration)
+    loaded = load_pack(destination, handlers=HANDLERS)
+    model = loaded.aggregation_models["deed_refold@1"]
+    assert model["refold_model_ref"] in loaded.registry.models
+    assert model["refold_triggers"] == ("split", "merge", "fidelity_change", "scope_change")
+    assert loaded.aggregation_models["quantity"]["mode"] == "sum"
+    assert loaded.aggregation_models["queue"]["mode"] == "ordered"
+    assert loaded.aggregation_models["independent"]["mode"] == "none"
+    with pytest.raises(TypeError):
+        model["mode"] = "none"
+    assert not load_pack(PACK, handlers=HANDLERS).aggregation_models
+
+
+@pytest.mark.parametrize(("old", "new", "code"), [
+    pytest.param('mode: "distribution"', 'mode: "unknown"', "pack_aggregation_mode_invalid", id="mode"),
+    pytest.param('  refold_model_ref: "credential_command@1"\n', "", "pack_aggregation_refold_missing", id="missing-refold"),
+    pytest.param('"credential_command@1"', '"missing@1"', "pack_aggregation_refold_unknown", id="unknown-refold"),
+    pytest.param('"scope_change"', '"split"', "pack_aggregation_triggers_invalid", id="duplicate-trigger"),
+    pytest.param('mode: "distribution"', 'mode: "sum"', "pack_aggregation_refold_unexpected", id="sum-refold"),
+])
+def test_pack_rejects_invalid_aggregation_model(tmp_path, old, new, code):
+    destination = _pack_with_aggregation_model(tmp_path, _AGGREGATION_DECLARATION.replace(old, new))
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+    matching = [violation for violation in error.value.violations if violation.code == code]
+    assert [(v.target, Path(v.file).name, v.line) for v in matching] == [
+        ("deed_refold@1", "deed_refold.yaml", 1)
+    ]
+
+
+
 def _copy_pack_for_owner(tmp_path, owner_id):
     destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
