@@ -20,7 +20,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M0-4 读取方静态图 | B | 待门禁 | 同目录 `m0-4-readers.md` | 提交 `a7a66301`；993 调用 / 115 文件 | 4 |
 | M0-5 Command 信封抽查 | B | 待门禁 | 同目录 `m0-5-command-envelope.md` | 提交 `a7a66301` | 1 |
 | M0-6 波次表 | B | 待门禁 | 同目录 `m0-6-waves.md` | 提交 `a7a66301`、`c4a53e75`；静态输入，未验证 | 全部 |
-| **M0.5 Owner 登记名单扩展** | A | 已合并 | 规范短名名单 + validator 测试 + `docs/verification/m0.5-owner-registry-20261122.md` | 合入 SHA：待最终提交回填；标签：`integration-2026-11-22-8`；允许名单不表示 Owner 已实现 v2 声明 | 1、2 |
+| **M0.5 Owner 登记名单扩展** | A | 已合并 | 规范短名名单 + validator 测试 + `docs/verification/m0.5-owner-registry-20261122.md` | 合入 SHA：`9e0ff06c`；标签：`integration-2026-11-22-8`；允许名单不表示 Owner 已实现 v2 声明 | 1、2 |
 | M1-1 Bond 分片提交 | A | 待门禁 | 三个本地提交 + `docs/verification/m1-1-bond-slices-20261122.md` | 按 AUTONOMY §二、§三 自判；不推送 | 3 |
 | M1-2 Holdings 原语 | A | 待开工 | 原语实现 + 固定向量 | 由波次表决定是否需要 | 3 |
 | M1-3 Pool 原语 | A | 待开工 | 同上 | 同上 | 3 |
