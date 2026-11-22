@@ -92,4 +92,4 @@
 - M0.5 指 Owner 登记名单扩展，不是历史队列 0.5 的图可见性发现机制；历史队列 0.5 已随 `3d6c72095fdcd2cbc9e0e4484e70a6010e7cdc87` 完成。
 - 规范 `owner_id` 使用 Architecture v2 的短名单词。22 个 Architecture v2 Owner 作为规范名称登记；`Credential` 仅为旧规则包兼容条目，不构成新 Owner；`Combat` 暂不登记，等待 S-1；`Economy / Market` 被拒绝，规范名称为 `Economy`。
 - 申报代码与测试 SHA：`4b876f3d4dd92deba72aa2b49685fa4c39920ce2`；M0.5 本轮按路径提取，排除 Bond/Credential runtime 与 M1-1 内容。定向 validator 测试：37 passed，2 warnings；不是 Owner 迁移完成声明。
-- 本轮合入 SHA 与标签在 `daily/2026-11-22.md` 回填。
+- M0.5 提取提交：`9e0ff06c`；最终 integration 合入 SHA 与标签在 `daily/2026-11-22.md` 回填。
