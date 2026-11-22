@@ -113,3 +113,12 @@ RG 全仓调用与 schema 搜索还覆盖测试和脚本。未发现除上述 pr
 | U8 规则包设定及 Resolver | 仅静态 | Credential resolver 声明 Bond 输入；尚无 Ownership Bond 自有完整规则包 |
 | U9 探针及冻结基线对照 | 已验证但全量未通过 | 两个代码提交各自的 24/990 冻结选集均无差异；合并状态全量 exit 1，24 个失败含 22 项冻结失败及 2 项在基点复现的失败 |
 | U10 证据文件完整 | 已记录 | 两个代码 SHA、文件路径、验证数、兼容策略、环境与未覆盖项已列；不含全量通过声明 |
+
+## 旧版转让入口混合账本兼容补测
+
+`e349187e56be87b1df729cf807162657a886cff6` 将旧版 `right_id` 转让入口的凭证匹配限定为 `CredentialLink`，与 Bond 入口要求 `BondCredentialLink` 对称。使用真实 Store 发行 v3 Bond 凭证后将其提交给旧版入口。修复前在 `land_right_runtime.py:136` 抛出 `AttributeError`，修复后返回已有拒绝码 `land_right_credential_required`，事件序列、事务和幂等记录均无新增。没有更改持久事件字段或成功批次。
+
+- Python 3.12.2、SQLite 3.43.1，`PYTHONPATH` 与 `app.__file__` 已核对在临时检出 `F:/codex-temp/a-ip-f759a465/backend`。
+- `python -m pytest -q -p no:cacheprovider backend/tests/test_credential_v2_land_right_revision_vector.py -k legacy_land_right_transfer_rejects`。修复前 1 failed、6 deselected，见 `F:/paralls-verification/thread-a/et-e4c044021a/red.txt`。
+- `python -m pytest -q -p no:cacheprovider` 运行 LandRight revision vector、Credential reference chain/runtime、Ownership Bond lifecycle 和 Adventure closure 五个文件，38 passed、2 warnings，退出 0。原始输出 `F:/paralls-verification/thread-a/et-218d73ce84/targeted.txt`。
+- `compare_selection.py --repo <worktree> --selection <selection.json> --output <run>/<selection>`。五组冻结选集 1,169 个节点，十一组登记选集 89 个节点，合计 1,258 个节点，各组 `problems=0 improvements=0`。原始输出 `F:/paralls-verification/thread-a/et-9be8cff326/`。本补丁未跑全量。
