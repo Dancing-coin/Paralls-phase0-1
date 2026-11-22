@@ -33,7 +33,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M2-5 B4 前置设计 | A | 待开工 | 设计文档 | 实现须负责人确认 | 4 |
 | M2-6 首条生产流受 epoch 保护 | A | 待开工 | 实现 + 证据 | 依赖 M2-5、负责人选流 | 4 |
 | M3-1 `OwnerCommitBuilder` | A | 待门禁 | `docs/verification/m3-1-owner-commit-builder-20261122.md`；Ownership + Credential 调用点接入 | 定向 21 passed，ownership/shared-replay 24/990 problems=0；全量 10,418 passed、24 个既有失败，逐节点对照新增 0 | 3 |
-| M3-2 `StoreReadSnapshot` 推广 | A | 待开工 | 逐域接入 | 先测再改 | 3 |
+| M3-2 `StoreReadSnapshot` 推广 | A | 待门禁 | `7c24d136`，Credential supersede 与 LandRight presentation；`docs/verification/m3-2-store-read-snapshot-20261122.md` | 定向 33 passed，七组选集 1,191 节点零差异。全量退出 1，24 失败与 M1-3 同签名，比 22 节点冻结基线多两项既有本地失败 | 3 |
 | M3-3 R2 推广 | A/B | 待开工 | 按域并入 | 每域单独提交 | 7 |
 | M3-4 `pinned_revisions` 校验 | A | 阻塞 | — | S-4 未决 | 3 |
 | M4 第 1 波其余域 | 未定 | 待开工 | 每域一份设计与证据 | 待 M0-6 | 1–11 |

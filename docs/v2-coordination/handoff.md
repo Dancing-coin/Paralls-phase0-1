@@ -107,3 +107,8 @@
 - 具体缺口：无 reservation release/settlement 事件，`consumed` 不带 `reservation_ref`，无法确定性释放或结算某一预留；`transferred` 没有 reservation 关联，无法验证 H2 的预留与转移原子性；H1 的 `total`、`reserved`、`in_transit` 来源与消费/损失后的账本关系未定义；H4 容量约束的声明来源和作用域未定义；H5 单位/规格兼容性没有事件字段或注册表接口合同。
 - 影响：依据现有字段只能选择多种互不等价的 reducer 语义；增加持久事件或字段会扩展已定义 schema，定义消费/损失是否改总量也会确定事实合同。未改代码、事件类型、Owner 或共享存储。
 - 继续条件：明确 reservation release/settlement 与 transfer 的事件合同、守恒总量账本口径、capacity 与 unit/spec 的来源后，再实现 Holdings projector/command fragments 和固定向量；质量继续按规范归 Pool。
+
+### H-A-007 | M0.5 集成引用核对 | 2026-11-22
+
+- 名单扩展交付 `4b876f3d`，合并提交 `9e0ff06c`。本地 `integration` 与标签 `integration-2026-11-22-8` 指向 `94d4aa20`，包含该合并。线程 B 的 LifeState 分支以该提交为祖先。
+- `git fetch origin` 后 `origin/integration` 为 `f635fff2`，对应注册表仍是三个旧条目。合并执行者需核对集成分支发布状态。详细名单与 37 条定向测试见 `docs/verification/m0.5-owner-registry-20261122.md`。

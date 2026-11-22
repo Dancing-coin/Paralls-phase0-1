@@ -1,0 +1,41 @@
+{
+  "head": "7c24d136080f5a030b87f30ffe145f92d8feb893",
+  "description": "M3-2 snapshot reuse, freshness, supersede CAS, and land-right presentation and replay",
+  "tests": [
+    {
+      "test_name": "tests/test_owner_runtime_base.py::test_store_read_snapshot_reuses_events_until_store_head_changes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_runtime.py::test_supersede_credential_reads_one_event_snapshot",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_runtime.py::test_supersede_pins_inventory_head_from_the_event_snapshot",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_adventure_basic_scenario4.py::test_scenario4_land_right_transfer_reads_one_event_snapshot",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_adventure_basic_scenario4.py::test_scenario4_rejects_title_transfer_without_present_credential_then_transfers_only_by_the_explicit_authority_command",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_adventure_basic_scenario4.py::test_scenario4_replays_an_identical_land_right_transfer_without_a_second_title_mutation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_v2_land_right_revision_vector.py::test_land_right_commits_against_the_complete_v2_credential_read_vector",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
