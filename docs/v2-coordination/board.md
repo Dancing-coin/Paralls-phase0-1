@@ -20,7 +20,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M0-4 读取方静态图 | B | 待门禁 | 同目录 `m0-4-readers.md` | 提交 `a7a66301`；993 调用 / 115 文件 | 4 |
 | M0-5 Command 信封抽查 | B | 待门禁 | 同目录 `m0-5-command-envelope.md` | 提交 `a7a66301` | 1 |
 | M0-6 波次表 | B | 待门禁 | 同目录 `m0-6-waves.md` | 提交 `a7a66301`、`c4a53e75`；静态输入，未验证 | 全部 |
-| **M0.5 Owner 登记名单扩展** | A | 待门禁 | 规范短名名单 + validator 测试 + `docs/verification/m0.5-owner-registry-20261122.md` | 提交 SHA 待填；允许名单不表示 Owner 已实现 v2 声明 | 1、2 |
+| **M0.5 Owner 登记名单扩展** | A | 待门禁 | 规范短名名单 + validator 测试 + `docs/verification/m0.5-owner-registry-20261122.md` | 提交 `4b876f3d4dd92deba72aa2b49685fa4c39920ce2`；允许名单不表示 Owner 已实现 v2 声明 | 1、2 |
 | M1-1 Bond 分片提交 | A | 待门禁 | 两个代码提交（片 1+3 合并、片 2）+ `docs/verification/m1-1-bond-slices-20261122.md` | 代码 SHA `b700f8c8`、`ae7d650e`；逐片选集无差异，全量 exit 1，详见证据 | 3 |
 | M1-2 Holdings 原语 | A | 待开工 | 原语实现 + 固定向量 | 由波次表决定是否需要 | 3 |
 | M1-3 Pool 原语 | A | 待开工 | 同上 | 同上 | 3 |
@@ -32,7 +32,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M2-4 投影增量推进 | A | 待开工 | cursor + 区间校验 | — | 7 |
 | M2-5 B4 前置设计 | A | 待开工 | 设计文档 | 实现须负责人确认 | 4 |
 | M2-6 首条生产流受 epoch 保护 | A | 待开工 | 实现 + 证据 | 依赖 M2-5、负责人选流 | 4 |
-| M3-1 `OwnerCommitBuilder` | A | 待开工 | 模块 + 测试 | 无依赖时的默认下一项 | 3 |
+| M3-1 `OwnerCommitBuilder` | A | 进行中 | 当前单元：OwnerCommitBuilder contract audit and implementation | M1-1 与 M0.5 已提交；按 AUTONOMY §五 默认优先级启动 | 3 |
 | M3-2 `StoreReadSnapshot` 推广 | A | 待开工 | 逐域接入 | 先测再改 | 3 |
 | M3-3 R2 推广 | A/B | 待开工 | 按域并入 | 每域单独提交 | 7 |
 | M3-4 `pinned_revisions` 校验 | A | 阻塞 | — | S-4 未决 | 3 |
