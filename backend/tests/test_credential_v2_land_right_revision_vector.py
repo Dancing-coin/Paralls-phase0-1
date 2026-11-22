@@ -9,7 +9,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import GameplayEvent, IdempotencyRecord
 from app.gameplay.credential_runtime import CredentialAuthorityService
 from app.gameplay.credential_v2_event_schema import credential_link_stream_id
-from app.gameplay.land_right_runtime import LandRightTransferAuthority, LandRightTransferPolicy
+from app.gameplay.land_right_runtime import LandRightRuntimeError, LandRightTransferAuthority, LandRightTransferPolicy
 from app.gameplay.ownership_runtime import OwnershipAuthorityService, OwnershipProjector
 from g3_credential_fixture import command, setup_reference
 
@@ -300,3 +300,37 @@ def test_land_right_commits_against_the_complete_v2_credential_read_vector(monke
         bond_ref=bond_ref, new_bond_ref="bond:g4:land-title", world_tick=9,
         expected_ownership_revision=transfer_batch.pinned_revisions["ownership"],
     ) == transferred.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+
+def test_legacy_land_right_transfer_rejects_a_v3_bond_credential_without_writing():
+    store, registry, chain = setup_reference()
+    bond_ref = "bond:g3:land-title"
+    assert OwnershipAuthorityService(store=store).grant_bond(
+        command_id="cmd:g3:land-title-bond",
+        bond_ref=bond_ref,
+        subject_ref="actor:g3",
+        target_ref="land:g3",
+        bond_type="ownership",
+        scope="asset:title",
+        term_expires_at=20,
+        source_event_ref=store.read_events()[0].event_id,
+        world_tick=1,
+        expected_ownership_revision=store.get_stream_head("gameplay:ownership"),
+        idempotency_key=bond_ref,
+        causation_id="cause:g3",
+        correlation_id="corr:g3",
+    ).committed
+    chain._owner.activate_v2_authority()
+    assert chain.execute(
+        "issue_credential",
+        **(command("issue_credential") | {"right_id": None, "bond_ref": bond_ref, "world_tick": 5}),
+    ).committed
+    before_events = store.read_events()
+    command_id = "cmd:g3:legacy-transfer-with-bond-deed"
+
+    with pytest.raises(LandRightRuntimeError, match="^land_right_credential_required$"):
+        _transfer(store, registry, "credential:g3:1", command_id=command_id)
+
+    assert store.read_events() == before_events
+    assert store.get_transaction(f"tx:{command_id}") is None
+    assert store.get_idempotency_record(LandRightTransferAuthority._PRINCIPAL, f"key:{command_id}") is None

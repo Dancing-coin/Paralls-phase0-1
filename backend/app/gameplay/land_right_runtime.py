@@ -9,6 +9,7 @@ from typing import Mapping
 
 from app.gameplay.credential_runtime import (
     BondCredentialLink,
+    CredentialLink,
     CredentialProjector,
     CredentialPresentationValidator,
 )
@@ -133,7 +134,7 @@ class LandRightTransferAuthority:
             right = ownership.rights.get(right_id)
             if right is None or right.asset_ref != asset_ref or right.holder_ref != from_holder_ref:
                 raise LandRightRuntimeError("land_right_holder_mismatch")
-            credential_matches = credential is not None and credential.right_id == right_id
+            credential_matches = isinstance(credential, CredentialLink) and credential.right_id == right_id
         else:
             bond = ownership.bonds.get(bond_ref)
             if (
