@@ -23,7 +23,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | **M0.5 Owner 登记名单扩展** | A | 待门禁 | 规范短名名单 + validator 测试 + `docs/verification/m0.5-owner-registry-20261122.md` | 提交 `4b876f3d4dd92deba72aa2b49685fa4c39920ce2`；允许名单不表示 Owner 已实现 v2 声明 | 1、2 |
 | M1-1 Bond 分片提交 | A | 待门禁 | 两个代码提交（片 1+3 合并、片 2）+ `docs/verification/m1-1-bond-slices-20261122.md` | 代码 SHA `b700f8c8`、`ae7d650e`；逐片选集无差异，全量 exit 1，详见证据 | 3 |
 | M1-2 Holdings 原语 | A | 阻塞 | 原语实现 + 固定向量 | 事件 schema 未定义 reservation release/settlement、transfer 与 reservation 关联及总量账本；见 H-A-006 | 3 |
-| M1-3 Pool 原语 | A | 待开工 | 同上 | 同上 | 3 |
+| M1-3 Pool 原语 | A | 进行中 | 当前运行时切片提交 `e6cb728c`；证据 `docs/verification/m1-3-pool-runtime-20261122.md` | 有界值、预留、窗口积分幂等、滞回已验证；聚合与 Owner fragment 格式尚未实现 | 3 |
 | M1-4 Place 原语 | A | 待开工 | 同上 | 第 3 波后 | 3 |
 | M1-5 Process 归并 | A | 待开工 | 同上 | S-5 已定：排在域迁移之后 | 3 |
 | M2-1 读取边界清单更新 | A | 待开工 | 更新的清单 | 随各域迁移 | 4 |

@@ -1,0 +1,46 @@
+{
+  "head": "e6cb728caf725704b2e60d615b425db42d461af3",
+  "description": "M1-3 Pool bounded value, reservation, window idempotency, event schema, and hysteresis tests",
+  "tests": [
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_rejections_leave_event_stream_unchanged",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_window_adjustment_rejects_duplicate_and_exact_retry_replays",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_hysteresis_records_only_enter_and_exit_crossings",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_rate_integrates_once_per_window_from_its_definition",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_failed_consume_and_bound_change_write_nothing_then_release_succeeds",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_adjust_cannot_reduce_value_below_existing_reservations",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_events_are_visible_to_gameplay_graph_registry",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
