@@ -1,0 +1,51 @@
+{
+  "head": "40afef40c11143b50ae9cf9f2ecfc50f79ca1d40",
+  "description": "M5-1 immutable Pool definitions, fixed-point scale, integration, hysteresis and bounds",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_immutable_pool_definitions",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[  decimals: 2\\n--pack_pool_scale_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[decimals: 2-decimals: true-pack_pool_scale_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[initial: \"75.5\"-initial: \"75.501\"-pack_pool_scale_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[initial: \"75.5\"-initial: \"7e1\"-pack_pool_number_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[initial: \"75.5\"-initial: \"101\"-pool_initial_out_of_bounds]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[bound_lower: \"0\"-bound_lower: \"110\"-pool_bounds_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[mode: \"rate\"-mode: \"none\"-pack_pool_integration_invalid]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_pool_definition[exit_above: \"30\"-exit_above: \"20\"-pool_threshold_invalid]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
