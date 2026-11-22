@@ -112,3 +112,8 @@
 
 - 名单扩展交付 `4b876f3d`，合并提交 `9e0ff06c`。本地 `integration` 与标签 `integration-2026-11-22-8` 指向 `94d4aa20`，包含该合并。线程 B 的 LifeState 分支以该提交为祖先。
 - `git fetch origin` 后 `origin/integration` 为 `f635fff2`，对应注册表仍是三个旧条目。合并执行者需核对集成分支发布状态。详细名单与 37 条定向测试见 `docs/verification/m0.5-owner-registry-20261122.md`。
+
+### H-A-008 | M2-5 设计交付与 M2-6 实施前置 | 2026-11-22
+
+- `docs/verification/g2-visibility-budget/b4-handoff-design-20261122.md` 给出冻结受理与投递、交接恢复切面、`pending / reconcile / activate`、双 writer 证据和首流 publisher 接线方案。
+- 按迁移计划由负责人确定首个生产流。当前设计候选是 `population-cadence:<world_ref>`。实施还需明确交接状态与 Store 原子事务边界，会涉及共同边界 `event_store.py`，按协议登记后继续。
