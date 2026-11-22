@@ -7,12 +7,21 @@ from hashlib import sha256
 import json
 from typing import Mapping
 
-from app.gameplay.credential_runtime import CredentialProjector, CredentialPresentationValidator
+from app.gameplay.credential_runtime import (
+    BondCredentialLink,
+    CredentialProjector,
+    CredentialPresentationValidator,
+)
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult
 from app.gameplay.owner_runtime_base import replay_duplicate
-from app.gameplay.ownership_runtime import OwnershipProjector
+from app.gameplay.ownership_runtime import (
+    OwnershipAuthorityService,
+    OwnershipProjector,
+    OwnershipRuntimeError,
+)
+from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch_from_fragments
 
 
 class LandRightRuntimeError(ValueError):
@@ -66,7 +75,10 @@ class LandRightTransferAuthority:
         *,
         command_id: str,
         asset_ref: str,
-        right_id: str,
+        right_id: str | None = None,
+        bond_ref: str | None = None,
+        new_bond_ref: str | None = None,
+        world_tick: int | None = None,
         from_holder_ref: str,
         to_holder_ref: str,
         credential_id: str,
@@ -75,16 +87,27 @@ class LandRightTransferAuthority:
         causation_id: str,
         correlation_id: str,
     ) -> AppendBatchResult:
+        if (right_id is None) == (bond_ref is None):
+            raise LandRightRuntimeError("land_right_reference_invalid")
+        if bond_ref is not None and (
+            type(bond_ref) is not str or not bond_ref
+            or type(new_bond_ref) is not str or not new_bond_ref
+            or type(world_tick) is not int or world_tick < 0
+        ):
+            raise LandRightRuntimeError("land_right_bond_transfer_invalid")
         command = {
             "kind": "land_right_transfer",
             "command_id": command_id,
             "asset_ref": asset_ref,
-            "right_id": right_id,
             "from_holder_ref": from_holder_ref,
             "to_holder_ref": to_holder_ref,
             "credential_id": credential_id,
             "expected_ownership_revision": expected_ownership_revision,
         }
+        command["right_id" if right_id is not None else "bond_ref"] = right_id if right_id is not None else bond_ref
+        if bond_ref is not None:
+            command["new_bond_ref"] = new_bond_ref
+            command["world_tick"] = world_tick
         digest = _digest(command)
         duplicate = self._duplicate(idempotency_key, digest)
         if duplicate is not None:
@@ -101,14 +124,27 @@ class LandRightTransferAuthority:
 
         events = self._store.read_events()
         ownership = self._ownership_projector.rebuild(events)
-        right = ownership.rights.get(right_id)
-        if right is None or right.asset_ref != asset_ref or right.holder_ref != from_holder_ref:
-            raise LandRightRuntimeError("land_right_holder_mismatch")
+        if ownership.source_revision_vector.get(self._OWNERSHIP_STREAM, 0) != ownership_revision:
+            raise LandRightRuntimeError("land_right_revision_conflict")
         credentials = self._credential_projector.rebuild(events)
         credential = credentials.links.get(credential_id)
+        if right_id is not None:
+            right = ownership.rights.get(right_id)
+            if right is None or right.asset_ref != asset_ref or right.holder_ref != from_holder_ref:
+                raise LandRightRuntimeError("land_right_holder_mismatch")
+            credential_matches = credential is not None and credential.right_id == right_id
+        else:
+            bond = ownership.bonds.get(bond_ref)
+            if (
+                bond is None or bond.status != "active" or bond.target_ref != asset_ref
+                or bond.bond_type != "ownership" or bond.subject_ref != from_holder_ref
+                or bond.term_expires_at is not None and world_tick >= bond.term_expires_at
+            ):
+                raise LandRightRuntimeError("land_right_holder_mismatch")
+            credential_matches = isinstance(credential, BondCredentialLink) and credential.bond_ref == bond_ref
         if (
             credential is None
-            or credential.right_id != right_id
+            or not credential_matches
             or credential.credential_kind != policy.credential_kind
             or credential.proves != policy.credential_proves
         ):
@@ -116,6 +152,7 @@ class LandRightTransferAuthority:
         presentation = self._credential_validator.verify_right_holder_presentation(
             credential_id=credential_id,
             presenter_ref=from_holder_ref,
+            world_tick=world_tick,
         )
         if not presentation.authorized:
             raise LandRightRuntimeError("land_right_credential_required")
@@ -152,6 +189,52 @@ class LandRightTransferAuthority:
         if v1_credential_revision is not None:
             pinned_revisions["credentials"] = v1_credential_revision
         pinned_revisions.update(credential_revision_vector)
+        if bond_ref is not None:
+            inventory_revision = inventory.source_revision_vector.get(inventory_stream, 0)
+            read_stream_revisions = {
+                **credential_revision_vector,
+                inventory_stream: inventory_revision,
+            }
+            external_pins = {
+                "inventory": inventory_revision,
+                **credential_revision_vector,
+            }
+            try:
+                ownership_fragment = OwnershipAuthorityService(
+                    store=self._store
+                ).build_land_right_bond_transfer_fragment(
+                    command_id=command_id,
+                    bond_ref=bond_ref,
+                    new_bond_ref=new_bond_ref,
+                    previous_subject=from_holder_ref,
+                    new_subject=to_holder_ref,
+                    target_ref=asset_ref,
+                    source_event_ref=credential.source_event_id,
+                    world_tick=world_tick,
+                    expected_ownership_revision=ownership_revision,
+                    read_stream_revisions=read_stream_revisions,
+                    pinned_revisions=external_pins,
+                )
+            except OwnershipRuntimeError as error:
+                raise LandRightRuntimeError("land_right_bond_transfer_invalid") from error
+            batch = build_multi_stream_atomic_event_batch_from_fragments(
+                command_id=command_id,
+                idempotency_principal_ref=self._PRINCIPAL,
+                idempotency_key=idempotency_key,
+                causation_id=causation_id,
+                correlation_id=correlation_id,
+                fragments=(ownership_fragment,),
+            )
+            batch = batch.model_copy(
+                update={
+                    "idempotency_record": batch.idempotency_record.model_copy(
+                        update={"payload_digest": digest}, deep=True
+                    ),
+                },
+                deep=True,
+            )
+            return self._store.append_batch(batch)
+
         event = {
             "event_id": f"evt:{command_id}:land-right-transfer",
             "event_type": "gameplay.ownership.right_transferred",

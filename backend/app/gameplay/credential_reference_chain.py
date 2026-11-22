@@ -29,15 +29,26 @@ def credential_command_condition(inputs, params):
     links = inputs[FACT]
     kind = command["kind"]
     if kind == "issue_credential":
-        if (command["credential_id"] in links or not all(command[key] for key in (
-                "credential_id", "credential_item_ref", "credential_holder_ref", "right_id", "issuer_ref"))):
+        reference_count = int(bool(command.get("right_id"))) + int(bool(command.get("bond_ref")))
+        if (command["credential_id"] in links or reference_count != 1 or not all(command[key] for key in (
+                "credential_id", "credential_item_ref", "credential_holder_ref", "issuer_ref"))):
             return "credential_invalid"
         if any(link["credential_item_ref"] == command["credential_item_ref"] and link["status"] == "issued" for link in links.values()):
             return "credential_item_already_linked"
         if command["credential_kind"] not in params["credential_kinds"] or command["proves"] not in params["proves"]:
             return "credential_invalid"
-        if command["right_id"] not in inputs["ownership.rights@1"]:
-            return "ownership_right_missing"
+        if command.get("right_id") is not None:
+            if command["right_id"] not in inputs["ownership.rights@1"]:
+                return "ownership_right_missing"
+        else:
+            world_tick = command.get("world_tick")
+            if type(world_tick) is not int or world_tick < 0:
+                return "ownership_world_tick_required"
+            bond = inputs["ownership.bonds@1"].get(command.get("bond_ref"))
+            if (bond is None or bond["status"] != "active"
+                    or bond["subject_ref"] != command["credential_holder_ref"]
+                    or (bond["term_expires_at"] is not None and world_tick >= bond["term_expires_at"])):
+                return "ownership_bond_unqualified"
         item = command["credential_item_ref"]
     elif kind == "revoke_credential":
         link = links.get(command["credential_id"])
@@ -100,9 +111,22 @@ class CredentialReferenceChain:
         values = {FACT: links, "command@1": dict(command) | {"kind": kind}}
         streams = ["gameplay:credentials"]
         if kind == "issue_credential":
-            rights = OwnershipProjector().rebuild(events).rights
+            ownership = OwnershipProjector().rebuild(events)
+            rights = ownership.rights
             values["ownership.rights@1"] = {key: dict(right_id=right.right_id,
                 asset_ref=right.asset_ref, holder_ref=right.holder_ref) for key, right in rights.items()}
+            values["ownership.bonds@1"] = {
+                key: {
+                    "bond_ref": bond.bond_ref,
+                    "subject_ref": bond.subject_ref,
+                    "target_ref": bond.target_ref,
+                    "bond_type": bond.bond_type,
+                    "scope": bond.scope,
+                    "term_expires_at": bond.term_expires_at,
+                    "status": bond.status,
+                }
+                for key, bond in ownership.bonds.items()
+            }
             streams.append("gameplay:ownership")
         if kind != "revoke_credential":
             holder = command["credential_holder_ref"] if kind == "issue_credential" else command["replacement_holder_ref"]

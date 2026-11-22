@@ -115,6 +115,50 @@ def test_unknown_right_rejects_without_event_and_retry_is_idempotent() -> None:
 def test_credential_presentation_requires_item_presence_and_right_holder() -> None:
     store, registry, service = _setup()
     _issue(service)
+    ownership = OwnershipAuthorityService(store=store)
+    source_event_ref = store.read_events()[0].event_id
+    bond_ref = "bond:observatory-deed"
+    assert ownership.grant_bond(
+        command_id="cmd:deed-bond",
+        bond_ref=bond_ref,
+        subject_ref="actor:alice",
+        target_ref=ASSET,
+        bond_type="ownership",
+        scope="asset:title",
+        term_expires_at=10,
+        source_event_ref=source_event_ref,
+        world_tick=1,
+        expected_ownership_revision=store.get_stream_head("gameplay:ownership"),
+        idempotency_key=bond_ref,
+        causation_id="cause",
+        correlation_id="corr",
+    ).committed
+    service.activate_v2_authority()
+    bonded_args = dict(
+        command_id="cmd:bonded-issue",
+        credential_id="credential:deed:bonded",
+        credential_item_ref="item:deed:2",
+        credential_holder_ref="actor:alice",
+        bond_ref=bond_ref,
+        world_tick=2,
+        credential_kind="deed",
+        proves="evidence_only",
+        issuer_ref="authority:land-registry",
+        idempotency_key="bonded-issue",
+        causation_id="cause",
+        correlation_id="corr",
+    )
+    bonded_issue = service.issue_credential(**bonded_args)
+    assert bonded_issue.committed
+    assert service.issue_credential(**bonded_args) == bonded_issue.model_copy(
+        update={"idempotency_status": "duplicate_replayed"}, deep=True
+    )
+    issued_event = store.get_transaction(bonded_issue.transaction_id).events[0]
+    assert issued_event.schema_version == 3
+    assert "bond_ref" in issued_event.payload and "right_id" not in issued_event.payload
+    bonded_link = CredentialProjector().rebuild(store.read_events()).links["credential:deed:bonded"]
+    assert bonded_link.bond_ref == bond_ref and not hasattr(bonded_link, "right_id")
+
     validator = CredentialPresentationValidator(store=store, inventory_registry=registry)
     present = validator.verify_right_holder_presentation(credential_id="credential:deed:1", presenter_ref="actor:alice")
     assert present.authorized
@@ -132,6 +176,31 @@ def test_credential_presentation_requires_item_presence_and_right_holder() -> No
     assert not absent.credential_present
     assert not absent.authorized
     assert absent.error_code == "credential_not_present"
+
+    bonded_present = validator.verify_right_holder_presentation(
+        credential_id="credential:deed:bonded", presenter_ref="actor:alice", world_tick=9
+    )
+    assert bonded_present.authorized and bonded_present.bond_ref == bond_ref
+    missing_tick = validator.verify_right_holder_presentation(
+        credential_id="credential:deed:bonded", presenter_ref="actor:alice"
+    )
+    assert not missing_tick.authorized and missing_tick.error_code == "ownership_world_tick_required"
+    expired = validator.verify_right_holder_presentation(
+        credential_id="credential:deed:bonded", presenter_ref="actor:alice", world_tick=10
+    )
+    assert not expired.authorized and expired.error_code == "ownership_bond_expired"
+    revoked = service.revoke_credential(
+        command_id="cmd:bonded-revoke",
+        credential_id="credential:deed:bonded",
+        issuer_ref="authority:land-registry",
+        reason="withdrawn",
+        idempotency_key="bonded-revoke",
+        causation_id="cause",
+        correlation_id="corr",
+    )
+    assert revoked.committed
+    revoked_link = CredentialProjector().rebuild(store.read_events()).links["credential:deed:bonded"]
+    assert revoked_link.status == "revoked" and revoked_link.bond_ref == bond_ref
 
 
 def test_issuance_rejects_item_not_currently_held_without_link_event() -> None:

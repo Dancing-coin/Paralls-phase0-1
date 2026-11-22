@@ -30,7 +30,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryProjector
 from app.gameplay.modifier_runtime import ModifierStateProjector
 from app.gameplay.models import GameplayEvent, ProjectionCheckpoint
-from app.gameplay.ownership_runtime import OwnershipProjector
+from app.gameplay.ownership_runtime import OwnershipProjection, OwnershipProjector
 from app.gameplay.replay import GameplayProjectionReplay
 from app.gameplay.resource_body_runtime import ResourceBodyRuntimeProjector
 
@@ -319,7 +319,12 @@ def _json_ready(value: object) -> Any:
     if isinstance(value, BaseModel):
         return _json_ready(value.model_dump(mode="json"))
     if is_dataclass(value) and not isinstance(value, type):
-        return {field.name: _json_ready(getattr(value, field.name)) for field in fields(value)}
+        serialized = {
+            field.name: _json_ready(getattr(value, field.name)) for field in fields(value)
+        }
+        if isinstance(value, OwnershipProjection) and not value.bonds:
+            serialized.pop("bonds")
+        return serialized
     if isinstance(value, Mapping):
         return {str(key): _json_ready(item) for key, item in sorted(value.items(), key=lambda item: str(item[0]))}
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):

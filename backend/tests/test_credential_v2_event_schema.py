@@ -4,6 +4,7 @@ import pytest
 
 from app.gameplay.credential_v2_event_schema import (
     CREDENTIAL_V2_EVENT_SCHEMAS,
+    CREDENTIAL_V3_EVENT_SCHEMAS,
     CredentialV2EventSchemaError,
     register_credential_v2_event_schemas,
     validate_credential_v2_event,
@@ -11,8 +12,8 @@ from app.gameplay.credential_v2_event_schema import (
 from app.gameplay.event_schema_registry import EventSchemaRegistry
 
 
-def _event(event_type: str, payload: dict[str, object], stream_id: str) -> dict[str, object]:
-    return {"event_type": event_type, "schema_version": 2, "stream_id": stream_id, "payload": payload}
+def _event(event_type: str, payload: dict[str, object], stream_id: str, schema_version: int = 2) -> dict[str, object]:
+    return {"event_type": event_type, "schema_version": schema_version, "stream_id": stream_id, "payload": payload}
 
 
 def test_v2_event_types_are_distinct_from_legacy_types_and_define_machine_evidence():
@@ -30,7 +31,7 @@ def test_v2_event_schema_identities_register_and_export_from_the_shared_registry
     snapshot = registry.export_snapshot()
     assert {(row["event_type"], row["schema_version"]) for row in snapshot["registrations"]} == {
         (schema.event_type, schema.schema_version) for schema in CREDENTIAL_V2_EVENT_SCHEMAS
-    }
+    } | {(schema.event_type, schema.schema_version) for schema in CREDENTIAL_V3_EVENT_SCHEMAS}
 
 
 def test_valid_v2_issued_event_must_use_the_encoded_instance_stream():
@@ -53,6 +54,17 @@ def test_valid_v2_issued_event_must_use_the_encoded_instance_stream():
         "gameplay.credential.link_issued", payload,
         "fact:credential:c-Y3JlZGVudGlhbDpnMzox:link",
     )) is None
+    bond_payload = payload | {"bond_ref": "bond:g3"}
+    del bond_payload["right_id"]
+    assert validate_credential_v2_event(_event(
+        "gameplay.credential.link_issued", bond_payload,
+        "fact:credential:c-Y3JlZGVudGlhbDpnMzox:link", schema_version=3,
+    )) is None
+    with pytest.raises(CredentialV2EventSchemaError, match="^credential_v2_payload_invalid$"):
+        validate_credential_v2_event(_event(
+            "gameplay.credential.link_issued", payload,
+            "fact:credential:c-Y3JlZGVudGlhbDpnMzox:link", schema_version=3,
+        ))
 
 
 @pytest.mark.parametrize("changed,code", [

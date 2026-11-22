@@ -8,8 +8,9 @@ from pathlib import Path
 from app.gameplay import credential_reference_chain, credential_runtime
 from app.gameplay.credential_runtime import CredentialProjector
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.ownership_runtime import OwnershipAuthorityService
 from app.gameplay.replay import GameplayProjectionReplay
-from g3_credential_fixture import PACK, lifecycle, setup_reference
+from g3_credential_fixture import PACK, command, lifecycle, setup_reference
 
 
 def digest(value):
@@ -57,6 +58,49 @@ def checkpoint_removal_witness():
     assert original_event_digest == rebuilt_event_digest
     reloaded = credential_reference_chain.load_credential_pack(PACK)
     assert reloaded.content_hash == chain.pack.content_hash
+    bond_store, _, bond_chain = setup_reference()
+    bond_ref = "bond:g3:checkpoint"
+    assert OwnershipAuthorityService(store=bond_store).grant_bond(
+        command_id="cmd:g3:checkpoint-bond",
+        bond_ref=bond_ref,
+        subject_ref="actor:g3",
+        target_ref="land:g3",
+        bond_type="ownership",
+        scope="asset:title",
+        term_expires_at=30,
+        source_event_ref=bond_store.read_events()[0].event_id,
+        world_tick=1,
+        expected_ownership_revision=bond_store.get_stream_head("gameplay:ownership"),
+        idempotency_key=bond_ref,
+        causation_id="cause:g3",
+        correlation_id="corr:g3",
+    ).committed
+    bond_chain._owner.activate_v2_authority()
+    bond_args = command("issue_credential") | {
+        "command_id": "cmd:g3:checkpoint-credential",
+        "idempotency_key": "g3:checkpoint-credential",
+        "credential_id": "credential:g3:checkpoint",
+        "credential_item_ref": "item:g3:2",
+        "right_id": None,
+        "bond_ref": bond_ref,
+        "world_tick": 5,
+    }
+    assert bond_chain.execute("issue_credential", **bond_args).committed
+    bond_before = complete_state(bond_store)
+    bond_link = bond_before["links"]["credential:g3:checkpoint"]
+    assert bond_link["bond_ref"] == bond_ref and "right_id" not in bond_link
+    bond_events = bond_store.read_events()
+    bond_replay = GameplayProjectionReplay(
+        projector_id="g3:credential-bond-reference", projector_version="1"
+    )
+    bond_checkpoint = bond_replay.create_checkpoint(bond_events)
+    bond_store.save_projection_checkpoint(bond_checkpoint)
+    bond_snapshot = bond_store.export_snapshot()
+    bond_without_cache = deepcopy(bond_snapshot)
+    bond_without_cache["projection_checkpoints"] = []
+    restored_bond_store = GameplayEventStore.from_snapshot(bond_without_cache)
+    bond_after = complete_state(restored_bond_store)
+    assert bond_before == bond_after
     return dict(checkpoint_id=checkpoint.checkpoint_id, checkpoint_count_before=1,
         checkpoint_count_after=len(restored.list_projection_checkpoints()),
         snapshot_changed_keys=["projection_checkpoints"], event_count=len(events),
@@ -64,6 +108,8 @@ def checkpoint_removal_witness():
         state_before=before, state_after=after, state_digest_before=digest(before), state_digest_after=digest(after),
         source_event_digest_before=original_event_digest, source_event_digest_after=rebuilt_event_digest,
         pack_digest_before=chain.pack.content_hash, pack_digest_after=reloaded.content_hash,
+        bond_checkpoint_state_digest_before=digest(bond_before),
+        bond_checkpoint_state_digest_after=digest(bond_after),
         model_ref=credential_reference_chain.MODEL,
         model_source_sha256=sha256(Path(credential_reference_chain.__file__).read_bytes()).hexdigest(),
         projector_source_sha256=sha256(Path(credential_runtime.__file__).read_bytes()).hexdigest(),

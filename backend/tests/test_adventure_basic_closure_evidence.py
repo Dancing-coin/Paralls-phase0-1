@@ -11,6 +11,7 @@ from app.gameplay.adventure_basic_reference import (
     AdventureBasicScenario4,
     AdventureBasicScenario5,
 )
+from app.gameplay.ownership_runtime import OwnershipAuthorityService, OwnershipProjector
 from app.gameplay.replay import GameplayProjectionReplay
 
 
@@ -83,6 +84,8 @@ def test_each_adventure_basic_scenario_rebuilds_a_facade_with_canonical_replay_e
     assert evidence.online_replay_hash == evidence.checkpoint_tail_replay_hash
     assert evidence.online_facade == evidence.full_replay_facade
     assert evidence.online_facade == evidence.checkpoint_tail_facade
+    if "ownership" in evidence.online_facade:
+        assert "bonds" not in evidence.online_facade["ownership"]
 
 
 def test_duplicate_authority_command_keeps_atomic_transaction_evidence_stable() -> None:
@@ -102,6 +105,27 @@ def test_duplicate_authority_command_keeps_atomic_transaction_evidence_stable() 
 
 def test_checkpoint_tail_facade_records_the_checkpoint_provenance_event_sequence() -> None:
     scenario = _scenario1()
+    source_events = tuple(scenario.store.read_events())
+    ownership = OwnershipProjector().rebuild(source_events)
+    result = OwnershipAuthorityService(store=scenario.store).grant_bond(
+        command_id="cmd:closure-bond",
+        bond_ref="bond:closure",
+        subject_ref=scenario.player_ref,
+        target_ref="asset:closure-checkpoint",
+        bond_type="custody",
+        scope="closure:test",
+        term_expires_at=None,
+        source_event_ref=source_events[-1].event_id,
+        attributes={"capacity": "1"},
+        world_tick=0,
+        expected_ownership_revision=ownership.source_revision_vector.get(
+            "gameplay:ownership", 0
+        ),
+        idempotency_key="bond:closure",
+        causation_id=source_events[-1].event_id,
+        correlation_id="corr:closure-bond",
+    )
+    assert result.committed
     events = tuple(scenario.store.read_events())
     checkpoint_index = max(1, len(events) // 2)
     replay = GameplayProjectionReplay(projector_id="adventure-basic:scenario-1", projector_version="v1")
@@ -116,3 +140,4 @@ def test_checkpoint_tail_facade_records_the_checkpoint_provenance_event_sequence
 
     assert [event.event_id for event in reconstructed] == [event.event_id for event in events]
     assert evidence.checkpoint_tail_event_ids == tuple(event.event_id for event in reconstructed)
+    assert evidence.online_facade["ownership"]["bonds"]["bond:closure"]["status"] == "active"

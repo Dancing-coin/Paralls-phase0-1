@@ -10,6 +10,7 @@ from app.gameplay.models import GameplayEvent, IdempotencyRecord
 from app.gameplay.credential_runtime import CredentialAuthorityService
 from app.gameplay.credential_v2_event_schema import credential_link_stream_id
 from app.gameplay.land_right_runtime import LandRightTransferAuthority, LandRightTransferPolicy
+from app.gameplay.ownership_runtime import OwnershipAuthorityService, OwnershipProjector
 from g3_credential_fixture import command, setup_reference
 
 
@@ -17,7 +18,10 @@ def _holder_stream_id(item_ref: str) -> str:
     return credential_link_stream_id(item_ref).removesuffix(":link") + ":holder"
 
 
-def _transfer(store, registry, credential_id: str, *, command_id: str):
+def _transfer(store, registry, credential_id: str, *, command_id: str,
+              bond_ref: str | None = None, new_bond_ref: str | None = None,
+              world_tick: int | None = None,
+              expected_ownership_revision: int | None = None):
     authority = LandRightTransferAuthority(
         store=store,
         inventory_registry=registry,
@@ -26,18 +30,25 @@ def _transfer(store, registry, credential_id: str, *, command_id: str):
             credential_presence_container_ids=("container:g3:bag",),
         ),),
     )
-    return authority.transfer(
+    args = dict(
         command_id=command_id,
         asset_ref="land:g3",
         right_id="right:g3",
         from_holder_ref="actor:g3",
         to_holder_ref="actor:g4",
         credential_id=credential_id,
-        expected_ownership_revision=store.get_stream_head("gameplay:ownership"),
+        expected_ownership_revision=(
+            store.get_stream_head("gameplay:ownership")
+            if expected_ownership_revision is None else expected_ownership_revision
+        ),
         idempotency_key=f"key:{command_id}",
         causation_id="cause:g3",
         correlation_id="corr:g3",
     )
+    if bond_ref is not None:
+        args.pop("right_id")
+        args.update(bond_ref=bond_ref, new_bond_ref=new_bond_ref, world_tick=world_tick)
+    return authority.transfer(**args)
 
 
 def _append_v2_fixture(store: GameplayEventStore):
@@ -201,7 +212,7 @@ def test_v1_only_land_right_batch_matches_the_pre_migration_payload(monkeypatch:
     }, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
 
 
-def test_land_right_commits_against_the_complete_v2_credential_read_vector():
+def test_land_right_commits_against_the_complete_v2_credential_read_vector(monkeypatch: pytest.MonkeyPatch):
     store, registry, _ = setup_reference()
     link_stream, holder_stream = _append_v2_fixture(store)
     result = _transfer(store, registry, "credential:g3:2", command_id="cmd:g3:land-right-vector")
@@ -211,3 +222,81 @@ def test_land_right_commits_against_the_complete_v2_credential_read_vector():
     assert batch.read_stream_revisions == {link_stream: 1, holder_stream: 1}
     assert batch.pinned_revisions[link_stream] == 1
     assert batch.pinned_revisions[holder_stream] == 1
+
+    store, registry, chain = setup_reference()
+    bond_ref = "bond:g3:land-title"
+    ownership = OwnershipAuthorityService(store=store)
+    assert ownership.grant_bond(
+        command_id="cmd:g3:land-title-bond",
+        bond_ref=bond_ref,
+        subject_ref="actor:g3",
+        target_ref="land:g3",
+        bond_type="ownership",
+        scope="asset:title",
+        term_expires_at=20,
+        source_event_ref=store.read_events()[0].event_id,
+        world_tick=1,
+        expected_ownership_revision=store.get_stream_head("gameplay:ownership"),
+        idempotency_key=bond_ref,
+        causation_id="cause:g3",
+        correlation_id="corr:g3",
+    ).committed
+    chain._owner.activate_v2_authority()
+    bond_credential = command("issue_credential") | {
+        "command_id": "cmd:g3:bond-deed",
+        "idempotency_key": "g3:bond-deed",
+        "credential_id": "credential:g3:bond-deed",
+        "credential_item_ref": "item:g3:2",
+        "right_id": None,
+        "bond_ref": bond_ref,
+        "world_tick": 5,
+    }
+    assert chain.execute("issue_credential", **bond_credential).committed
+    transfer_args = dict(
+        command_id="cmd:g3:bond-land-transfer",
+        bond_ref=bond_ref,
+        new_bond_ref="bond:g4:land-title",
+        world_tick=9,
+    )
+    append = store.append_batch
+    before_stale = store.read_events()
+    link_stream = credential_link_stream_id("credential:g3:bond-deed")
+
+    def stale_credential_read(batch, **kwargs):
+        if batch.command_id == "cmd:g3:bond-land-transfer-stale":
+            batch.read_stream_revisions[link_stream] -= 1
+        return append(batch, **kwargs)
+
+    monkeypatch.setattr(store, "append_batch", stale_credential_read)
+    stale = _transfer(
+        store, registry, "credential:g3:bond-deed",
+        **(transfer_args | {"command_id": "cmd:g3:bond-land-transfer-stale", "new_bond_ref": "bond:g4:stale-title"}),
+    )
+    assert not stale.committed
+    assert stale.failure is not None and stale.failure.error_code == "revision_conflict"
+    assert store.read_events() == before_stale
+    monkeypatch.setattr(store, "append_batch", append)
+
+    transferred = _transfer(
+        store, registry, "credential:g3:bond-deed", command_id="cmd:g3:bond-land-transfer",
+        bond_ref=bond_ref, new_bond_ref="bond:g4:land-title", world_tick=9,
+    )
+    assert transferred.committed
+    transfer_batch = store.get_transaction(transferred.transaction_id)
+    assert transfer_batch is not None
+    assert [event.event_type for event in transfer_batch.events] == [
+        "gameplay.ownership.bond_transferred", "gameplay.ownership.bond_granted",
+    ]
+    assert all(event.event_type != "gameplay.ownership.right_transferred" for event in transfer_batch.events)
+    assert credential_link_stream_id("credential:g3:bond-deed") in transfer_batch.read_stream_revisions
+    assert _holder_stream_id("item:g3:2") in transfer_batch.read_stream_revisions
+    assert transfer_batch.pinned_revisions["ownership"] == 2
+    assert transfer_batch.pinned_revisions["inventory"] == 5
+    assert OwnershipProjector().rebuild(store.read_events()).bonds[bond_ref].status == "transferred"
+    new_bond = OwnershipProjector().rebuild(store.read_events()).bonds["bond:g4:land-title"]
+    assert new_bond.subject_ref == "actor:g4" and new_bond.status == "active"
+    assert _transfer(
+        store, registry, "credential:g3:bond-deed", command_id="cmd:g3:bond-land-transfer",
+        bond_ref=bond_ref, new_bond_ref="bond:g4:land-title", world_tick=9,
+        expected_ownership_revision=transfer_batch.pinned_revisions["ownership"],
+    ) == transferred.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)

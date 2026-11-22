@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from hashlib import sha256
 import json
 from types import MappingProxyType
@@ -41,8 +41,22 @@ class CredentialLink:
 
 
 @dataclass(frozen=True)
+class BondCredentialLink:
+    credential_id: str
+    credential_item_ref: str
+    issued_holder_ref: str
+    issued_holder_inventory_revision: int
+    bond_ref: str
+    credential_kind: str
+    proves: str
+    issuer_ref: str
+    status: str
+    source_event_id: str
+
+
+@dataclass(frozen=True)
 class CredentialProjection:
-    links: Mapping[str, CredentialLink]
+    links: Mapping[str, CredentialLink | BondCredentialLink]
     source_revision_vector: Mapping[str, int]
 
 
@@ -54,6 +68,7 @@ class CredentialPresentationDecision:
     presenter_is_right_holder: bool
     authorized: bool
     error_code: str | None
+    bond_ref: str | None = None
 
 
 class CredentialProjector:
@@ -80,7 +95,7 @@ class CredentialProjector:
         self._proves = frozenset(self._DEFAULT_PROVES if proves is None else proves)
 
     def rebuild(self, events: Sequence[GameplayEvent]) -> CredentialProjection:
-        links: dict[str, CredentialLink] = {}
+        links: dict[str, CredentialLink | BondCredentialLink] = {}
         holders: dict[str, str] = {}
         revisions: dict[str, int] = {}
         for event in sorted(events, key=lambda value: (value.global_sequence, value.event_id)):
@@ -105,32 +120,39 @@ class CredentialProjector:
                     raise CredentialRuntimeError("credential_duplicate")
                 credential_kind = _text(payload, "credential_kind")
                 proves = _text(payload, "proves")
-                links[credential_id] = CredentialLink(
+                link_fields = dict(
                     credential_id=credential_id,
                     credential_item_ref=_text(payload, "credential_item_ref"),
                     issued_holder_ref=_text(payload, "issued_holder_ref"),
                     issued_holder_inventory_revision=_nonnegative(payload, "issued_holder_inventory_revision"),
-                    right_id=_text(payload, "right_id"),
                     credential_kind=credential_kind,
                     proves=proves,
                     issuer_ref=_text(payload, "issuer_ref"),
                     status="active",
                     source_event_id=event.event_id,
                 )
+                if "right_id" in payload:
+                    links[credential_id] = CredentialLink(
+                        **link_fields, right_id=_text(payload, "right_id")
+                    )
+                else:
+                    links[credential_id] = BondCredentialLink(
+                        **link_fields, bond_ref=_text(payload, "bond_ref")
+                    )
             elif event.event_type in {"gameplay.credential.revoked", self._V2_REVOKED}:
                 credential_id = _text(payload, "credential_id")
                 link = links.get(credential_id)
                 if link is None or link.status != "active" or link.issuer_ref != _text(payload, "issuer_ref"):
                     raise CredentialRuntimeError("credential_not_active")
                 _text(payload, "reason")
-                links[credential_id] = CredentialLink(**{**link.__dict__, "status": "revoked", "source_event_id": event.event_id})
+                links[credential_id] = replace(link, status="revoked", source_event_id=event.event_id)
             elif event.event_type in {"gameplay.credential.superseded", self._V2_SUPERSEDED}:
                 credential_id = _text(payload, "credential_id")
                 replacement_credential_id = _text(payload, "replacement_credential_id")
                 link = links.get(credential_id)
                 if link is None or link.status != "active" or link.issuer_ref != _text(payload, "issuer_ref") or replacement_credential_id in links:
                     raise CredentialRuntimeError("credential_not_active")
-                links[credential_id] = CredentialLink(**{**link.__dict__, "status": "superseded", "source_event_id": event.event_id})
+                links[credential_id] = replace(link, status="superseded", source_event_id=event.event_id)
             elif event.event_type == "gameplay.credential.item_claimed":
                 item_ref = _text(payload, "item_ref")
                 credential_id = _text(payload, "credential_id")
@@ -167,30 +189,54 @@ class CredentialPresentationValidator:
         self._inventory_projector = InventoryProjector(inventory_registry)
         self._ownership_projector = OwnershipProjector()
 
-    def verify_right_holder_presentation(self, *, credential_id: str, presenter_ref: str) -> CredentialPresentationDecision:
-        links = self._credential_projector.rebuild(self._store.read_events()).links
+    def verify_right_holder_presentation(self, *, credential_id: str, presenter_ref: str,
+                                         world_tick: int | None = None) -> CredentialPresentationDecision:
+        events = self._store.read_events()
+        links = self._credential_projector.rebuild(events).links
         link = links.get(credential_id)
         if link is None or link.status != "active":
-            return CredentialPresentationDecision(credential_id, None if link is None else link.right_id, False, False, False, "credential_not_active")
-        inventory = self._inventory_projector.rebuild(presenter_ref, self._store.read_events())
+            return CredentialPresentationDecision(
+                credential_id, link.right_id if isinstance(link, CredentialLink) else None,
+                False, False, False, "credential_not_active",
+                link.bond_ref if isinstance(link, BondCredentialLink) else None,
+            )
+        inventory = self._inventory_projector.rebuild(presenter_ref, events)
         credential_present = link.credential_item_ref in inventory.items and link.credential_item_ref in inventory.locations
-        right = self._ownership_projector.rebuild(self._store.read_events()).rights.get(link.right_id)
-        presenter_is_right_holder = right is not None and right.holder_ref == presenter_ref
+        ownership = self._ownership_projector.rebuild(events)
+        bond_ref = link.bond_ref if isinstance(link, BondCredentialLink) else None
+        right_id = link.right_id if isinstance(link, CredentialLink) else None
+        if bond_ref is None:
+            right = ownership.rights.get(right_id)
+            bond = None
+            presenter_is_right_holder = right is not None and right.holder_ref == presenter_ref
+        else:
+            right = None
+            bond = ownership.bonds.get(bond_ref)
+            presenter_is_right_holder = bond is not None and bond.subject_ref == presenter_ref
         if not credential_present:
             error_code = "credential_not_present"
-        elif right is None:
+        elif bond_ref is not None and (type(world_tick) is not int or world_tick < 0):
+            error_code = "ownership_world_tick_required"
+        elif bond_ref is not None and bond is None:
+            error_code = "ownership_bond_missing"
+        elif bond_ref is not None and bond.status != "active":
+            error_code = "ownership_bond_not_active"
+        elif bond_ref is not None and bond.term_expires_at is not None and world_tick >= bond.term_expires_at:
+            error_code = "ownership_bond_expired"
+        elif bond_ref is None and right is None:
             error_code = "ownership_right_missing"
         elif not presenter_is_right_holder:
-            error_code = "ownership_right_holder_mismatch"
+            error_code = "ownership_bond_subject_mismatch" if bond_ref is not None else "ownership_right_holder_mismatch"
         else:
             error_code = None
         return CredentialPresentationDecision(
             credential_id=credential_id,
-            right_id=link.right_id,
+            right_id=right_id,
             credential_present=credential_present,
             presenter_is_right_holder=presenter_is_right_holder,
             authorized=error_code is None,
             error_code=error_code,
+            bond_ref=bond_ref,
         )
 
 
@@ -254,7 +300,9 @@ class CredentialAuthorityService:
         credential_id: str,
         credential_item_ref: str,
         credential_holder_ref: str,
-        right_id: str,
+        right_id: str | None = None,
+        bond_ref: str | None = None,
+        world_tick: int | None = None,
         credential_kind: str,
         proves: str,
         issuer_ref: str,
@@ -262,17 +310,27 @@ class CredentialAuthorityService:
         causation_id: str,
         correlation_id: str,
     ) -> AppendBatchResult:
+        if right_id is not None and (type(right_id) is not str or not right_id):
+            raise CredentialRuntimeError("credential_invalid")
+        if bond_ref is not None and (type(bond_ref) is not str or not bond_ref):
+            raise CredentialRuntimeError("credential_invalid")
+        if (right_id is None) == (bond_ref is None):
+            raise CredentialRuntimeError("credential_reference_invalid")
+        if bond_ref is not None and (not self._v2_enabled or type(world_tick) is not int or world_tick < 0):
+            raise CredentialRuntimeError("credential_bond_world_tick_required")
         command = {
             "kind": "issue_credential",
             "command_id": command_id,
             "credential_id": credential_id,
             "credential_item_ref": credential_item_ref,
             "credential_holder_ref": credential_holder_ref,
-            "right_id": right_id,
             "credential_kind": credential_kind,
             "proves": proves,
             "issuer_ref": issuer_ref,
         }
+        command["right_id" if right_id is not None else "bond_ref"] = right_id if right_id is not None else bond_ref
+        if bond_ref is not None:
+            command["world_tick"] = world_tick
         digest = _digest(command)
         event_type = "gameplay.credential.link_issued" if self._v2_enabled else "gameplay.credential.issued"
         principal = self._V2_PRINCIPAL if self._v2_enabled else self._PRINCIPAL
@@ -282,15 +340,23 @@ class CredentialAuthorityService:
             return duplicate
         credential_events = self._store.read_events()
         projection = self._projector.rebuild(credential_events)
-        if credential_id in projection.links or not all((credential_id, credential_item_ref, credential_holder_ref, right_id, issuer_ref)):
+        if credential_id in projection.links or not all((credential_id, credential_item_ref, credential_holder_ref, issuer_ref)):
             raise CredentialRuntimeError("credential_invalid")
         if any(link.credential_item_ref == credential_item_ref and link.status == "active" for link in projection.links.values()):
             raise CredentialRuntimeError("credential_item_already_linked")
         if credential_kind not in self._credential_kinds or proves not in self._proves:
             raise CredentialRuntimeError("credential_invalid")
-        if right_id not in self._ownership_projector.rebuild(self._store.read_events()).rights:
+        ownership = self._ownership_projector.rebuild(credential_events)
+        if right_id is not None and right_id not in ownership.rights:
             raise CredentialRuntimeError("ownership_right_missing")
-        holder_inventory = self._inventory_projector.rebuild(credential_holder_ref, self._store.read_events())
+        bond = ownership.bonds.get(bond_ref) if bond_ref is not None else None
+        if bond_ref is not None and (
+            bond is None or bond.status != "active"
+            or bond.subject_ref != credential_holder_ref
+            or (bond.term_expires_at is not None and world_tick >= bond.term_expires_at)
+        ):
+            raise CredentialRuntimeError("ownership_bond_unqualified")
+        holder_inventory = self._inventory_projector.rebuild(credential_holder_ref, credential_events)
         if credential_item_ref not in holder_inventory.items or credential_item_ref not in holder_inventory.locations:
             raise CredentialRuntimeError("credential_item_not_present")
         inventory_stream = f"gameplay:inventory:{credential_holder_ref}"
@@ -303,7 +369,6 @@ class CredentialAuthorityService:
                 "credential_item_ref": credential_item_ref,
                 "issued_holder_ref": credential_holder_ref,
                 "issued_holder_inventory_revision": inventory_revision,
-                "right_id": right_id,
                 "credential_kind": credential_kind,
                 "proves": proves,
                 "issuer_ref": issuer_ref,
@@ -311,15 +376,23 @@ class CredentialAuthorityService:
                 "to_state": "issued",
                 "condition_ref": self._CONDITION_REF,
                 "condition_revision": self._CONDITION_REVISION,
-            }, causation_id, correlation_id)
+            }, causation_id, correlation_id,
+                schema_version=3 if bond_ref is not None else 2)
+            if right_id is not None:
+                event["payload"]["right_id"] = right_id
+            else:
+                event["payload"]["bond_ref"] = bond_ref
             claimed = self._holder_event(command_id, 2, "gameplay.credential.item_claimed", holder_stream,
                 credential_id, credential_item_ref, "absent", "occupied", causation_id, correlation_id)
             revisions = {
                 link_stream: max((event.stream_revision for event in credential_events if event.stream_id == link_stream), default=0),
                 holder_stream: max((event.stream_revision for event in credential_events if event.stream_id == holder_stream), default=0),
-                self._OWNERSHIP_STREAM: self._store.get_stream_head(self._OWNERSHIP_STREAM),
                 inventory_stream: inventory_revision,
             }
+            if bond_ref is not None:
+                revisions[self._OWNERSHIP_STREAM] = ownership.source_revision_vector.get(self._OWNERSHIP_STREAM, 0)
+            else:
+                revisions[self._OWNERSHIP_STREAM] = self._store.get_stream_head(self._OWNERSHIP_STREAM)
             return self._append(command_id, idempotency_key, digest, [event, claimed], revisions,
                                 principal=principal, v2_streams=(link_stream, holder_stream))
         event = self._event(command_id, 1, "gameplay.credential.issued", {"credential_id": credential_id, "credential_item_ref": credential_item_ref, "issued_holder_ref": credential_holder_ref, "issued_holder_inventory_revision": inventory_revision, "right_id": right_id, "credential_kind": credential_kind, "proves": proves, "issuer_ref": issuer_ref}, causation_id, correlation_id)
@@ -404,7 +477,8 @@ class CredentialAuthorityService:
                     "credential_item_ref": replacement_item_ref,
                     "issued_holder_ref": replacement_holder_ref,
                     "issued_holder_inventory_revision": inventory_revision,
-                    "right_id": prior.right_id,
+                    **({"right_id": prior.right_id} if isinstance(prior, CredentialLink)
+                       else {"bond_ref": prior.bond_ref}),
                     "credential_kind": prior.credential_kind,
                     "proves": prior.proves,
                     "issuer_ref": issuer_ref,
@@ -412,7 +486,8 @@ class CredentialAuthorityService:
                     "to_state": "issued",
                     "condition_ref": self._CONDITION_REF,
                     "condition_revision": self._CONDITION_REVISION,
-                }, causation_id, correlation_id),
+                }, causation_id, correlation_id,
+                    schema_version=3 if isinstance(prior, BondCredentialLink) else 2),
                 self._holder_event(command_id, 3, "gameplay.credential.item_released", prior_holder_stream,
                     prior_credential_id, prior.credential_item_ref, "occupied", "absent", causation_id, correlation_id),
                 self._holder_event(command_id, 4, "gameplay.credential.item_claimed", replacement_holder_stream,
@@ -464,9 +539,10 @@ class CredentialAuthorityService:
 
     @classmethod
     def _v2_event(cls, command_id: str, index: int, event_type: str, stream_id: str,
-                  payload: Mapping[str, object], causation_id: str, correlation_id: str) -> dict[str, object]:
+                  payload: Mapping[str, object], causation_id: str, correlation_id: str,
+                  *, schema_version: int = 2) -> dict[str, object]:
         return {"event_id": f"evt:{command_id}:credential:{index}", "event_type": event_type,
-                "schema_version": 2, "stream_id": stream_id, "stream_revision": 0,
+                "schema_version": schema_version, "stream_id": stream_id, "stream_revision": 0,
                 "global_sequence": 0, "transaction_id": f"tx:{command_id}",
                 "command_id": command_id, "causation_id": causation_id,
                 "correlation_id": correlation_id, "visibility_policy": "authority_only",
@@ -553,4 +629,4 @@ def _digest(value: object) -> str:
     return sha256(json.dumps(value, default=lambda item: dict(item) if isinstance(item, Mapping) else item.__dict__, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
-__all__ = ["CredentialAuthorityService", "CredentialLink", "CredentialPresentationDecision", "CredentialPresentationValidator", "CredentialProjection", "CredentialProjector", "CredentialRuntimeError"]
+__all__ = ["BondCredentialLink", "CredentialAuthorityService", "CredentialLink", "CredentialPresentationDecision", "CredentialPresentationValidator", "CredentialProjection", "CredentialProjector", "CredentialRuntimeError"]

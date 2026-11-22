@@ -29,11 +29,12 @@ class CredentialV2EventSchema:
     transition: tuple[str, str]
 
 
-_ISSUED_FIELDS = frozenset({
+_ISSUED_V2_FIELDS = frozenset({
     "credential_id", "credential_item_ref", "issued_holder_ref",
     "issued_holder_inventory_revision", "right_id", "credential_kind", "proves",
     "issuer_ref", "from_state", "to_state", "condition_ref", "condition_revision",
 })
+_ISSUED_V3_FIELDS = (_ISSUED_V2_FIELDS - {"right_id"}) | {"bond_ref"}
 _REVOKED_FIELDS = frozenset({
     "credential_id", "issuer_ref", "reason", "from_state", "to_state",
     "condition_ref", "condition_revision",
@@ -51,7 +52,7 @@ CREDENTIAL_V2_EVENT_SCHEMAS = (
     CredentialV2EventSchema(
         "gameplay.credential.link_issued", 2,
         "sha256:g3:credential-link-issued:v2:m3",
-        _ISSUED_FIELDS, ("absent", "issued"),
+        _ISSUED_V2_FIELDS, ("absent", "issued"),
     ),
     CredentialV2EventSchema(
         "gameplay.credential.link_revoked", 2,
@@ -64,7 +65,17 @@ CREDENTIAL_V2_EVENT_SCHEMAS = (
         _SUPERSEDED_FIELDS, ("issued", "superseded"),
     ),
 )
-_SCHEMAS = {schema.event_type: schema for schema in CREDENTIAL_V2_EVENT_SCHEMAS}
+CREDENTIAL_V3_EVENT_SCHEMAS = (
+    CredentialV2EventSchema(
+        "gameplay.credential.link_issued", 3,
+        "sha256:g3:credential-link-issued:v3:bond-ref",
+        _ISSUED_V3_FIELDS, ("absent", "issued"),
+    ),
+)
+_SCHEMAS = {
+    (schema.event_type, schema.schema_version): schema
+    for schema in (*CREDENTIAL_V2_EVENT_SCHEMAS, *CREDENTIAL_V3_EVENT_SCHEMAS)
+}
 _HOLDER_TRANSITIONS = {
     "gameplay.credential.item_claimed": ("absent", "occupied"),
     "gameplay.credential.item_released": ("occupied", "absent"),
@@ -89,7 +100,7 @@ def credential_holder_stream_id(item_ref: str) -> str:
 
 
 def register_credential_v2_event_schemas(registry: EventSchemaRegistry) -> None:
-    for schema in CREDENTIAL_V2_EVENT_SCHEMAS:
+    for schema in (*CREDENTIAL_V2_EVENT_SCHEMAS, *CREDENTIAL_V3_EVENT_SCHEMAS):
         registry.register(EventSchemaRegistration(
             schema.event_type, schema.schema_version, schema.schema_digest
         ))
@@ -99,8 +110,9 @@ def validate_credential_v2_event(event: Mapping[str, object]) -> None:
     if not isinstance(event, Mapping):
         raise CredentialV2EventSchemaError("credential_v2_event_invalid")
     event_type = event.get("event_type")
-    schema = _SCHEMAS.get(event_type) if type(event_type) is str else None
-    if schema is None or event.get("schema_version") != 2:
+    schema_version = event.get("schema_version")
+    schema = _SCHEMAS.get((event_type, schema_version)) if type(event_type) is str and type(schema_version) is int else None
+    if schema is None:
         raise CredentialV2EventSchemaError("credential_v2_event_unregistered")
     payload = event.get("payload")
     if not isinstance(payload, Mapping) or set(payload) != schema.required_payload_fields:
