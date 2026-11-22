@@ -1,11 +1,13 @@
-"""Atomic, offline YAML data-subset loader for the credential reference pack."""
+"""Atomic, offline loader for the supported rule-pack YAML sections."""
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from decimal import Decimal
 from hashlib import sha256
 import json
 from pathlib import Path
 import re
+from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
 import yaml
@@ -15,6 +17,7 @@ from yaml.tokens import AliasToken, AnchorToken, TagToken
 from app.gameplay.fact_type_registry import (
     REGISTERED_OWNER_IDS, FactTypeRegistry, RegistrationRejected, Violation, freeze,
 )
+from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
 
 
 @dataclass(frozen=True)
@@ -24,6 +27,55 @@ class LoadedPack:
     content_hash: str
     registry: FactTypeRegistry
     legacy_rule: Mapping[str, Any]
+    pool_defs: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+
+
+def _validate_pool_definition(target: str, spec: Any) -> None:
+    fields = {
+        "bound_lower", "bound_upper", "initial", "decimals", "integration", "hysteresis",
+        "description", "version", "deprecated",
+    }
+    if not isinstance(spec, dict) or spec.keys() - fields:
+        raise PoolError("pack_schema_invalid")
+    scale = spec.get("decimals")
+    if type(scale) is not int or scale < 0:
+        raise PoolError("pack_pool_scale_invalid")
+
+    def decimal_value(value: Any) -> Decimal:
+        if type(value) is int:
+            return Decimal(value)
+        if not isinstance(value, str) or not re.fullmatch(r"-?[0-9]+(?:\.[0-9]+)?", value):
+            raise PoolError("pack_pool_number_invalid")
+        if len(value.partition(".")[2]) > scale:
+            raise PoolError("pack_pool_scale_invalid")
+        return Decimal(value)
+
+    integration = spec.get("integration")
+    if not isinstance(integration, dict):
+        raise PoolError("pack_pool_integration_invalid")
+    mode = integration.get("mode")
+    if mode == "none" and integration.keys() == {"mode"}:
+        rate = Decimal(0)
+    elif mode == "rate" and integration.keys() == {"mode", "rate_per_tick"}:
+        rate = decimal_value(integration["rate_per_tick"])
+    else:
+        raise PoolError("pack_pool_integration_invalid")
+
+    hysteresis = spec.get("hysteresis")
+    if not isinstance(hysteresis, list):
+        raise PoolError("pack_pool_hysteresis_invalid")
+    thresholds = []
+    for row in hysteresis:
+        if (not isinstance(row, dict) or row.keys() != {"state", "enter_below", "exit_above"}
+                or not isinstance(row["state"], str)):
+            raise PoolError("pack_pool_hysteresis_invalid")
+        thresholds.append(PoolThreshold(
+            row["state"], decimal_value(row["enter_below"]), decimal_value(row["exit_above"]),
+        ))
+    PoolDefinition(
+        target, decimal_value(spec.get("bound_lower")), decimal_value(spec.get("bound_upper")),
+        decimal_value(spec.get("initial")), rate, tuple(thresholds),
+    )
 
 
 def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: bool = False) -> LoadedPack:
@@ -123,7 +175,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
         reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
     contents = manifest.get("contents", {})
-    sections = {name: {} for name in ("fact_types", "machine_defs", "models")}
+    sections = {name: {} for name in ("fact_types", "machine_defs", "models", "pool_defs")}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
         reject("pack_schema_invalid", "contents", manifest_path, 1, "contents must be a mapping")
@@ -139,6 +191,12 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                 if target in sections[section]:
                     reject("pack_entry_duplicate", target, directory / relative, 1, "entry IDs must be unique")
                 sections[section][target] = spec
+                if section == "pool_defs":
+                    try:
+                        _validate_pool_definition(target, spec)
+                    except PoolError as error:
+                        file, line = locations[target]
+                        reject(str(error), target, file, line, "declare a valid fixed-point pool definition")
     for path in sorted(directory.rglob("*")):
         if path.is_file() and path.relative_to(directory).as_posix() not in declared:
             reject("pack_content_undeclared", path.name, path, 1, "list every content file in pack.yaml")
@@ -188,4 +246,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
         raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
     assert registry is not None
     content_hash = sha256(json.dumps(raw_files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
-    return LoadedPack(manifest["pack_id"], manifest["pack_version"], content_hash, registry, freeze(manifest.get("legacy_rule", {})))
+    return LoadedPack(
+        manifest["pack_id"], manifest["pack_version"], content_hash, registry,
+        freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
+    )

@@ -1,5 +1,6 @@
 from pathlib import Path
 import shutil
+from textwrap import dedent
 
 import pytest
 
@@ -41,6 +42,69 @@ def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
     assert fact.owner_ref == "Ownership"
     assert model.owner_ref == "Ownership"
     assert model.writes_fact_types == ("fact:credential:*:link",)
+
+
+_POOL_DECLARATION = dedent("""\
+    stamina:
+      description: "Stamina used during a movement window"
+      decimals: 2
+      bound_lower: "0"
+      bound_upper: 100
+      initial: "75.5"
+      integration:
+        mode: "rate"
+        rate_per_tick: "-0.05"
+      hysteresis:
+        - state: "exhausted"
+          enter_below: "20"
+          exit_above: "30"
+    """)
+
+
+def _pack_with_pool(tmp_path, declaration):
+    destination = shutil.copytree(PACK, tmp_path / "pool-pack")
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'contents:\n', 'contents:\n  pool_defs: ["stamina"]\n'
+        ),
+        encoding="utf-8",
+    )
+    pool_defs = destination / "pool_defs"
+    pool_defs.mkdir()
+    (pool_defs / "stamina.yaml").write_text(declaration, encoding="utf-8")
+    return destination
+
+
+def test_pack_loads_immutable_pool_definitions(tmp_path):
+    destination = _pack_with_pool(tmp_path, _POOL_DECLARATION)
+    loaded = load_pack(destination, handlers=HANDLERS)
+    assert loaded.content_hash == load_pack(destination, handlers=HANDLERS).content_hash
+    stamina = loaded.pool_defs["stamina"]
+    assert stamina["decimals"] == 2
+    assert stamina["integration"]["rate_per_tick"] == "-0.05"
+    assert stamina["hysteresis"][0]["state"] == "exhausted"
+    with pytest.raises(TypeError):
+        stamina["initial"] = "0"
+    assert not load_pack(PACK, handlers=HANDLERS).pool_defs
+
+
+@pytest.mark.parametrize(("old", "new", "code"), [
+    ("  decimals: 2\n", "", "pack_pool_scale_invalid"),
+    ("decimals: 2", "decimals: true", "pack_pool_scale_invalid"),
+    ('initial: "75.5"', 'initial: "75.501"', "pack_pool_scale_invalid"),
+    ('initial: "75.5"', 'initial: "7e1"', "pack_pool_number_invalid"),
+    ('initial: "75.5"', 'initial: "101"', "pool_initial_out_of_bounds"),
+    ('bound_lower: "0"', 'bound_lower: "110"', "pool_bounds_invalid"),
+    ('mode: "rate"', 'mode: "none"', "pack_pool_integration_invalid"),
+    ('exit_above: "30"', 'exit_above: "20"', "pool_threshold_invalid"),
+])
+def test_pack_rejects_invalid_pool_definition(tmp_path, old, new, code):
+    destination = _pack_with_pool(tmp_path, _POOL_DECLARATION.replace(old, new))
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+    matching = [violation for violation in error.value.violations if violation.code == code]
+    assert [(v.target, Path(v.file).name, v.line) for v in matching] == [("stamina", "stamina.yaml", 1)]
 
 
 def _copy_pack_for_owner(tmp_path, owner_id):
