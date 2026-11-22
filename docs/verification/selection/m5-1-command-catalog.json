@@ -1,0 +1,76 @@
+{
+  "head": "eebd34e59cbfddf995d6b42990fc7b20de7576da",
+  "description": "M5-1 trusted Owner domain command catalog and inherited authority requirements",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_command_catalog_with_registered_domain_and_handler[command_id]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_command_catalog_with_registered_domain_and_handler[command_id + step]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_command_catalog_with_registered_domain_and_handler[principal_ref + idempotency_key]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_command_catalog_with_registered_domain_and_handler[effect_id + scheduled_world_tick]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[domain]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[name]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[owner]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[multiple-owners]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[version]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[schema]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[authority]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_command_catalog_entry[idempotency]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_cannot_declare_its_own_command_domain",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_overlay_cannot_drop_inherited_command_authority",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

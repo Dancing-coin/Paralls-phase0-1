@@ -123,3 +123,9 @@
 - `command_catalog` 的命令名前缀须来自已登记 L3 Owner 的 `domain`。当前 `REGISTERED_OWNER_IDS` 只登记 ID，现有 `fact:credential:*:link` 的写主是 `Ownership`，无法从前缀或短名推断权威映射。发布命令目录前需提供 Owner domain 登记以及 payload schema 解析边界。
 - `temporal_effects` 与 M1-5 Process 归并有关。《六原语规格》列出实例的 `tick_policy`、`next_tick`、`exit_condition` 与幂等键。尚缺效果定义条目的可用 tick 策略、退出谓词及向 Pool Owner 发请求的引用结构。待定义形状确定后接入加载校验。
 - 两项不妨碍 M5-2 的离线包校验工作。已接入的五种声明及 M5-5 规则盘点见 board。
+
+### H-A-010 | M5-2 离线交付与 M5-3、M5-4 生产前置 | 2026-11-22
+
+- `4747acaf` 返回父到子的解析链和内容哈希，`eebd34e5` 可读取可信调用方提供的 Owner domain 来加载命令目录。命令名与处理 Owner 仍需生产登记接线。H-A-009 中的命令目录声明校验已离线交付。
+- M5-2 存档接线和 M5-3 生产迁移为阻塞项。请确定包版本权威归属及可执行迁移的写入方。现有 `world_config_revision` 只保存单一引用，域 schema 的图发现筛选 `gameplay.`，详见 `docs/verification/m5-3-pack-migration-preflight-20261122.md`。
+- M5-4 已有加载器 `running=True` 拒绝证据。应用进入运行态时的调用入口及切换动作需在上述生命周期接线中核实。

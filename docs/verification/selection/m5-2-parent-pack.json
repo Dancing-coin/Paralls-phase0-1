@@ -1,0 +1,46 @@
+{
+  "head": "4747acaf3856032234e7e20e8cbcb728d0915d1b",
+  "description": "M5-2 offline parent pack overlays, content pins and inherited safety rules",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_resolves_parent_entries_as_whole_values_and_pins_path",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_does_not_inherit_missing_fields_in_overridden_entry",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_overlay_can_narrow_an_inherited_learner_set",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_unresolved_or_wrong_parent_pin",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_cycle_in_parent_chain",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_overlay_rejects_changes_to_inherited_safety_contracts[visibility]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_overlay_rejects_changes_to_inherited_safety_contracts[owner]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_overlay_rejects_changes_to_inherited_safety_contracts[unknown-policy]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

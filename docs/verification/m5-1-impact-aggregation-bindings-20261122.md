@@ -6,7 +6,7 @@
 | `aggregation_models` | `cf373ea8` | `8fbc0a41` | 6 个红测，接入后 94 passed |
 | `bindings` 的技能消耗模型 | `2bfc6bd2` | `01128d20` | 5 个红测，接入后 99 passed |
 
-三片各修改 `backend/app/gameplay/rule_pack_validator.py` 和 `backend/tests/test_rule_pack_validator.py`，可按代码提交逐片回退。各切片只在加载边界构建不可变声明并参与现有内容哈希。受击剖面校验目标槽位、登记的 FactType、Resolver 写集、结算顺序及宿主原子性。层必须按 FactType 结算顺序递增。多层有 `either` 宿主时，静态加载无法证明会落在同一提交端，要求 `obligation`。聚合沿用《聚合与精度》的四种模式，`distribution` 引用已登记 refold Resolver。技能消耗绑定按分水岭实验 A 的 `applies_to` 与 `cost_model` 声明加载，校验目标格式及 Resolver 引用。运行时槽位挂载、受击结算、refold 执行与技能目录解析未接入。
+三片各修改 `backend/app/gameplay/rule_pack_validator.py` 和 `backend/tests/test_rule_pack_validator.py`，在本分支回退时按技能消耗绑定、聚合模型、受击剖面的逆序撤销，可避免加载器同段冲突。各切片只在加载边界构建不可变声明并参与现有内容哈希。受击剖面校验目标槽位、登记的 FactType、Resolver 写集、结算顺序及宿主原子性。层必须按 FactType 结算顺序递增。多层有 `either` 宿主时，静态加载无法证明会落在同一提交端，要求 `obligation`。聚合沿用《聚合与精度》的四种模式，`distribution` 引用已登记 refold Resolver。技能消耗绑定按分水岭实验 A 的 `applies_to` 与 `cost_model` 声明加载，校验目标格式及 Resolver 引用。运行时槽位挂载、受击结算、refold 执行与技能目录解析未接入。
 
 ## 已验证
 
@@ -24,7 +24,7 @@ Python 3.12.2、SQLite 3.43.1。在 F 盘临时检出运行时，`PYTHONPATH` �
 
 ## 后端全量
 
-前一切片 `1f6aff2e` 的后端全量见 [实体类型证据](m5-1-entity-types-20261122.md)。本文件三片的合并状态全量待运行。
+在 `47f931fb` 上运行 `docs/verification/g0-939c6746/run_baseline.py --freeze --repo <worktree> --output <run>/full`。收集 10,497 节点，`24 failed, 10469 passed, 2 skipped, 2 xfailed, 239 warnings in 1307.41s`，退出 1，收集错误 0。`backend/`、`packs/` 与 `2bfc6bd2` 的内容一致。源码在运行期间不变。对照 `1f6aff2e` 失败签名，新增 0、恢复 0。相对正式冻结基线仍有两项既有失败，见 [实体类型证据](m5-1-entity-types-20261122.md)。原始日志和 `full-comparison.json` 在 `F:/paralls-verification/thread-a/et-f8489efee6`。
 
 ## 单元 DoD
 
