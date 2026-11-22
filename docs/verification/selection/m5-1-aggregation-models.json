@@ -1,0 +1,36 @@
+{
+  "head": "cf373ea8748bb50a7be4a45e796c5a4ed962d236",
+  "description": "M5-1 aggregation modes, refold resolver references and triggers",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_aggregation_modes_and_registered_refold",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_aggregation_model[mode]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_aggregation_model[missing-refold]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_aggregation_model[unknown-refold]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_aggregation_model[duplicate-trigger]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_aggregation_model[sum-refold]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

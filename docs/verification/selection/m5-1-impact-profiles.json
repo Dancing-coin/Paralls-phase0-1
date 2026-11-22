@@ -1,0 +1,41 @@
+{
+  "head": "f9c64f99ce8ae0013a5d77f9d12e6800180cd23c",
+  "description": "M5-1 impact profile routing, registered slots and resolver, FactType order and cross-host atomicity",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_impact_profile_for_registered_slots",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_requires_obligation_when_impact_layers_cross_hosts",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_impact_profile[unknown-entity]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_impact_profile[unknown-fact]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_impact_profile[unknown-resolver]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_impact_profile[invalid-atomicity]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_impact_profile[owner-override]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "head": "2bfc6bd2a01dac00962f4e575709c54865d78353",
+  "description": "M5-1 skill cost binding targets and resolver references",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_cost_model_binding",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_cost_model_binding[unknown-model]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_cost_model_binding[empty-targets]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_cost_model_binding[unqualified-target]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_cost_model_binding[duplicate-target]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
