@@ -9,7 +9,7 @@
 
 `CanonicalLifeStateAuthority` admits an initial `alive` state only after re-reading committed population activation and presence events, then writes `gameplay.character.life_state_changed` to `gameplay:character:life:<actor>` (`life_state_runtime.py:37-47,53-77,106-117`). Case death requires a confirmed `gameplay.conflict.world_death_commit_confirmed` and a matching terminal conflict event before the same LifeState event is appended (`life_state_runtime.py:133-177,195-224`). The runtime does not infer death from health or write Presence/Soul facts (`life_state_runtime.py:1-4`).
 
-Candidate fact: `character:<actor_ref>:lifestate`, primitive `machine`, candidate Owner `LifeState`. The formal FactType example uses `character:char-07:lifestate`, `machine`, `LifeState`, and `private` (`01-FactType定义.md:175-180`). This is a candidate mapping, not an Owner registration or migration decision.
+The candidate fact `character:<actor_ref>:lifestate` uses the `machine` primitive. `LifeState` is the candidate Owner short name used in the FactType example (`01-FactType定义.md:175-180`). `owner_ref` is pending and will align with the canonical name established in M0.5（待 M0.5 定名后对齐）.
 
 Candidate visibility: `private`, with subject/authority selectors to be specified by the eventual Owner declaration. The current event policy is `project`, which is broader and does not encode a principal audience (`life_state_runtime.py:87-88,151-152`).
 
@@ -39,7 +39,7 @@ The current writer event is `_LIFE_EVENT = "gameplay.character.life_state_change
 
 ## Known deviations
 
-- `REGISTERED_OWNER_IDS` currently contains only `Credential`, `Ownership`, and `Economy / Market` (`fact_type_registry.py:11`). H-A-003 assigns the M0.5 name expansion to A; LifeState is not yet registered.
+- At the scan baseline, `REGISTERED_OWNER_IDS` contains `Credential`, `Ownership`, and `Economy / Market` (`fact_type_registry.py:11`). H-A-003 assigns the name expansion to thread A in M0.5.
 - Existing LifeState writes use a project-wide visibility policy rather than a FactType-level audience (`life_state_runtime.py:87-88,151-152`).
 - The event schema and FactType registry currently expose the event name, but this does not establish a migrated L1 machine, a resolver, or a full Owner declaration.
 - Historical tests include schema-v1 and schema-v2 expectations. Any event version or payload change needs an explicit reader inventory before implementation.
