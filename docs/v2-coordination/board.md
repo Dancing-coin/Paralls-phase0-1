@@ -53,7 +53,7 @@ M0 盘点。M0 是准备输入，不代表任何域已迁移或满足 v2。
 | S-4 | `pinned_revisions` 补 Store 校验是否算行为改变 | M3-4 | 未决 |
 | S-7 | 逐域探针是否并入成功标准 8 | 验收口径 | 未决 |
 | M4 归属 | 波次中各域由 A 或 B 执行 | 域迁移 | 未决，待 M0-6 和项目负责人分配 |
-| B 首域 | 满足“Owner 明确、Owner 在 `REGISTERED_OWNER_IDS`、非枢纽、B 归属、导入者 ≤2”的候选 | 自主域迁移 | 当前无候选；Credential/Ownership 归 A，Economy / Market 是枢纽；B 继续补充 M0 静态证据 |
+| B 首域 | 满足“Owner 明确、Owner 在 `REGISTERED_OWNER_IDS`、非枢纽、B 归属、导入者 ≤2”的候选 | 自主域迁移 | 当前无候选。低导入者 `land_right`（1）归 Ownership 且在 A 范围；`gift`（1）跨 Economy / Ownership，且无单一 Owner；Credential 在 A 范围；debt 为 Economy / Market 枢纽且有 5 个 app importer。其余低导入者 runtime 无法与当前三个登记 Owner 一一匹配。继续 M0 补充静态核查，不启动域迁移 |
 | M2-6 选流 | 哪条生产流受 epoch 保护 | L0 | 未决 |
 | S-8 文档状态 | 规格记录已按事实域拆分，计划仍写 Owner 待裁定 | Contract 波次与拆分 | 两份只读文档状态不一致，需统一账本文本来源；事实已在 M0-1 列出 |
 
