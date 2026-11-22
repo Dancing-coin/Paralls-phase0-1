@@ -21,6 +21,13 @@ from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
 
 
 @dataclass(frozen=True)
+class PackRevision:
+    pack_id: str
+    pack_version: str
+    content_hash: str
+
+
+@dataclass(frozen=True)
 class LoadedPack:
     pack_id: str
     version: str
@@ -32,6 +39,7 @@ class LoadedPack:
     impact_profiles: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     aggregation_models: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     bindings: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+    resolved_packs: tuple[PackRevision, ...] = ()
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -192,7 +200,22 @@ def _binding_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[tuple
         yield "pack_binding_model_unknown", "reference a registered cost Resolver"
 
 
-def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: bool = False) -> LoadedPack:
+@dataclass
+class _PackSource:
+    manifest_path: Path
+    manifest: dict[str, Any]
+    sections: dict[str, dict[str, Any]]
+    locations: dict[tuple[str, str], tuple[str, int]]
+    revision: PackRevision
+
+
+def _reject_issues(issues: list[Violation]) -> None:
+    if issues:
+        unique = {(v.code, v.target, v.file, v.line): v for v in issues}
+        raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
+
+
+def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
     directory = directory.resolve()
     issues: list[Violation] = []
     locations: dict[tuple[str, str], tuple[str, int]] = {}
@@ -281,8 +304,12 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     manifest = read(manifest_path, "manifest")
     if running:
         reject("pack_runtime_reload_forbidden", "pack", manifest_path, 1, "load only before runtime starts")
-    if manifest.get("parent_pack") is not None:
-        reject("pack_parent_unsupported", "parent_pack", manifest_path, 1, "this reference slice requires a self-contained pack")
+    parent = manifest.get("parent_pack")
+    if parent is not None and (
+        not isinstance(parent, dict) or parent.keys() != {"pack_id", "pack_version"}
+        or any(not isinstance(value, str) or not value for value in parent.values())
+    ):
+        reject("pack_parent_ref_invalid", "parent_pack", manifest_path, 1, "pin the parent package ID and version")
     for key in ("pack_id", "pack_version"):
         if not isinstance(manifest.get(key), str) or not manifest[key]:
             reject("pack_schema_invalid", key, manifest_path, 1, "declare nonempty pack identity and version")
@@ -335,8 +362,6 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                         reject("pack_entity_slot_invalid", target, file, line, "each slot declares one FactType pattern")
                         continue
                     pattern = slot["fact_type_pattern"]
-                    if pattern not in sections["fact_types"]:
-                        reject("pack_entity_slot_fact_unknown", target, file, line, "reference a declared FactType pattern")
                     if pattern in seen_patterns:
                         reject("pack_entity_slot_duplicate", target, file, line, "list each FactType pattern once")
                     seen_patterns.add(pattern)
@@ -363,18 +388,112 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
             or not isinstance(order.get("unrelated", []), list) or any(not isinstance(s, str) for s in order.get("unrelated", []))
             or not isinstance(order.get("before", []), list) or any(not isinstance(e, list) or len(e) != 2 or any(not isinstance(s, str) for s in e) for e in order.get("before", []))):
         reject("pack_schema_invalid", "resolve_order", manifest_path, 1, "declare lists of fact IDs and edge pairs")
-    owners = manifest.get("owners")
-    if not isinstance(owners, list) or any(not isinstance(o, str) for o in owners):
-        reject("pack_schema_invalid", "owners", manifest_path, 1, "declare owner identifiers")
-    elif any(owner not in REGISTERED_OWNER_IDS for owner in owners):
-        reject("facttype_owner_unknown", "owners", manifest_path, 1, "reference a code-registered Owner ID; packs cannot create owners")
+    if parent is None or "owners" in manifest:
+        owners = manifest.get("owners")
+        if not isinstance(owners, list) or any(not isinstance(o, str) for o in owners):
+            reject("pack_schema_invalid", "owners", manifest_path, 1, "declare owner identifiers")
+        elif any(owner not in REGISTERED_OWNER_IDS for owner in owners):
+            reject("facttype_owner_unknown", "owners", manifest_path, 1, "reference a code-registered Owner ID; packs cannot create owners")
+    _reject_issues(issues)
+    revision = PackRevision(
+        manifest["pack_id"], manifest["pack_version"],
+        sha256(json.dumps(raw_files, sort_keys=True, separators=(",", ":")).encode()).hexdigest(),
+    )
+    return _PackSource(manifest_path, manifest, sections, locations, revision)
+
+
+def _visibility_is_preserved(older: Any, newer: Any) -> bool:
+    if older == newer:
+        return True
+    if not isinstance(older, dict) or not isinstance(newer, dict):
+        return False
+    if {k: v for k, v in older.items() if k != "learnable_by"} != {
+        k: v for k, v in newer.items() if k != "learnable_by"
+    }:
+        return False
+    before, after = older.get("learnable_by"), newer.get("learnable_by")
+    if (not isinstance(before, list) or not isinstance(after, list) or not after
+            or any(not isinstance(selector, str) for selector in before + after)):
+        return False
+    if newer.get("class") == "public" and "world" not in after:
+        return False
+    return set(after) <= set(before)
+
+
+def load_pack(
+    directory: Path, *, handlers: Mapping[str, Callable], running: bool = False,
+    parent_packs: Mapping[tuple[str, str], Path] | None = None,
+    expected_content_hash: str | None = None,
+) -> LoadedPack:
+    leaf = _read_pack(directory, running=running)
+    manifest_path = leaf.manifest_path
+    issues: list[Violation] = []
+
+    def reject(code, target, file, line, hint):
+        issues.append(Violation(code, target, str(file), line, hint))
+
+    chain = [leaf]
+    seen = {(leaf.revision.pack_id, leaf.revision.pack_version)}
+    while (reference := chain[-1].manifest.get("parent_pack")) is not None:
+        identity = reference["pack_id"], reference["pack_version"]
+        child = chain[-1].manifest_path
+        if identity in seen:
+            reject("pack_cycle_in_parents", "parent_pack", child, 1, "parent package pins must be acyclic")
+            _reject_issues(issues)
+        parent_path = parent_packs.get(identity) if parent_packs is not None else None
+        if parent_path is None:
+            reject("pack_parent_unknown", "parent_pack", child, 1, "register the pinned parent package source")
+            _reject_issues(issues)
+        parent = _read_pack(parent_path)
+        if (parent.revision.pack_id, parent.revision.pack_version) != identity:
+            reject("pack_parent_identity_mismatch", "parent_pack", child, 1, "parent manifest must match the pinned identity")
+            _reject_issues(issues)
+        chain.append(parent)
+        seen.add(identity)
+    chain.reverse()
+
+    manifest = {}
+    sections = {name: {} for name in leaf.sections}
+    locations = {}
+    for source in chain:
+        manifest.update(source.manifest)
+        for target, spec in source.sections["fact_types"].items():
+            previous = sections["fact_types"].get(target)
+            if previous is None:
+                continue
+            file, line = source.locations["fact_types", target]
+            if not _visibility_is_preserved(previous.get("visibility"), spec.get("visibility")):
+                reject("pack_overrides_visibility_requirement", target, file, line, "preserve visibility or narrow its learner set")
+            if any(previous.get(key) != spec.get(key) for key in ("owner_ref", "primitive", "identity")):
+                reject("pack_overrides_fact_authority", target, file, line, "preserve the inherited FactType authority and primitive")
+            if previous.get("unknown_policy") != spec.get("unknown_policy"):
+                reject("pack_overrides_unknown_policy", target, file, line, "preserve the inherited unknown policy")
+        for section, entries in source.sections.items():
+            sections[section].update(entries)
+        locations.update(source.locations)
+
+    for target, spec in sections["entity_types"].items():
+        file, line = locations["entity_types", target]
+        for slot in spec["slots"]:
+            if slot["fact_type_pattern"] not in sections["fact_types"]:
+                reject("pack_entity_slot_fact_unknown", target, file, line, "reference a declared FactType pattern")
+
+    order = manifest.get("resolve_order")
+    owners = manifest["owners"]
+    revisions = tuple(source.revision for source in chain)
+    content_hash = leaf.revision.content_hash
+    if len(revisions) > 1:
+        pins = [(pin.pack_id, pin.pack_version, pin.content_hash) for pin in revisions]
+        content_hash = sha256(json.dumps(pins, separators=(",", ":")).encode()).hexdigest()
+    if expected_content_hash is not None and content_hash != expected_content_hash:
+        reject("pack_content_hash_mismatch", "content_hash", manifest_path, 1, "resolved contents differ from the saved package pin")
     registry = None
     if not issues:
         try:
             registry = FactTypeRegistry.compile(facts=sections["fact_types"], models=sections["models"],
                 machines=sections["machine_defs"], owners=owners, resolve_order=order, handlers=handlers,
                 locations={target: location for (section, target), location in locations.items()
-                           if section in ("fact_types", "machine_defs", "models")})
+                           if section in ("manifest", "fact_types", "machine_defs", "models")})
         except RegistrationRejected as error:
             issues.extend(error.violations)
     if registry is not None:
@@ -389,14 +508,11 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                 file, line = locations[section, target]
                 for code, hint in validate(spec, registry):
                     reject(code, target, file, line, hint)
-    if issues:
-        unique = {(v.code, v.target, v.file, v.line): v for v in issues}
-        raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
+    _reject_issues(issues)
     assert registry is not None
-    content_hash = sha256(json.dumps(raw_files, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
     return LoadedPack(
         manifest["pack_id"], manifest["pack_version"], content_hash, registry,
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
-        freeze(sections["aggregation_models"]), freeze(sections["bindings"]),
+        freeze(sections["aggregation_models"]), freeze(sections["bindings"]), revisions,
     )

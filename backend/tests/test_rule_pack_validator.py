@@ -391,6 +391,130 @@ def test_pack_rejects_invalid_cost_model_binding(tmp_path, old, new, code):
 
 
 
+def _write_overlay(tmp_path, base, extra_contents="", parent_id="credential_reference"):
+    child = tmp_path / "overlay"
+    child.mkdir()
+    (child / "pack.yaml").write_text(
+        dedent(f"""\
+        pack_id: "credential_overlay"
+        pack_version: "2.0.0"
+        schema_version: 1
+        parent_pack:
+          pack_id: "{parent_id}"
+          pack_version: "1.0.0"
+        """) + extra_contents,
+        encoding="utf-8",
+    )
+    return child, {(parent_id, "1.0.0"): base}
+
+
+def test_pack_resolves_parent_entries_as_whole_values_and_pins_path(tmp_path):
+    parent = _pack_with_pool(tmp_path, _POOL_DECLARATION)
+    child, parents = _write_overlay(
+        tmp_path, parent, 'contents:\n  pool_defs: ["overrides"]\n',
+    )
+    (child / "pool_defs").mkdir()
+    (child / "pool_defs/overrides.yaml").write_text(
+        _POOL_DECLARATION.replace('  description: "Stamina used during a movement window"\n', "")
+        .replace('initial: "75.5"', 'initial: "65"')
+        + _POOL_DECLARATION.replace("stamina:", "willpower:"),
+        encoding="utf-8",
+    )
+
+    loaded = load_pack(child, handlers=HANDLERS, parent_packs=parents)
+    original = load_pack(parent, handlers=HANDLERS)
+    assert loaded.pool_defs["stamina"]["initial"] == "65"
+    assert "description" not in loaded.pool_defs["stamina"]
+    assert "willpower" in loaded.pool_defs
+    assert "fact:credential:*:link" in loaded.registry.facts
+    assert loaded.legacy_rule == original.legacy_rule
+    assert [pin.pack_id for pin in loaded.resolved_packs] == ["credential_reference", "credential_overlay"]
+    assert loaded.resolved_packs[0].content_hash == original.content_hash
+    assert loaded.content_hash != original.content_hash
+    assert load_pack(
+        child, handlers=HANDLERS, parent_packs=parents, expected_content_hash=loaded.content_hash,
+    ).content_hash == loaded.content_hash
+
+    manifest = parent / "pack.yaml"
+    manifest.write_text(manifest.read_text(encoding="utf-8").replace(
+        'condition_revision: 1', 'condition_revision: 2',
+    ), encoding="utf-8")
+    with pytest.raises(RegistrationRejected, match="pack_content_hash_mismatch"):
+        load_pack(child, handlers=HANDLERS, parent_packs=parents, expected_content_hash=loaded.content_hash)
+
+
+def test_pack_does_not_inherit_missing_fields_in_overridden_entry(tmp_path):
+    parent = _pack_with_pool(tmp_path, _POOL_DECLARATION)
+    child, parents = _write_overlay(tmp_path, parent, 'contents:\n  pool_defs: ["stamina"]\n')
+    (child / "pool_defs").mkdir()
+    (child / "pool_defs/stamina.yaml").write_text(
+        'stamina:\n  initial: "65"\n', encoding="utf-8",
+    )
+    with pytest.raises(RegistrationRejected, match="pack_pool_scale_invalid"):
+        load_pack(child, handlers=HANDLERS, parent_packs=parents)
+
+
+def test_pack_overlay_can_narrow_an_inherited_learner_set(tmp_path):
+    parent = shutil.copytree(PACK, tmp_path / "parent")
+    fact_path = Path("fact_types/credential_link.yaml")
+    parent_fact = (parent / fact_path).read_text(encoding="utf-8")
+    audience = '["role:credential_authority"]'
+    (parent / fact_path).write_text(
+        parent_fact.replace(audience, '["role:credential_authority", "role:reviewer"]'),
+        encoding="utf-8",
+    )
+    child, parents = _write_overlay(tmp_path, parent, 'contents:\n  fact_types: ["credential_link"]\n')
+    (child / "fact_types").mkdir()
+    (child / fact_path).write_text(parent_fact, encoding="utf-8")
+
+    loaded = load_pack(child, handlers=HANDLERS, parent_packs=parents)
+    assert loaded.registry.facts["fact:credential:*:link"].visibility["learnable_by"] == (
+        "role:credential_authority",
+    )
+
+
+def test_pack_rejects_unresolved_or_wrong_parent_pin(tmp_path):
+    child, parents = _write_overlay(tmp_path, PACK, parent_id="wrong")
+    with pytest.raises(RegistrationRejected, match="pack_parent_unknown"):
+        load_pack(child, handlers=HANDLERS)
+    with pytest.raises(RegistrationRejected, match="pack_parent_identity_mismatch"):
+        load_pack(child, handlers=HANDLERS, parent_packs=parents)
+
+
+def test_pack_rejects_cycle_in_parent_chain(tmp_path):
+    parent = shutil.copytree(PACK, tmp_path / "parent")
+    child, parents = _write_overlay(tmp_path, parent)
+    manifest = parent / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            "parent_pack: null",
+            'parent_pack: {pack_id: "credential_overlay", pack_version: "2.0.0"}',
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(RegistrationRejected, match="pack_cycle_in_parents"):
+        load_pack(child, handlers=HANDLERS, parent_packs={**parents, ("credential_overlay", "2.0.0"): child})
+
+
+@pytest.mark.parametrize(("old", "new", "code"), [
+    pytest.param('    class: "private"\n', '    class: "public"\n',
+                 "pack_overrides_visibility_requirement", id="visibility"),
+    pytest.param('owner_ref: "Ownership"', 'owner_ref: "Credential"',
+                 "pack_overrides_fact_authority", id="owner"),
+    pytest.param('unknown_policy: "reject"', 'unknown_policy: "degrade"',
+                 "pack_overrides_unknown_policy", id="unknown-policy"),
+])
+def test_pack_overlay_rejects_changes_to_inherited_safety_contracts(tmp_path, old, new, code):
+    child, parents = _write_overlay(tmp_path, PACK, 'contents:\n  fact_types: ["credential_link"]\n')
+    (child / "fact_types").mkdir()
+    base_fact = (PACK / "fact_types/credential_link.yaml").read_text(encoding="utf-8")
+    assert old in base_fact
+    (child / "fact_types/credential_link.yaml").write_text(base_fact.replace(old, new), encoding="utf-8")
+    with pytest.raises(RegistrationRejected, match=code):
+        load_pack(child, handlers=HANDLERS, parent_packs=parents)
+
+
+
 def _copy_pack_for_owner(tmp_path, owner_id):
     destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
