@@ -12,4 +12,10 @@ Python 3.12.2，SQLite 3.43.1。临时检出 `PYTHONPATH=F:/codex-temp/a-ip-f759
 
 U4、U8 离线加载验证，U6 静态核对入口，U10 为本文件，U11 已登记。U1、U2、U3、U5、U7 的域级工作与 U9 声明探针未做。
 
-父包与命令目录合并状态全量待采集。
+## 父包与命令目录合并状态全量
+
+在线程 A 检出 `a750c824a52ef2182aac5655d163a6b1f376f852` 运行 `python docs/verification/g0-939c6746/run_baseline.py --freeze --repo F:/codex-temp/paralls-v2-thread-a-bond-20261121 --output F:/paralls-verification/thread-a/et-04d5bbe5d4/full`。Python 3.12.2，SQLite 3.43.1，仓库 backend 为导入路径。结束 SHA 与开始一致，`source_unchanged=true`。
+
+收集 10,519 节点。原始汇总为 `24 failed, 10491 passed, 2 skipped, 2 xfailed, 239 warnings in 1335.91s (0:22:15)`，退出 1。按节点、阶段、错误类型比较，相对 `47f931fb` 新增 0、恢复 0。相对冻结基线 `3bf3418e` 多两项，均已出现在 `47f931fb`。分别是 `test_population_cold_ready_gate.py::test_cold_ready`（`KeyError`）和 `test_population_recovery_measurement.py::test_recovery_owner_probe_measures_original_startup_before_full_oracle`（`AssertionError`）。
+
+原始输出位于 `F:/paralls-verification/thread-a/et-04d5bbe5d4/`，包含 `full-console.txt`、`full-exit.txt`、`full/environment.json`、`full/results.json` 和 `failure-comparison.json`。该记录覆盖命令目录和父包叠层合并状态。
