@@ -31,6 +31,7 @@ class LoadedPack:
     entity_types: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     impact_profiles: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     aggregation_models: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+    bindings: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -175,6 +176,22 @@ def _aggregation_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[t
             yield "pack_aggregation_triggers_invalid", "list unique distribution refold triggers"
 
 
+def _binding_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[tuple[str, str]]:
+    fields = {"applies_to", "cost_model", "description", "version", "deprecated"}
+    if not isinstance(spec, dict) or spec.keys() - fields:
+        yield "pack_schema_invalid", "declare only skill cost binding fields"
+        return
+    targets = spec.get("applies_to")
+    if (not isinstance(targets, list) or not targets
+            or any(not isinstance(target, str) or not re.fullmatch(r"skill:[a-z][a-z0-9_-]*", target)
+                   for target in targets)
+            or len(set(targets)) != len(targets)):
+        yield "pack_binding_targets_invalid", "list unique qualified skill references"
+    model_ref = spec.get("cost_model")
+    if not isinstance(model_ref, str) or model_ref not in registry.models:
+        yield "pack_binding_model_unknown", "reference a registered cost Resolver"
+
+
 def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: bool = False) -> LoadedPack:
     directory = directory.resolve()
     issues: list[Violation] = []
@@ -273,7 +290,8 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
         reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
     contents = manifest.get("contents", {})
     sections = {name: {} for name in (
-        "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles", "aggregation_models",
+        "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles",
+        "aggregation_models", "bindings",
     )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
@@ -366,10 +384,11 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
                 spec, registry=registry, entity_types=sections["entity_types"], fact_specs=sections["fact_types"],
             ):
                 reject(code, target, file, line, hint)
-        for target, spec in sections["aggregation_models"].items():
-            file, line = locations["aggregation_models", target]
-            for code, hint in _aggregation_violations(spec, registry):
-                reject(code, target, file, line, hint)
+        for section, validate in (("aggregation_models", _aggregation_violations), ("bindings", _binding_violations)):
+            for target, spec in sections[section].items():
+                file, line = locations[section, target]
+                for code, hint in validate(spec, registry):
+                    reject(code, target, file, line, hint)
     if issues:
         unique = {(v.code, v.target, v.file, v.line): v for v in issues}
         raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
@@ -379,5 +398,5 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
         manifest["pack_id"], manifest["pack_version"], content_hash, registry,
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
-        freeze(sections["aggregation_models"]),
+        freeze(sections["aggregation_models"]), freeze(sections["bindings"]),
     )

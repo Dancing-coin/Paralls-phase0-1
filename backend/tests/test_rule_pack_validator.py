@@ -341,6 +341,56 @@ def test_pack_rejects_invalid_aggregation_model(tmp_path, old, new, code):
 
 
 
+_COST_BINDING_DECLARATION = dedent("""\
+    "spirit_cost_abilities@1":
+      applies_to: ["skill:charge", "skill:shout"]
+      cost_model: "credential_command@1"
+    """)
+
+
+def _pack_with_cost_binding(tmp_path, declaration):
+    destination = shutil.copytree(PACK, tmp_path / "binding-pack")
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'contents:\n', 'contents:\n  bindings: ["spirit_cost"]\n'
+        ),
+        encoding="utf-8",
+    )
+    bindings = destination / "bindings"
+    bindings.mkdir()
+    (bindings / "spirit_cost.yaml").write_text(declaration, encoding="utf-8")
+    return destination
+
+
+def test_pack_loads_cost_model_binding(tmp_path):
+    destination = _pack_with_cost_binding(tmp_path, _COST_BINDING_DECLARATION)
+    loaded = load_pack(destination, handlers=HANDLERS)
+    binding = loaded.bindings["spirit_cost_abilities@1"]
+    assert binding["cost_model"] in loaded.registry.models
+    assert binding["applies_to"] == ("skill:charge", "skill:shout")
+    with pytest.raises(TypeError):
+        binding["applies_to"] = ()
+    assert not load_pack(PACK, handlers=HANDLERS).bindings
+
+
+@pytest.mark.parametrize(("old", "new", "code"), [
+    pytest.param('"credential_command@1"', '"unknown@1"', "pack_binding_model_unknown", id="unknown-model"),
+    pytest.param('["skill:charge", "skill:shout"]', '[]', "pack_binding_targets_invalid", id="empty-targets"),
+    pytest.param('"skill:charge"', '"charge"', "pack_binding_targets_invalid", id="unqualified-target"),
+    pytest.param('"skill:shout"', '"skill:charge"', "pack_binding_targets_invalid", id="duplicate-target"),
+])
+def test_pack_rejects_invalid_cost_model_binding(tmp_path, old, new, code):
+    destination = _pack_with_cost_binding(tmp_path, _COST_BINDING_DECLARATION.replace(old, new))
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+    matching = [violation for violation in error.value.violations if violation.code == code]
+    assert [(v.target, Path(v.file).name, v.line) for v in matching] == [
+        ("spirit_cost_abilities@1", "spirit_cost.yaml", 1)
+    ]
+
+
+
 def _copy_pack_for_owner(tmp_path, owner_id):
     destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
