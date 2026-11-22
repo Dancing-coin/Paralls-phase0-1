@@ -19,14 +19,29 @@
 
 | 检查 | 线程 A | 线程 B | 证据（命令与原始输出） |
 |---|---|---|---|
-| 范围检查（对照 BOUNDARIES.md） | 满足 / 不满足 | 满足 / 不满足 | |
-| claims 检查 | | | |
-| 密钥扫描（P-1，含"是否已公开"列） | | | |
+| G0 账本与标准挂钩（`board.md` 有行且标成功标准编号） | 满足 / 不满足 | 满足 / 不满足 | |
+| G1 范围检查（对照 BOUNDARIES.md） | | | |
+| G2 claims 检查 | | | |
+| G3 事件可见性（P-3 断言） | | | |
+| G4 单元 DoD（U1–U11，仅域迁移类） | | | |
+| G6 密钥扫描（P-1，含"是否已公开"列） | | | |
+| G7 单元选集登记（`docs/verification/selection/<unit>.json`） | | | |
 
 ### 验证
 
 - 实际执行深度：选集 / 全量（**只跑选集时不得写"全量回归通过"**）
-- 比较对象：冻结基线 M `3bf3418e`（22 个失败）
+- 比较对象：冻结基线 M `3bf3418e`（22 个失败）+ 各单元登记文件里的 outcome
+- 逐组结果（**每组都列，不得只写总数**）：
+
+| 选集分组 | selected | problems | improvements |
+|---|---:|---:|---:|
+| absorb-main/ownership | | | |
+| absorb-main/modifier | | | |
+| absorb-main/equipment | | | |
+| absorb-main/inventory | | | |
+| absorb-main/shared-replay | | | |
+| selection/&lt;unit&gt; | | | |
+
 - 新增失败：
 - 失败转通过（只记录，不计进度）：
 - 环境未验证项：

@@ -16,7 +16,7 @@
 | 合并执行者 | 把线程提交合并进 `integration` 的操作者：第三个 Codex 线程或项目负责人本人 |
 | `integration` | 汇合分支，只由合并执行者写 |
 | 基线失败节点 | `docs/verification/absorb-main-3bf3418e/README.md`「失败集合」表中的 22 个节点 |
-| 选集 | 同目录下 `ownership/modifier/equipment/inventory/shared-replay` 五组，共 1,169 个节点 |
+| 选集 | 两部分：①`absorb-main-3bf3418e/` 下 `ownership/modifier/equipment/inventory/shared-replay` 五组，共 1,169 个节点；②`docs/verification/selection/*.json` 下各迁移单元自行登记的分组。**选集随迁移增长**（规格 U11），不再固定 1,169 个节点 |
 
 **为什么仍有协议：** 两个 Codex 线程互相看不到对方的上下文。归属、登记与交接必须落在仓库文件里，聊天和记忆不算数。
 
