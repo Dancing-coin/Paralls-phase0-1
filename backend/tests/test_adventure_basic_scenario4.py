@@ -84,6 +84,24 @@ def test_scenario4_replays_an_identical_land_right_transfer_without_a_second_tit
     assert scenario.ownership().rights[scenario.land_right_id].holder_ref == scenario.recipient_ref
 
 
+def test_scenario4_land_right_transfer_reads_one_event_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    scenario = _purchased_scenario()
+    assert scenario.issue_deed_credential().committed
+    read_count = 0
+    read_events = scenario.store.read_events
+
+    def counted_read_events(*args, **kwargs):
+        nonlocal read_count
+        read_count += 1
+        return read_events(*args, **kwargs)
+
+    monkeypatch.setattr(scenario.store, "read_events", counted_read_events)
+    result = scenario.transfer_land_right()
+
+    assert result.committed
+    assert read_count == 1
+
+
 def test_land_right_replay_rejects_changed_revision_and_missing_receipt(monkeypatch: pytest.MonkeyPatch) -> None:
     scenario = _purchased_scenario()
     assert scenario.issue_deed_credential().committed

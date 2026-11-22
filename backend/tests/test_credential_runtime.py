@@ -73,6 +73,34 @@ def test_credential_records_issuance_holder_attestation_without_becoming_current
     assert OwnershipProjector().rebuild(store.read_events()).rights[RIGHT].holder_ref == "actor:bob"
 
 
+def test_supersede_credential_reads_one_event_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    store, _, service = _setup()
+    _issue(service)
+    read_count = 0
+    read_events = store.read_events
+
+    def counted_read_events(*args, **kwargs):
+        nonlocal read_count
+        read_count += 1
+        return read_events(*args, **kwargs)
+
+    monkeypatch.setattr(store, "read_events", counted_read_events)
+    result = service.supersede_credential(
+        command_id="cmd:supersede",
+        prior_credential_id="credential:deed:1",
+        replacement_credential_id="credential:deed:2",
+        replacement_item_ref="item:deed:2",
+        replacement_holder_ref="actor:alice",
+        issuer_ref="authority:land-registry",
+        idempotency_key="supersede",
+        causation_id="cause",
+        correlation_id="corr",
+    )
+
+    assert result.committed
+    assert read_count == 1
+
+
 def test_revoke_and_supersede_change_only_credential_link_state() -> None:
     store, _, service = _setup()
     _issue(service)
@@ -228,6 +256,33 @@ def _credential_command(service: CredentialAuthorityService, kind: str):
         replacement_item_ref="item:deed:2", replacement_holder_ref="actor:alice",
         issuer_ref="authority:land-registry",
     )
+
+
+def test_supersede_pins_inventory_head_from_the_event_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
+    store, registry, service = _setup()
+    assert _issue(service).committed
+    read_events = store.read_events
+    inventory = InventoryAuthorityService(store=store, registry=registry)
+
+    def read_during_inventory_update():
+        events = read_events()
+        monkeypatch.setattr(store, "read_events", read_events)
+        assert inventory.create_container(
+            command_id="cmd:concurrent-bag", actor_ref="actor:alice",
+            spec=ContainerSpec("container:concurrent-bag", 1, 1, 2),
+            idempotency_key="concurrent-bag", causation_id="cause", correlation_id="corr",
+        ).committed
+        return events
+
+    monkeypatch.setattr(store, "read_events", read_during_inventory_update)
+    command, args = _credential_command(service, "supersede")
+    result = command(**args)
+
+    assert not result.committed
+    assert result.failure.error_code == "revision_conflict"
+    links = CredentialProjector().rebuild(read_events()).links
+    assert links["credential:deed:1"].status == "active"
+    assert "credential:deed:2" not in links
 
 
 @pytest.mark.parametrize("kind", ["issue", "revoke", "supersede"])

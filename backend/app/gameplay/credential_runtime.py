@@ -11,7 +11,7 @@ from typing import Mapping, Sequence
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult, GameplayEvent
-from app.gameplay.owner_runtime_base import OwnerCommitBuilder, replay_duplicate
+from app.gameplay.owner_runtime_base import OwnerCommitBuilder, StoreReadSnapshot, replay_duplicate
 from app.gameplay.ownership_runtime import OwnershipProjector
 from app.gameplay.credential_v2_event_schema import (
     CredentialV2EventSchemaError,
@@ -191,7 +191,15 @@ class CredentialPresentationValidator:
 
     def verify_right_holder_presentation(self, *, credential_id: str, presenter_ref: str,
                                          world_tick: int | None = None) -> CredentialPresentationDecision:
-        events = self._store.read_events()
+        return self._verify_presentation_from_events(
+            self._store.read_events(), credential_id=credential_id,
+            presenter_ref=presenter_ref, world_tick=world_tick,
+        )
+
+    def _verify_presentation_from_events(
+        self, events: Sequence[GameplayEvent], *, credential_id: str, presenter_ref: str,
+        world_tick: int | None,
+    ) -> CredentialPresentationDecision:
         links = self._credential_projector.rebuild(events).links
         link = links.get(credential_id)
         if link is None or link.status != "active":
@@ -262,6 +270,7 @@ class CredentialAuthorityService:
         self._projector = CredentialProjector(credential_kinds=self._credential_kinds, proves=self._proves)
         self._ownership_projector = OwnershipProjector()
         self._inventory_projector = InventoryProjector(inventory_registry)
+        self._reads = StoreReadSnapshot(store)
         self._v2_enabled = False
 
     def activate_authority_fence(self) -> None:
@@ -444,16 +453,19 @@ class CredentialAuthorityService:
         duplicate = self._duplicate(idempotency_key, digest, command_id, event_types, principal=principal)
         if duplicate is not None:
             return duplicate
-        credential_events = self._store.read_events()
+        credential_events = self._reads.all_events()
         projection = self._projector.rebuild(credential_events)
         prior = projection.links.get(prior_credential_id)
         if prior is None or prior.status != "active" or prior.issuer_ref != issuer_ref or replacement_credential_id in projection.links or not replacement_item_ref or not replacement_holder_ref:
             raise CredentialRuntimeError("credential_not_active")
-        replacement_inventory = self._inventory_projector.rebuild(replacement_holder_ref, self._store.read_events())
+        replacement_inventory = self._inventory_projector.rebuild(replacement_holder_ref, credential_events)
         if replacement_item_ref not in replacement_inventory.items or replacement_item_ref not in replacement_inventory.locations:
             raise CredentialRuntimeError("credential_item_not_present")
         inventory_stream = f"gameplay:inventory:{replacement_holder_ref}"
-        inventory_revision = self._store.get_stream_head(inventory_stream)
+        inventory_revision = max(
+            (event.stream_revision for event in credential_events if event.stream_id == inventory_stream),
+            default=0,
+        )
         if self._v2_enabled:
             if any(link.credential_item_ref == replacement_item_ref and link.status == "active"
                    and link.credential_id != prior_credential_id for link in projection.links.values()):
@@ -507,7 +519,7 @@ class CredentialAuthorityService:
             self._event(command_id, 1, "gameplay.credential.superseded", {"credential_id": prior_credential_id, "replacement_credential_id": replacement_credential_id, "issuer_ref": issuer_ref}, causation_id, correlation_id),
             self._event(command_id, 2, "gameplay.credential.issued", {"credential_id": replacement_credential_id, "credential_item_ref": replacement_item_ref, "issued_holder_ref": replacement_holder_ref, "issued_holder_inventory_revision": inventory_revision, "right_id": prior.right_id, "credential_kind": prior.credential_kind, "proves": prior.proves, "issuer_ref": issuer_ref}, causation_id, correlation_id),
         ]
-        return self._append(command_id, idempotency_key, digest, events, {self._STREAM: self._store.get_stream_head(self._STREAM), inventory_stream: inventory_revision})
+        return self._append(command_id, idempotency_key, digest, events, {self._STREAM: projection.source_revision_vector.get(self._STREAM, 0), inventory_stream: inventory_revision})
 
     def _append(self, command_id: str, idempotency_key: str, digest: str,
                 events: list[dict[str, object]], revisions: Mapping[str, int], *,

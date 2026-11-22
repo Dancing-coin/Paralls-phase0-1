@@ -15,7 +15,7 @@ from app.gameplay.credential_runtime import (
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult
-from app.gameplay.owner_runtime_base import replay_duplicate
+from app.gameplay.owner_runtime_base import StoreReadSnapshot, replay_duplicate
 from app.gameplay.ownership_runtime import (
     OwnershipAuthorityService,
     OwnershipProjector,
@@ -51,6 +51,7 @@ class LandRightTransferAuthority:
         policies: tuple[LandRightTransferPolicy, ...],
     ) -> None:
         self._store = store
+        self._reads = StoreReadSnapshot(store)
         self._inventory_projector = InventoryProjector(inventory_registry)
         self._ownership_projector = OwnershipProjector()
         self._credential_projector = CredentialProjector()
@@ -122,7 +123,7 @@ class LandRightTransferAuthority:
         if expected_ownership_revision != ownership_revision:
             raise LandRightRuntimeError("land_right_revision_conflict")
 
-        events = self._store.read_events()
+        events = self._reads.all_events()
         ownership = self._ownership_projector.rebuild(events)
         if ownership.source_revision_vector.get(self._OWNERSHIP_STREAM, 0) != ownership_revision:
             raise LandRightRuntimeError("land_right_revision_conflict")
@@ -149,7 +150,8 @@ class LandRightTransferAuthority:
             or credential.proves != policy.credential_proves
         ):
             raise LandRightRuntimeError("land_right_credential_required")
-        presentation = self._credential_validator.verify_right_holder_presentation(
+        presentation = self._credential_validator._verify_presentation_from_events(
+            events,
             credential_id=credential_id,
             presenter_ref=from_holder_ref,
             world_tick=world_tick,

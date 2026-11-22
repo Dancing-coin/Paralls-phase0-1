@@ -3,7 +3,7 @@
 from collections.abc import Mapping, Sequence
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.models import AppendBatchResult, GameplayFailure
+from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
 
 
 class OwnerCommitBuilder:
@@ -65,3 +65,24 @@ def rejected_result(*, command_id: str, error_code: str, stage: str,
         idempotency_status="rejected",
         failure=GameplayFailure(error_code=error_code, message=error_code, failed_stage=stage),
     )
+
+
+class StoreReadSnapshot:
+    """Reuse a tuple of store events for read-only projection at the same head."""
+
+    __slots__ = ("_store", "_events")
+
+    def __init__(self, store: GameplayEventStore) -> None:
+        self._store = store
+        self._events: tuple[GameplayEvent, ...] | None = None
+
+    def all_events(self) -> tuple[GameplayEvent, ...]:
+        events = self._events
+        if events is not None:
+            head = events[-1].global_sequence if events else 0
+            if head == self._store.get_last_global_sequence():
+                return events
+
+        events = tuple(self._store.read_events())
+        self._events = events
+        return events
