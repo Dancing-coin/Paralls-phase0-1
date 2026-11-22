@@ -40,6 +40,7 @@ class LoadedPack:
     aggregation_models: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     bindings: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     resolved_packs: tuple[PackRevision, ...] = ()
+    command_catalog: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -200,6 +201,37 @@ def _binding_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[tuple
         yield "pack_binding_model_unknown", "reference a registered cost Resolver"
 
 
+def _command_violations(
+    command_type: str, spec: Mapping[str, Any], owner_domains: Mapping[str, str], owners: list[str],
+) -> Iterator[tuple[str, str]]:
+    fields = {"version", "handled_by", "payload_schema", "requires_authority", "idempotency_shape",
+              "description", "deprecated"}
+    if spec.keys() - fields:
+        yield "pack_schema_invalid", "declare only Command catalog fields"
+
+    if not re.fullmatch(r"[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*", command_type):
+        yield "pack_command_name_invalid", "use the domain.verb command name"
+    elif command_type.partition(".")[0] not in owner_domains.values():
+        yield "pack_command_domain_unknown", "reference a code-registered Owner domain"
+
+    owner = spec.get("handled_by")
+    if not isinstance(owner, str) or owner not in owners or owner not in owner_domains:
+        yield "pack_command_owner_unknown", "declare a single code-registered handler Owner"
+    version = spec.get("version")
+    if type(version) is not int or version < 1:
+        yield "pack_command_version_invalid", "use a positive command version"
+    payload_schema = spec.get("payload_schema")
+    if not isinstance(payload_schema, str) or not payload_schema.strip():
+        yield "pack_command_payload_schema_invalid", "declare a payload schema reference"
+    if type(spec.get("requires_authority")) is not bool:
+        yield "pack_command_authority_invalid", "declare whether a grant is required"
+    if spec.get("idempotency_shape") not in (
+        "command_id", "command_id + step", "principal_ref + idempotency_key",
+        "effect_id + scheduled_world_tick",
+    ):
+        yield "pack_command_idempotency_shape_invalid", "declare a registered command idempotency shape"
+
+
 @dataclass
 class _PackSource:
     manifest_path: Path
@@ -318,7 +350,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
     contents = manifest.get("contents", {})
     sections = {name: {} for name in (
         "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles",
-        "aggregation_models", "bindings",
+        "aggregation_models", "bindings", "command_catalog",
     )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
@@ -424,6 +456,7 @@ def load_pack(
     directory: Path, *, handlers: Mapping[str, Callable], running: bool = False,
     parent_packs: Mapping[tuple[str, str], Path] | None = None,
     expected_content_hash: str | None = None,
+    owner_domains: Mapping[str, str] | None = None,
 ) -> LoadedPack:
     leaf = _read_pack(directory, running=running)
     manifest_path = leaf.manifest_path
@@ -468,6 +501,14 @@ def load_pack(
                 reject("pack_overrides_fact_authority", target, file, line, "preserve the inherited FactType authority and primitive")
             if previous.get("unknown_policy") != spec.get("unknown_policy"):
                 reject("pack_overrides_unknown_policy", target, file, line, "preserve the inherited unknown policy")
+        for target, spec in source.sections["command_catalog"].items():
+            previous = sections["command_catalog"].get(target)
+            if previous is None:
+                continue
+            file, line = source.locations["command_catalog", target]
+            if (previous.get("handled_by") != spec.get("handled_by")
+                    or (previous.get("requires_authority") is True and spec.get("requires_authority") is False)):
+                reject("pack_overrides_command_authority", target, file, line, "preserve inherited command authority")
         for section, entries in source.sections.items():
             sections[section].update(entries)
         locations.update(source.locations)
@@ -480,6 +521,14 @@ def load_pack(
 
     order = manifest.get("resolve_order")
     owners = manifest["owners"]
+    registered_domains = {
+        owner: domain for owner, domain in (owner_domains or {}).items()
+        if owner in REGISTERED_OWNER_IDS and owner != "Credential"
+    }
+    for target, spec in sections["command_catalog"].items():
+        file, line = locations["command_catalog", target]
+        for code, hint in _command_violations(target, spec, registered_domains, owners):
+            reject(code, target, file, line, hint)
     revisions = tuple(source.revision for source in chain)
     content_hash = leaf.revision.content_hash
     if len(revisions) > 1:
@@ -515,4 +564,5 @@ def load_pack(
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
         freeze(sections["aggregation_models"]), freeze(sections["bindings"]), revisions,
+        freeze(sections["command_catalog"]),
     )

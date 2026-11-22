@@ -515,6 +515,89 @@ def test_pack_overlay_rejects_changes_to_inherited_safety_contracts(tmp_path, ol
 
 
 
+_COMMAND_CATALOG_DECLARATION = dedent("""\
+    ownership.record_deed:
+      version: 1
+      handled_by: "Ownership"
+      payload_schema: "record_deed@v1"
+      requires_authority: true
+      idempotency_shape: "command_id"
+    """)
+
+
+def _pack_with_command_catalog(tmp_path, declaration):
+    destination = shutil.copytree(PACK, tmp_path / "command-pack")
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'contents:\n', 'contents:\n  command_catalog: ["deed"]\n'
+        ),
+        encoding="utf-8",
+    )
+    catalog = destination / "command_catalog"
+    catalog.mkdir()
+    (catalog / "deed.yaml").write_text(declaration, encoding="utf-8")
+    return destination
+
+
+@pytest.mark.parametrize("shape", [
+    "command_id",
+    "command_id + step",
+    "principal_ref + idempotency_key",
+    "effect_id + scheduled_world_tick",
+])
+def test_pack_loads_command_catalog_with_registered_domain_and_handler(tmp_path, shape):
+    destination = _pack_with_command_catalog(
+        tmp_path, _COMMAND_CATALOG_DECLARATION.replace('"command_id"', f'"{shape}"'),
+    )
+    loaded = load_pack(destination, handlers=HANDLERS, owner_domains={"Ownership": "ownership"})
+    command = loaded.command_catalog["ownership.record_deed"]
+    assert command["idempotency_shape"] == shape
+    assert command["handled_by"] == "Ownership"
+    with pytest.raises(TypeError):
+        command["version"] = 2
+    assert not load_pack(PACK, handlers=HANDLERS).command_catalog
+
+
+@pytest.mark.parametrize(("old", "new", "code"), [
+    pytest.param("ownership.record_deed", "inventory.record_deed", "pack_command_domain_unknown", id="domain"),
+    pytest.param("ownership.record_deed", "record_deed", "pack_command_name_invalid", id="name"),
+    pytest.param('"Ownership"', '"Credential"', "pack_command_owner_unknown", id="owner"),
+    pytest.param('"Ownership"', '["Ownership"]', "pack_command_owner_unknown", id="multiple-owners"),
+    pytest.param("version: 1", "version: true", "pack_command_version_invalid", id="version"),
+    pytest.param('"record_deed@v1"', '""', "pack_command_payload_schema_invalid", id="schema"),
+    pytest.param("requires_authority: true", "requires_authority: 1", "pack_command_authority_invalid", id="authority"),
+    pytest.param('"command_id"', '"unknown_key"', "pack_command_idempotency_shape_invalid", id="idempotency"),
+])
+def test_pack_rejects_invalid_command_catalog_entry(tmp_path, old, new, code):
+    destination = _pack_with_command_catalog(tmp_path, _COMMAND_CATALOG_DECLARATION.replace(old, new))
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS, owner_domains={"Ownership": "ownership"})
+    assert [(Path(v.file).name, v.line) for v in error.value.violations if v.code == code] == [("deed.yaml", 1)]
+
+
+def test_pack_cannot_declare_its_own_command_domain(tmp_path):
+    destination = _pack_with_command_catalog(tmp_path, _COMMAND_CATALOG_DECLARATION)
+    manifest = destination / "pack.yaml"
+    with manifest.open("a", encoding="utf-8") as stream:
+        stream.write('owner_domains: {Ownership: "ownership"}\n')
+    with pytest.raises(RegistrationRejected, match="pack_command_domain_unknown"):
+        load_pack(destination, handlers=HANDLERS)
+
+
+
+def test_pack_overlay_cannot_drop_inherited_command_authority(tmp_path):
+    parent = _pack_with_command_catalog(tmp_path, _COMMAND_CATALOG_DECLARATION)
+    child, parents = _write_overlay(tmp_path, parent, 'contents:\n  command_catalog: ["deed"]\n')
+    (child / "command_catalog").mkdir()
+    (child / "command_catalog/deed.yaml").write_text(
+        _COMMAND_CATALOG_DECLARATION.replace("requires_authority: true", "requires_authority: false"),
+        encoding="utf-8",
+    )
+    with pytest.raises(RegistrationRejected, match="pack_overrides_command_authority"):
+        load_pack(child, handlers=HANDLERS, parent_packs=parents, owner_domains={"Ownership": "ownership"})
+
+
 def _copy_pack_for_owner(tmp_path, owner_id):
     destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
