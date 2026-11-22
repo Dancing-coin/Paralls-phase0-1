@@ -1,0 +1,31 @@
+{
+  "head": "1f6aff2e3c4ec98809ba334b4f7085a0253162f0",
+  "description": "M5-1 entity type declarations and registered FactType slot patterns",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_entity_type_slots_from_registered_facts",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_entity_type_slots[missing-slots]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_entity_type_slots[invalid-slot]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_entity_type_slots[unknown-fact]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_invalid_entity_type_slots[duplicate-slot]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
