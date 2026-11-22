@@ -26,7 +26,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M1-3 Pool 原语 | A | 待门禁 | 代码提交 `e6cb728c`、`022f1772`；证据 `docs/verification/m1-3-pool-runtime-20261122.md` | 定向 15 passed；五组冻结选集 1,169 节点与 Pool 单元选集 15 均 problems=0、improvements=0；合并状态全量 10,433 passed、24 个既有失败，逐节点新增 0；U1、U2、U5、U7、U8 缺口见证据 | 3 |
 | M1-4 Place 原语 | A | 待开工 | 同上 | 第 3 波后 | 3 |
 | M1-5 Process 归并 | A | 待开工 | 同上 | S-5 已定：排在域迁移之后 | 3 |
-| M2-1 读取边界清单更新 | A | 待开工 | 更新的清单 | 随各域迁移 | 4 |
+| M2-1 读取边界清单更新 | A | 进行中 | Ownership / Credential 切片静态分类见 `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`，基于 `e349187e` | 随各域迁移继续更新 | 4 |
 | M2-2 `read_as` | A | 阻塞 | 读取层入口 + 拒绝码 | 缺 event_time、principal 资格解析、event_type→FactType/visibility 映射及可接入的已迁移域读取方；见 H-A-005 | 4 |
 | M2-3 known_time 推广 | A | 待开工 | 同上 | 随 M2-2 | 4 |
 | M2-4 投影增量推进 | A | 待门禁 | 现有 `GameplayProjectionReplay` / `GameplayProjectionStartup`；证据 `docs/verification/m2-4-projection-incremental-20261123.md` | replay/startup 定向 15 passed；cursor、stream 连续性、失败关闭与 checkpoint-free rebuild 有测试；未修改共享 replay 源码。缓存性能方案已由共享 Owner 文档改列 M3-2 `StoreReadSnapshot` | 7 |
