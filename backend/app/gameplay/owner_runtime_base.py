@@ -1,7 +1,44 @@
 """Shared owner mechanics; domain validation and commit semantics remain local."""
 
+from collections.abc import Mapping, Sequence
+
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayFailure
+
+
+class OwnerCommitBuilder:
+    @staticmethod
+    def build(
+        *,
+        principal_ref: str,
+        command_id: str,
+        transaction_id: str,
+        idempotency_key: str,
+        payload_digest: str,
+        events: Sequence[Mapping[str, object]],
+        expected_stream_revisions: Mapping[str, int],
+        pinned_revisions: Mapping[str, int],
+        result_digest: str,
+        read_stream_revisions: Mapping[str, int] | None = None,
+    ) -> dict[str, object]:
+        batch: dict[str, object] = {
+            "transaction_id": transaction_id,
+            "command_id": command_id,
+            "expected_stream_revisions": dict(expected_stream_revisions),
+            "pinned_revisions": dict(pinned_revisions),
+            "events": list(events),
+            "idempotency_record": {
+                "principal_ref": principal_ref,
+                "idempotency_key": idempotency_key,
+                "payload_digest": payload_digest,
+            },
+            "outbox_entries": [],
+            "result_digest": result_digest,
+            "projection_refresh_hints": [],
+        }
+        if read_stream_revisions is not None:
+            batch["read_stream_revisions"] = dict(read_stream_revisions)
+        return batch
 
 
 def replay_duplicate(

@@ -15,7 +15,7 @@ from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AppendBatchResult, GameplayEvent, OwnerAuthorizedFragment, StrictGameplayModel
-from app.gameplay.owner_runtime_base import rejected_result, replay_duplicate
+from app.gameplay.owner_runtime_base import OwnerCommitBuilder, rejected_result, replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
@@ -1266,7 +1266,17 @@ class OwnershipAuthorityService:
         stream_id = "gameplay:ownership"
         transaction_id = f"tx:{command_id}"
         event = {"event_id": f"evt:{command_id}:ownership", "event_type": event_type, "schema_version": 1, "stream_id": stream_id, "stream_revision": 0, "global_sequence": 0, "transaction_id": transaction_id, "command_id": command_id, "causation_id": causation_id, "correlation_id": correlation_id, "visibility_policy": "authority_only", "payload": payload}
-        return self._store.append_batch({"transaction_id": transaction_id, "command_id": command_id, "expected_stream_revisions": {stream_id: projection.source_revision_vector.get(stream_id, 0)}, "pinned_revisions": {"ownership": projection.source_revision_vector.get(stream_id, 0)}, "events": [event], "idempotency_record": {"principal_ref": self._PRINCIPAL, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": _digest(event), "projection_refresh_hints": []})
+        return self._store.append_batch(OwnerCommitBuilder.build(
+            principal_ref=self._PRINCIPAL,
+            command_id=command_id,
+            transaction_id=transaction_id,
+            idempotency_key=idempotency_key,
+            payload_digest=digest,
+            events=[event],
+            expected_stream_revisions={stream_id: projection.source_revision_vector.get(stream_id, 0)},
+            pinned_revisions={"ownership": projection.source_revision_vector.get(stream_id, 0)},
+            result_digest=_digest(event),
+        ))
 
     @staticmethod
     def _rejected_append(command_id: str, error_code: str) -> AppendBatchResult:

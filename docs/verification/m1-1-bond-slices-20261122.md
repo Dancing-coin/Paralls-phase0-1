@@ -86,7 +86,7 @@ RG 全仓调用与 schema 搜索还覆盖测试和脚本。未发现除上述 pr
 
 ## 合并状态全量（独立于逐片验证）
 
-在工作分支 tip `ae7d650eb93baa35748bbf9a97c3c021d89a0fd4` 用 `docs/verification/g0-939c6746/run_baseline.py --repo <worktree> --output <new-dir> --freeze` 串行运行；不是 detached 单片验证。环境 Python 3.12.2，`app.__file__` 在当前 worktree，SQLite 3.43.1。实际收集 10,417 项：**24 failed, 10,389 passed, 2 skipped, 2 xfailed，退出码 1**。原始日志、results、environment、JUnit 在 `F:\paralls-verification\thread-a\m1-1-full-ae7d650e-de7850922c1140ae9b19a7483ab7281b\full\`。
+此结果是包含代码提交 `b700f8c8788d04ccffbc9dcd8ebb909aca768584` 与 `ae7d650eb93baa35748bbf9a97c3c021d89a0fd4` 的工作区合并状态全量运行，不是任何一个单独切片的验证结果；它与上文 detached worktree 中逐片定向测试和冻结选集证据分开记录。在当时工作区用 `docs/verification/g0-939c6746/run_baseline.py --repo <worktree> --output <new-dir> --freeze` 串行运行。环境 Python 3.12.2，`app.__file__` 在当前 worktree，SQLite 3.43.1。实际收集 10,417 项：**24 failed, 10,389 passed, 2 skipped, 2 xfailed，退出码 1**。原始日志、results、environment、JUnit 在 `F:\paralls-verification\thread-a\m1-1-full-ae7d650e-de7850922c1140ae9b19a7483ab7281b\full\`。
 
 冻结记录原有 22 个失败；另外 `test_population_cold_ready_gate.py::test_cold_ready` 与 `test_population_recovery_measurement.py::test_recovery_owner_probe_measures_original_startup_before_full_oracle` 在未含 M1-1 改动的 `0e67fe81` worktree 单独复跑仍失败，前者为 `KeyError: resource_bounds`，后者在隔离复跑时因 pytest 临时路径 / 继承 Git 配置而失败。清除空 `GIT_CONFIG_VALUE_0` 并将 `TMP/TMPDIR/--basetemp` 指向 F 盘后，这两项单测为 2 passed。全量退出码仍为 1；全量命令意外沿用环境 `TMPDIR` 在 D 盘创建约 935 MB 的 pytest 临时数据，真实目录已移至 F 盘，残留仅为指向本轮目录的 `*current` 符号链接。**因此全量不记作通过，也不替代逐片结果。**
 

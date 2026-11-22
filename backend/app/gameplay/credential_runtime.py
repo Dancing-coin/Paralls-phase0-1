@@ -11,7 +11,7 @@ from typing import Mapping, Sequence
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import InventoryDefinitionRegistry, InventoryProjector
 from app.gameplay.models import AppendBatchResult, GameplayEvent
-from app.gameplay.owner_runtime_base import replay_duplicate
+from app.gameplay.owner_runtime_base import OwnerCommitBuilder, replay_duplicate
 from app.gameplay.ownership_runtime import OwnershipProjector
 from app.gameplay.credential_v2_event_schema import (
     CredentialV2EventSchemaError,
@@ -532,7 +532,17 @@ class CredentialAuthorityService:
             if authority["scope_ref"] != self._AUTHORITY_SCOPE or authority["writer_ref"] != principal:
                 raise CredentialRuntimeError("credential_authority_fence_mismatch")
             authority_contexts.append(authority)
-        batch = {"transaction_id": f"tx:{command_id}", "command_id": command_id, "expected_stream_revisions": dict(revisions), "pinned_revisions": dict(revisions), "events": events, "idempotency_record": {"principal_ref": principal, "idempotency_key": idempotency_key, "payload_digest": digest}, "outbox_entries": [], "result_digest": digest, "projection_refresh_hints": []}
+        batch = OwnerCommitBuilder.build(
+            principal_ref=principal,
+            command_id=command_id,
+            transaction_id=f"tx:{command_id}",
+            idempotency_key=idempotency_key,
+            payload_digest=digest,
+            events=events,
+            expected_stream_revisions=revisions,
+            pinned_revisions=revisions,
+            result_digest=digest,
+        )
         if authority_contexts:
             return self._store.append_batch(batch, authority_contexts=authority_contexts)
         return self._store.append_batch(batch)
