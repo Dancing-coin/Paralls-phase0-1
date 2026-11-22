@@ -37,7 +37,7 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M3-3 R2 推广 | A/B | 待开工 | 按域并入 | 每域单独提交 | 7 |
 | M3-4 `pinned_revisions` 校验 | A | 阻塞 | — | S-4 未决 | 3 |
 | M4 第 1 波其余域 | 未定 | 待开工 | 每域一份设计与证据 | 待 M0-6 | 1–11 |
-| M4-1 LifeState | B | 待门禁 | `docs/verification/life-state-20261122/`；`docs/verification/selection/life_state.json` | 定向与六组回归比较已跑；U1/U7/U8 偏离见证据，未作 v2 完成声明 | 1–11 |
+| M4-1 LifeState | B | 待门禁 | `docs/verification/life-state-20261122/`；`docs/verification/selection/life_state.json` | 自测提交 `8eeaa881`；定向与六组回归比较已跑；U1/U7/U8 偏离见证据，未作 v2 完成声明 | 1–11 |
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |
 | M4 第 3 波（含 debt） | 未定 | 待开工 | 同上 | debt 归属 Economy/Market，枢纽 | 1–11 |
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
