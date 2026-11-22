@@ -41,3 +41,15 @@
 - `temporal_effects`、`aggregation_models`、`bindings` 的清单入口已有定义。需要逐项核对条目 schema、引用空间和消费边界。父包、迁移事件与版本回放仍归 M5-2、M5-3。
 
 本单元为 M5-5 静态盘点。U2、U4、U6 有静态证据，U10 为本文件。U1、U3、U5、U7–U9、U11 的域实现或运行验证未做。没有为本清单单独运行 pytest。
+
+## 截至 `b7bb3605` 的增量核对
+
+| 规范规则 | 当前状态 | 代码与边界 |
+|---|---|---|
+| `impact_layer_facttype_unknown`、`impact_layer_owner_mismatch`、`impact_layer_conflicts_order`、`impact_atomic_cross_host` | 加载校验已实现 | `rule_pack_validator.py:94` 检查 FactType、Resolver 写集、层序与 host。独立 `impact_profile_cycle` 诊断未做，当前只接收顺序层列表。 |
+| `pack_overrides_visibility_requirement` | 加载校验已实现 | `rule_pack_validator.py:437`、第 493 行附近核对继承 FactType，只允许保留声明或收窄 `learnable_by`。 |
+| `pack_cycle_in_parents`、`pack_content_hash_mismatch` | 加载校验已实现 | `rule_pack_validator.py:474` 和第 538 行分别拒绝父包环和钉定哈希不匹配。生产存档尚未提供钉定值。 |
+| `pattern_declares_writes` | 离线校验已实现 | `l5_play_pattern.py:35` 返回规范拒绝码。其他 Pipeline、Reaction、Workflow 规则与生产接线待做。 |
+| `facttype_refold_missing` | 未实现 | `rule_pack_validator.py:158` 已验证聚合模型条目，FactType 的必需 refold 关联仍未接入。 |
+
+命令目录通过受信任调用方提供的 Owner → domain 映射校验命令名及处理方，见 `rule_pack_validator.py:204`。规则包加载器也已接入 `aggregation_models`、技能消耗 `bindings` 与 `impact_profiles`。运行态加载拒绝仍由调用方传入 `running`，生产装配待做。以上是代码静态核对，各切片的运行证据见对应验证文件。
