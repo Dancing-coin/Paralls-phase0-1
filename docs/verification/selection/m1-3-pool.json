@@ -1,6 +1,6 @@
 {
-  "head": "e6cb728caf725704b2e60d615b425db42d461af3",
-  "description": "M1-3 Pool bounded value, reservation, window idempotency, event schema, and hysteresis tests",
+  "head": "022f1772429fa95d1969d82de984568880da3a83",
+  "description": "M1-3 Pool bounds, reservations, aggregation, owner fragments, event schema, and hysteresis tests",
   "tests": [
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable",
@@ -39,6 +39,41 @@
     },
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_events_are_visible_to_gameplay_graph_registry",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_commits_persist_owner_fragment_contract_and_ordered_operations",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_aggregation_modes_keep_their_declared_semantics",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_distribution_recomputes_through_refold_with_frozen_revisions",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_model_adjustment_persists_and_checks_its_input_revision_vector",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_adjustment_can_pin_non_model_aggregation_inputs",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_distribution_rejects_missing_refold_inputs",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_rejects_invalid_aggregation_and_owner_fragment_inputs",
       "outcome": "passed",
       "failures": []
     }
