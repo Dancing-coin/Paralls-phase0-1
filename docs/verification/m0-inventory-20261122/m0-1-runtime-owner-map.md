@@ -1,6 +1,6 @@
 # M0-1 Runtime to Owner and FactType candidates
 
-- Code scan SHA: `0e67fe812280e7e518c84c27653153f5a69f2330`; latest coordination baseline checked was `0ecf65aae1698fabba06f06491f7800abdc1728a` and differs only in coordination docs.
+- Code scan SHA: `0e67fe812280e7e518c84c27653153f5a69f2330`; latest coordination baseline checked was `9b09084c5adccc2367f2d5da9f438af9d80393b4`. Its changes are coordination documents; this code worktree was not merged or rebased.
 - Commands: `Get-ChildItem backend\app\gameplay -Recurse -Filter '*_runtime.py'`; read-only Python AST scan of event_type/stream_id dictionary keys and constant assignments; `rg -n 'REGISTERED_OWNER_IDS|gameplay\.' ...`.
 - Scan time: 2026-11-22 Asia/Shanghai.
 - Conclusion level: static-only. The rows are candidates, not Owner rulings. AST literal extraction does not resolve every dynamic event type, stream interpolation, caller, or event definition. `fact_type_registry.py:11` currently registers only `Credential`, `Ownership`, and `Economy / Market`.
@@ -103,3 +103,26 @@ The projector's core event set is `gameplay.contract.record_created`, `record_fu
 | Social conflict eligibility acceptance | `gameplay.contract.ogs_social_conflict_eligibility_accepted@1` | `contract_runtime.py:1339-1357` | Social / Influence candidate |
 
 Formal v2 Owner labels are candidates from `01-Owner定义.md:28-54`. S-8 is decided to split Contract facts by fact domain without a new Owner: Government for government assessment, Production/Facility for facility acceptance, and Economy/Production for workshop and service facts (`2026-11-22-architecture-v2-migration-spec.md:105`; `2026-11-22-architecture-v2-migration.md:87`). The plan says the concrete split list remains to be produced (`2026-11-22-architecture-v2-migration.md:87,165`). This table records observed fact families and candidate domains, not an implementation assignment.
+
+## Runtime-constant registry spot check
+
+The earlier sampled lookup is superseded below by a query derived from runtime event declarations. `DebtSettlementPlan._EVENT_STREAMS` is defined at `debt_runtime.py:76-98`; `ContractProjector._EVENT_TYPES` is defined at `contract_runtime.py:185-191`. The Contract runtime additionally writes `gameplay.contract.ogs_social_conflict_eligibility_accepted@1` at `contract_runtime.py:1357`, which is outside the projector's core event set. The query checks all three sources against `FACT_TYPE_REGISTRY.event_types()`.
+
+Command (Python 3.12.2, `PYTHONPATH` points to this worktree's `backend`):
+
+```powershell
+$env:PYTHONPATH = (Join-Path (Get-Location).Path 'backend')
+$env:PYTHONDONTWRITEBYTECODE = '1'
+& 'D:\Temp\paralls-g0-py312\Scripts\python.exe' -c "import sys, app; from app.gameplay.debt_runtime import DebtSettlementPlan; from app.gameplay.contract_runtime import ContractProjector; from app.models.fact_type import FACT_TYPE_REGISTRY as R; print(sys.version); print(app.__file__); events=sorted(set(DebtSettlementPlan._EVENT_STREAMS) | ContractProjector._EVENT_TYPES | {'gameplay.contract.ogs_social_conflict_eligibility_accepted@1'}); print('COUNT',len(events)); print({event:event in set(R.event_types()) for event in events})"
+```
+
+Raw output:
+
+```text
+3.12.2 (tags/v3.12.2:6abddd9, Feb  6 2024, 21:26:36) [MSC v.1937 64 bit (AMD64)]
+F:\codex-temp\paralls-v2-thread-b-debt-contract-20261121\backend\app\__init__.py
+COUNT 26
+{'gameplay.commerce.debt_cancellation_reversed': False, 'gameplay.commerce.debt_cancelled_settled': False, 'gameplay.commerce.debt_issued_settled': False, 'gameplay.commerce.debt_payment_corrected_settled': False, 'gameplay.commerce.debt_payment_settled': False, 'gameplay.contract.ogs_social_conflict_eligibility_accepted@1': True, 'gameplay.contract.record_created': False, 'gameplay.contract.record_fulfilled': False, 'gameplay.contract.record_terminated': False, 'gameplay.contract.service_completion_recorded': False, 'gameplay.contract.simple_debt_cancellation_reversed': False, 'gameplay.contract.simple_debt_cancelled': False, 'gameplay.contract.simple_debt_created': False, 'gameplay.contract.simple_debt_fulfilled': False, 'gameplay.contract.simple_debt_reopened': False, 'gameplay.debt.claim_cancellation_reversed': False, 'gameplay.debt.claim_cancelled': False, 'gameplay.debt.claim_defaulted': False, 'gameplay.debt.claim_issued': False, 'gameplay.debt.claim_overdue': False, 'gameplay.debt.claim_reopened': False, 'gameplay.debt.claim_satisfied': False, 'gameplay.debt.payment_applied': False, 'gameplay.debt.payment_corrected': False, 'gameplay.economy.account_credited': True, 'gameplay.economy.account_debited': False}
+```
+
+This is a registry membership judgment, not evidence of projection behavior. The result says 2 of these 26 actual runtime/projector event names are currently in the FactType registry; it does not show whether a graph projector receives or applies any event.

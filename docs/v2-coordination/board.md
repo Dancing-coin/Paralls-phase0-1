@@ -7,7 +7,7 @@
 
 ## 当前里程碑
 
-M0 盘点。M0 是准备输入，不代表任何域已迁移或满足 v2。
+M0 盘点作为输入已接收；B 正在补充三份候选域只读设计。A 的 M0.5 Owner 登记扩展是域迁移的前置条件。
 
 ## 任务表
 
@@ -19,6 +19,12 @@ M0 盘点。M0 是准备输入，不代表任何域已迁移或满足 v2。
 | M0-4 读取方静态图 | B | 待门禁 | 同目录 `m0-4-readers.md` | AST 读取/导入静态清单 | 4 |
 | M0-5 Command 信封抽查 | B | 待门禁 | 同目录 `m0-5-command-envelope.md` | 明示样本范围 | 1 |
 | M0-6 波次候选表 | B | 待门禁 | 同目录 `m0-6-waves.md` | M0-1 至 M0-4 输入；非验收 | 全部 |
+| M0.5 Owner 登记名单扩展 | A | 待开工 | Owner 名单 + fixture 测试 + 证据 | 阻塞所有新增 Owner 域的规则包 | 1、2 |
+| M0-1a Debt/Contract 实际常量 P-3 成员核对 | B | 待门禁 | `docs/verification/m0-inventory-20261122/m0-1-runtime-owner-map.md` | 注册表成员判断，不代表投影行为 | 2 |
+| H-A-003a LifeState 候选只读设计 | B | 待门禁 | `docs/verification/m0-inventory-20261122/design-life-state.md` | 不启动迁移；等待 M0.5 | 1、2、4 |
+| H-A-003b Action Consequence 候选只读设计 | B | 待门禁 | `docs/verification/m0-inventory-20261122/design-action-consequence.md` | 不启动迁移；区分验证边界与事实 Owner | 1、2、4 |
+| H-A-003c Reference Data 候选只读设计 | B | 待门禁 | `docs/verification/m0-inventory-20261122/design-reference-data.md` | 不启动迁移；Owner 为候选 | 1、2、4 |
+| H-A-003d 基线失败节点与候选相关性及 P-2 claim 预登记 | B | 待门禁 | `docs/v2-coordination/daily/2026-11-22.md` | 22 节点静态比对未发现相关节点；未新增 claim | — |
 | M1-1 Bond 分片提交 | A | 待门禁 | Bond 分片证据文档 | 按 AUTONOMY 与 handoff 中的分片门禁 | 3 |
 | M1-2 Holdings 原语 | A | 待开工 | 原语实现 + 固定向量 | 由波次依赖确定 | 3 |
 | M1-3 Pool 原语 | A | 待开工 | 原语实现 + 固定向量 | 由波次依赖确定 | 3 |
@@ -53,9 +59,9 @@ M0 盘点。M0 是准备输入，不代表任何域已迁移或满足 v2。
 | S-4 | `pinned_revisions` 补 Store 校验是否算行为改变 | M3-4 | 未决 |
 | S-7 | 逐域探针是否并入成功标准 8 | 验收口径 | 未决 |
 | M4 归属 | 波次中各域由 A 或 B 执行 | 域迁移 | 未决，待 M0-6 和项目负责人分配 |
-| B 首域 | 满足“Owner 明确、Owner 在 `REGISTERED_OWNER_IDS`、非枢纽、B 归属、导入者 ≤2”的候选 | 自主域迁移 | 当前无候选。低导入者 `land_right`（1）归 Ownership 且在 A 范围；`gift`（1）跨 Economy / Ownership，且无单一 Owner；Credential 在 A 范围；debt 为 Economy / Market 枢纽且有 5 个 app importer。其余低导入者 runtime 无法与当前三个登记 Owner 一一匹配。H-B-001 已请 A 核实是否有遗漏候选；等待期间仅做 M0 静态补查，不启动域迁移 |
+| B 首域 | 满足“Owner 明确、Owner 在 `REGISTERED_OWNER_IDS`、非枢纽、B 归属、导入者 ≤2”的候选 | 自主域迁移 | H-A-003 指定先完成 `life_state`、`action_consequence`、`reference_data` 三份只读设计；life_state 优先。等 A 完成 M0.5 后重新核对登记 Owner、枢纽状态和 importer 数；全部满足才启动迁移。当前没有启动域迁移 |
 | M2-6 选流 | 哪条生产流受 epoch 保护 | L0 | 未决 |
-| S-8 文档状态 | 规格记录已按事实域拆分，计划仍写 Owner 待裁定 | Contract 波次与拆分 | 两份只读文档状态不一致，需统一账本文本来源；事实已在 M0-1 列出 |
+| S-8 Contract Owner | Contract 按事实域拆分，不新建 Owner | Contract 波次与拆分 | 决定已写入规格、计划和 handoff；具体事实拆分清单仍待后续实现单元产出，M0-1 只提供事实输入 |
 
 ## 更新规则
 

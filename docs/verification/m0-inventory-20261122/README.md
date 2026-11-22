@@ -1,6 +1,6 @@
 # M0 inventory
 
-- Code scan SHA: `0e67fe812280e7e518c84c27653153f5a69f2330`. Coordination-document baseline fetched during this continuation: `0ecf65aae1698fabba06f06491f7800abdc1728a` (`integration-2026-11-22-5`), which adds only `docs/v2-coordination/` files relative to the code scan SHA. No merge or rebase was performed.
+- Code scan SHA: `0e67fe812280e7e518c84c27653153f5a69f2330`. Latest coordination-document baseline fetched during this continuation: `9b09084c5adccc2367f2d5da9f438af9d80393b4`; the task instructions and handoff were read from that commit without merging or rebasing it into this worktree.
 - Scan time: 2026-11-22 19:18 Asia/Shanghai. Scope is static source and documentation inspection. No tests, test collection, runtime service, or code mutation was performed.
 - Conclusion level: Python environment and registry query verified; all code relationships below are static-only; no migration acceptance is claimed.
 - Python command: `$env:PYTHONPATH = Join-Path (Get-Location).Path 'backend'; & 'D:\Temp\paralls-g0-py312\Scripts\python.exe' -c "import sys, app; print(sys.version); print(app.__file__)"`
@@ -52,6 +52,11 @@
 | [m0-4-readers.md](m0-4-readers.md) | AST import/read counts and G2 inventory comparison |
 | [m0-5-command-envelope.md](m0-5-command-envelope.md) | Sampled command paths against the v2 envelope document |
 | [m0-6-waves.md](m0-6-waves.md) | Static wave inputs and tentative ordering table |
+| [design-life-state.md](design-life-state.md) | Read-only LifeState candidate design and U6 readers |
+| [design-action-consequence.md](design-action-consequence.md) | Read-only action-consequence boundary and candidate fact split |
+| [design-reference-data.md](design-reference-data.md) | Read-only dataset fact and consumer design |
+
+The M0-1 debt/contract registry spot check was corrected to use runtime event declarations in `DebtSettlementPlan._EVENT_STREAMS`, `ContractProjector._EVENT_TYPES`, and the additional Contract event emitted at `contract_runtime.py:1357`. The full query and raw output are in M0-1. This establishes registry membership only, not graph-projector delivery or application.
 
 ## Decision inputs
 
@@ -62,3 +67,4 @@
 - Contract S-8 is decided to split by fact domain, without adding an Owner, in the specification (`docs/superpowers/specs/2026-11-22-architecture-v2-migration-spec.md:105`), the migration plan (`docs/superpowers/plans/2026-11-22-architecture-v2-migration.md:87`), and coordination handoff (`docs/v2-coordination/handoff.md`, project decision S-8). The plan says the concrete split list is still pending; M0-1 records the observed contract purposes and candidate fact domains as its input.
 - Under AUTONOMY §5, B has no first-domain candidate that meets all three conditions: only `Credential`, `Ownership`, and `Economy / Market` are registered at `fact_type_registry.py:11`; Credential and Ownership are A-owned in `BOUNDARIES.md`; Economy / Market is a hub and debt is scheduled for wave 3. This continues M0 supplementary inventory; it does not start a domain migration.
 - No stop condition requiring code changes or tests was triggered. The Owner count discrepancy remains a document finding. S-8's decision is settled, while the future implementation split remains pending its concrete list and Owner registration prerequisites.
+- H-A-003 supplementary candidate designs are read-only inputs. `life_state` is the preferred next candidate only after A completes M0.5; no domain migration has started.
