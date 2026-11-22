@@ -1,0 +1,66 @@
+{
+  "tests": [
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_compiles_yaml_to_ordered_immutable_references[base@2.1]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_compiles_yaml_to_ordered_immutable_references[pin1]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[writes]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[unknown-field]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[inline-reaction]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[unknown-reaction]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[wrong-namespace]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[unknown-workflow]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[inline-pack]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[unpinned-pack]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[unknown-pin]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_play_pattern.py::test_pattern_rejects_invalid_declarations[duplicate-pin]",
+      "failures": [],
+      "outcome": "passed"
+    }
+  ],
+  "description": "M6-4 immutable play pattern references and H8 write rejection",
+  "head": "b7bb36056bf1efe192c7d7d248d0b5dbd340d375"
+}
