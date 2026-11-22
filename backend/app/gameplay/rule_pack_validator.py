@@ -28,6 +28,7 @@ class LoadedPack:
     registry: FactTypeRegistry
     legacy_rule: Mapping[str, Any]
     pool_defs: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+    entity_types: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -175,7 +176,7 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     if type(manifest.get("schema_version")) is not int or manifest["schema_version"] != 1:
         reject("pack_schema_invalid", "schema_version", manifest_path, 1, "supported pack schema is 1")
     contents = manifest.get("contents", {})
-    sections = {name: {} for name in ("fact_types", "machine_defs", "models", "pool_defs")}
+    sections = {name: {} for name in ("fact_types", "machine_defs", "models", "pool_defs", "entity_types")}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
         reject("pack_schema_invalid", "contents", manifest_path, 1, "contents must be a mapping")
@@ -206,6 +207,23 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
         for target, spec in entries.items():
             file, line = locations[target]
             valid = isinstance(spec, dict)
+            if valid and section == "entity_types":
+                slots = spec.get("slots")
+                if not isinstance(slots, list):
+                    reject("pack_entity_slots_invalid", target, file, line, "declare a list of FactType slots")
+                    continue
+                seen_patterns = set()
+                for slot in slots:
+                    if (not isinstance(slot, dict) or slot.keys() != {"fact_type_pattern"}
+                            or not isinstance(slot["fact_type_pattern"], str) or not slot["fact_type_pattern"]):
+                        reject("pack_entity_slot_invalid", target, file, line, "each slot declares one FactType pattern")
+                        continue
+                    pattern = slot["fact_type_pattern"]
+                    if pattern not in sections["fact_types"]:
+                        reject("pack_entity_slot_fact_unknown", target, file, line, "reference a declared FactType pattern")
+                    if pattern in seen_patterns:
+                        reject("pack_entity_slot_duplicate", target, file, line, "list each FactType pattern once")
+                    seen_patterns.add(pattern)
             if valid and section == "fact_types":
                 valid = (isinstance(spec.get("owner_ref"), str) and isinstance(spec.get("state_set_ref"), str)
                     and ("visibility" not in spec or isinstance(spec["visibility"], dict)))
@@ -249,4 +267,5 @@ def load_pack(directory: Path, *, handlers: Mapping[str, Callable], running: boo
     return LoadedPack(
         manifest["pack_id"], manifest["pack_version"], content_hash, registry,
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
+        freeze(sections["entity_types"]),
     )

@@ -107,6 +107,64 @@ def test_pack_rejects_invalid_pool_definition(tmp_path, old, new, code):
     assert [(v.target, Path(v.file).name, v.line) for v in matching] == [("stamina", "stamina.yaml", 1)]
 
 
+_ENTITY_TYPE_DECLARATION = dedent("""\
+    deed:
+      slots:
+        - fact_type_pattern: "fact:credential:*:link"
+    """)
+
+
+def _pack_with_entity_type(tmp_path, declaration):
+    destination = shutil.copytree(PACK, tmp_path / "entity-pack")
+    manifest = destination / "pack.yaml"
+    manifest.write_text(
+        manifest.read_text(encoding="utf-8").replace(
+            'contents:\n', 'contents:\n  entity_types: ["deed"]\n'
+        ),
+        encoding="utf-8",
+    )
+    entity_types = destination / "entity_types"
+    entity_types.mkdir()
+    (entity_types / "deed.yaml").write_text(declaration, encoding="utf-8")
+    return destination
+
+
+def test_pack_loads_entity_type_slots_from_registered_facts(tmp_path):
+    destination = _pack_with_entity_type(tmp_path, _ENTITY_TYPE_DECLARATION)
+    loaded = load_pack(destination, handlers=HANDLERS)
+    (slot,) = loaded.entity_types["deed"]["slots"]
+    assert slot["fact_type_pattern"] in loaded.registry.facts
+    with pytest.raises(TypeError):
+        slot["fact_type_pattern"] = "fact:credential:*:missing"
+
+    declaration = destination / "entity_types" / "deed.yaml"
+    declaration.write_text(_ENTITY_TYPE_DECLARATION.replace("deed:", "record:"), encoding="utf-8")
+    reloaded = load_pack(destination, handlers=HANDLERS)
+    assert "record" in reloaded.entity_types
+    assert loaded.content_hash != reloaded.content_hash
+    assert not load_pack(PACK, handlers=HANDLERS).entity_types
+
+
+@pytest.mark.parametrize(("declaration", "code"), [
+    pytest.param("deed: {}", "pack_entity_slots_invalid", id="missing-slots"),
+    pytest.param("deed: {slots: [{}]}", "pack_entity_slot_invalid", id="invalid-slot"),
+    pytest.param(
+        _ENTITY_TYPE_DECLARATION.replace(":link", ":missing"),
+        "pack_entity_slot_fact_unknown", id="unknown-fact",
+    ),
+    pytest.param(
+        _ENTITY_TYPE_DECLARATION + '    - fact_type_pattern: "fact:credential:*:link"\n',
+        "pack_entity_slot_duplicate", id="duplicate-slot",
+    ),
+])
+def test_pack_rejects_invalid_entity_type_slots(tmp_path, declaration, code):
+    destination = _pack_with_entity_type(tmp_path, declaration)
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+    matching = [violation for violation in error.value.violations if violation.code == code]
+    assert [(v.target, Path(v.file).name, v.line) for v in matching] == [("deed", "deed.yaml", 1)]
+
+
 def _copy_pack_for_owner(tmp_path, owner_id):
     destination = tmp_path / "owner-pack"
     shutil.copytree(PACK, destination)
