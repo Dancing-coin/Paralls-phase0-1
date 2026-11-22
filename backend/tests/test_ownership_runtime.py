@@ -39,6 +39,7 @@ def test_initial_title_and_independent_transfer_are_event_derived() -> None:
     assert projection.rights["right:observatory"].bond_type == "ownership"
     assert projection.rights["right:observatory"].holder_ref == "actor:bob"
     assert projection.active_right_by_asset == {ASSET: "right:observatory"}
+    assert projection.projection_revision == "ownership:8055c4d9dbf87d10"
     assert [event.event_type for event in store.read_events()] == [
         "gameplay.ownership.right_granted",
         "gameplay.ownership.right_transferred",
