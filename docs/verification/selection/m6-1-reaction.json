@@ -1,0 +1,56 @@
+{
+  "head": "7b0d69bfe152cfea3da49c8b41ae423919d2f963",
+  "tests": [
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_resolve_registered_commands_and_remain_async",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_invalid_emit_or_trigger[declaration0-outputs0-pattern_declares_writes]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_invalid_emit_or_trigger[declaration1-outputs1-pattern_command_unknown]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_invalid_emit_or_trigger[declaration2-outputs2-reaction_schema_invalid]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_invalid_emit_or_trigger[declaration3-outputs3-pattern_declares_writes]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_a_cycle_from_trusted_command_outputs",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_a_self_triggering_command",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_non_dense_or_duplicate_priorities[priorities0]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_non_dense_or_duplicate_priorities[priorities1]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_duplicate_ids_and_malformed_command_outputs",
+      "failures": [],
+      "outcome": "passed"
+    }
+  ],
+  "description": "M6-1 Reaction trigger and condition retention, trusted command outputs, cycle and priority validation"
+}
