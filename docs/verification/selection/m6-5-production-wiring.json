@@ -1,0 +1,26 @@
+{
+  "head": "4506d9071f7f5779bdd46100419417aa8a30d4e8",
+  "description": "Production dispatch routes committed casualty and facility breach events to Morale and Presence owners, initializing Morale from its configured baseline",
+  "tests": [
+    {
+      "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_production_dispatch_refolds_morale_and_keeps_missing_presence_input_unknown",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_refold_uses_historical_roster_and_life_states_at_death",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_refold_with_missing_member_life_state_writes_nothing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_first_valid_casualty_initializes_and_refolds_morale_from_the_configured_baseline",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

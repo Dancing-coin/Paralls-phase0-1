@@ -242,3 +242,9 @@
 - 正式守城 Demo 将 Presence 输出标识为 `place:gate-03:passability`。原 L5 输出校验只接受 `fact:`，无法登记正式 Place machine。提交 `4023c182158a7d90185b72e17acfeedf1c7d3c0f` 使 reaction compiler 与 trusted output gateway 接受精确 `place:` 标识，仍拒绝通配符和空白；L5 只派发命令，不写 Owner 事实。
 - 验证：Python 3.12.2，`app.__file__` 在当前 A worktree；L5 两文件定向 `20 passed`、Place 输出永久选择 `selected=3 problems=0 improvements=0`、冻结 ownership `24/24 problems=0`。shared-replay `990` 节点中两项失败是 `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]` 与 `[wall-clock]`，原始日志报 Port 8000 被外部无健康服务占用；未终止或修改该进程。全量未运行。证据和原始输出见 `docs/verification/m6-5-place-machine-output-type-20261124.md` 与 `F:/paralls-verification/thread-a/m6-5-place-output-types-selections-20261124-01/`。
 - 未完成：`main.py` 生产 dispatcher/handler 注册、真实 Morale/Presence command handler、county siege rule pack、Morale 与 Place 的 v2 FactType/read_as 注册、Presence trusted resolver 和 gate-impact 输入源仍未完成。本提交只解决 L5 无法表达 Place trusted output 的类型兼容问题，不代表 M6-5 或 Architecture v2 完成。
+
+### H-A-027 | M6-5 production Morale and Presence wiring | 2026-11-24
+
+- 项目负责人确认 Presence 的规则是可信决策输入，缺少依据时返回 `unknown`。A 的生产接线提交 `4506d9071f7f5779bdd46100419417aa8a30d4e8` 已在 `main.py` 注册提交后 reaction dispatcher、Morale/Presence Owner handlers 和 county siege rule pack。生产 Morale 首次有效 casualty 会从配置基线初始化同一个 Morale Pool，再以事件位置 roster/LifeState 历史重算；Presence handler 在无 resolver/evidence 时安全返回 unknown 且零写入。
+- Detached 验证：定向 80 passed；新永久选集 4 节点 `problems=0 improvements=0`；ownership 24 节点零差异。shared-replay 990 项有两个 Port 8000 外部监听失败，与父基线记录的失败类别相同。全量未在该提交运行。详细状态、U1–U11 和原始输出目录见 [M6-5 production wiring evidence](../verification/m6-5-production-wiring-20261124.md)。
+- 缺少的仍是可信 Facility gate-impact 生产事件，以及能够独立给出 `blocked/passable`、证据事件和 revision 的 Presence 输入。现有 Combat settlement 只接受单个角色目标并依赖角色 Presence/LifeState/Faction，不可代表攻门输入。不能把 breach、维修、condition 或普通观察转成 Presence 决策。A 已向项目负责人提出以可信模拟宿主提交独立 impact 与 Presence 决策证据的合同方案；在输入合同确定前，生产 Presence 保持 unknown、零写入。M6-5 继续进行中。
