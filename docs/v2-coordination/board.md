@@ -46,7 +46,7 @@
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
 | M6-3 Workflow 声明校验 | A | 待门禁 | `9eb80fe9`；[证据](../verification/m6-3-workflow-declarations-20261123.md) | 定向 129 passed，19 组选集 1,284 节点零差异。全量 10,530 passed、24 个既有失败，退出 1。生产重建需要可查询的步骤命令、回执及义务证据，见 H-A-013 | 6 |
 | M6-4 Play pattern 声明与包加载 | A | 待门禁 | 编译器 `b7bb3605`，正常包加载 `6e7da420`；[加载证据](../verification/m6-composition-pack-loading-20261123.md) | 定向 133 passed，19 组选集 1,288 节点零差异。全量 10,534 passed、24 个既有失败、2 skipped、2 xfailed，退出 1，相对 `9eb80fe9` 无新增失败。应用注册与激活未做 | 6 |
-| M6-5 守城 Demo 最小集 | A | 进行中 | H-A-020 输入合同 + [A 跨域实施计划](../verification/m6-5-authoritative-input-plan-20261123.md)；Organization 历史 roster 快照 `9cb0cbd5`；[单元证据](../verification/m6-5-organization-roster-20261123.md) | 项目负责人 2026-11-23 明确授权 A 跨域实现。roster 查询复用 Organization 已提交成员事实且通过定向与三节点选集；Facility integrity Pool、Morale/Presence resolver 与 Gateway/L5 调度仍分单元实施；Pool 尚未进入 integration，不能据此宣称 B 端到端可验证 | 6 |
+| M6-5 守城 Demo 最小集 | A | 进行中 | H-A-020 输入合同 + [A 跨域实施计划](../verification/m6-5-authoritative-input-plan-20261123.md)；Organization roster `9cb0cbd5`、Facility integrity Pool writer `34d7e734`；[单元证据](../verification/m6-5-organization-roster-20261123.md)、[Facility 证据](../verification/m6-5-facility-integrity-20261123.md) | 项目负责人 2026-11-23 明确授权 A 跨域实现。Facility Pool writer 有独立选集证据，但尚无可连接的 gate impact producer；Morale resolver、Presence resolver 与 Gateway/L5 dispatch 仍未完成。Pool 尚未进入 integration，不能宣称端到端可验证 | 6 |
 | M7 第二真相收口 | A/B | 阻塞 | — | S-2、S-3 未决 | 11 |
 | M8 综合验收 | 负责人 | 待开工 | 逐条对照 | 全部里程碑完成 | 1–11 |
 

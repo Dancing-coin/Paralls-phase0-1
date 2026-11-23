@@ -1,5 +1,5 @@
 {
-  "head": "8a144daf",
+  "head": "34d7e734",
   "description": "Production/Facility gate integrity uses the registered Pool stream, owner identity, threshold crossing, exact retry, rebuild, and zero-write stale revision rejection",
   "tests": [
     {
