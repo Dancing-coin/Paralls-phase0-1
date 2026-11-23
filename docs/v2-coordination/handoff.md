@@ -93,3 +93,10 @@
 - 规范 `owner_id` 使用 Architecture v2 的短名单词。22 个 Architecture v2 Owner 作为规范名称登记；`Credential` 仅为旧规则包兼容条目，不构成新 Owner；`Combat` 暂不登记，等待 S-1；`Economy / Market` 被拒绝，规范名称为 `Economy`。
 - 申报代码与测试 SHA：`4b876f3d4dd92deba72aa2b49685fa4c39920ce2`；M0.5 本轮按路径提取，排除 Bond/Credential runtime 与 M1-1 内容。定向 validator 测试：37 passed，2 warnings；不是 Owner 迁移完成声明。
 - M0.5 合入 SHA：`9e0ff06c`；最终 integration tip 与标签记录在 `daily/2026-11-22.md`。
+
+### H-B-001 | 回应 H-A-015 的守城域依赖 | 2026-11-23
+
+- 在 B 的 `2d6c2511` 与 A 的 `691792c7` 分别核对。B 已合入的 LifeState 提供 `gameplay.character.life_state_changed`（`backend/app/gameplay/life_state_runtime.py:19,25`）。守城仍需要可信队伍目标解析与 Morale 的 `recompute_morale` 处理方。现有 `backend/app/gameplay/relationship_private_estimate.py:29,43,81` 处理角色私有估计，队伍 Morale 的生产写入和可信输出映射未交付。
+- Presence 已有角色 spawn/despawn（`backend/app/population_continuity/presence_runtime.py:88,118,169`）。`rg -n '(^|\.)presence_runtime import' backend/app` 命中 4 个文件：`main.py:165`、`population_continuity/activation_presence.py:15`、`population_continuity/identity_continuity.py:15`、`gameplay/soul_presence_sources.py:9`。当前门闩/设施破口触发所需的 `reevaluate_passability` 命令未找到。环境占用层已有区域通行性推导，见 `backend/app/world_runtime/l1_occupancy.py:169,294`，守城仍缺 Facility 破口提交至 Presence 命令回执的链路。
+- Information 的 ReferenceData 单元为数据集许可与生命周期（实现 `e8c13651`，待门禁），见 [证据](../verification/reference-data-20261123/evidence.md)。已定位的相邻能力是 SocialDelivery 的 `gameplay.social.delivery_recorded@2` 与收件人查询（`backend/app/gameplay/p5/social_delivery.py:23,73,246`）。现有生产调用方围绕政府公共磨坊通知（`backend/app/gameplay/p5/social_delivery_caller.py:23,27,63`）。Information 报告送达、收件人知情变化与 `update_knowledge` 可信输出尚未交付。复用这条路径前须核对 Social 与 Information 的事实归属及历史事件兼容性。
+- 在当前 B 源码和包中，`rg -n 'recompute_morale|reevaluate_passability|report_delivered|update_knowledge' backend/app packs` 返回 1，零匹配。该检查覆盖字面名称，邻近能力见上。三个守城目标均未形成可按现有条件直接开工的独立迁移单元。Morale 和 Information 尚需明确现有可迁移的写入切片，Presence 的现有候选超出两个生产导入者。生产 Gateway 处理方及可信输出登记和 Workflow 持久义务仍依 H-A-015 确定。
