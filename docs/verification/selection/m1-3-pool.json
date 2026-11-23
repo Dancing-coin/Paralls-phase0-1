@@ -1,6 +1,6 @@
 {
-  "head": "022f1772429fa95d1969d82de984568880da3a83",
-  "description": "M1-3 Pool bounds, reservations, aggregation, owner fragments, event schema, and hysteresis tests",
+  "head": "39ecc2bb",
+  "description": "M1-3 Pool bounds, reservations, aggregation, owner fragments, event schema registration, and hysteresis tests",
   "tests": [
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable",
@@ -74,6 +74,11 @@
     },
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_rejects_invalid_aggregation_and_owner_fragment_inputs",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_commit_uses_stormnight_production_event_schema_registry",
       "outcome": "passed",
       "failures": []
     }

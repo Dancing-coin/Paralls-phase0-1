@@ -158,3 +158,19 @@
 - `6e7da420221c8a7ca4f3fb762153b2542e5b004c` 的串行全量已结束，10,562 collected，10,534 passed、24 failed、2 skipped、2 xfailed，退出 1。运行期间 HEAD 与源码固定。相对 `9eb80fe9` 的失败签名新增 0、恢复 0；相对冻结 22 项仍多两项既有本地失败，详见 [加载证据](../verification/m6-composition-pack-loading-20261123.md)。独立提交定向 133 passed，19 组选集 1,288 节点各组零差异。
 - M6 声明加载单元记为待门禁。生产执行接入需要确认 Gateway 的处理方及可信命令输出登记、Workflow 步骤与回执的耐久关联和义务归属。M6-5 还需要 B 的 Morale、Presence、Information 对应域事实及命令交付，前置静态核对见 [守城记录](../verification/m6-5-siege-preflight-20261123.md)。M6 总任务记为阻塞。
 - A 其余队列的继续条件沿用 H-A-005/006/008/009/010，分别为读取时间与主体资格来源、Holdings 预留与守恒合同、首条 epoch 生产流及存储边界、效果定义条目合同、包版本写入归属。Place 在第 3 波后，Process 归并在域迁移后；S-2 至 S-4 仍待负责人裁定。已交付部分按各单元证据和账本状态供门禁消费。
+
+### H-A-016 | 回应 H-B-004：Pool schema factory 与三条守城机制分工 | 2026-11-23
+
+- A 已将 `register_pool_event_schemas` 接入 `create_stormnight_event_schema_registry`，提交 `39ecc2bb`。Pool factory 下的持久初始化、93 项定向回归及 Pool 16 节点选集通过。证据见 `docs/verification/m1-3-pool-production-registry-20261123.md`。shared-replay 因外部端口 8000 不健康占用有两项失败，同一失败在 detached `6e7da420` 复现；没有停止或修改该进程。新提交的全量对照正在执行。
+- 项目负责人于 2026-11-23 确认 D8 先采用守城限定的 `morale_refold@1` 窄规则：对 Organization 提供的权威守军名单，按死亡事件提交位置读取成员身份和 LifeState，重算存活比例；四人全员存活为 100，一人死亡后为 75。缺少有效 roster 或任一成员生死事实时结果为 unknown，不写 Pool。军旗与指挥不纳入本版输入，待事实源和规则到位后升模型版本。该决定不把候选 Organization delegation 或 population roster 自动视为守军权威名单。
+- Morale 的生产 writer 仍由 B 实现，须消费 Organization 可回放成员事实及 revision，并传入死亡事实与 Morale Pool stream 的 revision 向量。A 提供的 Pool primitive 和生产 schema factory 已在 A 分支；Gateway/L5 异步调度及 Morale 命令可信输出仍是待实施机制。
+- Presence 继续等待 Facility/Production 提供已提交的 breach 事件、FactType、payload、stream revision 和 source owner。没有该事实时不从维修、环境状态或几何推导破口。输入交付后 B 写 Presence 独立通行性 resolver，A 接 Gateway/L5 与输出登记。
+- Information 的 writer 提交 `abba3c3c` 在 `origin/thread-b/reference-data-20261123`，尚未进入 A 的代码基线。合入共同基线后，A 接 `register_information_event_schemas` 到生产 factory，并登记 delivery v2 触发、`information.update_knowledge` 命令及精确输出。当前 writer 按 recipient 单独存流，事件 `visibility_policy` 与 outbox audience 都是 `actor:<recipient>`。建议 FactType scope 与 `actor:<recipient>` 私有读取一致，不能把该输出登记成 faction 可见的汇总士气或公共报告事实。该建议依据 B 的 writer 与 FactType 可见性合同，未代替 U2 的 Owner/FactType 声明与 `read_as` 读取授权。
+- M6 Gateway/L5 不存在于当前 A 的生产执行路径。现有 Reaction 仅离线编译，`create_stormnight_event_schema_registry` 只是 EventSchema factory；不能声称已有命令 Gateway。A 需另建受信任命令处理登记与已提交 receipt 驱动的异步分发，并在每个命令登记精确输出 FactType。目标授权、条件三值求值、冷却、幂等、失败审计及 Workflow 义务重建依 H-A-011 至 H-A-013 单独落实。
+- 下一步需 Organization Owner 交付具有效时点、成员身份、来源 stream/revision 的守军编制事实合同；Facility/Production Owner 交付已提交完整度破口事件及 revision。两项输入分别是 Morale 和 Presence 的硬前置。Information 接线只待 B writer 进入共享代码基线和 Gateway 命令入口合同。
+
+### H-A-017 | 更正 H-A-016：Pool 全量最终结果 | 2026-11-23
+
+- `39ecc2bb13a8fe5d694c4a5efadd3a5e78928091` 的合并状态全量已结束：10,564 collected，10,532 passed、28 failed、2 skipped、2 xfailed，239 warnings，1,571.89 秒，退出 1。相较 `6e7da420` 的全量报告新增 4 个失败签名、恢复 0，故 G5 未通过。
+- 两个端口 8000 失败在 detached `6e7da420` 复现；另两个 Population recovery 全量节点报 pytest 临时文件 `PermissionError`，在旧基线和 `39ecc2bb` 的定向复验各自 2 passed，但根因仍未明，不能从全量失败中扣除。没有停止或修改外部进程。
+- 此结果仅代表合并状态全量，不计入任何单个切片验证。逐片证据、冻结选集结果、原始输出和未覆盖项分别记录在 [Pool 生产 factory 增量证据](../verification/m1-3-pool-production-registry-20261123.md) 与 `F:/paralls-verification/thread-a/c-39ecc2bb/`。
