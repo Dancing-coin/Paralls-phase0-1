@@ -48,7 +48,7 @@ class TrustedGameplayCommandGateway:
                 or any(
                     not isinstance(fact_type, str)
                     or not fact_type.startswith("fact:")
-                    or any(char.isspace() for char in fact_type)
+                    or any(char.isspace() or char in "*?[" for char in fact_type)
                     for fact_type in fact_types
                 )
             ):

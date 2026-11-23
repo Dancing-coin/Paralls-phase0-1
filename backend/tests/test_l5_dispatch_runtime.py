@@ -89,6 +89,12 @@ def test_gateway_requires_a_trusted_output_mapping_for_each_handler():
             command_fact_outputs={},
         )
 
+    with pytest.raises(ValueError, match="^l5_command_outputs_invalid$"):
+        TrustedGameplayCommandGateway(
+            handlers={"morale.refold": lambda _command: None},
+            command_fact_outputs={"morale.refold": {"fact:unit:*:morale"}},
+        )
+
 
 def test_reaction_dispatch_rejects_an_unregistered_condition():
     gateway = TrustedGameplayCommandGateway(
