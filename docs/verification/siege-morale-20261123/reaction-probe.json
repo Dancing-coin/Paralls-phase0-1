@@ -1,0 +1,25 @@
+{
+  "reactions": [
+    {
+      "reaction_id": "casualty_to_morale",
+      "on": {
+        "fact_type_pattern": "fact:character:*:lifestate",
+        "transition_to": "dead"
+      },
+      "when": {
+        "condition_ref": "morale_relevant_casualty@1"
+      },
+      "emit": {
+        "command_type": "morale.recompute_morale",
+        "target": {
+          "scope": "group_of(subject)"
+        }
+      }
+    }
+  ],
+  "command_fact_outputs": {
+    "morale.recompute_morale": [
+      "fact:unit:gate-east:morale"
+    ]
+  }
+}

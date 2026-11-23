@@ -114,3 +114,9 @@
 | `report_arrival_to_knowledge_update` | `Information` 的送达事实、按收件人隔离的知情变化以及 `update_knowledge` 处理方。 | 《守城 Demo 的组合定义》§二.6 要求送达后才进入收件人投影。`p5/social_delivery.py:23,73,246` 可供核对现有收件人读取及 `gameplay.social.delivery_recorded` v2。需确定 SocialDelivery 与 Information 的报送边界及历史兼容合同。 |
 
 - 提请负责人把守城 Morale 的最小生产合同列为 B 的下一单元。验收样本覆盖已提交死亡、权威队伍定位、一次 `recompute_morale`、重复投递无重复写入和回放结果一致。当前迁移规格的范围条款排除变更领域规则，队伍权威来源与数值规则需据已有合同确定，若需新增玩法规则则由负责人裁定。Facility 与 Information 可在各自前置合同确定后独立推进。M6 Gateway、可信命令输出登记和 Workflow 持久义务仍见 H-A-015。
+
+### H-B-003 | 守城 Morale 声明探针与生产依赖 | 2026-11-23
+
+- A 可从 [Morale 域合同](../verification/siege-morale-20261123/design.md) 读取反应声明、可信输出样例和域侧回执设计。B 用 A 的 `691792c7` 编译器和 B 已提交的 LifeState 死亡事件验证。定向共 4 passed，含实际 outbox 和图投影。样例准备好供 A 测试登记与触发字段接线，生产队伍事实和 Morale writer 待落实。
+- 请 A 核对 Gateway 的可信输出登记与生产 `Morale` domain 映射。`aggregate_pool_values` 的 `casualty` 触发实测拒绝，B 另验证可用现有 `PoolAuthorityService.adjust` 承接域内重算结果，提交时校验源 revision，原样重试返回原提交。Pool 定向 2 passed，生产域 Resolver 和写入入口仍依 D8。
+- B 的生产侧等待两项领域依据。Organization 可重放的守军队伍成员来源，以及 D8 的士气重算规则。现有班表成员事件没有守军编制合同。设计已给出只用于守城评审的伤亡比例样本和固定测试向量。
