@@ -6,13 +6,16 @@ from collections import deque
 from collections.abc import Mapping, Set
 from dataclasses import dataclass
 from fnmatch import fnmatchcase
-from types import MappingProxyType
+from app.gameplay.fact_type_registry import ResolverInputError, freeze
 
 
 @dataclass(frozen=True, slots=True)
 class Reaction:
     reaction_id: str
     trigger_pattern: str
+    trigger_kind: str
+    trigger_value: str
+    condition_ref: str | None
     command_type: str
     target: Mapping[str, object]
     payload: Mapping[str, object]
@@ -69,16 +72,19 @@ def compile_reactions(
                 or not pattern.startswith("fact:") or any(char.isspace() for char in pattern)
                 or ("event_type" in trigger) == ("transition_to" in trigger)):
             raise ReactionRejected("reaction_schema_invalid", "on")
-        event_type = trigger.get("event_type", trigger.get("transition_to"))
-        if not isinstance(event_type, str) or not event_type:
+        trigger_kind = "event_type" if "event_type" in trigger else "transition_to"
+        trigger_value = trigger[trigger_kind]
+        if not isinstance(trigger_value, str) or not trigger_value:
             raise ReactionRejected("reaction_schema_invalid", "on")
 
+        if "writes" in emit:
+            raise ReactionRejected("pattern_declares_writes", "emit.writes")
         command_type = emit.get("command_type")
         if (emit.keys() - {"command_type", "target", "payload"}
                 or not isinstance(command_type, str) or not command_type):
             raise ReactionRejected("reaction_emit_command_required", "emit")
         if command_type not in command_fact_outputs:
-            raise ReactionRejected("reaction_command_unknown", "emit.command_type")
+            raise ReactionRejected("pattern_command_unknown", "emit.command_type")
 
         condition = declaration.get("when")
         if condition is not None and (
@@ -90,6 +96,11 @@ def compile_reactions(
         payload = emit.get("payload", {})
         if not isinstance(target, Mapping) or not isinstance(payload, Mapping):
             raise ReactionRejected("reaction_schema_invalid", "emit")
+        try:
+            frozen_target = freeze(target)
+            frozen_payload = freeze(payload)
+        except ResolverInputError as error:
+            raise ReactionRejected("reaction_schema_invalid", "emit") from error
 
         priority = declaration.get("priority", 0)
         cooldown = declaration.get("cooldown_world_ticks", 0)
@@ -99,14 +110,16 @@ def compile_reactions(
         reactions.append(Reaction(
             reaction_id=reaction_id,
             trigger_pattern=pattern,
+            trigger_kind=trigger_kind,
+            trigger_value=trigger_value,
+            condition_ref=condition["condition_ref"] if condition is not None else None,
             command_type=command_type,
-            target=MappingProxyType(dict(target)),
-            payload=MappingProxyType(dict(payload)),
+            target=frozen_target,
+            payload=frozen_payload,
             priority=priority,
             cooldown_world_ticks=cooldown,
         ))
-        trigger_kind = "event_type" if "event_type" in trigger else "transition_to"
-        trigger_key = pattern, trigger_kind, event_type
+        trigger_key = pattern, trigger_kind, trigger_value
         priorities_by_trigger.setdefault(trigger_key, []).append(priority)
 
     for priorities in priorities_by_trigger.values():

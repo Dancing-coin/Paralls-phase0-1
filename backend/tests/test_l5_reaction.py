@@ -1,6 +1,7 @@
 from dataclasses import FrozenInstanceError
 
 import pytest
+
 from app.gameplay.l5_reaction import ReactionRejected, compile_reactions
 
 
@@ -11,10 +12,11 @@ def test_reactions_resolve_registered_commands_and_remain_async():
             "fact_type_pattern": "fact:character:*:lifestate",
             "transition_to": "dead",
         },
+        "when": {"condition_ref": "morale_relevant@1"},
         "emit": {
             "command_type": "recompute_morale",
             "target": {"scope": "group_of(subject)"},
-            "payload": {"cause_ref": "$event.event_id"},
+            "payload": {"cause_ref": "$event.event_id", "tags": ["casualty"]},
         },
         "cooldown_world_ticks": 0,
         "priority": 100,
@@ -28,6 +30,11 @@ def test_reactions_resolve_registered_commands_and_remain_async():
     assert reactions[0].reaction_id == "casualty_to_morale"
     assert reactions[0].command_type == "recompute_morale"
     assert reactions[0].trigger_pattern == "fact:character:*:lifestate"
+    assert reactions[0].trigger_kind == "transition_to"
+    assert reactions[0].trigger_value == "dead"
+    assert reactions[0].condition_ref == "morale_relevant@1"
+    declarations[0]["emit"]["payload"]["tags"].append("changed")
+    assert reactions[0].payload["tags"] == ("casualty",)
     assert reactions[0].async_dispatch is True
     assert reactions[0].priority == 100
     with pytest.raises(FrozenInstanceError):
@@ -39,13 +46,13 @@ def test_reactions_resolve_registered_commands_and_remain_async():
         {"reaction_id": "bad", "on": {"fact_type_pattern": "fact:character:*:life", "transition_to": "dead"},
          "emit": {"writes": ["fact:character:morale:level"]}},
         {},
-        "reaction_emit_command_required",
+        "pattern_declares_writes",
     ),
     (
         {"reaction_id": "bad", "on": {"fact_type_pattern": "fact:character:*:life", "transition_to": "dead"},
          "emit": {"command_type": "unknown.command"}},
         {},
-        "reaction_command_unknown",
+        "pattern_command_unknown",
     ),
     (
         {"reaction_id": "bad", "on": {"fact_type_pattern": "fact:character:*:life"},
@@ -57,7 +64,7 @@ def test_reactions_resolve_registered_commands_and_remain_async():
         {"reaction_id": "bad", "on": {"fact_type_pattern": "fact:character:*:life", "transition_to": "dead"},
          "emit": {"command_type": "known.command", "writes": ["fact:character:life:state"]}},
         {"known.command": set()},
-        "reaction_emit_command_required",
+        "pattern_declares_writes",
     ),
 ])
 def test_reactions_reject_invalid_emit_or_trigger(declaration, outputs, code):
