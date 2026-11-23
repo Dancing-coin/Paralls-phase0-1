@@ -18,6 +18,8 @@ from app.gameplay.fact_type_registry import (
     REGISTERED_OWNER_IDS, FactTypeRegistry, RegistrationRejected, Violation, freeze,
 )
 from app.gameplay.l5_pipeline import Pipeline, compile_pipeline, impact_layers_cross_hosts
+from app.gameplay.l5_play_pattern import PlayPattern, PlayPatternRejected, compile_play_pattern
+from app.gameplay.l5_reaction import Reaction, ReactionRejected, compile_reactions
 from app.gameplay.l5_workflow import Workflow, compile_workflow
 from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
 
@@ -45,6 +47,8 @@ class LoadedPack:
     command_catalog: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     pipelines: Mapping[str, Pipeline] = field(default_factory=lambda: MappingProxyType({}))
     workflows: Mapping[str, Workflow] = field(default_factory=lambda: MappingProxyType({}))
+    reactions: Mapping[str, Reaction] = field(default_factory=lambda: MappingProxyType({}))
+    play_patterns: Mapping[str, PlayPattern] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -355,6 +359,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
     sections = {name: {} for name in (
         "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles",
         "aggregation_models", "bindings", "command_catalog", "pipelines", "workflows",
+        "reactions", "play_patterns",
     )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
@@ -461,6 +466,7 @@ def load_pack(
     parent_packs: Mapping[tuple[str, str], Path] | None = None,
     expected_content_hash: str | None = None,
     owner_domains: Mapping[str, str] | None = None,
+    command_fact_outputs: Mapping[str, set[str] | frozenset[str]] | None = None,
 ) -> LoadedPack:
     leaf = _read_pack(directory, running=running)
     manifest_path = leaf.manifest_path
@@ -551,6 +557,8 @@ def load_pack(
             issues.extend(error.violations)
     pipelines = {}
     workflows = {}
+    reactions = {}
+    play_patterns = {}
     if registry is not None:
         valid_profiles = {}
         for target, spec in sections["impact_profiles"].items():
@@ -587,6 +595,39 @@ def load_pack(
                 file, line = locations[section, target]
                 for code, hint in validate(spec, registry):
                     reject(code, target, file, line, hint)
+        if not issues and sections["reactions"]:
+            declarations = []
+            for target, spec in sections["reactions"].items():
+                if spec.get("reaction_id", target) != target:
+                    file, line = locations["reactions", target]
+                    reject("reaction_schema_invalid", target, file, line, "match reaction_id to the declared entry")
+                declarations.append({"reaction_id": target, **spec})
+            if not issues:
+                trusted_outputs = {
+                    command: facts for command, facts in (command_fact_outputs or {}).items()
+                    if command in sections["command_catalog"]
+                }
+                try:
+                    reactions = {
+                        reaction.reaction_id: reaction for reaction in
+                        compile_reactions(declarations, command_fact_outputs=trusted_outputs)
+                    }
+                except ReactionRejected as error:
+                    reject(error.code, error.field, manifest_path, 1, "check the reaction graph and command outputs")
+        if not issues and sections["play_patterns"]:
+            pack_pins = {f"{revision.pack_id}@{revision.pack_version}" for revision in revisions}
+            for target, spec in sections["play_patterns"].items():
+                file, line = locations["play_patterns", target]
+                if spec.get("play_pattern_id", target) != target:
+                    reject("pattern_schema_invalid", target, file, line, "match play_pattern_id to the declared entry")
+                    continue
+                try:
+                    play_patterns[target] = compile_play_pattern(
+                        {"play_pattern_id": target, **spec}, reaction_ids=reactions.keys(),
+                        pipeline_ids=pipelines.keys(), workflow_ids=workflows.keys(), pack_pins=pack_pins,
+                    )
+                except PlayPatternRejected as error:
+                    reject(error.code, target, file, line, f"check the play pattern's {error.field} declaration")
     _reject_issues(issues)
     assert registry is not None
     return LoadedPack(
@@ -595,4 +636,5 @@ def load_pack(
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
         freeze(sections["aggregation_models"]), freeze(sections["bindings"]), revisions,
         freeze(sections["command_catalog"]), MappingProxyType(pipelines), MappingProxyType(workflows),
+        MappingProxyType(reactions), MappingProxyType(play_patterns),
     )

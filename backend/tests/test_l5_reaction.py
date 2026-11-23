@@ -1,8 +1,12 @@
 from dataclasses import FrozenInstanceError
+from pathlib import Path
+import shutil
 
 import pytest
 
+from app.gameplay.fact_type_registry import RegistrationRejected
 from app.gameplay.l5_reaction import ReactionRejected, compile_reactions
+from app.gameplay.rule_pack_validator import load_pack
 
 
 def test_reactions_resolve_registered_commands_and_remain_async():
@@ -149,3 +153,68 @@ def test_reactions_reject_duplicate_ids_and_malformed_command_outputs():
         compile_reactions([declaration, declaration], command_fact_outputs={
             "recompute_morale": {"fact:character:morale:level"},
         })
+
+
+@pytest.fixture
+def composition_pack(tmp_path):
+    source = Path(__file__).resolve().parents[2] / "packs" / "credential_reference"
+    pack = shutil.copytree(source, tmp_path / "composition")
+    manifest = pack / "pack.yaml"
+    manifest.write_text(manifest.read_text(encoding="utf-8").replace(
+        "contents:\n",
+        'contents:\n  command_catalog: ["issue"]\n  reactions: ["issue"]\n'
+        '  workflows: ["issue"]\n  play_patterns: ["issue"]\n',
+    ), encoding="utf-8")
+    for category in ("command_catalog", "reactions", "workflows", "play_patterns"):
+        (pack / category).mkdir()
+    (pack / "command_catalog" / "issue.yaml").write_text(
+        'ownership.issue:\n  handled_by: "Ownership"\n  payload_schema: "issue@1"\n'
+        '  requires_authority: true\n  idempotency_shape: "command_id"\n  version: 1\n', encoding="utf-8",
+    )
+    (pack / "reactions" / "issue.yaml").write_text(
+        'issue_after_record:\n  "on":\n    fact_type_pattern: "fact:credential:*:record"\n'
+        '    event_type: "gameplay.credential.recorded"\n'
+        '  emit:\n    command_type: "ownership.issue"\n', encoding="utf-8",
+    )
+    (pack / "workflows" / "issue.yaml").write_text(
+        'manual_issuance:\n  steps:\n    - id: "issue"\n      command: "ownership.issue"\n', encoding="utf-8",
+    )
+    (pack / "play_patterns" / "issue.yaml").write_text(
+        'issuance:\n  reactions: ["issue_after_record"]\n  workflows: ["manual_issuance"]\n', encoding="utf-8",
+    )
+    return pack
+
+
+def test_pack_loads_reaction_and_links_play_pattern_to_registered_composition(composition_pack):
+    loaded = load_pack(
+        composition_pack, handlers={"credential_command@1": lambda inputs, params: True},
+        owner_domains={"Ownership": "ownership"},
+        command_fact_outputs={"ownership.issue": {"fact:credential:deed:link"}},
+    )
+    assert loaded.reactions["issue_after_record"].trigger_value == "gameplay.credential.recorded"
+    assert loaded.play_patterns["issuance"].reactions == ("issue_after_record",)
+    assert loaded.play_patterns["issuance"].workflows == ("manual_issuance",)
+
+
+@pytest.mark.parametrize(("outputs", "code"), [
+    ({}, "pattern_command_unknown"),
+    ({"ownership.issue": {"fact:credential:deed:record"}}, "reaction_cycle_detected"),
+])
+def test_pack_rejects_reaction_without_trusted_outputs_or_with_a_cycle(composition_pack, outputs, code):
+    with pytest.raises(RegistrationRejected, match=code):
+        load_pack(
+            composition_pack, handlers={"credential_command@1": lambda inputs, params: True},
+            owner_domains={"Ownership": "ownership"}, command_fact_outputs=outputs,
+        )
+
+
+def test_pack_rejects_unknown_reaction_reference_in_play_pattern(composition_pack):
+    (composition_pack / "play_patterns" / "issue.yaml").write_text(
+        'issuance:\n  reactions: ["missing"]\n', encoding="utf-8",
+    )
+    with pytest.raises(RegistrationRejected, match="pattern_reference_unknown"):
+        load_pack(
+            composition_pack, handlers={"credential_command@1": lambda inputs, params: True},
+            owner_domains={"Ownership": "ownership"},
+            command_fact_outputs={"ownership.issue": {"fact:credential:deed:link"}},
+        )
