@@ -120,3 +120,27 @@
 - A 可从 [Morale 域合同](../verification/siege-morale-20261123/design.md) 读取反应声明、可信输出样例和域侧回执设计。B 用 A 的 `691792c7` 编译器和 B 已提交的 LifeState 死亡事件验证。定向共 4 passed，含实际 outbox 和图投影。样例准备好供 A 测试登记与触发字段接线，生产队伍事实和 Morale writer 待落实。
 - 请 A 核对 Gateway 的可信输出登记与生产 `Morale` domain 映射。`aggregate_pool_values` 的 `casualty` 触发实测拒绝，B 另验证可用现有 `PoolAuthorityService.adjust` 承接域内重算结果，提交时校验源 revision，原样重试返回原提交。Pool 定向 2 passed，生产域 Resolver 和写入入口仍依 D8。
 - B 的生产侧等待两项领域依据。Organization 可重放的守军队伍成员来源，以及 D8 的士气重算规则。现有班表成员事件没有守军编制合同。设计已给出只用于守城评审的伤亡比例样本和固定测试向量。
+
+### H-B-004 | 守城三条域路径进展及 A 接线请求 | 2026-11-23
+
+- 三路径核查与证据见 [设计和状态](../verification/siege-three-paths-20261123/design.md)。board.md 已拆成 Morale、Presence、Information 三项。B 未把共享 Gateway 或不存在的上游事件伪装成已交付。
+- **Information 已实现 B 域 writer**：新增 backend/app/gameplay/information_runtime.py、information_event_schema.py 和 backend/tests/test_siege_information_runtime.py。输入严格校验 SocialDelivery 的已提交 gameplay.social.delivery_recorded@2，recipient、当前可见性、撤销、delivery 交易/idempotency receipt。输出 gameplay.information.knowledge_updated@1 带 recipient 可见性；CAS 同时读 delivery/source stream，精确重试不重复写。用真实 outbox 到 Heavenly Graph 投影器验证。Python 3.12.2 下新测试 5 passed；连同两条 SocialDelivery 行为测试 6 passed。日志在 F:/paralls-verification/thread-b/siege-three-paths-preflight-20261123/information-green2.log。
+- 请 A 在共享 event_schema_registry.py 的生产 EventSchema factory 注册 register_information_event_schemas。gameplay_schema_event_types() 已可扫描该域 schema 模块；测试只证明本地工厂和图投影路径，不证明生产 factory 已接通。Gateway/L5 触发候选是 Social delivery v2 event，命令候选 information.update_knowledge；输入须绑定 delivery_event_id、recipient、known tick、目标 revision。输出候选 fact:information:<report-scope>:report，其精确 scope 和目录由 A 按正式 FactType 与命令域映射接线。此 handoff 是 A 修改独占文件前的同步，不授权 B 改该文件。
+- **Morale 未完成**：LifeState 触发链已核验；A Pool 适配在 origin/thread-a/ownership-bond-followup-20261121，当前 B integration 无 pool_runtime.py。Organization 的 membership_delegation_recorded@1 是守军名单候选，但没有守军编制与角色定义。D8 的 refold 算法也未裁定。四人名单 1 人死亡得 75 仅是评审向量，不是已采用规则。A 可先读既有 [Morale 候选与 Pool 探针](../verification/siege-morale-20261123/design.md)。
+- **Presence 未完成**：B 当前代码与 schema 未找到设施 integrity breach 事件或生产 writer；Construction Production 的可见 condition 变化是 acquisition/repair，repair 增加 condition。M6-5 不能据此触发。请 Facility/生产源 Owner 提供已提交 breach FactType/event/payload/revision，Presence 才能独立评估与提交通行性。
+- A 接 Information 后若需要 A 或 B 合并作验证，合并执行者先核对申报 SHA、claims、P-1 和门禁。当前 Information 没有新增生产 Gateway 接线、U11 选择集比较、全量回归或 M6-5 端到端验收声明。
+
+### H-B-005 | Information writer 验证完成，Morale/Presence 输入未具备 | 2026-11-23
+
+- Information 本地提交候选在本分支 `155d496c7d26ab0b8f49f67805a2cce728a29692` 之后的未提交工作区中，包含 `information_runtime.py`、`information_event_schema.py` 与域测试。U1–U11 状态、精确命令、测试结果、选择集、全量覆盖与缺项见 [证据](../verification/siege-three-paths-20261123/evidence.md)。当前修改尚未提交，因此交 A 时先等 B 推送后读取具体 SHA。
+- 定向 pytest：`50 passed, 2 warnings`。冻结五组选集 24/12/87/56/990，LifeState 12、ReferenceData 15、Information 10 节点均 `problems=0`。U11 P-3 参数化节点现以三个真实事件 ID 登记。
+- 全量单次 G0 runner 未产生最终 `results.json`，不计全量通过。本轮随后按冻结的 1,069 个测试文件清单串行分 11 批，覆盖 10,448 个唯一节点；24 failed、4 skipped。24 个失败均为 22 个冻结基线失败及 `test_cold_ready`、`test_recovery_owner_probe_measures_original_startup_before_full_oracle` 两个已在 integration 基线重现的失败。本次没有观察到新增失败。日志和每批结果位于 `F:/paralls-verification/thread-b/siege-three-paths-20261123/`。P-1 输出 `tracked_model_secret_offender_count=0`。
+- A 接线清单：在生产 EventSchema factory 调用 `register_information_event_schemas`；按 A 的 Gateway/L5 约定，将已提交 SocialDelivery v2 送达事件触发 `information.update_knowledge`；把命令可信输出映射到经规范确认的 Information FactType，并保留 recipient scope。域声明实现和 projector 测试不表示生产 factory/Gateway 已接通。
+- Morale 仍需 Organization Owner 给出可回放的守军成员事实和 D8 重算合同。Presence 仍需 Facility Owner 给出已提交 breach FactType、事件 payload 与 source revision。收到这些输入后 B 才能完成对应域 writer。此条不宣称三条守城生产路径完成。
+
+### H-B-006 | G5 因外部进程凭据停止 | 2026-11-23
+
+- 按 F 盘临时目录重跑冻结选择集时，`shared-replay` 中两个节点因 `127.0.0.1:8000` 被未健康的外部进程占用而失败。监听进程 PID `23536`，映像为 `F:\Epic\UE_5.9\Engine\Binaries\Win64\UnrealEditor.exe`。没有终止或修改该进程。
+- 检查占用端口的进程命令行时发现认证凭据参数。凭据值未复制到仓库或本记录；来源为外部进程命令行，具体凭据公开状态未核实。按 `AUTONOMY.md` §二凭据发现停止条件，B 停止进一步扫描、提交和推送。项目负责人需处理凭据并释放/协调端口占用后，再恢复 G5。
+- 之前使用默认 `TMPDIR=D:\codex-temp\user-temp` 的 pytest/G5 输出仅作诊断，不作为本单元门禁证据。本轮已确认的 F 盘 TMPDIR 定向测试为 `50 passed, 2 warnings`；F 盘 TMPDIR 的 shared-replay 比较未通过，其他尚未执行的选择集不记通过。对应目录见 `F:/paralls-verification/thread-b/siege-three-paths-20261123/verified-f-temp/`。
+- 单元代码仍未提交。不要将本条当作已交付 A 的实现 SHA。

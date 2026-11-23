@@ -1,0 +1,16 @@
+{
+  "head": "810a46c1249918c09b42fa1fe0c12d7d784579d2",
+  "description": "Recipient-scoped Information update from committed SocialDelivery, including receipt, visibility, revision, replay, and graph projection",
+  "tests": [
+    {"test_name": "tests/test_siege_information_runtime.py::test_committed_delivery_updates_only_its_recipient_knowledge", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_update_replay_returns_original_receipt", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_committed_information_event_reaches_registered_graph_projector", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_update_cannot_claim_another_recipient_delivery", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_update_rejects_delivery_after_source_revocation", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_p5_social_delivery.py::test_delivery_rechecks_source_and_projects_recipient_scope", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_p5_social_delivery.py::test_delivery_view_checkpoint_cut_and_tail_exclude_future_events", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_infra_reference_data_license_admission.py::test_reference_data_schema_event_is_discovered_and_projected[gameplay.reference_data.dataset_registered]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_infra_reference_data_license_admission.py::test_reference_data_schema_event_is_discovered_and_projected[gameplay.reference_data.dataset_corrected]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_infra_reference_data_license_admission.py::test_reference_data_schema_event_is_discovered_and_projected[gameplay.reference_data.dataset_revoked]", "outcome": "passed", "failures": []}
+  ]
+}
