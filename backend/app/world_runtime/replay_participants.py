@@ -8,6 +8,8 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import fields, is_dataclass
 from fractions import Fraction
+import hashlib
+import json
 
 from .batch_settlement import _digest
 
@@ -842,6 +844,55 @@ _PRESENCE_EVENT_TYPES = frozenset({
     "population.presence.despawned",
 })
 
+_SIEGE_PHYSICAL_INPUT_EVENT_TYPES = frozenset({
+    "gameplay.facility.gate_impact_input_received",
+    "gameplay.presence.assessment_input_received",
+})
+
+
+def _siege_physical_input_participant(store, *, boundary_sequence=None):
+    """Capture immutable physical receipts and their committed authority."""
+    events = [event for event in store.read_events()
+              if event.event_type in _SIEGE_PHYSICAL_INPUT_EVENT_TYPES
+              and (boundary_sequence is None or event.global_sequence <= boundary_sequence)]
+    refs = []
+    for event in events:
+        payload = event.payload
+        if (event.schema_version != 1
+                or event.visibility_policy != "authority_only"
+                or not store.transaction_owns_event(
+                    transaction_id=event.transaction_id,
+                    event_id=event.event_id,
+                    principal_ref="authority:siege:physical-input",
+                )
+                or not isinstance(payload.get("receipt"), Mapping)
+                or payload.get("authority_ref") != payload["receipt"].get("authority_ref")
+                or payload.get("receipt_id") != payload["receipt"].get("receipt_id")
+                or payload.get("gate_ref") != payload["receipt"].get("gate_ref")):
+            raise ValueError("replay_siege_physical_input_invalid")
+        receipt = payload["receipt"]
+        canonical = {key: value for key, value in receipt.items() if key != "signature"}
+        if payload.get("receipt_digest") != "sha256:" + hashlib.sha256(
+                json.dumps(
+                    canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+                ).encode("utf-8")).hexdigest():
+            raise ValueError("replay_siege_physical_input_invalid")
+        refs.append(dict(
+            event_id=event.event_id,
+            global_sequence=event.global_sequence,
+            stream_id=event.stream_id,
+            stream_revision=event.stream_revision,
+            transaction_id=event.transaction_id,
+            event_type=event.event_type,
+            payload_digest=_digest(_json(event.payload)),
+        ))
+    return dict(
+        schema_version=1,
+        scope="project:siege-physical-inputs",
+        event_refs=refs,
+        reconstruction_api="GameplayEventStore.read_events",
+    )
+
 
 def _presence_participant(store, authority, *, boundary_sequence=None):
     """Capture canonical Population presence only when real owner facts exist."""
@@ -1582,6 +1633,7 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
     if any(event.event_type in _PRESENCE_EVENT_TYPES for event in store.read_events()) and presence_authority is None:
         raise ValueError("replay_presence_participant_missing")
     presence = _presence_participant(store, presence_authority)
+    siege_physical_inputs = _siege_physical_input_participant(store)
     life_state = _life_state_participant(store)
     learning = _learning_participant(store)
     soul = _soul_participant(store)
@@ -1623,6 +1675,8 @@ def capture_participants(store, coordinator, driver, consumer, batch_refs, *, in
             reason="Private Economy owner random facts are reconstructed in the bounded cut; production demand is unverified.",
             t07="not_verified")
     result["ecology_temporal"] = ecology_temporal
+    result["siege_physical_inputs"] = siege_physical_inputs
+    result["versions"]["siege_physical_inputs"] = 1
     if social_authority is not None:
         if social_recipient_ref is None or social_now is None:
             raise ValueError("replay_social_scope_missing")
@@ -1661,6 +1715,19 @@ def validate_saved_participants(store, manifest, batch_refs, boundary_sequence=N
                                 presence_authority=None):
     """Verify historical participant claims against durable facts, never submit work."""
     _validate_resource_participant(store, manifest.get("resource"), boundary_sequence=boundary_sequence)
+    siege_events = [event for event in store.read_events()
+                    if event.event_type in _SIEGE_PHYSICAL_INPUT_EVENT_TYPES
+                    and (boundary_sequence is None or event.global_sequence <= boundary_sequence)]
+    saved_siege_inputs = manifest.get("siege_physical_inputs")
+    if saved_siege_inputs is None:
+        if siege_events:
+            raise ValueError("replay_siege_physical_input_scope_mismatch")
+    else:
+        expected_siege_inputs = _siege_physical_input_participant(
+            store, boundary_sequence=boundary_sequence
+        )
+        if saved_siege_inputs != expected_siege_inputs:
+            raise ValueError("replay_saved_siege_physical_input_mismatch")
     _validate_life_state_participant(store, manifest.get("life_state"), boundary_sequence=boundary_sequence)
     _validate_learning_participant(store, manifest.get("learning"), boundary_sequence=boundary_sequence)
     _validate_soul_participant(store, manifest.get("soul"), boundary_sequence=boundary_sequence)
