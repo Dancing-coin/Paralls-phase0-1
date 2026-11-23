@@ -54,9 +54,9 @@
 
 ### M6-5 最新进展（2026-11-24）
 
-- A 已提交并独立验证 signed physical evidence slice：`22bf0615` + `6cf4ea86`。定向 13 passed，ownership `24/24 problems=0`；shared-replay `990` 中 2 个 Port 8000 外部服务失败，见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
-- Facility / Presence 消费与两个 HTTP 输入 route 已提交 `43490816` 并独立验证：定向 20 passed，ownership `24/24 problems=0`，shared-replay `990` 中 2 个 Port 8000 外部服务失败。
-- 生产配置仍没有 gate impact profile、Facility initial/threshold 值。未提供这些权威内容前，HTTP Gate route 会持久化已验签回执并明确返回 `not_configured`，不采用测试数值写生产事实。Presence 缺证据仍 unknown 且零写入。
+- A 已提交并独立验证三片。signed physical evidence `22bf0615` + replay decoder `6cf4ea86`，Owner consumers 和 HTTP Gateway `43490816` + Presence route assertion `da7d9a1b`，可选 gate content config `55161d47`。各片定向与冻结选集结果见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
+- `SIEGE_FACILITY_GATE_PROFILES_JSON` 已接入生产启动。未提供权威配置时仍保持 `not_configured`，不采用测试值写完整度事实。Presence 缺可信证据仍 unknown 且零写入。
+- 当前 HTTP handler 在有效签名 evidence 入库后直接调用 Facility Owner。正式 `impact_gate` 的耐久 obligation executor 尚未接入现有 L5 生产路径。因此 M6-5 仍未端到端完成；全量未运行，shared-replay 每片各有两项 Port 8000 外部服务失败。
 
 | 编号 | 事项 | 影响 | 状态 |
 |---|---|---|---|

@@ -93,7 +93,7 @@ The production `main.py` change is pre-announced in `docs/v2-coordination/comms/
 - The first detached check at `22bf0615`, before adding the decoder field, exposed 28 replay manifest scope failures plus the two Port 8000 failures. Registering the participant field/version fixed those 28 failures. The follow-up commit was checked with 50 replay tests, all passed, before re-running the frozen selection at `6cf4ea86`.
 - No full suite was run for this slice. This verifies immutable input evidence, schema visibility and replay registration. It does not verify Facility/Presence production facts or an end-to-end siege playthrough.
 
-## Slice 2 in progress: domain writers and Gateway
+## Slice 2 result: domain writers and Gateway
 
 - Facility consumes a signed GateImpactReceipt, resolves only the server-provided impact profile, pins the input stream revision, and writes through the Facility-owned Pool. Missing profile or stale integrity revision is a zero-write rejection.
 - Presence consumes a separately signed assessment receipt. The decision and its source events/revisions are included in the Place fact written by the Presence authority.
@@ -102,3 +102,19 @@ The production `main.py` change is pre-announced in `docs/v2-coordination/comms/
 - Commit: `4349081644991ae896f15263861c5fb09096f046`.
 - Detached validation at this exact commit used Python 3.12.2 and `app.__file__` at `F:/codex-temp/m6-5-owner-inputs-slice2-43490816/backend/app/__init__.py`. Four focused tests files reported **20 passed**. Frozen ownership: `selected=24 problems=0 improvements=0`. Frozen shared-replay: `selected=990 problems=2 improvements=0`, with the same two Port 8000 external service failures recorded for slice 1. Raw output is under `F:/paralls-verification/thread-a/m6-5-owner-inputs-slice2-43490816/`.
 - No full suite was run. This verifies the HTTP Gate input route through a configured Facility authority and the signed evidence-to-Place consumer, plus the two frozen selections. Production gate numeric content remains absent, so production startup does not instantiate a Facility authority for the HTTP route. A real configured siege playthrough and full suite remain unverified.
+
+## Slice 2 verification refresh
+
+- Test-only commit `da7d9a1b823eec9ff890e521317e37356b50eeac` adds the real HTTP Presence assessment route assertion. At this exact detached SHA, four focused files reported **21 passed**, ownership `selected=24 problems=0 improvements=0`, and shared-replay `selected=990 problems=2 improvements=0` with the same two external Port 8000 failures. Environment and raw output are under `F:/paralls-verification/thread-a/m6-5-owner-inputs-slice2-da7d9a1b/`.
+
+## Slice 3 result: optional production content wiring
+
+- `SIEGE_FACILITY_GATE_PROFILES_JSON` is an optional JSON array. Each item supplies `gate_ref`, `integrity_lower`, `integrity_upper`, `integrity_initial`, `breach_threshold`, `breach_reset_threshold`, and a non-empty `impact_deltas` object keyed by versioned impact-kind ref. Numeric values are strings parsed as `Decimal`. Duplicate gate profiles are rejected. The setting defaults to an empty list, which keeps main's Facility writer unconfigured. No demo numbers are embedded in application defaults.
+- Commit: `55161d47d43a43cdf9074f725053b380e5739d29`.
+- Detached validation at this exact SHA used Python 3.12.2 and `app.__file__` at `F:/codex-temp/m6-5-configured-gate-slice3-55161d47/backend/app/__init__.py`. Five focused files reported **49 passed**. Frozen ownership `selected=24 problems=0 improvements=0`. Frozen shared-replay `selected=990 problems=2 improvements=0`, with the same two external Port 8000 failures. Raw output is under `F:/paralls-verification/thread-a/m6-5-configured-gate-slice3-55161d47/`.
+- No full suite was run. The slice verifies optional configuration construction, app wiring, and the fail-closed empty configuration. Actual production values have not been supplied.
+
+## Remaining formal flow check
+
+- The current HTTP Gateway persists signed evidence, then invokes Facility directly when content configuration exists. Presence facts are written only through its Owner. The current L5 runtime dispatches casualty and breach reactions, but there is no `impact_gate` durable obligation executor in the existing production path. The formal four-layer `impact_gate` obligation is therefore not claimed complete by these slices.
+- No full configured siege run was performed. No production gate values were supplied. Morale's D8 narrow refold remains based on the separately committed Organization roster and LifeState historical inputs.

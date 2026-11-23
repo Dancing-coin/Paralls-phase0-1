@@ -266,3 +266,9 @@
 - A 提交 `4349081644991ae896f15263861c5fb09096f046`：main HTTP Gateway 接收两个独立签名输入；Gate path 由 Facility resolver 消费 server profile 并经 Pool 写 integrity，Presence path 将签名 assessment 及其 source event/revision 交给 Presence 写 Place。验证还覆盖精确重试、未知 profile / stale revision 零写入及真实 HTTP Gate endpoint。代码职责和调用路径见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
 - 该 SHA 的 detached 定向 20 passed，ownership `selected=24 problems=0 improvements=0`；shared-replay `selected=990 problems=2 improvements=0`，两项是 Port 8000 外部服务占用失败；全量未运行。原始输出在 `F:/paralls-verification/thread-a/m6-5-owner-inputs-slice2-43490816/`。
 - main 启动接入现有 `physics_contact_authority_secrets`。但生产没有权威 Gate 初始值、threshold 和 impact delta 配置，main 尚无 Facility authority 实例可交给 Gateway；因此 HTTP Gate path 在该状态明确为 `not_configured`，实际生产 Pool 写入仍待该内容配置。测试中的 `-20` 仅是测试 fixture，不是生产值。不得把测试数据升级为事实。
+
+### H-A-031 | M6-5 optional Gate config and formal obligation gap | 2026-11-24
+
+- A 提交 `55161d47d43a43cdf9074f725053b380e5739d29`，通过 `SIEGE_FACILITY_GATE_PROFILES_JSON` 将权威 per-gate lower/upper/initial、breach threshold/reset threshold 与 impact-kind delta 配置接入 main 启动。空列表 fail-closed，完全不创建 Facility writer；没有默认数值。该 SHA detached 定向 49 passed，ownership `24/24 problems=0`；shared-replay `990` 两项 Port 8000 外部服务失败，见 `F:/paralls-verification/thread-a/m6-5-configured-gate-slice3-55161d47/`。
+- 尚未收到生产 gate profile 的实际数值，不能验证真实城门输入和 threshold 触发。通过内容配置即可启用 Facility writer，但本地和生产环境当前都未完成数值装载验证。
+- 正式 `impact_gate` 要求的耐久 obligation 运行时尚未接入。当前已验签 HTTP Gateway 持久化 evidence 后直接调用 Facility Owner；现有 L5 dispatcher 负责 casualty 到 Morale 与 breach 到 Presence，不负责 Gate impact 的 obligation 生命周期/恢复。因此 M6-5 仍不是完整正式 `impact_gate` 流程，也未做全量或完整 siege playthrough。
