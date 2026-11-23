@@ -1,0 +1,36 @@
+{
+  "head": "d7ae1d38",
+  "description": "Presence commits an independent passability assessment only when the committed breach and additional trusted evidence revisions are current; missing evidence remains unknown with zero writes",
+  "tests": [
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_breach_does_not_write_passability_until_presence_commits_its_decision",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_missing_presence_assessment_returns_unknown_without_writing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_breach_without_independent_presence_evidence_returns_unknown",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_presence_assessment_rejects_stale_integrity_revision_without_writing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_place_passability_event_is_registered_in_factory_and_graph_registry",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_place_passability_rejects_unowned_breach_source_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
