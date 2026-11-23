@@ -179,3 +179,26 @@ def test_morale_refold_with_missing_member_life_state_writes_nothing():
     assert result.failure is not None
     assert result.failure.error_code == "morale_input_unknown"
     assert store.export_snapshot() == before
+
+
+def test_first_valid_casualty_initializes_and_refolds_morale_from_the_configured_baseline():
+    store = GameplayEventStore()
+    member = "character:defender-1"
+    _seed_garrison(store, members=(member,))
+    death = _append(
+        store,
+        principal="authority:character:life-state",
+        stream_id=f"gameplay:character:life:{member}",
+        event_type="gameplay.character.life_state_changed",
+        payload={"actor_ref": member, "from_state": "alive", "to_state": "dead"},
+        command_id="life-death:first",
+    )
+
+    result = _authority(store).refold_after_casualty(death_event_id=death.event_id)
+
+    assert result.committed
+    assert _authority(store).projection(MORALE_FACT).value == Decimal("0")
+    assert [event.event_type for event in store.read_stream(MORALE_FACT)] == [
+        "gameplay.pool.initialized",
+        "gameplay.pool.adjusted",
+    ]

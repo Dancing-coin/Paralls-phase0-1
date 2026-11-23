@@ -64,6 +64,10 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
+from app.gameplay.m6_5_siege_runtime import (
+    DEFAULT_MORALE_DEFINITIONS,
+    build_m6_5_siege_runtime,
+)
 from app.gameplay.social_spatial_owner import SOCIAL_SPATIAL_PRINCIPAL, SocialSpatialOwner
 from app.gameplay.canonical_combat_authority import (
     CanonicalCombatThreatAuthority,
@@ -1869,6 +1873,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global population_activation_presence_service
     global stormnight_realtime_session_service
     global gameplay_outbox_dispatcher
+    global m6_5_siege_runtime
     global adventure_basic_mirror_runtime
     global embodied_evidence_ledger
     global embodied_interaction_session_service
@@ -1927,6 +1932,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         DurableGameplayEventStore(graph_path.with_name(f"{graph_path.name}.gameplay.json"))
         if restore_gameplay and graph_path.name != ":memory:"
         else GameplayEventStore()
+    )
+    m6_5_siege_runtime = build_m6_5_siege_runtime(
+        store=gameplay_event_store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
     )
     _assemble_settlement_batch_runtime()
     _assemble_status_runtime()
@@ -2144,6 +2153,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
             raise GameplayMirrorDeliveryError("mirror_projection_unavailable")
         gameplay_mirror_outbox_refresh_consumer.after_transaction_dispatched(transaction)
         government_drought_advisory_presentation_service.after_transaction_dispatched(transaction)
+        m6_5_siege_runtime.after_transaction_dispatched(transaction)
 
     adventure_basic_mirror_runtime = None
     if settings.adventure_basic_mirror_live_scenario:

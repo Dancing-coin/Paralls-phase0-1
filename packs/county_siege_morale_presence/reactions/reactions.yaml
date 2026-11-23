@@ -1,0 +1,18 @@
+casualty_to_morale:
+  "on":
+    fact_type_pattern: "fact:character:*:lifestate"
+    transition_to: "dead"
+  emit:
+    command_type: "morale.refold"
+    target:
+      scope: "group_of(subject)"
+gate_breach_to_presence_reeval:
+  "on":
+    fact_type_pattern: "fact:facility:gate-*:integrity"
+    event_type: "gameplay.pool.threshold_crossed"
+  when:
+    condition_ref: "facility_breach@1"
+  emit:
+    command_type: "presence.reevaluate"
+    target:
+      scope: "gate-03"

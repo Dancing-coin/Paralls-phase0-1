@@ -126,6 +126,15 @@ class MoraleRefoldAuthority:
             return self._reject(command_id, "morale_death_not_in_roster_history")
 
         definition = selected[1]
+        if not self.store.read_stream(definition.fact_type):
+            initialized = self.initialize(
+                organization_ref=selected[0][0],
+                role_ref=selected[0][1],
+                command_id=f"morale-init:{selected[0][0]}:{selected[0][1]}",
+                idempotency_key=f"morale-init:{selected[0][0]}:{selected[0][1]}",
+            )
+            if not initialized.committed:
+                return initialized
         target = Decimal(100 * sum(state == "alive" for state in states.values())) / Decimal(len(states))
         projection = PoolProjector().rebuild(
             self.store.read_stream(definition.fact_type),

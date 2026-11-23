@@ -1,0 +1,5 @@
+county_siege_morale_presence@1:
+  reactions: ["casualty_to_morale", "gate_breach_to_presence_reeval"]
+  pipelines: []
+  workflows: []
+  content_refs: ["county_siege_morale_presence@1.0.0"]
