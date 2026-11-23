@@ -1,0 +1,21 @@
+{
+  "head": "4023c182158a7d90185b72e17acfeedf1c7d3c0f",
+  "description": "Trusted L5 outputs accept exact Place machine identifiers and dispatch a committed gate breach",
+  "tests": [
+    {
+      "test_name": "tests/test_l5_dispatch_runtime.py::test_gateway_accepts_exact_place_machine_output_type",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_l5_dispatch_runtime.py::test_committed_gate_breach_dispatches_presence_machine_output",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_accept_exact_place_machine_output_type",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
