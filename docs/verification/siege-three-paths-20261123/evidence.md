@@ -1,7 +1,7 @@
 # 守城三条域路径证据
 
 - 基线：`810a46c1249918c09b42fa1fe0c12d7d784579d2`，标签 `integration-2026-11-23`。
-- 当前分支：`thread-b/reference-data-20261123`，验证时 HEAD `155d496c7d26ab0b8f49f67805a2cce728a29692`，含本轮未提交修改。
+- 当前分支：`thread-b/reference-data-20261123`，最终推送 SHA `6741ab6115d5c280390aaba162fa1e109f6064e3`。定向测试与 U11 在提交前以相同源码内容复验。
 - 扫描命令：`git status --short`；`rg -n "morale|passability|breach|Information" backend/app backend/tests docs/v2-coordination`；pytest 收集命令见下文。
 - 验证时间：2026-11-23 Asia/Shanghai。
 - 结论等级：Information 域写入通过所列定向测试、P-3 与选择集门禁；Morale、Presence 阻塞，未实现其域写入。三条守城生产路径和 Architecture v2 单元均未验收。
@@ -70,6 +70,13 @@ $env:PYTHONPATH = '<current worktree>\\backend'
 exit_code=0
 ```
 
+修复提交 `6741ab6115d5c280390aaba162fa1e109f6064e3` 后再次运行同一组定向测试，原始日志 `F:\\paralls-verification\\thread-b\\siege-three-paths-20261123\\information-targeted-abba3c3c-fixed.log`：
+
+```text
+50 passed, 2 warnings in 1.02s
+exit_code=0
+```
+
 F 盘 TMPDIR 的冻结选择集重跑只完成部分：ownership 24、modifier 12、equipment 87、inventory 56 均 `problems=0`。shared-replay 两个节点因 `127.0.0.1:8000` 被外部 UnrealEditor 进程占用而失败，因此完整 G5 未通过。
 
 在继续授权后，单独重跑本域 U11 选择集，TEMP/TMP/TMPDIR 均指向 F 盘：
@@ -81,13 +88,20 @@ exit_code=0
 
 输出位于 `F:\\paralls-verification\\thread-b\\siege-three-paths-20261123\\siege-information-selection-final\\`。冻结五组中的 shared-replay 仍有两个失败，不能以本域 U11 通过替代 G5 全部选择集门禁。
 
+最终源码复验的 U11 输出位于 `F:\\paralls-verification\\thread-b\\siege-three-paths-20261123\\siege-information-selection-abba3c3c-fixed\\`：
+
+```text
+selected=10 problems=0 improvements=0
+exit_code=0
+```
+
 此前默认 `TMPDIR=D:\\codex-temp\\user-temp` 的全量分批诊断结果为 `10,448 collected`、`10,420 passed`、`24 failed`、`4 skipped`。24 个失败是已记录的 22 个冻结失败节点，以及在 2026-11-23 LifeState integration 基线复跑中也复现的 `test_cold_ready`（KeyError）与 `test_recovery_owner_probe_measures_original_startup_before_full_oracle`（AssertionError）。该结果不作为本单元的有效门禁证据，因为测试临时目录未按 F 盘要求设置。单次 G0 runner 未生成 `results.json`。四个 skipped 对应既往摘要中的 2 skipped 与 2 xfailed，本次 runner 将其统一记作 skipped。
 
 P-1 仓库 tracked secret scan 原始输出：
 
 ```text
 tracked_model_secret_offender_count=0
-harness_cleanup=passed run_id=4215ba79ef244b62a85fd9a64ced5e5b
+harness_cleanup=passed run_id=2fc9a9f3d4e84ad19ae59ae2415a2124
 ```
 
 随后在检查监听 8000 端口的外部进程时，发现 UnrealEditor 命令行含认证凭据。值未记录；具体凭据公开状态未核实。依 `AUTONOMY.md` §二停止条件，停止进一步扫描、提交与推送。该外部进程未被终止或修改。

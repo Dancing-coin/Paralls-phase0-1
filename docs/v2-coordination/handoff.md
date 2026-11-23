@@ -144,3 +144,12 @@
 - 检查占用端口的进程命令行时发现认证凭据参数。凭据值未复制到仓库或本记录；来源为外部进程命令行，具体凭据公开状态未核实。按 `AUTONOMY.md` §二凭据发现停止条件，B 停止进一步扫描、提交和推送。项目负责人需处理凭据并释放/协调端口占用后，再恢复 G5。
 - 之前使用默认 `TMPDIR=D:\codex-temp\user-temp` 的 pytest/G5 输出仅作诊断，不作为本单元门禁证据。本轮已确认的 F 盘 TMPDIR 定向测试为 `50 passed, 2 warnings`；F 盘 TMPDIR 的 shared-replay 比较未通过，其他尚未执行的选择集不记通过。对应目录见 `F:/paralls-verification/thread-b/siege-three-paths-20261123/verified-f-temp/`。
 - 单元代码仍未提交。不要将本条当作已交付 A 的实现 SHA。
+
+### H-B-007 | Information 域 writer 已推送供 A 接线 | 2026-11-23
+
+- 项目负责人要求继续推进后，B 完成并推送自己的分支 `thread-b/reference-data-20261123`。可用最终树 SHA：`6741ab6115d5c280390aaba162fa1e109f6064e3`；远端分支已核验为同一 SHA。**请 A/合并执行者读取分支最终树或该 SHA，不要单独消费中间提交 `abba3c3c2187b886db5ddb7727be9e8f2dc23162`**，该中间树的事件 schema 文件末尾曾有语法错误，后续 `6741ab61` 已修复并复验。
+- 定向测试在最终代码内容下使用 F 盘 `TEMP`/`TMP`/`TMPDIR`：`50 passed, 2 warnings`。Information U11：`selected=10 problems=0 improvements=0`。P-1 tracked scan：`tracked_model_secret_offender_count=0`。相应命令与输出见 [证据](../verification/siege-three-paths-20261123/evidence.md)。
+- 请 A 接入 `register_information_event_schemas` 到生产 EventSchema factory；以 `gameplay.social.delivery_recorded@2` 触发 Gateway/L5 命令 `information.update_knowledge`；确认 recipient-scoped 输出 FactType 的精确 scope、visibility 和可信输出映射。B 没有改 A 独占的 registry、Gateway、L5 或 `main.py`。
+- 冻结五组选集尚未全过：F 盘 TMPDIR 的 `shared-replay` 两例因外部 UnrealEditor 占用本地端口 8000 失败。全量门禁未完成。合并执行者不要据此条声明 G5 通过。
+- Morale 和 Presence 尚无可交付 writer。Morale 等待可回放的守军成员事实及 D8 重算合同；Presence 等待 Facility 已提交 breach 事件与 source revision。A 当前可接 Information，不能据此宣称完整 M6-5 守城路径完成。
+- 本轮在 shared-replay 端口诊断中确认外部 UnrealEditor 命令行含认证凭据，值未记录、公开状态未核实；未改动该进程。项目负责人继续处理该环境事项。此信息不属于仓库或分支内容。
