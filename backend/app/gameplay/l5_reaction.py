@@ -42,7 +42,7 @@ def compile_reactions(
     for command_type, fact_types in command_fact_outputs.items():
         if (not isinstance(command_type, str) or not command_type
                 or not isinstance(fact_types, (set, frozenset))
-                or any(not _is_fact_type(fact_type) for fact_type in fact_types)):
+                or any(not is_gameplay_output_type(fact_type) for fact_type in fact_types)):
             raise ReactionRejected("reaction_command_outputs_invalid", "command_fact_outputs")
 
     reactions = []
@@ -163,9 +163,9 @@ def _reject_cycles(
         raise ReactionRejected("reaction_cycle_detected", "reactions")
 
 
-def _is_fact_type(value: object) -> bool:
+def is_gameplay_output_type(value: object) -> bool:
     return (
         isinstance(value, str)
-        and value.startswith("fact:")
+        and value.startswith(("fact:", "place:"))
         and not any(char.isspace() or char in "*?[" for char in value)
     )

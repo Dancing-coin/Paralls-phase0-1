@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatchcase
 from types import MappingProxyType
 
-from app.gameplay.l5_reaction import Reaction
+from app.gameplay.l5_reaction import Reaction, is_gameplay_output_type
 from app.gameplay.models import AtomicEventBatch, GameplayEvent
 
 
@@ -47,8 +47,7 @@ class TrustedGameplayCommandGateway:
                 or not fact_types
                 or any(
                     not isinstance(fact_type, str)
-                    or not fact_type.startswith("fact:")
-                    or any(char.isspace() or char in "*?[" for char in fact_type)
+                    or not is_gameplay_output_type(fact_type)
                     for fact_type in fact_types
                 )
             ):

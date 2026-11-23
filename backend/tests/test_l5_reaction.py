@@ -155,6 +155,21 @@ def test_reactions_reject_duplicate_ids_and_malformed_command_outputs():
         })
 
 
+def test_reactions_accept_exact_place_machine_output_type():
+    reactions = compile_reactions([{
+        "reaction_id": "gate_breach_to_presence_reeval",
+        "on": {
+            "fact_type_pattern": "fact:facility:gate-*:integrity",
+            "event_type": "gameplay.pool.threshold_crossed",
+        },
+        "emit": {"command_type": "presence.reevaluate"},
+    }], command_fact_outputs={
+        "presence.reevaluate": {"place:gate-03:passability"},
+    })
+
+    assert len(reactions) == 1
+
+
 @pytest.fixture
 def composition_pack(tmp_path):
     source = Path(__file__).resolve().parents[2] / "packs" / "credential_reference"
