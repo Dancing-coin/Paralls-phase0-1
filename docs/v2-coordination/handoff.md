@@ -248,3 +248,9 @@
 - 项目负责人确认 Presence 的规则是可信决策输入，缺少依据时返回 `unknown`。A 的生产接线提交 `4506d9071f7f5779bdd46100419417aa8a30d4e8` 已在 `main.py` 注册提交后 reaction dispatcher、Morale/Presence Owner handlers 和 county siege rule pack。生产 Morale 首次有效 casualty 会从配置基线初始化同一个 Morale Pool，再以事件位置 roster/LifeState 历史重算；Presence handler 在无 resolver/evidence 时安全返回 unknown 且零写入。
 - Detached 验证：定向 80 passed；新永久选集 4 节点 `problems=0 improvements=0`；ownership 24 节点零差异。shared-replay 990 项有两个 Port 8000 外部监听失败，与父基线记录的失败类别相同。全量未在该提交运行。详细状态、U1–U11 和原始输出目录见 [M6-5 production wiring evidence](../verification/m6-5-production-wiring-20261124.md)。
 - 缺少的仍是可信 Facility gate-impact 生产事件，以及能够独立给出 `blocked/passable`、证据事件和 revision 的 Presence 输入。现有 Combat settlement 只接受单个角色目标并依赖角色 Presence/LifeState/Faction，不可代表攻门输入。不能把 breach、维修、condition 或普通观察转成 Presence 决策。A 已向项目负责人提出以可信模拟宿主提交独立 impact 与 Presence 决策证据的合同方案；在输入合同确定前，生产 Presence 保持 unknown、零写入。M6-5 继续进行中。
+
+### H-A-028 | M6-5 输入来源按正式 impact_gate 规格复核 | 2026-11-24
+
+- 正式文档 `docs/architecture-v2/07-玩法组合/02-守城Demo定义.md` 将 `impact_gate` 定义为四层 `obligation`，说明 UE 碰撞证据经 Gateway 形成 `Command(impact)`；`docs/architecture-v2/05-规则包/02-受击剖面.md` 规定门完整度与 Presence 通行性分开结算，不能按 breach 自动映射。A 已撤回上一条“宿主直接提交 damage 数值”的宽泛建议，按正式路径应由 Gateway 验证碰撞证据、服务端已注册 impact profile 解析，Facility Owner 提交 integrity，Presence Owner 再提交独立评估。
+- 当前代码的 `backend/app/gameplay/l5_pipeline.py` 只有 profile 编译与输入 revision vector 校验，没有 impact resolver 执行器。`PhysicsContactReceiptAuthority` 能持久化签名碰撞证据，但 `main.py` 当前入口是 street-combat 角色 encounter 路径；它未接 gate 目标或 `impact_gate`，也不含 gate 的伤害解析。正式文档未给出城门 Profile 数值/Resolver 参数，代码包中也未发现相应 gate profile。没有擅自补造 damage 值。
+- UE 到 Presence 的评估回执协议也未发现。负责人已确认“可信 Presence 决策输入，缺依据时 unknown”，因此已知决策语义；仍需定义该 trusted input 如何从 UE/Gateway 进入 Evidence Store 并携带来源事件/revision。A 已提请负责人确认是否授权起草 M6-5 固定 profile 参数与 UE Presence 回执合同。答复前继续保留 unknown、零写入行为，不宣称 `impact_gate` 或 M6-5 完成。
