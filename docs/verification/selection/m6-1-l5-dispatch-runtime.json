@@ -1,5 +1,5 @@
 {
-  "head": "dabb7f4e",
+  "head": "90af2255",
   "description": "Committed L5 reaction dispatch routes stable commands only to handlers with explicit trusted fact outputs and rejects unknown conditions",
   "tests": [
     {

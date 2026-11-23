@@ -1,6 +1,7 @@
 # M6-1 committed reaction dispatch component
 
-- Implementation commit: `dabb7f4e0756d8bdfa61207ad808e98055623978`.
+- Implementation commits: `dabb7f4e0756d8bdfa61207ad808e98055623978` adds the dispatcher, and `90af2255749871fa78b063b1070592aa9f8ec232` rejects wildcard FactTypes in trusted outputs.
+- Verified code SHA: `90af2255749871fa78b063b1070592aa9f8ec232`.
 - Worktree: `F:\codex-temp\paralls-v2-thread-a-bond-20261121`, branch `thread-a/ownership-bond-followup-20261121`.
 - Python: `D:\Temp\paralls-g0-py312\Scripts\python.exe`, version `3.12.2`.
 - `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`; `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
@@ -23,10 +24,10 @@ This is an L5 dispatch component. It is not yet registered in production `main.p
 | Frozen `modifier` | `selected=12 problems=0 improvements=0` |
 | Frozen `ownership` | `selected=24 problems=0 improvements=0` |
 | Frozen `shared-replay` | `selected=990 problems=2 improvements=0`; the two failures are embodied interaction runner tests blocked by an external unhealthy listener on Port 8000 |
-| All registered selections | 18 selections, 136 selected nodes, `problems=0 improvements=0` |
+| All registered selections | 19 selections, 141 selected nodes, `problems=0 improvements=0` |
 | Full suite after this component | Not run |
 
-The frozen run and every registered selection were run with `docs/verification/absorb-main-3bf3418e/compare_selection.py`. Raw output is under `F:\paralls-verification\thread-a\m6-5-l5-gateway-20261124-01\`. The two shared-replay failures also appear in the Presence component evidence and reproduce at its parent SHA `5d7cc0da`; this unit did not stop or modify the external process.
+The frozen run and every registered selection were run with `docs/verification/absorb-main-3bf3418e/compare_selection.py` against `90af2255`. Raw output is under `F:\paralls-verification\thread-a\m6-5-l5-gateway-20261124-02\`. The two shared-replay failures also appear in the Presence component evidence and reproduce at its parent SHA `5d7cc0da`; this unit did not stop or modify the external process.
 
 ## Migration DoD status for this mechanism unit
 
