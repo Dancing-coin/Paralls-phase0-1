@@ -41,7 +41,7 @@ class ESMService:
     WORKBENCH_HISTORY_LIMIT = 2
     SUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"light_level_drop", "light_level_restore", "thermal_level_rise", "smoke_density_rise", "noise_level_rise"}
     UNSUPPORTED_ENVIRONMENT_CHANGE_TYPES = {"thermal_spike"}
-    ENVIRONMENT_EFFECTS = {
+    ENVIRONMENT_EFFECTS: dict[str, dict[str, str]] = {
         "light_level_drop": {"light_level": "low", "noise_level": "elevated", "thermal_level": "warm", "smoke_density": "light", "visibility_level": "reduced"},
         "light_level_restore": {},
         "thermal_level_rise": {"thermal_level": "hot"},
@@ -607,6 +607,18 @@ class ESMService:
         self._readable_records = {} if readable_records is None else readable_records
         self._environment_fields: dict[tuple[str, str], EnvironmentFieldState] = {}
         self._environment_targets: dict[tuple[str, str, str, str], EnvironmentTargetConstraints] = {}
+        self._feasibility_templates = {
+            change_type: FeasibilityResponse(
+                response_id="template", proposal_ref="template", feasible=True, constraints=[],
+                estimated_effect={
+                    "temperature": "ambient", "humidity": "stable", "light_level": "normal",
+                    "thermal_level": "neutral", "noise_level": "quiet", "smoke_density": "clear",
+                    "visibility_level": "clear", **effects,
+                },
+                producer_ts=0, causation_id="template", correlation_id="template",
+            )
+            for change_type, effects in self.ENVIRONMENT_EFFECTS.items()
+        }
         self._environment_lock = RLock()
         self._latest_environment_result: EnvironmentStateResult | None = None
         self._latest_state_machine_transition: StateMachineTransitionEvent | None = None
@@ -1452,24 +1464,32 @@ class ESMService:
         return constraints
 
     def evaluate_proposal(self, proposal: EnvironmentProposal) -> FeasibilityResponse:
-        scope = (proposal.room_id, proposal.scene_id, proposal.zone_id, proposal.target_environment_id)
-        with self._environment_lock:
-            constraints = self._environment_constraints(scope, proposal.requested_change_type, proposal.producer_ts)
-        estimated = {}
-        if not constraints:
-            estimated = {"temperature": "ambient", "humidity": "stable", "light_level": "normal",
-                         "thermal_level": "neutral", "noise_level": "quiet", "smoke_density": "clear",
-                         "visibility_level": "clear", **self.ENVIRONMENT_EFFECTS[proposal.requested_change_type]}
-        return FeasibilityResponse(
-            response_id=f"feasibility:{proposal.proposal_id}",
-            proposal_ref=proposal.proposal_id,
-            feasible=not constraints,
-            constraints=constraints,
-            estimated_effect=estimated,
-            producer_ts=proposal.producer_ts + 1,
-            causation_id=proposal.proposal_id,
-            correlation_id=proposal.correlation_id,
-        )
+        """估算已验证提案的粗粒度效果。运行时约束由探测和正式结算读取。"""
+        change_type = proposal.requested_change_type
+        proposal_id = proposal.proposal_id
+        if change_type not in self.SUPPORTED_ENVIRONMENT_CHANGE_TYPES:
+            return FeasibilityResponse(
+                response_id=f"feasibility:{proposal_id}",
+                proposal_ref=proposal_id,
+                feasible=False,
+                constraints=["unsupported_change_type"],
+                estimated_effect={},
+                producer_ts=proposal.producer_ts + 1,
+                causation_id=proposal_id,
+                correlation_id=proposal.correlation_id,
+            )
+        response = self._feasibility_templates[change_type].__copy__()
+        # The template and inbound proposal are already validated. Give each response its own containers.
+        fields = vars(response)
+        fields["response_id"] = f"feasibility:{proposal_id}"
+        fields["proposal_ref"] = proposal_id
+        fields["constraints"] = []
+        fields["estimated_effect"] = fields["estimated_effect"].copy()
+        fields["alternative_suggestions"] = []
+        fields["producer_ts"] = proposal.producer_ts + 1
+        fields["causation_id"] = proposal_id
+        fields["correlation_id"] = proposal.correlation_id
+        return response
 
     def probe_constraints(self, probe: ConstraintProbe, *, room_id: str, scene_id: str, zone_id: str) -> ProbeConstraintStateResult:
         kinds = ("cooldown", "material", "spatial", "resource") if probe.constraint_type == "all" else (probe.constraint_type,)

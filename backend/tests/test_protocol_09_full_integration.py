@@ -44,13 +44,23 @@ def test_complete_proposal_response_request_confirmation_result_flow(protocol):
     assert p.runtime.proposal_tracker.status(event.payload["proposal_id"]) == "executed"
 
 
-@pytest.mark.parametrize("payload", [
-    {"requested_change_type": "unsupported"}, {"target_environment_id": "missing"},
+@pytest.mark.parametrize("payload, expected_constraint", [
+    ({"requested_change_type": "unsupported"}, None),
+    ({"target_environment_id": "missing"}, "unknown_environment_target"),
 ])
-def test_infeasible_proposal_never_requests_execution(protocol, payload):
+def test_unsupported_change_and_unknown_target_abort_at_their_own_stage(protocol, payload, expected_constraint):
     p = protocol
     event = p.producer.emit_environment_proposal(make_output(payload={"target_environment_id": "env_lamp", **payload}))
-    assert not p.bus.list_events(event_type="siming.environment_request")
+    requests = p.bus.list_events(event_type="siming.environment_request")
+    confirmations = p.bus.list_events(event_type="esm.execution_confirmation")
+    if expected_constraint is None:
+        assert not requests
+        assert not confirmations
+    else:
+        assert len(requests) == len(confirmations) == 1
+        assert confirmations[0].payload["execution_state"] == "aborted"
+        constraints = p.bus.list_events(event_type="constraint_state_event")
+        assert [event.payload["constraint_code"] for event in constraints] == [expected_constraint]
     assert not p.applied
     assert p.runtime.proposal_tracker.status(event.payload["proposal_id"]) == "aborted"
 
