@@ -566,6 +566,133 @@ def test_organization_lifecycle_has_no_unbound_platform_append_surface() -> None
     assert hasattr(OrganizationAuthority, "transition_admitted_platform_organization_lifecycle")
 
 
+def test_garrison_roster_replays_membership_as_of_death_sequence() -> None:
+    from app.gameplay.organization_government_social_platform_runtime import (
+        organization_garrison_roster_at,
+    )
+
+    store = GameplayEventStore()
+    _append_garrison_membership(store, member_ref="character:ada", state="active")
+    death_sequence = _append_garrison_membership(
+        store, member_ref="character:bryn", state="active"
+    )
+    later_sequence = _append_garrison_membership(
+        store, member_ref="character:ada", state="revoked"
+    )
+
+    at_death = organization_garrison_roster_at(
+        store,
+        organization_ref="organization:garrison:east@1",
+        role_ref="role:garrison-defender@1",
+        global_sequence=death_sequence,
+    )
+    after_revocation = organization_garrison_roster_at(
+        store,
+        organization_ref="organization:garrison:east@1",
+        role_ref="role:garrison-defender@1",
+        global_sequence=later_sequence,
+    )
+
+    assert at_death is not None
+    assert at_death.member_refs == ("character:ada", "character:bryn")
+    assert at_death.source_stream_revision == 2
+    assert at_death.global_sequence == death_sequence
+    assert after_revocation is not None
+    assert after_revocation.member_refs == ("character:bryn",)
+    assert after_revocation.source_stream_revision == 3
+
+
+def test_garrison_roster_is_unknown_when_no_active_matching_member_exists() -> None:
+    from app.gameplay.organization_government_social_platform_runtime import (
+        organization_garrison_roster_at,
+    )
+
+    store = GameplayEventStore()
+    sequence = _append_garrison_membership(
+        store, member_ref="character:ada", state="revoked"
+    )
+
+    assert organization_garrison_roster_at(
+        store,
+        organization_ref="organization:garrison:east@1",
+        role_ref="role:garrison-defender@1",
+        global_sequence=sequence,
+    ) is None
+
+
+def test_garrison_roster_ignores_membership_payloads_without_organization_owner_receipt() -> None:
+    from app.gameplay.organization_government_social_platform_runtime import (
+        organization_garrison_roster_at,
+    )
+
+    store = GameplayEventStore()
+    stream_id = "gameplay:organization:organization:garrison:east@1"
+    command_id = "unowned-garrison-membership"
+    from app.gameplay.settlement_plan import build_atomic_event_batch
+
+    batch = build_atomic_event_batch(
+        command_id=command_id,
+        principal_ref="actor:untrusted",
+        stream_id=stream_id,
+        expected_revision=0,
+        event_specs=((
+            "gameplay.organization.membership_delegation_recorded@1",
+            {
+                "organization_ref": "organization:garrison:east@1",
+                "member_ref": "character:ada",
+                "role_ref": "role:garrison-defender@1",
+                "provenance_ref": "provenance:appointment@1",
+                "source_revision_pin": 0,
+                "delegation_state": "active",
+            },
+        ),),
+        idempotency_key=command_id,
+        causation_id=f"cause:{command_id}",
+        correlation_id="corr:garrison-membership",
+    )
+    receipt = store.append_batch(batch)
+    assert receipt.committed
+
+    assert organization_garrison_roster_at(
+        store,
+        organization_ref="organization:garrison:east@1",
+        role_ref="role:garrison-defender@1",
+        global_sequence=receipt.global_sequence_range[1],
+    ) is None
+
+
+def _append_garrison_membership(
+    store: GameplayEventStore, *, member_ref: str, state: str
+) -> int:
+    from app.gameplay.settlement_plan import build_atomic_event_batch
+
+    stream_id = "gameplay:organization:organization:garrison:east@1"
+    expected_revision = store.get_stream_head(stream_id)
+    command_id = f"garrison-membership:{expected_revision + 1}"
+    payload = {
+        "organization_ref": "organization:garrison:east@1",
+        "member_ref": member_ref,
+        "role_ref": "role:garrison-defender@1",
+        "provenance_ref": "provenance:appointment@1",
+        "source_revision_pin": expected_revision,
+        "delegation_state": state,
+    }
+    batch = build_atomic_event_batch(
+        command_id=command_id,
+        principal_ref=OGS_ORGANIZATION_PRINCIPAL_REF,
+        stream_id=stream_id,
+        expected_revision=expected_revision,
+        event_specs=(("gameplay.organization.membership_delegation_recorded@1", payload),),
+        idempotency_key=command_id,
+        causation_id=f"cause:{command_id}",
+        correlation_id="corr:garrison-membership",
+        read_stream_revisions={stream_id: expected_revision},
+    )
+    receipt = store.append_batch(batch)
+    assert receipt.committed
+    return receipt.global_sequence_range[1]
+
+
 def test_social_private_projection_without_active_binding_is_zero_write() -> None:
     social = SocialFactAuthority(
         registry=SimpleNamespace(registry_ref="registry:test", registry_revision="registry:test@1", registry_digest="sha256:" + "f" * 64),

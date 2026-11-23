@@ -11,8 +11,9 @@ import json
 from types import MappingProxyType
 from typing import Literal, Mapping, Sequence
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
+from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import GameplayEvent, StrictGameplayModel
 
 
@@ -100,6 +101,92 @@ class OrganizationMembershipDelegationIntent(_Intent):
 
 class OrganizationMembershipDelegationRecord(OrganizationMembershipDelegationIntent, _Record):
     pass
+
+
+class OrganizationGarrisonRosterSnapshot(_OGSModel):
+    organization_ref: str = Field(pattern=r"^organization:.*@.+$")
+    role_ref: str = Field(pattern=r"^role:.*@.+$")
+    member_refs: tuple[str, ...] = ()
+    source_stream_id: str = Field(min_length=1)
+    source_stream_revision: int = Field(strict=True, ge=1)
+    global_sequence: int = Field(strict=True, ge=1)
+
+
+def organization_garrison_roster_at(
+    store: GameplayEventStore,
+    *,
+    organization_ref: str,
+    role_ref: str,
+    global_sequence: int,
+) -> OrganizationGarrisonRosterSnapshot | None:
+    """Resolve the committed active roster visible at one global event position."""
+    if (
+        not isinstance(organization_ref, str)
+        or not organization_ref.startswith("organization:")
+        or "@" not in organization_ref
+        or not isinstance(role_ref, str)
+        or not role_ref.startswith("role:")
+        or "@" not in role_ref
+        or type(global_sequence) is not int
+        or global_sequence < 1
+    ):
+        raise ValueError("ogs_garrison_roster_query_invalid")
+
+    stream_id = ORGANIZATION_MEMBERSHIP_STREAM_GRAMMAR.format(
+        organization_ref=organization_ref
+    )
+    history = tuple(
+        event
+        for event in store.read_stream(stream_id)
+        if event.global_sequence <= global_sequence
+    )
+    if not history:
+        return None
+
+    latest_by_member: dict[str, OrganizationMembershipDelegationIntent] = {}
+    previous_revision = 0
+    previous_sequence = 0
+    for event in history:
+        if (
+            event.global_sequence <= previous_sequence
+            or event.stream_revision != previous_revision + 1
+        ):
+            return None
+        previous_sequence = event.global_sequence
+        previous_revision = event.stream_revision
+        if event.event_type != "gameplay.organization.membership_delegation_recorded@1":
+            continue
+        if event.visibility_policy != "project":
+            return None
+        if not store.transaction_owns_event(
+            transaction_id=event.transaction_id,
+            event_id=event.event_id,
+            principal_ref=OGS_ORGANIZATION_PRINCIPAL_REF,
+        ):
+            return None
+        try:
+            membership = OrganizationMembershipDelegationIntent.model_validate(event.payload)
+        except ValidationError:
+            return None
+        if membership.organization_ref != organization_ref:
+            return None
+        latest_by_member[membership.member_ref] = membership
+
+    members = tuple(sorted(
+        member_ref
+        for member_ref, membership in latest_by_member.items()
+        if membership.role_ref == role_ref and membership.delegation_state == "active"
+    ))
+    if not members:
+        return None
+    return OrganizationGarrisonRosterSnapshot(
+        organization_ref=organization_ref,
+        role_ref=role_ref,
+        member_refs=members,
+        source_stream_id=stream_id,
+        source_stream_revision=previous_revision,
+        global_sequence=global_sequence,
+    )
 
 
 class OrganizationOperatingPeriodIntent(_Intent):
