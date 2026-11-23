@@ -2,7 +2,11 @@ from decimal import Decimal
 
 import pytest
 
-from app.gameplay.event_schema_registry import EventSchemaRegistry, gameplay_schema_event_types
+from app.gameplay.event_schema_registry import (
+    EventSchemaRegistry,
+    create_stormnight_event_schema_registry,
+    gameplay_schema_event_types,
+)
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.pool_event_schema import register_pool_event_schemas
 from app.gameplay.pool_runtime import (
@@ -554,3 +558,27 @@ def test_pool_events_are_visible_to_gameplay_graph_registry():
     for event_type in event_types:
         if event_type.startswith("gameplay.pool."):
             registry.require(event_type, 1)
+
+
+def test_pool_commit_uses_stormnight_production_event_schema_registry():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    service = PoolAuthorityService(store=store, owner_ref=PRINCIPAL)
+    definition = PoolDefinition(
+        fact_type=FACT_TYPE,
+        lower=Decimal("0"),
+        upper=Decimal("100"),
+        initial=Decimal("50"),
+    )
+
+    result = service.initialize(
+        definition=definition,
+        command_id="pool:registered-init",
+        idempotency_key="pool:registered-init",
+        causation_id="evt:seed",
+        correlation_id="corr:pool",
+    )
+
+    assert result.committed
+    assert [event.event_type for event in store.read_stream(FACT_TYPE)] == [
+        "gameplay.pool.initialized",
+    ]

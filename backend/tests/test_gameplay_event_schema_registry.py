@@ -52,6 +52,21 @@ def test_stormnight_case_schema_bundle_is_registered() -> None:
         registry.require(event_type, 1)
 
 
+def test_stormnight_case_schema_bundle_includes_pool_write_events() -> None:
+    registry = create_stormnight_event_schema_registry()
+
+    for event_type in (
+        "gameplay.pool.initialized",
+        "gameplay.pool.adjusted",
+        "gameplay.pool.reserved",
+        "gameplay.pool.released",
+        "gameplay.pool.consumed",
+        "gameplay.pool.bound_changed",
+        "gameplay.pool.threshold_crossed",
+    ):
+        registry.require(event_type, 1)
+
+
 def test_stormnight_explicit_world_death_confirmation_schemas_are_registered() -> None:
     registry = create_stormnight_event_schema_registry()
     for event_type in (
