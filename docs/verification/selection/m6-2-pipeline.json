@@ -1,0 +1,46 @@
+{
+  "head": "f22a831d9dbb92a3283d1dad22099da9d154b9b9",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_loads_ordered_atomic_pipeline_with_one_revision_vector",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pipeline_rejects_cross_scope_batch_and_mismatched_vectors[cross-scope]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pipeline_rejects_cross_scope_batch_and_mismatched_vectors[stale-vector]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pipeline_rejects_cross_scope_batch_and_mismatched_vectors[missing-stream]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_atomic_pipeline_across_hosts",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_atomic_pipeline_with_distinct_declared_scopes",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_requires_recovery_for_obligation_pipeline_across_hosts",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_pipeline_steps_that_differ_from_impact_profile",
+      "failures": [],
+      "outcome": "passed"
+    }
+  ],
+  "description": "M6-2 Pipeline YAML admission, cross-host and cross-scope rejection, input vectors and obligation recovery declaration"
+}
