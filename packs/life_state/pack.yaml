@@ -1,0 +1,15 @@
+pack_id: "life_state"
+pack_version: "1.0.0"
+schema_version: 1
+parent_pack: null
+owners: ["LifeState"]
+contents:
+  fact_types: ["life_state"]
+  machine_defs: ["life_state"]
+  models: ["life_state_transition"]
+resolve_order:
+  before: []
+  unrelated: ["fact:character:*:lifestate"]
+known_deviations:
+  visibility_selector: "private audience selectors are not represented by the current loader"
+  global_resolution_order: "cross-owner pipeline topology is not loaded by this self-contained pack"

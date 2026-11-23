@@ -1,0 +1,7 @@
+"machine_def/life_state@1":
+  states: ["unknown", "alive", "dead"]
+  terminal_states: ["dead"]
+  transitions:
+    - ["unknown", "alive"]
+    - ["unknown", "dead"]
+    - ["alive", "dead"]
