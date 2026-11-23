@@ -333,11 +333,14 @@ class PoolAuthorityService:
     _CONSUME_REASONS = frozenset({"action_cost", "recipe_input", "treatment", "decay", "spoilage"})
 
     def __init__(self, *, store: GameplayEventStore,
-                 definitions: Iterable[PoolDefinition] = (), owner_ref: str | None = None) -> None:
-        if owner_ref is not None and (not isinstance(owner_ref, str) or not owner_ref):
+                 definitions: Iterable[PoolDefinition] = (), owner_ref: str | None = None,
+                 principal_ref: str | None = None) -> None:
+        if any(value is not None and (not isinstance(value, str) or not value)
+               for value in (owner_ref, principal_ref)):
             raise PoolError("pool_owner_ref_invalid")
         self._store = store
-        self._owner_ref = owner_ref or self._PRINCIPAL
+        self._owner_ref = owner_ref or principal_ref or self._PRINCIPAL
+        self._principal_ref = principal_ref or self._PRINCIPAL
         self._projector = PoolProjector()
         self._definitions = {definition.fact_type: definition for definition in definitions}
 
@@ -619,7 +622,7 @@ class PoolAuthorityService:
             pinned_revisions=read_revisions,
         )
         batch = OwnerCommitBuilder.build(
-            principal_ref=self._PRINCIPAL, command_id=command_id, transaction_id=transaction_id,
+            principal_ref=self._principal_ref, command_id=command_id, transaction_id=transaction_id,
             idempotency_key=idempotency_key, payload_digest=digest, events=events,
             expected_stream_revisions={fact_type: expected_revision},
             pinned_revisions=read_revisions, result_digest=digest,
@@ -636,7 +639,7 @@ class PoolAuthorityService:
                    digest_payload: Mapping[str, object]) -> AppendBatchResult | None:
         digest = "sha256:" + sha256(_canonical_json(digest_payload)).hexdigest()
         return replay_duplicate(
-            self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
+            self._store, principal=self._principal_ref, idempotency_key=idempotency_key,
             payload_digest=digest, error_factory=PoolError,
             missing_result_code="pool_idempotency_missing_result",
         )

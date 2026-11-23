@@ -137,6 +137,40 @@ def test_pool_commits_persist_owner_fragment_contract_and_ordered_operations():
     )
 
 
+def test_pool_can_commit_under_a_domain_owner_principal():
+    store = GameplayEventStore()
+    owner = "actor_gameplay.construction_production_domain"
+    definition = PoolDefinition(
+        fact_type="fact:facility:gate-03:integrity",
+        lower=Decimal("0"),
+        upper=Decimal("100"),
+        initial=Decimal("100"),
+    )
+    service = PoolAuthorityService(
+        store=store,
+        definitions=(definition,),
+        owner_ref=owner,
+        principal_ref=owner,
+    )
+
+    receipt = service.initialize(
+        definition=definition,
+        command_id="domain-pool:init",
+        idempotency_key="domain-pool:init",
+        causation_id="cause:domain-pool",
+        correlation_id="corr:domain-pool",
+    )
+    event = store.get_event(receipt.committed_event_ids[0])
+
+    assert receipt.committed
+    assert store.transaction_owns_event(
+        transaction_id=event.transaction_id,
+        event_id=event.event_id,
+        principal_ref=owner,
+    )
+    assert store.get_transaction(receipt.transaction_id).owner_fragments[0].owner_principal_ref == owner
+
+
 def test_pool_rejections_leave_event_stream_unchanged():
     store, service, _ = service_with_pool()
     before = store.export_snapshot()

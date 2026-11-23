@@ -1,0 +1,11 @@
+{
+  "head": "",
+  "description": "Pool commits can use the owning domain principal while retaining the Owner fragment and idempotent receipt contract",
+  "tests": [
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_can_commit_under_a_domain_owner_principal",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
