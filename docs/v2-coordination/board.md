@@ -52,6 +52,12 @@
 
 ## 三、待决（负责人需表态）
 
+### M6-5 最新进展（2026-11-24）
+
+- A 已提交并独立验证 signed physical evidence slice：`22bf0615` + `6cf4ea86`。定向 13 passed，ownership `24/24 problems=0`；shared-replay `990` 中 2 个 Port 8000 外部服务失败，见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
+- 后续 slice 已在工作区实现 Facility / Presence 消费与两个 HTTP 输入 route，定向 20 passed，尚未独立提交和冻结选集验证。
+- 生产配置仍没有 gate impact profile、Facility initial/threshold 值。未提供这些权威内容前，HTTP Gate route 会持久化已验签回执并明确返回 `not_configured`，不采用测试数值写生产事实。Presence 缺证据仍 unknown 且零写入。
+
 | 编号 | 事项 | 影响 | 状态 |
 |---|---|---|---|
 | S-2 | B0 六字段的 Owner 归属 | M7；涉及 B0 的域迁移 | 未决，等 M0-3 事实 |

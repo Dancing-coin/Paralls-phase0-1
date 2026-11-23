@@ -254,3 +254,9 @@
 - 正式文档 `docs/architecture-v2/07-玩法组合/02-守城Demo定义.md` 将 `impact_gate` 定义为四层 `obligation`，说明 UE 碰撞证据经 Gateway 形成 `Command(impact)`；`docs/architecture-v2/05-规则包/02-受击剖面.md` 规定门完整度与 Presence 通行性分开结算，不能按 breach 自动映射。A 已撤回上一条“宿主直接提交 damage 数值”的宽泛建议，按正式路径应由 Gateway 验证碰撞证据、服务端已注册 impact profile 解析，Facility Owner 提交 integrity，Presence Owner 再提交独立评估。
 - 当前代码的 `backend/app/gameplay/l5_pipeline.py` 只有 profile 编译与输入 revision vector 校验，没有 impact resolver 执行器。`PhysicsContactReceiptAuthority` 能持久化签名碰撞证据，但 `main.py` 当前入口是 street-combat 角色 encounter 路径；它未接 gate 目标或 `impact_gate`，也不含 gate 的伤害解析。正式文档未给出城门 Profile 数值/Resolver 参数，代码包中也未发现相应 gate profile。没有擅自补造 damage 值。
 - UE 到 Presence 的评估回执协议也未发现。负责人已确认“可信 Presence 决策输入，缺依据时 unknown”，因此已知决策语义；仍需定义该 trusted input 如何从 UE/Gateway 进入 Evidence Store 并携带来源事件/revision。A 已提请负责人确认是否授权起草 M6-5 固定 profile 参数与 UE Presence 回执合同。答复前继续保留 unknown、零写入行为，不宣称 `impact_gate` 或 M6-5 完成。
+
+### H-A-029 | M6-5 signed physical input evidence slice | 2026-11-24
+
+- 项目负责人选择可信 Presence 决策输入，缺依据时 unknown，并授权 A 跨域实现。A 提交 `22bf06158969c4b7419a93a17654408a1c6b58ab`、`6cf4ea8613a2d8626c83371a020b5f890d2ca60d`，持久化独立签名 Gate impact / Presence assessment 回执，注册 EventSchema 与 checkpoint replay participant。Detached 定向 13 passed，ownership 24 节点零差异；shared-replay 990 中两项 Port 8000 外部服务失败，原始输出位于 `F:/paralls-verification/thread-a/m6-5-input-slice1-6cf4ea86/`。证据见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
+- 后续实现增加 Facility profile 驱动 Pool writer、Presence 消费 assessment 并写 Place、以及主应用 HTTP 输入 route，当前定向 20 passed，仍待独立提交和 selection 验证。生产启动已接现有 `physics_contact_authority_secrets` 验签配置。
+- 正式文档与当前规则包未提供生产 Gate impact delta 和 integrity 初始/阈值配置。缺内容时 Gateway 持久化已验签的输入 evidence，但报告 Facility `not_configured`，不写测试数字。该配置是端到端 Gate 生产写入的剩余数据依赖；不得用 breach 自动推断 Presence。
