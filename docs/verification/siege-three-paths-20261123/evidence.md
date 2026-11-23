@@ -1,7 +1,7 @@
 # 守城三条域路径证据
 
 - 基线：`810a46c1249918c09b42fa1fe0c12d7d784579d2`，标签 `integration-2026-11-23`。
-- 当前 B 分支：`thread-b/reference-data-20261123`，当前远端 tip `911d5cd5bda5288b91c9ae0297c4f0e11d42803b`。Information 代码修复提交为 `6741ab6115d5c280390aaba162fa1e109f6064e3`。定向测试与 U11 在该代码提交前以相同源码内容复验。
+- 当前 B 分支：`thread-b/reference-data-20261123`。Information 代码修复提交为 `6741ab6115d5c280390aaba162fa1e109f6064e3`；后续文档提交移动了远端分支 tip。A 应 fetch 时使用该分支最新 tip。定向测试与 U11 在该代码提交前以相同源码内容复验。
 - 扫描命令：`git status --short`；`rg -n "morale|passability|breach|Information" backend/app backend/tests docs/v2-coordination`；pytest 收集命令见下文。
 - 验证时间：2026-11-23 Asia/Shanghai。
 - 结论等级：Information 域写入通过所列定向测试、P-3 与选择集门禁；Morale、Presence 阻塞，未实现其域写入。三条守城生产路径和 Architecture v2 单元均未验收。

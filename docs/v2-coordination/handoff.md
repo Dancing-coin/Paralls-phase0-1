@@ -156,5 +156,5 @@
 
 ### H-B-008 | 更正 B 分支最终 tip | 2026-11-23
 
-- H-B-007 中 `6741ab6115d5c280390aaba162fa1e109f6064e3` 是 Information 代码修复提交；之后又推送了交接文档提交 `911d5cd5bda5288b91c9ae0297c4f0e11d42803b`。**当前应提供给 A fetch 的远端分支最终 tip 是 `911d5cd5bda5288b91c9ae0297c4f0e11d42803b`**，远端核验已匹配。分支 `thread-b/reference-data-20261123` 的最终工作树包含已修复代码和 H-B-007 交接。
-- A 使用 `git fetch origin` 后，可检查 `origin/thread-b/reference-data-20261123`。合并/验收时以最终 tip 树为准，沿用 AUTONOMY G1–G7；B 没有合入 integration。
+- H-B-007 中 `6741ab6115d5c280390aaba162fa1e109f6064e3` 是 Information 代码修复提交；之后还有交接与证据文档提交，因此该 SHA 之后的文档提交会继续移动分支 tip。
+- A 使用 `git fetch origin` 后，读取当时的 `origin/thread-b/reference-data-20261123` 最新树即可。该分支包含 Information 代码修复和本 handoff；合并/验收沿用 AUTONOMY G1–G7。B 没有合入 integration。
