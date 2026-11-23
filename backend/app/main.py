@@ -66,6 +66,7 @@ from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
+    build_facility_integrity_authority,
     build_m6_5_siege_runtime,
 )
 from app.gameplay.siege_physical_input_runtime import (
@@ -1938,10 +1939,15 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         if restore_gameplay and graph_path.name != ":memory:"
         else GameplayEventStore()
     )
+    facility_authority = build_facility_integrity_authority(
+        store=gameplay_event_store,
+        profiles=tuple(settings.siege_facility_gate_profiles),
+    )
     m6_5_siege_runtime = build_m6_5_siege_runtime(
         store=gameplay_event_store,
         morale_definitions=DEFAULT_MORALE_DEFINITIONS,
         physical_authority_secrets=settings.physics_contact_authority_secrets,
+        facility=facility_authority,
     )
     _assemble_settlement_batch_runtime()
     _assemble_status_runtime()

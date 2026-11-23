@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+from decimal import Decimal
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -53,6 +54,16 @@ class WorldAdminCredentialSettings(BaseModel):
         if any(not ref for ref in value) or len(set(value)) != len(value):
             raise ValueError("world_admin_world_scope_invalid")
         return value
+
+
+class FacilityGateProfileSettings(BaseModel):
+    gate_ref: str = Field(min_length=1)
+    integrity_lower: Decimal
+    integrity_upper: Decimal
+    integrity_initial: Decimal
+    breach_threshold: Decimal
+    breach_reset_threshold: Decimal
+    impact_deltas: dict[str, Decimal] = Field(min_length=1)
 
 
 class Settings(BaseModel):
@@ -137,8 +148,19 @@ class Settings(BaseModel):
     embodied_controller_trusted_local_launch_profiles: list[EmbodiedControllerTrustedLocalLaunchProfileSettings] = Field(default_factory=list)
     embodied_spatial_scopes: list[EmbodiedSpatialScope] = Field(default_factory=list)
     physics_contact_authority_secrets: dict[str, str] = Field(default_factory=dict, repr=False, exclude=True)
+    siege_facility_gate_profiles: list[FacilityGateProfileSettings] = Field(default_factory=list)
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     world_admin_credentials: list[WorldAdminCredentialSettings] = Field(default_factory=list, repr=False, exclude=True)
+
+    @field_validator("siege_facility_gate_profiles")
+    @classmethod
+    def validate_unique_siege_gates(
+        cls, profiles: list[FacilityGateProfileSettings]
+    ) -> list[FacilityGateProfileSettings]:
+        gate_refs = [profile.gate_ref for profile in profiles]
+        if len(gate_refs) != len(set(gate_refs)):
+            raise ValueError("siege_facility_gate_profile_duplicate")
+        return profiles
     gameplay_mirror_projection_queue_capacity: int = Field(default=160, ge=1, le=1024)
     gameplay_mirror_control_queue_capacity: int = Field(default=8, ge=1, le=128)
     gameplay_mirror_dirty_actor_limit: int = Field(default=16, ge=1, le=128)
@@ -372,6 +394,10 @@ settings = Settings(
     embodied_spatial_scopes=[EmbodiedSpatialScope.model_validate(item)
                              for item in _env_object_list("EMBODIED_SPATIAL_SCOPES_JSON")],
     physics_contact_authority_secrets=_env_secret_map("PHYSICS_CONTACT_AUTHORITY_SECRETS_JSON"),
+    siege_facility_gate_profiles=[
+        FacilityGateProfileSettings.model_validate(item)
+        for item in _env_object_list("SIEGE_FACILITY_GATE_PROFILES_JSON")
+    ],
     population_activation_grants=[ActivationGrant.model_validate(item)
                                   for item in _env_object_list("POPULATION_ACTIVATION_GRANTS_JSON")],
     population_activation_producer_ref=_env_value("POPULATION_ACTIVATION_PRODUCER_REF", "population:siming"),

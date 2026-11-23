@@ -3,11 +3,16 @@ import hashlib
 import hmac
 
 from fastapi.testclient import TestClient
+import pytest
 
 from app import main
+from app.config import FacilityGateProfileSettings, Settings
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
-from app.gameplay.m6_5_siege_runtime import build_m6_5_siege_runtime
+from app.gameplay.m6_5_siege_runtime import (
+    build_facility_integrity_authority,
+    build_m6_5_siege_runtime,
+)
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.siege_physical_input_runtime import (
@@ -325,3 +330,50 @@ def test_m6_5_presence_assessment_http_gateway_commits_place_fact(monkeypatch):
     place_fact = store.read_stream(PLACE_STREAM)[0]
     assert place_fact.payload["to_state"] == "passable"
     assert impact_event.event_id in place_fact.payload["source_event_ids"]
+
+
+def test_configured_gate_content_profile_builds_facility_authority_without_defaults():
+    store = GameplayEventStore()
+    profile = FacilityGateProfileSettings.model_validate({
+        "gate_ref": GATE,
+        "integrity_lower": "0",
+        "integrity_upper": "100",
+        "integrity_initial": "100",
+        "breach_threshold": "40",
+        "breach_reset_threshold": "45",
+        "impact_deltas": {"impact_kind:battering-ram@1": "-20"},
+    })
+
+    authority = build_facility_integrity_authority(store=store, profiles=(profile,))
+
+    assert authority is not None
+    assert authority.initialize(
+        gate_ref=GATE,
+        command_id="facility:configured-init",
+        idempotency_key="facility:configured-init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    ).committed
+    assert store.read_stream(INTEGRITY_FACT)[0].payload["initial"] == "100"
+
+
+def test_empty_gate_content_configuration_keeps_facility_unconfigured():
+    assert build_facility_integrity_authority(
+        store=GameplayEventStore(),
+        profiles=(),
+    ) is None
+
+
+def test_settings_reject_duplicate_gate_content_profiles():
+    profile = FacilityGateProfileSettings.model_validate({
+        "gate_ref": GATE,
+        "integrity_lower": "0",
+        "integrity_upper": "100",
+        "integrity_initial": "100",
+        "breach_threshold": "40",
+        "breach_reset_threshold": "45",
+        "impact_deltas": {"impact_kind:battering-ram@1": "-20"},
+    })
+
+    with pytest.raises(ValueError, match="siege_facility_gate_profile_duplicate"):
+        Settings(siege_facility_gate_profiles=[profile, profile])

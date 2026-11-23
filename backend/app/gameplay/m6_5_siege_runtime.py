@@ -22,7 +22,8 @@ from app.gameplay.place_passability_runtime import (
     PlacePassabilityAssessment,
     PlacePassabilityAuthority,
 )
-from app.gameplay.pool_runtime import PoolDefinition
+from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
+from app.config import FacilityGateProfileSettings
 from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceipt,
     PresenceAssessmentReceipt,
@@ -49,6 +50,36 @@ DEFAULT_MORALE_DEFINITIONS = MappingProxyType({
 PlaceResolver = Callable[
     [str, GameplayEvent], PlacePassabilityAssessment | None
 ]
+
+
+def build_facility_integrity_authority(
+    *,
+    store: GameplayEventStore,
+    profiles: tuple[FacilityGateProfileSettings, ...],
+) -> FacilityIntegrityAuthority | None:
+    if not profiles:
+        return None
+    return FacilityIntegrityAuthority(
+        store=store,
+        definitions={
+            profile.gate_ref: PoolDefinition(
+                fact_type=FacilityIntegrityAuthority.fact_type_for(profile.gate_ref),
+                lower=profile.integrity_lower,
+                upper=profile.integrity_upper,
+                initial=profile.integrity_initial,
+                thresholds=(PoolThreshold(
+                    "breach",
+                    profile.breach_threshold,
+                    profile.breach_reset_threshold,
+                ),),
+            )
+            for profile in profiles
+        },
+        impact_profiles={
+            profile.gate_ref: profile.impact_deltas
+            for profile in profiles
+        },
+    )
 
 
 @dataclass(frozen=True)
