@@ -1,0 +1,253 @@
+"""Morale refolds from committed garrison and LifeState history."""
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Mapping
+
+from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
+from app.gameplay.organization_government_social_platform_runtime import (
+    OrganizationGarrisonRosterSnapshot,
+    organization_garrison_roster_at,
+)
+from app.gameplay.pool_runtime import PoolAuthorityService, PoolDefinition, PoolError, PoolProjector
+
+
+_MORALE_PRINCIPAL = "actor_gameplay.morale_domain"
+_LIFE_EVENT = "gameplay.character.life_state_changed"
+_LIFE_PRINCIPALS = {
+    "alive": "authority:character:life-state:presence-admission",
+    "dead": "authority:character:life-state",
+}
+
+
+class MoraleRefoldAuthority:
+    """Commit one siege morale Pool refold for each canonical casualty event."""
+
+    def __init__(
+        self,
+        *,
+        store: GameplayEventStore,
+        definitions: Mapping[tuple[str, str], PoolDefinition],
+    ) -> None:
+        if not definitions:
+            raise ValueError("morale_refold_definition_invalid")
+        for (organization_ref, role_ref), definition in definitions.items():
+            if (
+                not organization_ref.startswith("organization:")
+                or not role_ref.startswith("role:")
+                or definition.lower != Decimal("0")
+                or definition.upper != Decimal("100")
+                or definition.aggregation_mode != "distribution"
+                or definition.refold_model_ref != "morale_refold@1"
+            ):
+                raise ValueError("morale_refold_definition_invalid")
+        self.store = store
+        self._definitions = dict(definitions)
+        self._pool = PoolAuthorityService(
+            store=store,
+            definitions=tuple(self._definitions.values()),
+            owner_ref=_MORALE_PRINCIPAL,
+            principal_ref=_MORALE_PRINCIPAL,
+        )
+
+    def initialize(
+        self,
+        *,
+        organization_ref: str,
+        role_ref: str,
+        command_id: str,
+        idempotency_key: str,
+    ) -> AppendBatchResult:
+        definition = self._definition(organization_ref, role_ref)
+        return self._pool.initialize(
+            definition=definition,
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=f"morale-init:{organization_ref}:{role_ref}",
+            correlation_id=f"siege:{organization_ref}",
+        )
+
+    def refold_after_casualty(self, *, death_event_id: str) -> AppendBatchResult:
+        try:
+            death = self.store.get_event(death_event_id)
+        except KeyError:
+            return self._reject(death_event_id, "morale_death_source_unknown")
+        if not self._valid_death(death):
+            return self._reject(death_event_id, "morale_death_source_invalid")
+
+        principal = _MORALE_PRINCIPAL
+        command_id = f"morale-refold:{death.event_id}"
+        idempotency_key = command_id
+        prior = self.store.get_by_idempotency(principal, idempotency_key)
+        if prior is not None:
+            if self._is_exact_retry(
+                prior, death=death, command_id=command_id, principal_ref=principal
+            ):
+                return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            return self._reject(command_id, "morale_idempotency_key_reused")
+
+        actor_ref = death.payload.get("actor_ref")
+        selected: tuple[tuple[str, str], PoolDefinition] | None = None
+        roster: OrganizationGarrisonRosterSnapshot | None = None
+        for key, definition in self._definitions.items():
+            snapshot = organization_garrison_roster_at(
+                self.store,
+                organization_ref=key[0],
+                role_ref=key[1],
+                global_sequence=death.global_sequence,
+            )
+            if snapshot is not None and actor_ref in snapshot.member_refs:
+                if selected is not None:
+                    return self._reject(command_id, "morale_garrison_ambiguous")
+                selected, roster = (key, definition), snapshot
+        if selected is None or roster is None:
+            return self._reject(command_id, "morale_input_unknown")
+
+        states: dict[str, str] = {}
+        input_pins = {roster.source_stream_id: roster.source_stream_revision}
+        current_reads = {
+            roster.source_stream_id: self.store.get_stream_head(roster.source_stream_id),
+        }
+        for member_ref in roster.member_refs:
+            stream_id = f"gameplay:character:life:{member_ref}"
+            history = [
+                event for event in self.store.read_stream(stream_id)
+                if event.global_sequence <= death.global_sequence
+            ]
+            state = self._life_state_at(member_ref, history)
+            if state is None:
+                return self._reject(command_id, "morale_input_unknown")
+            states[member_ref] = state[0]
+            input_pins[stream_id] = state[1]
+            current_reads[stream_id] = self.store.get_stream_head(stream_id)
+
+        if states.get(actor_ref) != "dead":
+            return self._reject(command_id, "morale_death_not_in_roster_history")
+
+        definition = selected[1]
+        target = Decimal(100 * sum(state == "alive" for state in states.values())) / Decimal(len(states))
+        projection = PoolProjector().rebuild(
+            self.store.read_stream(definition.fact_type),
+            definitions={definition.fact_type: definition},
+        )
+        return self._pool.adjust(
+            fact_type=definition.fact_type,
+            delta=target - projection.value,
+            reason_code="manual_authority",
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            expected_revision=projection.source_revision,
+            causation_id=death.event_id,
+            correlation_id=f"siege:{selected[0][0]}",
+            model_ref="morale_refold@1",
+            input_revision_vector=input_pins,
+            read_stream_revisions=current_reads,
+        )
+
+    def projection(self, fact_type: str):
+        definition = next((row for row in self._definitions.values() if row.fact_type == fact_type), None)
+        if definition is None:
+            raise PoolError("pool_fact_type_unknown")
+        return PoolProjector().rebuild(
+            self.store.read_stream(fact_type),
+            definitions={fact_type: definition},
+        )
+
+    def _definition(self, organization_ref: str, role_ref: str) -> PoolDefinition:
+        try:
+            return self._definitions[(organization_ref, role_ref)]
+        except KeyError as exc:
+            raise PoolError("morale_garrison_unknown") from exc
+
+    def _valid_death(self, event: GameplayEvent) -> bool:
+        actor_ref = event.payload.get("actor_ref")
+        return (
+            event.event_type == _LIFE_EVENT
+            and event.schema_version in (1, 2)
+            and event.visibility_policy == "project"
+            and event.payload.get("to_state") == "dead"
+            and isinstance(actor_ref, str)
+            and actor_ref.startswith("character:")
+            and event.stream_id == f"gameplay:character:life:{actor_ref}"
+            and self.store.transaction_owns_event(
+                transaction_id=event.transaction_id,
+                event_id=event.event_id,
+                principal_ref=_LIFE_PRINCIPALS["dead"],
+            )
+        )
+
+    def _life_state_at(
+        self, member_ref: str, events: list[GameplayEvent]
+    ) -> tuple[str, int] | None:
+        if not events:
+            return None
+        state = "unknown"
+        previous_sequence = 0
+        previous_revision = 0
+        for event in events:
+            target = event.payload.get("to_state")
+            principal = _LIFE_PRINCIPALS.get(target)
+            if (
+                event.event_type != _LIFE_EVENT
+                or event.schema_version not in (1, 2)
+                or event.visibility_policy != "project"
+                or event.stream_id != f"gameplay:character:life:{member_ref}"
+                or event.payload.get("actor_ref") != member_ref
+                or target not in {"alive", "dead"}
+                or event.payload.get("from_state") != state
+                or event.global_sequence <= previous_sequence
+                or event.stream_revision != previous_revision + 1
+                or not self.store.transaction_owns_event(
+                    transaction_id=event.transaction_id,
+                    event_id=event.event_id,
+                    principal_ref=principal,
+                )
+            ):
+                return None
+            state = target
+            previous_sequence = event.global_sequence
+            previous_revision = event.stream_revision
+        return state, previous_revision
+
+    def _is_exact_retry(
+        self, receipt: AppendBatchResult, *, death: GameplayEvent,
+        command_id: str, principal_ref: str,
+    ) -> bool:
+        batch = self.store.get_transaction(receipt.transaction_id)
+        if (
+            not receipt.committed
+            or receipt.command_id != command_id
+            or batch is None
+            or batch.idempotency_record.principal_ref != principal_ref
+            or batch.idempotency_record.idempotency_key != command_id
+            or batch.command_id != command_id
+            or not batch.events
+            or receipt.committed_event_ids != [event.event_id for event in batch.events]
+        ):
+            return False
+        event = batch.events[0]
+        return (
+            event.causation_id == death.event_id
+            and event.command_id == command_id
+            and event.event_type == "gameplay.pool.adjusted"
+            and event.stream_id == event.payload.get("fact_type")
+            and event.stream_id in {
+                definition.fact_type for definition in self._definitions.values()
+            }
+            and event.payload.get("model_ref") == "morale_refold@1"
+        )
+
+    @staticmethod
+    def _reject(command_id: str, code: str) -> AppendBatchResult:
+        return AppendBatchResult(
+            committed=False,
+            transaction_id=f"transaction:{command_id}",
+            command_id=command_id,
+            idempotency_status="rejected",
+            failure=GameplayFailure(
+                error_code=code,
+                message=code,
+                failed_stage="morale_refold",
+            ),
+        )
