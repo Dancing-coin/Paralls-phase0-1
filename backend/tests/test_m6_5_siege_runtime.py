@@ -10,7 +10,10 @@ from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.m6_5_siege_runtime import build_m6_5_siege_runtime
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.settlement_plan import build_atomic_event_batch
-from app.gameplay.siege_physical_input_runtime import GateImpactReceipt
+from app.gameplay.siege_physical_input_runtime import (
+    GateImpactReceipt,
+    PresenceAssessmentReceipt,
+)
 
 
 ORGANIZATION = "organization:garrison:east@1"
@@ -237,3 +240,88 @@ def test_m6_5_gate_impact_http_gateway_commits_facility_fact(monkeypatch):
     assert response.json()["evidence"]["committed"] is True
     assert response.json()["facility"]["committed"] is True
     assert store.read_stream(INTEGRITY_FACT)[-1].payload["delta"] == "-20"
+
+
+def test_m6_5_presence_assessment_http_gateway_commits_place_fact(monkeypatch):
+    store = GameplayEventStore()
+    facility = FacilityIntegrityAuthority(store=store, definitions={GATE: _facility_pool()})
+    facility.initialize(
+        gate_ref=GATE,
+        command_id="facility:init",
+        idempotency_key="facility:init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+    )
+    impact_unsigned = GateImpactReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:presence-source",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "c" * 64,
+        expected_integrity_revision=1,
+        physics_tick=512,
+        signature="0" * 64,
+    )
+    impact = impact_unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), impact_unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    input_result, owner_result = runtime.record_gate_impact(impact)
+    assert input_result.committed and owner_result is None
+    impact_event = store.get_event(input_result.committed_event_ids[0])
+    breach_result = facility.apply_delta(
+        gate_ref=GATE,
+        delta=Decimal("-61"),
+        reason_code="damage",
+        command_id="facility:breach",
+        idempotency_key="facility:breach",
+        expected_revision=1,
+        causation_id=impact_event.event_id,
+        correlation_id="siege:east",
+    )
+    breach = next(
+        store.get_event(event_id)
+        for event_id in breach_result.committed_event_ids
+        if store.get_event(event_id).event_type == "gameplay.pool.threshold_crossed"
+    )
+    assessment_unsigned = PresenceAssessmentReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="assessment:http-gateway",
+        gate_ref=GATE,
+        breach_event_id=breach.event_id,
+        assessment_ref="assessment:trusted-gate-clearance@1",
+        state="passable",
+        source_event_ids=(breach.event_id, impact_event.event_id),
+        source_stream_revisions={
+            breach.stream_id: store.get_stream_head(breach.stream_id),
+            impact_event.stream_id: store.get_stream_head(impact_event.stream_id),
+        },
+        physics_tick=513,
+        signature="0" * 64,
+    )
+    assessment = assessment_unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), assessment_unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    monkeypatch.setattr(main, "m6_5_siege_runtime", runtime)
+    monkeypatch.setattr(main, "runtime_execution", None)
+
+    response = TestClient(main.component_app).post(
+        "/api/v2/siege/presence-assessment-input",
+        json=assessment.model_dump(mode="json"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["evidence"]["committed"] is True
+    assert response.json()["place"]["committed"] is True
+    place_fact = store.read_stream(PLACE_STREAM)[0]
+    assert place_fact.payload["to_state"] == "passable"
+    assert impact_event.event_id in place_fact.payload["source_event_ids"]
