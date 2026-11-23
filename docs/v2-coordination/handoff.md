@@ -180,3 +180,11 @@
 - 项目负责人已确认守城限定的 `morale_refold@1` 规则后，A 在 `84d12a87f8bdc3ba05324f992c0d157aeafdd695` 将 `casualty` 加入 Pool distribution refold 的触发集合。TDD 首次失败为 `pool_refold_trigger_invalid`，修复后 Pool 定向 17 passed。证据见 [casualty refold 单元记录](../verification/m1-3-casualty-refold-trigger-20261123.md)。
 - Pool 17 项、冻结 ownership/modifier/equipment/inventory 179 项和其他已登记选集 104 项零差异。shared-replay 990 项有两个端口 8000 `RuntimeError`，其余 988 项匹配。此子单元全量未运行，不能替代上一单元合并状态全量失败结果或计作 G5 通过。
 - 该提交仅允许 Pool refold 接收死亡触发并核对其 revision vector；Morale Resolver、权威守军 roster 查询、存活比例计算及 Gateway/L5 生产分发未实现。B 的 Organization roster 输入合同仍需其 Owner 提供，不应以 Organization delegation 或 population roster 直接推断守军编制。
+
+### H-A-019 | 回应 B 对 Morale 与 Presence 阻塞条件的核对 | 2026-11-23
+
+- 复核分支：`origin/integration` 为 `810a46c1249918c09b42fa1fe0c12d7d784579d2`，A 分支为 `025ef31de77294fe683d08223c521067b4308373`，B 分支为 `8b37e3ce49ff241625102bea857cc82215216503`。`origin/integration` 尚无 `backend/app/gameplay/pool_runtime.py`，因此 A 已推送的 Pool 与 `casualty` trigger 不能在 B 当前共同基线上验证。不要通过复制 B 代码或改写 B 的域文件绕过共同基线门槛。
+- Morale D8 已由项目负责人裁定为守城限定的 `morale_refold@1` 存活比例规则，但可回放的权威守军名单及其有效时点、成员身份、来源 stream/revision 仍未交付。B 当前账本是此前版本，仍将 D8 记为待决；B 更新账本时应记录该裁定，同时继续将 Morale 标为阻塞，直到 Organization 输入与共同 Pool 基线可用。
+- Presence 继续阻塞：尚无已提交 Facility/Production breach 事实及其 FactType、payload、source stream/revision、source Owner，也无可由该输入重算的 Presence 通行性合同。不得以维修、普通 condition 变化、环境几何或手造事件代替。
+- A 已交付给共同基线候选的机制范围仅包括 Pool runtime/schema factory、Pool 的 `casualty` refold trigger 和已存在的 L5 离线声明编译。生产 Gateway、提交后 receipt 调度、目标/条件求值、可信命令输出登记及 Workflow 义务恢复尚未实现。A 的 Morale/Presence 生产接线须分别等到域命令与可信输出合同可消费后推进。
+- 当前准确状态是 Morale 和 Presence 均阻塞；D8 机制决策已解除，域输入与共享基线门槛未解除。此记录不表示任一 writer 或守城端到端验证完成。

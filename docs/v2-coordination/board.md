@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新单元为 M6 组合声明的正常包加载接线 `6e7da420`，定向、选集和全量结果已记录。生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新提交为 Pool casualty refold 触发 `84d12a87`，证据同步提交 `025ef31d`；A 分支已推送。Pool 尚未进入 `origin/integration`。生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -46,7 +46,7 @@
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
 | M6-3 Workflow 声明校验 | A | 待门禁 | `9eb80fe9`；[证据](../verification/m6-3-workflow-declarations-20261123.md) | 定向 129 passed，19 组选集 1,284 节点零差异。全量 10,530 passed、24 个既有失败，退出 1。生产重建需要可查询的步骤命令、回执及义务证据，见 H-A-013 | 6 |
 | M6-4 Play pattern 声明与包加载 | A | 待门禁 | 编译器 `b7bb3605`，正常包加载 `6e7da420`；[加载证据](../verification/m6-composition-pack-loading-20261123.md) | 定向 133 passed，19 组选集 1,288 节点零差异。全量 10,534 passed、24 个既有失败、2 skipped、2 xfailed，退出 1，相对 `9eb80fe9` 无新增失败。应用注册与激活未做 | 6 |
-| M6-5 守城 Demo 最小集 | A | 阻塞 | [前置核对](../verification/m6-5-siege-preflight-20261123.md) | 当前 A 分支缺 Morale/Presence/Information 的对应生产命令与可信输出映射，需域迁移与提交后 Gateway 接线，见 H-A-014 | 6 |
+| M6-5 守城 Demo 最小集 | A | 阻塞 | [前置核对](../verification/m6-5-siege-preflight-20261123.md) | Pool/casualty 改动 `84d12a87` 尚未进入共同基线；Morale 缺 Organization 权威 roster 与 B writer，Presence 缺 Facility breach 事实与 B resolver，Information writer 在 B 分支待共同基线；三条路径都缺生产 Gateway/L5 调度及可信输出映射，见 H-A-014/016/018/019 | 6 |
 | M7 第二真相收口 | A/B | 阻塞 | — | S-2、S-3 未决 | 11 |
 | M8 综合验收 | 负责人 | 待开工 | 逐条对照 | 全部里程碑完成 | 1–11 |
 
