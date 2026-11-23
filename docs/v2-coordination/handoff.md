@@ -174,3 +174,9 @@
 - `39ecc2bb13a8fe5d694c4a5efadd3a5e78928091` 的合并状态全量已结束：10,564 collected，10,532 passed、28 failed、2 skipped、2 xfailed，239 warnings，1,571.89 秒，退出 1。相较 `6e7da420` 的全量报告新增 4 个失败签名、恢复 0，故 G5 未通过。
 - 两个端口 8000 失败在 detached `6e7da420` 复现；另两个 Population recovery 全量节点报 pytest 临时文件 `PermissionError`，在旧基线和 `39ecc2bb` 的定向复验各自 2 passed，但根因仍未明，不能从全量失败中扣除。没有停止或修改外部进程。
 - 此结果仅代表合并状态全量，不计入任何单个切片验证。逐片证据、冻结选集结果、原始输出和未覆盖项分别记录在 [Pool 生产 factory 增量证据](../verification/m1-3-pool-production-registry-20261123.md) 与 `F:/paralls-verification/thread-a/c-39ecc2bb/`。
+
+### H-A-018 | D8 casualty 触发已加入 Pool refold | 2026-11-23
+
+- 项目负责人已确认守城限定的 `morale_refold@1` 规则后，A 在 `84d12a87f8bdc3ba05324f992c0d157aeafdd695` 将 `casualty` 加入 Pool distribution refold 的触发集合。TDD 首次失败为 `pool_refold_trigger_invalid`，修复后 Pool 定向 17 passed。证据见 [casualty refold 单元记录](../verification/m1-3-casualty-refold-trigger-20261123.md)。
+- Pool 17 项、冻结 ownership/modifier/equipment/inventory 179 项和其他已登记选集 104 项零差异。shared-replay 990 项有两个端口 8000 `RuntimeError`，其余 988 项匹配。此子单元全量未运行，不能替代上一单元合并状态全量失败结果或计作 G5 通过。
+- 该提交仅允许 Pool refold 接收死亡触发并核对其 revision vector；Morale Resolver、权威守军 roster 查询、存活比例计算及 Gateway/L5 生产分发未实现。B 的 Organization roster 输入合同仍需其 Owner 提供，不应以 Organization delegation 或 population roster 直接推断守军编制。
