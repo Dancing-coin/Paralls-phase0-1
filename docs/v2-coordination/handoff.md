@@ -197,3 +197,11 @@
 - **Presence breach 输入建议复用 Facility integrity Pool 阈值事件**：正式 FactType 为 `fact:facility:<gate>:integrity`，Owner Production/Facility，原语 Pool；Facility 定义名为 `breach` 的 `PoolThreshold`。A 的 Pool projector 已持久生成 `gameplay.pool.threshold_crossed`，其 payload 携带 `fact_type` 和 `threshold_ref`，生产 EventSchema factory 已注册 Pool schemas。触发筛选为指定 gate integrity FactType 且 `threshold_ref=breach`。阈值上下界由 Facility Owner 在该事实配置中给出，不能从维修量或普通 condition 变化推导。
 - Presence 收到已提交阈值越界后，仍须按自己的通行性合同重算并提交 `place:<gate>:passability` 独立状态；gate breach 不直接写 Presence。B 需交付 Facility integrity Pool writer/threshold configuration 以及 Presence resolver/写入合同，A 随后登记精确命令输出并接生产 Gateway。
 - 以上复用方案不新增 Owner 或共用事实写权。实现顺序为共同基线先吸收 A 的 Pool schemas/runtime，Organization 与 Facility/Presence 域各自提交真实 writer，再由 A 完成 Gateway/L5 生产接线。直到这些提交各自具备定向、回放、revision conflict 与 P-3 证据，Morale 和 Presence 仍标阻塞。
+
+### H-A-021 | 项目负责人授权 A 跨域补齐 Morale/Presence 输入 | 2026-11-23
+
+- 项目负责人明确答复“授权 A 跨域实现”，授权范围是为 Architecture v2 M6-5 补齐守城 Morale 与 Presence 所需的权威输入 writer 和机制接线。A 依 H-A-020 的 Organization membership 与 Facility integrity Pool 方案实施，按可独立回退单元提交、逐单元验证，并保持 L5 只发命令、各 Owner 独立写入事实。
+- 本授权解除线程原有域文件归属对这些 M6-5 输入单元的限制，不授权修改存储核心、共同禁区、对方独占文件或 Architecture v2 之外的角色智能体路径。每项仍须保持单一事实源、旧事件可回放、拒绝零写入和事件可见性证据。
+- 实施计划为 `docs/verification/m6-5-authoritative-input-plan-20261123.md`。当前先做 Organization roster 历史快照，只读取 Organization 已有提交事件，不新增事件类型或 Writer。
+- Organization 输入子单元已提交 `9cb0cbd5af691911a2b11e5e1be9e8e10d1bcba0`：`organization_garrison_roster_at` 按死亡事件 global sequence 读取指定 organization/role 的最新成员状态，验证 Organization Owner 事务归属，返回成员集合和截至该位置的 stream revision；空名单或无效历史为 unknown。三项专用测试 passed，永久选集 3 节点 problems=0、improvements=0，既有成员事件 P-3 为 registered/domain=organization。证据见 `docs/verification/m6-5-organization-roster-20261123.md`。这完成的是 Morale 的 roster 输入查询，不包含 D8 重算 writer 或 Gateway 调度。
+- Facility 完整度事实仍需继续实施。当前代码搜索已确认一般设施 condition/维修事件不是守城 gate breach 输入；因此不能从该事件推导 integrity。后续需先确定已提交的影响事实能否提供 gate 目标及伤害数据，再接 Pool 阈值事件。`Facility.condition` 与 gate integrity 的语义保持区分，不新增并行 condition 副本。

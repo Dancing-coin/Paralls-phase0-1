@@ -1,0 +1,21 @@
+{
+  "head": "9cb0cbd5",
+  "description": "As-of-sequence garrison roster reconstruction from Organization Owner membership events, including unknown and unowned-input rejection",
+  "tests": [
+    {
+      "test_name": "tests/test_organization_government_social_platform_runtime.py::test_garrison_roster_replays_membership_as_of_death_sequence",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_organization_government_social_platform_runtime.py::test_garrison_roster_is_unknown_when_no_active_matching_member_exists",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_organization_government_social_platform_runtime.py::test_garrison_roster_ignores_membership_payloads_without_organization_owner_receipt",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
