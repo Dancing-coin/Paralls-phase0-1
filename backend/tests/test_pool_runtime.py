@@ -17,6 +17,7 @@ from app.gameplay.pool_runtime import (
     PoolThreshold,
     aggregate_pool_values,
 )
+from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 FACT_TYPE = "fact:character:char-pool:stamina"
@@ -215,6 +216,41 @@ def test_pool_rejections_leave_event_stream_unchanged():
             correlation_id="corr:pool",
         )
     assert store.export_snapshot() == before
+
+
+def test_pool_model_can_pin_historical_inputs_without_cas_on_later_stream_heads():
+    store, service, _ = service_with_pool()
+    source_stream = "gameplay:organization:organization:garrison:east@1"
+    for revision in (0, 1):
+        store.append_batch(build_atomic_event_batch(
+            command_id=f"source:{revision}",
+            principal_ref="actor_gameplay.organization_domain",
+            stream_id=source_stream,
+            expected_revision=revision,
+            event_specs=(("gameplay.organization.membership_delegation_recorded@1", {"v": revision + 1}),),
+            idempotency_key=f"source:{revision}",
+            causation_id="cause:source",
+            correlation_id="corr:source",
+        ))
+
+    receipt = service.adjust(
+        fact_type=FACT_TYPE,
+        delta=Decimal("0"),
+        reason_code="damage",
+        command_id="pool:historical-refold",
+        idempotency_key="pool:historical-refold",
+        expected_revision=1,
+        causation_id="event:death",
+        correlation_id="corr:morale",
+        model_ref="morale_refold@1",
+        input_revision_vector={source_stream: 1},
+        read_stream_revisions={source_stream: 2},
+    )
+
+    assert receipt.committed
+    transaction = store.get_transaction(receipt.transaction_id)
+    assert transaction.read_stream_revisions[source_stream] == 2
+    assert transaction.pinned_revisions[f"input:{source_stream}"] == 1
 
 
 def test_pool_window_adjustment_rejects_duplicate_and_exact_retry_replays():

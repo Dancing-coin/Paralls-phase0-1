@@ -368,7 +368,8 @@ class PoolAuthorityService:
                idempotency_key: str, expected_revision: int, causation_id: str,
                correlation_id: str, window_ref: str | None = None, model_ref: str | None = None,
                thresholds: tuple[PoolThreshold, ...] | None = None,
-               input_revision_vector: Mapping[str, int] | None = None) -> AppendBatchResult:
+               input_revision_vector: Mapping[str, int] | None = None,
+               read_stream_revisions: Mapping[str, int] | None = None) -> AppendBatchResult:
         _finite_decimal(delta, "pool_delta_invalid")
         if reason_code not in self._REASONS:
             raise PoolError("pool_adjust_reason_invalid")
@@ -387,11 +388,22 @@ class PoolAuthorityService:
             )
         ):
             raise PoolError("pool_model_revision_vector_invalid")
+        if read_stream_revisions is not None and (
+            not isinstance(read_stream_revisions, Mapping)
+            or any(
+                not isinstance(stream_id, str) or not stream_id
+                or type(revision) is not int or revision < 0
+                for stream_id, revision in read_stream_revisions.items()
+            )
+        ):
+            raise PoolError("pool_model_read_revision_vector_invalid")
         digest_payload = {"kind": "adjust", "fact_type": fact_type, "delta": _decimal_text(delta),
                           "reason_code": reason_code, "window_ref": window_ref,
                           "model_ref": model_ref}
         if input_revision_vector is not None:
             digest_payload["input_revision_vector"] = dict(input_revision_vector)
+        if read_stream_revisions is not None:
+            digest_payload["read_stream_revisions"] = dict(read_stream_revisions)
         duplicate = self._duplicate(idempotency_key, digest_payload)
         if duplicate is not None:
             return duplicate
@@ -419,6 +431,7 @@ class PoolAuthorityService:
             causation_id=causation_id, correlation_id=correlation_id,
             event_specs=tuple(event_specs), expected_revision=expected_revision,
             digest_payload=digest_payload, input_revision_vector=input_revision_vector,
+            read_stream_revisions=read_stream_revisions,
         )
 
     def integrate(self, *, fact_type: str, ticks: int, window_ref: str, command_id: str,
@@ -586,7 +599,8 @@ class PoolAuthorityService:
                 causation_id: str, correlation_id: str,
                 event_specs: Sequence[tuple[str, Mapping[str, object]]], expected_revision: int,
                 digest_payload: Mapping[str, object],
-                input_revision_vector: Mapping[str, int] | None = None) -> AppendBatchResult:
+                input_revision_vector: Mapping[str, int] | None = None,
+                read_stream_revisions: Mapping[str, int] | None = None) -> AppendBatchResult:
         if not command_id or not idempotency_key or not causation_id or not correlation_id:
             raise PoolError("pool_command_identity_invalid")
         digest = "sha256:" + sha256(_canonical_json(digest_payload)).hexdigest()
@@ -602,11 +616,22 @@ class PoolAuthorityService:
             "visibility_policy": "authority_only", "payload": dict(payload),
         } for index, (event_type, payload) in enumerate(event_specs)]
         read_revisions = {fact_type: expected_revision}
-        if input_revision_vector is not None:
-            for stream_id, revision in input_revision_vector.items():
+        revision_vector = (
+            input_revision_vector
+            if read_stream_revisions is None
+            else read_stream_revisions
+        )
+        if revision_vector is not None:
+            for stream_id, revision in revision_vector.items():
                 if stream_id in read_revisions and read_revisions[stream_id] != revision:
                     raise PoolError("pool_model_revision_vector_invalid")
                 read_revisions[stream_id] = revision
+        pinned_revisions = dict(read_revisions)
+        if input_revision_vector is not None and read_stream_revisions is not None:
+            pinned_revisions.update({
+                f"input:{stream_id}": revision
+                for stream_id, revision in input_revision_vector.items()
+            })
         fragment = OwnerAuthorizedFragment(
             fragment_id=f"fragment:pool:{command_id}",
             owner_principal_ref=self._owner_ref,
@@ -619,13 +644,13 @@ class PoolAuthorityService:
             event_visibility_policies={fact_type: tuple(
                 "authority_only" for _ in event_specs
             )},
-            pinned_revisions=read_revisions,
+            pinned_revisions=pinned_revisions,
         )
         batch = OwnerCommitBuilder.build(
             principal_ref=self._principal_ref, command_id=command_id, transaction_id=transaction_id,
             idempotency_key=idempotency_key, payload_digest=digest, events=events,
             expected_stream_revisions={fact_type: expected_revision},
-            pinned_revisions=read_revisions, result_digest=digest,
+            pinned_revisions=pinned_revisions, result_digest=digest,
             read_stream_revisions=read_revisions,
         )
         batch["owner_fragments"] = [fragment.model_dump(mode="python")]
