@@ -97,7 +97,7 @@ def aggregate_pool_values(
 
     if refold is None:
         raise PoolError("pool_refold_resolver_required")
-    if trigger not in {"split", "merge", "fidelity_change", "scope_change"}:
+    if trigger not in {"split", "merge", "fidelity_change", "scope_change", "casualty"}:
         raise PoolError("pool_refold_trigger_invalid")
     if (not isinstance(input_revision_vector, Mapping)
             or not set(fact_types).issubset(input_revision_vector)):

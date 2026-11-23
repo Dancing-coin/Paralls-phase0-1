@@ -423,6 +423,36 @@ def test_pool_distribution_recomputes_through_refold_with_frozen_revisions():
     ]
 
 
+def test_pool_distribution_recomputes_after_casualty_with_frozen_revisions():
+    values = (("fact:unit:gate-east:morale", Decimal("100")),)
+    definition = PoolDefinition(
+        fact_type=FACT_TYPE,
+        lower=Decimal("0"),
+        upper=Decimal("100"),
+        initial=Decimal("100"),
+        aggregation_mode="distribution",
+        refold_model_ref="morale_refold@1",
+    )
+    calls = []
+
+    def refold(model_ref, members, trigger, input_revision_vector):
+        calls.append((model_ref, members, trigger, dict(input_revision_vector)))
+        return Decimal("75")
+
+    result = aggregate_pool_values(
+        values,
+        definition=definition,
+        refold=refold,
+        trigger="casualty",
+        input_revision_vector={"fact:unit:gate-east:morale": 2},
+    )
+
+    assert result == Decimal("75")
+    assert calls == [
+        ("morale_refold@1", values, "casualty", {"fact:unit:gate-east:morale": 2}),
+    ]
+
+
 def test_pool_model_adjustment_persists_and_checks_its_input_revision_vector():
     store, service, _ = service_with_pool()
     input_fact_type = "fact:unit:gate-east:morale-input"
