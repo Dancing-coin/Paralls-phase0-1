@@ -22,7 +22,7 @@ from app.world_runtime.replay_participants import _siege_physical_input_particip
 
 
 AUTHORITY = "ue:stormnight-physics"
-SECRET = "test-ue-physics-secret"
+SECRET = "fixture-key"
 
 
 def _store():

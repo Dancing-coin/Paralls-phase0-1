@@ -272,3 +272,10 @@
 - A 提交 `55161d47d43a43cdf9074f725053b380e5739d29`，通过 `SIEGE_FACILITY_GATE_PROFILES_JSON` 将权威 per-gate lower/upper/initial、breach threshold/reset threshold 与 impact-kind delta 配置接入 main 启动。空列表 fail-closed，完全不创建 Facility writer；没有默认数值。该 SHA detached 定向 49 passed，ownership `24/24 problems=0`；shared-replay `990` 两项 Port 8000 外部服务失败，见 `F:/paralls-verification/thread-a/m6-5-configured-gate-slice3-55161d47/`。
 - 尚未收到生产 gate profile 的实际数值，不能验证真实城门输入和 threshold 触发。通过内容配置即可启用 Facility writer，但本地和生产环境当前都未完成数值装载验证。
 - 正式 `impact_gate` 要求的耐久 obligation 运行时尚未接入。当前已验签 HTTP Gateway 持久化 evidence 后直接调用 Facility Owner；现有 L5 dispatcher 负责 casualty 到 Morale 与 breach 到 Presence，不负责 Gate impact 的 obligation 生命周期/恢复。因此 M6-5 仍不是完整正式 `impact_gate` 流程，也未做全量或完整 siege playthrough。
+
+### H-A-032 | M6-5 test fixture credential cleanup | 2026-11-24
+
+- Two test-only HMAC fixture literals that resembled credentials were replaced with the explicit placeholder `fixture-key` in `test_m6_5_siege_runtime.py` and `test_siege_physical_input_runtime.py`. The inputs and assertions are unchanged.
+- Focused verification at the A worktree: Python 3.12.2, `app.__file__` under the A worktree, `PYTHONPATH` set to its `backend`; both test files reported 14 passed with 6 existing deprecation warnings. Raw output is in `F:/paralls-verification/thread-a/m6-5-fixture-refresh-20261124-050542836/`.
+- P-1 scan of additions relative to `origin/integration` found zero credential-pattern matches after excluding explicitly named test-fixture values. No secret value was emitted or stored by the scan.
+- This cleanup does not change M6-5 status. The `impact_gate` durable obligation executor/recovery, authoritative production Gate profile values, and a fully configured siege run remain unverified as described in H-A-031.

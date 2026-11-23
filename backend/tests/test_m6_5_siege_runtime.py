@@ -28,7 +28,7 @@ GATE = "gate-03"
 INTEGRITY_FACT = "fact:facility:gate-03:integrity"
 PLACE_STREAM = "place:gate-03:passability"
 PHYSICS_AUTHORITY = "ue:stormnight-physics"
-PHYSICS_SECRET = "0123456789abcdef0123456789abcdef"
+PHYSICS_SECRET = "fixture-key"
 
 
 def _append(store, *, principal, stream_id, event_type, payload, command_id):
