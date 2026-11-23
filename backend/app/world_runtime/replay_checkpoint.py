@@ -128,7 +128,8 @@ def _manifest(value, batch_refs):
     allowed = _REQUIRED | {"schema_version", "timeline", "profile", "mapping",
         "confirmed_tick", "window_ticks", "owner_revisions", "random_context", "inventory", "social",
         "social_delivery", "presence", "economy_temporal", "ecology_temporal", "resource", "equipment",
-        "inventory_domain", "economy_random", "life_state", "learning", "soul", "combat", "esm"}
+        "inventory_domain", "economy_random", "life_state", "learning", "soul", "combat", "esm",
+        "siege_physical_inputs"}
     if set(value) - allowed:
         raise ValueError("replay_participant_scope_mismatch")
     versions = dict(participant_manifest=1, batch_input=1, batch_operation=1,
@@ -141,6 +142,7 @@ def _manifest(value, batch_refs):
     optional_versions = ("economy_temporal", "ecology_temporal", "social_delivery", "presence", "resource", "equipment",
                          "inventory_domain", "economy_random", "life_state", "learning", "soul", "combat")
     optional_versions = optional_versions + ("esm",)
+    optional_versions = optional_versions + ("siege_physical_inputs",)
     for mask in range(1 << len(optional_versions)):
         candidate = dict(versions)
         for index, key in enumerate(optional_versions):
