@@ -260,3 +260,9 @@
 - 项目负责人选择可信 Presence 决策输入，缺依据时 unknown，并授权 A 跨域实现。A 提交 `22bf06158969c4b7419a93a17654408a1c6b58ab`、`6cf4ea8613a2d8626c83371a020b5f890d2ca60d`，持久化独立签名 Gate impact / Presence assessment 回执，注册 EventSchema 与 checkpoint replay participant。Detached 定向 13 passed，ownership 24 节点零差异；shared-replay 990 中两项 Port 8000 外部服务失败，原始输出位于 `F:/paralls-verification/thread-a/m6-5-input-slice1-6cf4ea86/`。证据见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
 - 后续实现增加 Facility profile 驱动 Pool writer、Presence 消费 assessment 并写 Place、以及主应用 HTTP 输入 route，当前定向 20 passed，仍待独立提交和 selection 验证。生产启动已接现有 `physics_contact_authority_secrets` 验签配置。
 - 正式文档与当前规则包未提供生产 Gate impact delta 和 integrity 初始/阈值配置。缺内容时 Gateway 持久化已验签的输入 evidence，但报告 Facility `not_configured`，不写测试数字。该配置是端到端 Gate 生产写入的剩余数据依赖；不得用 breach 自动推断 Presence。
+
+### H-A-030 | M6-5 domain input and HTTP Gateway slice | 2026-11-24
+
+- A 提交 `4349081644991ae896f15263861c5fb09096f046`：main HTTP Gateway 接收两个独立签名输入；Gate path 由 Facility resolver 消费 server profile 并经 Pool 写 integrity，Presence path 将签名 assessment 及其 source event/revision 交给 Presence 写 Place。验证还覆盖精确重试、未知 profile / stale revision 零写入及真实 HTTP Gate endpoint。代码职责和调用路径见 `docs/verification/m6-5-siege-physical-inputs-plan-20261124.md`。
+- 该 SHA 的 detached 定向 20 passed，ownership `selected=24 problems=0 improvements=0`；shared-replay `selected=990 problems=2 improvements=0`，两项是 Port 8000 外部服务占用失败；全量未运行。原始输出在 `F:/paralls-verification/thread-a/m6-5-owner-inputs-slice2-43490816/`。
+- main 启动接入现有 `physics_contact_authority_secrets`。但生产没有权威 Gate 初始值、threshold 和 impact delta 配置，main 尚无 Facility authority 实例可交给 Gateway；因此 HTTP Gate path 在该状态明确为 `not_configured`，实际生产 Pool 写入仍待该内容配置。测试中的 `-20` 仅是测试 fixture，不是生产值。不得把测试数据升级为事实。
