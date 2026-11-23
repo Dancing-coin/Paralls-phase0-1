@@ -153,3 +153,8 @@
 - 冻结五组选集尚未全过：F 盘 TMPDIR 的 `shared-replay` 两例因外部 UnrealEditor 占用本地端口 8000 失败。全量门禁未完成。合并执行者不要据此条声明 G5 通过。
 - Morale 和 Presence 尚无可交付 writer。Morale 等待可回放的守军成员事实及 D8 重算合同；Presence 等待 Facility 已提交 breach 事件与 source revision。A 当前可接 Information，不能据此宣称完整 M6-5 守城路径完成。
 - 本轮在 shared-replay 端口诊断中确认外部 UnrealEditor 命令行含认证凭据，值未记录、公开状态未核实；未改动该进程。项目负责人继续处理该环境事项。此信息不属于仓库或分支内容。
+
+### H-B-008 | 更正 B 分支最终 tip | 2026-11-23
+
+- H-B-007 中 `6741ab6115d5c280390aaba162fa1e109f6064e3` 是 Information 代码修复提交；之后又推送了交接文档提交 `911d5cd5bda5288b91c9ae0297c4f0e11d42803b`。**当前应提供给 A fetch 的远端分支最终 tip 是 `911d5cd5bda5288b91c9ae0297c4f0e11d42803b`**，远端核验已匹配。分支 `thread-b/reference-data-20261123` 的最终工作树包含已修复代码和 H-B-007 交接。
+- A 使用 `git fetch origin` 后，可检查 `origin/thread-b/reference-data-20261123`。合并/验收时以最终 tip 树为准，沿用 AUTONOMY G1–G7；B 没有合入 integration。
