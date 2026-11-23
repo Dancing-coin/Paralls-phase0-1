@@ -1,10 +1,16 @@
 from decimal import Decimal
+import hashlib
+import hmac
 
+from fastapi.testclient import TestClient
+
+from app import main
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.m6_5_siege_runtime import build_m6_5_siege_runtime
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.gameplay.siege_physical_input_runtime import GateImpactReceipt
 
 
 ORGANIZATION = "organization:garrison:east@1"
@@ -13,6 +19,8 @@ MORALE_FACT = "fact:unit:garrison-east:morale"
 GATE = "gate-03"
 INTEGRITY_FACT = "fact:facility:gate-03:integrity"
 PLACE_STREAM = "place:gate-03:passability"
+PHYSICS_AUTHORITY = "ue:stormnight-physics"
+PHYSICS_SECRET = "0123456789abcdef0123456789abcdef"
 
 
 def _append(store, *, principal, stream_id, event_type, payload, command_id):
@@ -128,3 +136,104 @@ def test_m6_5_production_dispatch_refolds_morale_and_keeps_missing_presence_inpu
 
     assert presence_result[0].failure.error_code == "place_assessment_unknown"
     assert store.read_stream(PLACE_STREAM) == []
+
+
+def test_m6_5_production_runtime_routes_signed_gate_input_through_facility_owner():
+    store = GameplayEventStore()
+    facility = FacilityIntegrityAuthority(
+        store=store,
+        definitions={GATE: _facility_pool()},
+        impact_profiles={
+            GATE: {"impact_kind:battering-ram@1": Decimal("-20")},
+        },
+    )
+    assert facility.initialize(
+        gate_ref=GATE,
+        command_id="facility:init",
+        idempotency_key="facility:init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    ).committed
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        facility=facility,
+    )
+    unsigned = GateImpactReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:runtime",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "a" * 64,
+        expected_integrity_revision=1,
+        physics_tick=510,
+        signature="0" * 64,
+    )
+    receipt = unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+
+    evidence, owner_result = runtime.record_gate_impact(receipt)
+
+    assert evidence.committed
+    assert owner_result.committed
+    integrity_events = store.read_stream(INTEGRITY_FACT)
+    assert len(integrity_events) == 2
+    assert integrity_events[-1].payload["delta"] == "-20"
+    assert integrity_events[-1].causation_id == evidence.committed_event_ids[0]
+
+
+def test_m6_5_gate_impact_http_gateway_commits_facility_fact(monkeypatch):
+    store = GameplayEventStore()
+    facility = FacilityIntegrityAuthority(
+        store=store,
+        definitions={GATE: _facility_pool()},
+        impact_profiles={
+            GATE: {"impact_kind:battering-ram@1": Decimal("-20")},
+        },
+    )
+    facility.initialize(
+        gate_ref=GATE,
+        command_id="facility:init",
+        idempotency_key="facility:init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        facility=facility,
+    )
+    monkeypatch.setattr(main, "m6_5_siege_runtime", runtime)
+    monkeypatch.setattr(main, "runtime_execution", None)
+    unsigned = GateImpactReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:http-gateway",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "b" * 64,
+        expected_integrity_revision=1,
+        physics_tick=511,
+        signature="0" * 64,
+    )
+    receipt = unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+
+    response = TestClient(main.component_app).post(
+        "/api/v2/siege/gate-impact-input",
+        json=receipt.model_dump(mode="json"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["evidence"]["committed"] is True
+    assert response.json()["facility"]["committed"] is True
+    assert store.read_stream(INTEGRITY_FACT)[-1].payload["delta"] == "-20"

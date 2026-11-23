@@ -9,6 +9,7 @@ from app.gameplay.event_schema_registry import (
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
+from app.gameplay.place_passability_runtime import PlacePassabilityAuthority
 from app.gameplay.siege_physical_input_runtime import (
     GATE_IMPACT_INPUT_EVENT,
     PRESENCE_ASSESSMENT_INPUT_EVENT,
@@ -50,6 +51,7 @@ def test_gate_impact_evidence_is_signed_persisted_and_exact_retry_replays():
         physics_tick=481,
         target_incarnation_ref="gate-03:incarnation-2",
         contact_source_digest="sha256:" + "a" * 64,
+        expected_integrity_revision=1,
         signature="0" * 64,
     ))
 
@@ -83,6 +85,7 @@ def test_forged_gate_impact_evidence_is_rejected_without_a_write():
         physics_tick=482,
         target_incarnation_ref="gate-03:incarnation-2",
         contact_source_digest="sha256:" + "b" * 64,
+        expected_integrity_revision=1,
         signature="f" * 64,
     )
 
@@ -108,6 +111,7 @@ def test_presence_assessment_is_a_separate_registered_trusted_input_event():
         physics_tick=489,
         target_incarnation_ref="gate-03:incarnation-2",
         contact_source_digest="sha256:" + "c" * 64,
+        expected_integrity_revision=1,
         signature="0" * 64,
     ))
     impact_result = authority.record_gate_impact(impact)
@@ -178,6 +182,19 @@ def test_presence_assessment_is_a_separate_registered_trusted_input_event():
         GATE_IMPACT_INPUT_EVENT,
         PRESENCE_ASSESSMENT_INPUT_EVENT,
     ]
+    place = PlacePassabilityAuthority(
+        store=store,
+        evidence_event_principals={GATE_IMPACT_INPUT_EVENT: SIEGE_PHYSICAL_INPUT_PRINCIPAL},
+    )
+    committed = place.commit_signed_assessment(
+        input_authority=authority,
+        authority_ref=AUTHORITY,
+        receipt_id=receipt.receipt_id,
+    )
+    assert committed.committed
+    assert place.state("gate-03") == "passable"
+    place_fact = store.get_event(committed.committed_event_ids[0])
+    assert event.event_id in place_fact.payload["source_event_ids"]
 
 
 def test_presence_receipt_rejects_a_breach_without_independent_source_evidence():
@@ -205,3 +222,131 @@ def test_presence_receipt_rejects_a_breach_without_independent_source_evidence()
     assert store.read_stream(
         "gameplay:combat:gate-presence:assessment:missing-evidence"
     ) == []
+
+
+def _facility(store, *, impact_profiles=None):
+    return FacilityIntegrityAuthority(
+        store=store,
+        definitions={"gate-03": PoolDefinition(
+            fact_type="fact:facility:gate-03:integrity",
+            lower=Decimal("0"),
+            upper=Decimal("100"),
+            initial=Decimal("100"),
+            thresholds=(PoolThreshold("breach", Decimal("40"), Decimal("45")),),
+        )},
+        impact_profiles=impact_profiles,
+    )
+
+
+def _gate_impact(receipt_id, *, expected_revision=1):
+    return _signed(GateImpactReceipt(
+        authority_ref=AUTHORITY,
+        receipt_id=receipt_id,
+        gate_ref="gate-03",
+        impact_kind_ref="impact_kind:battering-ram@1",
+        physics_tick=500,
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "d" * 64,
+        expected_integrity_revision=expected_revision,
+        signature="0" * 64,
+    ))
+
+
+def test_facility_consumes_signed_input_using_server_impact_profile_and_exact_retry():
+    store = _store()
+    facility = _facility(store, impact_profiles={
+        "gate-03": {"impact_kind:battering-ram@1": Decimal("-20")},
+    })
+    assert facility.initialize(
+        gate_ref="gate-03",
+        command_id="facility:init",
+        idempotency_key="facility:init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    ).committed
+    inputs = SiegePhysicalInputAuthority(
+        store=store, authority_secrets={AUTHORITY: SECRET}
+    )
+    impact = _gate_impact("impact:profiled")
+    assert inputs.record_gate_impact(impact).committed
+
+    first = facility.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=impact.receipt_id,
+    )
+    retry = facility.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=impact.receipt_id,
+    )
+
+    assert first.committed
+    assert retry.committed and retry.idempotency_status == "duplicate_replayed"
+    events = store.read_stream("fact:facility:gate-03:integrity")
+    assert [event.event_type for event in events] == [
+        "gameplay.pool.initialized",
+        "gameplay.pool.adjusted",
+    ]
+    assert events[-1].payload["delta"] == "-20"
+    assert events[-1].causation_id == inputs.gate_impact_event(
+        authority_ref=AUTHORITY, receipt_id=impact.receipt_id
+    ).event_id
+
+
+def test_facility_rejects_unknown_impact_profile_without_owner_write():
+    store = _store()
+    facility = _facility(store)
+    facility.initialize(
+        gate_ref="gate-03",
+        command_id="facility:init",
+        idempotency_key="facility:init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    inputs = SiegePhysicalInputAuthority(
+        store=store, authority_secrets={AUTHORITY: SECRET}
+    )
+    impact = _gate_impact("impact:unknown-profile")
+    assert inputs.record_gate_impact(impact).committed
+    before = store.read_stream("fact:facility:gate-03:integrity")
+
+    result = facility.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=impact.receipt_id,
+    )
+
+    assert not result.committed
+    assert result.failure.error_code == "facility_impact_profile_unknown"
+    assert store.read_stream("fact:facility:gate-03:integrity") == before
+
+
+def test_facility_rejects_stale_impact_revision_without_owner_write():
+    store = _store()
+    facility = _facility(store, impact_profiles={
+        "gate-03": {"impact_kind:battering-ram@1": Decimal("-20")},
+    })
+    facility.initialize(
+        gate_ref="gate-03",
+        command_id="facility:init",
+        idempotency_key="facility:init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    inputs = SiegePhysicalInputAuthority(
+        store=store, authority_secrets={AUTHORITY: SECRET}
+    )
+    impact = _gate_impact("impact:stale", expected_revision=0)
+    assert inputs.record_gate_impact(impact).committed
+    before = store.read_stream("fact:facility:gate-03:integrity")
+
+    result = facility.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=impact.receipt_id,
+    )
+
+    assert not result.committed
+    assert result.failure.error_code == "facility_impact_revision_conflict"
+    assert store.read_stream("fact:facility:gate-03:integrity") == before

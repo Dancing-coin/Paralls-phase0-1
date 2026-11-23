@@ -9,6 +9,10 @@ from typing import Literal
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
 from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.gameplay.siege_physical_input_runtime import (
+    PresenceAssessmentReceipt,
+    SiegePhysicalInputAuthority,
+)
 
 
 _PRESENCE_PRINCIPAL = "population.presence_authority"
@@ -160,6 +164,48 @@ class PlacePassabilityAuthority:
         )
         return self.store.append_batch(batch)
 
+    def commit_signed_assessment(
+        self,
+        *,
+        input_authority: SiegePhysicalInputAuthority,
+        authority_ref: str,
+        receipt_id: str,
+    ) -> AppendBatchResult:
+        input_event = input_authority.presence_assessment_event(
+            authority_ref=authority_ref,
+            receipt_id=receipt_id,
+        )
+        if input_event is None:
+            return self._reject(receipt_id, "place_assessment_input_unknown")
+        receipt = PresenceAssessmentReceipt.model_validate(input_event.payload["receipt"])
+        if input_authority.store() is not self.store:
+            return self._reject(receipt_id, "place_assessment_input_store_mismatch")
+        assessment = PlacePassabilityAssessment(
+            state=receipt.state,
+            assessment_ref=receipt.assessment_ref,
+            read_stream_revisions={
+                **receipt.source_stream_revisions,
+                input_event.stream_id: input_event.stream_revision,
+            },
+            source_event_ids=(*receipt.source_event_ids, input_event.event_id),
+        )
+        authority = PlacePassabilityAuthority(
+            store=self.store,
+            resolver=lambda _gate_ref, _breach: assessment,
+            evidence_event_principals={
+                **self._evidence_event_principals,
+                "gameplay.facility.gate_impact_input_received":
+                    "authority:siege:physical-input",
+                "gameplay.presence.assessment_input_received":
+                    "authority:siege:physical-input",
+            },
+        )
+        return authority.commit_assessment(
+            gate_ref=receipt.gate_ref,
+            breach_event_id=receipt.breach_event_id,
+            expected_revision=self.store.get_stream_head(self.stream_id(receipt.gate_ref)),
+        )
+
     def state(self, gate_ref: str) -> str:
         events = self.store.read_stream(self.stream_id(gate_ref))
         state = "unknown"
@@ -201,7 +247,7 @@ class PlacePassabilityAuthority:
         principal = self._evidence_event_principals.get(event.event_type)
         return (
             principal is not None
-            and event.visibility_policy == "project"
+            and event.visibility_policy in {"project", "authority_only"}
             and self.store.transaction_owns_event(
                 transaction_id=event.transaction_id,
                 event_id=event.event_id,

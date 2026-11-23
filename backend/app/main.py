@@ -68,6 +68,10 @@ from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
     build_m6_5_siege_runtime,
 )
+from app.gameplay.siege_physical_input_runtime import (
+    GateImpactReceipt,
+    PresenceAssessmentReceipt,
+)
 from app.gameplay.social_spatial_owner import SOCIAL_SPATIAL_PRINCIPAL, SocialSpatialOwner
 from app.gameplay.canonical_combat_authority import (
     CanonicalCombatThreatAuthority,
@@ -321,6 +325,7 @@ social_spatial_owner: SocialSpatialOwner | None = None
 combat_threat_authority: CanonicalCombatThreatAuthority | None = None
 physics_contact_receipt_authority: PhysicsContactReceiptAuthority | None = None
 durable_embodied_combat_adapter: DurableEmbodiedCombatAdapter | None = None
+m6_5_siege_runtime = None
 
 
 def _character_memory_known_time(world_ref: str) -> int | None:
@@ -1936,6 +1941,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     m6_5_siege_runtime = build_m6_5_siege_runtime(
         store=gameplay_event_store,
         morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets=settings.physics_contact_authority_secrets,
     )
     _assemble_settlement_batch_runtime()
     _assemble_status_runtime()
@@ -2927,6 +2933,43 @@ async def debug_siming_read_model(room_id: str) -> dict[str, object]:
 @app.post("/interaction/orchestrate")
 async def orchestrate_structured_interaction(payload: StructuredInteractionRequest) -> dict[str, object]:
     return await _dialogue_owner_call(runtime_execution, lambda: interaction_orchestration_service.execute(payload).model_dump())
+
+
+@app.post("/api/v2/siege/gate-impact-input")
+async def submit_siege_gate_impact_input(
+    receipt: GateImpactReceipt,
+) -> dict[str, object]:
+    if m6_5_siege_runtime is None:
+        raise HTTPException(status_code=503, detail={"error_code": "siege_runtime_unavailable"})
+    evidence, facility = await _dialogue_owner_call(
+        runtime_execution,
+        lambda: m6_5_siege_runtime.record_gate_impact(receipt),
+    )
+    return {
+        "evidence": evidence.model_dump(mode="json"),
+        "facility": facility.model_dump(mode="json") if facility is not None else None,
+        "facility_status": (
+            "committed" if facility is not None and facility.committed
+            else "not_configured" if facility is None and evidence.committed
+            else "not_committed"
+        ),
+    }
+
+
+@app.post("/api/v2/siege/presence-assessment-input")
+async def submit_siege_presence_assessment_input(
+    receipt: PresenceAssessmentReceipt,
+) -> dict[str, object]:
+    if m6_5_siege_runtime is None:
+        raise HTTPException(status_code=503, detail={"error_code": "siege_runtime_unavailable"})
+    evidence, place = await _dialogue_owner_call(
+        runtime_execution,
+        lambda: m6_5_siege_runtime.record_presence_assessment(receipt),
+    )
+    return {
+        "evidence": evidence.model_dump(mode="json"),
+        "place": place.model_dump(mode="json") if place is not None else None,
+    }
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-enrollment")

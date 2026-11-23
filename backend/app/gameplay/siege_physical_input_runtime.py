@@ -73,6 +73,7 @@ class GateImpactReceipt(_SignedSiegeReceipt):
     impact_kind_ref: str = Field(min_length=1, max_length=160)
     target_incarnation_ref: str = Field(min_length=1, max_length=160)
     contact_source_digest: str
+    expected_integrity_revision: int = Field(ge=0, strict=True)
 
     _validate_contact_digest = field_validator("contact_source_digest")(_digest)
 
@@ -156,6 +157,9 @@ class SiegePhysicalInputAuthority:
         key = self._idempotency_key(authority_ref, receipt_id)
         result = self._store.get_by_idempotency(SIEGE_PHYSICAL_INPUT_PRINCIPAL, key)
         return self._receipt_event(result, PRESENCE_ASSESSMENT_INPUT_EVENT) if result else None
+
+    def store(self) -> GameplayEventStore:
+        return self._store
 
     def _record(
         self,

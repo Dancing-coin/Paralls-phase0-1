@@ -10,6 +10,7 @@ from types import MappingProxyType
 from typing import Callable
 
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.l5_dispatch_runtime import (
     L5ReactionDispatcher,
     TriggeredGameplayCommand,
@@ -22,6 +23,11 @@ from app.gameplay.place_passability_runtime import (
     PlacePassabilityAuthority,
 )
 from app.gameplay.pool_runtime import PoolDefinition
+from app.gameplay.siege_physical_input_runtime import (
+    GateImpactReceipt,
+    PresenceAssessmentReceipt,
+    SiegePhysicalInputAuthority,
+)
 from app.gameplay.rule_pack_validator import load_pack
 
 
@@ -50,11 +56,35 @@ class M6_5SiegeRuntime:
     morale: MoraleRefoldAuthority
     presence: PlacePassabilityAuthority
     dispatcher: L5ReactionDispatcher
+    physical_inputs: SiegePhysicalInputAuthority
+    facility: FacilityIntegrityAuthority | None
 
     def after_transaction_dispatched(
         self, transaction: AtomicEventBatch
     ) -> tuple[object, ...]:
         return self.dispatcher.after_transaction_dispatched(transaction)
+
+    def record_gate_impact(self, receipt: GateImpactReceipt):
+        evidence = self.physical_inputs.record_gate_impact(receipt)
+        if not evidence.committed or self.facility is None:
+            return evidence, None
+        result = self.facility.apply_signed_impact(
+            input_authority=self.physical_inputs,
+            authority_ref=receipt.authority_ref,
+            receipt_id=receipt.receipt_id,
+        )
+        return evidence, result
+
+    def record_presence_assessment(self, receipt: PresenceAssessmentReceipt):
+        evidence = self.physical_inputs.record_presence_assessment(receipt)
+        if not evidence.committed:
+            return evidence, None
+        committed = self.presence.commit_signed_assessment(
+            input_authority=self.physical_inputs,
+            authority_ref=receipt.authority_ref,
+            receipt_id=receipt.receipt_id,
+        )
+        return evidence, committed
 
 
 def build_m6_5_siege_runtime(
@@ -63,7 +93,20 @@ def build_m6_5_siege_runtime(
     morale_definitions: Mapping[tuple[str, str], PoolDefinition],
     presence_resolver: PlaceResolver | None = None,
     evidence_event_principals: Mapping[str, str] | None = None,
+    physical_authority_secrets: Mapping[str, str] | None = None,
+    facility: FacilityIntegrityAuthority | None = None,
 ) -> M6_5SiegeRuntime:
+    if facility is not None and facility.store is not store:
+        raise ValueError("m6_5_siege_facility_store_mismatch")
+    physical_inputs = SiegePhysicalInputAuthority(
+        store=store,
+        authority_secrets=physical_authority_secrets or {},
+        evidence_event_principals={
+            **(evidence_event_principals or {}),
+            "gameplay.facility.gate_impact_input_received":
+                "authority:siege:physical-input",
+        },
+    )
     morale = MoraleRefoldAuthority(store=store, definitions=morale_definitions)
     presence = PlacePassabilityAuthority(
         store=store,
@@ -101,7 +144,13 @@ def build_m6_5_siege_runtime(
         fact_type_for=_fact_type_for,
         conditions={"facility_breach@1": _is_breach_entry},
     )
-    return M6_5SiegeRuntime(morale=morale, presence=presence, dispatcher=dispatcher)
+    return M6_5SiegeRuntime(
+        morale=morale,
+        presence=presence,
+        dispatcher=dispatcher,
+        physical_inputs=physical_inputs,
+        facility=facility,
+    )
 
 
 def _fact_type_for(event: GameplayEvent) -> str | None:
