@@ -1,0 +1,15 @@
+"fact:information:*:dataset_status":
+  owner_ref: "Information"
+  primitive: "machine"
+  identity: "collection_ref"
+  visibility:
+    class: "private"
+    learnable_by: ["role:information_authority"]
+    channel: "direct"
+    persistence: "permanent"
+  state_set_ref: "machine_def/dataset_status@1"
+  event_schema_ref: "reference_data_dataset_status_v1"
+  invariant_refs: ["reference_data_dataset_identity_valid", "reference_data_revocation_terminal"]
+  cadence: "event"
+  host: "paralls"
+  unknown_policy: "reject"

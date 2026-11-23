@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.reference_data_runtime import ReferenceDataAuthority, ReferenceDatasetRecord
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
+from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
+from app.models.fact_type import FACT_TYPE_REGISTRY
+from app.models.siming_heavenly_graph import HeavenlyGraphScope, HeavenlyNodeQuery
 from app.population_continuity.branch_preview import (
     BranchPreviewAuthority,
     BranchPreviewRequest,
@@ -13,9 +18,17 @@ from app.population_continuity.branch_preview import (
     FrozenReferenceDatasetInput,
 )
 from app.population_continuity.models import WorldModeProfile
+from app.services.authority_event_bus import InMemoryAuthorityEventBus
+from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 
 
 PROFILE_DIR = Path(__file__).resolve().parents[1].parent / "assets" / "characters" / "profiles"
+REFERENCE_DATA_EVENT_TYPES = (
+    "gameplay.reference_data.dataset_registered",
+    "gameplay.reference_data.dataset_corrected",
+    "gameplay.reference_data.dataset_revoked",
+)
 
 
 def _envelope(*, command_id: str, expected_revision: int = 0) -> GameplayCommandEnvelope:
@@ -237,3 +250,37 @@ def test_inf4z_reference_dataset_view_scope_and_preview_scope_are_zero_write() -
     assert denied_preview.error_code == "dataset_scope_denied"
     assert len(store.read_events()) == 1
     assert len(store.list_outbox()) == 1
+
+
+@pytest.mark.parametrize("event_type", REFERENCE_DATA_EVENT_TYPES)
+def test_reference_data_schema_event_is_discovered_and_projected(event_type: str) -> None:
+    scope = HeavenlyGraphScope(world_id="world:reference-data", session_id="session:reference-data", story_branch_id="branch:main")
+    graph = InMemoryHeavenlyGraphAdapter()
+    projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _event: scope)
+    bus = InMemoryAuthorityEventBus()
+    bus.subscribe(event_type, projector.project)
+    event = AuthorityEvent(
+        event_id=f"event:{event_type}",
+        event_type=event_type,
+        producer_ts=1,
+        room_id="room:reference-data",
+        scene_id="scene:reference-data",
+        zone_id="zone:reference-data",
+        source=AuthorityEventSource(layer="L2", system="reference_data"),
+        routing=AuthorityEventRouting(audience_mode="room", routing_mode="event_type", target_ids=[]),
+        priority="p1",
+        durability="replayable",
+        causation_id="cause:reference-data",
+        correlation_id="corr:reference-data",
+        payload={"dataset_ref": "dataset:prices:1", "source_revision_vector": {"dataset:prices:1": 1}},
+    )
+
+    assert event_type in FACT_TYPE_REGISTRY.event_types()
+    fact_type = FACT_TYPE_REGISTRY.from_event_type(event_type)
+    assert fact_type is not None
+    assert FACT_TYPE_REGISTRY.domain_for(fact_type) == "reference_data"
+    bus.publish(event)
+
+    nodes = graph.query_nodes(HeavenlyNodeQuery(scope=scope, valid_at=1, node_types=["causal_event"]))
+    assert len(nodes) == 1
+    assert nodes[0].attributes["event_type"] == event_type

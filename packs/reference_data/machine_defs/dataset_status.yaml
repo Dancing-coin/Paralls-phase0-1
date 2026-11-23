@@ -1,0 +1,6 @@
+"machine_def/dataset_status@1":
+  states: ["absent", "active", "revoked"]
+  terminal_states: ["revoked"]
+  transitions:
+    - ["absent", "active"]
+    - ["active", "revoked"]

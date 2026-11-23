@@ -1,0 +1,14 @@
+pack_id: "reference_data"
+pack_version: "1.0.0"
+schema_version: 1
+parent_pack: null
+owners: ["Information"]
+contents:
+  fact_types: ["dataset_status"]
+  machine_defs: ["dataset_status"]
+  models: []
+resolve_order:
+  before: []
+  unrelated: ["fact:information:*:dataset_status"]
+known_deviations:
+  license_metadata_remains_in_runtime_event_payload: "The current pack validator supports machine facts only and cannot yet declare the complete ReferenceData fact schema."
