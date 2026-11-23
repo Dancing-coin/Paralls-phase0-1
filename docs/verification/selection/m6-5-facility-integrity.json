@@ -1,0 +1,31 @@
+{
+  "head": "8a144daf",
+  "description": "Production/Facility gate integrity uses the registered Pool stream, owner identity, threshold crossing, exact retry, rebuild, and zero-write stale revision rejection",
+  "tests": [
+    {
+      "test_name": "tests/test_facility_integrity_runtime.py::test_facility_integrity_owner_commits_damage_and_breach_crossing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_facility_integrity_runtime.py::test_facility_integrity_exact_retry_replays_original_commit",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_facility_integrity_runtime.py::test_facility_integrity_rejects_stale_revision_without_writing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_facility_integrity_runtime.py::test_facility_integrity_requires_a_breach_threshold",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_can_commit_under_a_domain_owner_principal",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
