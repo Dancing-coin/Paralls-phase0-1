@@ -17,6 +17,7 @@ from yaml.tokens import AliasToken, AnchorToken, TagToken
 from app.gameplay.fact_type_registry import (
     REGISTERED_OWNER_IDS, FactTypeRegistry, RegistrationRejected, Violation, freeze,
 )
+from app.gameplay.l5_pipeline import Pipeline, compile_pipeline, impact_layers_cross_hosts
 from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
 
 
@@ -41,6 +42,7 @@ class LoadedPack:
     bindings: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     resolved_packs: tuple[PackRevision, ...] = ()
     command_catalog: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
+    pipelines: Mapping[str, Pipeline] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -151,7 +153,7 @@ def _impact_violations(
 
     if orders != sorted(set(orders)) or fact_orders != sorted(set(fact_orders)):
         yield "impact_layer_conflicts_order", "list unique layers in ascending FactType resolution order"
-    if len(layers) > 1 and (len(hosts) > 1 or "either" in hosts) and atomicity != "obligation":
+    if impact_layers_cross_hosts(hosts, len(layers)) and atomicity != "obligation":
         yield "impact_atomic_cross_host", "use obligation unless all layers are pinned to the same host"
 
 
@@ -350,7 +352,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
     contents = manifest.get("contents", {})
     sections = {name: {} for name in (
         "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles",
-        "aggregation_models", "bindings", "command_catalog",
+        "aggregation_models", "bindings", "command_catalog", "pipelines",
     )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
@@ -545,13 +547,27 @@ def load_pack(
                            if section in ("manifest", "fact_types", "machine_defs", "models")})
         except RegistrationRejected as error:
             issues.extend(error.violations)
+    pipelines = {}
     if registry is not None:
+        valid_profiles = {}
         for target, spec in sections["impact_profiles"].items():
             file, line = locations["impact_profiles", target]
-            for code, hint in _impact_violations(
+            violations = tuple(_impact_violations(
                 spec, registry=registry, entity_types=sections["entity_types"], fact_specs=sections["fact_types"],
-            ):
+            ))
+            for code, hint in violations:
                 reject(code, target, file, line, hint)
+            if not violations:
+                valid_profiles[target] = spec
+        if len(valid_profiles) == len(sections["impact_profiles"]):
+            for target, spec in sections["pipelines"].items():
+                file, line = locations["pipelines", target]
+                try:
+                    pipelines[target] = compile_pipeline(
+                        target, spec, impact_profiles=valid_profiles, fact_specs=sections["fact_types"],
+                    )
+                except ValueError as error:
+                    reject(str(error), target, file, line, "declare ordered pipeline steps and valid settlement mode")
         for section, validate in (("aggregation_models", _aggregation_violations), ("bindings", _binding_violations)):
             for target, spec in sections[section].items():
                 file, line = locations[section, target]
@@ -564,5 +580,5 @@ def load_pack(
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
         freeze(sections["aggregation_models"]), freeze(sections["bindings"]), revisions,
-        freeze(sections["command_catalog"]),
+        freeze(sections["command_catalog"]), MappingProxyType(pipelines),
     )

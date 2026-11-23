@@ -202,6 +202,125 @@ def test_pack_loads_impact_profile_for_registered_slots(tmp_path):
     assert not load_pack(PACK, handlers=HANDLERS).impact_profiles
 
 
+_PIPELINE_DECLARATION = dedent("""\
+    deed_pipeline:
+      profile_ref: "impact_profile/deed@1"
+      atomic: true
+      host_requirement: "single"
+      steps:
+        - fact_type_pattern: "fact:credential:*:link"
+          resolver: "credential_command@1"
+        - fact_type_pattern: "fact:credential:*:mark"
+          resolver: "credential_command@1"
+    """)
+
+
+def _pack_with_pipeline(tmp_path, declaration, *, second_host="paralls", scopes=("*", "*")):
+    profile = _IMPACT_PROFILE_DECLARATION.replace('"atomic"', '"obligation"') + (
+        '    - order: 20\n'
+        '      fact_type: "fact:credential:*:mark"\n'
+        '      resolver: "credential_command@1"\n'
+    )
+    destination = _pack_with_impact_profile(tmp_path, profile)
+    facts = destination / "fact_types" / "credential_link.yaml"
+    original = facts.read_text(encoding="utf-8")
+    facts.write_text(
+        original + original.replace(":link", ":mark").replace('"paralls"', f'"{second_host}"'),
+        encoding="utf-8",
+    )
+    manifest = destination / "pack.yaml"
+    manifest.write_text(manifest.read_text(encoding="utf-8").replace(
+        'before: []', 'before: [["fact:credential:*:link", "fact:credential:*:mark"]]'
+    ).replace('contents:\n', 'contents:\n  pipelines: ["deed"]\n'), encoding="utf-8")
+    entity = destination / "entity_types" / "deed.yaml"
+    entity.write_text(
+        _ENTITY_TYPE_DECLARATION + '    - fact_type_pattern: "fact:credential:*:mark"\n',
+        encoding="utf-8",
+    )
+    model = destination / "models" / "credential_command.yaml"
+    model.write_text(model.read_text(encoding="utf-8").replace(
+        '["fact:credential:*:link"]', '["fact:credential:*:link", "fact:credential:*:mark"]'
+    ), encoding="utf-8")
+    (destination / "pipelines").mkdir()
+    pipeline = destination / "pipelines" / "deed.yaml"
+    pipeline.write_text(declaration, encoding="utf-8")
+    if scopes != ("*", "*"):
+        for path in (manifest, facts, entity, model, destination / "impact_profiles" / "deed.yaml", pipeline):
+            path.write_text(path.read_text(encoding="utf-8").replace(
+                "fact:credential:*:link", f"fact:credential:{scopes[0]}:link",
+            ).replace("fact:credential:*:mark", f"fact:credential:{scopes[1]}:mark"), encoding="utf-8")
+    return destination
+
+
+def test_pack_loads_ordered_atomic_pipeline_with_one_revision_vector(tmp_path):
+    pack = load_pack(_pack_with_pipeline(tmp_path, _PIPELINE_DECLARATION), handlers=HANDLERS)
+    pipeline = pack.pipelines["deed_pipeline"]
+    assert pipeline.atomic
+    assert pipeline.profile_ref == "impact_profile/deed@1"
+    assert tuple(step.fact_type_pattern for step in pipeline.steps) == (
+        "fact:credential:*:link", "fact:credential:*:mark",
+    )
+    revision_vector = {"stream:link": 3, "stream:mark": 2}
+    bound = pipeline.bind_inputs(
+        scopes=("deed:1", "deed:1"),
+        revision_vectors=(revision_vector, {"stream:mark": 2, "stream:link": 3}),
+    )
+    revision_vector["stream:link"] = 4
+    assert bound == {"stream:link": 3, "stream:mark": 2}
+    with pytest.raises(TypeError):
+        bound["stream:link"] = 4
+
+
+@pytest.mark.parametrize(("scopes", "second", "code"), [
+    pytest.param(("deed:1", "deed:2"), {"stream:link": 3}, "pipeline_cross_scope_atomic", id="cross-scope"),
+    pytest.param(("deed:1", "deed:1"), {"stream:link": 4}, "pipeline_revision_vector_mismatch", id="stale-vector"),
+    pytest.param(("deed:1", "deed:1"), {}, "pipeline_revision_vector_mismatch", id="missing-stream"),
+])
+def test_pipeline_rejects_cross_scope_batch_and_mismatched_vectors(tmp_path, scopes, second, code):
+    pack = load_pack(_pack_with_pipeline(tmp_path, _PIPELINE_DECLARATION), handlers=HANDLERS)
+    with pytest.raises(ValueError, match=code):
+        pack.pipelines["deed_pipeline"].bind_inputs(
+            scopes=scopes, revision_vectors=({"stream:link": 3}, second),
+        )
+
+
+def test_pack_rejects_atomic_pipeline_across_hosts(tmp_path):
+    destination = _pack_with_pipeline(tmp_path, _PIPELINE_DECLARATION, second_host="ue")
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+    assert [v.code for v in error.value.violations] == ["impact_atomic_cross_host"]
+
+
+def test_pack_rejects_atomic_pipeline_with_distinct_declared_scopes(tmp_path):
+    destination = _pack_with_pipeline(tmp_path, _PIPELINE_DECLARATION, scopes=("alpha", "beta"))
+    with pytest.raises(RegistrationRejected, match="pipeline_cross_scope_atomic"):
+        load_pack(destination, handlers=HANDLERS)
+
+
+def test_pack_requires_recovery_for_obligation_pipeline_across_hosts(tmp_path):
+    obligation = _PIPELINE_DECLARATION.replace('atomic: true\n  host_requirement: "single"', 'atomic: false')
+    destination = _pack_with_pipeline(tmp_path, obligation, second_host="ue")
+    with pytest.raises(RegistrationRejected, match="pipeline_recovery_action_invalid"):
+        load_pack(destination, handlers=HANDLERS)
+    (destination / "pipelines" / "deed.yaml").write_text(
+        obligation.replace("  steps:", '  recovery_action: "reconcile"\n  steps:'), encoding="utf-8",
+    )
+    pipeline = load_pack(destination, handlers=HANDLERS).pipelines["deed_pipeline"]
+    assert pipeline.atomic is False
+    assert pipeline.recovery_action == "reconcile"
+    inputs = {"stream:link": 3}
+    assert pipeline.bind_inputs(scopes=("deed:1", "deed:2"), revision_vectors=(inputs, inputs)) == inputs
+
+
+def test_pack_rejects_pipeline_steps_that_differ_from_impact_profile(tmp_path):
+    declaration = _PIPELINE_DECLARATION.replace(
+        'fact_type_pattern: "fact:credential:*:mark"', 'fact_type_pattern: "fact:credential:*:link"',
+    )
+    destination = _pack_with_pipeline(tmp_path, declaration)
+    with pytest.raises(RegistrationRejected, match="pipeline_profile_steps_mismatch"):
+        load_pack(destination, handlers=HANDLERS)
+
+
 @pytest.mark.parametrize(("old", "new", "code"), [
     pytest.param(
         'target_entity_type: "deed"', 'target_entity_type: "record"',
