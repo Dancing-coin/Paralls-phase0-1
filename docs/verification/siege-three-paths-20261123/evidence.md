@@ -101,5 +101,3 @@ F 盘定向测试日志、F 盘 TMPDIR 的部分选择集日志，以及此前�
 - 输出 FactType 候选为 `fact:information:<report-scope>:report`。该事实表达“该收件人已收到报告”，不表示报告内容为真或其内在信念。精确 scope、可见性和 resolver binding 由 A 按规范接线。
 - Morale 仍需守军成员权威事实及 D8 规则；Presence 仍需 Facility 已提交 breach 源事件与 revision。不可用候选 roster 或维修事件代替这些输入。
 - 本证据不覆盖 M6 Gateway/L5 生产接线、Workflow 持久义务、外部生产 Demo 或端到端 M6-5 验收。
-
-\n

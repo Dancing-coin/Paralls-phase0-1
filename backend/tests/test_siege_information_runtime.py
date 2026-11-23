@@ -178,5 +178,3 @@ def test_information_update_rejects_delivery_after_source_revocation():
     assert not result.committed
     assert result.error_code == "information_delivery_not_visible"
     assert store.export_snapshot() == before
-
-\n

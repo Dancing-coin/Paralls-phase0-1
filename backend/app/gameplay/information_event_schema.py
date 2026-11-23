@@ -23,5 +23,3 @@ def register_information_event_schemas(registry: EventSchemaRegistry) -> None:
         except EventSchemaRegistryError:
             if registry.get(registration.event_type, registration.schema_version) != registration:
                 raise
-
-\n

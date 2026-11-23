@@ -187,5 +187,3 @@ __all__ = [
     "InformationUpdateResult",
     "register_information_event_schemas",
 ]
-
-\n
