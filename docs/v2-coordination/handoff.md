@@ -188,3 +188,12 @@
 - Presence 继续阻塞：尚无已提交 Facility/Production breach 事实及其 FactType、payload、source stream/revision、source Owner，也无可由该输入重算的 Presence 通行性合同。不得以维修、普通 condition 变化、环境几何或手造事件代替。
 - A 已交付给共同基线候选的机制范围仅包括 Pool runtime/schema factory、Pool 的 `casualty` refold trigger 和已存在的 L5 离线声明编译。生产 Gateway、提交后 receipt 调度、目标/条件求值、可信命令输出登记及 Workflow 义务恢复尚未实现。A 的 Morale/Presence 生产接线须分别等到域命令与可信输出合同可消费后推进。
 - 当前准确状态是 Morale 和 Presence 均阻塞；D8 机制决策已解除，域输入与共享基线门槛未解除。此记录不表示任一 writer 或守城端到端验证完成。
+
+### H-A-020 | Morale/Presence 输入合同建议 | 2026-11-23
+
+- **Morale roster 建议复用 Organization 成员委派事件**：为守城建立明确的 `organization_ref`，由有效 Organization capability binding 限定该组织与版本化的 `role_ref`（守军成员角色），只把其已提交 `delegation_state=active` 成员纳入 roster。现有 `OrganizationMembershipDelegationIntent` 包含 `organization_ref`、`member_ref`、`role_ref`、`delegation_state`，Organization 按 `gameplay:organization:{organization_ref}` 持久写入并递增 stream revision。来源代码为 `backend/app/gameplay/organization_government_social_platform_runtime.py:94` 与 `backend/app/gameplay/organization_government_runtime.py:6921-6986`。
+- roster 的历史有效点定义为 Organization 成员变更的 EventStore `global_sequence`。处理死亡时，只回放 `global_sequence <= death_event.global_sequence` 的指定 Organization stream，并取每个 member 的最新状态。这样禁止事后补记改变死亡时名单，也不需要用人口 roster 或工作班表推断守军。每个纳入成员的 LifeState 读取也截断到死亡事件位置；任一成员缺少可确认的初始存活状态、成员状态不唯一或 roster 为空均返回 unknown，不提交 Pool。输入 revision vector 必须包含 Organization stream 与逐成员 LifeState stream 的读取 revision。
+- 该路线要求 Organization Owner 提供已注册的守军 `organization_ref` 和角色定义/绑定，并保证成员变更事件是该组织唯一的成员事实源。若产品需要回溯生效或将来生效的成员任命，现有事件没有 `effective_from`，必须由 Organization Owner 扩展其合同；在此之前以提交序号作为生效点。当前 A 不修改第四波 Organization/Government 枢纽代码。
+- **Presence breach 输入建议复用 Facility integrity Pool 阈值事件**：正式 FactType 为 `fact:facility:<gate>:integrity`，Owner Production/Facility，原语 Pool；Facility 定义名为 `breach` 的 `PoolThreshold`。A 的 Pool projector 已持久生成 `gameplay.pool.threshold_crossed`，其 payload 携带 `fact_type` 和 `threshold_ref`，生产 EventSchema factory 已注册 Pool schemas。触发筛选为指定 gate integrity FactType 且 `threshold_ref=breach`。阈值上下界由 Facility Owner 在该事实配置中给出，不能从维修量或普通 condition 变化推导。
+- Presence 收到已提交阈值越界后，仍须按自己的通行性合同重算并提交 `place:<gate>:passability` 独立状态；gate breach 不直接写 Presence。B 需交付 Facility integrity Pool writer/threshold configuration 以及 Presence resolver/写入合同，A 随后登记精确命令输出并接生产 Gateway。
+- 以上复用方案不新增 Owner 或共用事实写权。实现顺序为共同基线先吸收 A 的 Pool schemas/runtime，Organization 与 Facility/Presence 域各自提交真实 writer，再由 A 完成 Gateway/L5 生产接线。直到这些提交各自具备定向、回放、revision conflict 与 P-3 证据，Morale 和 Presence 仍标阻塞。

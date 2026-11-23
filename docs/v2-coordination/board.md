@@ -46,7 +46,7 @@
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
 | M6-3 Workflow 声明校验 | A | 待门禁 | `9eb80fe9`；[证据](../verification/m6-3-workflow-declarations-20261123.md) | 定向 129 passed，19 组选集 1,284 节点零差异。全量 10,530 passed、24 个既有失败，退出 1。生产重建需要可查询的步骤命令、回执及义务证据，见 H-A-013 | 6 |
 | M6-4 Play pattern 声明与包加载 | A | 待门禁 | 编译器 `b7bb3605`，正常包加载 `6e7da420`；[加载证据](../verification/m6-composition-pack-loading-20261123.md) | 定向 133 passed，19 组选集 1,288 节点零差异。全量 10,534 passed、24 个既有失败、2 skipped、2 xfailed，退出 1，相对 `9eb80fe9` 无新增失败。应用注册与激活未做 | 6 |
-| M6-5 守城 Demo 最小集 | A | 阻塞 | [前置核对](../verification/m6-5-siege-preflight-20261123.md) | Pool/casualty 改动 `84d12a87` 尚未进入共同基线；Morale 缺 Organization 权威 roster 与 B writer，Presence 缺 Facility breach 事实与 B resolver，Information writer 在 B 分支待共同基线；三条路径都缺生产 Gateway/L5 调度及可信输出映射，见 H-A-014/016/018/019 | 6 |
+| M6-5 守城 Demo 最小集 | A | 阻塞 | [前置核对](../verification/m6-5-siege-preflight-20261123.md)；H-A-020 域输入合同建议见 `handoff.md` | Pool/casualty 改动 `84d12a87` 尚未进入共同基线；Morale 等 Organization 守军组织/角色 binding 和 B writer，Presence 等 Facility integrity Pool threshold 与 B resolver，Information writer 在 B 分支待共同基线；三条路径都缺生产 Gateway/L5 调度及可信输出映射，见 H-A-014/016/018/019/020 | 6 |
 | M7 第二真相收口 | A/B | 阻塞 | — | S-2、S-3 未决 | 11 |
 | M8 综合验收 | 负责人 | 待开工 | 逐条对照 | 全部里程碑完成 | 1–11 |
 
