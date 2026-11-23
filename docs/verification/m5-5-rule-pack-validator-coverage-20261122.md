@@ -53,3 +53,17 @@
 | `facttype_refold_missing` | 未实现 | `rule_pack_validator.py:158` 已验证聚合模型条目，FactType 的必需 refold 关联仍未接入。 |
 
 命令目录通过受信任调用方提供的 Owner → domain 映射校验命令名及处理方，见 `rule_pack_validator.py:204`。规则包加载器也已接入 `aggregation_models`、技能消耗 `bindings` 与 `impact_profiles`。运行态加载拒绝仍由调用方传入 `running`，生产装配待做。以上是代码静态核对，各切片的运行证据见对应验证文件。
+
+## 截至 `6e7da420` 的 L5 增量核对
+
+本表为静态读取代码与定向测试的映射。各版本实际执行结果见 [Pipeline](m6-2-pipeline-20261123.md)、[Workflow](m6-3-workflow-declarations-20261123.md) 与 [组合包加载](m6-composition-pack-loading-20261123.md) 证据。
+
+| 规范规则 | 当前状态 | 代码与边界 |
+|---|---|---|
+| `pipeline_revision_vector_mismatch` | 输入绑定已实现 | `l5_pipeline.py:32`、第 40 行拒绝各层 revision vector 不一致或缺失。需要生产 Gateway 在结算前传入实际读向量并纳入既有 CAS。 |
+| `pipeline_cross_scope_atomic` | 声明与输入绑定已实现 | `l5_pipeline.py:84` 拒绝声明中的明确跨 scope，`l5_pipeline.py:30` 拒绝实际绑定后的跨 scope。生产目标解析和提交未做。 |
+| `pattern_declares_writes` | 编译与加载已实现 | Play pattern、Workflow 和 Reaction 各自拒绝直接写入声明。`load_pack` 已接入三种内容编译，见 `rule_pack_validator.py:598` 与第 617 行。 |
+| `pattern_command_unknown` | 编译与加载已实现 | Workflow 用解析后的 `command_catalog` 校验命令。Reaction 还需要调用方提供可信输出集合，过滤到有效目录后校验命令与回路。 |
+| `pattern_workflow_cycle` | 编译与加载已实现 | `l5_workflow.py:101` 将拓扑排序发现的直接、间接依赖环转换为该拒绝码。 |
+
+父包、Owner 声明、FactType refold 关联与持久包版本的既有缺口继续见前表和 H-A-009/010。本次未修改生产代码或测试断言。

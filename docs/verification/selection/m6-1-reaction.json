@@ -1,5 +1,5 @@
 {
-  "head": "7b0d69bfe152cfea3da49c8b41ae423919d2f963",
+  "head": "876133edba8a0d8b28a433c7c075ccab3d3d089b",
   "tests": [
     {
       "test_name": "tests/test_l5_reaction.py::test_reactions_resolve_registered_commands_and_remain_async",
@@ -50,7 +50,27 @@
       "test_name": "tests/test_l5_reaction.py::test_reactions_reject_duplicate_ids_and_malformed_command_outputs",
       "failures": [],
       "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_pack_loads_reaction_and_links_play_pattern_to_registered_composition",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_pack_rejects_reaction_without_trusted_outputs_or_with_a_cycle[outputs0-pattern_command_unknown]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_pack_rejects_reaction_without_trusted_outputs_or_with_a_cycle[outputs1-reaction_cycle_detected]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_pack_rejects_unknown_reaction_reference_in_play_pattern",
+      "failures": [],
+      "outcome": "passed"
     }
   ],
-  "description": "M6-1 Reaction trigger and condition retention, trusted command outputs, cycle and priority validation"
+  "description": "M6-1 Reaction declarations and normal pack loading, cycle and content reference rejection"
 }

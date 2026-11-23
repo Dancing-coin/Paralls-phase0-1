@@ -20,3 +20,9 @@ Python 3.12.2，SQLite 3.43.1。`PYTHONPATH=F:/codex-temp/a-ip-f759a465/backend`
 U4、U8 验证了离线声明编译，U6 仅静态核对调用点，U10 为本文件，U11 已登记。U1–U3、U5、U7 的域级交付未做。U9 已覆盖 C6 及以 YAML 数据提交不同声明的校验路径。C8 的应用注册和激活、M6-1 至 M6-3 执行、M6-5 Demo 联调均未做。
 
 Reaction 循环检查依赖可信的命令输出 FactType 清单。《Command 信封与回执》的命令目录和 `_command_violations` 目前只登记处理 Owner、payload schema、权限、幂等方式及版本。Resolver 的 `writes_fact_types` 只描述其自身写集。接线前需要从命令处理方得到可验证的输出集合并确认提交后的 Gateway 命令入口。
+
+## 正常包加载接线增量
+
+`6e7da420221c8a7ca4f3fb762153b2542e5b004c` 已在 `load_pack` 中从本次解析的 Reaction、Pipeline、Workflow 和规则包版本构建 Play pattern。新增包加载测试覆盖有效组合、未知组合引用、未知命令与 Reaction 循环。独立检出定向 133 passed，19 组选集共 1,288 节点零差异，完整版本和全量结果见 [组合包加载证据](m6-composition-pack-loading-20261123.md)。
+
+本增量交付加载入口。C8 的应用注册和激活、组合生产执行、M6-5 Demo 仍待 H-A-011 至 H-A-014 所列接线。

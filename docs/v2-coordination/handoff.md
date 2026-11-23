@@ -146,3 +146,15 @@
 - Workflow 编译器已校验登记命令、依赖关系与义务恢复策略。生产入口须提供固定的工作流版本、实例及步骤身份，并将这些身份关联到既有命令回执。
 - `GameplayEventStore.get_by_idempotency` 可查提交结果。拒绝、超时、宿主不可达仍需要 Gateway 审计或已有权威义务证据，才能在投影丢失后区分尚未执行、结算未知和可重试。需明确其归属及查询接口。
 - 《组合总纲》的补给示例给 `reserve` 继承超时开放义务策略，但恢复表只列 `transport` 和 `deliver`。当前按《跨域结算》为每个可打开义务的步骤要求显式恢复声明。补给包接线时需为 `reserve` 声明其恢复策略或覆盖超时动作。
+
+### H-A-014 | M6 组合声明加载与守城生产前置 | 2026-11-23
+
+- `9eb80fe9` 提供 Workflow 编译及正常规则包加载。`6e7da420` 将 Reaction 和 play pattern 接入同一 `load_pack` 入口，可信命令输出由调用方提供，按包内有效命令目录过滤。后者在独立提交 `876133ed` 上的 19 组选集共 1,288 节点，全部零差异，主分支全量正在运行。最终证据追加到 [加载接线记录](../verification/m6-composition-pack-loading-20261123.md)。
+- M6-5 仅做前置核对，未实施生产 Demo。当前 A 分支找到 LifeState 真实 writer，但未找到守城所需 Morale 重算、Presence 通行性重评及 Information 报告送达命令的生产入口。需要 B 交付对应域 FactType、命令处理方与可信输出集合，再由已提交 receipt 接入 Gateway。具体静态范围见 [守城前置核对](../verification/m6-5-siege-preflight-20261123.md)。
+- H-A-011 至 H-A-013 所列生产调度、目标授权、结算未知查询和义务耐久归属仍待接入。声明编译和包加载已有测试，M6 运行时与 Demo 尚有上述前置。
+
+### H-A-015 | H-A-014 全量结果与剩余接入条件 | 2026-11-23
+
+- `6e7da420221c8a7ca4f3fb762153b2542e5b004c` 的串行全量已结束，10,562 collected，10,534 passed、24 failed、2 skipped、2 xfailed，退出 1。运行期间 HEAD 与源码固定。相对 `9eb80fe9` 的失败签名新增 0、恢复 0；相对冻结 22 项仍多两项既有本地失败，详见 [加载证据](../verification/m6-composition-pack-loading-20261123.md)。独立提交定向 133 passed，19 组选集 1,288 节点各组零差异。
+- M6 声明加载单元记为待门禁。生产执行接入需要确认 Gateway 的处理方及可信命令输出登记、Workflow 步骤与回执的耐久关联和义务归属。M6-5 还需要 B 的 Morale、Presence、Information 对应域事实及命令交付，前置静态核对见 [守城记录](../verification/m6-5-siege-preflight-20261123.md)。M6 总任务记为阻塞。
+- A 其余队列的继续条件沿用 H-A-005/006/008/009/010，分别为读取时间与主体资格来源、Holdings 预留与守恒合同、首条 epoch 生产流及存储边界、效果定义条目合同、包版本写入归属。Place 在第 3 波后，Process 归并在域迁移后；S-2 至 S-4 仍待负责人裁定。已交付部分按各单元证据和账本状态供门禁消费。
