@@ -1,0 +1,46 @@
+{
+  "head": "d40ddff891d71e24a60abf6d383fbf5aa4190685",
+  "tests": [
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_preserves_registered_steps_and_obligation_policy",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_rejects_invalid_step_declarations[command-unknown.command-pattern_command_unknown]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_rejects_invalid_step_declarations[depends_on-value1-workflow_dependency_unknown]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_rejects_invalid_step_declarations[depends_on-value2-pattern_workflow_cycle]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_rejects_invalid_step_declarations[writes-value3-pattern_declares_writes]",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_rejects_indirect_cycle",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_workflow_requires_recovery_for_each_step_that_can_open_an_obligation",
+      "failures": [],
+      "outcome": "passed"
+    },
+    {
+      "test_name": "tests/test_l5_workflow.py::test_load_pack_resolves_workflow_steps_against_its_command_catalog",
+      "failures": [],
+      "outcome": "passed"
+    }
+  ],
+  "description": "M6-3 Workflow command admission, dependency cycles, rejection, timeout and obligation recovery declarations"
+}
