@@ -41,7 +41,7 @@
 | M4 第 3 波（含 debt） | 未定 | 待开工 | 同上 | debt 归属 Economy/Market，枢纽 | 1–11 |
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
 | M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`，M5-5 已做静态盘点 | 122 项定向测试，14 组选集 1,245 节点零差异。合并状态全量 `a750c824` 10,491 passed、24 failed、2 skipped、2 xfailed，退出 1。相对 `47f931fb` 无新增失败。需要补齐 `temporal_effects` 定义合同、生产命令注册与包版本写入边界，见 H-A-009/010。M5-3 生产迁移与 M5-4 应用接线待决 | 5 |
-| M6 L5 引擎 | A | 阻塞 | M6-1 至 M6-4 声明编译与加载均已有代码，加载接线 `6e7da420` 待门禁 | 生产异步触发、Pipeline 提交、Workflow 义务重建需要明确 Gateway 接口、可信命令输出及持久义务归属，见 H-A-011/012/013；M6-5 依赖域迁移 | 6 |
+| M6 L5 引擎 | A | 进行中 | M6-1 reaction dispatch component `dabb7f4e`；[证据](../verification/m6-1-l5-dispatch-runtime-20261124.md)；声明加载 `6e7da420` 待门禁 | 组件定向 148 passed；五组冻结选择 1,169 节点中 shared-replay 两项外部 Port 8000 失败，18 组登记选择 136 节点零差异。`main.py` 生产注册、Morale/Presence handler、条件/规则包加载、持久义务恢复未做；守城可信 gate-impact 输入合同待裁定，见 H-A-025 | 6 |
 | M6-1 Reaction 离线校验 | A | 待门禁 | `40df5929`、`7b0d69bf`；[证据](../verification/m6-1-reaction-20261123.md) | 定向 113 passed，17 组选集 1,268 节点零差异。全量 31 failed，其中 7 项额外路径错误在同 SHA 短路径复跑通过。异步触发前置见 H-A-011 | 6 |
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
 | M6-3 Workflow 声明校验 | A | 待门禁 | `9eb80fe9`；[证据](../verification/m6-3-workflow-declarations-20261123.md) | 定向 129 passed，19 组选集 1,284 节点零差异。全量 10,530 passed、24 个既有失败，退出 1。生产重建需要可查询的步骤命令、回执及义务证据，见 H-A-013 | 6 |

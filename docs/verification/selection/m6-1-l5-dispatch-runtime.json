@@ -1,0 +1,31 @@
+{
+  "head": "dabb7f4e",
+  "description": "Committed L5 reaction dispatch routes stable commands only to handlers with explicit trusted fact outputs and rejects unknown conditions",
+  "tests": [
+    {
+      "test_name": "tests/test_l5_dispatch_runtime.py::test_committed_life_transition_is_submitted_once_through_trusted_command_gateway",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_l5_dispatch_runtime.py::test_gateway_requires_a_trusted_output_mapping_for_each_handler",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_l5_dispatch_runtime.py::test_reaction_dispatch_rejects_an_unregistered_condition",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_resolve_registered_commands_and_remain_async",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_l5_reaction.py::test_reactions_reject_a_cycle_from_trusted_command_outputs",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
