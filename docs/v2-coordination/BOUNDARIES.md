@@ -15,6 +15,7 @@
 | `backend/app/gameplay/l5_play_pattern.py`、`backend/tests/test_l5_play_pattern.py` | M6-4 玩法声明校验 |
 | `backend/app/gameplay/l5_reaction.py`、`backend/tests/test_l5_reaction.py` | M6-1 Reaction 声明校验 |
 | `backend/app/gameplay/l5_pipeline.py` | M6-2 Pipeline 声明与输入绑定校验 |
+| `backend/app/gameplay/l5_workflow.py`、`backend/tests/test_l5_workflow.py` | M6-3 Workflow 声明校验 |
 
 B 的调用不算修改：B 迁移 `debt`、`contract` 时导入并调用 `owner_runtime_base` 是允许的。B 需要这些文件发生变化时，走 `requests/thread-b.md`。
 

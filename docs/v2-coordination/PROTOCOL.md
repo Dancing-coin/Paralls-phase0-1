@@ -124,3 +124,4 @@
 | 2026-11-22 | 登记 M6-4 的 L5 玩法声明校验与测试路径 | 线程 A，按 version 2 BOUNDARIES 第一区条目 |
 | 2026-11-23 | 登记 M6-1 Reaction 声明校验与测试路径 | 线程 A，按 AUTONOMY 自主范围 |
 | 2026-11-23 | 登记 M6-2 Pipeline 声明与输入绑定模块路径 | 线程 A，按 AUTONOMY 自主范围 |
+| 2026-11-23 | 登记 M6-3 Workflow 声明校验与测试路径 | 线程 A，按 AUTONOMY 自主范围 |

@@ -18,6 +18,7 @@ from app.gameplay.fact_type_registry import (
     REGISTERED_OWNER_IDS, FactTypeRegistry, RegistrationRejected, Violation, freeze,
 )
 from app.gameplay.l5_pipeline import Pipeline, compile_pipeline, impact_layers_cross_hosts
+from app.gameplay.l5_workflow import Workflow, compile_workflow
 from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
 
 
@@ -43,6 +44,7 @@ class LoadedPack:
     resolved_packs: tuple[PackRevision, ...] = ()
     command_catalog: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
     pipelines: Mapping[str, Pipeline] = field(default_factory=lambda: MappingProxyType({}))
+    workflows: Mapping[str, Workflow] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -352,7 +354,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
     contents = manifest.get("contents", {})
     sections = {name: {} for name in (
         "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles",
-        "aggregation_models", "bindings", "command_catalog", "pipelines",
+        "aggregation_models", "bindings", "command_catalog", "pipelines", "workflows",
     )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
@@ -548,6 +550,7 @@ def load_pack(
         except RegistrationRejected as error:
             issues.extend(error.violations)
     pipelines = {}
+    workflows = {}
     if registry is not None:
         valid_profiles = {}
         for target, spec in sections["impact_profiles"].items():
@@ -568,6 +571,17 @@ def load_pack(
                     )
                 except ValueError as error:
                     reject(str(error), target, file, line, "declare ordered pipeline steps and valid settlement mode")
+        for target, spec in sections["workflows"].items():
+            file, line = locations["workflows", target]
+            if spec.get("workflow_id", target) != target:
+                reject("workflow_schema_invalid", target, file, line, "match workflow_id to the declared entry")
+                continue
+            try:
+                workflows[target] = compile_workflow(
+                    {"workflow_id": target, **spec}, command_types=sections["command_catalog"].keys(),
+                )
+            except ValueError as error:
+                reject(str(error), target, file, line, "declare ordered dependencies and registered commands")
         for section, validate in (("aggregation_models", _aggregation_violations), ("bindings", _binding_violations)):
             for target, spec in sections[section].items():
                 file, line = locations[section, target]
@@ -580,5 +594,5 @@ def load_pack(
         freeze(manifest.get("legacy_rule", {})), freeze(sections["pool_defs"]),
         freeze(sections["entity_types"]), freeze(sections["impact_profiles"]),
         freeze(sections["aggregation_models"]), freeze(sections["bindings"]), revisions,
-        freeze(sections["command_catalog"]), MappingProxyType(pipelines),
+        freeze(sections["command_catalog"]), MappingProxyType(pipelines), MappingProxyType(workflows),
     )
