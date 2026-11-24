@@ -106,6 +106,25 @@ def test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic(tmp_p
     assert [violation.target for violation in matching] == ["fact:credential:*:link"]
 
 
+@pytest.mark.parametrize("declaration_location", ["manifest", "contents"])
+def test_pack_rejects_package_defined_primitives(tmp_path, declaration_location):
+    destination = shutil.copytree(PACK, tmp_path / "custom-primitive-pack")
+    manifest_path = destination / "pack.yaml"
+    manifest = manifest_path.read_text(encoding="utf-8")
+    if declaration_location == "manifest":
+        manifest = manifest.replace("schema_version: 1\n", "schema_version: 1\nprimitives: [custom]\n", 1)
+    else:
+        manifest = manifest.replace("contents:\n", "contents:\n  primitives: [custom]\n", 1)
+    manifest_path.write_text(manifest, encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "pack_defines_primitive"]
+    assert [violation.target for violation in matching] == ["primitives"]
+
+
 _POOL_DECLARATION = dedent("""\
     stamina:
       description: "Stamina used during a movement window"

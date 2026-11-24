@@ -342,6 +342,10 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
 
     manifest_path = directory / "pack.yaml"
     manifest = read(manifest_path, "manifest")
+    if "primitives" in manifest:
+        file, line = locations["manifest", "primitives"]
+        reject("pack_defines_primitive", "primitives", file, line,
+               "the six FactType primitives are registered in code")
     if running:
         reject("pack_runtime_reload_forbidden", "pack", manifest_path, 1, "load only before runtime starts")
     parent = manifest.get("parent_pack")
@@ -366,6 +370,10 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
         reject("pack_schema_invalid", "contents", manifest_path, 1, "contents must be a mapping")
         contents = {}
     for section, names in contents.items():
+        if section == "primitives":
+            reject("pack_defines_primitive", section, manifest_path, 1,
+                   "the six FactType primitives are registered in code")
+            continue
         if section not in sections or not isinstance(names, list) or any(not isinstance(n, str) or not re.fullmatch(r"[a-z][a-z0-9_]*", n) for n in names):
             reject("pack_schema_invalid", section, manifest_path, 1, "declare supported content sections and lowercase file stems")
             continue
