@@ -120,3 +120,7 @@ Rule-pack validation now distinguishes a primitive value outside the six registe
 | Full-suite failure comparison | All four failures reproduced on parent `a5823c4b` in the previous M5-5 unit; the present change only classifies invalid primitive values during pack loading | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-parent-failures-20261125.log` |
 
 The four baseline failures remain the calibration-budget assertion, Task45 Godot probe, population cold-ready report, and Task8 Godot probe. The full suite remains non-green. No persistent new failure was observed in the relevant selection or parent comparison.
+
+### Primitive registry maintenance follow-up
+
+Commit `cbee0c6cf8c436ff7fbfa00373c655b3131d2ed3` moved the six primitive IDs into `fact_type_registry.py` so the RulePack loader and FactType compiler share the registered set. This is behavior-preserving. Validator, Pool, and FactType focused tests remained `129 passed`; the five frozen selections (1,169 nodes) and all 25 registered selections (228 nodes) returned `problems=0 improvements=0`. No second full-suite run was needed for this refactor. Raw outputs are in `F:\paralls-verification\thread-a\m5-5-primitive-registry-focused-f584e2521bbd40209ee6f0ae4c6d0431\pytest.log` and `F:\paralls-verification\thread-a\m5-5-primitive-registry-gates-bb88817fca714eb29b09c96e134a253d\gate-run.log`.

@@ -384,3 +384,9 @@
 - 清洁环境 backend 全量 `10,650 passed, 4 failed, 2 skipped, 2 xfailed`，退出码 1。四个失败均为前几轮确认的 baseline/environment failures：calibration budget assertion、Task45 Godot probe、population cold-ready report、Task8 Godot probe；同四项已在父提交 `a5823c4b` 的 M5-5 failure comparison 中复现。此处不宣称全量通过。
 - 环境 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 位于 A worktree；原始验证输出在 `F:/paralls-verification/thread-a/m5-5-primitive-unknown-red-20261125/`、`m5-5-primitive-unknown-focused-9178ee71d16d453e89a72eacbbb20295/`、`m5-5-primitive-unknown-selection-8283035f75c54a5a918f5817b2ef1479/`、`m5-5-primitive-unknown-gates-53116699456140fb923dcd3f56c1664e/`、`m5-5-primitive-unknown-full-9bd3859f809244019c3c8b23ed37cccf/`。
 - 该提交只完成 `primitive_unknown` 诊断。其余 Validator 规则、Bond/Holdings/Process/Place 编译与 M5-3/M5-4、Architecture v2 总体验收仍未完成。
+
+### H-A-047 | FactType primitive 登记集合收敛 | 2026-11-25
+
+- 提交 `cbee0c6cf8c436ff7fbfa00373c655b3131d2ed3` 将六个 primitive ID 放到 `fact_type_registry.py` 的 `REGISTERED_FACT_TYPE_PRIMITIVES`，规则包 shape validator 引用同一集合，删除重复硬编码。这是行为保持的维护提交。
+- 定向 FactType、Validator、Pool 测试 `129 passed`。冻结 1,169 节点和登记 25 组选集 228 节点均 `problems=0 improvements=0`。复用紧邻提交的清洁全量 `10,650 passed, 4 failed, 2 skipped, 2 xfailed`，不重复长测；本维护提交没有单独全量结果。
+- 环境 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 在 A worktree。原始输出为 `F:/paralls-verification/thread-a/m5-5-primitive-registry-focused-f584e2521bbd40209ee6f0ae4c6d0431/pytest.log` 与 `m5-5-primitive-registry-gates-bb88817fca714eb29b09c96e134a253d/gate-run.log`。
