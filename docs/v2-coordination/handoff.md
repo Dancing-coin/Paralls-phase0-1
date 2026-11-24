@@ -335,7 +335,7 @@
 ### H-A-040 | M1-3 Pool 正式规格静态审计 | 2026-11-24
 
 - A 对正式六原语规格 Pool 专节与当前 `pool_runtime.py`、测试和已有 M1-3 证据作了只读对照，结果见 `docs/verification/m1-3-pool-spec-audit-20261124.md`。本次没有改代码、事件合同或运行 pytest。
-- Pool 已有显式 ticks 的 `integrate` 和 `window_ref` 幂等。正式规格还要求按输入 revision、阈值、暂停、交接、版本升级边界结算，并保留积分窗口内曾达到零的事实。当前事件 payload 没有权威时间/区间边界或中间轨迹字段，Pool 也没有这些生命周期边界的生产调度入口。
-- 补齐前需确定权威时间源、暂停/交接/版本升级的边界事件合同，以及窗口内最低值/零值如何持久化并重放。这会改变持久事件和回放语义，因此未由 A 自行猜定或修改。Pool 的 U1/U2/U5/U7/U8 与 G5 缺口仍依赖域归属、M2-2、Resolver 合同和门禁证据。
+- Pool 已有显式 ticks 的 `integrate` 和 `window_ref` 幂等，阈值转换也与调整原子提交。静态调用点搜索没有找到生产代码调用 `integrate`，因此尚无生产调度把 `SimulationDriver.current_tick` 接入 Pool streams，或在 revision/threshold/pause/handoff/version 边界驱动结算。`SimulationClock` / `SimulationDriver.current_tick` 是现有候选权威时钟；后续实现可按各域 Pool stream 接入，不必先新增全局时钟。
+- 固定 `rate_per_tick` 分段结算可沿用现有 `integrate` 命令和 window 幂等键。只有需要在同一分段内表达非恒定 rate、且中途达到零后恢复时，才需扩展事件以保存轨迹或最低值。当前没有已迁移生产 Pool 定义要求该语义，本轮不新增事件字段。Pool 的 U1/U2/U5/U7/U8 与 G5 缺口仍依赖域归属、M2-2、Resolver 合同和门禁证据。
 - 审计后在当前 A tip `5e7b7eeb97bdc2216065f67bdf36546be56a8d69` 单独运行 Pool 定向回归：Python 3.12.2、`app.__file__` 位于当前 A worktree，`backend/tests/test_pool_runtime.py` 为 `19 passed, 2 warnings`。冻结选集和全量未运行，原全量失败记录不变。
 - M1-3 继续为 `待门禁`。该定向回归不消除上述事件语义缺口，也不构成 G5 通过。
