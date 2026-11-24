@@ -98,14 +98,14 @@
 - Update `docs/v2-coordination/board.md`, `handoff.md`, `daily/2026-11-24.md`, and the M6-5 status
 
 **Interfaces:**
-- [ ] Run the focused tests and all five frozen selections on the final code SHA. Also run the registered Information and M6-5 selections. Classify any shared-replay environment failures by reproducing on the parent.
-- [ ] Run the full suite on the exact code SHA and compare any remaining failed node IDs against the exact parent.
+- [x] Run the focused tests and all five frozen selections on the final code SHA. Also run the registered Information and M6-5 selections. All listed selections returned zero problems and improvements.
+- [x] Run the full backend suite on the exact code SHA and compare failed node IDs against the exact parent. Nineteen failures reproduced as the same nodes on parent `9b46742e`; repository-root pytest collection also reported a missing `jsonschema` dependency for scripts/verification tests.
 - Verify durable database restart and report UE transport as unverified unless a live trusted host actually sends receipts.
 
 - [x] Run focused and frozen selections in a detached worktree with F-drive output.
 - [x] Run parent comparison for full-suite failures that remain.
 - [x] Record Python version, import path, SQLite version, raw output paths, status counts, and uncovered runtime work.
-- [ ] Commit the final evidence update and push only the A branch.
+- [x] Commit the implementation and exact-code evidence updates and push only the A branch.
 
 ## Completion checks
 
