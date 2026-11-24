@@ -46,7 +46,7 @@ $env:TMPDIR = $env:TEMP
 
 提交后的选择集元数据复核：在 A worktree 的 `9395181df1d94c2c6faf5363d73ac8858dcb5e17` 上使用 Python 3.12.2 重跑更新后的 `siege_information.json`，命令为 `python -B docs/verification/absorb-main-3bf3418e/compare_selection.py --repo <A worktree> --selection docs/verification/selection/siege_information.json --output F:/paralls-verification/thread-a/information-selection-final-9395181d-20261124-01`。运行前 `PYTHONPATH=<A worktree>/backend`，`app.__file__` 为 `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`，TEMP/TMP/TMPDIR 均指向 F 盘本次独立目录。原始输出 `F:\paralls-verification\thread-a\information-selection-final-9395181d-20261124-01.log`：`selected=14 problems=0 improvements=0`。该复核只更新验证选择集元数据，没有修改代码。
 
-P-1：跟踪文件扫描输出 `tracked_model_secret_offender_count=0`，本次暂存新增行凭证模式匹配数为 0。扫描未发现命中，因此无匹配子串需要公开状态核对。全量 10,392 项未运行。Godot、真实守城报告来源和完整 siege playthrough 未验证。
+P-1：跟踪文件扫描输出 `tracked_model_secret_offender_count=0`，本次暂存新增行凭证模式匹配数为 0。相对 `origin/integration` 的分支新增行扫描有一条宽泛凭证赋值模式命中 `backend/app/gameplay/siege_physical_input_runtime.py:201`，匹配子串 SHA-256 前 8 位为 `18983dda`，在 `origin/main` 和协议起点 `3934bba6` 中均已存在（是），未形成新增暴露。全量 10,392 项未运行。Godot、真实守城报告来源和完整 siege playthrough 未验证。
 
 ## 尚缺的生产输入
 
