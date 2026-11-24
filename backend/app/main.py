@@ -64,6 +64,11 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
+from app.gameplay.information_runtime import (
+    INFORMATION_KNOWLEDGE_EVENT_TYPE,
+    INFORMATION_REPORT_EVENT,
+    SiegeReportPublicationReceipt,
+)
 from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
     build_facility_integrity_authority,
@@ -1948,9 +1953,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         morale_definitions=DEFAULT_MORALE_DEFINITIONS,
         physical_authority_secrets=settings.physics_contact_authority_secrets,
         facility=facility_authority,
-        information_report_source_event_types=set(
-            settings.siege_information_report_event_types
-        ),
+        information_report_authority_secrets=settings.siege_information_report_authority_secrets,
         world_tick_provider=_session_world_clock_tick,
     )
     _assemble_settlement_batch_runtime()
@@ -2981,6 +2984,33 @@ async def submit_siege_presence_assessment_input(
         "evidence": evidence.model_dump(mode="json"),
         "place": place.model_dump(mode="json") if place is not None else None,
     }
+
+
+@app.post("/api/v2/siege/information/report-publication-input")
+async def submit_siege_report_publication_input(request: Request) -> dict[str, object]:
+    if m6_5_siege_runtime is None:
+        raise HTTPException(status_code=503, detail={"error_code": "siege_runtime_unavailable"})
+    try:
+        receipt = SiegeReportPublicationReceipt.model_validate_json(await request.body())
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422, detail={"error_code": "information_report_receipt_invalid"},
+        ) from exc
+
+    def publish():
+        result = m6_5_siege_runtime.publish_siege_report(receipt)
+        if result.committed:
+            gameplay_outbox_dispatcher.dispatch_pending(topic=INFORMATION_REPORT_EVENT)
+            gameplay_outbox_dispatcher.dispatch_pending(topic="social.delivery.recipient_projection")
+            gameplay_outbox_dispatcher.dispatch_pending(topic=INFORMATION_KNOWLEDGE_EVENT_TYPE)
+        return {
+            "committed": result.committed,
+            "error_code": result.error_code,
+            "report": result.report_append_result,
+            "delivery": result.delivery_append_result,
+        }
+
+    return await _dialogue_owner_call(runtime_execution, publish)
 
 
 @app.post("/internal/trusted-local-gameplay-mirror-enrollment")

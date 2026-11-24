@@ -1,4 +1,4 @@
-"""Production dispatch wiring for the M6-5 Morale and Presence commands."""
+"""Production dispatch wiring for M6-5 siege commands."""
 
 from __future__ import annotations
 
@@ -11,7 +11,14 @@ from typing import Callable
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
-from app.gameplay.information_runtime import InformationAuthority
+from app.gameplay.information_runtime import (
+    INFORMATION_REPORT_EVENT,
+    INFORMATION_REPORT_FACT_TYPE,
+    INFORMATION_REPORT_PRINCIPAL,
+    InformationAuthority,
+    InformationReportPublicationResult,
+    SiegeReportPublicationReceipt,
+)
 from app.gameplay.l5_dispatch_runtime import (
     L5ReactionDispatcher,
     TriggeredGameplayCommand,
@@ -41,7 +48,6 @@ MORALE_OWNER_DOMAINS = {
     "Morale": "morale",
     "Presence": "presence",
 }
-INFORMATION_REPORT_FACT_TYPE = "fact:information:siege:report"
 INFORMATION_KNOWLEDGE_FACT_TYPE = "fact:information:siege:report_knowledge"
 INFORMATION_DELIVERY_EVENT_TYPE = "gameplay.social.delivery_recorded@2"
 DEFAULT_MORALE_DEFINITIONS = MappingProxyType({
@@ -97,11 +103,18 @@ class M6_5SiegeRuntime:
     physical_inputs: SiegePhysicalInputAuthority
     facility: FacilityIntegrityAuthority | None
     information: InformationAuthority
+    world_tick_provider: Callable[[], int | None] | None = None
 
     def after_transaction_dispatched(
         self, transaction: AtomicEventBatch
     ) -> tuple[object, ...]:
         return self.dispatcher.after_transaction_dispatched(transaction)
+
+    def publish_siege_report(
+        self, receipt: SiegeReportPublicationReceipt,
+    ) -> InformationReportPublicationResult:
+        world_now = self.world_tick_provider() if self.world_tick_provider is not None else None
+        return self.information.publish_siege_report(receipt=receipt, world_now=world_now)
 
     def record_gate_impact(self, receipt: GateImpactReceipt):
         evidence = self.physical_inputs.record_gate_impact(receipt)
@@ -163,7 +176,7 @@ def build_m6_5_siege_runtime(
     evidence_event_principals: Mapping[str, str] | None = None,
     physical_authority_secrets: Mapping[str, str] | None = None,
     facility: FacilityIntegrityAuthority | None = None,
-    information_report_source_event_types: set[str] | frozenset[str] = frozenset(),
+    information_report_authority_secrets: Mapping[str, str] | None = None,
     world_tick_provider: Callable[[], int | None] | None = None,
 ) -> M6_5SiegeRuntime:
     if facility is not None and facility.store is not store:
@@ -183,7 +196,9 @@ def build_m6_5_siege_runtime(
         resolver=presence_resolver,
         evidence_event_principals=evidence_event_principals,
     )
-    information = InformationAuthority(store=store)
+    information = InformationAuthority(
+        store=store, report_authority_secrets=information_report_authority_secrets,
+    )
     command_outputs = {
         "morale.refold": {definition.fact_type for definition in morale_definitions.values()},
         "presence.reevaluate": {presence.stream_id("gate-03")},
@@ -229,11 +244,7 @@ def build_m6_5_siege_runtime(
     dispatcher = L5ReactionDispatcher(
         reactions=tuple(pack.reactions.values()) + tuple(information_pack.reactions.values()),
         gateway=gateway,
-        fact_type_for=lambda event: _fact_type_for(
-            event,
-            store=store,
-            report_source_event_types=information_report_source_event_types,
-        ),
+        fact_type_for=lambda event: _fact_type_for(event, store=store),
         conditions={"facility_breach@1": _is_breach_entry},
     )
     return M6_5SiegeRuntime(
@@ -243,6 +254,7 @@ def build_m6_5_siege_runtime(
         physical_inputs=physical_inputs,
         facility=facility,
         information=information,
+        world_tick_provider=world_tick_provider,
     )
 
 
@@ -250,23 +262,32 @@ def _fact_type_for(
     event: GameplayEvent,
     *,
     store: GameplayEventStore,
-    report_source_event_types: set[str] | frozenset[str],
 ) -> str | None:
     if event.event_type == INFORMATION_DELIVERY_EVENT_TYPE:
         payload = event.payload
         source_event_id = payload.get("source_event_id")
         source_stream_id = payload.get("source_stream_id")
         source_revision = payload.get("source_revision")
+        recipient_ref = payload.get("recipient_ref")
         try:
             source = store.get_event(source_event_id) if isinstance(source_event_id, str) else None
         except KeyError:
             source = None
         if (
             source is not None
-            and source.event_type in report_source_event_types
+            and source.event_type == INFORMATION_REPORT_EVENT
+            and source.schema_version == 1
             and source.stream_id == source_stream_id
             and source.stream_revision == source_revision
             and source.payload.get("fact_type") == INFORMATION_REPORT_FACT_TYPE
+            and isinstance(recipient_ref, str)
+            and source.payload.get("recipient_ref") == recipient_ref
+            and source.visibility_policy == f"actor:{recipient_ref}"
+            and store.transaction_owns_event(
+                transaction_id=source.transaction_id,
+                event_id=source.event_id,
+                principal_ref=INFORMATION_REPORT_PRINCIPAL,
+            )
         ):
             return INFORMATION_REPORT_FACT_TYPE
         return None

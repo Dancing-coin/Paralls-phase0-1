@@ -15,9 +15,9 @@ from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
 _DELIVERY_EVENT = "gameplay.social.delivery_recorded@2"
-_INFORMATION_EVENT = "gameplay.information.knowledge_updated@1"
 _DELIVERY_PRINCIPAL = "authority:p5:social-delivery"
 _INFORMATION_PRINCIPAL = "authority:information"
+INFORMATION_KNOWLEDGE_EVENT_TYPE = "gameplay.information.knowledge_updated@1"
 INFORMATION_REPORT_EVENT = "gameplay.information.siege_report_published@1"
 INFORMATION_REPORT_FACT_TYPE = "fact:information:siege:report"
 INFORMATION_REPORT_PRINCIPAL = "authority:information:report-publisher"
@@ -216,6 +216,7 @@ class InformationAuthority:
                         "report_ref": receipt.report_ref,
                         "recipient_ref": receipt.recipient_ref,
                         "status": "published",
+                        "routing": {"target_ids": [receipt.recipient_ref]},
                     },
                 )],
             }, deep=True)
@@ -353,7 +354,7 @@ class InformationAuthority:
         if existing is not None:
             result = self._store.get_by_idempotency(_INFORMATION_PRINCIPAL, idempotency_key)
             prior = self._prior_event(result)
-            if (prior is not None and prior.event_type == _INFORMATION_EVENT
+            if (prior is not None and prior.event_type == INFORMATION_KNOWLEDGE_EVENT_TYPE
                     and prior.stream_id == stream_id and prior.payload == event_payload
                     and prior.command_id == command_id
                     and prior.causation_id == causation_id and prior.correlation_id == correlation_id):
@@ -386,7 +387,7 @@ class InformationAuthority:
                 delivery_stream: delivery.stream_revision,
                 report_stream: report_revision,
             },
-            event_specs=((_INFORMATION_EVENT, event_payload),),
+            event_specs=((INFORMATION_KNOWLEDGE_EVENT_TYPE, event_payload),),
             idempotency_key=idempotency_key,
             causation_id=causation_id,
             correlation_id=correlation_id,
@@ -400,7 +401,7 @@ class InformationAuthority:
                 transaction_id=batch.transaction_id,
                 event_id=batch.events[0].event_id,
                 global_sequence=0,
-                topic=_INFORMATION_EVENT,
+                topic=INFORMATION_KNOWLEDGE_EVENT_TYPE,
                 audience=f"actor:{recipient_ref}",
                 payload_projection={
                     "recipient_ref": recipient_ref,
