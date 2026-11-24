@@ -211,7 +211,8 @@ def bootstrap_secret_observation_child(*args):
     async def startup():
         # 只验证受控测试值，不输出任何 credential。
         assert all(getattr(main.settings, name) == ({'test': 'controlled-test-value'}
-            if name == 'physics_contact_authority_secrets' else 'controlled-test-value') for name, field in
+            if name in {'physics_contact_authority_secrets', 'siege_information_report_authority_secrets'}
+            else 'controlled-test-value') for name, field in
             type(main.settings).model_fields.items() if field.exclude and name != 'world_admin_credentials')
         assert main.settings.world_admin_credentials == []
         assert main.settings.siming_llm_routes[0].api_key == 'controlled-route-value'
@@ -229,7 +230,8 @@ def test_bootstrap_preserves_excluded_settings_and_real_http_enrollment(monkeypa
     for name, field in type(main.settings).model_fields.items():
         if field.exclude and name != 'world_admin_credentials':
             monkeypatch.setattr(main.settings, name, {'test': 'controlled-test-value'}
-                if name == 'physics_contact_authority_secrets' else 'controlled-test-value')
+                if name in {'physics_contact_authority_secrets', 'siege_information_report_authority_secrets'}
+                else 'controlled-test-value')
     monkeypatch.setattr(main.settings, 'world_admin_credentials', [])
     monkeypatch.setattr(main.settings, 'heavenly_graph_path', str(tmp_path/'graph.sqlite3'))
     monkeypatch.setattr(main.settings, 'siming_llm_routes', [SimingLlmRouteSettings(
