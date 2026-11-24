@@ -2,7 +2,7 @@
 
 ## Scope and state
 
-- Worktree: F:/codex-temp/paralls-v2-thread-a-bond-20261121, branch thread-a/ownership-bond-followup-20261121, parent 7601189a4b9580a6acd93c3164d9db5ba3af4b76.
+- Worktree: F:/codex-temp/paralls-v2-thread-a-bond-20261121, branch thread-a/ownership-bond-followup-20261121, parent 7601189a4b9580a6acd93c3164d9db5ba3af4b76. Implementation commit: a9f5385a7f05e7f52611062b236f5392a5e3e611.
 - The layered Gate runtime, v2 signed input, optional Facility Pool content, Gateway, pack declarations and rebuildable obligation projection are A-owned. No B code was required. Previously selected B Information commits remain in A's history.
 - Formal compensation behavior is now set to continue Presence evaluation and keep committed physical damage. No physical rollback is performed. A compensation step would apply only to a future reversible reservation.
 - Python 3.12.2, SQLite 3.43.1. Commands set PYTHONPATH to this worktree's backend and TEMP, TMP, TMPDIR to fresh F-drive run roots. The import and temp paths were printed before pytest.
@@ -26,6 +26,7 @@
 - Frozen selections: ownership selected=24 problems=0 improvements=0, modifier selected=12 problems=0 improvements=0, equipment selected=87 problems=0 improvements=0, inventory selected=56 problems=0 improvements=0. Raw outputs are under F:/paralls-verification/thread-a/m65g-narrow-ownership-02/, m65g-modifier-20261124-01/, m65g-equipment-20261124-01/, and m65g-inventory-20261124-01/.
 - M6-5 layered selection: selected=16 problems=0 improvements=0. Raw output: F:/paralls-verification/thread-a/m65g-layered-selection-final-02/selection/batch-0000.log.
 - Information selection: selected=25 problems=0 improvements=0. Raw output: F:/paralls-verification/thread-a/m65g-information-final-01/selection/batch-0000.log.
+- Exact detached worktree at commit a9f5385a repeated the focused command with 164 passed, 6 warnings. Exact commit M6-5 (16), ownership (24), modifier (12), equipment (87), inventory (56) and Information (25) selections all reported zero problems and improvements. Raw outputs are under F:/paralls-verification/thread-a/m65g-exact-a9f5385a-01/ and the m65g-exact-{m65,own,mod,equip,inv,info}-a9f5385a/ directories.
 - git diff --check exited 0. It emitted only Git's CRLF-to-LF notice for the existing coordination comms file.
 - Final-code shared-replay selection: selected=990 problems=2 improvements=0. Failures were test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage] and [wall-clock], both failing with Port 8000 occupied by an external process without a healthy backend. The same nodes failed with the same error on parent 7601189a. Raw final and parent outputs are under F:/paralls-verification/thread-a/m65g-shared-replay-final-01/ and m6-5-impact-gate-parent-shared-20261124-02/.
 - Full backend suite on this current working-tree state: not run.
@@ -35,7 +36,8 @@
 - Production Gate profiles are intentionally unconfigured without authoritative values. The checked-in pack values are demo content only.
 - No live Unreal transport or fully configured siege playthrough was run.
 - The Presence contract requires a committed breach event as an assessment source. Hits that do not cross the integrity breach threshold remain open in the derived obligation projection, since the current source contract cannot issue a Presence assessment against a non-breach impact.
-- Exact detached-commit and full-suite evidence remain pending.
+- Exact commit full backend suite: 10,630 passed, 12 failed, 2 skipped, 2 xfailed, 227 warnings, exit 1 in 1465.42s. All 12 failed node IDs were rerun at the exact parent 7601189a in a detached worktree and all 12 failed there as well; the node sets match, with no new failure node. Parent selected-run evidence identifies a missing tokenizers module, Godot CharacterMotor parse/type resolution, and existing Population/Task8 gate failures. Full implementation output: F:/paralls-verification/thread-a/m65g-full-a9f5385a-01/full.log. Parent comparison: F:/paralls-verification/thread-a/m65g-full-a9f5385a-01/parent-comparison.json and F:/paralls-verification/thread-a/m65g-full-parent-7601189a-01/baseline/results.json.
+- P-1 scan of every staged added line relative to origin/integration found 0 credential-pattern hits. Scan output: F:/paralls-verification/thread-a/m65g-secret-scan-02/scan.json.
 - M6-5 is in progress. This evidence does not establish full Architecture v2 completion or merge readiness.
 
 ## Requirement status

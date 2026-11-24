@@ -98,14 +98,14 @@
 - Update `docs/v2-coordination/board.md`, `handoff.md`, `daily/2026-11-24.md`, and the M6-5 status
 
 **Interfaces:**
-- Current worktree focused tests, M6-5 selection and ownership selection are recorded. Shared-replay and Information selections must be rerun after code freeze before exact-SHA evidence.
-- Run the full suite on the exact code SHA and compare the same failures on its exact parent before attributing them.
+- [x] Run the focused tests and all five frozen selections in a detached worktree at the exact SHA. Also run the registered Information and M6-5 selections. Shared-replay retained two external Port 8000 failures, reproduced on the parent.
+- [x] Run the full suite on the exact code SHA and compare its 12 failed node IDs against the exact parent. All 12 parent-selected nodes failed, with matching node sets.
 - Verify durable database restart and report UE transport as unverified unless a live trusted host actually sends receipts.
 
-- [ ] Run focused and frozen selections in a detached worktree with F-drive output.
-- [ ] Run parent comparison for full-suite failures that remain.
-- [ ] Record Python version, import path, SQLite version, raw output paths, status counts, and uncovered runtime work.
-- [ ] Commit evidence and coordination notes, then push only the A branch.
+- [x] Run focused and frozen selections in a detached worktree with F-drive output.
+- [x] Run parent comparison for full-suite failures that remain.
+- [x] Record Python version, import path, SQLite version, raw output paths, status counts, and uncovered runtime work.
+- [ ] Commit the final evidence update and push only the A branch.
 
 ## Completion checks
 
