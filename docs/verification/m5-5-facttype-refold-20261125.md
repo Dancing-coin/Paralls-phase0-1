@@ -104,3 +104,19 @@ The rule-pack loader previously ignored a top-level `primitives` declaration and
 | Full-suite failure comparison | Four failures reproduced at parent `a5823c4b`; the fifth node passed at parent and in a current-code targeted rerun | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-parent-failures-20261125.log` and `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-current-failure-recheck-20261125.log` |
 
 The four reproduced failures are the calibration-budget assertion, Task45 Godot probe, population cold-ready report, and Task8 Godot probe described above. `test_original_owner_provider_pending_survives_hard_kill_without_reingest[character]` failed once in the full suite, then passed both on parent `a5823c4b` and in a current-code targeted rerun. The suite remains non-green and no new persistent failure was observed from this unit.
+
+## Follow-up validator rule: unknown FactType primitive
+
+Rule-pack validation now distinguishes a primitive value outside the six registered values from a known but not-yet-implemented primitive. Unknown values receive the formal `primitive_unknown` diagnostic. The current compiler still implements only Machine and Pool, so the other four known values remain unsupported pending their L1 units.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| TDD red | Unknown primitive regression failed because `primitive_unknown` was not emitted | `F:\paralls-verification\thread-a\m5-5-primitive-unknown-red-20261125\pytest.log` |
+| Focused FactType, Validator, and Pool tests | `129 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-primitive-unknown-focused-9178ee71d16d453e89a72eacbbb20295\pytest.log` |
+| M5-5 regression selection at `888ec615` | `selected=7 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-primitive-unknown-selection-8283035f75c54a5a918f5817b2ef1479\batch-0000\results.json` |
+| Frozen selection comparison | 5 selections, 1,169 nodes, all `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-primitive-unknown-gates-53116699456140fb923dcd3f56c1664e\gate-run.log` |
+| Registered selection comparison | 25 selections, 228 nodes total, all `problems=0 improvements=0` | Same gate directory; per-selection batch results |
+| Clean backend full suite | `10,650 passed, 4 failed, 2 skipped, 2 xfailed`, exit code 1; 10,656 collected | `F:\paralls-verification\thread-a\m5-5-primitive-unknown-full-9bd3859f809244019c3c8b23ed37cccf\full-console.log` |
+| Full-suite failure comparison | All four failures reproduced on parent `a5823c4b` in the previous M5-5 unit; the present change only classifies invalid primitive values during pack loading | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-parent-failures-20261125.log` |
+
+The four baseline failures remain the calibration-budget assertion, Task45 Godot probe, population cold-ready report, and Task8 Godot probe. The full suite remains non-green. No persistent new failure was observed in the relevant selection or parent comparison.

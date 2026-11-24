@@ -376,3 +376,11 @@
 - 清洁环境 backend 全量为 `10,648 passed, 5 failed, 2 skipped, 2 xfailed`，退出码 1。四个失败在父提交 `a5823c4b` 复现。第五个 `test_original_owner_provider_pending_survives_hard_kill_without_reingest[character]` 在父提交及当前提交的定向重跑均通过，记录为单次全量失败，不能由此宣称全量通过。
 - 环境 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 在 A worktree；验证输出保留于 `F:/paralls-verification/thread-a/m5-5-pack-defines-primitive-red-repro-20261125-confirmed.log`、`m5-5-pack-defines-primitive-focused-clean-dd5abc0da5b04e629ae45aeb27904ea2/`、`m5-5-pack-defines-primitive-selection-d089cad043ff490baa822cf2a2a152d3/`、`m5-5-pack-defines-primitive-gates-d49ba160907842178acef60d67841bbc/`、`m5-5-pack-defines-primitive-full-46dda022c3cc4a9486bc221b28103e0e/`、`m5-5-pack-defines-primitive-parent-failures-20261125.log` 和 `m5-5-pack-defines-primitive-current-failure-recheck-20261125.log`。
 - 本提交只覆盖规则包不得定义原语这一项规则。其余 Validator 目录、M5-3/M5-4 和 Architecture v2 总体验收仍未完成。
+
+### H-A-046 | M5-5 primitive_unknown 专用诊断与全量复验 | 2026-11-25
+
+- 提交 `888ec615d9ac87480905ae661fbf51d2931a5670` 让规则包 loader 将六种已登记原语之外的值归为 `primitive_unknown`。这是注册期校验，不改变已持久事实或运行时。已知但尚未实现的 Bond、Holdings、Process、Place 与六种之外的未知值区分；当前 FactType 编译仍只支持 Machine 与 Pool。
+- 未知原语回归先红后绿。FactType、RulePack Validator 和 Pool 定向共 `129 passed`。冻结五组选集 1,169 节点及登记 25 组选集 228 节点均 `problems=0 improvements=0`。M5-5 七节点回归选择 `selected=7 problems=0 improvements=0`。
+- 清洁环境 backend 全量 `10,650 passed, 4 failed, 2 skipped, 2 xfailed`，退出码 1。四个失败均为前几轮确认的 baseline/environment failures：calibration budget assertion、Task45 Godot probe、population cold-ready report、Task8 Godot probe；同四项已在父提交 `a5823c4b` 的 M5-5 failure comparison 中复现。此处不宣称全量通过。
+- 环境 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 位于 A worktree；原始验证输出在 `F:/paralls-verification/thread-a/m5-5-primitive-unknown-red-20261125/`、`m5-5-primitive-unknown-focused-9178ee71d16d453e89a72eacbbb20295/`、`m5-5-primitive-unknown-selection-8283035f75c54a5a918f5817b2ef1479/`、`m5-5-primitive-unknown-gates-53116699456140fb923dcd3f56c1664e/`、`m5-5-primitive-unknown-full-9bd3859f809244019c3c8b23ed37cccf/`。
+- 该提交只完成 `primitive_unknown` 诊断。其余 Validator 规则、Bond/Holdings/Process/Place 编译与 M5-3/M5-4、Architecture v2 总体验收仍未完成。
