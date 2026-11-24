@@ -339,3 +339,16 @@
 - 固定 `rate_per_tick` 分段结算可沿用现有 `integrate` 命令和 window 幂等键。只有需要在同一分段内表达非恒定 rate、且中途达到零后恢复时，才需扩展事件以保存轨迹或最低值。当前没有已迁移生产 Pool 定义要求该语义，本轮不新增事件字段。Pool 的 U1/U2/U5/U7/U8 与 G5 缺口仍依赖域归属、M2-2、Resolver 合同和门禁证据。
 - 审计后在当前 A tip `5e7b7eeb97bdc2216065f67bdf36546be56a8d69` 单独运行 Pool 定向回归：Python 3.12.2、`app.__file__` 位于当前 A worktree，`backend/tests/test_pool_runtime.py` 为 `19 passed, 2 warnings`。冻结选集和全量未运行，原全量失败记录不变。
 - M1-3 继续为 `待门禁`。该定向回归不消除上述事件语义缺口，也不构成 G5 通过。
+
+### H-A-041 | M5-5 FactType distribution refold 缺失校验 | 2026-11-25
+
+- Architecture v2《03-校验器规则》定义 `facttype_refold_missing` 为 `aggregation=distribution` 而缺 `refold_model_ref`。此前规则包聚合模型自身要求 refold Resolver，但 FactType 未执行该条规则。
+- A 在 `FactTypeRegistry.compile` 增加编译期拒绝，并加入使用现有 Facility Pool FactType 的回归测试。TDD 红例为 `load_pack` 未抛 `RegistrationRejected`；修复后的规则包和 Pool 定向共 `120 passed`。证据、选择集与原始输出见 `docs/verification/m5-5-facttype-refold-20261125.md`、`docs/verification/selection/m5-5-facttype-refold.json` 和 `F:/paralls-verification/thread-a/m5-5-facttype-refold-20261125-01/`。
+- 这是 M5-5 的一个拒绝规则，不覆盖其它未实现的 Validator 规则。持久事件未改。代码提交 `f0c9108dc715869f73b6a919e3fd674f87292b4c`。
+
+### H-A-042 | M5-5 规则验证与临时目录迁移 | 2026-11-25
+
+- 冻结五组选集共 1,169 节点、登记 25 组选集共 222 节点。逐项对照 selection manifests 与本次保留的 batch `results.json`，均为 `problems=0 improvements=0`。原始批次和退出码见 `F:/paralls-verification/thread-a/m5-5-refold-gates-20261125-01/`。
+- 在 `f0c9108d` 的 backend 全量收集 10,652 节点，结果 `10,624 passed, 24 failed, 2 skipped, 2 xfailed`，退出码 1。只在父提交 `f5cc3632` 重跑这 24 个失败节点，当前与父提交失败节点集合、阶段和错误类型一致，`new=0 parent_extra=0`。父提交复跑不是全量。全量与父复跑原始输出分别位于 `F:/paralls-verification/thread-a/m5-5-facttype-refold-full-20261125-f0c9108d/` 和 `F:/paralls-verification/thread-a/m5-5-facttype-refold-parent-20261125-03/`。这表示该单元没有增加所比较的失败，不表示全量通过。
+- 运行时环境为 Python 3.12.2，`app.__file__` 指向 A worktree，SQLite 3.43.1。证据列出 U1–U11 状态和未覆盖的 M5 工作；M5 与 Architecture v2 均未完成。
+- 本轮 pytest 临时数据从 `D:/codex-temp/user-temp/pytest-of-User/pytest-2026` 搬到 `F:/paralls-verification/thread-a/pytest-scratch-m5-5-f0c9108d`，共 8,176 个文件、937,244,243 bytes。D 源目录目前无普通文件，留有 1,446 个指向 F 盘本轮 scratch 的目录符号链接；没有删除这些链接，也没有触碰 `pytest-2027`。
