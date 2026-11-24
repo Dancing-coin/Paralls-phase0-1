@@ -14,6 +14,7 @@ This is a compile-time registration check. It does not change event schemas, per
 - First implementation commit: `f0c9108dc715869f73b6a919e3fd674f87292b4c`.
 - Follow-up implementation commit: `3907d4eb45b93cc95d4d5e866b25cd92a5e6f74a`.
 - Interpreter: Python 3.12.2 (`D:\Temp\paralls-g0-py312\Scripts\python.exe`); pytest 9.1.1.
+- Follow-up primitive validation environment: Python 3.12.2, pytest 9.1.1, SQLite 3.43.1; `app.__file__` resolved inside the A worktree. Clean reruns removed inherited `GIT_CONFIG_*` environment variables because an empty `GIT_CONFIG_VALUE_0` caused nested Git commands to fail.
 - `PYTHONPATH` pointed to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`; `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
 - A post-run environment check with the same interpreter and `PYTHONPATH` reported SQLite 3.43.1.
 
@@ -70,3 +71,20 @@ The first follow-up full attempt used a Windows backslash path in `PYTEST_ADDOPT
 - Other rows in `m5-5-rule-pack-validator-coverage-20261122.md` retain their recorded states. Production command registration, temporal-effect contracts, package-version write boundaries, and cross-boundary application wiring are outside this rule.
 - The full suite did not pass. The parent comparison establishes that this unit added no new failures among the 24 failing nodes, but it does not convert the full-suite exit code to success.
 - This evidence does not establish M5 or Architecture v2 completion.
+
+## Follow-up validator rule: missing FactType primitive
+
+The formal `primitive_missing` diagnostic was unreachable for rule packs because `load_pack` rejected a FactType without `primitive` during its shape check as `pack_schema_invalid`. The shape check now lets only the absent-primitive case reach `FactTypeRegistry.compile`, which emits `primitive_missing`. Unsupported non-null primitive values remain rejected by the shape check.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| TDD red | New regression failed because `primitive_missing` was not emitted | `F:\paralls-verification\thread-a\m5-5-primitive-missing-investigation\` |
+| Focused FactType, Validator, and Pool tests | `126 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-primitive-focused-clean-6bc5e6dd5fb8444aad830cba322c14a7\pytest.log` |
+| Frozen selection comparison | 5 selections, 1,169 nodes, all `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-primitive-gates-de033677e0964158a3a151394aa1ddb6\gate-run.log` |
+| Registered selection comparison | 25 selections, 225 nodes total, all `problems=0 improvements=0`; M5-5 selection has 4 nodes | Same gate directory; per-selection batch results |
+| M5-5 regression selection at exact implementation commit `a5823c4b` | `selected=4 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-primitive-regression-exact-6ae3c9e3fc734133aa7b808f4d9d8368\batch-0000\results.json` |
+| Initial backend full suite | `10,646 passed, 5 failed, 2 skipped, 2 xfailed`, exit code 1 | `F:\paralls-verification\thread-a\m5-5-primitive-full-db08f57029bc4c3bb0c0c61ae8d603de\full-console.log` |
+| Initial full-suite failure comparison | Four failures reproduced at parent `735e283f`; one population recovery failure passed at both current and parent after removing inherited `GIT_CONFIG_*` variables | `F:\paralls-verification\thread-a\m5-5-primitive-parent-failures-20261125.log` and `F:\paralls-verification\thread-a\m5-5-primitive-current-failure-recheck-20261125.log` |
+| Sanitized backend full suite | `10,647 passed, 4 failed, 2 skipped, 2 xfailed`, exit code 1; 10,655 collected | `F:\paralls-verification\thread-a\m5-5-primitive-full-clean-69d67f5380614bcba373828e38ea4c2d\full-console.log` |
+
+The four full-suite failures are `test_all_22_repaired_budgets_equal_fixed_official_usage`, `test_task45_headless_probe_observes_shared_path_and_contact_contract`, `test_cold_ready`, and `test_task8_headless_registry_probe_resolves_profiles_and_blocks_rejected_registration`. The same four failed on parent `735e283f` when rerun with the same sanitized Git environment. Their captured errors concern the calibration fixture, missing Godot global script classes, and missing `resource_bounds` in a population report. These paths do not consume FactType registration. The initial full run inherited an empty `GIT_CONFIG_VALUE_0`; a child fixture-generation process consequently failed to read the Git revision and produced the fifth failure. Removing inherited `GIT_CONFIG_*` variables made that population recovery node pass on both the current code and its parent. The clean full run was performed with inherited `GIT_CONFIG_*` variables removed.

@@ -360,3 +360,11 @@
 - 修正环境下 full suite 收集 10,654 节点，`10,623 passed, 27 failed, 2 skipped, 2 xfailed`，退出码 1。24 个失败节点、阶段和错误类型与 `f0c9108d` 全量结果一致；新增的两个 `test_embodied_interaction_session_runner` 失败均报告外部 `D:\cl-laya` 占用 Port 8000。另有一项 outbox hard-kill recovery 的 `PermissionError` 在从 worktree 根目录单测重跑后 `1 passed`。全量原始输出为 `F:/paralls-verification/thread-a/m5-5-scope-full-corrected-20261125-3907d4eb/`，单测重跑为 `F:/paralls-verification/thread-a/m5-5-outbox-recheck-20261125-3907d4eb/pytest.log`。full suite 仍未通过，不能记作全量通过。
 - 初始尝试将 Windows 反斜杠路径写入 `PYTEST_ADDOPTS`，pytest 将反斜杠按转义解析，使临时目录错误地进入 `backend` 并产生 48 项失败。该轮明确作废，两个本轮临时树已移到 `F:/paralls-verification/thread-a/pytest-scratch-m5-5-scope-full-3907d4eb-misparsed` 与 `pytest-scratch-m5-5-scope-gates-3907d4eb-misparsed`。之后统一在 `PYTEST_ADDOPTS` 使用正斜杠，并从 A worktree 根启动测试。
 - M5-5 的这两条拒绝规则已实现并有回归，但其它 Validator 规则、M5-3/M5-4 及 Architecture v2 总体验收仍未完成。
+
+### H-A-044 | M5-5 FactType primitive 缺失拒绝码与全量复验 | 2026-11-25
+
+- 提交 `a5823c4b08265954ebdf0f7bc03b95864b9cbd1e` 让缺少 `primitive` 的 FactType 通过 pack shape 检查到 `FactTypeRegistry.compile`，由编译器发出 `primitive_missing`。不支持的非空原语仍在 shape 层拒绝。回归测试先红后绿，Validator、Pool 与 FactType 定向共 `126 passed`。
+- 冻结 5 组选集 1,169 节点及登记 25 组选集 225 节点均 `problems=0 improvements=0`。新增 M5-5 登记选择现有 4 个回归节点，`selected=4 problems=0 improvements=0`。
+- 清理继承的 `GIT_CONFIG_*` 后全量 backend suite 为 `10,647 passed, 4 failed, 2 skipped, 2 xfailed`，退出码 1。四个失败节点是 calibration budget、Task45 Godot probe、population cold-ready 和 Task8 Godot probe。在父提交 `735e283f` 上同样四项失败。首次未清理环境的尝试另有一个 population recovery 子进程受空 `GIT_CONFIG_VALUE_0` 影响；清理该环境后该节点在父提交与当前代码均通过。全量结果不是通过。
+- 环境为 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 指向 A worktree。原始验证输出位于 `F:/paralls-verification/thread-a/m5-5-primitive-focused-clean-6bc5e6dd5fb8444aad830cba322c14a7/`、`m5-5-primitive-gates-de033677e0964158a3a151394aa1ddb6/`、`m5-5-primitive-regression-exact-6ae3c9e3fc734133aa7b808f4d9d8368/`、`m5-5-primitive-full-clean-69d67f5380614bcba373828e38ea4c2d/`。
+- 此提交只完成 M5-5 的一项拒绝规则。其它 Validator 规则、M5-3/M5-4 和 Architecture v2 总体验收仍未完成。

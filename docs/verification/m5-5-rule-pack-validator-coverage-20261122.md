@@ -6,7 +6,7 @@
 |---|---|---|---|
 | 原语 | `primitive_count_exceeded` | 部分实现 | FactType 编译器只接受 Machine，无六原语目录与计数规则。 |
 | 原语 | `primitive_unknown` | 部分实现 | 非 Machine 走 `facttype_primitive_unknown`，其中也包含尚未接入的合法原语。 |
-| 原语 | `primitive_missing` | 部分实现 | 缺 `primitive` 也走 `facttype_primitive_unknown`。 |
+| 原语 | `primitive_missing` | 已实现 | `FactTypeRegistry.compile` 对缺失原语返回专用拒绝码；规则包 shape 检查将该条目交由编译器诊断。回归见 `test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic`。 |
 | FactType | `facttype_visibility_missing` | 已实现 | 加载器检查字段类型，编译器拒绝缺失或空映射。 |
 | FactType | `facttype_resolution_order_missing` | 已实现 | 每个 FactType 必须有边或显式列在 `unrelated`。循环由 `facttype_resolution_order_cycle` 拒绝。 |
 | FactType | `facttype_resolution_order_duplicate`、`facttype_resolution_order_gap` | 编译结构保证 | 拓扑排序后由 `enumerate` 从 10 连续赋值，同一表内无重复或间隔。未建立按 authority scope 独立的顺序表。 |
