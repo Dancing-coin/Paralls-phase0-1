@@ -8,9 +8,12 @@ from typing import Literal
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
-from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.gameplay.place_event_schema import PLACE_ASSESSMENT_CONFIRMED_EVENT
+from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch
 from app.gameplay.siege_physical_input_runtime import (
+    PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
     PresenceAssessmentReceipt,
+    PresenceAssessmentReceiptV2,
     SiegePhysicalInputAuthority,
 )
 
@@ -177,9 +180,12 @@ class PlacePassabilityAuthority:
         )
         if input_event is None:
             return self._reject(receipt_id, "place_assessment_input_unknown")
-        receipt = PresenceAssessmentReceipt.model_validate(input_event.payload["receipt"])
         if input_authority.store() is not self.store:
             return self._reject(receipt_id, "place_assessment_input_store_mismatch")
+        if input_event.event_type == PRESENCE_ASSESSMENT_INPUT_EVENT_V2:
+            receipt_v2 = PresenceAssessmentReceiptV2.model_validate(input_event.payload["receipt"])
+            return self._commit_impact_assessment(receipt_v2, input_event)
+        receipt = PresenceAssessmentReceipt.model_validate(input_event.payload["receipt"])
         assessment = PlacePassabilityAssessment(
             state=receipt.state,
             assessment_ref=receipt.assessment_ref,
@@ -205,6 +211,63 @@ class PlacePassabilityAuthority:
             breach_event_id=receipt.breach_event_id,
             expected_revision=self.store.get_stream_head(self.stream_id(receipt.gate_ref)),
         )
+
+    def _commit_impact_assessment(
+        self, receipt: PresenceAssessmentReceiptV2, input_event: GameplayEvent
+    ) -> AppendBatchResult:
+        command_id = f"place-impact-assessment:{receipt.impact_event_id}"
+        prior = self.store.get_by_idempotency(_PRESENCE_PRINCIPAL, command_id)
+        if prior is not None:
+            event = self.store.get_event(prior.committed_event_ids[0])
+            if input_event.event_id not in event.payload["source_event_ids"]:
+                return self._reject(command_id, "place_impact_already_assessed")
+            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+        impact_event = self.store.get_event(receipt.impact_event_id)
+        place_stream = self.stream_id(receipt.gate_ref)
+        reads = {
+            **receipt.expected_layer_revisions,
+            impact_event.stream_id: impact_event.stream_revision,
+            place_stream: receipt.expected_place_revision,
+            input_event.stream_id: input_event.stream_revision,
+        }
+        if any(self.store.get_stream_head(stream) != revision for stream, revision in reads.items()):
+            return self._reject(command_id, "place_assessment_source_stale")
+        previous = self.state(receipt.gate_ref)
+        payload = {
+            "place_ref": receipt.gate_ref,
+            "from_state": previous,
+            "to_state": receipt.state,
+            "assessment_ref": receipt.assessment_ref,
+            "source_event_ids": [receipt.impact_event_id, input_event.event_id],
+            "read_stream_revisions": dict(sorted(reads.items())),
+        }
+        if previous == receipt.state:
+            stream = f"{place_stream}:assessments"
+            return self.store.append_batch(build_multi_stream_atomic_event_batch(
+                command_id=command_id,
+                principal_ref=_PRESENCE_PRINCIPAL,
+                expected_revisions={stream: self.store.get_stream_head(stream)},
+                event_specs={stream: ((PLACE_ASSESSMENT_CONFIRMED_EVENT, payload),)},
+                idempotency_key=command_id,
+                causation_id=receipt.impact_event_id,
+                correlation_id=f"presence:{receipt.gate_ref}",
+                read_stream_revisions=reads,
+                pinned_revisions=reads,
+                event_visibility_policies={stream: ("authority_only",)},
+            ))
+        return self.store.append_batch(build_atomic_event_batch(
+            command_id=command_id,
+            principal_ref=_PRESENCE_PRINCIPAL,
+            stream_id=place_stream,
+            expected_revision=receipt.expected_place_revision,
+            event_specs=((_PASSABILITY_EVENT, payload),),
+            idempotency_key=command_id,
+            causation_id=receipt.impact_event_id,
+            correlation_id=f"presence:{receipt.gate_ref}",
+            read_stream_revisions=reads,
+            pinned_revisions=reads,
+        ))
 
     def state(self, gate_ref: str) -> str:
         events = self.store.read_stream(self.stream_id(gate_ref))

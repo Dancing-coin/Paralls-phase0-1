@@ -79,6 +79,7 @@ from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceipt,
     GateImpactReceiptV2,
     PresenceAssessmentReceipt,
+    PresenceAssessmentReceiptV2,
 )
 from app.gameplay.social_spatial_owner import SOCIAL_SPATIAL_PRINCIPAL, SocialSpatialOwner
 from app.gameplay.canonical_combat_authority import (
@@ -3016,7 +3017,7 @@ async def submit_siege_gate_impact_input_v2(
 
 @app.post("/api/v2/siege/presence-assessment-input")
 async def submit_siege_presence_assessment_input(
-    receipt: PresenceAssessmentReceipt,
+    receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2,
 ) -> dict[str, object]:
     if m6_5_siege_runtime is None:
         raise HTTPException(status_code=503, detail={"error_code": "siege_runtime_unavailable"})

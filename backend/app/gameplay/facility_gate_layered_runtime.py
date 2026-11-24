@@ -14,13 +14,14 @@ from app.gameplay.pool_runtime import (
 )
 from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch_from_fragments
 from app.gameplay.siege_physical_input_runtime import (
+    FACILITY_GATE_PRINCIPAL as FACILITY_PRINCIPAL,
     GATE_IMPACT_INPUT_EVENT_V2,
     GateImpactReceiptV2,
     SiegePhysicalInputAuthority,
+    facility_impact_command_id,
 )
 
 
-FACILITY_PRINCIPAL = "actor_gameplay.construction_production_domain"
 GATE_LATCH_EVENT = "gameplay.machine.transitioned"
 GATE_LATCH_STATES = ("secured", "damaged", "broken")
 _GATE_REF = re.compile(r"^gate-[a-z0-9-]+$")
@@ -146,7 +147,7 @@ class FacilityGateLayeredAuthority:
             return self._reject(receipt_id, "facility_impact_input_unknown")
 
         receipt = GateImpactReceiptV2.model_validate(input_event.payload["receipt"])
-        command_id = f"facility-gate-impact:{input_event.event_id}"
+        command_id = facility_impact_command_id(input_event.event_id)
         previous_result = self.store.get_by_idempotency(FACILITY_PRINCIPAL, command_id)
         if previous_result is not None:
             return previous_result.model_copy(

@@ -30,27 +30,28 @@ The hit profile describes door-leaf durability and latch durability as Pool laye
 - The M6-5 demo profile uses lower bound `0`, upper and initial `100` for the two durability Pools and integrity Pool. The `impact_kind:battering-ram@1` magnitude is `20`. Integrity breach enters below `40` and resets above `45`. These values are demo content only and are not production game tuning.
 - The latch Machine begins in `secured`, enters `damaged` below full durability, and enters terminal `broken` at zero. It never writes passability.
 
-## Current and planned flow
+## Current and deferred flow
 
 ```mermaid
 flowchart LR
-  subgraph Current[Current A implementation]
+  subgraph Legacy[Compatible v1 path]
     A[Signed impact input] --> E[Durable evidence]
     E --> I[Facility integrity Pool]
     I --> B[Committed breach]
     B --> P[Presence assessment input]
     P --> PL[Presence passability fact]
   end
-  subgraph Implemented[Implemented layered Facility flow]
+  subgraph Implemented[Current v2 path]
     E2[Signed impact v2] --> D[Door-leaf durability Pool]
     D --> L[Latch durability Pool]
     L --> M[Latch Machine state]
     L --> I2[Facility integrity Pool]
-    I2 --> B2[Committed breach]
-    B2 --> PL2[Independent Presence assessment and fact]
+    I2 --> B2[Optional committed breach]
+    E2 --> A2[Independent signed Presence assessment]
+    I2 --> A2
+    A2 --> PL2[Presence passability or private unchanged-state receipt]
   end
   subgraph Deferred[Remaining]
-    T[Formal open-obligation lifecycle and compensation]
     U[Production gate values and live Unreal transport]
   end
 ```
@@ -68,11 +69,11 @@ sequenceDiagram
   GW->>F: resolve configured impact profile
   F->>F: damage door-leaf Pool, then latch durability, then integrity
   F->>F: transition latch Machine from committed durability state
-  F-->>L5: committed integrity breach event
-  L5->>P: dispatch passability reevaluation command
-  UE->>GW: separate signed passability assessment with source revisions
+  F-->>L5: optional committed integrity breach event
+  L5->>P: dispatch breach reaction when present
+  UE->>GW: separate signed assessment referencing the impact and current source revisions
   GW->>E: commit assessment evidence
-  GW->>P: commit independently evaluated Place fact
+  GW->>P: commit Place decision or private unchanged-state receipt
 ```
 
 ```mermaid
@@ -85,8 +86,9 @@ flowchart TD
   L2 -->|no| C[Reconcile latch state]
   L3 --> L2
   C --> I[Integrity threshold event]
-  I --> B[Committed breach]
-  B --> A[Independent Presence evidence]
+  I --> B{Breach event?}
+  B -->|yes| A[Independent Presence evidence]
+  B -->|no| A
   A --> P[Presence-owned passability]
   U[Unknown input or stale source] --> Z[Reject or return unknown with zero domain writes]
 ```
@@ -98,22 +100,23 @@ The diagrams separate current behavior, planned layered behavior and deferred li
 - Missing profile, unknown impact kind, invalid signature, incarnation mismatch or stale source revision rejects before any Facility write.
 - A crash before the Facility multi-stream commit is resumed from the signed receipt. A retry after the commit returns its original result without applying damage again.
 - Exact replay returns the original receipt and does not repeat damage. Reusing a receipt identity with changed content rejects.
-- Presence remains `unknown` with zero Place writes unless its separate signed assessment cites the committed breach and current independently owned evidence.
+- Presence remains `unknown` with zero Place writes until its separate signed assessment cites a committed v2 impact, its gate incarnation, and the current Facility and Place revisions. A breach event is optional for this assessment.
+- A Place decision matching the current state produces an authority-only Presence confirmation receipt without changing the Place state stream.
 - Old v1 signed input events keep their integrity-only behavior during normal startup recovery.
 
 ## Formal obligation boundary
 
 The project lead selected continued Presence evaluation without rollback of already committed physical damage. A future reversible reservation may use an Owner-authorized compensation step.
 
-The runtime reconstructs impact_gate step receipts from the signed physical input, Facility Owner transaction, Presence assessment input and Presence-owned Place output. The open-obligation view is derived on demand from those immutable records and is not another workflow ledger. It remains open until a committed Place decision exists. An unknown Presence result writes no Place fact and leaves the obligation open.
-
-The current UE assessment contract requires a committed integrity breach event. A non-breaching impact therefore has no valid Presence assessment source yet and remains open in the projection. M6-5 remains incomplete until the source contract covers that case or the workflow specification narrows its Presence step to breach transitions.
+The runtime reconstructs impact_gate step receipts from the signed physical input, Facility Owner transaction, independently signed Presence assessment input, and Presence-owned Place output or same-state confirmation. The on-demand projection stores no duplicate workflow state. An obligation settles only when it has both a valid Presence assessment input and a committed Place decision or confirmation. It remains open when Presence is unknown or no assessment has been submitted. Breach and non-breach impacts use the same assessment contract.
 
 ## Verification requirements
 
 - Test ordered damage, residual damage, depleted and undamaged layers, latch state transitions and integrity breach hysteresis.
 - Test invalid and stale receipts, zero writes, exact retries and changed retries.
+- Test independent Presence assessment and obligation settlement after both breach and non-breach impacts, including same-state confirmation and source read-vector coverage.
 - Close and reopen a SQLite Gameplay store after the input commit and Facility multi-stream commit, then verify recovery completes without duplicate damage.
+- Verify production EventSchema registration and checkpoint cut/tail reconstruction of both signed impact and Presence v2 receipts.
 - Run the authenticated HTTP path, production EventSchema and pack loading, L5 breach dispatch, independent Presence assessment, and recipient-specific Information report flow.
 - Run the M6-5 and frozen selections, compare the full suite on exact parent and implementation commits, and report unclassified failures without attributing them to a slice.
 

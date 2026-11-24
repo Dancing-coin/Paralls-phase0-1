@@ -9,6 +9,7 @@ from app.gameplay.event_schema_registry import (
     gameplay_schema_event_types,
 )
 from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.facility_gate_layered_runtime import FacilityGateLayeredAuthority
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.place_passability_runtime import PlacePassabilityAuthority
@@ -16,10 +17,12 @@ from app.gameplay.siege_physical_input_runtime import (
     GATE_IMPACT_INPUT_EVENT,
     GATE_IMPACT_INPUT_EVENT_V2,
     PRESENCE_ASSESSMENT_INPUT_EVENT,
+    PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
     SIEGE_PHYSICAL_INPUT_PRINCIPAL,
     GateImpactReceipt,
     GateImpactReceiptV2,
     PresenceAssessmentReceipt,
+    PresenceAssessmentReceiptV2,
     SiegePhysicalInputAuthority,
 )
 from app.world_runtime.replay_participants import _siege_physical_input_participant
@@ -131,6 +134,89 @@ def test_layered_gate_impact_receipt_requires_exact_layer_revision_vector():
             },
             signature="0" * 64,
         )
+
+
+def test_v2_presence_input_is_registered_and_reconstructed_with_physical_inputs():
+    store = _store()
+    authority = SiegePhysicalInputAuthority(
+        store=store,
+        authority_secrets={AUTHORITY: SECRET},
+    )
+    impact = _signed(GateImpactReceiptV2(
+        authority_ref=AUTHORITY,
+        receipt_id="impact:presence-source",
+        gate_ref="gate-03",
+        impact_kind_ref="impact_kind:battering-ram@1",
+        physics_tick=518,
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "1" * 64,
+        expected_layer_revisions={
+            "fact:facility:gate-03:durability": 1,
+            "fact:facility:gate-03:latch-durability": 1,
+            "fact:facility:gate-03:integrity": 1,
+        },
+        signature="0" * 64,
+    ))
+    impact_result = authority.record_gate_impact_v2(impact)
+    impact_event = store.get_event(impact_result.committed_event_ids[0])
+    facility = FacilityGateLayeredAuthority(
+        store=store,
+        definitions={"gate-03": {
+            "fact:facility:gate-03:durability": PoolDefinition(
+                fact_type="fact:facility:gate-03:durability",
+                lower=Decimal("0"), upper=Decimal("100"), initial=Decimal("100")),
+            "fact:facility:gate-03:latch-durability": PoolDefinition(
+                fact_type="fact:facility:gate-03:latch-durability",
+                lower=Decimal("0"), upper=Decimal("100"), initial=Decimal("100")),
+            "fact:facility:gate-03:integrity": PoolDefinition(
+                fact_type="fact:facility:gate-03:integrity",
+                lower=Decimal("0"), upper=Decimal("100"), initial=Decimal("100"),
+                thresholds=(PoolThreshold("breach", Decimal("40"), Decimal("45")),)),
+        }},
+        impact_magnitudes={"gate-03": {"impact_kind:battering-ram@1": Decimal("20")}},
+    )
+    facility.initialize(
+        gate_ref="gate-03", command_prefix="facility:presence-source",
+        causation_id=impact_event.event_id, correlation_id="siege:gate-03",
+    )
+    applied = facility.apply_signed_impact(
+        input_authority=authority,
+        authority_ref=AUTHORITY,
+        receipt_id=impact.receipt_id,
+    )
+    assert applied.committed
+    receipt = _signed(PresenceAssessmentReceiptV2(
+        authority_ref=AUTHORITY,
+        receipt_id="assessment:presence-source",
+        gate_ref="gate-03",
+        impact_event_id=impact_event.event_id,
+        target_incarnation_ref=impact.target_incarnation_ref,
+        assessment_ref="assessment:ue-gate-clearance@1",
+        state="passable",
+        expected_layer_revisions={
+            stream: store.get_stream_head(stream)
+            for stream in impact.expected_layer_revisions
+        },
+        expected_place_revision=0,
+        physics_tick=519,
+        signature="0" * 64,
+    ))
+
+    result = authority.record_presence_assessment(receipt)
+
+    assert result.committed
+    event = store.get_event(result.committed_event_ids[0])
+    assert event.event_type == PRESENCE_ASSESSMENT_INPUT_EVENT_V2
+    assert PRESENCE_ASSESSMENT_INPUT_EVENT_V2 in gameplay_schema_event_types()
+    registration = create_stormnight_event_schema_registry().get(
+        PRESENCE_ASSESSMENT_INPUT_EVENT_V2, 1
+    )
+    assert registration.event_type == PRESENCE_ASSESSMENT_INPUT_EVENT_V2
+    participant = _siege_physical_input_participant(store)
+    assert [item["event_type"] for item in participant["event_refs"]] == [
+        GATE_IMPACT_INPUT_EVENT_V2,
+        PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
+    ]
 
 
 def test_forged_gate_impact_evidence_is_rejected_without_a_write():

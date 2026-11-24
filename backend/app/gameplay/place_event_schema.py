@@ -7,11 +7,18 @@ from app.gameplay.event_schema_registry import (
 )
 
 
+PLACE_ASSESSMENT_CONFIRMED_EVENT = "gameplay.presence.place_passability_confirmed"
+
 PLACE_EVENT_SCHEMAS = (
     EventSchemaRegistration(
         "gameplay.presence.place_passability_changed",
         1,
         "sha256:architecture-v2:place:passability-changed:v1",
+    ),
+    EventSchemaRegistration(
+        PLACE_ASSESSMENT_CONFIRMED_EVENT,
+        1,
+        "sha256:architecture-v2:place:passability-confirmed:v1",
     ),
 )
 

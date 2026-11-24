@@ -5,12 +5,17 @@ from dataclasses import dataclass
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import GameplayEvent
+from app.gameplay.place_event_schema import PLACE_ASSESSMENT_CONFIRMED_EVENT
+from app.gameplay.siege_physical_input_runtime import (
+    FACILITY_GATE_PRINCIPAL,
+    GATE_IMPACT_INPUT_EVENT_V2,
+    PRESENCE_ASSESSMENT_INPUT_EVENT,
+    PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
+    SIEGE_PHYSICAL_INPUT_PRINCIPAL,
+)
 
 
-FACILITY_PRINCIPAL = "actor_gameplay.construction_production_domain"
 PRESENCE_PRINCIPAL = "population.presence_authority"
-IMPACT_EVENT = "gameplay.facility.gate_impact_input_received@2"
-PRESENCE_INPUT_EVENT = "gameplay.presence.assessment_input_received"
 PLACE_EVENT = "gameplay.presence.place_passability_changed"
 
 
@@ -29,14 +34,16 @@ def rebuild_impact_gate_obligations(
     events = store.read_events()
     impacts = [
         event for event in events
-        if event.event_type == IMPACT_EVENT
+        if event.event_type == GATE_IMPACT_INPUT_EVENT_V2
         and store.transaction_owns_event(
             transaction_id=event.transaction_id,
             event_id=event.event_id,
-            principal_ref="authority:siege:physical-input",
+            principal_ref=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
         )
     ]
     facility_by_impact: dict[str, list[GameplayEvent]] = {}
+    input_by_source: dict[str, list[GameplayEvent]] = {}
+    result_by_source: dict[str, list[GameplayEvent]] = {}
     for event in events:
         if (
             event.causation_id
@@ -48,41 +55,52 @@ def rebuild_impact_gate_obligations(
             and store.transaction_owns_event(
                 transaction_id=event.transaction_id,
                 event_id=event.event_id,
-                principal_ref=FACILITY_PRINCIPAL,
+                principal_ref=FACILITY_GATE_PRINCIPAL,
             )
         ):
             facility_by_impact.setdefault(event.causation_id, []).append(event)
-
-    obligations = []
-    for impact in impacts:
-        facility_events = facility_by_impact.get(impact.event_id, [])
-        breach_ids = {
-            event.event_id for event in facility_events
-            if event.event_type == "gameplay.pool.threshold_crossed"
-            and event.payload.get("direction") == "enter"
-            and event.payload.get("threshold_ref") == "breach"
-        }
-        presence_inputs = [
-            event for event in events
-            if event.event_type == PRESENCE_INPUT_EVENT
-            and isinstance(event.payload.get("receipt"), dict)
-            and event.payload["receipt"].get("breach_event_id") in breach_ids
-            and store.transaction_owns_event(
+        if event.event_type in {PRESENCE_ASSESSMENT_INPUT_EVENT, PRESENCE_ASSESSMENT_INPUT_EVENT_V2}:
+            receipt = event.payload.get("receipt")
+            if isinstance(receipt, dict) and store.transaction_owns_event(
                 transaction_id=event.transaction_id,
                 event_id=event.event_id,
-                principal_ref="authority:siege:physical-input",
-            )
-        ]
-        place_events = [
-            event for event in events
-            if event.event_type == PLACE_EVENT
-            and event.causation_id in breach_ids
+                principal_ref=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
+            ):
+                field = (
+                    "impact_event_id" if event.event_type == PRESENCE_ASSESSMENT_INPUT_EVENT_V2
+                    else "breach_event_id"
+                )
+                source_id = receipt.get(field)
+                if isinstance(source_id, str):
+                    input_by_source.setdefault(source_id, []).append(event)
+        if (
+            event.causation_id
+            and event.event_type in {PLACE_EVENT, PLACE_ASSESSMENT_CONFIRMED_EVENT}
             and store.transaction_owns_event(
                 transaction_id=event.transaction_id,
                 event_id=event.event_id,
                 principal_ref=PRESENCE_PRINCIPAL,
             )
-        ]
+        ):
+            result_by_source.setdefault(event.causation_id, []).append(event)
+
+    obligations = []
+    for impact in impacts:
+        facility_events = facility_by_impact.get(impact.event_id, [])
+        source_ids = [impact.event_id, *(
+            event.event_id for event in facility_events
+            if event.event_type == "gameplay.pool.threshold_crossed"
+            and event.payload.get("direction") == "enter"
+            and event.payload.get("threshold_ref") == "breach"
+        )]
+        presence_inputs = sorted(
+            (event for source in source_ids for event in input_by_source.get(source, ())),
+            key=lambda event: event.global_sequence,
+        )
+        place_events = sorted(
+            (event for source in source_ids for event in result_by_source.get(source, ())),
+            key=lambda event: event.global_sequence,
+        )
         receipts = (
             ("impact", (impact.event_id,)),
             ("facility", tuple(event.event_id for event in facility_events)),

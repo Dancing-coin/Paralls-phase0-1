@@ -1,11 +1,17 @@
 import hashlib
 import hmac
+import json
 from decimal import Decimal
 
+import pytest
+from starlette.testclient import TestClient
+
+from app import main
 from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.impact_gate_obligation import rebuild_impact_gate_obligations
+from app.gameplay.place_event_schema import PLACE_ASSESSMENT_CONFIRMED_EVENT
 from app.gameplay.facility_gate_layered_runtime import (
     FACILITY_PRINCIPAL,
     FacilityGateLayeredAuthority,
@@ -17,6 +23,7 @@ from app.gameplay.m6_5_siege_runtime import (
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceiptV2,
+    PresenceAssessmentReceiptV2,
     SiegePhysicalInputAuthority,
 )
 
@@ -311,6 +318,170 @@ def test_committed_gate_breach_dispatches_presence_and_keeps_unknown_unwritten()
     assert len(dispatch_results) == 1
     assert dispatch_results[0].failure.error_code == "place_assessment_unknown"
     assert store.read_stream("place:gate-03:passability") == []
+
+
+def _presence_input(store, impact, receipt_id, **overrides):
+    body = {
+        "authority_ref": AUTHORITY,
+        "receipt_id": receipt_id,
+        "gate_ref": GATE,
+        "impact_event_id": impact.event_id,
+        "target_incarnation_ref": impact.payload["receipt"]["target_incarnation_ref"],
+        "physics_tick": 502,
+        "assessment_ref": "assessment:gate-clearance@1",
+        "state": "passable",
+        "expected_layer_revisions": {
+            stream: store.get_stream_head(stream)
+            for stream in impact.payload["receipt"]["expected_layer_revisions"]
+        },
+        "expected_place_revision": store.get_stream_head("place:gate-03:passability"),
+        **overrides,
+    }
+    data = json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return {**body, "signature": hmac.new(SECRET.encode(), data, hashlib.sha256).hexdigest()}
+
+
+@pytest.mark.parametrize("magnitude", ["20", "270"])
+def test_signed_impact_presence_gateway_settles_without_requiring_breach(monkeypatch, magnitude):
+    store, _, facility = _authorities(magnitude=magnitude)
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+    evidence, result, _ = runtime.record_gate_impact_v2(_receipt("impact:presence-v2"))
+    assert result.committed
+    impact = store.get_event(evidence.committed_event_ids[0])
+    assert runtime.impact_gate_obligations()[0].status == "open"
+    assert runtime.presence.state(GATE) == "unknown"
+    monkeypatch.setattr(main, "m6_5_siege_runtime", runtime)
+    monkeypatch.setattr(main, "runtime_execution", None)
+    client = TestClient(main.component_app)
+    body = _presence_input(store, impact, "presence:v2")
+
+    response = client.post("/api/v2/siege/presence-assessment-input", json=body)
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["evidence"]["committed"] and data["place"]["committed"]
+    assert runtime.presence.state(GATE) == "passable"
+    place_event = store.get_event(data["place"]["committed_event_ids"][0])
+    assert place_event.payload["read_stream_revisions"][impact.stream_id] == impact.stream_revision
+    obligation, = runtime.impact_gate_obligations()
+    assert obligation.status == "settled"
+    assert dict(obligation.step_receipts)["presence_input"] == tuple(
+        data["evidence"]["committed_event_ids"]
+    )
+    assert dict(obligation.step_receipts)["passability"] == tuple(
+        data["place"]["committed_event_ids"]
+    )
+    facility_events = [
+        store.get_event(event_id)
+        for event_id in dict(obligation.step_receipts)["facility"]
+    ]
+    has_breach = any(
+        event.event_type == "gameplay.pool.threshold_crossed"
+        and event.payload.get("threshold_ref") == "breach"
+        and event.payload.get("direction") == "enter"
+        for event in facility_events
+    )
+    assert has_breach is (magnitude == "270")
+    replay = client.post("/api/v2/siege/presence-assessment-input", json=body).json()
+    assert replay["evidence"]["idempotency_status"] == "duplicate_replayed"
+    assert replay["place"]["idempotency_status"] == "duplicate_replayed"
+
+
+def test_presence_assessment_uses_signed_revisions_and_confirms_unchanged_state():
+    store, _, facility = _authorities()
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+    place_stream = runtime.presence.stream_id(GATE)
+    evidence, result, _ = runtime.record_gate_impact_v2(_receipt("impact:presence-first"))
+    assert result.committed
+    first = store.get_event(evidence.committed_event_ids[0])
+    stale = _presence_input(store, first, "presence:stale")
+    next_revisions = {
+        stream: store.get_stream_head(stream)
+        for stream in first.payload["receipt"]["expected_layer_revisions"]
+    }
+    evidence, result, _ = runtime.record_gate_impact_v2(_receipt("impact:presence-second", next_revisions))
+    assert result.committed
+    second = store.get_event(evidence.committed_event_ids[0])
+
+    rejected, place = runtime.record_presence_assessment(PresenceAssessmentReceiptV2.model_validate(stale))
+    assert rejected.failure.error_code == "siege_presence_evidence_invalid"
+    assert place is None
+    wrong_target = _presence_input(store, first, "presence:wrong-target", target_incarnation_ref="gate-03:other")
+    rejected, place = runtime.record_presence_assessment(PresenceAssessmentReceiptV2.model_validate(wrong_target))
+    assert rejected.failure.error_code == "siege_presence_evidence_invalid"
+    assert place is None
+    assert store.read_stream(place_stream) == []
+
+    # A fresh evaluation can still settle an earlier outstanding impact.
+    first_assessment = PresenceAssessmentReceiptV2.model_validate(_presence_input(store, first, "presence:first"))
+    pending = PresenceAssessmentReceiptV2.model_validate(_presence_input(store, second, "presence:old-place"))
+    assert runtime.record_presence_assessment(first_assessment)[1].committed
+    evidence, rejected_place = runtime.record_presence_assessment(pending)
+    assert evidence.committed
+    assert rejected_place.failure.error_code == "place_assessment_source_stale"
+    assert [entry.status for entry in runtime.impact_gate_obligations()] == ["settled", "open"]
+
+    second_assessment = PresenceAssessmentReceiptV2.model_validate(_presence_input(store, second, "presence:fresh"))
+    _, confirmation = runtime.record_presence_assessment(second_assessment)
+
+    assert confirmation.committed
+    event = store.get_event(confirmation.committed_event_ids[0])
+    assert event.event_type == PLACE_ASSESSMENT_CONFIRMED_EVENT
+    assert event.visibility_policy == "authority_only"
+    assert store.get_stream_head(place_stream) == 1
+    assert [entry.status for entry in runtime.impact_gate_obligations()] == ["settled", "settled"]
+
+
+def test_impact_presence_recovery_settles_durable_assessment_without_double_damage(tmp_path):
+    database_path = tmp_path / "impact-presence.db"
+    store = DurableGameplayEventStore(database_path, event_schema_registry=create_stormnight_event_schema_registry())
+    _, inputs, facility = _authorities_for_store(store)
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+    evidence, damage, _ = runtime.record_gate_impact_v2(_receipt("impact:restart-assessment"))
+    assert damage.committed
+    impact = store.get_event(evidence.committed_event_ids[0])
+    assessment = PresenceAssessmentReceiptV2.model_validate(_presence_input(store, impact, "presence:restart"))
+    assert inputs.record_presence_assessment(assessment).committed
+    assert runtime.impact_gate_obligations()[0].status == "open"
+    store.close()
+
+    reopened = DurableGameplayEventStore(database_path, event_schema_registry=create_stormnight_event_schema_registry())
+    try:
+        _, _, recovered_facility = _authorities_for_store(reopened)
+        restored = build_m6_5_siege_runtime(
+            store=reopened,
+            morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+            physical_authority_secrets={AUTHORITY: SECRET},
+            layered_facility=recovered_facility,
+        )
+        recovered = restored.recover_physical_input_obligations()
+        assert recovered[0][1].idempotency_status == "duplicate_replayed"
+        assert recovered[1][1].committed
+        assert restored.impact_gate_obligations()[0].status == "settled"
+        assert restored.presence.state(GATE) == "passable"
+        assert all(
+            result.idempotency_status == "duplicate_replayed"
+            for _, result in restored.recover_physical_input_obligations()
+        )
+        assert reopened.get_stream_head(facility.fact_type_for(GATE, "durability")) == 2
+        assert reopened.get_stream_head(restored.presence.stream_id(GATE)) == 1
+    finally:
+        reopened.close()
 
 
 def test_layered_impact_recovers_after_durable_store_restart(tmp_path):

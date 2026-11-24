@@ -848,6 +848,7 @@ _SIEGE_PHYSICAL_INPUT_EVENT_TYPES = frozenset({
     "gameplay.facility.gate_impact_input_received",
     "gameplay.facility.gate_impact_input_received@2",
     "gameplay.presence.assessment_input_received",
+    "gameplay.presence.assessment_input_received@2",
 })
 
 

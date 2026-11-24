@@ -62,10 +62,15 @@ async def test_application_durable_cut_tail_full_replay_and_old_migration_pins(a
 async def test_siege_physical_input_participant_survives_durable_cut_tail(application):
     import hashlib
     import hmac
+    from decimal import Decimal
 
+    from app.gameplay.facility_gate_layered_runtime import FacilityGateLayeredAuthority
+    from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
     from app.gameplay.siege_physical_input_runtime import (
         GATE_IMPACT_INPUT_EVENT_V2,
+        PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
         GateImpactReceiptV2,
+        PresenceAssessmentReceiptV2,
         SiegePhysicalInputAuthority,
     )
     from app.world_runtime.replay_checkpoint import _tail_hash
@@ -75,6 +80,25 @@ async def test_siege_physical_input_participant_survives_durable_cut_tail(applic
     await advance(86400)
     plan, window = inputs(main)
     await submit(main, plan=plan, window=window, budget=1)
+
+    layers = {
+        f"fact:facility:gate-03:{layer}": PoolDefinition(
+            fact_type=f"fact:facility:gate-03:{layer}",
+            lower=Decimal("0"), upper=Decimal("100"), initial=Decimal("100"),
+            thresholds=(PoolThreshold("breach", Decimal("40"), Decimal("45")),)
+            if layer == "integrity" else (),
+        )
+        for layer in ("durability", "latch-durability", "integrity")
+    }
+    facility = FacilityGateLayeredAuthority(
+        store=main.gameplay_event_store,
+        definitions={"gate-03": layers},
+        impact_magnitudes={"gate-03": {"impact_kind:battering-ram@1": Decimal("20")}},
+    )
+    await asyncio.wrap_future(main.runtime_execution.submit(lambda: facility.initialize(
+        gate_ref="gate-03", command_prefix="facility:checkpoint-physics",
+        causation_id="siege:checkpoint", correlation_id="siege:checkpoint",
+    )))
 
     authority_ref = "ue:checkpoint-physics"
     secret = "fixture-key"
@@ -91,9 +115,9 @@ async def test_siege_physical_input_participant_survives_durable_cut_tail(applic
         target_incarnation_ref="gate-03:incarnation-1",
         contact_source_digest="sha256:" + "a" * 64,
         expected_layer_revisions={
-            "fact:facility:gate-03:durability": 0,
-            "fact:facility:gate-03:latch-durability": 0,
-            "fact:facility:gate-03:integrity": 0,
+            "fact:facility:gate-03:durability": 1,
+            "fact:facility:gate-03:latch-durability": 1,
+            "fact:facility:gate-03:integrity": 1,
         },
         signature="0" * 64,
     )
@@ -104,11 +128,46 @@ async def test_siege_physical_input_participant_survives_durable_cut_tail(applic
         lambda: authority.record_gate_impact_v2(receipt)
     ))
     assert evidence.committed
+    impact_event = main.gameplay_event_store.get_event(evidence.committed_event_ids[0])
+    damage = await asyncio.wrap_future(main.runtime_execution.submit(lambda: facility.apply_signed_impact(
+        input_authority=authority,
+        authority_ref=authority_ref,
+        receipt_id=receipt.receipt_id,
+    )))
+    assert damage.committed
+    unsigned_assessment = PresenceAssessmentReceiptV2(
+        authority_ref=authority_ref,
+        receipt_id="assessment:checkpoint-presence",
+        gate_ref="gate-03",
+        impact_event_id=impact_event.event_id,
+        target_incarnation_ref=receipt.target_incarnation_ref,
+        assessment_ref="assessment:ue-gate-clearance@1",
+        state="passable",
+        expected_layer_revisions={
+            stream: main.gameplay_event_store.get_stream_head(stream)
+            for stream in receipt.expected_layer_revisions
+        },
+        expected_place_revision=0,
+        physics_tick=2,
+        signature="0" * 64,
+    )
+    assessment = unsigned_assessment.model_copy(update={
+        "signature": hmac.new(
+            secret.encode(), unsigned_assessment.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    assessment_result = await asyncio.wrap_future(main.runtime_execution.submit(
+        lambda: authority.record_presence_assessment(assessment)
+    ))
+    assert assessment_result.committed
 
     cut = await capture(main, ref="replay:siege-physical-input")
     assert cut.status == "consistent", cut.diagnostics
     participant = cut.checkpoint.state["participants"]["siege_physical_inputs"]
-    assert participant["event_refs"][0]["event_type"] == GATE_IMPACT_INPUT_EVENT_V2
+    assert [item["event_type"] for item in participant["event_refs"]] == [
+        GATE_IMPACT_INPUT_EVENT_V2,
+        PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
+    ]
     tail = await tail_call(main, checkpoint_ref="replay:siege-physical-input")
     assert tail.status == "verified", tail.diagnostics
 

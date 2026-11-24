@@ -82,9 +82,9 @@
 - Recovery scans committed v2 impact inputs and reconciles uncommitted Facility layers in order using each Owner receipt.
 - Layer profile values and initializations are code/content configuration, not client values.
 - Existing v1 endpoint payloads continue to use the current integrity-only path. The v2 request has an explicit discriminator and returns the complete ordered receipt set.
-- A committed integrity breach dispatches the existing Presence command. The signed UE Presence assessment remains independent.
+- L5 dispatches the existing breach reaction only when a breach event commits. Every signed v2 impact can independently receive a signed Presence assessment after the Facility transaction, whether or not that impact breaches integrity.
 
-- [ ] Add a durable SQLite restart test that interrupts after each Facility layer boundary and then recovers to one result per layer. Current tests cover restart after signed input before the Facility commit.
+- [x] Use one atomic multi-stream Facility commit for all changed layers. Durable restart tests cover recovery after signed input and exact replay after the commit, so there is no partial per-layer commit boundary to interrupt.
 - [ ] Add HTTP tests for configured v2 profile, missing profile, stale revisions, replay, and v1 route compatibility.
 - [x] Run tests and verify each new failure corresponds to missing layered recovery or Gateway behavior.
 - [x] Implement profile loading, v2 route assembly, ordered Facility recovery and an on-demand obligation projection.
@@ -98,8 +98,8 @@
 - Update `docs/v2-coordination/board.md`, `handoff.md`, `daily/2026-11-24.md`, and the M6-5 status
 
 **Interfaces:**
-- [x] Run the focused tests and all five frozen selections in a detached worktree at the exact SHA. Also run the registered Information and M6-5 selections. Shared-replay retained two external Port 8000 failures, reproduced on the parent.
-- [x] Run the full suite on the exact code SHA and compare its 12 failed node IDs against the exact parent. All 12 parent-selected nodes failed, with matching node sets.
+- [ ] Run the focused tests and all five frozen selections on the final code SHA. Also run the registered Information and M6-5 selections. Classify any shared-replay environment failures by reproducing on the parent.
+- [ ] Run the full suite on the exact code SHA and compare any remaining failed node IDs against the exact parent.
 - Verify durable database restart and report UE transport as unverified unless a live trusted host actually sends receipts.
 
 - [x] Run focused and frozen selections in a detached worktree with F-drive output.
@@ -108,6 +108,8 @@
 - [ ] Commit the final evidence update and push only the A branch.
 
 ## Completion checks
+
+The follow-up uses an independent UE assessment pinned to the three current Facility revisions and the current Place revision. It references the signed impact and its gate incarnation after a Facility commit. This permits evaluation even when a hit produces no breach. Test both breach and non-breach through the existing HTTP route, then cover an unchanged decision, stale inputs, exact retry, and restart from the committed assessment. Preserve prior breach receipts and write a private Presence acknowledgment when its decision leaves Place unchanged. The Place receipt read vector includes the signed impact event stream as well as Facility, Place and Presence input streams. Run the registered selections on the implementation SHA and update the evidence and board.
 
 - A single v2 impact resolves door-leaf Pool, latch durability Pool and integrity Pool in order, including residual damage.
 - The latch Machine state follows its durability evidence. Presence remains independently owned.

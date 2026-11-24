@@ -6,20 +6,33 @@ import hmac
 import json
 import re
 from collections.abc import Mapping
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.gameplay.event_store import GameplayEventStore, GameplayEventStoreSnapshotError
 from app.gameplay.models import AppendBatchResult, GameplayFailure, GameplayEvent
 from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch
+from app.gameplay.siege_physical_input_event_schema import (
+    GATE_IMPACT_INPUT_EVENT,
+    GATE_IMPACT_INPUT_EVENT_V2,
+    PRESENCE_ASSESSMENT_INPUT_EVENT,
+    PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
+)
 
 
-GATE_IMPACT_INPUT_EVENT = "gameplay.facility.gate_impact_input_received"
-GATE_IMPACT_INPUT_EVENT_V2 = "gameplay.facility.gate_impact_input_received@2"
-PRESENCE_ASSESSMENT_INPUT_EVENT = "gameplay.presence.assessment_input_received"
 SIEGE_PHYSICAL_INPUT_PRINCIPAL = "authority:siege:physical-input"
+FACILITY_GATE_PRINCIPAL = "actor_gameplay.construction_production_domain"
 _GATE_REF = re.compile(r"^gate-[a-z0-9-]+$")
+_GATE_LAYERS = ("durability", "latch-durability", "integrity")
+
+
+def facility_impact_command_id(impact_event_id: str) -> str:
+    return f"facility-gate-impact:{impact_event_id}"
+
+
+def _gate_layer_streams(gate_ref: str) -> set[str]:
+    return {f"fact:facility:{gate_ref}:{layer}" for layer in _GATE_LAYERS}
 
 
 def _digest(value: str) -> str:
@@ -89,13 +102,8 @@ class GateImpactReceiptV2(_SignedSiegeReceipt):
 
     @model_validator(mode="after")
     def validate_layer_revisions(self) -> "GateImpactReceiptV2":
-        expected_streams = {
-            f"fact:facility:{self.gate_ref}:durability",
-            f"fact:facility:{self.gate_ref}:latch-durability",
-            f"fact:facility:{self.gate_ref}:integrity",
-        }
         if (
-            set(self.expected_layer_revisions) != expected_streams
+            set(self.expected_layer_revisions) != _gate_layer_streams(self.gate_ref)
             or any(type(revision) is not int or revision < 0
                    for revision in self.expected_layer_revisions.values())
         ):
@@ -125,6 +133,21 @@ class PresenceAssessmentReceipt(_SignedSiegeReceipt):
             )
         ):
             raise ValueError("siege_presence_evidence_invalid")
+        return self
+
+
+class PresenceAssessmentReceiptV2(_SignedSiegeReceipt):
+    impact_event_id: str = Field(min_length=1, max_length=160)
+    target_incarnation_ref: str = Field(min_length=1, max_length=160)
+    assessment_ref: str = Field(min_length=1, max_length=160)
+    state: Literal["blocked", "passable"]
+    expected_layer_revisions: dict[str, Annotated[int, Field(ge=1, strict=True)]]
+    expected_place_revision: int = Field(ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def validate_layer_revisions(self) -> "PresenceAssessmentReceiptV2":
+        if set(self.expected_layer_revisions) != _gate_layer_streams(self.gate_ref):
+            raise ValueError("siege_gate_layer_revision_vector_invalid")
         return self
 
 
@@ -170,10 +193,16 @@ class SiegePhysicalInputAuthority:
         )
 
     def record_presence_assessment(
-        self, receipt: PresenceAssessmentReceipt
+        self, receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2
     ) -> AppendBatchResult:
         if not self._valid_signature(receipt):
             return self._reject(receipt.receipt_id, "siege_input_signature_invalid")
+        if isinstance(receipt, PresenceAssessmentReceiptV2):
+            return self._record(
+                receipt,
+                event_type=PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
+                stream_id=f"gameplay:combat:gate-presence:{receipt.receipt_id}",
+            )
         if not self._valid_presence_sources(receipt):
             return self._reject(receipt.receipt_id, "siege_presence_evidence_invalid")
         return self._record(
@@ -199,7 +228,12 @@ class SiegePhysicalInputAuthority:
     ) -> GameplayEvent | None:
         key = self._idempotency_key(authority_ref, receipt_id)
         result = self._store.get_by_idempotency(SIEGE_PHYSICAL_INPUT_PRINCIPAL, key)
-        return self._receipt_event(result, PRESENCE_ASSESSMENT_INPUT_EVENT) if result else None
+        if result is None:
+            return None
+        return (
+            self._receipt_event(result, PRESENCE_ASSESSMENT_INPUT_EVENT)
+            or self._receipt_event(result, PRESENCE_ASSESSMENT_INPUT_EVENT_V2)
+        )
 
     def store(self) -> GameplayEventStore:
         return self._store
@@ -228,6 +262,9 @@ class SiegePhysicalInputAuthority:
                 update={"idempotency_status": "duplicate_replayed"}, deep=True
             )
 
+        if isinstance(receipt, PresenceAssessmentReceiptV2) and not self._valid_impact_source(receipt):
+            return self._reject(receipt.receipt_id, "siege_presence_evidence_invalid")
+
         command_id = f"siege-input:{key.removeprefix('siege-input:')}"
         return self._store.append_batch(build_multi_stream_atomic_event_batch(
             command_id=command_id,
@@ -248,6 +285,34 @@ class SiegePhysicalInputAuthority:
             secret.encode("utf-8"), receipt.canonical_bytes(), hashlib.sha256
         ).hexdigest()
         return hmac.compare_digest(expected, receipt.signature)
+
+    def _valid_impact_source(self, receipt: PresenceAssessmentReceiptV2) -> bool:
+        try:
+            event = self._store.get_event(receipt.impact_event_id)
+        except KeyError:
+            return False
+        if event.event_type != GATE_IMPACT_INPUT_EVENT_V2 or not self._store.transaction_owns_event(
+            transaction_id=event.transaction_id,
+            event_id=event.event_id,
+            principal_ref=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
+        ):
+            return False
+        impact = GateImpactReceiptV2.model_validate(event.payload["receipt"])
+        facility = self._store.get_by_idempotency(
+            FACILITY_GATE_PRINCIPAL, facility_impact_command_id(event.event_id)
+        )
+        return (
+            facility is not None
+            and facility.committed
+            and impact.gate_ref == receipt.gate_ref
+            and impact.target_incarnation_ref == receipt.target_incarnation_ref
+            and impact.physics_tick <= receipt.physics_tick
+            and all(
+                revision >= facility.resulting_stream_revisions.get(stream, impact.expected_layer_revisions[stream])
+                and revision == self._store.get_stream_head(stream)
+                for stream, revision in receipt.expected_layer_revisions.items()
+            )
+        )
 
     def _valid_presence_sources(self, receipt: PresenceAssessmentReceipt) -> bool:
         try:
@@ -312,6 +377,7 @@ class SiegePhysicalInputAuthority:
                 GATE_IMPACT_INPUT_EVENT: GateImpactReceipt,
                 GATE_IMPACT_INPUT_EVENT_V2: GateImpactReceiptV2,
                 PRESENCE_ASSESSMENT_INPUT_EVENT: PresenceAssessmentReceipt,
+                PRESENCE_ASSESSMENT_INPUT_EVENT_V2: PresenceAssessmentReceiptV2,
             }[event_type]
             receipt = receipt_type.model_validate(event.payload["receipt"])
             if event.payload.get("receipt_digest") != receipt.receipt_digest:

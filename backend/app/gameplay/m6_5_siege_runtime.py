@@ -38,9 +38,11 @@ from app.gameplay.siege_physical_input_runtime import (
     GATE_IMPACT_INPUT_EVENT,
     GATE_IMPACT_INPUT_EVENT_V2,
     PRESENCE_ASSESSMENT_INPUT_EVENT,
+    PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
     GateImpactReceipt,
     GateImpactReceiptV2,
     PresenceAssessmentReceipt,
+    PresenceAssessmentReceiptV2,
     SiegePhysicalInputAuthority,
 )
 from app.gameplay.rule_pack_validator import load_pack
@@ -204,7 +206,7 @@ class M6_5SiegeRuntime:
         )
         return evidence, result, dispatch_results
 
-    def record_presence_assessment(self, receipt: PresenceAssessmentReceipt):
+    def record_presence_assessment(self, receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2):
         evidence = self.physical_inputs.record_presence_assessment(receipt)
         if not evidence.committed:
             return evidence, None
@@ -247,10 +249,15 @@ class M6_5SiegeRuntime:
                     self.dispatcher.after_transaction_dispatched(transaction)
                 results.append((event.event_id, result))
 
-        for event in self.physical_inputs.store().read_events(
-            event_type=PRESENCE_ASSESSMENT_INPUT_EVENT,
-        ):
-            receipt = PresenceAssessmentReceipt.model_validate(event.payload["receipt"])
+        assessment_events = {
+            PRESENCE_ASSESSMENT_INPUT_EVENT: PresenceAssessmentReceipt,
+            PRESENCE_ASSESSMENT_INPUT_EVENT_V2: PresenceAssessmentReceiptV2,
+        }
+        for event in self.physical_inputs.store().read_events():
+            receipt_model = assessment_events.get(event.event_type)
+            if receipt_model is None:
+                continue
+            receipt = receipt_model.model_validate(event.payload["receipt"])
             result = self.presence.commit_signed_assessment(
                 input_authority=self.physical_inputs,
                 authority_ref=receipt.authority_ref,
