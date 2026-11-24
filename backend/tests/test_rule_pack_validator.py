@@ -91,6 +91,21 @@ def test_pack_rejects_fact_type_without_scope_using_scope_diagnostic(tmp_path, f
     assert [violation.target for violation in matching] == [fact_type_id]
 
 
+def test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic(tmp_path):
+    destination = shutil.copytree(PACK, tmp_path / "primitive-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    assert '  primitive: "machine"\n' in fact_type
+    fact_type_path.write_text(fact_type.replace('  primitive: "machine"\n', "", 1), encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "primitive_missing"]
+    assert [violation.target for violation in matching] == ["fact:credential:*:link"]
+
+
 _POOL_DECLARATION = dedent("""\
     stamina:
       description: "Stamina used during a movement window"

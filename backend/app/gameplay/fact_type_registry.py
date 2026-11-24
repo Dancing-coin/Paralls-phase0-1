@@ -141,7 +141,9 @@ class FactTypeRegistry:
                 if not isinstance(refold_model_ref, str) or not refold_model_ref:
                     reject("facttype_refold_missing", target, "distribution FactTypes must reference a refold model")
             primitive = spec.get("primitive")
-            if primitive == "machine":
+            if primitive is None:
+                reject("primitive_missing", target, "declare one of the registered FactType primitives")
+            elif primitive == "machine":
                 if spec.get("state_set_ref") not in machines:
                     reject("facttype_schema_unknown", target, "register the machine state set")
             elif primitive == "pool":

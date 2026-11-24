@@ -410,12 +410,15 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
                 primitive = spec.get("primitive")
                 valid = (
                     isinstance(spec.get("owner_ref"), str)
-                    and primitive in ("machine", "pool")
+                    and (primitive is None or primitive in ("machine", "pool"))
                     and ("visibility" not in spec or isinstance(spec["visibility"], dict))
                     and (
-                        isinstance(spec.get("state_set_ref"), str)
-                        if primitive == "machine"
-                        else "state_set_ref" not in spec
+                        primitive is None
+                        or (
+                            isinstance(spec.get("state_set_ref"), str)
+                            if primitive == "machine"
+                            else "state_set_ref" not in spec
+                        )
                     )
                 )
             if valid and section == "machine_defs":
