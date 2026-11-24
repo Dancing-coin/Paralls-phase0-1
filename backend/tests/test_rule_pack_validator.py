@@ -125,6 +125,20 @@ def test_pack_rejects_package_defined_primitives(tmp_path, declaration_location)
     assert [violation.target for violation in matching] == ["primitives"]
 
 
+def test_pack_rejects_unknown_fact_primitive_with_dedicated_diagnostic(tmp_path):
+    destination = shutil.copytree(PACK, tmp_path / "unknown-primitive-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(fact_type.replace('primitive: "machine"', 'primitive: "custom"', 1), encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "primitive_unknown"]
+    assert [violation.target for violation in matching] == ["fact:credential:*:link"]
+
+
 _POOL_DECLARATION = dedent("""\
     stamina:
       description: "Stamina used during a movement window"

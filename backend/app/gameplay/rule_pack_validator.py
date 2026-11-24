@@ -23,6 +23,8 @@ from app.gameplay.l5_reaction import Reaction, ReactionRejected, compile_reactio
 from app.gameplay.l5_workflow import Workflow, compile_workflow
 from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
 
+_FACT_TYPE_PRIMITIVES = frozenset({"pool", "machine", "holdings", "bond", "process", "place"})
+
 
 @dataclass(frozen=True)
 class PackRevision:
@@ -416,6 +418,12 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
                     seen_patterns.add(pattern)
             if valid and section == "fact_types":
                 primitive = spec.get("primitive")
+                if primitive is not None and (
+                    not isinstance(primitive, str) or primitive not in _FACT_TYPE_PRIMITIVES
+                ):
+                    reject("primitive_unknown", target, file, line,
+                           "reference one of the six code-registered FactType primitives")
+                    continue
                 valid = (
                     isinstance(spec.get("owner_ref"), str)
                     and (primitive is None or primitive in ("machine", "pool"))
