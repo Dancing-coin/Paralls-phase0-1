@@ -31,6 +31,9 @@ The remaining domain-level M1-3 items are unchanged: domain Owner classification
 
 ## Verification status
 
-- Static comparison only. No code changed and no test was run.
+- The specification comparison itself was static and changed no code. A follow-up current-tip Pool regression was run at `5e7b7eeb97bdc2216065f67bdf36546be56a8d69` using Python 3.12.2, with `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`. The import check printed `app.__file__ = F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
+- Command: `python -m pytest -q --basetemp F:\paralls-verification\thread-a\m1-3-pool-current-20261124-5e7b7eeb\pytest-tmp backend/tests/test_pool_runtime.py`.
+- Raw output: `19 passed, 2 warnings in 0.21s`. Environment and pytest logs are in `F:\paralls-verification\thread-a\m1-3-pool-current-20261124-5e7b7eeb\`.
+- Frozen selections and full suite were not rerun for this audit.
 - The latest recorded Pool focused tests and selections remain in the linked M1-3 runtime, factory, and casualty evidence. The combined-state full suite previously exited nonzero and is not a passing result.
 - M1-3 remains `待门禁`; this audit does not claim that Pool or Architecture v2 is complete.

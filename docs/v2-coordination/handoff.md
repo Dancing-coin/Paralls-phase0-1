@@ -337,4 +337,5 @@
 - A 对正式六原语规格 Pool 专节与当前 `pool_runtime.py`、测试和已有 M1-3 证据作了只读对照，结果见 `docs/verification/m1-3-pool-spec-audit-20261124.md`。本次没有改代码、事件合同或运行 pytest。
 - Pool 已有显式 ticks 的 `integrate` 和 `window_ref` 幂等。正式规格还要求按输入 revision、阈值、暂停、交接、版本升级边界结算，并保留积分窗口内曾达到零的事实。当前事件 payload 没有权威时间/区间边界或中间轨迹字段，Pool 也没有这些生命周期边界的生产调度入口。
 - 补齐前需确定权威时间源、暂停/交接/版本升级的边界事件合同，以及窗口内最低值/零值如何持久化并重放。这会改变持久事件和回放语义，因此未由 A 自行猜定或修改。Pool 的 U1/U2/U5/U7/U8 与 G5 缺口仍依赖域归属、M2-2、Resolver 合同和门禁证据。
-- M1-3 继续为 `待门禁`。本审计是静态证据，不新增测试通过声明，也不改变此前全量失败记录。
+- 审计后在当前 A tip `5e7b7eeb97bdc2216065f67bdf36546be56a8d69` 单独运行 Pool 定向回归：Python 3.12.2、`app.__file__` 位于当前 A worktree，`backend/tests/test_pool_runtime.py` 为 `19 passed, 2 warnings`。冻结选集和全量未运行，原全量失败记录不变。
+- M1-3 继续为 `待门禁`。该定向回归不消除上述事件语义缺口，也不构成 G5 通过。
