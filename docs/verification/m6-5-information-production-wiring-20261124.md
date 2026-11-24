@@ -53,3 +53,9 @@ P-1：跟踪文件扫描输出 `tracked_model_secret_offender_count=0`，本次�
 Formal `02-守城Demo定义.md` 给出 `fact:information:*:report` / `report_delivered` 的 Reaction 示例，`01-内核/05-传播延迟与失真.md` 将报告事实提交归给 Information Owner，但没有给生产 source event type、source writer 或 stream/revision 合同。代码仓库和规则包也没有已提交的守城报告 producer。
 
 当前实现只证明配置已登记的 source event 可以被精确识别和投递，不证明实际守城报告会进入该路径。需要 Information/守城内容事实生产者提供已注册的 event type、实际 source stream/Owner 与 `fact:information:siege:report` payload 约定，并由项目负责人确认生产 `SIEGE_INFORMATION_REPORT_EVENT_TYPES_JSON` 值。收到该输入前保持空配置和零写入。
+
+## 生产来源复核
+
+在推送后的 A 分支再次检索 `backend/app`、`backend/tests` 与 `packs`：`gameplay.social.knowledge_observed` 仅出现在 `backend/tests/test_information_production_wiring.py:15`。该测试在 `_store_with_delivery()` 内直接用 `build_atomic_event_batch()` 构造来源事件，没有调用生产 writer；生产 EventSchema factory 中也没有注册该类型。`fact:information:siege:report` 的代码命中是 M6-5 常量、Reaction 声明和测试，不包含报告生产者。正式 `02-守城Demo定义.md` 只给出 `report_delivered` Reaction 示例，正式 `01-内核/05-传播延迟与失真.md` 明确报告事实由 Information Owner 提交，但没有给 event type 或 payload 字段合同。
+
+因此，Information 14 节点选择集验证了显式 allowlist、source stream/revision 与 FactType 匹配机制，不能作为真实报告来源或生产端到端证据。没有擅自把测试事件提升为生产合同，`SIEGE_INFORMATION_REPORT_EVENT_TYPES_JSON` 继续默认为空。
