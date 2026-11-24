@@ -324,3 +324,10 @@
 - The first read-vector regression run failed because the committed Place output omitted the impact input stream. After pinning that stream, focused verification passed 169 tests with 6 warnings. M6-5 selection 21, Information 25, siege Information 25, ownership 24, modifier 12, equipment 87, inventory 56 and shared-replay 990 all returned zero problems and improvements.
 - Exact backend suite at `e246f2c0`: 10,628 passed, 19 failed, 2 skipped, 2 xfailed. All 19 failed node IDs were rerun at parent `9b46742ee5a4c709e166ff247b5161101d4cd1f1` and failed there too, with identical node sets. Root pytest collection also has a separate missing `jsonschema` dependency in `scripts/verification/tests`; backend full suite was run with explicit `backend/tests` from the repository root. Evidence and raw output are in `docs/verification/m6-5-presence-impact-followup-20261124.md` and `F:/paralls-verification/thread-a/m65-presence-*`.
 - The unchanged configured-test profile is a simulation only. Production Gate values, a live Unreal assessment transport and a configured full siege run remain unverified. M6-5 remains in progress and is not merged to `integration`.
+
+### H-A-039 | 项目负责人决定：生产 Gate 配置与 integration 边界 | 2026-11-24
+
+- 项目负责人采纳建议：生产 Gate profile 继续保持未配置，等待权威生产数值或配置来源；规则包中明确标为演练的数值仅用于演练，不提升为生产参数。
+- 项目负责人采纳建议：保持 A 分支工作，不合入或修改 `integration`。当前 A 分支包含多项尚未合入的任务，不能把它当作单独的 Gate 配置变更合入。
+- 现有 `SIEGE_FACILITY_GATE_PROFILES_JSON` 配置入口继续作为权威 profile 的接入方式。为空时 Gateway 保持 fail-closed，不提交 Facility 数值事实。
+- 后续只有在负责人提供生产配置来源/数值或明确指定演练环境，并重新说明目标分支范围后，才变更对应配置或集成目标。
