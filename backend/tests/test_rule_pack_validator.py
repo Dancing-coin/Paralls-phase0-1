@@ -5,6 +5,7 @@ from textwrap import dedent
 import pytest
 
 from app.gameplay.fact_type_registry import REGISTERED_OWNER_IDS, RegistrationRejected
+from app.gameplay.fact_type_registry import REGISTERED_FACT_TYPE_PRIMITIVES
 from app.gameplay.rule_pack_validator import load_pack
 
 PACK = Path(__file__).resolve().parents[2] / "packs/credential_reference"
@@ -23,6 +24,12 @@ def test_registered_owner_ids_match_v2_short_names_and_legacy_credential():
     assert "Credential" in REGISTERED_OWNER_IDS
     assert "Combat" not in REGISTERED_OWNER_IDS
     assert "Economy / Market" not in REGISTERED_OWNER_IDS
+
+
+def test_fact_type_primitive_registry_has_exactly_six_code_registered_values():
+    assert REGISTERED_FACT_TYPE_PRIMITIVES == {
+        "pool", "machine", "holdings", "bond", "process", "place",
+    }
 
 
 def test_pack_load_is_repeatable_and_evaluates_registered_code():
