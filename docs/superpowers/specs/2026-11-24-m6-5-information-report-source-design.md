@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed for project-lead review. The project lead selected an A-owned Information report producer and report creation at publication to the recipient. This document records the implementation details proposed by A.
+Approved by the project lead on 2026-11-24. The selected lifecycle creates an A-owned Information report when it is published to the recipient. The approved implementation contract is recorded below.
 
 ## Intent
 

@@ -1,0 +1,131 @@
+{
+  "head": "3fe50ca561eb36e97ebccfb3b298c96be9a99780",
+  "description": "M6-5 Information report source production writer, authenticated Gateway, EventSchema, Owner-bound L5 delivery, privacy, and replay",
+  "tests": [
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_committed_delivery_updates_only_its_recipient_knowledge",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_update_replay_returns_original_receipt",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_reaction_uses_committed_recipient_and_current_time",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_committed_information_event_reaches_registered_graph_projector",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_update_cannot_claim_another_recipient_delivery",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_update_rejects_delivery_after_source_revocation",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_p5_social_delivery.py::test_delivery_rechecks_source_and_projects_recipient_scope",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_p5_social_delivery.py::test_delivery_view_checkpoint_cut_and_tail_exclude_future_events",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_stormnight_factory_registers_information_output_and_delivery_input",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_delivery_of_a_non_siege_fact_does_not_trigger_information_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_information_reaction_waits_for_authoritative_world_tick_and_retries",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_information_pack_declares_recipient_private_report_before_knowledge",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_production_l5_updates_knowledge_from_committed_information_report",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_lookalike_report_source_does_not_trigger_information_write[authority:other-character:defender-1]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_lookalike_report_source_does_not_trigger_information_write[authority:information:report-publisher-character:other]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_report_publication_http_commits_private_report_and_knowledge",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_report_publication_http_rejects_unsigned_requests_without_writes[False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_report_publication_http_rejects_unsigned_requests_without_writes[True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_information_production_wiring.py::test_report_publication_http_validation_omits_receipt_contents",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_owner_publishes_signed_report_and_replays_after_window",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_owner_rejects_invalid_signature_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_owner_rejects_unknown_report_authority_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_owner_rejects_missing_and_stale_report_sources_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_owner_rejects_changed_receipt_content_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_report_retry_recovers_delivery_at_committed_tick",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
