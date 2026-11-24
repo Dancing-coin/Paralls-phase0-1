@@ -4,6 +4,7 @@
   "tests": [
     {"test_name": "tests/test_siege_information_runtime.py::test_committed_delivery_updates_only_its_recipient_knowledge", "outcome": "passed", "failures": []},
     {"test_name": "tests/test_siege_information_runtime.py::test_information_update_replay_returns_original_receipt", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_reaction_uses_committed_recipient_and_current_time", "outcome": "passed", "failures": []},
     {"test_name": "tests/test_siege_information_runtime.py::test_committed_information_event_reaches_registered_graph_projector", "outcome": "passed", "failures": []},
     {"test_name": "tests/test_siege_information_runtime.py::test_information_update_cannot_claim_another_recipient_delivery", "outcome": "passed", "failures": []},
     {"test_name": "tests/test_siege_information_runtime.py::test_information_update_rejects_delivery_after_source_revocation", "outcome": "passed", "failures": []},

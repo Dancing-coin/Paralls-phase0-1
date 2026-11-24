@@ -1,0 +1,8 @@
+report_arrival_to_knowledge_update:
+  "on":
+    fact_type_pattern: "fact:information:siege:report"
+    event_type: "gameplay.social.delivery_recorded@2"
+  emit:
+    command_type: "information.update_knowledge"
+    target:
+      scope: "recipient_of(subject)"

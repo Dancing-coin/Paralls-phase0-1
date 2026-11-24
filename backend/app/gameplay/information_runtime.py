@@ -32,6 +32,36 @@ class InformationAuthority:
     def stream_id(*, recipient_ref: str, report_ref: str) -> str:
         return f"gameplay:information:knowledge:{recipient_ref}:{report_ref}"
 
+    def update_from_delivery(
+        self,
+        *,
+        delivery: GameplayEvent,
+        world_now: int,
+        command_id: str,
+        idempotency_key: str,
+        correlation_id: str,
+    ) -> InformationUpdateResult:
+        """Handle a Gateway reaction using the committed delivery as its target."""
+        recipient_ref = delivery.payload.get("recipient_ref")
+        report_ref = delivery.payload.get("source_event_id")
+        if (
+            delivery.event_type != _DELIVERY_EVENT
+            or not isinstance(recipient_ref, str)
+            or not isinstance(report_ref, str)
+        ):
+            return self._reject("information_delivery_source_invalid")
+        stream = self.stream_id(recipient_ref=recipient_ref, report_ref=report_ref)
+        return self.update_knowledge(
+            delivery_event_id=delivery.event_id,
+            recipient_ref=recipient_ref,
+            world_now=world_now,
+            expected_revision=self._store.get_stream_head(stream),
+            command_id=command_id,
+            idempotency_key=idempotency_key,
+            causation_id=delivery.event_id,
+            correlation_id=correlation_id,
+        )
+
     def update_knowledge(
         self,
         *,
@@ -88,6 +118,7 @@ class InformationAuthority:
             prior = self._prior_event(result)
             if (prior is not None and prior.event_type == _INFORMATION_EVENT
                     and prior.stream_id == stream_id and prior.payload == event_payload
+                    and prior.command_id == command_id
                     and prior.causation_id == causation_id and prior.correlation_id == correlation_id):
                 return InformationUpdateResult(
                     True, append_result=result.model_copy(
@@ -182,8 +213,6 @@ class InformationAuthority:
 
 
 __all__ = [
-    "INFORMATION_EVENT_SCHEMAS",
     "InformationAuthority",
     "InformationUpdateResult",
-    "register_information_event_schemas",
 ]

@@ -1,0 +1,7 @@
+information.update_knowledge:
+  version: 1
+  handled_by: "Information"
+  payload_schema: "social_delivery_event_ref@1"
+  requires_authority: true
+  idempotency_shape: "command_id"
+  description: "Record that the verified recipient received the committed siege report."

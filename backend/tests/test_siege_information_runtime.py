@@ -118,6 +118,37 @@ def test_information_update_replay_returns_original_receipt():
     assert len(store.read_events(event_type="gameplay.information.knowledge_updated@1")) == 1
 
 
+def test_information_reaction_uses_committed_recipient_and_current_time():
+    store, delivery_id = _store()
+    authority = InformationAuthority(store=store)
+    delivery = store.get_event(delivery_id)
+    command = {
+        "delivery": delivery,
+        "command_id": "reaction:report-arrival",
+        "idempotency_key": "reaction:report-arrival",
+        "correlation_id": "correlation:east-gate",
+    }
+    expired = authority.update_from_delivery(world_now=20, **command)
+    assert not expired.committed
+    assert expired.error_code == "information_delivery_not_visible"
+    assert not store.read_events(event_type="gameplay.information.knowledge_updated@1")
+
+    first = authority.update_from_delivery(world_now=15, **command)
+    retry = authority.update_from_delivery(world_now=20, **command)
+    changed = authority.update_from_delivery(
+        world_now=15, **{**command, "command_id": "reaction:other"}
+    )
+    assert first.committed
+    assert retry.append_result.idempotency_status == "duplicate_replayed"
+    assert retry.append_result.committed_event_ids == first.append_result.committed_event_ids
+    assert not changed.committed
+    assert changed.error_code == "information_idempotency_key_reused"
+    event, = store.read_events(event_type="gameplay.information.knowledge_updated@1")
+    assert event.visibility_policy == "actor:character:recipient"
+    assert event.causation_id == delivery_id
+    assert event.payload["known_at_world_tick"] == 15
+
+
 def test_committed_information_event_reaches_registered_graph_projector():
     store, delivery_id = _store()
     result = _update(InformationAuthority(store=store), store, delivery_id)
