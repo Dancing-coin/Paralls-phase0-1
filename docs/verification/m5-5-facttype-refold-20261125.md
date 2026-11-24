@@ -88,3 +88,19 @@ The formal `primitive_missing` diagnostic was unreachable for rule packs because
 | Sanitized backend full suite | `10,647 passed, 4 failed, 2 skipped, 2 xfailed`, exit code 1; 10,655 collected | `F:\paralls-verification\thread-a\m5-5-primitive-full-clean-69d67f5380614bcba373828e38ea4c2d\full-console.log` |
 
 The four full-suite failures are `test_all_22_repaired_budgets_equal_fixed_official_usage`, `test_task45_headless_probe_observes_shared_path_and_contact_contract`, `test_cold_ready`, and `test_task8_headless_registry_probe_resolves_profiles_and_blocks_rejected_registration`. The same four failed on parent `735e283f` when rerun with the same sanitized Git environment. Their captured errors concern the calibration fixture, missing Godot global script classes, and missing `resource_bounds` in a population report. These paths do not consume FactType registration. The initial full run inherited an empty `GIT_CONFIG_VALUE_0`; a child fixture-generation process consequently failed to read the Git revision and produced the fifth failure. Removing inherited `GIT_CONFIG_*` variables made that population recovery node pass on both the current code and its parent. The clean full run was performed with inherited `GIT_CONFIG_*` variables removed.
+
+## Follow-up validator rule: package-defined primitives
+
+The rule-pack loader previously ignored a top-level `primitives` declaration and treated a `primitives` content section as a generic schema error. Both forms now receive the formal `pack_defines_primitive` rejection. Primitive definitions remain code-registered.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| TDD red at parent `a5823c4b` | Both declaration forms failed because no `pack_defines_primitive` violation was emitted | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-red-repro-20261125-confirmed.log` |
+| Focused FactType, Validator, and Pool tests | `128 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-focused-clean-dd5abc0da5b04e629ae45aeb27904ea2\pytest.log` |
+| M5-5 regression selection at `553c35bd` | `selected=6 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-selection-d089cad043ff490baa822cf2a2a152d3\batch-0000\results.json` |
+| Frozen selection comparison | 5 selections, 1,169 nodes, all `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-gates-d49ba160907842178acef60d67841bbc\gate-run.log` |
+| Registered selection comparison | 25 selections, 227 nodes total, all `problems=0 improvements=0` | Same gate directory; per-selection batch results |
+| Clean backend full suite | `10,648 passed, 5 failed, 2 skipped, 2 xfailed`, exit code 1; 10,657 collected | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-full-46dda022c3cc4a9486bc221b28103e0e\full-console.log` |
+| Full-suite failure comparison | Four failures reproduced at parent `a5823c4b`; the fifth node passed at parent and in a current-code targeted rerun | `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-parent-failures-20261125.log` and `F:\paralls-verification\thread-a\m5-5-pack-defines-primitive-current-failure-recheck-20261125.log` |
+
+The four reproduced failures are the calibration-budget assertion, Task45 Godot probe, population cold-ready report, and Task8 Godot probe described above. `test_original_owner_provider_pending_survives_hard_kill_without_reingest[character]` failed once in the full suite, then passed both on parent `a5823c4b` and in a current-code targeted rerun. The suite remains non-green and no new persistent failure was observed from this unit.

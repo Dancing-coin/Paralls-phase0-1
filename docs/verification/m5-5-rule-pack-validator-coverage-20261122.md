@@ -25,7 +25,7 @@
 | 规则包 | `pack_contains_logic` | 已实现 | 拒绝执行字段及环境变量替换。YAML anchor、alias 和显式 tag 单独报错。 |
 | 规则包 | `pack_invariant_executable` | 未实现 | 未加载不变式表达式，通用执行字段拒绝仍生效。 |
 | 规则包 | `pack_overrides_visibility_requirement` | 部分实现 | 所载 FactType 都需显式可见性。父包叠层尚未进入加载器，无覆盖路径可校验。 |
-| 规则包 | `pack_defines_primitive` | 部分实现 | 包不能注册原语，编译器只允许 Machine。没有同名违规报告。 |
+| 规则包 | `pack_defines_primitive` | 已实现 | 拒绝在包顶层声明 `primitives`，也拒绝在 `contents` 中声明原语内容。回归覆盖两种形式。 |
 | 规则包 | `pack_cycle_in_parents` | 未实现 | 当前对非空 `parent_pack` 统一报 `pack_parent_unsupported`。 |
 | 规则包 | `pack_content_hash_mismatch` | 未实现 | 既有加载器生成 `content_hash`，未接受存档钉定的哈希并在加载入口对比。 |
 | Owner | `owner_overlaps_owner`、`owner_writes_denied`、`owner_native_without_resolvers`、`owner_stewarded_with_resolvers`、`owner_no_invariants` | 未实现 | 当前登记结构为 ID 允许名单，没有 L3 Owner 声明结构可供这些检查。 |

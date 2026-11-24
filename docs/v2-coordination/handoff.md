@@ -368,3 +368,11 @@
 - 清理继承的 `GIT_CONFIG_*` 后全量 backend suite 为 `10,647 passed, 4 failed, 2 skipped, 2 xfailed`，退出码 1。四个失败节点是 calibration budget、Task45 Godot probe、population cold-ready 和 Task8 Godot probe。在父提交 `735e283f` 上同样四项失败。首次未清理环境的尝试另有一个 population recovery 子进程受空 `GIT_CONFIG_VALUE_0` 影响；清理该环境后该节点在父提交与当前代码均通过。全量结果不是通过。
 - 环境为 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 指向 A worktree。原始验证输出位于 `F:/paralls-verification/thread-a/m5-5-primitive-focused-clean-6bc5e6dd5fb8444aad830cba322c14a7/`、`m5-5-primitive-gates-de033677e0964158a3a151394aa1ddb6/`、`m5-5-primitive-regression-exact-6ae3c9e3fc734133aa7b808f4d9d8368/`、`m5-5-primitive-full-clean-69d67f5380614bcba373828e38ea4c2d/`。
 - 此提交只完成 M5-5 的一项拒绝规则。其它 Validator 规则、M5-3/M5-4 和 Architecture v2 总体验收仍未完成。
+
+### H-A-045 | M5-5 pack_defines_primitive 与全量复验 | 2026-11-25
+
+- 提交 `553c35bd139fa6bf4dd0b0d2e7adea046931b626` 在 `pack.yaml` 顶层或 `contents` 区段出现 `primitives` 时发出专用 `pack_defines_primitive`，不再静默接受或降为通用 schema 错误。TDD 两个红例在父提交 `a5823c4b` 复现。实现后 Validator、Pool 与 FactType 定向 `128 passed`。
+- 冻结五组选集共 1,169 节点、全部登记 25 组选集共 227 节点均 `problems=0 improvements=0`。M5-5 自有回归选集目前 6 节点，`selected=6 problems=0 improvements=0`。
+- 清洁环境 backend 全量为 `10,648 passed, 5 failed, 2 skipped, 2 xfailed`，退出码 1。四个失败在父提交 `a5823c4b` 复现。第五个 `test_original_owner_provider_pending_survives_hard_kill_without_reingest[character]` 在父提交及当前提交的定向重跑均通过，记录为单次全量失败，不能由此宣称全量通过。
+- 环境 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 在 A worktree；验证输出保留于 `F:/paralls-verification/thread-a/m5-5-pack-defines-primitive-red-repro-20261125-confirmed.log`、`m5-5-pack-defines-primitive-focused-clean-dd5abc0da5b04e629ae45aeb27904ea2/`、`m5-5-pack-defines-primitive-selection-d089cad043ff490baa822cf2a2a152d3/`、`m5-5-pack-defines-primitive-gates-d49ba160907842178acef60d67841bbc/`、`m5-5-pack-defines-primitive-full-46dda022c3cc4a9486bc221b28103e0e/`、`m5-5-pack-defines-primitive-parent-failures-20261125.log` 和 `m5-5-pack-defines-primitive-current-failure-recheck-20261125.log`。
+- 本提交只覆盖规则包不得定义原语这一项规则。其余 Validator 目录、M5-3/M5-4 和 Architecture v2 总体验收仍未完成。
