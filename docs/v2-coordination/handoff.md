@@ -352,3 +352,11 @@
 - 在 `f0c9108d` 的 backend 全量收集 10,652 节点，结果 `10,624 passed, 24 failed, 2 skipped, 2 xfailed`，退出码 1。只在父提交 `f5cc3632` 重跑这 24 个失败节点，当前与父提交失败节点集合、阶段和错误类型一致，`new=0 parent_extra=0`。父提交复跑不是全量。全量与父复跑原始输出分别位于 `F:/paralls-verification/thread-a/m5-5-facttype-refold-full-20261125-f0c9108d/` 和 `F:/paralls-verification/thread-a/m5-5-facttype-refold-parent-20261125-03/`。这表示该单元没有增加所比较的失败，不表示全量通过。
 - 运行时环境为 Python 3.12.2，`app.__file__` 指向 A worktree，SQLite 3.43.1。证据列出 U1–U11 状态和未覆盖的 M5 工作；M5 与 Architecture v2 均未完成。
 - 本轮 pytest 临时数据从 `D:/codex-temp/user-temp/pytest-of-User/pytest-2026` 搬到 `F:/paralls-verification/thread-a/pytest-scratch-m5-5-f0c9108d`，共 8,176 个文件、937,244,243 bytes。D 源目录目前无普通文件，留有 1,446 个指向 F 盘本轮 scratch 的目录符号链接；没有删除这些链接，也没有触碰 `pytest-2027`。
+
+### H-A-043 | M5-5 FactType scope 缺失拒绝码与全量复验 | 2026-11-25
+
+- 依据正式《03-校验器规则》，`facttype_scope_missing` 与 `facttype_naming_invalid` 是两个独立拒绝码。提交 `3907d4eb45b93cc95d4d5e866b25cd92a5e6f74a` 将省略 scope 的 `fact:credential:link` 和空 scope 的 `fact:credential::link` 分别映射到专用拒绝码。两条测试先红后绿；`test_rule_pack_validator.py` 与 `test_pool_runtime.py` 共 `122 passed, 2 warnings`。
+- 使用 `docs/verification/absorb-main-3bf3418e/compare_selection.py` 和修正路径的 F 盘临时配置重跑冻结及全部登记集：冻结 5 组、1,169 节点；登记 25 组、224 节点；所有组均 `problems=0 improvements=0`。原始批次在 `F:/paralls-verification/thread-a/m5-5-scope-gates-corrected-20261125-3907d4eb/`。
+- 修正环境下 full suite 收集 10,654 节点，`10,623 passed, 27 failed, 2 skipped, 2 xfailed`，退出码 1。24 个失败节点、阶段和错误类型与 `f0c9108d` 全量结果一致；新增的两个 `test_embodied_interaction_session_runner` 失败均报告外部 `D:\cl-laya` 占用 Port 8000。另有一项 outbox hard-kill recovery 的 `PermissionError` 在从 worktree 根目录单测重跑后 `1 passed`。全量原始输出为 `F:/paralls-verification/thread-a/m5-5-scope-full-corrected-20261125-3907d4eb/`，单测重跑为 `F:/paralls-verification/thread-a/m5-5-outbox-recheck-20261125-3907d4eb/pytest.log`。full suite 仍未通过，不能记作全量通过。
+- 初始尝试将 Windows 反斜杠路径写入 `PYTEST_ADDOPTS`，pytest 将反斜杠按转义解析，使临时目录错误地进入 `backend` 并产生 48 项失败。该轮明确作废，两个本轮临时树已移到 `F:/paralls-verification/thread-a/pytest-scratch-m5-5-scope-full-3907d4eb-misparsed` 与 `pytest-scratch-m5-5-scope-gates-3907d4eb-misparsed`。之后统一在 `PYTEST_ADDOPTS` 使用正斜杠，并从 A worktree 根启动测试。
+- M5-5 的这两条拒绝规则已实现并有回归，但其它 Validator 规则、M5-3/M5-4 及 Architecture v2 总体验收仍未完成。

@@ -1,9 +1,19 @@
 {
-  "head": "f0c9108dc715869f73b6a919e3fd674f87292b4c",
-  "description": "M5-5 distribution FactType requires a refold model",
+  "head": "3907d4eb45b93cc95d4d5e866b25cd92a5e6f74a",
+  "description": "M5-5 distribution FactTypes require a refold model; missing FactType scopes receive the dedicated diagnostic",
   "tests": [
     {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_distribution_fact_without_refold_model",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_without_scope_using_scope_diagnostic[fact:credential:link]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_without_scope_using_scope_diagnostic[fact:credential::link]",
       "outcome": "passed",
       "failures": []
     }

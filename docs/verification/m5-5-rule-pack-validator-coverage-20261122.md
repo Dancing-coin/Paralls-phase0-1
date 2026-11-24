@@ -14,7 +14,7 @@
 | FactType | `facttype_schema_unknown` | 部分实现 | 同名拒绝码检查 Machine 的 `state_set_ref`。规则包编译器未校验 `event_schema_ref`。 |
 | FactType | `facttype_refold_missing` | 未实现 | 聚合和 refold 模型未纳入 FactType 编译。 |
 | FactType | `facttype_naming_invalid` | 部分实现 | 拒绝段数、前缀或空段不符。域归属、精确字符集和长度尚未检查。 |
-| FactType | `facttype_scope_missing` | 部分实现 | 缺段或空 scope 走 `facttype_naming_invalid`，未区分 scope 拒绝码。 |
+| FactType | `facttype_scope_missing` | 已实现 | `fact_type_registry.py` 将 `fact:domain:name` 与 `fact:domain::name` 分类为 scope 缺失；回归见 `test_rule_pack_validator.py::test_pack_rejects_fact_type_without_scope_using_scope_diagnostic`。 |
 | Resolver | `resolver_writes_undeclared` | 已实现 | YAML 要求 `writes_fact_types` 列表，编译器检查事实存在及层写集为模型写集的子集。 |
 | Resolver | `resolver_owner_mismatch` | 已实现 | 每层声明的 Owner 必须匹配其写入 FactType 的 Owner。 |
 | Resolver | `resolver_input_undeclared` | 运行时实现 | `RestrictedInputs` 只保存已声明输入并拒绝越界访问。加载时无法判定注册的 Python evaluator 会访问什么。 |
