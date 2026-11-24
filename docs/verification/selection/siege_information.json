@@ -1,5 +1,5 @@
 {
-  "head": "10bcb918a8a770e65ca694874b979566f45b71a1",
+  "head": "9395181df1d94c2c6faf5363d73ac8858dcb5e17",
   "description": "Recipient-scoped Information update from committed SocialDelivery, production EventSchema and L5 wiring, report-source allowlisting, retryable world-clock handling, and graph projection",
   "tests": [
     {"test_name": "tests/test_siege_information_runtime.py::test_committed_delivery_updates_only_its_recipient_knowledge", "outcome": "passed", "failures": []},
