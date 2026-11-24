@@ -73,6 +73,24 @@ def test_pack_rejects_distribution_fact_without_refold_model(tmp_path):
     assert matching[0].target == "fact:facility:gate-03:integrity"
 
 
+@pytest.mark.parametrize("fact_type_id", ["fact:credential:link", "fact:credential::link"])
+def test_pack_rejects_fact_type_without_scope_using_scope_diagnostic(tmp_path, fact_type_id):
+    destination = shutil.copytree(PACK, tmp_path / "scope-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(
+        fact_type.replace("fact:credential:*:link", fact_type_id, 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_scope_missing"]
+    assert [violation.target for violation in matching] == [fact_type_id]
+
+
 _POOL_DECLARATION = dedent("""\
     stamina:
       description: "Stamina used during a movement window"

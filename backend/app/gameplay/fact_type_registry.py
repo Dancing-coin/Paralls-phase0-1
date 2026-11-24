@@ -152,7 +152,14 @@ class FactTypeRegistry:
             else:
                 reject("facttype_primitive_unknown", target, "declare a registered machine or pool primitive")
             parts = target.split(":")
-            if len(parts) != 4 or parts[0] != "fact" or not all(parts[1:]):
+            has_missing_scope = (
+                (len(parts) == 3 and parts[0] == "fact" and all(parts[1:]))
+                or (len(parts) == 4 and parts[0] == "fact" and parts[1] != ""
+                    and parts[2] == "" and parts[3] != "")
+            )
+            if has_missing_scope:
+                reject("facttype_scope_missing", target, "include a nonempty scope in fact:domain:scope:name")
+            elif len(parts) != 4 or parts[0] != "fact" or not all(parts[1:]):
                 reject("facttype_naming_invalid", target, "use fact:domain:scope:name")
 
         for target, machine in machines.items():
