@@ -1,69 +1,59 @@
-# 守城三条生产路径的 B 域交付
+# 守城三条路径和 Information 接线合同
 
-- 基线：B `155d496c7d26ab0b8f49f67805a2cce728a29692`；integration `810a46c1249918c09b42fa1fe0c12d7d784579d2`；A `691792c72c65335dedfdf0030a5ab6f6c04fcd24`。
-- 结论：Information B 域 writer 已实现并通过定向验证。Morale 只有 LifeState 触发合同与 Pool 适配探针，未实现 Morale writer。Presence 未实现通行性 writer，生产设施破口事件不存在。
-- 范围：为 M6-5 提供三个 B 域的命令处理方和可信输出事实。A 的 Gateway、L5 注册、main.py 与共享 EventSchemaRegistry 启动接线由 A 处理。生产组合尚未验收。
+- 2026-11-24。A 权威输入和生产接线基线为 8227e94c609247eaba1a663ee52d5ae69b1db90b。B 以 8b37e3ce49ff241625102bea857cc82215216503 为本次开工基线。
+- 接线参数、生产缺项和交付分支见 [H-B-009](../../v2-coordination/handoff.md#h-b-009--守城-information-接线交付--2026-11-24)。验证范围见 [证据](evidence.md)。
 
-## 现状和接口
+## 接口和状态
 
-| 路径 | 已有 B 域输入 | B 侧结果 | 状态与缺项 |
+| 路径 | 权威输入 | 输出 | 当前状态 |
 |---|---|---|---|
-| casualty → Morale | LifeState v2 的真实死亡提交。Organization 有 membership_delegation_recorded@1，但当前无经定义的守军编制合同。 | 候选 Pool fact:unit:<group>:morale，按候选 morale_refold@1 计算。 | 未完成。Owner 的 Pool 尚未进入 B integration。D8 没有权威模型。四人名单 1 人死亡得 75 是仅用于评审的候选向量。 |
-| facility breach → Presence | 未发现设施完整度破口的生产事件或 writer。Construction Production 目前记录 acquire/repair 等，repair 将 condition 提高。 | Presence 应基于已提交破口事实独立提交 passability。 | 未完成。必须先确定 breach 来源和 resolver 输入，不能用现有环境可通行性推导代替设施事实。 |
-| report delivery → Information | SocialDelivery 已提交事件 v2，包含收件人、报告源事件、来源 stream/revision、送达时间；视图验证可见性和撤销。 | B 新增 gameplay.information.knowledge_updated@1，按收件人私有可见性持久记录已送达报告。 | B 域 writer 已实现。需要 A 将 EventSchema 注册器的生产构造纳入 register_information_event_schemas，并登记 M6 的输入触发、命令、目标与具体输出 FactType。 |
+| casualty → Morale | 已提交 LifeState casualty 与死亡位置的 Organization roster、LifeState 历史 | Morale refold 后提交 Pool | A 分支已有生产装配。B 在 A 分支及组合快照复验 |
+| facility breach → Presence | Facility Pool 的 breach 阈值事件、独立已验签的通行性评估 | Presence Owner 提交 Place passability，缺乏可信评估时为 unknown 且零写入 | A 分支已有生产装配。生产 Gate profile 数值、impact_gate 持久义务和实跑待验证 |
+| report delivery → Information | 已提交且可见的指定报告送达，权威当前 tick | Information 提交 gameplay.information.knowledge_updated@1，outbox 限定收件人 | B writer、声明及隔离组合探针已交付。生产 factory、报告来源识别、时钟与 L5 的装配归 A |
 
 ## 所有权
 
 ~~~mermaid
 flowchart LR
-    L["已实现 · LifeState"] --> M["未实现 · Morale Owner"]
-    O["Organization delegation 候选 roster"] --> M
-    F["未发现 · Facility breach writer"] --> P["未实现 · Presence Owner"]
-    S["已实现 · SocialDelivery"] --> I["B 已实现 · Information Owner"]
-    M -. "A Pool 尚未进 integration" .-> A["A · Pool / Gateway / L5"]
-    P --> A
-    I --> A
+    LY["LifeState 与 Organization"] --> L["A · Gateway / L5"]
+    L --> M["A · Morale / Pool"]
+    F["A · Facility / Pool"] --> L
+    E["A · 签名通行性评估"] --> P["A · Presence / Place"]
+    L --> P
+    S["已提交 SocialDelivery"] -. "生产报告匹配待接" .-> L
+    L -. "生产 handler 待接" .-> I["B · Information Owner"]
+    I --> G["收件人私有事件与投影"]
 ~~~
 
 ## 时序
 
 ~~~mermaid
 sequenceDiagram
-    participant L as LifeState
-    participant O as Organization
-    participant M as Morale
-    participant F as Facility
-    participant P as Presence
     participant S as SocialDelivery
-    participant I as Information
-    participant A as Gateway / L5
-    L-->>A: 已提交 death receipt
-    O-->>A: 候选 membership facts
-    A->>M: 待接线 recompute_morale
-    M-->>A: 待交付 Pool receipt
-    F-->>A: 当前无 breach receipt
-    A->>P: breach 后 reevaluate_passability
-    P-->>A: 待交付 passability receipt
-    S-->>A: 已提交 recipient delivery receipt
-    A->>I: update_knowledge(delivery_event_id)
-    I-->>A: 已实现 knowledge receipt
+    participant L as Gateway / L5
+    participant I as Information Owner
+    participant O as EventStore / outbox
+    S->>O: 提交送达 v2
+    Note over O,L: 隔离探针已验证，生产报告来源映射待接
+    O-->>L: 已提交送达事件和报告类型
+    L->>I: update_from_delivery 与权威当前 tick
+    I->>O: 核验来源并用 revision 保护私有提交
+    O-->>I: 提交回执或原样重派回执
+    I-->>L: 返回回执
+    O-->>O: 向收件人发布
 ~~~
 
 ## 数据流
 
 ~~~mermaid
 flowchart LR
-    D["LifeState committed event"] --> R["L5 casualty trigger"]
-    R --> G["Organization roster + casualty inputs"]
-    G --> C["D8 refold model · 未定"]
-    C --> PM["Morale Pool commit · A 依赖"]
-    B["Facility breach event · 缺失"] --> RP["Presence reevaluate command"]
-    RP --> E["独立 passability resolver · 输入未定"]
-    E --> PP["Presence commit · 未实现"]
-    SD["SocialDelivery committed v2"] --> V["recipient / time / revocation validation"]
-    V --> IU["Information.update_knowledge"]
-    IU --> IE["Information knowledge_updated@1"]
-    IE --> PV["actor-private outbox + graph projection · 定向验证通过"]
+    SD["SocialDelivery committed v2"] --> R["守城报告来源匹配 · 生产待接"]
+    R --> C["稳定 command_id / idempotency_key"]
+    T["权威当前 world tick · 生产待接"] --> V
+    C --> V["Information：重新读已提交送达、可见性和撤销状态"]
+    V --> CAS["检查 delivery / source / target revision"]
+    CAS --> IE["Information knowledge_updated@1"]
+    IE --> PV["actor-private outbox 与图投影"]
 ~~~
 
 ## Information 已实现合同
@@ -72,9 +62,9 @@ flowchart LR
 - 输出为 gameplay.information.knowledge_updated@1。payload 引用 report event、delivery event、delivery ref、known tick、报告 source stream/revision。stream 按 recipient 与 report 唯一定位，visibility 和 outbox audience 均为 actor:<recipient>。
 - 写入同时 read-pin delivery stream 与 source report stream。相同 command 身份精确重试返回原提交，不重复写事件。
 - 域 schema 自声明于 backend/app/gameplay/information_event_schema.py，事件可被 FactTypeRegistry 自动发现。生产 EventSchemaRegistry 的具体 factory 需由 A 接线。
-- 具体 FactType 候选为 fact:information:<report-scope>:report，需要 A 按权限规则完成声明。该 Owner 事实表示收到报告，不表示报告内容为真或角色内在信念。
+- 送达触发标识使用 fact:information:siege:report。B 包的可信输出声明为 fact:information:siege:report_knowledge，记录指定收件人收到了报告。
 
-## 验证
+## 2026-11-23 原始验证
 
 Python 为 3.12.2，app.__file__ 指向 B worktree。B 的新 Information 测试 5 项通过，包括真实 delivery 输入、重放、错误 recipient、撤销拒绝与 outbox 图投影。联合 SocialDelivery 读路径测试共 6 passed, 2 warnings in 0.26s。原始日志位于 F:/paralls-verification/thread-b/siege-three-paths-preflight-20261123/information-green2.log。B 端未接到 M6 Gateway。
 

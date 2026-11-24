@@ -44,9 +44,9 @@ M0 盘点 + M1-1 分片提交。两者都是准备性质：**尚未迁移任何�
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
 | M5 规则包完整化 | A | 待开工 | 加载器 + 校验规则 | — | 5 |
 | M6 L5 引擎 | A | 待开工 | reaction/pipeline/workflow/play_pattern | 须在对应探针前落地 | 6 |
-| M6-5 守城 Morale 域 | B | 阻塞 | [域合同和声明探针](../verification/siege-morale-20261123/design.md) | 真实 LifeState 触发已验证。待守军队伍权威来源和 D8 重算合同；Morale writer 未实现 | 6 |
-| M6-5 守城 Presence 域 | B | 阻塞 | [三路径域交付与缺口](../verification/siege-three-paths-20261123/design.md) | 未发现 Facility breach 已提交事件或生产 writer；须明确 source 与 resolver，再实现独立 Presence passability commit | 6 |
-| M6-5 守城 Information 域 | B | 阻塞 | [三路径设计](../verification/siege-three-paths-20261123/design.md)；[U1–U11 证据](../verification/siege-three-paths-20261123/evidence.md)；[Information writer](../../backend/app/gameplay/information_runtime.py) | 代码修复提交 `6741ab6115d5c280390aaba162fa1e109f6064e3` 已在 B 分支，handoff 提供接线说明。定向与 U11 复验通过；冻结 shared-replay 受外部 UnrealEditor 占用 8000 影响，G5 未通过。U2/U8 等未完成 | 6 |
+| M6-5 守城 Morale 域 | A | 待门禁 | [三路径设计](../verification/siege-three-paths-20261123/design.md) | A 在 8227e94c 已接入历史守军 roster、LifeState 与 Morale refold。B 在 A 分支及组合快照复验。合入状态以执行者记录为准 | 6 |
+| M6-5 守城 Presence 域 | A | 待门禁 | [三路径设计](../verification/siege-three-paths-20261123/design.md) | A 在 8227e94c 已接入 Facility breach、签名通行性评估与独立 Place 写入。生产 Gate profile 数值、impact_gate 持久义务及守城实跑待验证 | 6 |
+| M6-5 守城 Information 域 | B | 待门禁 | [三路径设计](../verification/siege-three-paths-20261123/design.md)、[验证证据](../verification/siege-three-paths-20261123/evidence.md)、[H-B-009](handoff.md#h-b-009--守城-information-接线交付--2026-11-24) | B 已交付 Gateway 入口和独立规则包，A+B 隔离组合验证 39 项。生产装配归 A，G5 的 shared-replay 两项环境失败在 B 父基线原样复现 | 6 |
 | M7 第二真相收口 | A/B | 阻塞 | — | S-2、S-3 未决 | 11 |
 | M8 综合验收 | 负责人 | 待开工 | 逐条对照 | 全部里程碑完成 | 1–11 |
 

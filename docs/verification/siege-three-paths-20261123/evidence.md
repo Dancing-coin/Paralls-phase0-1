@@ -1,5 +1,7 @@
 # 守城三条域路径证据
 
+最新状态见本文末尾的 2026-11-24 验证。以下 2026-11-23 记录保留当时的基线和状态。
+
 - 基线：`810a46c1249918c09b42fa1fe0c12d7d784579d2`，标签 `integration-2026-11-23`。
 - 当前 B 分支：`thread-b/reference-data-20261123`。Information 代码修复提交为 `6741ab6115d5c280390aaba162fa1e109f6064e3`；后续文档提交移动了远端分支 tip。A 应 fetch 时使用该分支最新 tip。定向测试与 U11 在该代码提交前以相同源码内容复验。
 - 扫描命令：`git status --short`；`rg -n "morale|passability|breach|Information" backend/app backend/tests docs/v2-coordination`；pytest 收集命令见下文。
@@ -115,3 +117,55 @@ F 盘定向测试日志、F 盘 TMPDIR 的部分选择集日志，以及此前�
 - 输出 FactType 候选为 `fact:information:<report-scope>:report`。该事实表达“该收件人已收到报告”，不表示报告内容为真或其内在信念。精确 scope、可见性和 resolver binding 由 A 按规范接线。
 - Morale 仍需守军成员权威事实及 D8 规则；Presence 仍需 Facility 已提交 breach 源事件与 revision。不可用候选 roster 或维修事件代替这些输入。
 - 本证据不覆盖 M6 Gateway/L5 生产接线、Workflow 持久义务、外部生产 Demo 或端到端 M6-5 验收。
+
+
+## 2026-11-24 守城 Information 接线交付
+
+B 开工基线为 `8b37e3ce49ff241625102bea857cc82215216503`，代码提交为 `63f41c8b47e7fa14c607c554d473dae2193c5d7c`。A 的远端验证基线为 `8227e94c609247eaba1a663ee52d5ae69b1db90b`。A 的恢复提交 `102e4380f2bbc3e85700e4332bfeae1ea01d69f3` 在本机可读取，补验时尚未出现在 A 的远端分支。Python 3.12.2，运行前断言 `app.__file__` 位于对应目录的 `backend` 内，TEMP、TMP、TMPDIR 全部设在 F 盘。原始日志根目录为 `F:/paralls-verification/thread-b/siege-handoff-20261124-mwu47q4f`。
+
+| 验证对象 | 原始结果 | 日志 |
+|---|---|---|
+| A `8227e94c` 的守城 runtime、签名输入、Morale、Presence、Facility、L5 | `32 passed, 6 warnings in 3.41s` | `a-pytest.log` |
+| B Information、SocialDelivery 和 ReferenceData 许可 | `51 passed, 2 warnings in 1.02s` | `b-pytest.log` |
+| A `8227e94c` 加 B Information 两个模块、域测试、规则包和探针 | `39 passed, 6 warnings in 7.49s` | `combined-pytest-02.log` |
+| A `102e4380`（签名输入恢复）加相同 B 文件 | `41 passed, 6 warnings in 7.25s` | `combined-recovery-pytest.log` |
+| B 父提交的两个端口相关节点 | `2 failed, 6 warnings in 8.82s` | `b-parent-port-8000.log` |
+
+定向命令使用 `python -B -m pytest -q -p no:cacheprovider --basetemp <F 盘独立目录>`。A 的测试文件为 `test_m6_5_siege_runtime.py`、`test_siege_physical_input_runtime.py`、`test_morale_refold_runtime.py`、`test_place_passability_runtime.py`、`test_facility_integrity_runtime.py`、`test_l5_dispatch_runtime.py`。B 的文件为 `test_siege_information_runtime.py`、`test_p5_social_delivery.py`、`test_infra_reference_data_license_admission.py`。测试文件均在 `backend/tests/`。
+
+重现组合的步骤如下。
+
+1. 用 `git archive <A SHA> backend packs assets/characters/profiles` 提取到 F 盘独立目录。第一次只提取了 backend 和 packs，收集时缺少启动所需的角色 profiles。补入相同 A SHA 的 profiles 后复跑。首次日志为 `combined-pytest.log`。
+2. 从 B 代码提交复制 `backend/app/gameplay/information_runtime.py`、`backend/app/gameplay/information_event_schema.py`、`backend/tests/test_siege_information_runtime.py` 和 `packs/county_siege_information/`，把 [组合探针](probe_information_gateway.py) 复制为组合目录内的 `backend/tests/test_information_gateway_probe.py`。
+3. 从组合目录设置并核验解释器、应用导入路径和临时目录。使用同一 pytest 命令加 `-o pythonpath=backend/tests`，运行 A 的六个文件和 Information 域测试、组合探针。探针以测试报告 ID 模拟生产来源映射，以 fixture tick 驱动真实域处理方。
+
+P-3 断言在 `backend/tests/test_siege_information_runtime.py` 的 `test_committed_delivery_updates_only_its_recipient_knowledge` 和 `test_committed_information_event_reaches_registered_graph_projector`。验证登记、提交后 outbox 到图投影及 information 域标识。本次沿用持久事件的原类型、字段和含义。P-1 `check_tracked_model_secrets.py` 输出 `tracked_model_secret_offender_count=0`，暂存新增行规则扫描输出 `staged_added_line_credential_pattern_matches=0`。
+
+G5 使用 `docs/verification/absorb-main-3bf3418e/compare_selection.py --repo <B worktree> --selection <选择集> --output <F 盘新目录>`，按冻结五组和本分支全部已登记选集执行。
+
+~~~text
+ownership          selected=24  problems=0 improvements=0
+modifier           selected=12  problems=0 improvements=0
+equipment          selected=87  problems=0 improvements=0
+inventory          selected=56  problems=0 improvements=0
+shared-replay      selected=990 problems=2 improvements=0
+life_state         selected=12  problems=0 improvements=0
+reference_data     selected=15  problems=0 improvements=0
+siege_information  selected=11  problems=0 improvements=0
+~~~
+
+`selection-shared-replay.log` 的两个问题为 `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]` 与 `[wall-clock]`。`selection-shared-replay/batch-0010.log` 和从 B 父提交独立快照运行同一文件的日志均出现 `RuntimeError: Port 8000 is occupied by an external process without a healthy backend`。G5 存在这两项环境失败。全量、Godot、正式守城实跑和生产 Gate profile 装载本轮未验证。
+
+| 单元项 | 本轮状态 |
+|---|---|
+| U1 | Information 注册短名沿用，完整 Owner 声明待补。 |
+| U2 | B 包声明 `fact:information:siege:report_knowledge`，采用收件人 private machine。送达触发使用独立的 `fact:information:siege:report`。A 加载器通过，生产读取边界待接。 |
+| U3 | 既有事件 P-3 断言已复验，生产 factory 待 A 接。 |
+| U4 | Owner 域写入使用已有原子提交和 revision。A 的 Gateway 与 L5 经隔离组合验证，生产接入待 A。 |
+| U5 | 精确重派返回原回执，过期、撤销、错误收件人和 revision 拒绝有域测试。Information 独立 durable reopen 与 checkpoint-tail 待做。 |
+| U6 | SocialDelivery 是 Information 的上游读取依赖。生产调用方拟为 A 的 M6-5 handler，探针以真实 Gateway 模拟该调用。生产读取者接入后仍需专项核查。 |
+| U7 | 隔离验证了私有事件和收件人 outbox audience。生产 read_as 待接。 |
+| U8 | 规则包声明 FactType、machine、命令目录和 Reaction。写入由 Python Owner 提供，声明式域 Resolver 待做。 |
+| U9 | 实际 A 加载器、Gateway、L5 与 B store/outbox 组合探针已运行。生产报告分类、时钟不可用时恢复、守城实跑待验证。 |
+| U10 | 代码提交包含 runtime、域测试、选择集、组合探针及本域规则包。接线与文件归属见 H-B-009。 |
+| U11 | B 分支 Information 选择集登记 11 个节点，零差异。 |

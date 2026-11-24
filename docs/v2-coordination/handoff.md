@@ -158,3 +158,13 @@
 
 - H-B-007 中 `6741ab6115d5c280390aaba162fa1e109f6064e3` 是 Information 代码修复提交；之后还有交接与证据文档提交，因此该 SHA 之后的文档提交会继续移动分支 tip。
 - A 使用 `git fetch origin` 后，读取当时的 `origin/thread-b/reference-data-20261123` 最新树即可。该分支包含 Information 代码修复和本 handoff；合并/验收沿用 AUTONOMY G1–G7。B 没有合入 integration。
+
+
+### H-B-009 | 守城 Information 接线交付 | 2026-11-24
+
+- 本条更新 H-B-007 的阻塞状态。A 的 H-A-022 至 H-A-032 与 A 分支 8227e94c609247eaba1a663ee52d5ae69b1db90b 提供 Morale 的历史守军名单、D8 refold、Facility integrity breach、签名通行性评估、独立 Presence writer 和 main/Gateway 接线。B 在 A 树定向复验 32 项。生产 Gate profile 数值、正式 impact_gate 持久义务的执行和恢复、实跑仍待交付。
+- A 从 origin/thread-b/reference-data-20261123 取代码提交 63f41c8b47e7fa14c607c554d473dae2193c5d7c 的 Information runtime、域 schema、域测试、county_siege_information 规则包和组合探针。令同一 GameplayEventStore 为 InformationAuthority、SocialDelivery、Gateway 与提交后 L5 回调提供事件。共享生产 EventSchema factory 调用 register_information_event_schemas，定义在 backend/app/gameplay/information_event_schema.py。
+- 在 build_m6_5_siege_runtime 装配既有两条 Reaction 和本包的 report_arrival_to_knowledge_update。load_pack 的 owner_domains 包含 {"Information": "information"}，command_fact_outputs 包含 {"information.update_knowledge": {"fact:information:siege:report_knowledge"}}。把新 Reaction、命令处理方与可信输出注册进同一个 L5 dispatcher 和 Gateway，保留既有 conditions。输入标识 fact:information:siege:report 与输出 FactType 分开，避免把送达触发声明成自身输出。
+- fact_type_for 仅将所属守城报告的已提交 gameplay.social.delivery_recorded@2 映射为 fact:information:siege:report。生产应通过游戏内容或已提交来源事实识别守城报告。SocialDelivery 还服务政府公共磨坊通知。组合样本通过 fixture report ID 区分，权威生产报告映射和回执触发仍由 A 装配。
+- 命令处理方传入 InformationAuthority.update_from_delivery(delivery=command.trigger_event, world_now=current_world_tick, command_id=command.command_id, idempotency_key=command.idempotency_key, correlation_id=command.correlation_id)。当前时钟用权威 world tick，事件自身的 known_at_world_tick 用于持久记录送达时点。_session_world_clock_tick() 可能返回 None，应先处理时钟不可用的排队或重派语义，避免确认后丢失派发。Information 负责重新读取提交凭证、检查收件人和撤销/过期、校验 revision 与写入私有事件。
+- [组合探针](../verification/siege-three-paths-20261123/probe_information_gateway.py) 使用 A 的真实加载器、Gateway、L5 与 B 的真实 store/outbox，验证送达后提交、收件人 audience 和精确重派。A+B 隔离快照合计 39 passed。另用 A 已可读取的恢复提交 102e4380f2bbc3e85700e4332bfeae1ea01d69f3 重跑组合，41 passed，包含两项签名输入恢复测试。生产装配、生产报告分类和当前时钟不可用时的恢复留给 A 的接线验证。正式合入走 G1–G7。详细命令和验证深度见 [证据](../verification/siege-three-paths-20261123/evidence.md)。

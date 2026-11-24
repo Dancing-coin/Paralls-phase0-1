@@ -47,3 +47,10 @@
 - 每个可交付单元先写真实输入/输出测试，观察正确的 RED，再实现并验证 GREEN。
 - 对新增持久事件运行定向、完整回放、checkpoint+tail、exact retry、过期 revision 拒绝、P-3 和登记选择集。
 - 交付每个单元 SHA、证据路径和 A 所需的 EventSchema/command/output 接线项到 handoff.md。
+
+### 2026-11-24 · 接入 A 的 M6-5
+
+1. 在 A 的 `8227e94c` 复验 Morale、Presence、Facility、L5 与 HTTP 后端入口。
+2. B 提供从已提交送达事件到 Information 命令的入口，以权威当前 tick 验收，保留原有 recipient 检查与 CAS。结果提交到原有收件人和报告来源组合的 stream。
+3. 用独立的 Information 包声明命令、Reaction 和具体输出 FactType。A 的装配负责识别守城报告来源与提供权威时钟。
+4. 在隔离环境使用 A 的真实加载器、Gateway 和 outbox 验证 B 的代码与包。交接列出 A 的生产装配和内容配置。
