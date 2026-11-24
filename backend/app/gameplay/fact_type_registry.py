@@ -33,6 +33,7 @@ REGISTERED_OWNER_IDS = frozenset({
     "Campaign",
     "Credential",  # Legacy pack identifier; not a v2 domain Owner.
 })
+REGISTERED_FACT_TYPE_PRIMITIVES = frozenset({"pool", "machine", "holdings", "bond", "process", "place"})
 
 
 @dataclass(frozen=True)

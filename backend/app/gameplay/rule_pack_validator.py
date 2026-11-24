@@ -15,15 +15,14 @@ from yaml.nodes import MappingNode, ScalarNode, SequenceNode
 from yaml.tokens import AliasToken, AnchorToken, TagToken
 
 from app.gameplay.fact_type_registry import (
-    REGISTERED_OWNER_IDS, FactTypeRegistry, RegistrationRejected, Violation, freeze,
+    REGISTERED_FACT_TYPE_PRIMITIVES, REGISTERED_OWNER_IDS, FactTypeRegistry,
+    RegistrationRejected, Violation, freeze,
 )
 from app.gameplay.l5_pipeline import Pipeline, compile_pipeline, impact_layers_cross_hosts
 from app.gameplay.l5_play_pattern import PlayPattern, PlayPatternRejected, compile_play_pattern
 from app.gameplay.l5_reaction import Reaction, ReactionRejected, compile_reactions
 from app.gameplay.l5_workflow import Workflow, compile_workflow
 from app.gameplay.pool_runtime import PoolDefinition, PoolError, PoolThreshold
-
-_FACT_TYPE_PRIMITIVES = frozenset({"pool", "machine", "holdings", "bond", "process", "place"})
 
 
 @dataclass(frozen=True)
@@ -419,7 +418,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
             if valid and section == "fact_types":
                 primitive = spec.get("primitive")
                 if primitive is not None and (
-                    not isinstance(primitive, str) or primitive not in _FACT_TYPE_PRIMITIVES
+                    not isinstance(primitive, str) or primitive not in REGISTERED_FACT_TYPE_PRIMITIVES
                 ):
                     reject("primitive_unknown", target, file, line,
                            "reference one of the six code-registered FactType primitives")
