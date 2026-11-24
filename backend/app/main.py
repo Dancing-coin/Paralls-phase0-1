@@ -1948,6 +1948,10 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         morale_definitions=DEFAULT_MORALE_DEFINITIONS,
         physical_authority_secrets=settings.physics_contact_authority_secrets,
         facility=facility_authority,
+        information_report_source_event_types=set(
+            settings.siege_information_report_event_types
+        ),
+        world_tick_provider=_session_world_clock_tick,
     )
     _assemble_settlement_batch_runtime()
     _assemble_status_runtime()

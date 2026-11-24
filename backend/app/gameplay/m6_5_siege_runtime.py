@@ -11,6 +11,7 @@ from typing import Callable
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
+from app.gameplay.information_runtime import InformationAuthority
 from app.gameplay.l5_dispatch_runtime import (
     L5ReactionDispatcher,
     TriggeredGameplayCommand,
@@ -35,10 +36,14 @@ from app.gameplay.rule_pack_validator import load_pack
 
 
 M6_5_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence"
+INFORMATION_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_information"
 MORALE_OWNER_DOMAINS = {
     "Morale": "morale",
     "Presence": "presence",
 }
+INFORMATION_REPORT_FACT_TYPE = "fact:information:siege:report"
+INFORMATION_KNOWLEDGE_FACT_TYPE = "fact:information:siege:report_knowledge"
+INFORMATION_DELIVERY_EVENT_TYPE = "gameplay.social.delivery_recorded@2"
 DEFAULT_MORALE_DEFINITIONS = MappingProxyType({
     ("organization:garrison:east@1", "role:garrison-defender@1"): PoolDefinition(
         fact_type="fact:unit:garrison-east:morale",
@@ -91,6 +96,7 @@ class M6_5SiegeRuntime:
     dispatcher: L5ReactionDispatcher
     physical_inputs: SiegePhysicalInputAuthority
     facility: FacilityIntegrityAuthority | None
+    information: InformationAuthority
 
     def after_transaction_dispatched(
         self, transaction: AtomicEventBatch
@@ -157,6 +163,8 @@ def build_m6_5_siege_runtime(
     evidence_event_principals: Mapping[str, str] | None = None,
     physical_authority_secrets: Mapping[str, str] | None = None,
     facility: FacilityIntegrityAuthority | None = None,
+    information_report_source_event_types: set[str] | frozenset[str] = frozenset(),
+    world_tick_provider: Callable[[], int | None] | None = None,
 ) -> M6_5SiegeRuntime:
     if facility is not None and facility.store is not store:
         raise ValueError("m6_5_siege_facility_store_mismatch")
@@ -175,6 +183,7 @@ def build_m6_5_siege_runtime(
         resolver=presence_resolver,
         evidence_event_principals=evidence_event_principals,
     )
+    information = InformationAuthority(store=store)
     command_outputs = {
         "morale.refold": {definition.fact_type for definition in morale_definitions.values()},
         "presence.reevaluate": {presence.stream_id("gate-03")},
@@ -185,6 +194,16 @@ def build_m6_5_siege_runtime(
         owner_domains=MORALE_OWNER_DOMAINS,
         command_fact_outputs=command_outputs,
     )
+    information_outputs = {
+        "information.update_knowledge": {INFORMATION_KNOWLEDGE_FACT_TYPE},
+    }
+    information_pack = load_pack(
+        INFORMATION_PACK,
+        handlers={},
+        owner_domains={"Information": "information"},
+        command_fact_outputs=information_outputs,
+    )
+    all_command_outputs = {**command_outputs, **information_outputs}
     gateway = TrustedGameplayCommandGateway(
         handlers={
             "morale.refold": lambda command: morale.refold_after_casualty(
@@ -197,13 +216,24 @@ def build_m6_5_siege_runtime(
                     presence.stream_id(str(command.target["scope"]))
                 ),
             ),
+            "information.update_knowledge": lambda command: information.update_from_delivery(
+                delivery=command.trigger_event,
+                world_now=_required_world_tick(world_tick_provider),
+                command_id=command.command_id,
+                idempotency_key=command.idempotency_key,
+                correlation_id=command.correlation_id,
+            ),
         },
-        command_fact_outputs=command_outputs,
+        command_fact_outputs=all_command_outputs,
     )
     dispatcher = L5ReactionDispatcher(
-        reactions=tuple(pack.reactions.values()),
+        reactions=tuple(pack.reactions.values()) + tuple(information_pack.reactions.values()),
         gateway=gateway,
-        fact_type_for=_fact_type_for,
+        fact_type_for=lambda event: _fact_type_for(
+            event,
+            store=store,
+            report_source_event_types=information_report_source_event_types,
+        ),
         conditions={"facility_breach@1": _is_breach_entry},
     )
     return M6_5SiegeRuntime(
@@ -212,10 +242,34 @@ def build_m6_5_siege_runtime(
         dispatcher=dispatcher,
         physical_inputs=physical_inputs,
         facility=facility,
+        information=information,
     )
 
 
-def _fact_type_for(event: GameplayEvent) -> str | None:
+def _fact_type_for(
+    event: GameplayEvent,
+    *,
+    store: GameplayEventStore,
+    report_source_event_types: set[str] | frozenset[str],
+) -> str | None:
+    if event.event_type == INFORMATION_DELIVERY_EVENT_TYPE:
+        payload = event.payload
+        source_event_id = payload.get("source_event_id")
+        source_stream_id = payload.get("source_stream_id")
+        source_revision = payload.get("source_revision")
+        try:
+            source = store.get_event(source_event_id) if isinstance(source_event_id, str) else None
+        except KeyError:
+            source = None
+        if (
+            source is not None
+            and source.event_type in report_source_event_types
+            and source.stream_id == source_stream_id
+            and source.stream_revision == source_revision
+            and source.payload.get("fact_type") == INFORMATION_REPORT_FACT_TYPE
+        ):
+            return INFORMATION_REPORT_FACT_TYPE
+        return None
     fact_type = event.payload.get("fact_type")
     if isinstance(fact_type, str):
         return fact_type
@@ -223,6 +277,13 @@ def _fact_type_for(event: GameplayEvent) -> str | None:
     if event.event_type == "gameplay.character.life_state_changed" and isinstance(actor_ref, str):
         return f"fact:character:{actor_ref}:lifestate"
     return None
+
+
+def _required_world_tick(provider: Callable[[], int | None] | None) -> int:
+    world_tick = provider() if provider is not None else None
+    if type(world_tick) is not int or world_tick < 0:
+        raise ValueError("information_world_clock_unavailable")
+    return world_tick
 
 
 def _is_breach_entry(event: GameplayEvent) -> bool:

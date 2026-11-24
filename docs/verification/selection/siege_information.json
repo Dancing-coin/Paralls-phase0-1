@@ -1,0 +1,20 @@
+{
+  "head": "10bcb918a8a770e65ca694874b979566f45b71a1",
+  "description": "Recipient-scoped Information update from committed SocialDelivery, production EventSchema and L5 wiring, report-source allowlisting, retryable world-clock handling, and graph projection",
+  "tests": [
+    {"test_name": "tests/test_siege_information_runtime.py::test_committed_delivery_updates_only_its_recipient_knowledge", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_update_replay_returns_original_receipt", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_reaction_uses_committed_recipient_and_current_time", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_committed_information_event_reaches_registered_graph_projector", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_update_cannot_claim_another_recipient_delivery", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_update_rejects_delivery_after_source_revocation", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_p5_social_delivery.py::test_delivery_rechecks_source_and_projects_recipient_scope", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_p5_social_delivery.py::test_delivery_view_checkpoint_cut_and_tail_exclude_future_events", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_information_production_wiring.py::test_stormnight_factory_registers_information_output_and_delivery_input", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_information_production_wiring.py::test_production_l5_updates_knowledge_only_for_configured_siege_report_sources", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_information_production_wiring.py::test_unconfigured_report_source_does_not_trigger_information_write", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_information_production_wiring.py::test_delivery_of_a_non_siege_fact_does_not_trigger_information_write", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_information_production_wiring.py::test_information_reaction_waits_for_authoritative_world_tick_and_retries", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_information_production_wiring.py::test_information_source_configuration_rejects_unknown_or_duplicate_event_types", "outcome": "passed", "failures": []}
+  ]
+}

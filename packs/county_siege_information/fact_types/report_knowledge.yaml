@@ -1,0 +1,15 @@
+"fact:information:siege:report_knowledge":
+  owner_ref: "Information"
+  primitive: "machine"
+  identity: "collection_ref"
+  visibility:
+    class: "private"
+    learnable_by: ["recipient_of(subject)"]
+    channel: "report"
+    persistence: "permanent"
+  state_set_ref: "machine_def/report_knowledge@1"
+  event_schema_ref: "gameplay.information.knowledge_updated@1"
+  invariant_refs: ["information_committed_recipient_delivery"]
+  cadence: "event"
+  host: "paralls"
+  unknown_policy: "reject"

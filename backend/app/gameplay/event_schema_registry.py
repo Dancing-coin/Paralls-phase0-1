@@ -447,6 +447,7 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     from app.gameplay.siege_physical_input_event_schema import (
         register_siege_physical_input_event_schemas,
     )
+    from app.gameplay.information_event_schema import register_information_event_schemas
     registry = EventSchemaRegistry()
     for registration in ECONOMY_RANDOM_COMMAND_SCHEMAS:
         registry.register(registration)
@@ -455,6 +456,8 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     register_pool_event_schemas(registry)
     register_place_event_schemas(registry)
     register_siege_physical_input_event_schemas(registry)
+    register_social_delivery_event_schemas(registry)
+    register_information_event_schemas(registry)
     for event_type, digest in (
         ("gameplay.social.knowledge_observed", "sha256:stormnight-social-knowledge-v1"),
         ("gameplay.quest.evidence_registered", "sha256:stormnight-quest-evidence-v1"),

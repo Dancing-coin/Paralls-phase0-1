@@ -1,0 +1,6 @@
+"machine_def/report_knowledge@1":
+  states: ["unknown", "known"]
+  terminal_states: []
+  transitions:
+    - ["unknown", "known"]
+    - ["known", "known"]

@@ -149,6 +149,7 @@ class Settings(BaseModel):
     embodied_spatial_scopes: list[EmbodiedSpatialScope] = Field(default_factory=list)
     physics_contact_authority_secrets: dict[str, str] = Field(default_factory=dict, repr=False, exclude=True)
     siege_facility_gate_profiles: list[FacilityGateProfileSettings] = Field(default_factory=list)
+    siege_information_report_event_types: list[str] = Field(default_factory=list)
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     world_admin_credentials: list[WorldAdminCredentialSettings] = Field(default_factory=list, repr=False, exclude=True)
 
@@ -161,6 +162,14 @@ class Settings(BaseModel):
         if len(gate_refs) != len(set(gate_refs)):
             raise ValueError("siege_facility_gate_profile_duplicate")
         return profiles
+
+    @field_validator("siege_information_report_event_types")
+    @classmethod
+    def validate_siege_information_report_event_types(cls, event_types: list[str]) -> list[str]:
+        if (len(event_types) != len(set(event_types))
+                or any(not event_type.startswith("gameplay.") for event_type in event_types)):
+            raise ValueError("siege_information_report_event_types_invalid")
+        return event_types
     gameplay_mirror_projection_queue_capacity: int = Field(default=160, ge=1, le=1024)
     gameplay_mirror_control_queue_capacity: int = Field(default=8, ge=1, le=128)
     gameplay_mirror_dirty_actor_limit: int = Field(default=16, ge=1, le=128)
@@ -295,6 +304,16 @@ def _env_object_list(name: str) -> list[dict[str, object]]:
     return [dict(item) for item in parsed]
 
 
+def _env_string_list(name: str) -> list[str]:
+    value = _env_value(name)
+    if not value:
+        return []
+    parsed = json.loads(value)
+    if not isinstance(parsed, list) or not all(isinstance(item, str) and item for item in parsed):
+        raise ValueError(f"{name} must be a JSON array of non-empty strings")
+    return parsed
+
+
 def _env_secret_map(name: str) -> dict[str, str]:
     value = _env_value(name)
     if not value:
@@ -398,6 +417,9 @@ settings = Settings(
         FacilityGateProfileSettings.model_validate(item)
         for item in _env_object_list("SIEGE_FACILITY_GATE_PROFILES_JSON")
     ],
+    siege_information_report_event_types=_env_string_list(
+        "SIEGE_INFORMATION_REPORT_EVENT_TYPES_JSON"
+    ),
     population_activation_grants=[ActivationGrant.model_validate(item)
                                   for item in _env_object_list("POPULATION_ACTIVATION_GRANTS_JSON")],
     population_activation_producer_ref=_env_value("POPULATION_ACTIVATION_PRODUCER_REF", "population:siming"),

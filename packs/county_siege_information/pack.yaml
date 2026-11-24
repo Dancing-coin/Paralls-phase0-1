@@ -1,0 +1,13 @@
+pack_id: "county_siege_information"
+pack_version: "1.0.0"
+schema_version: 1
+parent_pack: null
+owners: ["Information"]
+contents:
+  fact_types: ["report_knowledge"]
+  machine_defs: ["report_knowledge"]
+  command_catalog: ["commands"]
+  reactions: ["reactions"]
+resolve_order:
+  before: []
+  unrelated: ["fact:information:siege:report_knowledge"]
