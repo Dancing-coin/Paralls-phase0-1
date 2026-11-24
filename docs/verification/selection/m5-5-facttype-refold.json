@@ -1,6 +1,6 @@
 {
-  "head": "888ec615d9ac87480905ae661fbf51d2931a5670",
-  "description": "M5-5 FactType refold/scope/primitive and package primitive-definition diagnostics",
+  "head": "1fb14ba45df0ebd3f9ff9448de9d754b40122c40",
+  "description": "M5-5 FactType refold/scope/primitive and package primitive-definition diagnostics, including the six-value primitive registry contract",
   "tests": [
     {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_distribution_fact_without_refold_model",
@@ -34,6 +34,11 @@
     },
     {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_unknown_fact_primitive_with_dedicated_diagnostic",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_fact_type_primitive_registry_has_exactly_six_code_registered_values",
       "outcome": "passed",
       "failures": []
     }

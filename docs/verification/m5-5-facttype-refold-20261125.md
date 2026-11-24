@@ -124,3 +124,17 @@ The four baseline failures remain the calibration-budget assertion, Task45 Godot
 ### Primitive registry maintenance follow-up
 
 Commit `cbee0c6cf8c436ff7fbfa00373c655b3131d2ed3` moved the six primitive IDs into `fact_type_registry.py` so the RulePack loader and FactType compiler share the registered set. This is behavior-preserving. Validator, Pool, and FactType focused tests remained `129 passed`; the five frozen selections (1,169 nodes) and all 25 registered selections (228 nodes) returned `problems=0 improvements=0`. No second full-suite run was needed for this refactor. Raw outputs are in `F:\paralls-verification\thread-a\m5-5-primitive-registry-focused-f584e2521bbd40209ee6f0ae4c6d0431\pytest.log` and `F:\paralls-verification\thread-a\m5-5-primitive-registry-gates-bb88817fca714eb29b09c96e134a253d\gate-run.log`.
+### Primitive registry cardinality contract
+
+Commit 1fb14ba45df0ebd3f9ff9448de9d754b40122c40 adds a regression asserting that the code-registered primitive set has exactly six values. Since RulePack loading rejects package-defined primitives and the runtime registry is not mutable, a package cannot exceed the count independently of a code change. The formal primitive_count_exceeded rule is therefore covered as a structural guarantee, with the exact registered count pinned by a test.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| Focused FactType and RulePack Validator tests | 111 passed, 2 warnings | F:/paralls-verification/thread-a/m5-5-primitive-count-gates-74182d4414634f6cb3dc6e0020cba46e/focused-1fb14ba4-20261125/pytest.log; command: python -m pytest backend/tests/test_rule_pack_validator.py backend/tests/test_fact_type_registry.py -q |
+| Frozen selection comparison | 5 selections, 1,169 nodes; problems=0 improvements=0 for every group | F:/paralls-verification/thread-a/m5-5-primitive-count-gates-74182d4414634f6cb3dc6e0020cba46e/gate-run.log |
+| Registered selection comparison | 25 selections, 229 nodes total; problems=0 improvements=0 for every group, including the 8-node M5-5 selection | Same gate log and per-batch results.json files |
+| Environment | Python 3.12.2, pytest 9.1.1, SQLite 3.43.1; PYTHONPATH points to A backend, app.__file__ resolves inside A worktree | environment.json files in the gate output; post-run interpreter check in this session |
+| Temporary data location | Output is under F. Three pytest scratch directories totaling 2,105,631 bytes were moved from the default D temporary directory into the run's pytest-temp folder after tests completed; their D-side symlinks now target the F copies | F:/paralls-verification/thread-a/m5-5-primitive-count-gates-74182d4414634f6cb3dc6e0020cba46e/pytest-temp/ |
+| Full backend suite | Not rerun at 1fb14ba4. The nearest clean full run is the predecessor M5-5 result 10,650 passed, 4 failed, 2 skipped, 2 xfailed, exit code 1; it is not evidence for the exact test-only commit | F:/paralls-verification/thread-a/m5-5-primitive-unknown-full-9bd3859f809244019c3c8b23ed37cccf/full-console.log |
+
+The frozen and registered comparisons used the current A worktree HEAD 1fb14ba45df0ebd3f9ff9448de9d754b40122c40. The full-suite result is historical to its recorded predecessor and remains non-green. The unit does not claim broader M5 or Architecture v2 completion.

@@ -390,3 +390,9 @@
 - 提交 `cbee0c6cf8c436ff7fbfa00373c655b3131d2ed3` 将六个 primitive ID 放到 `fact_type_registry.py` 的 `REGISTERED_FACT_TYPE_PRIMITIVES`，规则包 shape validator 引用同一集合，删除重复硬编码。这是行为保持的维护提交。
 - 定向 FactType、Validator、Pool 测试 `129 passed`。冻结 1,169 节点和登记 25 组选集 228 节点均 `problems=0 improvements=0`。复用紧邻提交的清洁全量 `10,650 passed, 4 failed, 2 skipped, 2 xfailed`，不重复长测；本维护提交没有单独全量结果。
 - 环境 Python 3.12.2、pytest 9.1.1、SQLite 3.43.1，`app.__file__` 在 A worktree。原始输出为 `F:/paralls-verification/thread-a/m5-5-primitive-registry-focused-f584e2521bbd40209ee6f0ae4c6d0431/pytest.log` 与 `m5-5-primitive-registry-gates-bb88817fca714eb29b09c96e134a253d/gate-run.log`。
+### H-A-048 | primitive_count_exceeded 结构性保证 | 2026-11-25
+
+- M5-5 回归测试提交 1fb14ba45df0ebd3f9ff9448de9d754b40122c40 固定 REGISTERED_FACT_TYPE_PRIMITIVES 恰为六项。结合包不能定义原语且运行态 registry 不可变，primitive_count_exceeded 由结构性约束覆盖；它不是可由包输入触发的动态拒绝路径。
+- 定向 FactType/RulePack Validator 111 passed, 2 warnings。冻结五组选集 1,169 节点与全部登记 25 组选集 229 节点，各组均 problems=0 improvements=0。M5-5 自有选择集为 8 个节点。原始 gate 日志在 F:/paralls-verification/thread-a/m5-5-primitive-count-gates-74182d4414634f6cb3dc6e0020cba46e/gate-run.log。
+- 当前提交只新增测试。未在 1fb14ba4 重跑全量；最近前序全量仍为 10,650 passed, 4 failed, 2 skipped, 2 xfailed、退出 1，不视作当前提交全量验证。Python 3.12.2、pytest 9.1.1、SQLite 3.43.1；app.__file__ 指向 A worktree。
+- 验证命令的三组 pytest 临时目录共 2,105,631 bytes，已移至上述 F 盘 pytest-temp/。D 盘只保留 pytest 管理的空目录及指向 F 盘副本的链接。本条对应的证据和选择集更新在 M5-5 evidence 与 m5-5-facttype-refold.json。

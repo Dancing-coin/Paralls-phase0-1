@@ -4,7 +4,7 @@
 
 | 层 | 规范规则 | 当前状态 | 对应路径及缺口 |
 |---|---|---|---|
-| 原语 | `primitive_count_exceeded` | 部分实现 | FactType 编译器只接受 Machine，无六原语目录与计数规则。 |
+| 原语 | `primitive_count_exceeded` | 结构性保证 | 代码登记表固定且 `test_fact_type_primitive_registry_has_exactly_six_code_registered_values` 锁定恰有六项；规则包不接受原语定义。当前没有运行态可变注册表，因此超限是代码目录变更，注册表数量回归会失败。 |
 | 原语 | `primitive_unknown` | 部分实现 | 规则包加载对六种之外的值返回专用 `primitive_unknown`。FactType 编译仍只支持 Machine 与 Pool，Bond、Holdings、Process、Place runtime 需在对应 M1 单元接入。 |
 | 原语 | `primitive_missing` | 已实现 | `FactTypeRegistry.compile` 对缺失原语返回专用拒绝码；规则包 shape 检查将该条目交由编译器诊断。回归见 `test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic`。 |
 | FactType | `facttype_visibility_missing` | 已实现 | 加载器检查字段类型，编译器拒绝缺失或空映射。 |
