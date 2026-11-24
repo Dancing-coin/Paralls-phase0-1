@@ -195,6 +195,151 @@ def test_m6_5_production_runtime_routes_signed_gate_input_through_facility_owner
     assert integrity_events[-1].causation_id == evidence.committed_event_ids[0]
 
 
+def test_m6_5_recovery_replays_committed_gate_input_without_a_second_obligation_ledger():
+    store = GameplayEventStore()
+    facility = FacilityIntegrityAuthority(
+        store=store,
+        definitions={GATE: _facility_pool()},
+        impact_profiles={GATE: {"impact_kind:battering-ram@1": Decimal("-20")}},
+    )
+    facility.initialize(
+        gate_ref=GATE,
+        command_id="facility:init-recovery",
+        idempotency_key="facility:init-recovery",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    first_runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        facility=facility,
+    )
+    unsigned = GateImpactReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:recovery",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "c" * 64,
+        expected_integrity_revision=1,
+        physics_tick=512,
+        signature="0" * 64,
+    )
+    receipt = unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    evidence = first_runtime.physical_inputs.record_gate_impact(receipt)
+    assert evidence.committed
+
+    recovered_runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        facility=FacilityIntegrityAuthority(
+            store=store,
+            definitions={GATE: _facility_pool()},
+            impact_profiles={GATE: {"impact_kind:battering-ram@1": Decimal("-20")}},
+        ),
+    )
+
+    first_recovery = recovered_runtime.recover_physical_input_obligations()
+    second_recovery = recovered_runtime.recover_physical_input_obligations()
+
+    assert first_recovery[0][1].committed
+    assert second_recovery[0][1].idempotency_status == "duplicate_replayed"
+    assert len(store.read_stream(INTEGRITY_FACT)) == 2
+    assert store.read_stream(INTEGRITY_FACT)[-1].payload["delta"] == "-20"
+
+
+def test_m6_5_recovery_completes_presence_from_persisted_signed_assessment():
+    store = GameplayEventStore()
+    facility = FacilityIntegrityAuthority(store=store, definitions={GATE: _facility_pool()})
+    facility.initialize(
+        gate_ref=GATE,
+        command_id="facility:init-presence-recovery",
+        idempotency_key="facility:init-presence-recovery",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    input_runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+    )
+    impact_unsigned = GateImpactReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:presence-recovery-source",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "d" * 64,
+        expected_integrity_revision=1,
+        physics_tick=513,
+        signature="0" * 64,
+    )
+    impact_receipt = impact_unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), impact_unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    impact_result = input_runtime.physical_inputs.record_gate_impact(impact_receipt)
+    impact_event = store.get_event(impact_result.committed_event_ids[0])
+    breach_result = facility.apply_delta(
+        gate_ref=GATE,
+        delta=Decimal("-61"),
+        reason_code="damage",
+        command_id="facility:presence-recovery-breach",
+        idempotency_key="facility:presence-recovery-breach",
+        expected_revision=1,
+        causation_id=impact_event.event_id,
+        correlation_id="siege:east",
+    )
+    breach = next(
+        store.get_event(event_id)
+        for event_id in breach_result.committed_event_ids
+        if store.get_event(event_id).event_type == "gameplay.pool.threshold_crossed"
+    )
+    assessment_unsigned = PresenceAssessmentReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="assessment:presence-recovery",
+        gate_ref=GATE,
+        breach_event_id=breach.event_id,
+        assessment_ref="assessment:trusted-gate-clearance@1",
+        state="passable",
+        source_event_ids=(breach.event_id, impact_event.event_id),
+        source_stream_revisions={
+            breach.stream_id: store.get_stream_head(breach.stream_id),
+            impact_event.stream_id: store.get_stream_head(impact_event.stream_id),
+        },
+        physics_tick=514,
+        signature="0" * 64,
+    )
+    assessment_receipt = assessment_unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), assessment_unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    evidence = input_runtime.physical_inputs.record_presence_assessment(assessment_receipt)
+    assert evidence.committed
+
+    recovered_runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+    )
+
+    first_recovery = recovered_runtime.recover_physical_input_obligations()
+    second_recovery = recovered_runtime.recover_physical_input_obligations()
+
+    assert first_recovery[-1][1].committed
+    assert second_recovery[-1][1].idempotency_status == "duplicate_replayed"
+    assert len(store.read_stream(PLACE_STREAM)) == 1
+    assert store.read_stream(PLACE_STREAM)[0].payload["to_state"] == "passable"
+
+
 def test_m6_5_gate_impact_http_gateway_commits_facility_fact(monkeypatch):
     store = GameplayEventStore()
     facility = FacilityIntegrityAuthority(

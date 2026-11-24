@@ -2331,6 +2331,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     authority_event_bus.subscribe("siming.environment_request", _handle_siming_environment_request)
     debug_stream.clear()
     _publish_population_cadence_at_game_start()
+    m6_5_siege_runtime.recover_physical_input_obligations()
     # Startup composition is already committed; drain its presentation outbox
     # before handing the fresh runtime to callers so later dispatch tests see
     # only newly committed player-facing events.

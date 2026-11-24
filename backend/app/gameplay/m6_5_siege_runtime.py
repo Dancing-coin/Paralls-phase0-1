@@ -16,7 +16,7 @@ from app.gameplay.l5_dispatch_runtime import (
     TriggeredGameplayCommand,
     TrustedGameplayCommandGateway,
 )
-from app.gameplay.models import AtomicEventBatch, GameplayEvent
+from app.gameplay.models import AppendBatchResult, AtomicEventBatch, GameplayEvent
 from app.gameplay.morale_refold_runtime import MoraleRefoldAuthority
 from app.gameplay.place_passability_runtime import (
     PlacePassabilityAssessment,
@@ -25,6 +25,8 @@ from app.gameplay.place_passability_runtime import (
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.config import FacilityGateProfileSettings
 from app.gameplay.siege_physical_input_runtime import (
+    GATE_IMPACT_INPUT_EVENT,
+    PRESENCE_ASSESSMENT_INPUT_EVENT,
     GateImpactReceipt,
     PresenceAssessmentReceipt,
     SiegePhysicalInputAuthority,
@@ -116,6 +118,35 @@ class M6_5SiegeRuntime:
             receipt_id=receipt.receipt_id,
         )
         return evidence, committed
+
+    def recover_physical_input_obligations(
+        self,
+    ) -> tuple[tuple[str, AppendBatchResult], ...]:
+        """Reconcile domain commits from durable signed inputs and owner receipts."""
+        results: list[tuple[str, AppendBatchResult]] = []
+        if self.facility is not None:
+            for event in self.physical_inputs.store().read_events(
+                event_type=GATE_IMPACT_INPUT_EVENT,
+            ):
+                receipt = GateImpactReceipt.model_validate(event.payload["receipt"])
+                result = self.facility.apply_signed_impact(
+                    input_authority=self.physical_inputs,
+                    authority_ref=receipt.authority_ref,
+                    receipt_id=receipt.receipt_id,
+                )
+                results.append((event.event_id, result))
+
+        for event in self.physical_inputs.store().read_events(
+            event_type=PRESENCE_ASSESSMENT_INPUT_EVENT,
+        ):
+            receipt = PresenceAssessmentReceipt.model_validate(event.payload["receipt"])
+            result = self.presence.commit_signed_assessment(
+                input_authority=self.physical_inputs,
+                authority_ref=receipt.authority_ref,
+                receipt_id=receipt.receipt_id,
+            )
+            results.append((event.event_id, result))
+        return tuple(results)
 
 
 def build_m6_5_siege_runtime(
