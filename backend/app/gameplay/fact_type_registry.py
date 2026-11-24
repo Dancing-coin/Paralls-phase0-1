@@ -136,6 +136,10 @@ class FactTypeRegistry:
                 reject("facttype_visibility_missing", target, "visibility must be explicitly nonempty")
             if spec.get("owner_ref") not in owners:
                 reject("facttype_owner_unknown", target, "register the fact owner first")
+            if spec.get("aggregation") == "distribution":
+                refold_model_ref = spec.get("refold_model_ref")
+                if not isinstance(refold_model_ref, str) or not refold_model_ref:
+                    reject("facttype_refold_missing", target, "distribution FactTypes must reference a refold model")
             primitive = spec.get("primitive")
             if primitive == "machine":
                 if spec.get("state_set_ref") not in machines:

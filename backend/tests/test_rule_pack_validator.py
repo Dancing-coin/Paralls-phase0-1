@@ -55,6 +55,24 @@ def test_facility_gate_pack_registers_pool_and_machine_fact_types():
     assert loaded.pool_defs["fact:facility:gate-03:integrity"]["initial"] == "100"
 
 
+def test_pack_rejects_distribution_fact_without_refold_model(tmp_path):
+    destination = shutil.copytree(FACILITY_PACK, tmp_path / "facility-pack")
+    fact_type_path = destination / "fact_types/gate_integrity.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(
+        fact_type.replace('primitive: "pool"\n', 'primitive: "pool"\n  aggregation: "distribution"\n', 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers={})
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_refold_missing"]
+    assert len(matching) == 1
+    assert matching[0].target == "fact:facility:gate-03:integrity"
+
+
 _POOL_DECLARATION = dedent("""\
     stamina:
       description: "Stamina used during a movement window"
