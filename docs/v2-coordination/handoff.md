@@ -279,3 +279,9 @@
 - Focused verification at the A worktree: Python 3.12.2, `app.__file__` under the A worktree, `PYTHONPATH` set to its `backend`; both test files reported 14 passed with 6 existing deprecation warnings. Raw output is in `F:/paralls-verification/thread-a/m6-5-fixture-refresh-20261124-050542836/`.
 - P-1 scan of additions relative to `origin/integration` found zero credential-pattern matches after excluding explicitly named test-fixture values. No secret value was emitted or stored by the scan.
 - This cleanup does not change M6-5 status. The `impact_gate` durable obligation executor/recovery, authoritative production Gate profile values, and a fully configured siege run remain unverified as described in H-A-031.
+
+### H-A-033 | M6-5 durable input obligation recovery | 2026-11-24
+
+- Commit `102e4380f2bbc3e85700e4332bfeae1ea01d69f3` scans durable signed Gate-impact and Presence-assessment input events at application runtime assembly. The same Facility and Presence Owner handlers reconcile each input, and their existing idempotency receipts prevent duplicate facts. No workflow-state event stream was introduced.
+- Exact-commit detached verification: four focused files, 26 passed; M6-5 selection 6 nodes zero differences; ownership 24 nodes zero differences. Shared-replay 990 has two Port 8000 failures. Re-running those exact nodes at parent `8227e94c` produced the same two failures. Full suite not run. Evidence and raw output are in `docs/verification/m6-5-obligation-recovery-20261124.md` and `F:/paralls-verification/thread-a/m6-5-obligation-verify-102e4380/`.
+- Remaining: restart against a durable database file is not tested. Production Gate numeric profiles remain unsupplied. The formal four-layer `impact_gate` also specifies separate door-leaf and latch durability stages, for which this branch has no authoritative input contracts or writers. M6-5 remains incomplete.
