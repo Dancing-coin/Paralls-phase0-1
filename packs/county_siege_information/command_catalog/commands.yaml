@@ -1,3 +1,10 @@
+information.publish_siege_report:
+  version: 1
+  handled_by: "Information"
+  payload_schema: "signed_siege_report_receipt@1"
+  requires_authority: true
+  idempotency_shape: "principal_ref + idempotency_key"
+  description: "Publish a signed siege report to its verified recipient."
 information.update_knowledge:
   version: 1
   handled_by: "Information"

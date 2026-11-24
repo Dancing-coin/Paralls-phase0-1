@@ -9,6 +9,11 @@ from app.gameplay.event_schema_registry import (
 
 INFORMATION_EVENT_SCHEMAS = (
     EventSchemaRegistration(
+        "gameplay.information.siege_report_published@1",
+        1,
+        "sha256:information:siege-report-published:v1",
+    ),
+    EventSchemaRegistration(
         "gameplay.information.knowledge_updated@1",
         1,
         "sha256:information:knowledge-updated:v1",

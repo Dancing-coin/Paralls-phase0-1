@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from app.config import Settings
@@ -7,13 +9,14 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.m6_5_siege_runtime import DEFAULT_MORALE_DEFINITIONS, build_m6_5_siege_runtime
 from app.gameplay.p5.social_delivery import SocialDeliveryAuthority, SocialDeliveryWindow
 from app.gameplay.pool_runtime import PoolDefinition
+from app.gameplay.rule_pack_validator import load_pack
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.models.fact_type import FACT_TYPE_REGISTRY
 
 
 REPORT_FACT_TYPE = "fact:information:siege:report"
-REPORT_EVENT_TYPE = "gameplay.social.knowledge_observed"
+REPORT_EVENT_TYPE = "gameplay.information.siege_report_published@1"
 INFORMATION_EVENT_TYPE = "gameplay.information.knowledge_updated@1"
 RECIPIENT = "character:defender-1"
 
@@ -23,7 +26,7 @@ def _store_with_delivery(source_fact_type=REPORT_FACT_TYPE):
     source_stream = "gameplay:reports:east-gate"
     source_batch = build_atomic_event_batch(
         command_id="siege-report:source",
-        principal_ref="authority:p5:social",
+        principal_ref="authority:information:report-publisher",
         stream_id=source_stream,
         expected_revision=0,
         event_specs=((REPORT_EVENT_TYPE, {"fact_type": source_fact_type, "report_ref": "report:east-gate"}),),
@@ -32,7 +35,7 @@ def _store_with_delivery(source_fact_type=REPORT_FACT_TYPE):
         correlation_id="siege:east-gate",
     )
     source_batch = source_batch.model_copy(update={
-        "events": [source_batch.events[0].model_copy(update={"visibility_policy": "public"}, deep=True)],
+        "events": [source_batch.events[0].model_copy(update={"visibility_policy": f"actor:{RECIPIENT}"}, deep=True)],
     }, deep=True)
     source_result = store.append_batch(source_batch)
     assert source_result.committed
@@ -58,9 +61,31 @@ def _store_with_delivery(source_fact_type=REPORT_FACT_TYPE):
 def test_stormnight_factory_registers_information_output_and_delivery_input():
     registry = create_stormnight_event_schema_registry()
 
+    registry.require(REPORT_EVENT_TYPE, 1)
     registry.require(INFORMATION_EVENT_TYPE, 1)
     registry.require("gameplay.social.delivery_recorded@2", 2)
+    assert FACT_TYPE_REGISTRY.from_event_type(REPORT_EVENT_TYPE).domain == "information"
     assert INFORMATION_EVENT_TYPE in FACT_TYPE_REGISTRY.event_types()
+
+
+def test_information_pack_declares_recipient_private_report_before_knowledge():
+    pack = load_pack(
+        Path(__file__).resolve().parents[2] / "packs" / "county_siege_information",
+        handlers={},
+        owner_domains={"Information": "information"},
+        command_fact_outputs={
+            "information.update_knowledge": {"fact:information:siege:report_knowledge"},
+        },
+    )
+
+    report = pack.registry.facts[REPORT_FACT_TYPE]
+    knowledge = pack.registry.facts["fact:information:siege:report_knowledge"]
+    assert report.owner_ref == "Information"
+    assert report.visibility["class"] == "private"
+    assert tuple(report.visibility["learnable_by"]) == ("recipient_of(subject)",)
+    assert report.resolution_order < knowledge.resolution_order
+    assert tuple(pack.registry.machines[report.state_set_ref]["terminal_states"]) == ("published",)
+    assert pack.command_catalog["information.publish_siege_report"]["requires_authority"]
 
 
 def test_production_l5_updates_knowledge_only_for_configured_siege_report_sources():

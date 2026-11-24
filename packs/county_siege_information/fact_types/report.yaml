@@ -1,0 +1,15 @@
+"fact:information:siege:report":
+  owner_ref: "Information"
+  primitive: "machine"
+  identity: "entity_ref"
+  visibility:
+    class: "private"
+    learnable_by: ["recipient_of(subject)"]
+    channel: "report"
+    persistence: "permanent"
+  state_set_ref: "machine_def/report@1"
+  event_schema_ref: "gameplay.information.siege_report_published@1"
+  invariant_refs: ["information_report_source_revision_pinned@1"]
+  cadence: "event"
+  host: "paralls"
+  unknown_policy: "reject"

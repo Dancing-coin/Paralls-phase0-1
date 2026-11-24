@@ -4,10 +4,10 @@ schema_version: 1
 parent_pack: null
 owners: ["Information"]
 contents:
-  fact_types: ["report_knowledge"]
-  machine_defs: ["report_knowledge"]
+  fact_types: ["report", "report_knowledge"]
+  machine_defs: ["report", "report_knowledge"]
   command_catalog: ["commands"]
   reactions: ["reactions"]
 resolve_order:
-  before: []
-  unrelated: ["fact:information:siege:report_knowledge"]
+  before: [["fact:information:siege:report", "fact:information:siege:report_knowledge"]]
+  unrelated: []

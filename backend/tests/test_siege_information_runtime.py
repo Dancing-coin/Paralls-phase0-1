@@ -1,23 +1,38 @@
 from __future__ import annotations
 
+import hashlib
+import hmac
+
 import pytest
 
 from app.gameplay.event_schema_registry import (
     EventSchemaRegistry,
     EventSchemaRegistration,
     register_social_delivery_event_schemas,
+    create_stormnight_event_schema_registry,
 )
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.information_event_schema import register_information_event_schemas
-from app.gameplay.information_runtime import InformationAuthority
+from app.gameplay.information_runtime import (
+    InformationAuthority,
+    SiegeReportPublicationReceipt,
+)
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
-from app.gameplay.p5.social_delivery import SocialDeliveryAuthority, SocialDeliveryWindow
+from app.gameplay.p5.social_delivery import (
+    SocialDeliveryAuthority, SocialDeliveryResult, SocialDeliveryWindow,
+)
 from app.models.siming_heavenly_graph import HeavenlyGraphScope, HeavenlyNodeQuery
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.models.fact_type import FACT_TYPE_REGISTRY
+
+
+REPORT_AUTHORITY = "authority:information:report-publisher"
+REPORT_SECRET = "information-report-fixture-key"
+REPORT_EVENT = "gameplay.information.siege_report_published@1"
+REPORT_FACT = "fact:information:siege:report"
 
 
 def _store():
@@ -209,3 +224,194 @@ def test_information_update_rejects_delivery_after_source_revocation():
     assert not result.committed
     assert result.error_code == "information_delivery_not_visible"
     assert store.export_snapshot() == before
+
+
+def _report_source(store, *, stream_id="gameplay:facility:east-gate:integrity"):
+    result = store.append_batch(build_atomic_event_batch(
+        command_id="facility:report-source",
+        principal_ref="authority:facility:gate",
+        stream_id=stream_id,
+        expected_revision=0,
+        event_specs=(("gameplay.social.knowledge_observed", {
+            "fact_type": "fact:facility:east-gate:integrity",
+            "integrity": "72",
+        }),),
+        idempotency_key="facility:report-source",
+        causation_id="event:facility-impact",
+        correlation_id="correlation:east-gate",
+    ))
+    assert result.committed
+    return store.get_event(result.committed_event_ids[0])
+
+
+def _signed_report_receipt(source, **changes):
+    values = {
+        "authority_ref": REPORT_AUTHORITY,
+        "receipt_id": "receipt:east-gate:defender",
+        "report_ref": "report:east-gate:integrity",
+        "recipient_ref": "character:defender-1",
+        "summary": "The east gate integrity is 72.",
+        "source_event_id": source.event_id,
+        "source_stream_id": source.stream_id,
+        "source_revision": source.stream_revision,
+        "effective_from": 10,
+        "effective_to": 20,
+        "signature": "0" * 64,
+    }
+    values.update(changes)
+    unsigned = SiegeReportPublicationReceipt(**values)
+    signature = hmac.new(
+        REPORT_SECRET.encode("utf-8"), unsigned.canonical_bytes(), hashlib.sha256
+    ).hexdigest()
+    return unsigned.model_copy(update={"signature": signature})
+
+
+def _report_authority(store, secrets=None):
+    return InformationAuthority(
+        store=store,
+        report_authority_secrets=secrets or {REPORT_AUTHORITY: REPORT_SECRET},
+    )
+
+
+def test_information_owner_publishes_signed_report_and_replays_after_window():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    receipt = _signed_report_receipt(source)
+    authority = _report_authority(store)
+
+    first = authority.publish_siege_report(receipt=receipt, world_now=15)
+
+    assert first.committed
+    report, = store.read_events(event_type=REPORT_EVENT)
+    assert report.payload == {
+        "fact_type": REPORT_FACT,
+        "report_ref": receipt.report_ref,
+        "recipient_ref": receipt.recipient_ref,
+        "summary": receipt.summary,
+        "source_event_id": source.event_id,
+        "source_stream_id": source.stream_id,
+        "source_revision": source.stream_revision,
+        "effective_from": 10,
+        "effective_to": 20,
+        "published_at_world_tick": 15,
+    }
+    assert report.visibility_policy == f"actor:{receipt.recipient_ref}"
+    report_transaction = store.get_transaction(report.transaction_id)
+    assert report_transaction.idempotency_record.principal_ref == "authority:information:report-publisher"
+
+    second = authority.publish_siege_report(receipt=receipt, world_now=25)
+
+    assert second.committed
+    assert second.error_code == "duplicate_replayed"
+    assert second.report_append_result.idempotency_status == "duplicate_replayed"
+    assert second.report_append_result.committed_event_ids == first.report_append_result.committed_event_ids
+    assert second.delivery_append_result.committed_event_ids == first.delivery_append_result.committed_event_ids
+    assert len(store.read_events(event_type=REPORT_EVENT)) == 1
+    assert len(store.read_events(event_type="gameplay.social.delivery_recorded@2")) == 1
+
+
+def test_information_owner_rejects_invalid_signature_without_writes():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    receipt = _signed_report_receipt(source).model_copy(update={"signature": "0" * 64})
+    before = store.export_snapshot()
+
+    result = _report_authority(store).publish_siege_report(receipt=receipt, world_now=15)
+
+    assert not result.committed
+    assert result.error_code == "information_report_signature_invalid"
+    assert store.export_snapshot() == before
+
+
+def test_information_owner_rejects_unknown_report_authority_without_writes():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    receipt = _signed_report_receipt(source, authority_ref="authority:unknown")
+    before = store.export_snapshot()
+
+    result = _report_authority(store).publish_siege_report(receipt=receipt, world_now=15)
+
+    assert not result.committed
+    assert result.error_code == "information_report_signature_invalid"
+    assert store.export_snapshot() == before
+
+
+def test_information_owner_rejects_missing_and_stale_report_sources_without_writes():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    authority = _report_authority(store)
+    missing = _signed_report_receipt(
+        source,
+        source_event_id="event:missing",
+        source_stream_id="gameplay:facility:missing:integrity",
+    )
+
+    missing_result = authority.publish_siege_report(receipt=missing, world_now=15)
+    assert not missing_result.committed
+    assert missing_result.error_code == "information_report_source_invalid"
+    assert len(store.read_events()) == 1
+
+    advance = build_atomic_event_batch(
+        command_id="facility:advance-report-source",
+        principal_ref="authority:facility:gate",
+        stream_id=source.stream_id,
+        expected_revision=1,
+        event_specs=(("gameplay.social.knowledge_observed", {"fact_type": "fact:facility:east-gate:integrity"}),),
+        idempotency_key="facility:advance-report-source",
+        causation_id=source.event_id,
+        correlation_id="correlation:east-gate",
+    )
+    assert store.append_batch(advance).committed
+    before = store.export_snapshot()
+
+    stale = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source),
+        world_now=15,
+    )
+
+    assert not stale.committed
+    assert stale.error_code == "information_report_source_stale"
+    assert store.export_snapshot() == before
+
+
+def test_information_owner_rejects_changed_receipt_content_without_writes():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    authority = _report_authority(store)
+    first = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source), world_now=15
+    )
+    assert first.committed
+    before = store.export_snapshot()
+
+    changed = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source, summary="Changed report."),
+        world_now=15,
+    )
+
+    assert not changed.committed
+    assert changed.error_code == "information_report_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
+def test_information_report_retry_recovers_delivery_at_committed_tick(monkeypatch):
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    receipt = _signed_report_receipt(source)
+    authority = _report_authority(store)
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            SocialDeliveryAuthority, "record_delivery",
+            lambda *_args, **_kwargs: SocialDeliveryResult(False, "delivery_unavailable"),
+        )
+        first = authority.publish_siege_report(receipt=receipt, world_now=15)
+    assert not first.committed
+    assert first.report_append_result.committed
+    assert not store.read_events(event_type="gameplay.social.delivery_recorded@2")
+
+    recovered = _report_authority(store).publish_siege_report(receipt=receipt, world_now=25)
+
+    assert recovered.committed
+    assert recovered.report_append_result.committed_event_ids == first.report_append_result.committed_event_ids
+    delivery, = store.read_events(event_type="gameplay.social.delivery_recorded@2")
+    assert delivery.payload["known_at_world_tick"] == 15

@@ -1,0 +1,4 @@
+"machine_def/report@1":
+  states: ["published"]
+  terminal_states: ["published"]
+  transitions: []
