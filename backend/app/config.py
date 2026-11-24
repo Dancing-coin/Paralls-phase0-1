@@ -4,7 +4,7 @@ from pathlib import Path
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.world_runtime.embodied_spatial_source import EmbodiedSpatialScope
 from app.population_continuity.models import ActivationGrant
@@ -64,6 +64,28 @@ class FacilityGateProfileSettings(BaseModel):
     breach_threshold: Decimal
     breach_reset_threshold: Decimal
     impact_deltas: dict[str, Decimal] = Field(min_length=1)
+    durability_lower: Decimal | None = None
+    durability_upper: Decimal | None = None
+    durability_initial: Decimal | None = None
+    latch_durability_lower: Decimal | None = None
+    latch_durability_upper: Decimal | None = None
+    latch_durability_initial: Decimal | None = None
+
+    @model_validator(mode="after")
+    def validate_layered_profile(self) -> "FacilityGateProfileSettings":
+        layered_values = (
+            self.durability_lower,
+            self.durability_upper,
+            self.durability_initial,
+            self.latch_durability_lower,
+            self.latch_durability_upper,
+            self.latch_durability_initial,
+        )
+        if any(value is not None for value in layered_values) and any(
+            value is None for value in layered_values
+        ):
+            raise ValueError("siege_facility_layered_profile_incomplete")
+        return self
 
 
 class Settings(BaseModel):

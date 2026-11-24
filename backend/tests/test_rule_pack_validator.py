@@ -15,6 +15,7 @@ def declared_kind_condition(inputs, params):
 
 
 HANDLERS = {"credential_command@1": declared_kind_condition}
+FACILITY_PACK = Path(__file__).resolve().parents[2] / "packs/county_siege_facility"
 
 
 def test_registered_owner_ids_match_v2_short_names_and_legacy_credential():
@@ -42,6 +43,16 @@ def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
     assert fact.owner_ref == "Ownership"
     assert model.owner_ref == "Ownership"
     assert model.writes_fact_types == ("fact:credential:*:link",)
+
+
+def test_facility_gate_pack_registers_pool_and_machine_fact_types():
+    loaded = load_pack(FACILITY_PACK, handlers={})
+
+    assert loaded.registry.facts["fact:facility:gate-03:durability"].primitive == "pool"
+    assert loaded.registry.facts["fact:facility:gate-03:latch-durability"].primitive == "pool"
+    assert loaded.registry.facts["fact:facility:gate-03:integrity"].primitive == "pool"
+    assert loaded.registry.facts["fact:facility:gate-03:latch"].primitive == "machine"
+    assert loaded.pool_defs["fact:facility:gate-03:integrity"]["initial"] == "100"
 
 
 _POOL_DECLARATION = dedent("""\

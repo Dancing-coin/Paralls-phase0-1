@@ -1,0 +1,15 @@
+pack_id: "county_siege_facility"
+pack_version: "1.0.0"
+schema_version: 1
+parent_pack: null
+owners: ["Production"]
+contents:
+  fact_types: ["gate_leaf_durability", "gate_latch_durability", "gate_latch", "gate_integrity"]
+  machine_defs: ["gate_latch"]
+  pool_defs: ["gate_leaf_durability", "gate_latch_durability", "gate_integrity"]
+resolve_order:
+  before:
+    - ["fact:facility:gate-03:durability", "fact:facility:gate-03:latch-durability"]
+    - ["fact:facility:gate-03:latch-durability", "fact:facility:gate-03:integrity"]
+    - ["fact:facility:gate-03:latch-durability", "fact:facility:gate-03:latch"]
+  unrelated: []

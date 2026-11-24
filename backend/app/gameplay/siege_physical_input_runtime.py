@@ -16,6 +16,7 @@ from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch
 
 
 GATE_IMPACT_INPUT_EVENT = "gameplay.facility.gate_impact_input_received"
+GATE_IMPACT_INPUT_EVENT_V2 = "gameplay.facility.gate_impact_input_received@2"
 PRESENCE_ASSESSMENT_INPUT_EVENT = "gameplay.presence.assessment_input_received"
 SIEGE_PHYSICAL_INPUT_PRINCIPAL = "authority:siege:physical-input"
 _GATE_REF = re.compile(r"^gate-[a-z0-9-]+$")
@@ -78,6 +79,30 @@ class GateImpactReceipt(_SignedSiegeReceipt):
     _validate_contact_digest = field_validator("contact_source_digest")(_digest)
 
 
+class GateImpactReceiptV2(_SignedSiegeReceipt):
+    impact_kind_ref: str = Field(min_length=1, max_length=160)
+    target_incarnation_ref: str = Field(min_length=1, max_length=160)
+    contact_source_digest: str
+    expected_layer_revisions: dict[str, int] = Field(min_length=3, max_length=3)
+
+    _validate_contact_digest = field_validator("contact_source_digest")(_digest)
+
+    @model_validator(mode="after")
+    def validate_layer_revisions(self) -> "GateImpactReceiptV2":
+        expected_streams = {
+            f"fact:facility:{self.gate_ref}:durability",
+            f"fact:facility:{self.gate_ref}:latch-durability",
+            f"fact:facility:{self.gate_ref}:integrity",
+        }
+        if (
+            set(self.expected_layer_revisions) != expected_streams
+            or any(type(revision) is not int or revision < 0
+                   for revision in self.expected_layer_revisions.values())
+        ):
+            raise ValueError("siege_gate_layer_revision_vector_invalid")
+        return self
+
+
 class PresenceAssessmentReceipt(_SignedSiegeReceipt):
     breach_event_id: str = Field(min_length=1, max_length=160)
     assessment_ref: str = Field(min_length=1, max_length=160)
@@ -133,6 +158,17 @@ class SiegePhysicalInputAuthority:
             stream_id=f"gameplay:combat:gate-impact:{receipt.receipt_id}",
         )
 
+    def record_gate_impact_v2(
+        self, receipt: GateImpactReceiptV2
+    ) -> AppendBatchResult:
+        if not self._valid_signature(receipt):
+            return self._reject(receipt.receipt_id, "siege_input_signature_invalid")
+        return self._record(
+            receipt,
+            event_type=GATE_IMPACT_INPUT_EVENT_V2,
+            stream_id=f"gameplay:combat:gate-impact:{receipt.receipt_id}",
+        )
+
     def record_presence_assessment(
         self, receipt: PresenceAssessmentReceipt
     ) -> AppendBatchResult:
@@ -150,6 +186,13 @@ class SiegePhysicalInputAuthority:
         key = self._idempotency_key(authority_ref, receipt_id)
         result = self._store.get_by_idempotency(SIEGE_PHYSICAL_INPUT_PRINCIPAL, key)
         return self._receipt_event(result, GATE_IMPACT_INPUT_EVENT) if result else None
+
+    def gate_impact_event_v2(
+        self, *, authority_ref: str, receipt_id: str
+    ) -> GameplayEvent | None:
+        key = self._idempotency_key(authority_ref, receipt_id)
+        result = self._store.get_by_idempotency(SIEGE_PHYSICAL_INPUT_PRINCIPAL, key)
+        return self._receipt_event(result, GATE_IMPACT_INPUT_EVENT_V2) if result else None
 
     def presence_assessment_event(
         self, *, authority_ref: str, receipt_id: str
@@ -265,11 +308,11 @@ class SiegePhysicalInputAuthority:
                 )
             ):
                 return None
-            receipt_type = (
-                GateImpactReceipt
-                if event_type == GATE_IMPACT_INPUT_EVENT
-                else PresenceAssessmentReceipt
-            )
+            receipt_type = {
+                GATE_IMPACT_INPUT_EVENT: GateImpactReceipt,
+                GATE_IMPACT_INPUT_EVENT_V2: GateImpactReceiptV2,
+                PRESENCE_ASSESSMENT_INPUT_EVENT: PresenceAssessmentReceipt,
+            }[event_type]
             receipt = receipt_type.model_validate(event.payload["receipt"])
             if event.payload.get("receipt_digest") != receipt.receipt_digest:
                 return None

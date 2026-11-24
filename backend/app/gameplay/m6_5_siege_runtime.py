@@ -11,6 +11,8 @@ from typing import Callable
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
+from app.gameplay.facility_gate_layered_runtime import FacilityGateLayeredAuthority
+from app.gameplay.impact_gate_obligation import rebuild_impact_gate_obligations
 from app.gameplay.information_runtime import (
     INFORMATION_REPORT_EVENT,
     INFORMATION_REPORT_FACT_TYPE,
@@ -34,8 +36,10 @@ from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.config import FacilityGateProfileSettings
 from app.gameplay.siege_physical_input_runtime import (
     GATE_IMPACT_INPUT_EVENT,
+    GATE_IMPACT_INPUT_EVENT_V2,
     PRESENCE_ASSESSMENT_INPUT_EVENT,
     GateImpactReceipt,
+    GateImpactReceiptV2,
     PresenceAssessmentReceipt,
     SiegePhysicalInputAuthority,
 )
@@ -95,6 +99,58 @@ def build_facility_integrity_authority(
     )
 
 
+def build_facility_gate_layered_authority(
+    *,
+    store: GameplayEventStore,
+    profiles: tuple[FacilityGateProfileSettings, ...],
+) -> FacilityGateLayeredAuthority | None:
+    layered_profiles = tuple(
+        profile for profile in profiles if profile.durability_lower is not None
+    )
+    if not layered_profiles:
+        return None
+    definitions: dict[str, dict[str, PoolDefinition]] = {}
+    impact_magnitudes: dict[str, dict[str, Decimal]] = {}
+    for profile in layered_profiles:
+        definitions[profile.gate_ref] = {
+            FacilityGateLayeredAuthority.fact_type_for(profile.gate_ref, "durability"):
+                PoolDefinition(
+                    fact_type=FacilityGateLayeredAuthority.fact_type_for(profile.gate_ref, "durability"),
+                    lower=profile.durability_lower,
+                    upper=profile.durability_upper,
+                    initial=profile.durability_initial,
+                ),
+            FacilityGateLayeredAuthority.fact_type_for(profile.gate_ref, "latch-durability"):
+                PoolDefinition(
+                    fact_type=FacilityGateLayeredAuthority.fact_type_for(profile.gate_ref, "latch-durability"),
+                    lower=profile.latch_durability_lower,
+                    upper=profile.latch_durability_upper,
+                    initial=profile.latch_durability_initial,
+                ),
+            FacilityGateLayeredAuthority.fact_type_for(profile.gate_ref, "integrity"):
+                PoolDefinition(
+                    fact_type=FacilityGateLayeredAuthority.fact_type_for(profile.gate_ref, "integrity"),
+                    lower=profile.integrity_lower,
+                    upper=profile.integrity_upper,
+                    initial=profile.integrity_initial,
+                    thresholds=(PoolThreshold(
+                        "breach",
+                        profile.breach_threshold,
+                        profile.breach_reset_threshold,
+                    ),),
+                ),
+        }
+        impact_magnitudes[profile.gate_ref] = {
+            impact_kind_ref: -delta
+            for impact_kind_ref, delta in profile.impact_deltas.items()
+        }
+    return FacilityGateLayeredAuthority(
+        store=store,
+        definitions=definitions,
+        impact_magnitudes=impact_magnitudes,
+    )
+
+
 @dataclass(frozen=True)
 class M6_5SiegeRuntime:
     morale: MoraleRefoldAuthority
@@ -102,8 +158,12 @@ class M6_5SiegeRuntime:
     dispatcher: L5ReactionDispatcher
     physical_inputs: SiegePhysicalInputAuthority
     facility: FacilityIntegrityAuthority | None
+    layered_facility: FacilityGateLayeredAuthority | None
     information: InformationAuthority
     world_tick_provider: Callable[[], int | None] | None = None
+
+    def impact_gate_obligations(self):
+        return rebuild_impact_gate_obligations(self.physical_inputs.store())
 
     def after_transaction_dispatched(
         self, transaction: AtomicEventBatch
@@ -126,6 +186,23 @@ class M6_5SiegeRuntime:
             receipt_id=receipt.receipt_id,
         )
         return evidence, result
+
+    def record_gate_impact_v2(self, receipt: GateImpactReceiptV2):
+        evidence = self.physical_inputs.record_gate_impact_v2(receipt)
+        if not evidence.committed or self.layered_facility is None:
+            return evidence, None, ()
+        result = self.layered_facility.apply_signed_impact(
+            input_authority=self.physical_inputs,
+            authority_ref=receipt.authority_ref,
+            receipt_id=receipt.receipt_id,
+        )
+        transaction = self.physical_inputs.store().get_transaction(result.transaction_id)
+        dispatch_results = (
+            self.dispatcher.after_transaction_dispatched(transaction)
+            if result.committed and transaction is not None
+            else ()
+        )
+        return evidence, result, dispatch_results
 
     def record_presence_assessment(self, receipt: PresenceAssessmentReceipt):
         evidence = self.physical_inputs.record_presence_assessment(receipt)
@@ -155,6 +232,21 @@ class M6_5SiegeRuntime:
                 )
                 results.append((event.event_id, result))
 
+        if self.layered_facility is not None:
+            for event in self.physical_inputs.store().read_events(
+                event_type=GATE_IMPACT_INPUT_EVENT_V2,
+            ):
+                receipt = GateImpactReceiptV2.model_validate(event.payload["receipt"])
+                result = self.layered_facility.apply_signed_impact(
+                    input_authority=self.physical_inputs,
+                    authority_ref=receipt.authority_ref,
+                    receipt_id=receipt.receipt_id,
+                )
+                transaction = self.physical_inputs.store().get_transaction(result.transaction_id)
+                if result.committed and transaction is not None:
+                    self.dispatcher.after_transaction_dispatched(transaction)
+                results.append((event.event_id, result))
+
         for event in self.physical_inputs.store().read_events(
             event_type=PRESENCE_ASSESSMENT_INPUT_EVENT,
         ):
@@ -176,10 +268,13 @@ def build_m6_5_siege_runtime(
     evidence_event_principals: Mapping[str, str] | None = None,
     physical_authority_secrets: Mapping[str, str] | None = None,
     facility: FacilityIntegrityAuthority | None = None,
+    layered_facility: FacilityGateLayeredAuthority | None = None,
     information_report_authority_secrets: Mapping[str, str] | None = None,
     world_tick_provider: Callable[[], int | None] | None = None,
 ) -> M6_5SiegeRuntime:
-    if facility is not None and facility.store is not store:
+    if (facility is not None and facility.store is not store) or (
+        layered_facility is not None and layered_facility.store is not store
+    ):
         raise ValueError("m6_5_siege_facility_store_mismatch")
     physical_inputs = SiegePhysicalInputAuthority(
         store=store,
@@ -188,6 +283,7 @@ def build_m6_5_siege_runtime(
             **(evidence_event_principals or {}),
             "gameplay.facility.gate_impact_input_received":
                 "authority:siege:physical-input",
+            GATE_IMPACT_INPUT_EVENT_V2: "authority:siege:physical-input",
         },
     )
     morale = MoraleRefoldAuthority(store=store, definitions=morale_definitions)
@@ -253,6 +349,7 @@ def build_m6_5_siege_runtime(
         dispatcher=dispatcher,
         physical_inputs=physical_inputs,
         facility=facility,
+        layered_facility=layered_facility,
         information=information,
         world_tick_provider=world_tick_provider,
     )

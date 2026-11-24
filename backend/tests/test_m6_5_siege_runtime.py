@@ -7,16 +7,18 @@ import pytest
 
 from app import main
 from app.config import FacilityGateProfileSettings, Settings
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.m6_5_siege_runtime import (
     build_facility_integrity_authority,
+    build_facility_gate_layered_authority,
     build_m6_5_siege_runtime,
 )
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceipt,
+    GateImpactReceiptV2,
     PresenceAssessmentReceipt,
 )
 
@@ -254,6 +256,70 @@ def test_m6_5_recovery_replays_committed_gate_input_without_a_second_obligation_
     assert store.read_stream(INTEGRITY_FACT)[-1].payload["delta"] == "-20"
 
 
+def test_m6_5_gate_input_recovery_survives_durable_store_restart(tmp_path):
+    database_path = tmp_path / "siege.db"
+    store = DurableGameplayEventStore(database_path)
+    facility = FacilityIntegrityAuthority(
+        store=store,
+        definitions={GATE: _facility_pool()},
+        impact_profiles={GATE: {"impact_kind:battering-ram@1": Decimal("-20")}},
+    )
+    assert facility.initialize(
+        gate_ref=GATE,
+        command_id="facility:init-durable-recovery",
+        idempotency_key="facility:init-durable-recovery",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    ).committed
+    first_runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        facility=facility,
+    )
+    unsigned = GateImpactReceipt(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:durable-recovery",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "e" * 64,
+        expected_integrity_revision=1,
+        physics_tick=515,
+        signature="0" * 64,
+    )
+    receipt = unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+    evidence = first_runtime.physical_inputs.record_gate_impact(receipt)
+    assert evidence.committed
+    store.close()
+
+    reopened_store = DurableGameplayEventStore(database_path)
+    recovered_runtime = build_m6_5_siege_runtime(
+        store=reopened_store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        facility=FacilityIntegrityAuthority(
+            store=reopened_store,
+            definitions={GATE: _facility_pool()},
+            impact_profiles={GATE: {"impact_kind:battering-ram@1": Decimal("-20")}},
+        ),
+    )
+
+    first_recovery = recovered_runtime.recover_physical_input_obligations()
+    second_recovery = recovered_runtime.recover_physical_input_obligations()
+
+    assert first_recovery[0][1].committed
+    assert second_recovery[0][1].idempotency_status == "duplicate_replayed"
+    integrity_events = reopened_store.read_stream(INTEGRITY_FACT)
+    assert len(integrity_events) == 2
+    assert integrity_events[-1].payload["delta"] == "-20"
+    reopened_store.close()
+
+
 def test_m6_5_recovery_completes_presence_from_persisted_signed_assessment():
     store = GameplayEventStore()
     facility = FacilityIntegrityAuthority(store=store, definitions={GATE: _facility_pool()})
@@ -392,6 +458,76 @@ def test_m6_5_gate_impact_http_gateway_commits_facility_fact(monkeypatch):
     assert store.read_stream(INTEGRITY_FACT)[-1].payload["delta"] == "-20"
 
 
+def test_m6_5_layered_gate_impact_http_gateway_commits_facility_layers(monkeypatch):
+    store = GameplayEventStore()
+    profile = FacilityGateProfileSettings.model_validate({
+        "gate_ref": GATE,
+        "integrity_lower": "0",
+        "integrity_upper": "100",
+        "integrity_initial": "100",
+        "breach_threshold": "40",
+        "breach_reset_threshold": "45",
+        "impact_deltas": {"impact_kind:battering-ram@1": "-20"},
+        "durability_lower": "0",
+        "durability_upper": "100",
+        "durability_initial": "100",
+        "latch_durability_lower": "0",
+        "latch_durability_upper": "100",
+        "latch_durability_initial": "100",
+    })
+    layered_facility = build_facility_gate_layered_authority(
+        store=store,
+        profiles=(profile,),
+    )
+    assert layered_facility is not None
+    assert all(result.committed for result in layered_facility.initialize(
+        gate_ref=GATE,
+        command_prefix="facility:http-layered-init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    ))
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        physical_authority_secrets={PHYSICS_AUTHORITY: PHYSICS_SECRET},
+        layered_facility=layered_facility,
+    )
+    monkeypatch.setattr(main, "m6_5_siege_runtime", runtime)
+    monkeypatch.setattr(main, "runtime_execution", None)
+    unsigned = GateImpactReceiptV2(
+        authority_ref=PHYSICS_AUTHORITY,
+        receipt_id="impact:http-layered-gateway",
+        gate_ref=GATE,
+        impact_kind_ref="impact_kind:battering-ram@1",
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "d" * 64,
+        expected_layer_revisions={
+            "fact:facility:gate-03:durability": 1,
+            "fact:facility:gate-03:latch-durability": 1,
+            INTEGRITY_FACT: 1,
+        },
+        physics_tick=514,
+        signature="0" * 64,
+    )
+    receipt = unsigned.model_copy(update={
+        "signature": hmac.new(
+            PHYSICS_SECRET.encode(), unsigned.canonical_bytes(), hashlib.sha256
+        ).hexdigest(),
+    })
+
+    response = TestClient(main.component_app).post(
+        "/api/v2/siege/gate-impact-input-v2",
+        json=receipt.model_dump(mode="json"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["evidence"]["committed"] is True
+    assert response.json()["facility"]["committed"] is True
+    assert store.read_stream("fact:facility:gate-03:durability")[-1].payload["delta"] == "-20"
+    assert len(store.read_stream("fact:facility:gate-03:latch-durability")) == 1
+    assert len(store.read_stream(INTEGRITY_FACT)) == 1
+
+
 def test_m6_5_presence_assessment_http_gateway_commits_place_fact(monkeypatch):
     store = GameplayEventStore()
     facility = FacilityIntegrityAuthority(store=store, definitions={GATE: _facility_pool()})
@@ -507,6 +643,57 @@ def test_empty_gate_content_configuration_keeps_facility_unconfigured():
         store=GameplayEventStore(),
         profiles=(),
     ) is None
+
+
+def test_layered_gate_profile_builds_three_owner_pools_without_demo_defaults():
+    store = GameplayEventStore()
+    profile = FacilityGateProfileSettings.model_validate({
+        "gate_ref": GATE,
+        "integrity_lower": "0",
+        "integrity_upper": "100",
+        "integrity_initial": "100",
+        "breach_threshold": "40",
+        "breach_reset_threshold": "45",
+        "impact_deltas": {"impact_kind:battering-ram@1": "-20"},
+        "durability_lower": "0",
+        "durability_upper": "100",
+        "durability_initial": "100",
+        "latch_durability_lower": "0",
+        "latch_durability_upper": "100",
+        "latch_durability_initial": "100",
+    })
+
+    authority = build_facility_gate_layered_authority(store=store, profiles=(profile,))
+
+    assert authority is not None
+    initialized = authority.initialize(
+        gate_ref=GATE,
+        command_prefix="facility:configured-layered-init",
+        causation_id="siege:setup",
+        correlation_id="siege:east",
+    )
+    assert len(initialized) == 3
+    assert all(result.committed for result in initialized)
+    for fact_type in (
+        "fact:facility:gate-03:durability",
+        "fact:facility:gate-03:latch-durability",
+        INTEGRITY_FACT,
+    ):
+        assert store.read_stream(fact_type)[0].payload["initial"] == "100"
+
+
+def test_layered_gate_profile_requires_all_durability_layer_values():
+    with pytest.raises(ValueError, match="siege_facility_layered_profile_incomplete"):
+        FacilityGateProfileSettings.model_validate({
+            "gate_ref": GATE,
+            "integrity_lower": "0",
+            "integrity_upper": "100",
+            "integrity_initial": "100",
+            "breach_threshold": "40",
+            "breach_reset_threshold": "45",
+            "impact_deltas": {"impact_kind:battering-ram@1": "-20"},
+            "durability_lower": "0",
+        })
 
 
 def test_settings_reject_duplicate_gate_content_profiles():

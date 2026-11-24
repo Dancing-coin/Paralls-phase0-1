@@ -1,0 +1,7 @@
+"machine_def/gate_latch@1":
+  states: ["secured", "damaged", "broken"]
+  terminal_states: ["broken"]
+  transitions:
+    - ["secured", "damaged"]
+    - ["secured", "broken"]
+    - ["damaged", "broken"]

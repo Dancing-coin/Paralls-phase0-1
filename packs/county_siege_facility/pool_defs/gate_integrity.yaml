@@ -1,0 +1,10 @@
+"fact:facility:gate-03:integrity":
+  bound_lower: "0"
+  bound_upper: "100"
+  initial: "100"
+  decimals: 0
+  integration: {mode: "none"}
+  hysteresis:
+    - {state: "breach", enter_below: "40", exit_above: "45"}
+  description: "M6-5 demo gate integrity. Demo content only."
+  version: 1

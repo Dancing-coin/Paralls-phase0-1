@@ -2,6 +2,8 @@ import hashlib
 import hmac
 from decimal import Decimal
 
+import pytest
+
 from app.gameplay.event_schema_registry import (
     create_stormnight_event_schema_registry,
     gameplay_schema_event_types,
@@ -12,9 +14,11 @@ from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.place_passability_runtime import PlacePassabilityAuthority
 from app.gameplay.siege_physical_input_runtime import (
     GATE_IMPACT_INPUT_EVENT,
+    GATE_IMPACT_INPUT_EVENT_V2,
     PRESENCE_ASSESSMENT_INPUT_EVENT,
     SIEGE_PHYSICAL_INPUT_PRINCIPAL,
     GateImpactReceipt,
+    GateImpactReceiptV2,
     PresenceAssessmentReceipt,
     SiegePhysicalInputAuthority,
 )
@@ -68,6 +72,65 @@ def test_gate_impact_evidence_is_signed_persisted_and_exact_retry_replays():
         event_id=event.event_id,
         principal_ref=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
     )
+
+
+def test_layered_gate_impact_evidence_has_its_own_registered_version_and_replays():
+    store = _store()
+    authority = SiegePhysicalInputAuthority(
+        store=store,
+        authority_secrets={AUTHORITY: SECRET},
+    )
+    receipt = _signed(GateImpactReceiptV2(
+        authority_ref=AUTHORITY,
+        receipt_id="impact:layered-ram-17",
+        gate_ref="gate-03",
+        impact_kind_ref="impact_kind:battering-ram@1",
+        physics_tick=516,
+        target_incarnation_ref="gate-03:incarnation-2",
+        contact_source_digest="sha256:" + "f" * 64,
+        expected_layer_revisions={
+            "fact:facility:gate-03:durability": 1,
+            "fact:facility:gate-03:latch-durability": 1,
+            "fact:facility:gate-03:integrity": 1,
+        },
+        signature="0" * 64,
+    ))
+
+    first = authority.record_gate_impact_v2(receipt)
+    retry = authority.record_gate_impact_v2(receipt)
+
+    assert first.committed
+    assert retry.idempotency_status == "duplicate_replayed"
+    event = store.get_event(first.committed_event_ids[0])
+    assert event.event_type == GATE_IMPACT_INPUT_EVENT_V2
+    assert event.schema_version == 1
+    assert GATE_IMPACT_INPUT_EVENT_V2 in gameplay_schema_event_types()
+    registration = create_stormnight_event_schema_registry().get(
+        GATE_IMPACT_INPUT_EVENT_V2, 1
+    )
+    assert registration.event_type == GATE_IMPACT_INPUT_EVENT_V2
+    participant = _siege_physical_input_participant(store)
+    assert [item["event_type"] for item in participant["event_refs"]] == [
+        GATE_IMPACT_INPUT_EVENT_V2,
+    ]
+
+
+def test_layered_gate_impact_receipt_requires_exact_layer_revision_vector():
+    with pytest.raises(ValueError):
+        GateImpactReceiptV2(
+            authority_ref=AUTHORITY,
+            receipt_id="impact:layered-missing-latch",
+            gate_ref="gate-03",
+            impact_kind_ref="impact_kind:battering-ram@1",
+            physics_tick=517,
+            target_incarnation_ref="gate-03:incarnation-2",
+            contact_source_digest="sha256:" + "0" * 64,
+            expected_layer_revisions={
+                "fact:facility:gate-03:durability": 1,
+                "fact:facility:gate-03:integrity": 1,
+            },
+            signature="0" * 64,
+        )
 
 
 def test_forged_gate_impact_evidence_is_rejected_without_a_write():

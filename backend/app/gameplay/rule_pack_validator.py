@@ -407,8 +407,17 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
                         reject("pack_entity_slot_duplicate", target, file, line, "list each FactType pattern once")
                     seen_patterns.add(pattern)
             if valid and section == "fact_types":
-                valid = (isinstance(spec.get("owner_ref"), str) and isinstance(spec.get("state_set_ref"), str)
-                    and ("visibility" not in spec or isinstance(spec["visibility"], dict)))
+                primitive = spec.get("primitive")
+                valid = (
+                    isinstance(spec.get("owner_ref"), str)
+                    and primitive in ("machine", "pool")
+                    and ("visibility" not in spec or isinstance(spec["visibility"], dict))
+                    and (
+                        isinstance(spec.get("state_set_ref"), str)
+                        if primitive == "machine"
+                        else "state_set_ref" not in spec
+                    )
+                )
             if valid and section == "machine_defs":
                 valid = (isinstance(spec.get("states"), list) and all(isinstance(s, str) for s in spec["states"])
                     and isinstance(spec.get("terminal_states"), list) and all(isinstance(s, str) for s in spec["terminal_states"])
@@ -551,6 +560,7 @@ def load_pack(
         try:
             registry = FactTypeRegistry.compile(facts=sections["fact_types"], models=sections["models"],
                 machines=sections["machine_defs"], owners=owners, resolve_order=order, handlers=handlers,
+                pool_defs=sections["pool_defs"],
                 locations={target: location for (section, target), location in locations.items()
                            if section in ("manifest", "fact_types", "machine_defs", "models")})
         except RegistrationRejected as error:

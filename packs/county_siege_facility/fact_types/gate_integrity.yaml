@@ -1,0 +1,16 @@
+"fact:facility:gate-03:integrity":
+  owner_ref: "Production"
+  primitive: "pool"
+  identity: "entity_ref"
+  visibility:
+    class: "faction"
+    learnable_by: ["faction:zhaoling-garrison"]
+    channel: "report"
+    persistence: "permanent"
+  event_schema_ref: "gameplay.pool@1"
+  invariant_refs: ["P1", "P6", "P7", "facility_integrity_breach_threshold@1"]
+  resolution_order:
+    after: ["fact:facility:gate-03:latch-durability"]
+  cadence: "event"
+  host: "paralls"
+  unknown_policy: "reject"

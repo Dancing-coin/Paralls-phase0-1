@@ -1,0 +1,9 @@
+"fact:facility:gate-03:latch-durability":
+  bound_lower: "0"
+  bound_upper: "100"
+  initial: "100"
+  decimals: 0
+  integration: {mode: "none"}
+  hysteresis: []
+  description: "M6-5 demo latch durability. Demo content only."
+  version: 1

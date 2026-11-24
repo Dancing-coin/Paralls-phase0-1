@@ -71,11 +71,13 @@ from app.gameplay.information_runtime import (
 )
 from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
+    build_facility_gate_layered_authority,
     build_facility_integrity_authority,
     build_m6_5_siege_runtime,
 )
 from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceipt,
+    GateImpactReceiptV2,
     PresenceAssessmentReceipt,
 )
 from app.gameplay.social_spatial_owner import SOCIAL_SPATIAL_PRINCIPAL, SocialSpatialOwner
@@ -1948,11 +1950,28 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         store=gameplay_event_store,
         profiles=tuple(settings.siege_facility_gate_profiles),
     )
+    layered_facility_authority = build_facility_gate_layered_authority(
+        store=gameplay_event_store,
+        profiles=tuple(settings.siege_facility_gate_profiles),
+    )
+    if layered_facility_authority is not None:
+        for profile in settings.siege_facility_gate_profiles:
+            if profile.durability_lower is None:
+                continue
+            initialization = layered_facility_authority.initialize(
+                gate_ref=profile.gate_ref,
+                command_prefix=f"facility:layered-gate-init:{profile.gate_ref}",
+                causation_id=f"siege:configured-gate:{profile.gate_ref}",
+                correlation_id=f"siege:{profile.gate_ref}",
+            )
+            if not all(result.committed for result in initialization):
+                raise RuntimeError("siege_facility_layered_initialization_failed")
     m6_5_siege_runtime = build_m6_5_siege_runtime(
         store=gameplay_event_store,
         morale_definitions=DEFAULT_MORALE_DEFINITIONS,
         physical_authority_secrets=settings.physics_contact_authority_secrets,
         facility=facility_authority,
+        layered_facility=layered_facility_authority,
         information_report_authority_secrets=settings.siege_information_report_authority_secrets,
         world_tick_provider=_session_world_clock_tick,
     )
@@ -2967,6 +2986,31 @@ async def submit_siege_gate_impact_input(
             else "not_configured" if facility is None and evidence.committed
             else "not_committed"
         ),
+    }
+
+
+@app.post("/api/v2/siege/gate-impact-input-v2")
+async def submit_siege_gate_impact_input_v2(
+    receipt: GateImpactReceiptV2,
+) -> dict[str, object]:
+    if m6_5_siege_runtime is None:
+        raise HTTPException(status_code=503, detail={"error_code": "siege_runtime_unavailable"})
+    evidence, facility, dispatch_results = await _dialogue_owner_call(
+        runtime_execution,
+        lambda: m6_5_siege_runtime.record_gate_impact_v2(receipt),
+    )
+    return {
+        "evidence": evidence.model_dump(mode="json"),
+        "facility": facility.model_dump(mode="json") if facility is not None else None,
+        "facility_status": (
+            "committed" if facility is not None and facility.committed
+            else "not_configured" if facility is None and evidence.committed
+            else "not_committed"
+        ),
+        "dispatch_results": [
+            result.model_dump(mode="json") if hasattr(result, "model_dump") else str(result)
+            for result in dispatch_results
+        ],
     }
 
 

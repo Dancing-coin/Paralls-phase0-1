@@ -846,6 +846,7 @@ _PRESENCE_EVENT_TYPES = frozenset({
 
 _SIEGE_PHYSICAL_INPUT_EVENT_TYPES = frozenset({
     "gameplay.facility.gate_impact_input_received",
+    "gameplay.facility.gate_impact_input_received@2",
     "gameplay.presence.assessment_input_received",
 })
 
@@ -1207,6 +1208,8 @@ def _combat_participant(store, *, boundary_sequence=None):
     combat_scope = ("faction:", "gameplay:combat:", "gameplay:embodied:street-owner")
     events = []
     for event in all_events:
+        if event.event_type in _SIEGE_PHYSICAL_INPUT_EVENT_TYPES:
+            continue
         in_scope = event.stream_id.startswith(combat_scope) or event.event_type in _COMBAT_EVENT_PRINCIPALS
         if in_scope:
             if event.event_type not in _COMBAT_EVENT_PRINCIPALS:

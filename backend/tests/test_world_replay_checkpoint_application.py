@@ -59,6 +59,72 @@ async def test_application_durable_cut_tail_full_replay_and_old_migration_pins(a
 
 
 @pytest.mark.asyncio
+async def test_siege_physical_input_participant_survives_durable_cut_tail(application):
+    import hashlib
+    import hmac
+
+    from app.gameplay.siege_physical_input_runtime import (
+        GATE_IMPACT_INPUT_EVENT_V2,
+        GateImpactReceiptV2,
+        SiegePhysicalInputAuthority,
+    )
+    from app.world_runtime.replay_checkpoint import _tail_hash
+
+    main, start, advance = application
+    await start()
+    await advance(86400)
+    plan, window = inputs(main)
+    await submit(main, plan=plan, window=window, budget=1)
+
+    authority_ref = "ue:checkpoint-physics"
+    secret = "fixture-key"
+    authority = SiegePhysicalInputAuthority(
+        store=main.gameplay_event_store,
+        authority_secrets={authority_ref: secret},
+    )
+    unsigned = GateImpactReceiptV2(
+        authority_ref=authority_ref,
+        receipt_id="impact:checkpoint-replay",
+        gate_ref="gate-03",
+        impact_kind_ref="impact_kind:battering-ram@1",
+        physics_tick=1,
+        target_incarnation_ref="gate-03:incarnation-1",
+        contact_source_digest="sha256:" + "a" * 64,
+        expected_layer_revisions={
+            "fact:facility:gate-03:durability": 0,
+            "fact:facility:gate-03:latch-durability": 0,
+            "fact:facility:gate-03:integrity": 0,
+        },
+        signature="0" * 64,
+    )
+    receipt = unsigned.model_copy(update={
+        "signature": hmac.new(secret.encode(), unsigned.canonical_bytes(), hashlib.sha256).hexdigest(),
+    })
+    evidence = await asyncio.wrap_future(main.runtime_execution.submit(
+        lambda: authority.record_gate_impact_v2(receipt)
+    ))
+    assert evidence.committed
+
+    cut = await capture(main, ref="replay:siege-physical-input")
+    assert cut.status == "consistent", cut.diagnostics
+    participant = cut.checkpoint.state["participants"]["siege_physical_inputs"]
+    assert participant["event_refs"][0]["event_type"] == GATE_IMPACT_INPUT_EVENT_V2
+    tail = await tail_call(main, checkpoint_ref="replay:siege-physical-input")
+    assert tail.status == "verified", tail.diagnostics
+
+    changed = deepcopy(tail.payload)
+    changed["participants"].pop("siege_physical_inputs")
+    changed["digest"] = _tail_hash(changed)
+    rejected = await tail_call(
+        main,
+        tail=changed,
+        checkpoint_ref="replay:siege-physical-input",
+    )
+    assert rejected.status in {"incomplete", "divergent"}
+    assert rejected.result is None
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["gap", "changed_duplicate", "digest", "decoder", "receipt", "frozen_input"])
 async def test_application_tail_faults_fail_closed(application, fault):
     main, start, advance = application

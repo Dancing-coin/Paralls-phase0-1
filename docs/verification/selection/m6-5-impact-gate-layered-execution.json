@@ -1,0 +1,22 @@
+{
+  "head": "working-tree",
+  "description": "M6-5 layered gate impact runtime, durable input recovery, HTTP route and Facility Pool FactType registration",
+  "tests": [
+    {"test_name":"tests/test_world_replay_checkpoint_application.py::test_siege_physical_input_participant_survives_durable_cut_tail","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_layered_impact_applies_to_first_available_durability_layer","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_layered_impact_carries_residual_damage_and_updates_latch_machine","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_layered_impact_exact_retry_replays_after_pool_revisions_advance","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_stale_layer_vector_rejects_without_writing_facility_facts","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_second_impact_with_stale_vector_does_not_apply_again","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_unknown_impact_kind_rejects_without_writing_facility_facts","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_breach_does_not_write_place_facts","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_committed_gate_breach_dispatches_presence_and_keeps_unknown_unwritten","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_layered_impact_recovers_after_durable_store_restart","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_siege_physical_input_runtime.py::test_layered_gate_impact_evidence_has_its_own_registered_version_and_replays","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_siege_physical_input_runtime.py::test_layered_gate_impact_receipt_requires_exact_layer_revision_vector","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_m6_5_layered_gate_impact_http_gateway_commits_facility_layers","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_layered_gate_profile_builds_three_owner_pools_without_demo_defaults","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_layered_gate_profile_requires_all_durability_layer_values","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_rule_pack_validator.py::test_facility_gate_pack_registers_pool_and_machine_fact_types","outcome":"passed","failures":[]}
+  ]
+}

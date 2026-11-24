@@ -93,7 +93,7 @@ class FactType:
     owner_ref: str
     primitive: str
     visibility: Mapping[str, Any]
-    state_set_ref: str
+    state_set_ref: str | None
     resolution_order: int
 
 
@@ -121,7 +121,8 @@ class FactTypeRegistry:
     @classmethod
     def compile(cls, *, facts: Mapping[str, Any], models: Mapping[str, Any],
                 machines: Mapping[str, Any], owners: Sequence[str], resolve_order: Mapping[str, Any] | None,
-                handlers: Mapping[str, Callable], locations: Mapping[str, tuple[str, int]] | None = None) -> FactTypeRegistry:
+                handlers: Mapping[str, Callable], locations: Mapping[str, tuple[str, int]] | None = None,
+                pool_defs: Mapping[str, Any] | None = None) -> FactTypeRegistry:
         issues: list[Violation] = []
         def reject(code: str, target: str, hint: str) -> None:
             file, line = (locations or {}).get(target, ("<declaration>", 1))
@@ -135,10 +136,17 @@ class FactTypeRegistry:
                 reject("facttype_visibility_missing", target, "visibility must be explicitly nonempty")
             if spec.get("owner_ref") not in owners:
                 reject("facttype_owner_unknown", target, "register the fact owner first")
-            if spec.get("primitive") != "machine":
-                reject("facttype_primitive_unknown", target, "this reference slice supports machine facts")
-            if spec.get("state_set_ref") not in machines:
-                reject("facttype_schema_unknown", target, "register the machine state set")
+            primitive = spec.get("primitive")
+            if primitive == "machine":
+                if spec.get("state_set_ref") not in machines:
+                    reject("facttype_schema_unknown", target, "register the machine state set")
+            elif primitive == "pool":
+                if spec.get("state_set_ref") is not None:
+                    reject("facttype_schema_unknown", target, "pool facts do not declare a machine state set")
+                if pool_defs is None or target not in pool_defs:
+                    reject("facttype_schema_unknown", target, "register the Pool definition for this FactType")
+            else:
+                reject("facttype_primitive_unknown", target, "declare a registered machine or pool primitive")
             parts = target.split(":")
             if len(parts) != 4 or parts[0] != "fact" or not all(parts[1:]):
                 reject("facttype_naming_invalid", target, "use fact:domain:scope:name")
@@ -212,7 +220,7 @@ class FactTypeRegistry:
             unique = {(v.code, v.target): v for v in issues}
             raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
         compiled = {name: FactType(name, facts[name]["owner_ref"], facts[name]["primitive"],
-            freeze(facts[name]["visibility"]), facts[name]["state_set_ref"], index + 10)
+            freeze(facts[name]["visibility"]), facts[name].get("state_set_ref"), index + 10)
             for index, name in enumerate(ordered)}
         return cls(compiled, compiled_models, machines)
 

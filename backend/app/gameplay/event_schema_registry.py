@@ -444,6 +444,7 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     from app.services.economy_random_command_service import ECONOMY_RANDOM_COMMAND_SCHEMAS
     from app.gameplay.pool_event_schema import register_pool_event_schemas
     from app.gameplay.place_event_schema import register_place_event_schemas
+    from app.gameplay.facility_gate_event_schema import register_facility_gate_event_schemas
     from app.gameplay.siege_physical_input_event_schema import (
         register_siege_physical_input_event_schemas,
     )
@@ -455,6 +456,7 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     register_population_presence_event_schemas(registry)
     register_pool_event_schemas(registry)
     register_place_event_schemas(registry)
+    register_facility_gate_event_schemas(registry)
     register_siege_physical_input_event_schemas(registry)
     register_social_delivery_event_schemas(registry)
     register_information_event_schemas(registry)

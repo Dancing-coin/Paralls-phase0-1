@@ -1,0 +1,17 @@
+"fact:facility:gate-03:latch":
+  owner_ref: "Production"
+  primitive: "machine"
+  identity: "entity_ref"
+  visibility:
+    class: "faction"
+    learnable_by: ["faction:zhaoling-garrison"]
+    channel: "direct"
+    persistence: "permanent"
+  state_set_ref: "machine_def/gate_latch@1"
+  event_schema_ref: "gameplay.machine.transitioned@1"
+  invariant_refs: ["M1", "M2", "M3", "M4", "M5"]
+  resolution_order:
+    after: ["fact:facility:gate-03:latch-durability"]
+  cadence: "event"
+  host: "paralls"
+  unknown_policy: "reject"
