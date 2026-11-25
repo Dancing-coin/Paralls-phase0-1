@@ -434,3 +434,9 @@
 - Test-only commit `964cc5e4f3d58093deae61ab9de7993da1c61f50` adds witnesses for `resolver_writes_undeclared` when a layer output is absent from the model write set, and `resolver_missing_determinism` when randomness is not fixed to `none`.
 - Focused FactType registry/rejection tests: `12 passed, 2 warnings`. Exact M5-5 selection: `selected=18 problems=0 improvements=0`. The `m5-5-facttype-refold.json` manifest records the two nodes at the exact commit.
 - No runtime behavior changed. Full backend suite and shared-replay were not run for this test-only commit. Evidence is in `docs/verification/m5-5-facttype-refold-20261125.md`.
+
+
+### H-A-055 | M6-5 configured Gate→Presence runtime closure | 2026-11-25
+
+- 使用 A worktree 本地 `.env` 的 `gate-03` profile，Python 3.12.2 / SQLite 3.43.1 / A worktree `app.__file__`。14 次独立签名 Gate impacts 产生一个 breach-enter；随后对 impact 14 提交独立签名 Presence assessment。实际输出为 integrity `20`、Place commit `1`、passability `passable`、`impact_gate` obligation `settled`。损伤未回滚。
+- 原始输出 `F:/paralls-verification/thread-a/m6-5-gate-presence-obligation-20261125-01/runtime.log`。这补齐本地 Gate→Presence→obligation 运行链，不构成生产部署、UE 实机传输或完整 siege playthrough 证据；M6-5 仍进行中。

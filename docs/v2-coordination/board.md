@@ -82,3 +82,8 @@
 - 合并后：改 `已合并`，填合并 SHA 与标签。
 - 遇到 AUTONOMY §二"必须停"的项：状态改 `阻塞`，并在对应行写清卡在哪，同时在 `handoff.md` 记一条。
 - 本文件由两个线程共同追加/修改；同一行同一时间只有一个线程在改。
+
+
+### M6-5 本地 Gate→Presence obligation follow-up（2026-11-25）
+
+- 已在配置探针的 14 次签名 Gate impact 后提交签名 Presence assessment。输出确认 `breach_events=1`、完整度保持 20、`place_commits=1`、`passability=passable`、`latest_impact_obligation=settled`。原始日志在 `F:/paralls-verification/thread-a/m6-5-gate-presence-obligation-20261125-01/runtime.log`。这是本地运行时闭环，未覆盖 UE 实机传输、生产部署或完整 siege playthrough。
