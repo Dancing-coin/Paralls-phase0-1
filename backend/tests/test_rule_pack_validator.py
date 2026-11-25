@@ -98,6 +98,31 @@ def test_pack_rejects_fact_type_without_scope_using_scope_diagnostic(tmp_path, f
     assert [violation.target for violation in matching] == [fact_type_id]
 
 
+@pytest.mark.parametrize("fact_type_id", [
+    "fact:cred-ential:*:link",
+    "fact:c:*:link",
+    "fact:credential:*:l",
+    "fact:credential:*:Link",
+    "fact:credential:*:link!",
+    f"fact:credential:{'x' * 108}:link",
+])
+def test_pack_rejects_fact_type_with_invalid_domain_or_name(tmp_path, fact_type_id):
+    destination = shutil.copytree(PACK, tmp_path / "invalid-name-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(
+        fact_type.replace("fact:credential:*:link", fact_type_id, 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_naming_invalid"]
+    assert [violation.target for violation in matching] == [fact_type_id]
+
+
 def test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic(tmp_path):
     destination = shutil.copytree(PACK, tmp_path / "primitive-pack")
     fact_type_path = destination / "fact_types/credential_link.yaml"

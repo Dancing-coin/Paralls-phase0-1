@@ -4,6 +4,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, replace
 import heapq
+import re
 from types import MappingProxyType
 from typing import Any
 
@@ -34,6 +35,8 @@ REGISTERED_OWNER_IDS = frozenset({
     "Credential",  # Legacy pack identifier; not a v2 domain Owner.
 })
 REGISTERED_FACT_TYPE_PRIMITIVES = frozenset({"pool", "machine", "holdings", "bond", "process", "place"})
+_FACT_TYPE_DOMAIN_PATTERN = re.compile(r"^[a-z_]{2,24}$")
+_FACT_TYPE_NAME_PATTERN = re.compile(r"^[a-z0-9_-]{2,48}$")
 
 
 @dataclass(frozen=True)
@@ -162,7 +165,14 @@ class FactTypeRegistry:
             )
             if has_missing_scope:
                 reject("facttype_scope_missing", target, "include a nonempty scope in fact:domain:scope:name")
-            elif len(parts) != 4 or parts[0] != "fact" or not all(parts[1:]):
+            elif (
+                len(parts) != 4
+                or parts[0] != "fact"
+                or not all(parts[1:])
+                or len(target) > 128
+                or not _FACT_TYPE_DOMAIN_PATTERN.fullmatch(parts[1])
+                or not _FACT_TYPE_NAME_PATTERN.fullmatch(parts[3])
+            ):
                 reject("facttype_naming_invalid", target, "use fact:domain:scope:name")
 
         for target, machine in machines.items():
