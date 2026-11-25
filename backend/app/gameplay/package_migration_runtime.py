@@ -110,6 +110,47 @@ def load_package_archive(
     )
 
 
+def load_deployment_package_archive(
+    archive_directories: Mapping[str, str],
+    trusted_content_hashes: Mapping[str, str],
+    *,
+    base_directory: Path,
+    handlers: Mapping[str, Callable],
+    owner_domains: Mapping[str, str] | None = None,
+    command_fact_outputs: Mapping[str, set[str] | frozenset[str]] | None = None,
+    event_schema_registry: EventSchemaRegistry | None = None,
+) -> PackageArchive:
+    """Load the package identities declared by the deployment contract."""
+    if not isinstance(archive_directories, Mapping) or not isinstance(trusted_content_hashes, Mapping):
+        raise PackageMigrationError("package_deployment_manifest_invalid")
+    if set(archive_directories) != set(trusted_content_hashes):
+        raise PackageMigrationError("package_deployment_manifest_mismatch")
+
+    directories: dict[PackageRef, Path] = {}
+    hashes: dict[PackageRef, str] = {}
+    for identity, directory in archive_directories.items():
+        if type(identity) is not str or identity.count("@") != 1:
+            raise PackageMigrationError("package_deployment_identity_invalid")
+        pack_id, pack_version = identity.split("@", 1)
+        ref = PackageRef(pack_id, pack_version)
+        if type(directory) is not str or not directory.strip():
+            raise PackageMigrationError("package_deployment_directory_invalid")
+        path = Path(directory)
+        directories[ref] = path if path.is_absolute() else base_directory / path
+        content_hash = trusted_content_hashes[identity]
+        if type(content_hash) is not str or not content_hash.strip():
+            raise PackageMigrationError("package_deployment_hash_invalid")
+        hashes[ref] = content_hash
+    return load_package_archive(
+        directories,
+        hashes,
+        handlers=handlers,
+        owner_domains=owner_domains,
+        command_fact_outputs=command_fact_outputs,
+        event_schema_registry=event_schema_registry,
+    )
+
+
 class PackageMigrationAuthority:
     PRINCIPAL_REF = "authority:platform:rule-pack-migration"
 

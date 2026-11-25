@@ -14,6 +14,7 @@ from app.gameplay.package_migration_runtime import (
     PackageMigrationError,
     PackageRef,
     load_package_archive,
+    load_deployment_package_archive,
     resolve_package_set_at,
 )
 from app.gameplay.rule_pack_validator import LoadedPack, load_pack
@@ -87,6 +88,30 @@ def test_package_archive_bootstrap_requires_a_trusted_hash_for_every_directory()
 
     with pytest.raises(PackageMigrationError, match="package_archive_content_hash_mismatch"):
         load_package_archive({ref: FACILITY_PACK}, {}, handlers={})
+
+
+def test_deployment_manifest_bootstrap_resolves_canonical_identity_keys() -> None:
+    identity = "county_siege_facility@1.0.0"
+    trusted_hash = load_pack(FACILITY_PACK, handlers={}).content_hash
+
+    archive = load_deployment_package_archive(
+        {identity: "packs/county_siege_facility"},
+        {identity: trusted_hash},
+        base_directory=FACILITY_PACK.parents[1],
+        handlers={},
+    )
+
+    assert archive.resolve(PackageRef("county_siege_facility", "1.0.0")).content_hash == trusted_hash
+
+
+def test_deployment_manifest_rejects_partial_identity_sets() -> None:
+    with pytest.raises(PackageMigrationError, match="package_deployment_manifest_mismatch"):
+        load_deployment_package_archive(
+            {"county_siege_facility@1.0.0": "packs/county_siege_facility"},
+            {},
+            base_directory=FACILITY_PACK.parents[1],
+            handlers={},
+        )
 
 
 def test_package_archive_bootstrap_rejects_directory_content_changed_after_pin(tmp_path) -> None:

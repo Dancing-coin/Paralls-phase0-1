@@ -183,6 +183,42 @@ class FacilityGateProfileSettings(BaseModel):
         return self
 
 
+class RulePackIdentitySettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    pack_id: str = Field(min_length=1)
+    pack_version: str = Field(min_length=1)
+
+
+class RulePackDeploymentSettings(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    world_ref: str = Field(min_length=1)
+    initial_refs: dict[str, RulePackIdentitySettings]
+    archive_directories: dict[str, str]
+    trusted_content_hashes: dict[str, str]
+
+    @model_validator(mode="after")
+    def validate_contract(self) -> "RulePackDeploymentSettings":
+        if not self.world_ref.strip() or self.world_ref != self.world_ref.strip():
+            raise ValueError("rule_pack_world_ref_invalid")
+        if not self.initial_refs:
+            raise ValueError("rule_pack_initial_refs_missing")
+        if not self.archive_directories or set(self.archive_directories) != set(self.trusted_content_hashes):
+            raise ValueError("rule_pack_archive_manifest_mismatch")
+        if any(
+            not key.strip() or not value.strip()
+            for key, value in self.archive_directories.items()
+        ):
+            raise ValueError("rule_pack_archive_directory_invalid")
+        if any(
+            not key.strip() or not value.strip()
+            for key, value in self.trusted_content_hashes.items()
+        ):
+            raise ValueError("rule_pack_trusted_hash_invalid")
+        return self
+
+
 class Settings(BaseModel):
     model_config = ConfigDict(hide_input_in_errors=True)
 
@@ -269,6 +305,7 @@ class Settings(BaseModel):
     siege_information_report_authority_secrets: dict[str, str] = Field(
         default_factory=dict, repr=False, exclude=True,
     )
+    rule_pack_deployment: RulePackDeploymentSettings | None = None
     embodied_controller_launcher_bootstrap_secret: str | None = Field(default=None, repr=False, exclude=True)
     world_admin_credentials: list[WorldAdminCredentialSettings] = Field(default_factory=list, repr=False, exclude=True)
 
@@ -429,6 +466,35 @@ def _env_secret_map(name: str) -> dict[str, str]:
     return parsed
 
 
+def _env_rule_pack_deployment() -> RulePackDeploymentSettings | None:
+    names = (
+        "SIEGE_RULE_PACK_WORLD_REF",
+        "SIEGE_RULE_PACK_INITIAL_REFS_JSON",
+        "SIEGE_RULE_PACK_ARCHIVE_DIRECTORIES_JSON",
+        "SIEGE_RULE_PACK_TRUSTED_HASHES_JSON",
+    )
+    values = [_env_value(name) for name in names]
+    if not any(value for value in values):
+        return None
+    if not all(value for value in values):
+        raise ValueError("SIEGE_RULE_PACK_DEPLOYMENT_INCOMPLETE")
+    initial_refs = json.loads(values[1])
+    archive_directories = json.loads(values[2])
+    trusted_content_hashes = json.loads(values[3])
+    if not isinstance(initial_refs, dict):
+        raise ValueError("SIEGE_RULE_PACK_INITIAL_REFS_JSON must be a JSON object")
+    if not isinstance(archive_directories, dict):
+        raise ValueError("SIEGE_RULE_PACK_ARCHIVE_DIRECTORIES_JSON must be a JSON object")
+    if not isinstance(trusted_content_hashes, dict):
+        raise ValueError("SIEGE_RULE_PACK_TRUSTED_HASHES_JSON must be a JSON object")
+    return RulePackDeploymentSettings.model_validate({
+        "world_ref": values[0],
+        "initial_refs": initial_refs,
+        "archive_directories": archive_directories,
+        "trusted_content_hashes": trusted_content_hashes,
+    })
+
+
 settings = Settings(
     dialogue_mode=_env_value("DIALOGUE_MODE", "stub") or "stub",
     tts_mode=_env_value("TTS_MODE", "stub") or "stub",
@@ -522,6 +588,7 @@ settings = Settings(
     siege_information_report_authority_secrets=_env_secret_map(
         "SIEGE_INFORMATION_REPORT_AUTHORITY_SECRETS_JSON"
     ),
+    rule_pack_deployment=_env_rule_pack_deployment(),
     population_activation_grants=[ActivationGrant.model_validate(item)
                                   for item in _env_object_list("POPULATION_ACTIVATION_GRANTS_JSON")],
     population_activation_producer_ref=_env_value("POPULATION_ACTIVATION_PRODUCER_REF", "population:siming"),

@@ -71,9 +71,15 @@ from app.gameplay.information_runtime import (
 )
 from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
+    INFORMATION_KNOWLEDGE_FACT_TYPE,
+    MORALE_OWNER_DOMAINS,
     build_facility_gate_layered_authority,
     build_facility_integrity_authority,
     build_m6_5_siege_runtime,
+)
+from app.gameplay.package_migration_runtime import (
+    PackageRef,
+    load_deployment_package_archive,
 )
 from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceipt,
@@ -335,6 +341,7 @@ combat_threat_authority: CanonicalCombatThreatAuthority | None = None
 physics_contact_receipt_authority: PhysicsContactReceiptAuthority | None = None
 durable_embodied_combat_adapter: DurableEmbodiedCombatAdapter | None = None
 m6_5_siege_runtime = None
+m6_5_siege_world_ref: str | None = None
 
 
 def _character_memory_known_time(world_ref: str) -> int | None:
@@ -1888,6 +1895,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     global stormnight_realtime_session_service
     global gameplay_outbox_dispatcher
     global m6_5_siege_runtime
+    global m6_5_siege_world_ref
     global adventure_basic_mirror_runtime
     global embodied_evidence_ledger
     global embodied_interaction_session_service
@@ -1967,6 +1975,30 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
             )
             if not all(result.committed for result in initialization):
                 raise RuntimeError("siege_facility_layered_initialization_failed")
+    package_archive = None
+    package_refs = None
+    m6_5_siege_world_ref = None
+    deployment = settings.rule_pack_deployment
+    if deployment is not None:
+        package_refs = {
+            consumer: PackageRef(identity.pack_id, identity.pack_version)
+            for consumer, identity in deployment.initial_refs.items()
+        }
+        package_archive = load_deployment_package_archive(
+            deployment.archive_directories,
+            deployment.trusted_content_hashes,
+            base_directory=Path(WORKTREE_ROOT),
+            handlers={},
+            owner_domains={**MORALE_OWNER_DOMAINS, "Information": "information"},
+            command_fact_outputs={
+                "morale.refold": {
+                    definition.fact_type for definition in DEFAULT_MORALE_DEFINITIONS.values()
+                },
+                "presence.reevaluate": {"place:gate-03:passability"},
+                "information.update_knowledge": {INFORMATION_KNOWLEDGE_FACT_TYPE},
+            },
+        )
+        m6_5_siege_world_ref = deployment.world_ref
     m6_5_siege_runtime = build_m6_5_siege_runtime(
         store=gameplay_event_store,
         morale_definitions=DEFAULT_MORALE_DEFINITIONS,
@@ -1975,6 +2007,9 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
         layered_facility=layered_facility_authority,
         information_report_authority_secrets=settings.siege_information_report_authority_secrets,
         world_tick_provider=_session_world_clock_tick,
+        package_archive=package_archive,
+        package_refs=package_refs,
+        world_ref=m6_5_siege_world_ref,
     )
     _assemble_settlement_batch_runtime()
     _assemble_status_runtime()

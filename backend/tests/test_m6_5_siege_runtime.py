@@ -6,7 +6,11 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app import main
-from app.config import FacilityGateProfileSettings, Settings
+from app.config import (
+    FacilityGateProfileSettings,
+    RulePackDeploymentSettings,
+    Settings,
+)
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.m6_5_siege_runtime import (
@@ -17,7 +21,11 @@ from app.gameplay.m6_5_siege_runtime import (
     build_facility_gate_layered_authority,
     build_m6_5_siege_runtime,
 )
-from app.gameplay.package_migration_runtime import PackageArchive, PackageRef
+from app.gameplay.package_migration_runtime import (
+    PackageArchive,
+    PackageRef,
+    load_deployment_package_archive,
+)
 from app.gameplay.rule_pack_validator import load_pack
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.settlement_plan import build_atomic_event_batch
@@ -118,6 +126,56 @@ def test_m6_5_runtime_can_consume_world_pinned_package_archive(monkeypatch):
     )
 
     assert runtime.information is not None
+
+
+def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
+    morale_hash = load_pack(
+        M6_5_PACK,
+        handlers={},
+        owner_domains=MORALE_OWNER_DOMAINS,
+        command_fact_outputs={
+            "morale.refold": {MORALE_FACT},
+            "presence.reevaluate": {PLACE_STREAM},
+        },
+    ).content_hash
+    information_hash = load_pack(
+        INFORMATION_PACK,
+        handlers={},
+        owner_domains={"Information": "information"},
+        command_fact_outputs={
+            "information.update_knowledge": {"fact:information:knowledge"},
+        },
+    ).content_hash
+    archive = load_deployment_package_archive(
+        {
+            "county_siege_morale_presence@1.0.0": "packs/county_siege_morale_presence",
+            "county_siege_information@1.0.0": "packs/county_siege_information",
+        },
+        {
+            "county_siege_morale_presence@1.0.0": morale_hash,
+            "county_siege_information@1.0.0": information_hash,
+        },
+        base_directory=M6_5_PACK.parents[1],
+        handlers={},
+        owner_domains={**MORALE_OWNER_DOMAINS, "Information": "information"},
+        command_fact_outputs={
+            "morale.refold": {MORALE_FACT},
+            "presence.reevaluate": {PLACE_STREAM},
+            "information.update_knowledge": {"fact:information:knowledge"},
+        },
+    )
+    runtime = build_m6_5_siege_runtime(
+        store=GameplayEventStore(),
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        package_archive=archive,
+        package_refs={
+            "morale_presence": PackageRef("county_siege_morale_presence", "1.0.0"),
+            "information": PackageRef("county_siege_information", "1.0.0"),
+        },
+        world_ref="world:siege",
+    )
+
+    assert runtime.world_ref == "world:siege"
 
 
 def test_m6_5_runtime_rejects_incomplete_package_consumer_configuration():
@@ -778,6 +836,47 @@ def test_settings_reject_duplicate_gate_content_profiles():
 
     with pytest.raises(ValueError, match="siege_facility_gate_profile_duplicate"):
         Settings(siege_facility_gate_profiles=[profile, profile])
+
+
+def test_rule_pack_deployment_contract_requires_all_manifest_inputs():
+    deployment = RulePackDeploymentSettings.model_validate({
+        "world_ref": "world:siege",
+        "initial_refs": {
+            "morale_presence": {
+                "pack_id": "county_siege_morale_presence",
+                "pack_version": "1.0.0",
+            },
+            "information": {
+                "pack_id": "county_siege_information",
+                "pack_version": "1.0.0",
+            },
+        },
+        "archive_directories": {
+            "county_siege_morale_presence@1.0.0": "packs/county_siege_morale_presence",
+            "county_siege_information@1.0.0": "packs/county_siege_information",
+        },
+        "trusted_content_hashes": {
+            "county_siege_morale_presence@1.0.0": "sha256:morale",
+            "county_siege_information@1.0.0": "sha256:information",
+        },
+    })
+
+    assert deployment.world_ref == "world:siege"
+
+
+def test_rule_pack_deployment_contract_rejects_partial_manifest():
+    with pytest.raises(ValueError, match="rule_pack_archive_manifest_mismatch"):
+        RulePackDeploymentSettings.model_validate({
+            "world_ref": "world:siege",
+            "initial_refs": {
+                "morale_presence": {
+                    "pack_id": "county_siege_morale_presence",
+                    "pack_version": "1.0.0",
+                },
+            },
+            "archive_directories": {"county_siege_morale_presence@1.0.0": "packs/morale"},
+            "trusted_content_hashes": {},
+        })
 
 
 def _valid_gate_profile(**updates):

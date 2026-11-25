@@ -163,6 +163,7 @@ class M6_5SiegeRuntime:
     facility: FacilityIntegrityAuthority | None
     layered_facility: FacilityGateLayeredAuthority | None
     information: InformationAuthority
+    world_ref: str | None = None
     world_tick_provider: Callable[[], int | None] | None = None
 
     def impact_gate_obligations(self):
@@ -281,11 +282,14 @@ def build_m6_5_siege_runtime(
     world_tick_provider: Callable[[], int | None] | None = None,
     package_archive: PackageArchive | None = None,
     package_refs: Mapping[str, PackageRef] | None = None,
+    world_ref: str | None = None,
 ) -> M6_5SiegeRuntime:
     if (facility is not None and facility.store is not store) or (
         layered_facility is not None and layered_facility.store is not store
     ):
         raise ValueError("m6_5_siege_facility_store_mismatch")
+    if world_ref is not None and (not isinstance(world_ref, str) or not world_ref.strip()):
+        raise ValueError("m6_5_siege_world_ref_invalid")
     physical_inputs = SiegePhysicalInputAuthority(
         store=store,
         authority_secrets=physical_authority_secrets or {},
@@ -374,6 +378,7 @@ def build_m6_5_siege_runtime(
         facility=facility,
         layered_facility=layered_facility,
         information=information,
+        world_ref=world_ref,
         world_tick_provider=world_tick_provider,
     )
 
