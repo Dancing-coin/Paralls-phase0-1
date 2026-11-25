@@ -601,3 +601,8 @@
 - At exact tip `45480fb2`, the targeted package/schema/M6-5 command returned `71 passed, 6 warnings`. M5-3 registration selection returned `selected=22 problems=0 improvements=0`; Ownership returned `selected=24 problems=0 improvements=0`.
 - Frozen shared-replay 990 was started at the same tip. Batches 0000-0009 completed, then batch 0010 stopped at the known PowerShell listener lookup stall. The runner was interrupted after about four minutes without aggregate output. It is not a pass. Raw output is under `F:/paralls-verification/thread-a/m5-3-startup-contract-20261126-01/`.
 - Evidence is `docs/verification/m5-3-startup-contract-20261126.md`. No external process was stopped. Production manifest source, Gate values, full backend regression, production server startup, cross-language hash canonicalization, and UE transport remain unverified.
+
+### H-A-079 | M5-5 temporal_effects formal contract audit | 2026-11-26
+- The external Architecture v2 sources specify `temporal_effect` as `primitive: process` with `process_kind: temporal`, and the temporal-process abstract fields `tick_policy`, `next_tick`, `exit_condition`, plus idempotency `process_id + scheduled_world_tick`.
+- The formal rule-pack format only declares the `temporal_effects/` directory and example IDs `bleeding` and `burning`. It does not define entry fields, reference namespaces, validation/rejection codes, a production scheduler/consumer, or package-version and persistence boundaries. A-tip code and pack search found no temporal-effect entries or consumer.
+- Evidence: `docs/verification/m5-5-temporal-effects-contract-audit-20261126.md`. This is static-only. M5-5 remains blocked on the formal input contract, and no temporal-effect code or package content was added.
