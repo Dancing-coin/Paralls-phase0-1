@@ -123,6 +123,24 @@ def test_pack_rejects_fact_type_with_invalid_domain_or_name(tmp_path, fact_type_
     assert [violation.target for violation in matching] == [fact_type_id]
 
 
+def test_pack_rejects_process_kind_on_non_process_fact_type(tmp_path):
+    destination = shutil.copytree(FACILITY_PACK, tmp_path / "process-kind-pack")
+    fact_type_path = destination / "fact_types/gate_latch.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(
+        fact_type.replace('  primitive: "machine"\n',
+                          '  primitive: "machine"\n  process_kind: "temporal"\n', 1),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers={})
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_process_kind_invalid"]
+    assert [violation.target for violation in matching] == ["fact:facility:gate-03:latch"]
+
+
 def test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic(tmp_path):
     destination = shutil.copytree(PACK, tmp_path / "primitive-pack")
     fact_type_path = destination / "fact_types/credential_link.yaml"

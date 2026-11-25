@@ -145,6 +145,9 @@ class FactTypeRegistry:
                 if not isinstance(refold_model_ref, str) or not refold_model_ref:
                     reject("facttype_refold_missing", target, "distribution FactTypes must reference a refold model")
             primitive = spec.get("primitive")
+            if "process_kind" in spec and primitive != "process":
+                reject("facttype_process_kind_invalid", target,
+                       "process_kind is only valid for the process primitive")
             if primitive is None:
                 reject("primitive_missing", target, "declare one of the registered FactType primitives")
             elif primitive == "machine":
