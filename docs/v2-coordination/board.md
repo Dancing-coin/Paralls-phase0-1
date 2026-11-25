@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新提交为 Pool casualty refold 触发 `84d12a87`，证据同步提交 `025ef31d`；A 分支已推送。Pool 尚未进入 `origin/integration`。生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。当前 A 分支 tip 为证据提交 `4fcdde27`，最新代码为 FactType Owner 顺序 tie-break `64421f00`；M6-5 的 gate-03 profile 已写入本地 A worktree `.env` 并完成配置探针。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -46,7 +46,7 @@
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
 | M6-3 Workflow 声明校验 | A | 待门禁 | `9eb80fe9`；[证据](../verification/m6-3-workflow-declarations-20261123.md) | 定向 129 passed，19 组选集 1,284 节点零差异。全量 10,530 passed、24 个既有失败，退出 1。生产重建需要可查询的步骤命令、回执及义务证据，见 H-A-013 | 6 |
 | M6-4 Play pattern 声明与包加载 | A | 待门禁 | 编译器 `b7bb3605`，正常包加载 `6e7da420`；[加载证据](../verification/m6-composition-pack-loading-20261123.md) | 定向 133 passed，19 组选集 1,288 节点零差异。全量 10,534 passed、24 个既有失败、2 skipped、2 xfailed，退出 1，相对 `9eb80fe9` 无新增失败。应用注册与激活未做 | 6 |
-| M6-5 守城 Demo 最小集 | A | 进行中 | H-A-020；Organization roster 9cb0cbd5、Facility integrity 34d7e734、Morale 7ff3a3cb、Presence d7ae1d38、L5/dispatcher 4506d907、signed input/recovery 6cf4ea86/102e4380、Information report 0fd74b4c/f442c1f9/3fe50ca5；layered Gate a9f5385a + Presence-v2 obligation settlement e246f2c0；[Presence follow-up evidence](../verification/m6-5-presence-impact-followup-20261124.md) | Exact commit focused 169 passed. M6-5 21, Information 25, siege Information 25, ownership/modifier/equipment/inventory 179 nodes all zero problems/improvements; shared-replay 990 zero differences. Exact backend suite: 10,628 passed, 19 failed, 2 skipped, 2 xfailed. The same 19 failed node IDs reproduced at parent 9b46742e. Root pytest collection separately lacks jsonschema. Production Gate values and live/configured siege run remain unavailable. Non-breach assessment and derived obligation settlement are covered by signed-input tests, not live Unreal transport. M6-5 incomplete and not merged to integration | 6 |
+| M6-5 守城 Demo 最小集 | A | 进行中 | H-A-020；Organization roster 9cb0cbd5、Facility integrity 34d7e734、Morale 7ff3a3cb、Presence d7ae1d38、L5/dispatcher 4506d907、signed input/recovery 6cf4ea86/102e4380、Information report 0fd74b4c/f442c1f9/3fe50ca5；layered Gate a9f5385a + Presence-v2 obligation settlement e246f2c0；[Presence follow-up evidence](../verification/m6-5-presence-impact-followup-20261124.md) | Prior exact commit focused 169 passed; M6-5 21, Information 25, siege Information 25 and ownership/modifier/equipment/inventory 179 nodes zero differences; shared-replay 990 zero differences. Exact backend suite: 10,628 passed, 19 failed, 2 skipped, 2 xfailed; same 19 nodes reproduced at parent 9b46742e. New local A worktree `.env` configures `gate-03` with three 0–100 layers, breach 40/45 and battering-ram -20. Configured signed-input smoke: 14 impacts, one breach, no automatic Place write; focused tests 184 passed, M6-5 selection 21 nodes zero differences. The `.env` is ignored and is not a deployment or branch artifact. No production-server deployment, live UE transport or full siege session. Root pytest collection separately lacks jsonschema. M6-5 remains incomplete and unmerged to integration | 6 |
 | M7 第二真相收口 | A/B | 阻塞 | — | S-2、S-3 未决 | 11 |
 | M8 综合验收 | 负责人 | 待开工 | 逐条对照 | 全部里程碑完成 | 1–11 |
 
@@ -58,6 +58,12 @@
 - `SIEGE_FACILITY_GATE_PROFILES_JSON` 已接入生产启动。未提供权威配置时仍保持 `not_configured`，不采用测试值写完整度事实。Presence 缺可信证据仍 unknown 且零写入。
 - 当前 HTTP handler 在有效签名 evidence 入库后直接调用 Facility Owner。正式 `impact_gate` 的耐久 obligation executor 尚未接入现有 L5 生产路径。因此 M6-5 仍未端到端完成；全量未运行，shared-replay 每片各有两项 Port 8000 外部服务失败。
 - Information report source delivered in A commits `0fd74b4c`, `f442c1f9`, and `3fe50ca5`. Exact-tip focused tests: 199 passed, 6 warnings; the Information report selection: 25 selected, 0 problems, 0 improvements. The merged-worktree full suite had 10,603 passed, 21 failed, 2 skipped, 2 xfailed, exit 1. Failures were not rerun on the parent SHA, so they are not classified as baseline failures. Details: `docs/verification/m6-5-information-report-source-20261124.md`.
+
+### M6-5 本地 Gate 配置 follow-up（2026-11-25）
+
+- A worktree 根 `.env` 配置了 `gate-03`，三层耐久各为 0–100、初始 100；完整度破口进出阈值为 40/45；攻城槌输入为 -20。该文件被 Git 忽略，配置目前只作用于 A worktree。
+- 配置运行探针 14 次签名输入后，门扇和门闩耐久为 0，完整度为 20，产生一次 breach-enter；没有自动写 Place。定向 184 passed, 6 warnings，M6-5 选集 21 节点零差异。原始输出与边界见 `docs/verification/m6-5-impact-gate-layered-execution-20261124.md`。
+- 这不是服务器部署值，也没有完成 UE 实机传输或完整 siege playthrough。M6-5 仍进行中。
 
 | 编号 | 事项 | 影响 | 状态 |
 |---|---|---|---|

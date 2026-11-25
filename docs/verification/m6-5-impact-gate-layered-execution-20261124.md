@@ -43,3 +43,11 @@
 ## Requirement status
 
 - U1 partial, U2 not done, U3 partial, U4 partial, U5 partial, U6 partial, U7 partial, U8 partial, U9 partial, U10 evidence recorded, U11 selection registered.
+
+## 2026-11-25 local configured Gate profile follow-up
+
+- The A worktree root `.env` now supplies `SIEGE_FACILITY_GATE_PROFILES_JSON` for `gate-03`. The selected profile uses 0–100 bounds and initial 100 for door durability, latch durability and integrity; integrity breach enter/reset thresholds are 40/45; `impact_kind:battering-ram@1` applies `-20`. The file is ignored by Git and remains local to this A worktree. No application default or tracked deployment configuration was changed.
+- The exact runtime smoke used Python 3.12.2, SQLite 3.43.1 and `app.__file__` under the A worktree. Fourteen independently signed, monotonically revised impact inputs exhausted door and latch durability, reduced integrity to 20, and produced one breach-enter event. The Facility runtime wrote no Place fact, preserving Presence's separate assessment authority. Raw output is `F:/paralls-verification/thread-a/m6-5-gate-profile-runtime-20261125-01/runtime.log`; the probe is `F:/paralls-verification/thread-a/verify-configured-gate-20261125.py`.
+- Focused tests on this configuration: `184 passed, 6 warnings` across Facility Gate layered runtime, M6-5 siege runtime, signed physical input, Facility integrity, RulePack validation and checkpoint replay. Raw output is `F:/paralls-verification/thread-a/m6-5-gate-profile-focused-20261125-01/pytest.log`.
+- Exact M6-5 Gate selection: `selected=21 problems=0 improvements=0`. Raw output is under `F:/paralls-verification/thread-a/m6-5-gate-profile-selection-20261125-01/`.
+- This config and evidence cover the local A runtime only. No production server deployment, real UE transport, full configured siege session, shared-replay selection or full backend suite was run in this follow-up. M6-5 remains in progress.

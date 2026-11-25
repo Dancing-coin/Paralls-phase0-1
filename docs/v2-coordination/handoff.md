@@ -422,3 +422,9 @@
 ### H-A-052 | Exact M5-5 selection rerun | 2026-11-25
 
 - Re-ran the 16-node M5-5 selection at implementation commit `64421f00a6049a4598d642a1a0736dd409db7cf9` after recording the unit evidence. Result: `selected=16 problems=0 improvements=0`. The import check resolved `app.__file__` to the A worktree backend. Raw output is under `F:/paralls-verification/thread-a/m5-5-owner-order-exact-selection-20261125-01/`.
+
+### H-A-053 | Local M6-5 Gate profile configured run | 2026-11-25
+
+- Per the project lead's accepted recommendation, the A worktree root `.env` now configures `gate-03` with three 0–100 durability layers, initial values 100, integrity breach enter/reset thresholds 40/45, and battering-ram impact delta -20. The file is Git-ignored and was not committed or distributed as a production deployment configuration.
+- With Python 3.12.2 and `app.__file__` in the A worktree, the configured smoke processed 14 signed and revision-pinned Gate impacts, emitted one breach-enter event at integrity 20, depleted door and latch durability, and emitted no Place facts. This preserves the separate Presence decision path.
+- Focused tests: `184 passed, 6 warnings`. Exact M6-5 selection: `selected=21 problems=0 improvements=0`. Full backend suite, shared-replay, production deployment and real Unreal transport were not rerun. Raw evidence paths are recorded in `docs/verification/m6-5-impact-gate-layered-execution-20261124.md`.
