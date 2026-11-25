@@ -100,5 +100,5 @@
 ### M6-5 versioned Gate profile contract（2026-11-26）
 
 - Commit `d693686b` adds compatible `schema_version=1` parsing and rejects invalid or unknown Gate profile fields. Focused tests returned `71 passed, 6 warnings`; the 19-node registered selection returned `problems=0 improvements=0`.
-- The backend full-suite attempt was interrupted at about 31% after roughly 40 minutes. Two failure markers had appeared, but no node IDs or final summary were captured, so they remain unclassified. Evidence: `docs/verification/m6-5-gate-profile-contract-20261126.md`.
+- The backend full-suite attempt was interrupted at about 31% after roughly 40 minutes. The first failure was reproduced on parent `6d31a831` as the same missing-`tokenizers` baseline failure; the second marker remains unclassified. Evidence: `docs/verification/m6-5-gate-profile-contract-20261126.md`.
 - Production Gate values remain unset under H-A-039. The profile values in `.env.example` are explicitly a demonstration profile; M6-5 remains in progress.
