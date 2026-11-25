@@ -1,14 +1,16 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
 
+from app.gameplay.event_schema_registry import EventSchemaRegistry
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent
 from app.gameplay.owner_runtime_base import rejected_result, replay_duplicate
-from app.gameplay.rule_pack_validator import LoadedPack
+from app.gameplay.rule_pack_validator import LoadedPack, load_pack
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
@@ -67,6 +69,45 @@ class PackageArchive:
             return self._packages[package_ref]
         except KeyError as exc:
             raise PackageMigrationError("package_archive_identity_unknown") from exc
+
+
+def load_package_archive(
+    package_directories: Mapping[PackageRef, Path],
+    trusted_content_hashes: Mapping[PackageRef, str],
+    *,
+    handlers: Mapping[str, Callable],
+    owner_domains: Mapping[str, str] | None = None,
+    command_fact_outputs: Mapping[str, set[str] | frozenset[str]] | None = None,
+    event_schema_registry: EventSchemaRegistry | None = None,
+) -> PackageArchive:
+    if not isinstance(package_directories, Mapping) or any(
+        not isinstance(ref, PackageRef) or not isinstance(directory, Path)
+        for ref, directory in package_directories.items()
+    ):
+        raise PackageMigrationError("package_archive_directories_invalid")
+
+    parent_directories = {
+        (ref.pack_id, ref.pack_version): directory
+        for ref, directory in package_directories.items()
+    }
+    loaded_packages: list[LoadedPack] = []
+    for ref, directory in package_directories.items():
+        package = load_pack(
+            directory,
+            handlers=handlers,
+            parent_packs=parent_directories,
+            owner_domains=owner_domains,
+            command_fact_outputs=command_fact_outputs,
+            event_schema_registry=event_schema_registry,
+        )
+        if (package.pack_id, package.version) != (ref.pack_id, ref.pack_version):
+            raise PackageMigrationError("package_archive_identity_mismatch")
+        loaded_packages.append(package)
+
+    return PackageArchive(
+        loaded_packages,
+        expected_content_hashes=trusted_content_hashes,
+    )
 
 
 class PackageMigrationAuthority:

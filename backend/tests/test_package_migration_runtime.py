@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import shutil
+from pathlib import Path
+
 import pytest
 
 from app.gameplay.event_schema_registry import create_stormnight_event_schema_registry
@@ -10,9 +13,13 @@ from app.gameplay.package_migration_runtime import (
     PackageMigrationAuthority,
     PackageMigrationError,
     PackageRef,
+    load_package_archive,
     resolve_package_set_at,
 )
-from app.gameplay.rule_pack_validator import LoadedPack
+from app.gameplay.rule_pack_validator import LoadedPack, load_pack
+
+
+FACILITY_PACK = Path(__file__).resolve().parents[2] / "packs/county_siege_facility"
 
 
 def _pack(pack_id: str, version: str, content_hash: str | None = None) -> LoadedPack:
@@ -62,6 +69,71 @@ def test_package_archive_rejects_content_hash_changed_from_archive_pin() -> None
             [_pack("rules", "1", "sha256:changed")],
             expected_content_hashes={ref: "sha256:original"},
         )
+
+
+def test_package_archive_bootstrap_loads_directory_against_trusted_hash_pin() -> None:
+    ref = PackageRef("county_siege_facility", "1.0.0")
+    trusted_hash = load_pack(FACILITY_PACK, handlers={}).content_hash
+
+    archive = load_package_archive(
+        {ref: FACILITY_PACK}, {ref: trusted_hash}, handlers={},
+    )
+
+    assert archive.resolve(ref).content_hash == trusted_hash
+
+
+def test_package_archive_bootstrap_requires_a_trusted_hash_for_every_directory() -> None:
+    ref = PackageRef("county_siege_facility", "1.0.0")
+
+    with pytest.raises(PackageMigrationError, match="package_archive_content_hash_mismatch"):
+        load_package_archive({ref: FACILITY_PACK}, {}, handlers={})
+
+
+def test_package_archive_bootstrap_rejects_directory_content_changed_after_pin(tmp_path) -> None:
+    ref = PackageRef("county_siege_facility", "1.0.0")
+    trusted_hash = load_pack(FACILITY_PACK, handlers={}).content_hash
+    changed_pack = tmp_path / "facility"
+    shutil.copytree(FACILITY_PACK, changed_pack)
+    content = changed_pack / "pool_defs/gate_integrity.yaml"
+    content.write_text(
+        content.read_text(encoding="utf-8").replace('initial: "100"', 'initial: "99"'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(PackageMigrationError, match="package_archive_content_hash_mismatch"):
+        load_package_archive({ref: changed_pack}, {ref: trusted_hash}, handlers={})
+
+
+def test_package_archive_bootstrap_resolves_and_pins_parent_overlay(tmp_path) -> None:
+    parent_ref = PackageRef("county_siege_facility", "1.0.0")
+    child_ref = PackageRef("facility_overlay", "2.0.0")
+    child = tmp_path / "overlay"
+    child.mkdir()
+    (child / "pack.yaml").write_text(
+        'pack_id: "facility_overlay"\n'
+        'pack_version: "2.0.0"\n'
+        'schema_version: 1\n'
+        'parent_pack: {pack_id: "county_siege_facility", pack_version: "1.0.0"}\n',
+        encoding="utf-8",
+    )
+    expected_hashes = {
+        parent_ref: load_pack(FACILITY_PACK, handlers={}).content_hash,
+        child_ref: load_pack(
+            child,
+            handlers={},
+            parent_packs={(parent_ref.pack_id, parent_ref.pack_version): FACILITY_PACK},
+        ).content_hash,
+    }
+
+    archive = load_package_archive(
+        {parent_ref: FACILITY_PACK, child_ref: child}, expected_hashes, handlers={},
+    )
+
+    loaded_child = archive.resolve(child_ref)
+    assert [pin.pack_id for pin in loaded_child.resolved_packs] == [
+        "county_siege_facility", "facility_overlay",
+    ]
+    assert archive.resolve(parent_ref).content_hash == expected_hashes[parent_ref]
 
 
 def test_replay_without_migrations_uses_initial_package_set() -> None:
