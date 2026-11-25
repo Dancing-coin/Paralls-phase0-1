@@ -38,7 +38,7 @@ D:\Temp\paralls-g0-py312\Scripts\python.exe docs/verification/absorb-main-3bf341
 
 Raw per-batch pytest output is in `shared-replay-shim/batch-*.log`; exact comparator output was `selected=990 problems=0 improvements=0`, exit 0. All 25 batches completed. This supersedes the incomplete result above. Full backend suite was not run.
 
-The current verification supports the focused `event_schema_ref` increment and the five completed regression selections. It does not verify shared-replay, full-suite behavior, package-version write boundaries, `temporal_effects`, production command registration, M5-3/M5-4, or M1-2 production consumption.
+The current verification supports the focused `event_schema_ref` increment and the five completed regression selections. It does not verify shared-replay or full-suite behavior for this follow-up, package-version write boundaries, `temporal_effects`, production command registration, M5-3, or M1-2 production consumption. The loader has an implemented and tested `running=True` hot-reload rejection for M5-4, but no production code currently calls `load_pack`.
 
 ## `temporal_effects` contract audit
 
@@ -319,4 +319,10 @@ The formal Resolver contract permits `fixed_point`, `decimal`, and `float64` num
 
 The run used Python 3.12.2, pytest 9.1.1 and `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`. `app.__file__` resolved to that worktree. `TEMP`, `TMP`, pytest basetemp and retained output were directed to the unique F-drive run directory. The interpreter remained at its existing D-drive location. SQLite was not independently queried for this follow-up.
 
-The M5-5 selection manifest now registers 22 nodes at implementation commit `14f4fbd7`. This follow-up only changes compile-time Resolver policy validation and does not change event persistence or Resolver execution. M5-5 remains in progress. `temporal_effects`, production command registration, package-version write boundaries and M5-3/M5-4 remain open. The production Gate values also remain unconfigured on the production server; the ignored local `.env` profile is only a worktree demo configuration.
+The M5-5 selection manifest now registers 22 nodes at implementation commit `14f4fbd7`. This follow-up only changes compile-time Resolver policy validation and does not change event persistence or Resolver execution. M5-5 remains in progress. `temporal_effects`, production command registration, package-version write boundaries and M5-3 remain open. M5-4 has a loader-level runtime guard and regression coverage, with production load wiring outstanding. The production Gate values remain intentionally unconfigured on the production server; the ignored local `.env` profile is only a worktree demo configuration.
+
+## M5-3 and M5-4 boundary audit
+
+M5-3 has no production writer or replay consumer for `pack.migrated`. `load_pack` computes immutable `PackRevision` values and supports explicitly supplied parent package paths, but application code does not call it. The formal contract specifies `from`, `to`, `migration_ref`, and `affected_fact_types`, and requires old and new package interpretation on opposite sides of the event. It does not assign the migration event to one of the registered gameplay Owners. Adding a gameplay Owner would exceed the A task boundary. M5-3 remains blocked pending platform-event ownership classification and a production package-version archive/replay entry point.
+
+M5-4's loader-level guard is present in `_read_pack` and rejects `load_pack(..., running=True)` with `pack_runtime_reload_forbidden`. A regression assertion exists in `test_rule_pack_validator.py`. The guard relies on its caller to report runtime state, and there is no production `load_pack` caller. This confirms the local loader contract only, not production hot-reload enforcement.
