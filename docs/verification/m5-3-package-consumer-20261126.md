@@ -33,6 +33,8 @@ D:\Temp\paralls-g0-py312\Scripts\python.exe -m pytest -q -p no:cacheprovider --b
 
 `git diff --check`：exit 0。
 
+冻结选择（当前 tip）：M5-3 登记选择 `selected=22 problems=0 improvements=0`，Ownership 选择 `selected=24 problems=0 improvements=0`。shared-replay 990 本次未完成，runner 在约三分钟无输出后于已知 PowerShell listener 查询停滞处中止，未停止外部进程。
+
 ## 仍未完成
 
 - `main.py` 尚未从部署配置读取 `world_ref`、初始 package refs、archive directories 与 trusted content hashes。
@@ -52,6 +54,6 @@ D:\Temp\paralls-g0-py312\Scripts\python.exe -m pytest -q -p no:cacheprovider --b
 | U1-U4 | 继承 M5-3 / M6-5 既有证据 |
 | U5-U6 | 既有 migration 与读取方证据；本提交未改持久事件 |
 | U7-U8 | 规则包消费路径静态可见，生产启动未接入 |
-| U9 | 新增定向测试通过；冻结全量选集未在本提交单独重跑 |
+| U9 | 新增定向测试、M5-3 登记选择和 Ownership 选择通过；shared-replay 本次未完成 |
 | U10 | 本文件列出改动与未覆盖项 |
 | U11 | `docs/verification/selection/m5-3-package-migration.json` 已登记新增节点 |
