@@ -88,3 +88,7 @@
 ### M6-5 本地 Gate→Presence obligation follow-up（2026-11-25）
 
 - 已在配置探针的 14 次签名 Gate impact 后提交签名 Presence assessment。输出确认 `breach_events=1`、完整度保持 20、`place_commits=1`、`passability=passable`、`latest_impact_obligation=settled`。原始日志在 `F:/paralls-verification/thread-a/m6-5-gate-presence-obligation-20261125-01/runtime.log`。这是本地运行时闭环，未覆盖 UE 实机传输、生产部署或完整 siege playthrough。
+
+### M6-5 tracked Gate profile follow-up（2026-11-26）
+
+- 已将本地验证过的 `gate-03` integrity/durability 初始值、阈值与 battering-ram delta 写入跟踪的根 `.env.example`。配置 JSON 通过 `FacilityGateProfileSettings` 验证；A worktree 定向配置/runtime 测试 `52 passed, 6 warnings`，原始输出 `F:/paralls-verification/thread-a/m6-5-gate-profile-template-20261126-02/pytest.log`。应用启动通过 `SIEGE_FACILITY_GATE_PROFILES_JSON` 消费该配置。仓库没有生产部署清单或服务器目标，故不声称生产实例已加载。M6-5 保持进行中。

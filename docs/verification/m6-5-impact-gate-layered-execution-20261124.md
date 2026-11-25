@@ -33,7 +33,7 @@
 
 ## Remaining gaps
 
-- Production Gate profiles are intentionally unconfigured without authoritative values. The checked-in pack values are demo content only.
+- The `gate-03` profile values were selected and exercised in the local runtime probe. They are now included in the tracked root `.env.example` for deployment configuration. This repository has no production deployment manifest or server target, so no live environment is claimed as configured.
 - No live Unreal transport or fully configured siege playthrough was run.
 - The Presence contract requires a committed breach event as an assessment source. Hits that do not cross the integrity breach threshold remain open in the derived obligation projection, since the current source contract cannot issue a Presence assessment against a non-breach impact.
 - Exact commit full backend suite: 10,630 passed, 12 failed, 2 skipped, 2 xfailed, 227 warnings, exit 1 in 1465.42s. All 12 failed node IDs were rerun at the exact parent 7601189a in a detached worktree and all 12 failed there as well; the node sets match, with no new failure node. Parent selected-run evidence identifies a missing tokenizers module, Godot CharacterMotor parse/type resolution, and existing Population/Task8 gate failures. Full implementation output: F:/paralls-verification/thread-a/m65g-full-a9f5385a-01/full.log. Parent comparison: F:/paralls-verification/thread-a/m65g-full-a9f5385a-01/parent-comparison.json and F:/paralls-verification/thread-a/m65g-full-parent-7601189a-01/baseline/results.json.
@@ -54,3 +54,11 @@
 
 
 - 2026-11-25 Gate-to-Presence follow-up: the configured 14-impact probe was extended to submit an independently signed Presence assessment against the breach impact. Runtime output: `python=3.12.2`, `app=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`, `sqlite=3.43.1`, `impact_commits=14 breach_events=1 values={durability:0,latch-durability:0,integrity:20}`, `place_commits=1 passability=passable`, and `latest_impact_obligation=settled`. The integrity Pool remains at 20 after Presence assessment, confirming the accepted compensation contract preserves committed physical damage. Raw output: `F:/paralls-verification/thread-a/m6-5-gate-presence-obligation-20261125-01/runtime.log`. Probe source remains outside the repository at `F:/paralls-verification/thread-a/verify-configured-gate-20261125.py`. This is a local runtime probe, not a live UE or production deployment run.
+
+## 2026-11-26 tracked configuration follow-up
+
+- The root `.env.example` now carries the same `gate-03` values as the previously exercised local profile: integrity and durability bounds 0–100, initial values 100, breach enter/reset thresholds 40/45, and battering-ram delta -20.
+- The environment variable is consumed by application startup through `Settings.siege_facility_gate_profiles`. This update makes the profile available as tracked deployment input; the actual production environment remains unverified because no deployment target or manifest is present in this repository.
+- The JSON profile was validated against `FacilityGateProfileSettings`. Python `3.12.2`, SQLite `3.43.1`, and `PYTHONPATH=F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend` were verified; `app.__file__` resolved to `F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend/app/__init__.py`.
+- Command: `python -B -m pytest -q -p no:cacheprovider --basetemp F:/paralls-verification/thread-a/m6-5-gate-profile-template-20261126-02/pytest-tmp backend/tests/test_m6_5_siege_runtime.py backend/tests/test_facility_gate_layered_runtime.py backend/tests/test_config_runtime_modes.py`. Result: `52 passed, 6 warnings in 2.79s`. Raw output: `F:/paralls-verification/thread-a/m6-5-gate-profile-template-20261126-02/pytest.log`.
+- No runtime code changed, and the prior signed-input runtime evidence remains applicable to the same values. Live production deployment, UE transport, and a full configured siege session remain unverified.
