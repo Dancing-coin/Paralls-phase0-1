@@ -1,6 +1,7 @@
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 
+from app.contracts.owner_fact_query import FactTypeValue, OwnerFactQuery
 from app.models.fact_type import FACT_TYPE_REGISTRY, FactType, FactTypeRef
 from app.models.siming_runtime_state import (
     GroupSimulationBranchSnapshot,
@@ -28,9 +29,19 @@ _PAYLOAD_SCHEMAS = {fact: SimingPayloadSchema() for fact in (
 
 
 class InMemorySimingStateTree:
-    def __init__(self, *, payload_schemas: Mapping[FactType | FactTypeRef, SimingPayloadSchema] | None = None) -> None:
+    def __init__(self, *, owner_query: OwnerFactQuery | None = None,
+                 payload_schemas: Mapping[FactType | FactTypeRef, SimingPayloadSchema] | None = None) -> None:
+        self._owner_query = owner_query
         self._latest_snapshot: StateTreeSnapshot | None = None
         self._payload_schemas = dict(_PAYLOAD_SCHEMAS if payload_schemas is None else payload_schemas)
+
+    def get_state(self, actor_id: str, fact_types: Iterable[FactTypeValue]) -> dict[FactTypeValue, Mapping[str, object]]:
+        if self._owner_query is None:
+            raise ValueError("owner_fact_query_required")
+        projections = self._owner_query.query_facts(
+            fact_types, actor_refs=[actor_id], audience="siming_internal"
+        )
+        return {projection.fact_type: projection.payload for projection in projections}
 
     def update_from_observed(
         self,

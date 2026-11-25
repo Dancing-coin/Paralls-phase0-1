@@ -23,6 +23,7 @@ from app.models.siming_event import (
 )
 from app.services.authority_event_bus import AuthorityRecoveryLedger
 from app.models.siming_narrative import NarrativeCoreResult
+from app.contracts.owner_fact_query import OwnerFactQuery
 from app.models.siming_runtime_state import (
     ProjectionRunSnapshot,
     StateTreeSnapshot,
@@ -126,6 +127,7 @@ class SimingRuntime:
         observe_pipeline: SimingObservePipeline | None = None,
         fact_core: SimingFactCore | None = None,
         state_tree: InMemorySimingStateTree | None = None,
+        owner_fact_query: OwnerFactQuery | None = None,
         fairness_audit: SimingFairnessAuditEngine | None = None,
         narrative_core: SimingNarrativeCore | None = None,
         quality_monitor: SimingQualityMonitor | None = None,
@@ -161,13 +163,13 @@ class SimingRuntime:
         self._knowledge_graph = knowledge_graph or SimingKnowledgeGraph()
         self._balance_system = balance_system if balance_system is not None else SimingBalanceSystem(self._knowledge_graph)
         self._conflict_generator = conflict_generator if conflict_generator is not None else SimingConflictGenerator(self._knowledge_graph)
-        self._state_tree = state_tree or InMemorySimingStateTree()
-        self._global_situation = SimingGlobalSituationLayer()
+        self._state_tree = state_tree or InMemorySimingStateTree(owner_query=owner_fact_query)
+        self._global_situation = SimingGlobalSituationLayer(owner_query=owner_fact_query)
         self._consistency_validator = SimingConsistencyValidator()
         self._fairness_audit = fairness_audit or SimingFairnessAuditEngine(
             self._feature_registry
         )
-        self._narrative_core = narrative_core or SimingNarrativeCore()
+        self._narrative_core = narrative_core or SimingNarrativeCore(owner_query=owner_fact_query)
         self._quality_monitor = quality_monitor or SimingQualityMonitor(
             feature_registry=self._feature_registry
         )

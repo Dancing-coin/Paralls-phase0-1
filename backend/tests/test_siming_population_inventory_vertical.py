@@ -11,7 +11,12 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.inventory_runtime import InventoryAuthorityService
 from app.population_continuity.domain_projection_sources import inventory_output_custody_population_projections
+from app.population_continuity.domain_projection_sources import validate_inventory_output_custody_projection
 from app.population_continuity.inventory_owner_adapter import InventoryOutputCustodyOwnerExecutor
+from app.world_runtime.temporal_contracts import (
+    POPULATION_INVENTORY_AUTHORIZATION_REF,
+    POPULATION_SETTLEMENT_PARTICIPANT_SCOPE,
+)
 from app.population_continuity.siming_contracts import PopulationCadenceInput, PopulationReadSet
 from app.world_runtime.temporal_contracts import TemporalAuthorization
 from app.services.siming_population_capability import PopulationSimulationCapability
@@ -100,13 +105,13 @@ def _time_pins(cadence: PopulationCadenceInput) -> dict[str, str | int]:
         "window_ticks": cadence.window_end - cadence.window_start,
         "canonical_unit_ref": "second",
         "step_duration": "1/1",
-        "settlement_participant_scope": "actor_gameplay.inventory_domain",
+        "settlement_participant_scope": list(POPULATION_SETTLEMENT_PARTICIPANT_SCOPE),
         "input_cutoff": cadence.window_end,
         "late_input_policy_ref": "reject_after_cutoff",
         "confirmation_boundary": cadence.window_end,
         "ordering_policy_ref": "source_revision_then_event_ref",
-        "temporal_authorization_ref": "authorization:population-inventory-output-custody@1",
-        "temporal_authorization_revision": "authorization:population-inventory-output-custody@1",
+        "temporal_authorization_ref": POPULATION_INVENTORY_AUTHORIZATION_REF,
+        "temporal_authorization_revision": POPULATION_INVENTORY_AUTHORIZATION_REF,
         "temporal_authorization_issuer_ref": "world_runtime.population_cadence:world:bakery",
         "temporal_authorization_valid_until": cadence.window_end,
     }
@@ -115,7 +120,7 @@ def _time_pins(cadence: PopulationCadenceInput) -> dict[str, str | int]:
         revision=str(pins["temporal_authorization_revision"]),
         issuer_ref=str(pins["temporal_authorization_issuer_ref"]),
         timeline_id=str(pins["timeline_id"]),
-        participant_scope=(str(pins["settlement_participant_scope"]),),
+        participant_scope=POPULATION_SETTLEMENT_PARTICIPANT_SCOPE,
         input_cutoff=int(pins["input_cutoff"]),
         confirmation_boundary=int(pins["confirmation_boundary"]),
         late_input_policy_ref=str(pins["late_input_policy_ref"]),
@@ -160,6 +165,16 @@ def test_population_read_set_preserves_cadence_temporal_pins() -> None:
     assert pinned.temporal_pins == pins
 
 
+def test_inventory_projection_uses_declared_field_schema():
+    _, _, certification_event = _fixture()
+    projection = inventory_output_custody_population_projections(
+        committed_events=(certification_event,), scope="public"
+    )[0]
+    validate_inventory_output_custody_projection(projection.payload)
+    with pytest.raises(ValueError, match="inventory_output_custody_field_undeclared"):
+        validate_inventory_output_custody_projection({**projection.payload, "debug_flag": True})
+
+
 def test_population_read_set_rejects_temporal_window_start_drift() -> None:
     _, _, certification_event = _fixture()
     read_set = _read_set(certification_event)
@@ -173,7 +188,7 @@ def test_inventory_caller_freezes_complete_settlement_window_from_read_set() -> 
     read_set = _read_set(certification_event)
     window = InventoryOutputCustodyOwnerExecutor(authority=inventory).settlement_window(read_set)
     assert window.window_ref == read_set.cadence.cadence_id
-    assert window.participant_scope == ("actor_gameplay.inventory_domain",)
+    assert window.participant_scope == POPULATION_SETTLEMENT_PARTICIPANT_SCOPE
     assert window.from_time.canonical_time_value == 0
     assert window.to_time.canonical_time_value == 1
     assert window.input_cutoff.canonical_time_value == 1

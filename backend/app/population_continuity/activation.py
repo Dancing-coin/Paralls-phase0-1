@@ -5,6 +5,7 @@ import json
 from dataclasses import dataclass
 from typing import Sequence
 
+from app.contracts.owner_registry import OWNER_REGISTRY
 from app.character_agent.profile.registry import CharacterProfileRegistry
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment
@@ -48,7 +49,7 @@ class ActivationObligationBindingContract:
         ActivationObligationBinding(
             binding_ref="activation-binding:survival-state-expiry:cold:v1",
             pending_kind="survival_state_expiry",
-            target_owner_ref="actor_gameplay.survival_domain",
+            target_owner_ref=OWNER_REGISTRY.get("survival").principal_ref,
             target_stream_pattern="gameplay:survival:{profile_ref}",
             privacy_scope="project",
             policy_ref="policy:survival_state_expiry",
@@ -58,7 +59,7 @@ class ActivationObligationBindingContract:
         ActivationObligationBinding(
             binding_ref="activation-binding:survival-state-expiry:dehydrated:v1",
             pending_kind="survival_state_expiry",
-            target_owner_ref="actor_gameplay.survival_domain",
+            target_owner_ref=OWNER_REGISTRY.get("survival").principal_ref,
             target_stream_pattern="gameplay:survival:{profile_ref}",
             privacy_scope="project",
             policy_ref="policy:survival_state_expiry",
@@ -68,7 +69,7 @@ class ActivationObligationBindingContract:
         ActivationObligationBinding(
             binding_ref="activation-binding:survival-state-expiry:overheated:v1",
             pending_kind="survival_state_expiry",
-            target_owner_ref="actor_gameplay.survival_domain",
+            target_owner_ref=OWNER_REGISTRY.get("survival").principal_ref,
             target_stream_pattern="gameplay:survival:{profile_ref}",
             privacy_scope="project",
             policy_ref="policy:survival_state_expiry",
@@ -78,7 +79,7 @@ class ActivationObligationBindingContract:
         ActivationObligationBinding(
             binding_ref="activation-binding:survival-state-expiry:fatigued:v1",
             pending_kind="survival_state_expiry",
-            target_owner_ref="actor_gameplay.survival_domain",
+            target_owner_ref=OWNER_REGISTRY.get("survival").principal_ref,
             target_stream_pattern="gameplay:survival:{profile_ref}",
             privacy_scope="project",
             policy_ref="policy:survival_state_expiry",
@@ -88,7 +89,7 @@ class ActivationObligationBindingContract:
         ActivationObligationBinding(
             binding_ref="activation-binding:schedule-gated-supply:v1",
             pending_kind="schedule_gated_supply",
-            target_owner_ref="actor_gameplay.organization_domain",
+            target_owner_ref=OWNER_REGISTRY.get("organization").principal_ref,
             target_stream_pattern="existing-organization-stream-from-frozen-plan",
             privacy_scope="plan_report_scope",
         ),
@@ -158,7 +159,8 @@ class ActivationObligationBindingContract:
 class ProfileActivationAuthority:
     """Authority for lifecycle facts; profile data remains registry-owned."""
 
-    _PRINCIPAL = "world_runtime.activation_authority"
+    _PRINCIPAL = OWNER_REGISTRY.get("profile_activation").principal_ref
+    _SURVIVAL_EXPIRY_PRINCIPAL = OWNER_REGISTRY.get("activation_survival_expiry").principal_ref
     _REGION_ASSIGNMENT_EVENT = "population.activation.region_assigned"
 
     def __init__(

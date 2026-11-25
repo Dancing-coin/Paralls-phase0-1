@@ -1,18 +1,18 @@
 from app.models.authority_event import AuthorityEvent
-from app.models.fact_type import FACT_TYPE_REGISTRY, FactType
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.models.siming_event import SimingInput
 
 
+def _registered_fact_types():
+    return frozenset(
+        fact_type
+        for event_type in FACT_TYPE_REGISTRY.event_types()
+        if (fact_type := FACT_TYPE_REGISTRY.from_event_type(event_type)) is not None
+    )
+
+
 class SimingEventConsumer:
-    ALLOWED_FACT_TYPES = frozenset({
-        FactType.WORLD_FACT,
-        FactType.VISUAL_FACT,
-        FactType.ESM_RESULT,
-        FactType.CHARACTER_BEHAVIOR,
-        FactType.CONVERSATION_RESOLUTION,
-        FactType.CONSTRAINT_STATE,
-        FactType.POPULATION_CADENCE,
-    })
+    ALLOWED_FACT_TYPES = _registered_fact_types()
     # Compatibility surface for callers that still enumerate subscription keys.
     PROTOCOL_EVENT_TYPES = frozenset({"esm.feasibility_response", "esm.constraint_state"})
     ALLOWED_EVENT_TYPES = frozenset((*ALLOWED_FACT_TYPES, "siming_staging_ack", *PROTOCOL_EVENT_TYPES))

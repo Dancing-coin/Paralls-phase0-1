@@ -30,6 +30,22 @@ def test_global_situation_uses_public_facts_and_siming_context_for_fairness_cand
     assert "situation_evidence_refs" in candidate.reason_tags
 
 
+def test_no_private_copy_reads_owner_projection():
+    from app.models.fact_type import FactType
+
+    class Query:
+        def query_facts(self, fact_types, *, actor_refs=None, at_revision=None, audience="siming_internal"):
+            assert tuple(fact_types) == (FactType.DAILY_RHYTHM_FATIGUE_STATE,)
+            return [type("Projection", (), {"fact_type": FactType.DAILY_RHYTHM_FATIGUE_STATE,
+                "payload": {"fatigue": 0.7}})()]
+
+    layer = SimingGlobalSituationLayer(owner_query=Query())
+
+    assert layer.get_state("char_a", [FactType.DAILY_RHYTHM_FATIGUE_STATE]) == {
+        FactType.DAILY_RHYTHM_FATIGUE_STATE: {"fatigue": 0.7}
+    }
+
+
 def test_vla_global_advisory_enhances_but_does_not_override_world_truth() -> None:
     layer = SimingGlobalSituationLayer()
     snapshot = layer.assemble_snapshot(

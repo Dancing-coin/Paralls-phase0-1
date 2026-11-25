@@ -1759,6 +1759,7 @@ def validate_saved_participants(store, manifest, batch_refs, boundary_sequence=N
     world = WorldContinuityRuntime(store=store, mode=WorldModeProfile.model_validate(population["mode"]),
         roster=PopulationRoster.model_validate(population["roster"]),
         authorized_actor_refs=frozenset(population["authorized_actor_refs"]) if population["authorized_actor_refs"] is not None else None)
+    world.reset_population_projection_for_replay()
     for event in population_events:
         cadence = PopulationCadenceInput.model_validate(event.payload["cadence"])
         # Domain due entries are frozen evidence from this cadence, not re-evaluated owners.

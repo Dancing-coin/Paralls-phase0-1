@@ -225,12 +225,14 @@ def test_confirmation_is_atomic_when_one_preview_revision_becomes_stale() -> Non
     runtime = _runtime()
     cadence = runtime.build_population_cadence(window_start=0, window_end=3_600)
     runtime.build_population_projections(cadence)
-    runtime.population_hot_state.upsert("char_a", {"fatigue": 0.3}, 1)
+    runtime._daily_rhythm.publish_state("char_a", {"fatigue": 0.25}, tick=0, revision=1)
+    runtime._daily_rhythm.publish_state("char_a", {"fatigue": 0.3}, tick=0, revision=2)
+    runtime._daily_rhythm_projection.rebuild("char_a")
 
     with pytest.raises(ValueError, match="hot_state_revision_conflict"):
         runtime.confirm_population_cadence(cadence)
 
-    assert runtime.population_hot_state.read("char_a")["revision"] == 1
+    assert runtime.population_hot_state.read("char_a")["revision"] == 2
     assert runtime.population_hot_state.read("char_b")["revision"] == 0
     assert runtime.population_hot_state.read("char_b")["last_update_tick"] == 0
 
@@ -243,9 +245,9 @@ def test_historical_cadence_replays_after_the_world_stream_advances() -> None:
     source.resume()
 
     restored = WorldContinuityRuntime(store=source.store, mode=source.mode, roster=source.roster)
-    receipt = restored.confirm_population_cadence(cadence)
 
-    assert receipt.status == "committed"
+    with pytest.raises(ValueError, match="population_b0_cursor_conflict"):
+        restored.confirm_population_cadence(cadence)
     assert all(
         restored.population_hot_state.read(actor_id)["last_update_tick"] == 3_600
         for actor_id in restored.roster.actor_ids
@@ -266,3 +268,28 @@ def test_unclaimed_threshold_work_is_deduplicated_across_thirty_daily_windows() 
         assert receipt.deferred_count == 0
 
     assert runtime.due_population_work(30 * 86_400) == ()
+
+def test_confirmation_rejects_changed_owner_stream_with_same_logical_revision():
+    from app.gameplay.settlement_plan import build_atomic_event_batch
+
+    runtime = _runtime()
+    cadence = runtime.build_population_cadence(window_start=0, window_end=3_600)
+    runtime.build_population_projections(cadence)
+    stream = "daily-rhythm:char_a"
+    batch = build_atomic_event_batch(
+        command_id="external-same-logical-revision",
+        principal_ref="daily_rhythm_runtime",
+        stream_id=stream,
+        expected_revision=runtime.store.get_stream_head(stream),
+        event_specs=(("daily_rhythm.state_updated", {
+            "actor_id": "char_a", "tick": 0, "revision": 0,
+            "state": {"fatigue": 0.9}, "fact_types": ["daily_rhythm.fatigue_state"],
+        }),),
+        idempotency_key="external-same-logical-revision",
+        causation_id="external-same-logical-revision",
+        correlation_id="external-same-logical-revision",
+    )
+    assert runtime.store.append_batch(batch).committed
+
+    with pytest.raises(ValueError, match="hot_state_revision_conflict"):
+        runtime.confirm_population_cadence(cadence)

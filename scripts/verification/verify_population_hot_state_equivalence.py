@@ -273,6 +273,7 @@ def measure(population: int, repeats: int = 3) -> dict[str, object]:
         mode=serial_runtime.mode,
         roster=serial_runtime.roster,
     )
+    replay_runtime.reset_population_projection_for_replay()
     replay_confirmation = replay_runtime.confirm_population_cadence(cadence)
 
     baseline_projection_hash = _projection_hash(baseline_projections)

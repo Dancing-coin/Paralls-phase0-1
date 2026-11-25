@@ -1506,7 +1506,7 @@ class ContinuityMergeAuthority:
         ):
             return ObligationSettlementResult(committed=False, error_code="released_survival_obligation_invalid")
         existing = self.store.get_by_idempotency(
-            "world_runtime.activation_survival_expiry", obligation.idempotency_key
+            ProfileActivationAuthority._SURVIVAL_EXPIRY_PRINCIPAL, obligation.idempotency_key
         )
         if existing is not None and existing.committed:
             committed = lifecycle.terminal.get(obligation.obligation_id)
@@ -1559,7 +1559,7 @@ class ContinuityMergeAuthority:
                     expected_revision=self.store.get_stream_head(stream_id),
                 ),
             ),
-            principal_ref="world_runtime.activation_survival_expiry",
+            principal_ref=ProfileActivationAuthority._SURVIVAL_EXPIRY_PRINCIPAL,
         )
         if plan.duplicate_result is not None:
             return ObligationSettlementResult(
@@ -1587,6 +1587,8 @@ class ContinuityMergeAuthority:
         )
 
     def merge_production_evidence_wage(self, plan: PopulationWorldPlan) -> ContinuityMergeReceipt:
+        from app.gameplay.construction_production_runtime import ConstructionProductionAuthority
+
         if plan.world_ref != self.mode.world_ref or plan.policy_revision != self.mode.revision or plan.mode != self.mode.mode:
             return self._failed(plan, "stale_policy_revision")
         if plan.report_scope != "actor:self" or plan.activation_lock_refs:
@@ -1630,7 +1632,7 @@ class ContinuityMergeAuthority:
         input_value = ProductionCompletedEvidenceInput(
             recipient_ref=plan.production_evidence_recipient_ref or "",
             observed_at=plan.production_evidence_observed_at or "",
-            owner_principal_ref="actor_gameplay.construction_production_domain",
+            owner_principal_ref=ConstructionProductionAuthority._PRINCIPAL,
             projection_digest=plan.production_evidence_projection_digest or "",
             source_revision_vector=dict(plan.production_evidence_source_revision_vector),
             evidence_refs=plan.production_evidence_refs,
@@ -1764,10 +1766,12 @@ class ContinuityMergeAuthority:
             branch_authority.production_replay()
         except (TypeError, ValueError, KeyError):
             return self._failed(plan, "branch_replay_contract_invalid")
+        from app.gameplay.construction_production_runtime import ConstructionProductionAuthority
+
         source = ProductionCompletedEvidenceInput(
             recipient_ref=plan.production_evidence_recipient_ref or "",
             observed_at=plan.production_evidence_observed_at or "",
-            owner_principal_ref="actor_gameplay.construction_production_domain",
+            owner_principal_ref=ConstructionProductionAuthority._PRINCIPAL,
             projection_digest=plan.production_evidence_projection_digest or "",
             source_revision_vector=dict(plan.production_evidence_source_revision_vector),
             evidence_refs=plan.production_evidence_refs,

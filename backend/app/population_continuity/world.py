@@ -18,7 +18,8 @@ from app.world_runtime.scheduling import (
 
 from .models import DueEvaluationReceipt, WorldModeProfile, WorldModeReceipt
 from .continuous import B0ContinuousResult, advance_b0_row
-from .hot_state import PopulationDueIndex, PopulationHotState
+from .hot_state import HOT_FIELDS, PopulationDueIndex, PopulationHotState
+from .daily_rhythm_projection import DailyRhythmProjection
 from .siming_contracts import PopulationCadenceInput, PopulationProjection, dump_population_projections
 from .roster import PopulationRoster, load_population_roster
 from .member_ledger import (
@@ -28,7 +29,7 @@ from .member_ledger import (
 )
 from .simulation_contracts import CharacterSimulationFrame, ParticipationResolution, simulation_digest
 from .handoff import prepare_intersection
-from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime
+from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime, create_daily_rhythm_event_schema_registry
 
 
 @dataclass(frozen=True)
@@ -65,16 +66,25 @@ class WorldContinuityRuntime:
         self.mode = mode
         self.authorized_actor_refs = authorized_actor_refs
         self.roster = roster if roster is not None else load_population_roster()
-        self._daily_rhythm = DailyRhythmRuntime(event_bus, store=owner_store) if event_bus is not None else None
-        if self._daily_rhythm is not None:
+        rhythm_store = owner_store or store
+        event_schema_registry = getattr(rhythm_store, "_event_schema_registry", None)
+        if event_schema_registry is not None:
+            create_daily_rhythm_event_schema_registry(event_schema_registry)
+        self._daily_rhythm_store = rhythm_store
+        self._daily_rhythm = DailyRhythmRuntime(event_bus, store=rhythm_store)
+        if event_bus is not None:
             for actor_id in self.roster.actor_ids:
-                if owner_store is None or owner_store.get_stream_head(f"daily-rhythm:{actor_id}") == 0:
+                if rhythm_store.get_stream_head(f"daily-rhythm:{actor_id}") == 0:
                     self._daily_rhythm.initialize(actor_id)
+        self._daily_rhythm_projection = DailyRhythmProjection(rhythm_store)
         from .recovery import population_kernel_digest
         self._population_kernel_digest = population_kernel_digest()
         self._cadence_cache: dict[tuple[object, ...], PopulationCadenceInput] = {}
         self._projection_cache: dict[tuple[object, ...], tuple[PopulationProjection, ...]] = {}
-        self.population_hot_state = PopulationHotState(self.roster.actor_ids)
+        self.population_hot_state = PopulationHotState(
+            self.roster.actor_ids,
+            daily_rhythm_projection=self._daily_rhythm_projection,
+        )
         self._population_due_index = PopulationDueIndex()
         for actor_id in self.roster.actor_ids:
             row = self.population_hot_state.read(actor_id)
@@ -85,6 +95,7 @@ class WorldContinuityRuntime:
                 int(row["revision"]),
             )
         self._preview_results: dict[tuple[object, ...], tuple[B0ContinuousResult, ...]] = {}
+        self._preview_source_revisions: dict[str, int] = {}
         self._confirmed_receipts: dict[str, PopulationCadenceConfirmationReceipt] = {}
         self._confirmed_fingerprints: dict[str, str] = {}
         self._confirmed_window_end: int | None = None
@@ -469,11 +480,52 @@ class WorldContinuityRuntime:
             raise ValueError("population_recovery_participation_mismatch")
         if tuple(actor.actor_id for actor in parsed.actors) != tuple(sorted(self.roster.actor_ids)):
             raise ValueError("population_recovery_roster_mismatch")
-        hot = PopulationHotState()
+        additional_fields = {
+            key
+            for actor in parsed.actors
+            for key in actor.model_dump(exclude={"actor_id", "revision"})
+            if key not in HOT_FIELDS
+        }
+        hot = PopulationHotState(
+            self.roster.actor_ids,
+            daily_rhythm_projection=self._daily_rhythm_projection,
+            additional_fields=additional_fields,
+        )
         for actor in parsed.actors:
-            hot.upsert(actor.actor_id, actor.model_dump(exclude={"actor_id", "revision"}), actor.revision)
+            projected_state = self._daily_rhythm_projection.rebuild(
+                actor.actor_id, until_revision=actor.revision
+            )
+            if any(projected_state[field] != getattr(actor, field) for field in HOT_FIELDS):
+                stream_id = f"daily-rhythm:{actor.actor_id}"
+                if self._daily_rhythm_store.get_stream_head(stream_id) != 0:
+                    raise ValueError("population_recovery_projection_mismatch")
+                self._daily_rhythm.publish_state(
+                    actor.actor_id,
+                    {field: getattr(actor, field) for field in HOT_FIELDS},
+                    tick=actor.last_update_tick,
+                    revision=actor.revision,
+                )
+                projected_state = self._daily_rhythm_projection.rebuild(actor.actor_id)
+                if any(projected_state[field] != getattr(actor, field) for field in HOT_FIELDS):
+                    raise ValueError("population_recovery_projection_mismatch")
+            values = {
+                key: value
+                for key, value in actor.model_dump(exclude={"actor_id", "revision"}).items()
+                if key not in HOT_FIELDS
+            }
+            if values:
+                hot.upsert(actor.actor_id, values, actor.revision)
         due = PopulationDueIndex()
-        due.rebuild((entry.actor_id, entry.obligation_id, entry.due_tick, entry.revision) for entry in parsed.due_entries)
+        due.rebuild(
+            (
+                entry.actor_id,
+                entry.obligation_id,
+                entry.due_tick,
+                self._daily_rhythm_projection.get_revision(entry.actor_id)
+                if entry.obligation_id == "b0:presentation-threshold" else entry.revision,
+            )
+            for entry in parsed.due_entries
+        )
         self.population_hot_state = hot
         self._population_due_index = due
         self._confirmed_window_end = parsed.confirmed_tick
@@ -486,8 +538,22 @@ class WorldContinuityRuntime:
         self._cadence_cache.clear()
         self._projection_cache.clear()
         self._preview_results.clear()
+        self._preview_source_revisions.clear()
         self._admission_previews.clear()
         self._active_b0_actor_ids = getattr(parsed, "active_b0_actor_ids", ())
+
+    def reset_population_projection_for_replay(self) -> None:
+        self._confirmed_window_end = None
+        self._population_due_index = PopulationDueIndex()
+        for actor_id in self.roster.actor_ids:
+            self._daily_rhythm_projection.rebuild(actor_id, until_revision=0)
+            row = self.population_hot_state.read(actor_id)
+            self._population_due_index.schedule(
+                actor_id,
+                "b0:presentation-threshold",
+                int(row["next_due_tick"]),
+                self.population_hot_state.get_revision(actor_id),
+            )
 
     def pause(
         self, *, reason: str, expected_mode_revision: str | None = None
@@ -660,6 +726,8 @@ class WorldContinuityRuntime:
             # 已确认窗口可由 receipt 重放；新窗口计算前释放其万人预览。
             self._projection_cache.clear()
             self._preview_results.clear()
+            self._preview_source_revisions.clear()
+        source_revisions: dict[str, int] = {}
         evaluated = self.population_hot_state.map_readonly(
             admitted_actor_ids,
             lambda actor_id, row: advance_b0_row(
@@ -670,6 +738,7 @@ class WorldContinuityRuntime:
             ),
             workers=workers,
             batch_size=batch_size,
+            source_revision_sink=source_revisions,
         )
         by_actor = {result.actor_id: result for result in evaluated}
         due_actor_ids = {
@@ -739,6 +808,10 @@ class WorldContinuityRuntime:
                     for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0]))
                     if isinstance(getattr(envelope, "payload", None), Mapping)
                 }
+                payload["population_state_schema"] = {
+                    str(group_id): tuple(getattr(envelope, "population_allowed_fields", ()))
+                    for group_id, envelope in sorted(groups.items(), key=lambda item: str(item[0]))
+                }
                 payload["population_state_source_revision_vector"] = _thaw_population_value(
                     getattr(view, "source_revision_vector", {})
                 )
@@ -747,6 +820,7 @@ class WorldContinuityRuntime:
             projections = tuple(enriched)
         self._projection_cache = {cache_key: projections}
         self._preview_results = {cache_key: results}
+        self._preview_source_revisions = source_revisions
         return projections
 
     def confirm_population_cadence(
@@ -774,6 +848,23 @@ class WorldContinuityRuntime:
         projections = self.build_population_projections(cadence)
         cache_key = self._projection_cache_key(cadence)
         results = self._preview_results[cache_key]
+        rhythm_updates = []
+        for result in results:
+            current_revision, source_revision = self._daily_rhythm_projection.revision_pin(result.actor_id)
+            preview_source_revision = self._preview_source_revisions[result.actor_id]
+            if current_revision == result.actor_revision_before:
+                if source_revision != preview_source_revision:
+                    raise ValueError("hot_state_revision_conflict")
+                expected_source_revision = source_revision
+            elif (current_revision == result.actor_revision_before + 1
+                    and source_revision == preview_source_revision + 1):
+                expected_source_revision = preview_source_revision
+            else:
+                raise ValueError("hot_state_revision_conflict")
+            rhythm_updates.append(
+                (result.actor_id, result.values, result.actor_revision_before + 1,
+                 result.actor_revision_before, expected_source_revision)
+            )
         active_ids = frozenset(result.actor_id for result in results)
         due_items = tuple(
             item
@@ -785,23 +876,11 @@ class WorldContinuityRuntime:
         }
         if {actor_id for actor_id, _obligation_id, _due_tick in due_items} != expected_due_actors:
             raise ValueError("population_due_index_conflict")
-        advanced_count = self.population_hot_state.commit_batch_atomic(
-            (
-                result.actor_id,
-                result.values,
-                result.actor_revision_before,
-                result.actor_revision_before + 1,
-            )
-            for result in results
+        rhythm_events = self._daily_rhythm.publish_population_window(
+            cadence.cadence_id, tuple(rhythm_updates), tick=cadence.window_end
         )
-        if self._daily_rhythm is not None:
-            for result in results:
-                self._daily_rhythm.publish_state(
-                    result.actor_id,
-                    result.values,
-                    tick=result.to_tick,
-                    revision=result.actor_revision_before + 1,
-                )
+        self._daily_rhythm_projection.advance_confirmed(rhythm_events)
+        advanced_count = len(results)
         presentation_due_count = sum(len(result.due_ticks) for result in results)
         consumed_due = self._population_due_index.pop_due(
             cadence.window_end, obligation_id="b0:presentation-threshold", actor_ids=active_ids

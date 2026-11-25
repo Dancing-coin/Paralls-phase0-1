@@ -15,9 +15,11 @@ from app.models.authority_event import (
     AuthorityEventSource,
 )
 from app.population_continuity.siming_contracts import (
+    PopulationB0ContinuousDelta,
     PopulationCadenceInput,
     PopulationProjection,
     PopulationReadSet,
+    register_b0_delta_fields,
 )
 
 
@@ -44,6 +46,32 @@ def cadence(**updates: object) -> PopulationCadenceInput:
     }
     values.update(updates)
     return PopulationCadenceInput(**values)
+
+
+def test_b0_delta_accepts_schema_registered_primitive_fields_only():
+    register_b0_delta_fields({"character.commitments.pressure": float})
+    values = dict(
+        actor_ref="character:char_a",
+        from_tick=100,
+        to_tick=101,
+        simulation_tick_cursor=101,
+        actor_revision=0,
+        state_deltas={"character.commitments.pressure": 0.5},
+        source_revision_vector={"world:bakery": 1},
+        idempotency_key="b0:test:character:char_a",
+    )
+
+    delta = PopulationB0ContinuousDelta(**values)
+    assert delta.state_deltas["character.commitments.pressure"] == 0.5
+
+    with pytest.raises(ValueError, match="b0_state_field_not_allowed"):
+        PopulationB0ContinuousDelta(
+            **{**values, "state_deltas": {"character.commitments.unknown": 0.5}}
+        )
+    with pytest.raises(ValueError, match="b0_state_value_invalid"):
+        PopulationB0ContinuousDelta(
+            **{**values, "state_deltas": {"character.commitments.pressure": "high"}}
+        )
 
 
 def projection(ref: str, **payload: object) -> PopulationProjection:
@@ -218,3 +246,24 @@ def test_world_effect_continuity_command_without_owner_receipt_rejects() -> None
             idempotency_key="command:1",
             world_effect_required=True,
         )
+
+
+def test_b0_primitive_extension_schema_is_derived_from_population_projection():
+    from app.population_continuity.siming_contracts import register_b0_delta_fields_from_population_state
+
+    register_b0_delta_fields_from_population_state(
+        {"character.commitments": {"pressure": 0.5}},
+        {"character.commitments": ("pressure",)},
+    )
+    values = dict(
+        actor_ref="character:char_a",
+        from_tick=100,
+        to_tick=101,
+        simulation_tick_cursor=101,
+        actor_revision=0,
+        state_deltas={"character.commitments.pressure": 0.5},
+        source_revision_vector={"world:bakery": 1},
+        idempotency_key="b0:schema:character:char_a",
+    )
+
+    assert PopulationB0ContinuousDelta(**values).state_deltas == {"character.commitments.pressure": 0.5}

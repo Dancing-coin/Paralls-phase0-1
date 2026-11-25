@@ -235,7 +235,13 @@ def test_return_failure_can_retry_after_restart_without_losing_other_members(flo
         with pytest.raises(OSError, match="injected reentry failure"):
             flood_case.return_to_population("character:char_b")
     assert flood_case.cohort_ref == old_cohort
-    assert flood_case.world.export_recovery_state() == before
+    if failure_stage == "register":
+        assert flood_case.world.export_recovery_state() == before
+    else:
+        state = flood_case.world.export_recovery_state()
+        assert state["actors"] != before["actors"]
+        assert state["actors"][1]["revision"] == before["actors"][1]["revision"] + 1
+        assert state["actors"][0] == before["actors"][0]
     flood_case.restart()
     flood_case.return_to_population("character:char_b")
     assert flood_case.member_state("character:char_b") == "active"

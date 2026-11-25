@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from copy import deepcopy
 
+from app.contracts.owner_fact_query import OwnerFactQuery
 from app.models.authority_event import AuthorityEvent
-from app.models.fact_type import FACT_TYPE_REGISTRY
+from app.models.fact_type import FACT_TYPE_REGISTRY, FactType, FactTypeRef
 from app.models.siming_heavenly_graph import (
     GraphProvenance,
     GraphRevisionVector,
@@ -18,86 +18,97 @@ from app.services.siming_heavenly_graph_port import HeavenlyGraphPort
 
 
 class HeavenlyAuthorityEventProjector:
-    """Authority 事件图谱投影器：只派生 projection，不拥有领域事实。
-
-    Event domains are resolved through the typed FactType registry. The graph
-    still stores the current projection payload until OwnerFactQuery lands.
-
-    See: docs/reference/phase1-siming/Q1-Q2-decisions.md
-    """
+    """Project owner facts into the Heavenly Graph without owning their state."""
 
     def __init__(
         self,
         graph: HeavenlyGraphPort,
+        owner_query: OwnerFactQuery,
         *,
         scope_resolver: Callable[[AuthorityEvent], HeavenlyGraphScope],
     ) -> None:
         FACT_TYPE_REGISTRY.validate_event_type_coverage()
         self._graph = graph
+        self._owner_query = owner_query
         self._scope_resolver = scope_resolver
 
     def project(self, event: AuthorityEvent) -> None:
-        scope = self._scope_resolver(event)
-        domain = self._domain_for(event.event_type)
-        if domain is None:
+        fact_types = self._extract_fact_types(event)
+        if not fact_types:
             return
-        payload = deepcopy(event.payload)
-        owner_ref = str(payload.get("owner_ref", "") or event.source.system)
-        source_vector = payload.get("source_revision_vector", {})
-        # Q2: only Owner revisions are revisions; clocks and replay positions are not.
-        # Phase 2: reconcile the complete Owner vector through OwnerFactQuery.
-        source_revision = max(
-            (value for value in source_vector.values() if type(value) is int and value >= 0),
-            default=0,
-        ) if isinstance(source_vector, dict) else 0
+        projections = self._owner_query.query_facts(
+            fact_types,
+            source_event_ref=event.event_id,
+            audience="siming_internal",
+        )
+        scope = self._scope_resolver(event)
+        for projection in projections:
+            self._write_owner_projection(event, scope, projection)
+
+    def _write_owner_projection(self, event, scope, projection) -> None:
+        lineage = projection.payload.get("source_ref_lineage", [])
+        source_lineage = tuple(ref for ref in lineage if isinstance(ref, str)) if isinstance(lineage, (list, tuple)) else ()
         node = HeavenlyGraphNode(
-            node_id=f"authority-projection:{event.event_id}",
-            node_type="causal_event",
-            scope=scope,
-            validity=GraphValidity(valid_from=event.producer_ts),
-            recorded_at=event.producer_ts,
-            revision=1,
-            attributes={
-                "domain": domain,
-                "event_type": event.event_type,
-                "owner_ref": owner_ref,
-                "source_revision_vector": deepcopy(source_vector) if isinstance(source_vector, dict) else {},
-                "source_ref_lineage": list(payload.get("source_ref_lineage", [])) if isinstance(payload.get("source_ref_lineage", []), list) else [],
-                "correction_target_id": payload.get("correction_target_id", ""),
-                "correction_target_revision": payload.get("correction_target_revision"),
-                "correction_kind": payload.get("correction_kind", ""),
-                "correction_source_refs": list(payload.get("correction_source_refs", [])) if isinstance(payload.get("correction_source_refs", []), list) else [],
-                "settlement_id": payload.get("settlement_id", ""),
-                "replay_ref": payload.get("replay_ref", "") or f"global_sequence:{event.payload.get('global_sequence', event.producer_ts)}",
-                "committed_payload": payload,
-            },
-            provenance=GraphProvenance(
-                source_kind="authority_event",
-                source_ref=event.event_id,
-                causation_id=event.causation_id,
-                correlation_id=event.correlation_id,
-                producer_system=event.source.system,
-                actor_id=event.source.actor_id,
-                source_ref_lineage=tuple(str(ref) for ref in payload.get("source_ref_lineage", []) if isinstance(ref, str)),
-            ),
-            semantic_metadata=GraphSemanticMetadata(
-                record_kind="projection",
-                visibility_scope="siming_internal",
-                derivation_kind="authority",
-                source_event_refs=(event.event_id,),
-                source_revision_vector=GraphRevisionVector(source_revision=source_revision),
-                policy_revision="policy:authority-graph:v1",
-                scope_digest="scope:siming-authority",
-            ),
+                node_id=f"authority-projection:{projection.source_event_ref}:{projection.fact_type.value}",
+                node_type="causal_event",
+                scope=scope,
+                validity=GraphValidity(valid_from=projection.captured_at),
+                recorded_at=projection.captured_at,
+                revision=1,
+                attributes={
+                    "domain": projection.source_owner,
+                    "event_type": projection.event_type,
+                    "owner_ref": projection.source_owner,
+                    "fact_type": projection.fact_type.value,
+                    "source_revision": projection.revision,
+                    "source_revision_vector": {projection.source_owner: projection.revision},
+                    "source_ref_lineage": list(source_lineage),
+                    "correction_target_id": projection.payload.get("correction_target_id", ""),
+                    "correction_target_revision": projection.payload.get("correction_target_revision"),
+                    "correction_kind": projection.payload.get("correction_kind", ""),
+                    "correction_source_refs": list(projection.payload.get("correction_source_refs", [])),
+                    "settlement_id": projection.payload.get("settlement_id", ""),
+                    "replay_ref": projection.source_event_ref,
+                },
+                provenance=GraphProvenance(
+                    source_kind="siming_projection",
+                    source_ref=projection.source_event_ref,
+                    causation_id=projection.causation_id or event.causation_id,
+                    correlation_id=projection.correlation_id or event.correlation_id,
+                    producer_system=projection.source_owner,
+                    actor_id=projection.actor_ref,
+                    source_ref_lineage=source_lineage,
+                ),
+                semantic_metadata=GraphSemanticMetadata(
+                    record_kind="projection",
+                    visibility_scope="siming_internal",
+                    derivation_kind="projection",
+                    source_event_refs=(projection.source_event_ref,),
+                    source_revision_vector=GraphRevisionVector(source_revision=projection.revision),
+                    policy_revision="policy:authority-graph:v1",
+                    scope_digest="scope:siming-authority",
+                ),
         )
         self._graph.write_batch(
             HeavenlyGraphWriteBatch(
-                transaction_id=f"authority-graph:{event.event_id}",
-                idempotency_key=f"authority-graph:{event.event_id}",
+                transaction_id=f"authority-graph:{projection.source_event_ref}:{projection.fact_type.value}",
+                idempotency_key=f"authority-graph:{projection.source_event_ref}:{projection.fact_type.value}",
                 scope=scope,
                 nodes=[node],
             )
         )
+
+    @staticmethod
+    def _extract_fact_types(event: AuthorityEvent) -> list[FactType | FactTypeRef]:
+        declared = event.payload.get("fact_types", ())
+        values = declared if isinstance(declared, (list, tuple)) and declared else (event.event_type,)
+        result = []
+        for value in values:
+            if isinstance(value, str):
+                fact_type = FACT_TYPE_REGISTRY.from_event_type(value)
+                if fact_type is not None:
+                    result.append(fact_type)
+        return result
 
     @classmethod
     def _domain_for(cls, event_type: str) -> str | None:

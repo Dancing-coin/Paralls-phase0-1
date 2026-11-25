@@ -119,6 +119,7 @@ from scripts.verification.population_mixed_backend import configure, MixedWindow
 from scripts.verification.population_mixed_fixture import RECIPE
 from scripts.verification.population_mixed_load import MixedLoadSchedule
 from app.population_continuity.runtime_publication import RuntimeCadencePublisher
+from app.population_continuity import runtime_publication
 from app.population_continuity.prepared_frame import PreparedPopulationFrame
 from app.population_continuity.siming_contracts import PopulationReadSet
 async def probe():
@@ -127,15 +128,13 @@ async def probe():
         start = main.start_population_runtime
         stack.enter_context(patch.object(main, 'start_population_runtime', lambda: None))
         rows = []
-        fragments = []
-        original_read_set = PreparedPopulationFrame.read_set
-        def read_set(fragment, cadence, projections, temporal_pins=None):
-            actual = original_read_set(fragment, cadence, projections, temporal_pins=temporal_pins)
-            expected = PopulationReadSet.from_inputs(cadence, projections, temporal_pins=temporal_pins)
-            assert actual.read_set_digest == expected.read_set_digest
-            fragments.append(actual.read_set_digest)
-            return actual
-        stack.enter_context(patch.object(PreparedPopulationFrame, 'read_set', read_set))
+        prepared_frames = []
+        original_encode = runtime_publication.encode_captured_projections
+        def encode(event, capture):
+            result = original_encode(event, capture)
+            prepared_frames.append((capture.native_dump, capture.native_constructor, result[1] is not None))
+            return result
+        stack.enter_context(patch.object(runtime_publication, 'encode_captured_projections', encode))
         original_publish = RuntimeCadencePublisher.__call__
         probe = MixedWindowProbe(main, MixedLoadSchedule(100, 7, 'one_x'), 1, rows.append)
         probe.install(stack)
@@ -159,8 +158,8 @@ async def probe():
                 await asyncio.sleep(.02)
             main._population_runtime_stop_event.set()
             await main._population_runtime_task
-            first = probe.latest
-            assert first['previous_tick'] == 0 and first['sample']['confirmed_tick'] == 1
+            first = next(row for row in rows if row.get('type') == 'window')
+            assert first['previous_tick'] == 0 and first['sample']['confirmed_tick'] == 1, first
             assert first['result']['b0_advanced_count'] == 100
             assert first['cadence_ms'] >= 0 and first['fixture_ms'] > 0
             assert len(first['fixtures'][0]['rows']) == 28
@@ -170,7 +169,7 @@ async def probe():
             assert first['sample']['rss_bytes'] > 0
             assert first['sample']['caches']['publisher_records'] <= 2
             assert sum(row['type'] == 'driver_clock_origin' for row in rows) == 1
-            assert len(fragments) == 1, 'observer_must_measure_actual_native_frame'
+            assert prepared_frames and all(frame == (True, True, True) for frame in prepared_frames)
 asyncio.run(probe())
 '''
     root = Path(__file__).resolve().parents[2]

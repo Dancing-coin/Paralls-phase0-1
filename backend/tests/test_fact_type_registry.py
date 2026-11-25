@@ -32,3 +32,25 @@ def test_siming_event_consumer_filters_through_fact_type_registry():
         "correlation_id": "corr",
         "payload": {},
     }))
+
+
+def test_siming_event_consumer_accepts_registered_gameplay_fact_type_without_code_change():
+    event = AuthorityEvent.model_validate({
+        "event_id": "evt:registered-gameplay-fact",
+        "event_type": "gameplay.inventory.item_instantiated@1",
+        "producer_ts": 1,
+        "room_id": "room",
+        "scene_id": "scene",
+        "zone_id": "zone",
+        "source": {"layer": "gameplay", "system": "inventory", "actor_id": "actor:a"},
+        "routing": {"audience_mode": "broadcast", "routing_mode": "domain", "target_ids": []},
+        "priority": "p2",
+        "durability": "replayable",
+        "causation_id": "cause",
+        "correlation_id": "corr",
+        "payload": {},
+    })
+
+    inputs = SimingEventConsumer().handle_event(event)
+
+    assert [item.input_type for item in inputs] == ["gameplay.inventory.item_instantiated@1"]

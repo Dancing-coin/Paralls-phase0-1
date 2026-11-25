@@ -7,6 +7,8 @@ from threading import RLock
 from types import MappingProxyType
 from typing import Iterable, Mapping
 
+from .daily_rhythm_projection import DailyRhythmProjection
+
 
 HOT_FIELDS = frozenset(
     {
@@ -23,8 +25,7 @@ HOT_FIELDS = frozenset(
 def get_starvation_credit_for_siming(actor_id: str, b0_row: Mapping[str, object]) -> float:
     """Read-only Siming scheduler seam; B0 ownership and fields are unchanged."""
     return float(b0_row.get("starvation_credit", 0.0))
-# daily_rhythm_runtime now publishes the canonical event stream; this table remains
-# a compatibility projection until OwnerFactQuery is available.
+# DailyRhythm is the canonical source for all HOT_FIELDS.
 
 
 class _ReadOnlyRow(dict[str, object]):
@@ -55,22 +56,17 @@ class PopulationHotState:
         self,
         actor_ids: Iterable[str] = (),
         *,
+        daily_rhythm_projection: DailyRhythmProjection,
         additional_fields: Iterable[str] = (),
     ) -> None:
+        self._projection = daily_rhythm_projection
         normalized_fields = {str(field).strip() for field in additional_fields}
         if any(not field for field in normalized_fields):
             raise ValueError("hot_state_field_invalid")
         self._allowed_fields = HOT_FIELDS.union(normalized_fields)
-        self._slot_by_actor: dict[str, int] = {}
-        self._actor_by_slot: list[str | None] = []
-        self._rows: list[dict[str, object] | None] = []
-        self._revision: dict[str, int] = {}
-        self._generation_by_actor: dict[str, int] = {}
-        self._next_generation = 0
-        self._free_slots: list[int] = []
+        self._actor_ids = set(actor_ids)
+        self._additional_rows: dict[str, dict[str, object]] = {}
         self._lock = RLock()
-        for actor_id in actor_ids:
-            self._ensure_slot(actor_id)
 
     def register_fields(self, fields: Iterable[str]) -> None:
         """Register gameplay-package columns before batch updates use them."""
@@ -116,54 +112,53 @@ class PopulationHotState:
     def upsert(self, actor_id: str, values: Mapping[str, object], revision: int) -> None:
         if not actor_id:
             raise ValueError("hot_state_actor_required")
-        if isinstance(revision, bool) or revision < 0:
-            raise ValueError("hot_state_revision_invalid")
+        hot_fields_conflict = set(values).intersection(HOT_FIELDS)
+        if hot_fields_conflict:
+            raise ValueError(f"hot_fields_owned_by_daily_rhythm: {hot_fields_conflict}")
         unknown = set(values).difference(self._allowed_fields)
         if unknown:
             raise ValueError("hot_state_field_not_allowed")
         self._validate_values(values)
         with self._lock:
-            previous_revision = self._revision.get(actor_id, -1)
-            if revision < previous_revision:
-                raise ValueError("hot_state_revision_conflict")
-            slot = self._ensure_slot(actor_id)
-            row = dict(self._rows[slot] or self._default_row())
-            changed = any(row.get(key) != value for key, value in values.items())
-            if revision == previous_revision and changed:
-                raise ValueError("hot_state_revision_conflict")
+            row = dict(self._additional_rows.get(actor_id, {}))
             row.update(values)
-            row["revision"] = revision
-            self._rows[slot] = row
-            self._revision[actor_id] = revision
+            self._actor_ids.add(actor_id)
+            self._additional_rows[actor_id] = row
 
     def read(self, actor_id: str) -> Mapping[str, object]:
         with self._lock:
-            slot = self._slot_by_actor.get(actor_id)
-            if slot is None or self._rows[slot] is None:
+            if actor_id not in self._actor_ids:
                 raise KeyError(actor_id)
-            return _ReadOnlyRow(self._rows[slot] or {})
+            additional = dict(self._additional_rows.get(actor_id, {}))
+            row, _revision, _source_revision, _bounded = self._snapshot_for(actor_id)
+        row.update(additional)
+        return _ReadOnlyRow(row)
+
+    def get_revision(self, actor_id: str) -> int:
+        return self._projection.get_revision(actor_id)
+
+    def _snapshot_for(self, actor_id: str) -> tuple[dict[str, object], int, int, bool]:
+        if actor_id not in self._actor_ids:
+            raise KeyError(actor_id)
+        row, revision, source_revision, bounded = self._projection.snapshot(actor_id)
+        row["revision"] = revision
+        row.update(self._additional_rows.get(actor_id, {}))
+        return row, revision, source_revision, bounded
 
     def remove(self, actor_id: str) -> None:
         with self._lock:
-            slot = self._slot_by_actor.pop(actor_id, None)
-            if slot is None:
-                return
-            self._actor_by_slot[slot] = None
-            self._rows[slot] = None
-            self._revision.pop(actor_id, None)
-            self._generation_by_actor.pop(actor_id, None)
-            heapq.heappush(self._free_slots, slot)
+            self._actor_ids.discard(actor_id)
+            self._additional_rows.pop(actor_id, None)
 
     def due_actor_ids(self, tick: int) -> tuple[str, ...]:
         due: list[tuple[int, str]] = []
         with self._lock:
-            for actor_id, slot in self._slot_by_actor.items():
-                row = self._rows[slot]
-                if row is None:
-                    continue
-                due_tick = row.get("next_due_tick")
-                if isinstance(due_tick, int) and not isinstance(due_tick, bool) and due_tick <= tick:
-                    due.append((due_tick, actor_id))
+            actor_ids = tuple(self._actor_ids)
+        for actor_id in actor_ids:
+            row = self.read(actor_id)
+            due_tick = row.get("next_due_tick")
+            if isinstance(due_tick, int) and not isinstance(due_tick, bool) and due_tick <= tick:
+                due.append((due_tick, actor_id))
         return tuple(actor_id for _, actor_id in sorted(due))
 
     def apply_batch(
@@ -174,9 +169,9 @@ class PopulationHotState:
             try:
                 self.upsert(actor_id, values, revision)
             except (KeyError, ValueError) as exc:
-                receipts.append(HotStateReceipt(actor_id, f"rejected:{exc}", self._revision.get(actor_id, 0)))
+                receipts.append(HotStateReceipt(actor_id, f"rejected:{exc}", self.get_revision(actor_id)))
             else:
-                receipts.append(HotStateReceipt(actor_id, "committed", revision))
+                receipts.append(HotStateReceipt(actor_id, "committed", self.get_revision(actor_id)))
         return tuple(receipts)
 
     def apply_batch_atomic(
@@ -207,38 +202,28 @@ class PopulationHotState:
         if len({actor_id for actor_id, _values, _expected, _revision in pending}) != len(pending):
             raise ValueError("hot_state_batch_duplicate_actor")
         with self._lock:
-            prepared: list[tuple[str, int, dict[str, object], int]] = []
+            prepared: list[tuple[str, dict[str, object]]] = []
             for actor_id, values, expected_revision, revision in pending:
-                slot = self._slot_by_actor.get(actor_id)
-                if slot is None or self._rows[slot] is None:
+                if actor_id not in self._actor_ids:
                     raise ValueError("hot_state_actor_missing")
                 copied_values = dict(values)
+                hot_fields_conflict = set(copied_values).intersection(HOT_FIELDS)
+                if hot_fields_conflict:
+                    raise ValueError(f"hot_fields_owned_by_daily_rhythm: {hot_fields_conflict}")
                 fields = set(copied_values)
                 if fields.difference(self._allowed_fields):
                     raise ValueError("hot_state_field_not_allowed")
                 self._validate_values(copied_values)
-                current = self._revision.get(actor_id, 0)
-                if current != expected_revision or revision != expected_revision + 1:
-                    raise ValueError("hot_state_revision_conflict")
-                # 只有完整的基础字段表可替换整行；注册模块字段后仍须保留未更新列。
-                if fields == HOT_FIELDS and self._allowed_fields == HOT_FIELDS:
-                    row = copied_values
-                else:
-                    row = dict(self._rows[slot] or self._default_row())
-                    row.update(copied_values)
-                row["revision"] = revision
-                prepared.append((actor_id, slot, row, revision))
-            for actor_id, slot, row, revision in prepared:
-                self._rows[slot] = row
-                self._revision[actor_id] = revision
+                row = dict(self._additional_rows.get(actor_id, {}))
+                row.update(copied_values)
+                prepared.append((actor_id, row))
+            for actor_id, row in prepared:
+                self._additional_rows[actor_id] = row
 
     def export_rows(self) -> tuple[tuple[str, Mapping[str, object]], ...]:
         with self._lock:
-            return tuple(
-                (actor_id, _ReadOnlyRow(self._rows[slot] or {}))
-                for actor_id, slot in sorted(self._slot_by_actor.items())
-                if self._rows[slot] is not None
-            )
+            actor_ids = tuple(sorted(self._actor_ids))
+        return tuple((actor_id, self.read(actor_id)) for actor_id in actor_ids)
 
     def map_readonly(
         self,
@@ -247,26 +232,35 @@ class PopulationHotState:
         *,
         workers: int = 1,
         batch_size: int = 256,
+        source_revision_sink: dict[str, int] | None = None,
     ) -> tuple[object, ...]:
         """并行只读计算；结果按 actor ID 合并，worker 不得写入任何 authority。"""
         if workers < 1 or batch_size < 1:
             raise ValueError("hot_state_parallelism_invalid")
         ids = tuple(sorted(set(actor_ids)))
         with self._lock:
-            snapshots = tuple(
-                (
+            snapshots = []
+            for actor_id in ids:
+                row, revision, source_revision, bounded = self._snapshot_for(actor_id)
+                snapshots.append((
                     actor_id,
-                    self._revision.get(actor_id, 0),
-                    self._generation_by_actor[actor_id],
-                    MappingProxyType(self._row_for(actor_id)),
+                    dict(self._additional_rows.get(actor_id, {})),
+                    revision,
+                    source_revision,
+                    bounded,
+                    MappingProxyType(row),
+                ))
+            snapshots = tuple(snapshots)
+            if source_revision_sink is not None:
+                source_revision_sink.update(
+                    (actor_id, source_revision)
+                    for actor_id, _additional, _revision, source_revision, _bounded, _row in snapshots
                 )
-                for actor_id in ids
-            )
 
         def evaluate_batch(batch):
             return tuple(
                 evaluator(actor_id, row)
-                for actor_id, _revision, _generation, row in batch
+                for actor_id, _additional, _revision, _source_revision, _bounded, row in batch
             )
 
         if workers <= 1:
@@ -283,49 +277,21 @@ class PopulationHotState:
                     evaluated = tuple(pool.map(evaluate_batch, batches))
             values = tuple(value for batch in evaluated for value in batch)
         with self._lock:
-            if any(
-                actor_id not in self._slot_by_actor
-                or self._revision.get(actor_id, 0) != revision
-                or self._generation_by_actor.get(actor_id) != generation
-                for actor_id, revision, generation, _row in snapshots
-            ):
+            projection_snapshots = {
+                actor_id: (revision, source_revision, bounded)
+                for actor_id, _additional, revision, source_revision, bounded, _row in snapshots
+            }
+            if (not self._projection.matches_snapshots(projection_snapshots)
+                    or any(actor_id not in self._actor_ids
+                           or self._additional_rows.get(actor_id, {}) != additional
+                           for actor_id, additional, _revision, _source_revision, _bounded, _row in snapshots)):
                 raise ValueError("hot_state_revision_conflict")
         return values
 
-    def _ensure_slot(self, actor_id: str) -> int:
-        existing = self._slot_by_actor.get(actor_id)
-        if existing is not None:
-            return existing
-        if self._free_slots:
-            slot = heapq.heappop(self._free_slots)
-            self._actor_by_slot[slot] = actor_id
-            self._rows[slot] = self._default_row()
-        else:
-            slot = len(self._actor_by_slot)
-            self._actor_by_slot.append(actor_id)
-            self._rows.append(self._default_row())
-        self._slot_by_actor[actor_id] = slot
-        self._next_generation += 1
-        self._generation_by_actor[actor_id] = self._next_generation
-        return slot
-
     def _row_for(self, actor_id: str) -> dict[str, object]:
-        slot = self._slot_by_actor.get(actor_id)
-        if slot is None or self._rows[slot] is None:
+        if actor_id not in self._actor_ids:
             raise KeyError(actor_id)
-        return self._rows[slot] or self._default_row()
-
-    @staticmethod
-    def _default_row() -> dict[str, object]:
-        return {
-            "last_update_tick": 0,
-            "activity_phase": "morning",
-            "fatigue": 0.2,
-            "need_pressure": 0.1,
-            "next_due_tick": 21_600,
-            "starvation_credit": 0.0,
-            "revision": 0,
-        }
+        return self._snapshot_for(actor_id)[0]
 
     @staticmethod
     def _validate_values(values: Mapping[str, object]) -> None:

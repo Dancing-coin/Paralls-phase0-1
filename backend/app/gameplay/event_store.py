@@ -424,6 +424,14 @@ class GameplayEventStore:
                     and batch.idempotency_record.principal_ref == principal_ref
                     and any(event.event_id == event_id for event in batch.events))
 
+    def transaction_principal(self, transaction_id: str) -> str | None:
+        with self._lock:
+            result = self._transaction_results.get(transaction_id)
+            if result is None:
+                return None
+            index = bisect_left(self._transaction_end_sequences, result.global_sequence_range[1])
+            return self._transactions[index].idempotency_record.principal_ref
+
     def get_stream_head(self, stream_id: str) -> int:
         with self._lock:
             return int(self._stream_heads.get(stream_id, 0))
@@ -1284,6 +1292,10 @@ class DurableGameplayEventStore(GameplayEventStore):
             (transaction_id, principal_ref, event_id),
         )
         return bool(rows)
+
+    def transaction_principal(self, transaction_id: str) -> str | None:
+        rows = self._rows("SELECT principal_ref FROM transactions WHERE transaction_id=?", (transaction_id,))
+        return rows[0][0] if rows else None
 
     def get_stream_head(self, stream_id: str) -> int:
         rows = self._rows("SELECT revision FROM stream_heads WHERE stream_id=?", (stream_id,))

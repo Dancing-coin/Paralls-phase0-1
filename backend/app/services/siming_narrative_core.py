@@ -1,3 +1,6 @@
+from collections.abc import Iterable, Mapping
+
+from app.contracts.owner_fact_query import FactTypeValue, OwnerFactQuery
 from app.models.siming_narrative import (
     InterventionSeed,
     NarrativeCoreResult,
@@ -14,9 +17,18 @@ from app.models.siming_runtime_state import ObservedSimingEvent
 
 
 class SimingNarrativeCore:
-    def __init__(self) -> None:
+    def __init__(self, *, owner_query: OwnerFactQuery | None = None) -> None:
+        self._owner_query = owner_query
         self._open_counts_by_room: dict[str, int] = {}
         self._revision_by_room: dict[str, int] = {}
+
+    def get_state(self, actor_id: str, fact_types: Iterable[FactTypeValue]) -> dict[FactTypeValue, Mapping[str, object]]:
+        if self._owner_query is None:
+            raise ValueError("owner_fact_query_required")
+        projections = self._owner_query.query_facts(
+            fact_types, actor_refs=[actor_id], audience="siming_internal"
+        )
+        return {projection.fact_type: projection.payload for projection in projections}
 
     def update(self, observed_events: list[ObservedSimingEvent]) -> NarrativeCoreResult:
         plan = self.plan_update(observed_events)

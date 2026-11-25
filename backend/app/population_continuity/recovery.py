@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import hashlib
-import inspect
 import json
 import re
 from pathlib import Path
@@ -10,6 +9,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime
+from app.models.fact_type import FactType
+from .hot_state import HOT_FIELDS
 from .world import PopulationCadenceConfirmationReceipt
 from .siming_contracts import PopulationCadenceInput
 
@@ -17,34 +19,30 @@ if TYPE_CHECKING:
     from .world import WorldContinuityRuntime
 
 
+_B0_FATIGUE_FORMULA_VERSION = "v1"
+_B0_NEED_PRESSURE_FORMULA_VERSION = "v1"
+def _semantic_fingerprint() -> str:
+    fact_types = (
+        FactType.DAILY_RHYTHM_FATIGUE_STATE,
+        FactType.DAILY_RHYTHM_NEED_PRESSURE_STATE,
+        FactType.DAILY_RHYTHM_STARVATION_CREDIT_STATE,
+        FactType.DAILY_RHYTHM_ACTIVITY_PHASE_STATE,
+        FactType.DAILY_RHYTHM_NEXT_DUE_TICK,
+        FactType.DAILY_RHYTHM_LAST_UPDATE_TICK,
+    )
+    return recovery_digest({
+        "version": "population-b0-v2",
+        "hot_fields": sorted(HOT_FIELDS),
+        "fact_types": sorted(fact_type.value for fact_type in fact_types),
+        "activity_phase_states": DailyRhythmRuntime.activity_phase_states(),
+        "fatigue_formula": _B0_FATIGUE_FORMULA_VERSION,
+        "need_pressure_formula": _B0_NEED_PRESSURE_FORMULA_VERSION,
+    })
+
+
 def population_kernel_digest() -> str:
-    """结合语义版本和实际内核源码，拒绝实现不匹配的历史检查点。"""
-    from . import world
-
-    # 固定的语义签名，而不是 read_text() 的源码哈希。
-    # 这些值由 advance_b0_row 的语义决定，不由源码文本决定。
-    # 当实现改动时，只有真正改变了语义才需要更新这些签名。
-    b0_kernel_signature = {
-        "kernel_version": "v1",
-        "stage": "population_continuity_phase0",
-        "hot_fields": ("last_update_tick", "activity_phase", "fatigue",
-                       "need_pressure", "next_due_tick", "starvation_credit"),
-        "advance_b0_row_behavior": "deterministic_state_update_with_affinity_decay",
-        "contracts_version": "siming_contracts:v1",
-    }
-
-    # 读取绑定代码对象而非函数包装器，避免 functools.wraps 隐藏实际实现。
-    active_kernel_source = inspect.getsource(world.advance_b0_row.__code__).replace("\r\n", "\n")
-    kernel_contracts = {
-        "advance_b0_row_source": active_kernel_source,
-    }
-
-    # 源码不包含文件路径，并统一换行，避免迁移工作区导致指纹漂移。
-    semantic_fingerprint = {
-        "kernel_semantics": b0_kernel_signature,
-        "function_shape": kernel_contracts,
-    }
-    return recovery_digest(semantic_fingerprint)
+    """只在 B0 状态契约或公式语义变化时更新检查点指纹。"""
+    return _semantic_fingerprint()
 
 
 def recovery_digest(value: object) -> str:

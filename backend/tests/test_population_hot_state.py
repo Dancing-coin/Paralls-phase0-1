@@ -4,79 +4,133 @@ import pytest
 
 from app.population_continuity.hot_state import PopulationDueIndex, PopulationHotState
 from app.population_continuity.continuous import advance_b0_row
+from app.population_continuity.daily_rhythm_projection import DailyRhythmProjection
+from app.gameplay.daily_rhythm_runtime import DailyRhythmRuntime, create_daily_rhythm_event_schema_registry
+from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.runtime_state import CharacterGameRuntimeStateBuilder, StateGroupDefinition, StateGroupRegistry
 from app.gameplay.state_group_views import StateGroupConsumerViewPolicy, StateGroupViewProjector
 
 
+def make_daily_rhythm_projection(*actor_ids: str) -> DailyRhythmProjection:
+    store = GameplayEventStore(event_schema_registry=create_daily_rhythm_event_schema_registry())
+
+    class Bus:
+        def publish(self, _event):
+            pass
+
+    runtime = DailyRhythmRuntime(Bus(), store=store)
+    for actor_id in actor_ids:
+        runtime.initialize(actor_id)
+    return DailyRhythmProjection(store)
+
+
+def make_hot_state(actor_ids=(), *, additional_fields=()):
+    return PopulationHotState(
+        actor_ids,
+        daily_rhythm_projection=make_daily_rhythm_projection(*actor_ids),
+        additional_fields=additional_fields,
+    )
+
+
+def test_read_from_projection():
+    projection = make_daily_rhythm_projection("actor_a")
+    state = PopulationHotState(("actor_a",), daily_rhythm_projection=projection)
+
+    assert dict(state.read("actor_a")) == {
+        "fatigue": 0.2,
+        "need_pressure": 0.1,
+        "starvation_credit": 0.0,
+        "activity_phase": "morning",
+        "next_due_tick": 21_600,
+        "last_update_tick": 0,
+        "revision": 0,
+    }
+
+
+def test_reject_writing_hot_fields():
+    state = PopulationHotState(daily_rhythm_projection=make_daily_rhythm_projection())
+
+    with pytest.raises(ValueError, match="hot_fields_owned_by_daily_rhythm"):
+        state.upsert("actor_a", {"fatigue": 0.4}, 1)
+
+
+def test_revision_from_projection():
+    projection = make_daily_rhythm_projection("actor_a")
+    state = PopulationHotState(("actor_a",), daily_rhythm_projection=projection)
+
+    assert state.get_revision("actor_a") == 0
+
+
+def test_hot_state_has_no_private_revision_state():
+    state = PopulationHotState(daily_rhythm_projection=make_daily_rhythm_projection())
+
+    assert not hasattr(state, "_revision")
+    assert not hasattr(state, "_generation_by_actor")
+
+
 class _FailsWhenCopied(Mapping[str, object]):
     def __getitem__(self, key: str) -> object:
-        if key != "fatigue":
+        if key != "aux":
             raise KeyError(key)
         raise RuntimeError("mapping_copy_failed")
 
     def __iter__(self) -> Iterator[str]:
-        return iter(("fatigue",))
+        return iter(("aux",))
 
     def __len__(self) -> int:
         return 1
 
     def items(self):
-        return (("fatigue", 0.3),)
+        return (("aux", 0.3),)
 
 
-def test_hot_state_keeps_stable_actor_identity_and_reuses_slots() -> None:
-    state = PopulationHotState(("actor_a", "actor_b"))
-    state.upsert("actor_a", {"last_update_tick": 10, "next_due_tick": 20, "fatigue": 0.2}, 1)
+def test_hot_state_keeps_active_actor_identity_for_projection_rows() -> None:
+    state = make_hot_state(("actor_a", "actor_b"), additional_fields=("aux",))
+    state.upsert("actor_a", {"aux": 10}, 1)
     state.remove("actor_a")
-    state.upsert("actor_c", {"last_update_tick": 11, "next_due_tick": 12}, 1)
+    state.upsert("actor_c", {"aux": 11}, 1)
 
-    assert state.read("actor_c")["last_update_tick"] == 11
-    assert state.due_actor_ids(12) == ("actor_c",)
+    assert state.read("actor_c")["aux"] == 11
+    assert state.due_actor_ids(21_600) == ("actor_b", "actor_c")
     rows = dict(state.export_rows())
     assert rows["actor_b"]["revision"] == 0
-    assert rows["actor_c"]["last_update_tick"] == 11
-    assert rows["actor_c"]["next_due_tick"] == 12
-    assert rows["actor_c"]["revision"] == 1
-    assert len(state._free_slots) == 0
+    assert rows["actor_c"]["last_update_tick"] == 0
+    assert rows["actor_c"]["revision"] == 0
+    assert "actor_a" not in rows
 
 
-def test_hot_state_rejects_unknown_fields_and_stale_revision() -> None:
-    state = PopulationHotState()
-    state.upsert("actor_a", {"fatigue": 0.1}, 2)
+def test_hot_state_rejects_unknown_fields_without_local_revision_rules() -> None:
+    state = make_hot_state(additional_fields=("aux",))
+    state.upsert("actor_a", {"aux": 0.1}, 2)
 
     try:
         state.upsert("actor_a", {"memory": "forbidden"}, 3)
         raise AssertionError("unknown field accepted")
     except ValueError as exc:
         assert str(exc) == "hot_state_field_not_allowed"
-    try:
-        state.upsert("actor_a", {"fatigue": 0.2}, 1)
-        raise AssertionError("stale revision accepted")
-    except ValueError as exc:
-        assert str(exc) == "hot_state_revision_conflict"
+    state.upsert("actor_a", {"aux": 0.2}, 1)
+    assert state.read("actor_a")["aux"] == 0.2
 
 
-def test_hot_state_returns_immutable_rows_and_rejects_same_revision_changes() -> None:
-    state = PopulationHotState(("actor_a",))
-    state.upsert("actor_a", {"fatigue": 0.1}, 1)
+def test_hot_state_returns_immutable_rows_and_accepts_extension_updates() -> None:
+    state = make_hot_state(("actor_a",), additional_fields=("aux",))
+    state.upsert("actor_a", {"aux": 0.1}, 1)
     row = state.read("actor_a")
 
     with pytest.raises(TypeError):
-        row["fatigue"] = 0.2  # type: ignore[index]
-    with pytest.raises(ValueError, match="hot_state_revision_conflict"):
-        state.upsert("actor_a", {"next_due_tick": 9}, 1)
+        row["aux"] = 0.2  # type: ignore[index]
+    state.upsert("actor_a", {"aux": 0.2}, 1)
 
-    state.upsert("actor_a", {"fatigue": 0.1}, 1)
-    assert state.read("actor_a")["fatigue"] == 0.1
+    assert state.read("actor_a")["aux"] == 0.2
 
 
 def test_atomic_batch_copies_every_mapping_before_any_actor_is_written() -> None:
-    state = PopulationHotState(("actor_a", "actor_b"))
+    state = make_hot_state(("actor_a", "actor_b"), additional_fields=("aux",))
 
     with pytest.raises(RuntimeError, match="mapping_copy_failed"):
         state.commit_batch_atomic(
             (
-                ("actor_a", {"fatigue": 0.4}, 0, 1),
+                ("actor_a", {"aux": 0.4}, 0, 1),
                 ("actor_b", _FailsWhenCopied(), 0, 1),
             )
         )
@@ -88,33 +142,32 @@ def test_atomic_batch_copies_every_mapping_before_any_actor_is_written() -> None
 
 @pytest.mark.parametrize("method", ("apply_batch_atomic", "commit_batch_atomic"))
 def test_b0_atomic_batch_preserves_registered_module_fields(method: str) -> None:
-    state = PopulationHotState(("actor_a",), additional_fields=("character.commitments.pressure",))
+    state = make_hot_state(("actor_a",), additional_fields=("character.commitments.pressure",))
     state.upsert("actor_a", {"character.commitments.pressure": 0.7}, 1)
-    advanced = advance_b0_row(actor_id="actor_a", row=state.read("actor_a"), window_start=0, window_end=10)
 
-    getattr(state, method)((("actor_a", advanced.values, 1, 2),))
+    getattr(state, method)((
+        ("actor_a", {"character.commitments.pressure": 0.8}, 1, 2),
+    ))
 
     row = state.read("actor_a")
-    assert row["character.commitments.pressure"] == 0.7
-    assert row["last_update_tick"] == 10
-    assert row["fatigue"] == advanced.values["fatigue"]
-    assert row["revision"] == 2
+    assert row["character.commitments.pressure"] == 0.8
+    assert row["last_update_tick"] == 0
+    assert row["fatigue"] == 0.2
+    assert row["revision"] == 0
 
 
 @pytest.mark.parametrize("method", ("apply_batch_atomic", "commit_batch_atomic"))
 def test_atomic_batch_with_six_fields_preserves_omitted_hot_field(method: str) -> None:
-    state = PopulationHotState(("actor_a",), additional_fields=("character.commitments.pressure",))
-    state.upsert("actor_a", {"fatigue": 0.4, "character.commitments.pressure": 0.7}, 1)
-    values = dict(last_update_tick=10, activity_phase="rest", need_pressure=0.2,
-                  next_due_tick=100, starvation_credit=0.1)
-    values["character.commitments.pressure"] = 0.8
+    state = make_hot_state(("actor_a",), additional_fields=("character.commitments.pressure",))
+    state.upsert("actor_a", {"character.commitments.pressure": 0.7}, 1)
 
-    getattr(state, method)((("actor_a", values, 1, 2),))
+    with pytest.raises(ValueError, match="hot_fields_owned_by_daily_rhythm"):
+        getattr(state, method)((("actor_a", {"fatigue": 0.4}, 1, 2),))
 
     row = state.read("actor_a")
-    assert row["fatigue"] == 0.4
-    assert row["character.commitments.pressure"] == 0.8
-    assert row["revision"] == 2
+    assert row["fatigue"] == 0.2
+    assert row["character.commitments.pressure"] == 0.7
+    assert row["revision"] == 0
 
 
 def test_due_index_is_stable_and_cancellation_is_revision_safe() -> None:
@@ -129,7 +182,7 @@ def test_due_index_is_stable_and_cancellation_is_revision_safe() -> None:
 
 
 def test_hot_state_accepts_only_explicitly_registered_extension_columns() -> None:
-    state = PopulationHotState(additional_fields=("commitment_pressure", "work_role"))
+    state = make_hot_state(additional_fields=("commitment_pressure", "work_role"))
     state.upsert(
         "actor_a",
         {"commitment_pressure": 0.8, "work_role": "miller"},
@@ -147,7 +200,7 @@ def test_hot_state_accepts_only_explicitly_registered_extension_columns() -> Non
 
 
 def test_hot_state_can_register_columns_by_state_group() -> None:
-    state = PopulationHotState()
+    state = make_hot_state()
     state.register_group_fields("character.commitments", ("pressure", "next_due_tick"))
     state.upsert(
         "actor_a",
@@ -184,14 +237,14 @@ def test_hot_state_compiles_only_population_view_fields_into_columns() -> None:
             )
         ]
     ).population_view(state, allowed_group_ids=("character.commitments",))
-    hot = PopulationHotState()
+    hot = make_hot_state()
 
     hot.upsert_population_view(view, revision=4)
 
     row = hot.read("character:char_a")
     assert row["character.commitments.next_due_tick"] == 120
     assert row["character.commitments.pressure"] == 0.8
-    assert row["revision"] == 4
+    assert row["revision"] == 0
 def test_due_index_same_revision_reschedule_invalidates_the_old_due_tick() -> None:
     index = PopulationDueIndex()
     index.schedule("actor_a", "obligation:1", 10, 1)
@@ -214,27 +267,27 @@ def test_due_index_filtered_pop_preserves_independent_obligations() -> None:
 
 
 def test_readonly_map_rejects_a_result_when_actor_revision_changes() -> None:
-    state = PopulationHotState(("actor_a",))
-    state.upsert("actor_a", {"fatigue": 0.1}, 1)
+    state = make_hot_state(("actor_a",), additional_fields=("aux",))
+    state.upsert("actor_a", {"aux": 0.1}, 1)
 
     def stale(_actor_id, row):
-        state.upsert("actor_a", {"fatigue": float(row["fatigue"]) + 0.1}, 2)
+        state.upsert("actor_a", {"aux": float(row["aux"]) + 0.1}, 2)
         return row
 
     with pytest.raises(ValueError, match="hot_state_revision_conflict"):
         state.map_readonly(("actor_a",), stale)
 
 
-def test_readonly_map_detects_remove_and_reinsert_at_the_same_revision() -> None:
-    state = PopulationHotState(("actor_a",))
+def test_readonly_map_accepts_remove_and_reinsert_with_identical_state() -> None:
+    state = make_hot_state(("actor_a",), additional_fields=("aux",))
+    state.upsert("actor_a", {"aux": 0.1}, 0)
 
     def replaced(actor_id, row):
         state.remove(actor_id)
-        state.upsert(actor_id, {"fatigue": row["fatigue"]}, 0)
+        state.upsert(actor_id, {"aux": row["aux"]}, 0)
         return row
 
-    with pytest.raises(ValueError, match="hot_state_revision_conflict"):
-        state.map_readonly(("actor_a",), replaced)
+    assert state.map_readonly(("actor_a",), replaced) == (state.read("actor_a"),)
 
 
 def test_b0_reuses_fatigue_integration_for_identical_numeric_inputs(monkeypatch) -> None:
@@ -300,3 +353,45 @@ def test_b0_fatigue_cache_stays_bounded_across_distinct_windows() -> None:
         assert cache.cache_info().currsize == cache.cache_info().maxsize == 1024
     finally:
         cache.cache_clear()
+
+def test_readonly_map_rejects_owner_revision_change_during_evaluation():
+    store = GameplayEventStore(event_schema_registry=create_daily_rhythm_event_schema_registry())
+
+    class Bus:
+        def publish(self, _event):
+            pass
+
+    runtime = DailyRhythmRuntime(Bus(), store=store)
+    runtime.initialize("actor_a")
+    projection = DailyRhythmProjection(store)
+    state = PopulationHotState(("actor_a",), daily_rhythm_projection=projection)
+
+    def concurrent_owner_update(_actor_id, row):
+        runtime.publish_state("actor_a", {"fatigue": 0.8}, tick=1, revision=1)
+        return advance_b0_row(actor_id="actor_a", row=row, window_start=0, window_end=1)
+
+    with pytest.raises(ValueError, match="hot_state_revision_conflict"):
+        state.map_readonly(("actor_a",), concurrent_owner_update)
+
+def test_readonly_map_rejects_owner_write_between_state_and_revision_reads(monkeypatch):
+    store = GameplayEventStore(event_schema_registry=create_daily_rhythm_event_schema_registry())
+
+    class Bus:
+        def publish(self, _event):
+            pass
+
+    runtime = DailyRhythmRuntime(Bus(), store=store)
+    runtime.initialize("actor_a")
+    projection = DailyRhythmProjection(store)
+    state = PopulationHotState(("actor_a",), daily_rhythm_projection=projection)
+    original_snapshot = projection.snapshot
+
+    def owner_write_after_snapshot(actor_id, *, refresh=False):
+        snapshot = original_snapshot(actor_id, refresh=refresh)
+        runtime.publish_state("actor_a", {"fatigue": 0.8}, tick=1, revision=1)
+        return snapshot
+
+    monkeypatch.setattr(projection, "snapshot", owner_write_after_snapshot)
+    with pytest.raises(ValueError, match="hot_state_revision_conflict"):
+        state.map_readonly(("actor_a",), lambda _actor, row: row)
+

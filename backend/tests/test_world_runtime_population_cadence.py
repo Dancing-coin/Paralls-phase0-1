@@ -42,7 +42,7 @@ def test_world_runtime_builds_replayable_population_cadence_from_committed_world
     assert cadence.base_checkpoint_digest.startswith("sha256:")
 
 
-def test_world_runtime_emits_daily_rhythm_owner_events_at_initialization_and_confirmation() -> None:
+def test_daily_rhythm_to_hot_state_pipeline() -> None:
     from app.services.authority_event_bus import InMemoryAuthorityEventBus
 
     bus = InMemoryAuthorityEventBus()
@@ -58,8 +58,31 @@ def test_world_runtime_emits_daily_rhythm_owner_events_at_initialization_and_con
     runtime.confirm_population_cadence(cadence)
     updates = [event for event in bus.list_events() if event.event_type == "daily_rhythm.state_updated"]
     assert len(updates) == 12
-    assert len(store.read_events()) == 25  # Includes the committed population.world.resume event.
+    assert len(store.read_events()) == 25  # Includes initialization, resume, and state updates.
     assert updates[0].payload["state"]["fatigue"] == 0.16
+    for actor_id in runtime.roster.actor_ids:
+        projection = runtime._daily_rhythm_projection.read(actor_id)
+        row = runtime.population_hot_state.read(actor_id)
+        assert all(row[field] == projection[field] for field in projection)
+        assert row["revision"] == runtime._daily_rhythm_projection.get_revision(actor_id)
+
+
+def test_dual_write_consistency_has_one_owner_source():
+    from app.services.authority_event_bus import InMemoryAuthorityEventBus
+
+    bus = InMemoryAuthorityEventBus()
+    store = GameplayEventStore()
+    runtime = WorldContinuityRuntime(store=store, mode=_mode(), event_bus=bus, owner_store=store)
+    runtime.resume()
+    cadence = runtime.build_population_cadence(window_start=0, window_end=60)
+    runtime.confirm_population_cadence(cadence)
+
+    for actor_id in runtime.roster.actor_ids:
+        events = store.read_stream(f"daily-rhythm:{actor_id}")
+        assert [event.event_type for event in events] == [
+            "daily_rhythm.initialized", "daily_rhythm.state_updated"
+        ]
+        assert runtime.population_hot_state.read(actor_id)["fatigue"] == events[-1].payload["state"]["fatigue"]
 
 
 def test_world_runtime_cadence_uses_revision_heads_without_scanning_history() -> None:

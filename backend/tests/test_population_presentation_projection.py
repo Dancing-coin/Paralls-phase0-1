@@ -29,7 +29,11 @@ def test_public_view_uses_only_confirmed_whitelisted_fields(tmp_path, population
     assert tuple(payload["presentation_position"]) == tuple(initial_payload["presentation_position"])
     assert dict(view.source_revision_vector) == {"population-cadence:world": 1}
     row = world.population_hot_state.read(actor)
-    world.population_hot_state.upsert(actor, {"fatigue": 0.87, "need_pressure": 0.21}, int(row["revision"]) + 1)
+    world._daily_rhythm.publish_state(
+        actor, {"fatigue": 0.87, "need_pressure": 0.21},
+        tick=86400, revision=int(row["revision"]) + 1,
+    )
+    world._daily_rhythm_projection.rebuild(actor)
     assert build_population_actor_view(world, actor_id=actor) == view
     with pytest.raises(ValueError, match="population_actor_unknown"):
         build_population_actor_view(world, actor_id="outsider")

@@ -9,7 +9,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "backend"))
 
 from app.models.authority_event import AuthorityEvent, AuthorityEventRouting, AuthorityEventSource
 from app.models.siming_heavenly_graph import HeavenlyGraphScope, HeavenlyNodeQuery
+from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.settlement_plan import build_atomic_event_batch
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.services.owner_fact_query_impl import OwnerFactQueryImpl
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from common import repo_root, resolve_python_exe, run_command, verification_dir, write_json, write_markdown
 
@@ -48,14 +52,38 @@ def main() -> int:
     log_dir = verification_dir(root)
     pytest_log = log_dir / "authority-graph-projection-pytest.log"
     pytest_result = run_command([resolve_python_exe(args.python_exe), "-m", "pytest", "-q", *TEST_FILES], root, pytest_log)
+    store = GameplayEventStore()
+    committed_events = []
+    for index, (domain, event_type) in enumerate(DOMAINS.items(), start=1):
+        stream_id = f"owner:{domain}:char_b"
+        incoming = _event(event_type, index)
+        batch = build_atomic_event_batch(
+            command_id=incoming.event_id,
+            principal_ref=domain,
+            stream_id=stream_id,
+            expected_revision=store.get_stream_head(stream_id),
+            event_specs=((event_type, {**incoming.payload, "actor_id": "char_b"}),),
+            idempotency_key=incoming.event_id,
+            causation_id=incoming.causation_id,
+            correlation_id=incoming.correlation_id,
+        )
+        receipt = store.append_batch(batch)
+        if not receipt.committed:
+            raise RuntimeError("authority_graph_probe_owner_append_failed")
+        stored = store.get_event(receipt.committed_event_ids[0])
+        committed_events.append(incoming.model_copy(update={"event_id": stored.event_id, "payload": stored.payload}))
     with tempfile.TemporaryDirectory(dir=log_dir) as temp_dir:
         graph = SQLiteHeavenlyGraphAdapter(Path(temp_dir) / "authority.sqlite3")
-        projector = HeavenlyAuthorityEventProjector(graph, scope_resolver=lambda _event: _scope())
-        for index, (domain, event_type) in enumerate(DOMAINS.items(), start=1):
-            projector.project(_event(event_type, index))
-        nodes = graph.query_nodes(HeavenlyNodeQuery(scope=_scope(), valid_at=100, node_types=["causal_event"], limit=100))
-        trace = {"domains": sorted({str(node.attributes.get("domain", "")) for node in nodes}), "node_count": len(nodes)}
-        graph.close()
+        try:
+            projector = HeavenlyAuthorityEventProjector(
+                graph, OwnerFactQueryImpl(store, FACT_TYPE_REGISTRY), scope_resolver=lambda _event: _scope()
+            )
+            for event in committed_events:
+                projector.project(event)
+            nodes = graph.query_nodes(HeavenlyNodeQuery(scope=_scope(), valid_at=100, node_types=["causal_event"], limit=100))
+            trace = {"domains": sorted({str(node.attributes.get("domain", "")) for node in nodes}), "node_count": len(nodes)}
+        finally:
+            graph.close()
     trace_path = log_dir / "authority-graph-projection-trace.json"
     write_json(trace_path, trace)
     results = [

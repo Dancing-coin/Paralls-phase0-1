@@ -3,6 +3,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.models.authority_event import AuthorityEvent
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.models.social_model import DailySupplyReport, ModelRunReceipt
 from app.models.siming_runtime_state import (
     FairnessDimensionSnapshot,
@@ -201,8 +202,16 @@ class InterventionDecision(BaseModel):
 
 
 class SimingInput(BaseModel):
-    input_type: SimingInputType
+    input_type: str
     source_event: AuthorityEvent
+
+    @model_validator(mode="after")
+    def validate_registered_fact_type(self) -> "SimingInput":
+        if (self.input_type not in {"siming_staging_ack", "esm.feasibility_response", "esm.constraint_state",
+                                    "population_cadence_input"}
+                and FACT_TYPE_REGISTRY.from_event_type(self.input_type) is None):
+            raise ValueError("siming_input_fact_type_unregistered")
+        return self
 
 
 class SimingOutput(BaseModel):

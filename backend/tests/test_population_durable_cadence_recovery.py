@@ -82,7 +82,9 @@ def test_driver_persists_inventory_temporal_grant_in_durable_cadence_record(tmp_
     assert committed is not None and committed.committed and committed.committed_event_ids
     record = world.store.get_event(committed.committed_event_ids[0]).payload
     pins = record["time_pins"]
-    assert pins["settlement_participant_scope"] == "actor_gameplay.inventory_domain"
+    assert pins["settlement_participant_scope"] == [
+        "actor_gameplay.inventory_domain", "daily_rhythm_runtime", "actor_gameplay.organization_domain"
+    ]
     assert pins["input_cutoff"] == 60
     assert pins["confirmation_boundary"] == 60
     assert pins["temporal_authorization_issuer_ref"] == "world_runtime.population_cadence:world"
@@ -241,6 +243,41 @@ def test_delivered_restart_rebuilds_hot_rows_and_uses_tick_not_revision(tmp_path
     assert restored_world.population_hot_state.export_rows() == rows
     assert restored_world.store.get_stream_head("world:world") == 1
     assert not restored_world.store.list_outbox(include_delivered=False)
+
+
+def test_retry_after_owner_append_keeps_the_original_window(tmp_path, monkeypatch):
+    world = _runtime(tmp_path / "gameplay.json", ("one",))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    cadence = world.build_population_cadence(window_start=0, window_end=60)
+    original = world._daily_rhythm.publish_population_window
+
+    def fail_after_append(*args, **kwargs):
+        original(*args, **kwargs)
+        raise RuntimeError("interrupted_after_owner_append")
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(world._daily_rhythm, "publish_population_window", fail_after_append)
+        with pytest.raises(RuntimeError, match="interrupted_after_owner_append"):
+            publisher(cadence)
+
+    assert publisher(cadence) is not None
+    assert publisher.confirmed_tick == 60
+    assert len(world.store.read_stream("daily-rhythm:one")) == 1
+
+
+def test_restore_resumes_live_owner_projection(tmp_path):
+    path = tmp_path / "gameplay.json"
+    world = _runtime(path, ("one",))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    assert publisher(world.build_population_cadence(window_start=0, window_end=60))
+    world.store.close()
+
+    restored_world = _runtime(path, ("one",))
+    _publisher(restored_world, InMemoryAuthorityEventBus())
+    restored_world._daily_rhythm.publish_state("one", {"fatigue": 0.65}, tick=60, revision=2)
+
+    assert restored_world.population_hot_state.read("one")["fatigue"] == 0.65
+    assert restored_world.population_hot_state.get_revision("one") == 2
 
 
 def test_runtime_freezes_kernel_identity_once_for_receipt_validation(tmp_path, monkeypatch):

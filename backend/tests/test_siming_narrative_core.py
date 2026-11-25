@@ -34,6 +34,22 @@ def observed(event: AuthorityEvent) -> ObservedSimingEvent:
     return ObservedSimingEvent.from_authority_event(event)
 
 
+def test_state_from_projection():
+    from app.models.fact_type import FactType
+
+    class Query:
+        def query_facts(self, fact_types, *, actor_refs=None, at_revision=None, audience="siming_internal"):
+            assert tuple(fact_types) == (FactType.DAILY_RHYTHM_FATIGUE_STATE,)
+            return [type("Projection", (), {"fact_type": FactType.DAILY_RHYTHM_FATIGUE_STATE,
+                "payload": {"fatigue": 0.6}})()]
+
+    core = SimingNarrativeCore(owner_query=Query())
+
+    assert core.get_state("char_a", [FactType.DAILY_RHYTHM_FATIGUE_STATE]) == {
+        FactType.DAILY_RHYTHM_FATIGUE_STATE: {"fatigue": 0.6}
+    }
+
+
 def test_visual_fact_creates_unresolved_reveal_obligation_and_seed() -> None:
     core = SimingNarrativeCore()
     event = make_event(

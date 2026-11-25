@@ -8,6 +8,7 @@ from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import GameplayEvent, ProjectionCheckpoint
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.population_continuity.domain_projection_sources import (
     _committed_marker_is_valid,
     committed_event_payload,
@@ -119,6 +120,12 @@ def _read_sources(
             # 在过滤私有/无关事件前检查全局序号，分页不能跳过缺口或重置流版本。
             if event.global_sequence != expected:
                 raise ValueError("projection_gap")
+            declared_fact_types = event.payload.get("fact_types")
+            if "fact_types" in event.payload and not isinstance(declared_fact_types, (list, tuple)):
+                raise ValueError("fact_types_declaration_invalid")
+            for fact_type in declared_fact_types or ():
+                if not isinstance(fact_type, str) or FACT_TYPE_REGISTRY.from_event_type(fact_type) is None:
+                    raise ValueError(f"fact_type_not_registered:{fact_type}")
             admitted = (
                 _event_allowed_for_scope(event, cadence.report_scope)
                 and event.event_type in {
