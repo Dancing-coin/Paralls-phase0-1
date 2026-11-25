@@ -21,6 +21,23 @@ Commands and results:
 
 The focused pytest command was repeated with `TEMP`, `TMP`, and `--basetemp` directed to the fresh F-drive `pytest-temp-focused` directory. Raw console output is at `F:\paralls-verification\thread-a\m5-5-resume-20261125-01\focused-rerun\pytest.log`, with the result `138 passed, 6 warnings in 5.99s`, exit 0. Other raw outputs are under the same run root. The shared-replay batch-10 startup path invokes PowerShell `Get-NetTCPConnection`; a direct PowerShell query in this environment also failed to return. No other process was terminated. Full backend suite was not run. The earlier selection runs inherited `TEMP/TMP` under `D:\CODEX-~1\USER-T~1`, so pytest `tmp_path` data from those runs may remain there. The directory is shared with concurrent processes and contains unrelated data, so no cleanup or move was attempted. Future pytest invocations will set `--basetemp` under the unique F-drive output directory. The configured interpreter and site-packages remain on D; repository, selection reports, and retained raw outputs are on F.
 
+### Shared-replay recovery
+
+The initial run stopped at batch 10 before tests when the PowerShell listener query stalled. After `netstat` independently showed no listener on port 8000, the frozen 990-node shared-replay selection was rerun with the existing F-drive Python executable as a process-local `powershell.exe` name mapping. The shim was only reached by `scripts/verification/common.py`'s listener check; the selected node list had no other PowerShell tests. `TEMP` and `TMP` were set to the F-drive run directory. The first `PYTEST_ADDOPTS=--basetemp=F:\...` value used backslashes, which pytest's option parser treated as escapes, and created a temp folder inside `backend`. That exact 119-entry, 12,606,316-byte folder was relocated to `F:/paralls-verification/thread-a/m5-5-resume-20261125-01/pytest-temp-shared-recovered/`. Pytest `current` convenience symlinks may retain their original absolute targets. Future `PYTEST_ADDOPTS` basetemp values must use forward slashes.
+
+Command:
+
+```text
+set PYTHONPATH=<A worktree>\backend
+set TEMP=F:\paralls-verification\thread-a\m5-5-resume-20261125-01\pytest-temp-shared
+set TMP=F:\paralls-verification\thread-a\m5-5-resume-20261125-01\pytest-temp-shared
+set PYTEST_ADDOPTS=--basetemp=F:/paralls-verification/thread-a/m5-5-resume-20261125-01/pytest-temp-shared
+set PATH=F:\paralls-verification\thread-a\m1-2-holdings-g5-resume-20261125-03\shim;%PATH%
+D:\Temp\paralls-g0-py312\Scripts\python.exe docs/verification/absorb-main-3bf3418e/compare_selection.py --repo %CD% --selection docs/verification/absorb-main-3bf3418e/shared-replay.json --output F:\paralls-verification\thread-a\m5-5-resume-20261125-01\shared-replay-shim
+```
+
+Raw per-batch pytest output is in `shared-replay-shim/batch-*.log`; exact comparator output was `selected=990 problems=0 improvements=0`, exit 0. All 25 batches completed. This supersedes the incomplete result above. Full backend suite was not run.
+
 The current verification supports the focused `event_schema_ref` increment and the five completed regression selections. It does not verify shared-replay, full-suite behavior, package-version write boundaries, `temporal_effects`, production command registration, M5-3/M5-4, or M1-2 production consumption.
 
 ## `temporal_effects` contract audit
