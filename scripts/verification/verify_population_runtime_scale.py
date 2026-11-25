@@ -30,6 +30,8 @@ from scripts.verification.population_benchmark_metrics import (
 from app.character_agent.runtime.runtime_loop import CharacterAgentRuntime
 from app.gameplay.econ1_economy_runtime import OperatingWindow
 from app.gameplay.event_store import DurableGameplayEventStore
+from app.gameplay.daily_rhythm_runtime import DAILY_RHYTHM_EVENT_TYPES
+from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.organization_government_runtime import OrganizationAuthority
 from app.models.siming_heavenly_graph import HeavenlyGraphScope, HeavenlyNodeQuery
 from app.population_continuity.models import WorldModeProfile
@@ -41,6 +43,8 @@ from app.population_continuity import world as world_module
 from app.population_continuity.world import WorldContinuityRuntime
 from app.services.authority_event_bus import InMemoryAuthorityEventBus
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.services.owner_fact_query_impl import OwnerFactQueryImpl
+from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.services.siming_audit_writer import SimingAuditWriter
 from app.services.siming_event_consumer import SimingEventConsumer
@@ -477,6 +481,7 @@ def measure_scenario(
 
         projector = HeavenlyAuthorityEventProjector(
             graph,
+            OwnerFactQueryImpl(store, FACT_TYPE_REGISTRY),
             scope_resolver=_siming_scope_for_event,
         )
 
@@ -488,10 +493,11 @@ def measure_scenario(
             graph_event_count += 1
 
         bus.subscribe("population_cadence_event", handle_population_event, consumer_id="siming")
-        bus.subscribe(
-            "*", project_authority_event,
-            excluded_event_types=frozenset({"population_cadence_event"}),
-        )
+        graph_event_types = tuple(
+            FACT_TYPE_REGISTRY.event_types()
+        ) + tuple(DAILY_RHYTHM_EVENT_TYPES)
+        for event_type in graph_event_types:
+            bus.subscribe(event_type, project_authority_event)
         publisher = RuntimeCadencePublisher(
             world_runtime=world, event_bus=bus,
             room_id="room:population-scale", scene_id="scene:population-scale", zone_id="zone:population-scale",
@@ -655,11 +661,27 @@ def measure_scenario(
         source_event = bus.list_events(
             event_type="population_cadence_event", include_realtime=True, current_only=False,
         )[-1]
+        graph_probe_event_type = "gameplay.resource.scale_projection_probe"
+        graph_probe_batch = build_atomic_event_batch(
+            command_id="scale:authority-graph-probe",
+            principal_ref="scale:authority",
+            stream_id="scale:authority:actor",
+            expected_revision=store.get_stream_head("scale:authority:actor"),
+            event_specs=((graph_probe_event_type, {"actor_id": roster.actor_ids[0],
+                "revision": 1, "tick": source_event.producer_ts, "probe": "domain_projection"}),),
+            idempotency_key="scale:authority-graph-probe",
+            causation_id="scale:authority-graph-probe",
+            correlation_id="scale:authority-graph-probe",
+        )
+        graph_probe_receipt = store.append_batch(graph_probe_batch)
+        if not graph_probe_receipt.committed:
+            raise RuntimeError("scale_owner_fact_append_failed")
+        stored_graph_probe = store.get_event(graph_probe_receipt.committed_event_ids[0])
         graph_probe = source_event.model_copy(update={
-            "event_id": "scale:authority-graph-probe",
-            "event_type": "gameplay.resource.scale_projection_probe",
+            "event_id": stored_graph_probe.event_id,
+            "event_type": graph_probe_event_type,
             "durability": "replayable",
-            "payload": {"owner_ref": "scale:authority", "probe": "domain_projection"},
+            "payload": stored_graph_probe.payload,
         })
         bus.publish(graph_probe)
         projected = graph.query_nodes(HeavenlyNodeQuery(
@@ -667,12 +689,12 @@ def measure_scenario(
             node_types=["causal_event"], limit=1000,
         ))
         probe_nodes = [node for node in projected
-                       if node.node_id == "authority-projection:" + graph_probe.event_id]
+                       if node.node_id.startswith("authority-projection:" + graph_probe.event_id + ":")]
         graph_probe_verified = (
             graph_event_count - population_graph_count == 1
             and len(probe_nodes) == 1
-            and probe_nodes[0].attributes["domain"] == "resource_scene"
-            and probe_nodes[0].attributes["committed_payload"] == graph_probe.payload
+            and probe_nodes[0].attributes["domain"] == "scale:authority"
+            and "committed_payload" not in probe_nodes[0].attributes
             and probe_nodes[0].provenance.source_ref == graph_probe.event_id
         )
 
@@ -709,7 +731,7 @@ def measure_scenario(
                                    "verified": graph_probe_verified},
             behavior_turn_count=behavior_turn_count,
             pipeline_verified=(pipeline_event_count == window_count and capability.default_cycle_count == window_count),
-            authority_graph_verified=(population_graph_count == 0 and graph_probe_verified),
+            authority_graph_verified=graph_probe_verified,
             behavior_turn_verified=behavior_turn_count == window_count,
             b0_cursor_verified=b0_cursor_verified and capability.b0_cycle_verified,
             input_roster_digest=_digest(roster.actor_ids),

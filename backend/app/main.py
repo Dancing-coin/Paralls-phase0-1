@@ -69,6 +69,7 @@ from app.models.visual_fact import VisualFactEvent
 from app.models.world_result import WorldResultBase
 from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
+from app.gameplay.daily_rhythm_runtime import DAILY_RHYTHM_EVENT_TYPES
 from app.gameplay.social_spatial_owner import SOCIAL_SPATIAL_PRINCIPAL, SocialSpatialOwner
 from app.gameplay.canonical_combat_authority import (
     CanonicalCombatThreatAuthority,
@@ -126,6 +127,7 @@ from app.models.siming_heavenly_graph import HeavenlyGraphScope
 from app.services.sqlite_heavenly_graph import SQLiteHeavenlyGraphAdapter
 from app.services.behavior_turn_recorder import BehaviorTurnRecorder
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
+from app.services.owner_fact_query_impl import OwnerFactQueryImpl
 from app.character_agent.storage.graph_continuity_store import CharacterGraphContinuityStore
 from app.services.character_runtime_state_service import CharacterRuntimeStateService
 from app.services.authority_event_bus import InMemoryAuthorityEventBus, _prepared_delivery_scope, _prepared_delivery_snapshot
@@ -1538,6 +1540,7 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
     population_owner = None
     population_owner_executors = {}
     owner_store = globals().get("gameplay_event_store")
+    owner_fact_query_store = owner_store if isinstance(owner_store, GameplayEventStore) else GameplayEventStore()
     if isinstance(owner_store, GameplayEventStore):
         package_registry = globals().get("production_package_registry")
         inventory_registry = globals().get("inventory_definition_registry")
@@ -1690,6 +1693,7 @@ def _assemble_runtime_state(runtime_settings: Settings, cleanup: ExitStack) -> R
         character_agent_runtime=character_agent_runtime,
         siming_runtime=SimingRuntime(
             llm_provider=llm_provider,
+            owner_fact_query=OwnerFactQueryImpl(owner_fact_query_store, FACT_TYPE_REGISTRY),
             actor_roster_resolver=lambda event: character_agent_runtime._profile_registry.actor_ids(),
             heavenly_support=support,
             population_capability=PopulationSimulationCapability(
@@ -2268,24 +2272,28 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
     authority_event_bus.subscribe("siming_staging_ack", _handle_siming_authority_event)
     authority_event_bus.subscribe("siming.staging_request", _ack_siming_staging_request)
     frontend_authority_event_projector = FrontendAuthorityEventProjector()
+    owner_fact_query = OwnerFactQueryImpl(gameplay_event_store, FACT_TYPE_REGISTRY, event_bus=authority_event_bus)
     authority_graph_projector = HeavenlyAuthorityEventProjector(
         heavenly_graph,
+        owner_fact_query,
         scope_resolver=siming_scope_for_event,
     )
-    # Q2: explicit typed subscriptions; the projector validates schema coverage at startup.
-    # Phase 2: graph relations plus OwnerFactQuery, with full revision reconciliation.
-    gameplay_event_types = (
-        event_type for event_type in FACT_TYPE_REGISTRY.event_types()
-        if event_type.startswith("gameplay.")
-    )
-    for event_type in gameplay_event_types:
+    # OwnerFactQuery subscriptions are an audited deployment manifest.
+    import yaml
+
+    subscription_path = Path(__file__).resolve().parents[1] / "assets" / "siming" / "subscriptions.yaml"
+    subscription_document = yaml.safe_load(subscription_path.read_text(encoding="utf-8"))
+    subscriptions = subscription_document.get("subscriptions") if isinstance(subscription_document, dict) else None
+    if not isinstance(subscriptions, list):
+        raise ValueError("siming_subscriptions_invalid")
+    for subscription in subscriptions:
+        event_type = subscription.get("event_type") if isinstance(subscription, dict) else None
+        audience = subscription.get("audience") if isinstance(subscription, dict) else None
+        if (not isinstance(event_type, str) or audience != "siming_internal"
+                or (event_type not in DAILY_RHYTHM_EVENT_TYPES
+                    and FACT_TYPE_REGISTRY.from_event_type(event_type) is None)):
+            raise ValueError(f"siming_subscription_invalid:{event_type}")
         authority_event_bus.subscribe(event_type, authority_graph_projector.project)
-    for fact_type in (
-        FactType.WORLD_FACT, FactType.VISUAL_FACT, FactType.ESM_RESULT,
-        FactType.CHARACTER_BEHAVIOR, FactType.CONVERSATION_RESOLUTION,
-        FactType.CONSTRAINT_STATE,
-    ):
-        authority_event_bus.subscribe(fact_type, authority_graph_projector.project)
     character_agent_l4_executor = CharacterAgentL4Executor()
     character_agent_l4_adapter = CharacterAgentL4Adapter(executor=character_agent_l4_executor)
     character_agent_debug_projection = CharacterAgentDebugProjection()

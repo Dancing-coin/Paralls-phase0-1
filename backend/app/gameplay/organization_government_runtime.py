@@ -11,6 +11,7 @@ from typing import Literal, Mapping, Sequence
 
 from pydantic import ConfigDict, Field
 
+from app.contracts.owner_registry import OWNER_REGISTRY
 from app.gameplay.contract_runtime import ContractProjector
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
@@ -558,7 +559,7 @@ class BranchInspectionRemediationProposal:
 
 
 class GovernmentAuthority:
-    _PRINCIPAL = "actor_gameplay.government_domain"
+    _PRINCIPAL = OWNER_REGISTRY.get("government").principal_ref
     _BRANCH_STREAM_PREFIX = "gameplay:government_branch:"
     _MUNICIPAL_ACK_POLICY = "policy:government-drought-assessment-acknowledgment@1"
 
@@ -3119,7 +3120,7 @@ class GovernmentAuthority:
 
 
 class OrganizationAuthority:
-    _PRINCIPAL = "actor_gameplay.organization_domain"
+    _PRINCIPAL = OWNER_REGISTRY.get("organization").principal_ref
     _BRANCH_STREAM_PREFIX = "gameplay:organization_branch:"
 
     def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
@@ -4972,7 +4973,7 @@ class OrganizationAuthority:
         expected_issuer = {
             "production-completed": "actor_gameplay.production_domain",
             "procurement-completed": "actor_gameplay.economy_domain",
-            "service-completed": "actor_gameplay.organization_domain",
+            "service-completed": OWNER_REGISTRY.get("organization").principal_ref,
         }.get(evidence.evidence_kind)
         if expected_issuer is None or evidence.issuer_principal_ref != expected_issuer:
             raise ValueError("work_evidence_issuer_unauthorized")

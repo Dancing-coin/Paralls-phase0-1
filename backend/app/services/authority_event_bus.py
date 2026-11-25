@@ -66,7 +66,7 @@ def _plain_population_metadata(event):
         value = pending.pop()
         if type(value) in (str, int, float, bool, type(None)):
             continue
-        if type(value) not in (dict, list):
+        if type(value) not in (dict, list, tuple):
             return False
         if id(value) in seen:
             continue

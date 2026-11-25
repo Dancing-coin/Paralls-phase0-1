@@ -6,9 +6,16 @@ from fractions import Fraction
 from typing import Any
 
 from app.gameplay.closed_generic_gameplay_families import ProductionOutputCustodyIntent
+from app.population_continuity.domain_projection_sources import (
+    INVENTORY_OUTPUT_CUSTODY_PROJECTION_FIELDS,
+    validate_inventory_output_custody_projection,
+)
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.siming_contracts import PopulationOwnerReceipt, PopulationReadSet
-from app.world_runtime.temporal_contracts import verify_temporal_authorization
+from app.world_runtime.temporal_contracts import (
+    POPULATION_SETTLEMENT_PARTICIPANT_SCOPE,
+    verify_temporal_authorization,
+)
 from app.world_runtime.temporal_contracts import SettlementWindow, SimulationTime
 
 
@@ -19,10 +26,6 @@ class InventoryOutputCustodyOwnerExecutor:
     EVENT_FAMILY = "gameplay.inventory.production_output_received@1"
     CAPABILITY_ID = "population:inventory-output-custody:v1"
     CONTRACT_REF = "inf:inventory-production-output-custody@1"
-    _FORBIDDEN_OVERRIDES = frozenset(
-        {"holder_ref", "container_id", "quantity", "item_ref", "stream_ref", "event_family", "owner_ref"}
-    )
-
     def __init__(self, *, authority: Any) -> None:
         self._authority = authority
 
@@ -54,9 +57,10 @@ class InventoryOutputCustodyOwnerExecutor:
         if not self._authorized_settlement_window(read_set):
             return rejected()
         payload = projection.payload
-        if self._FORBIDDEN_OVERRIDES.intersection(payload) or any(
-            key in intent.payload for key in self._FORBIDDEN_OVERRIDES
-        ):
+        try:
+            validate_inventory_output_custody_projection(payload)
+            validate_inventory_output_custody_projection(intent.payload)
+        except ValueError:
             return rejected()
         try:
             certification_event_id = str(payload["source_certification_event_id"])
@@ -136,7 +140,7 @@ class InventoryOutputCustodyOwnerExecutor:
             timeline_id=timeline_id,
             from_time=SimulationTime(timeline_id, start, Fraction(start)),
             to_time=SimulationTime(timeline_id, end, Fraction(end)),
-            participant_scope=(self.OWNER_REF,),
+            participant_scope=tuple(pins["settlement_participant_scope"]),
             phase_ref="population-cadence",
             input_cutoff=SimulationTime(timeline_id, int(pins["input_cutoff"]), Fraction(int(pins["input_cutoff"]))),
             late_input_policy_ref=str(pins["late_input_policy_ref"]),
@@ -174,7 +178,10 @@ class InventoryOutputCustodyOwnerExecutor:
             )
         ):
             return False
-        if pins.get("settlement_participant_scope") != self.OWNER_REF:
+        scope = pins.get("settlement_participant_scope")
+        if (not isinstance(scope, (list, tuple))
+                or tuple(scope) != POPULATION_SETTLEMENT_PARTICIPANT_SCOPE
+                or self.OWNER_REF not in scope):
             return False
         if pins.get("sampled_at") != read_set.cadence.window_end or pins.get("received_at") != read_set.cadence.window_end:
             return False
@@ -198,7 +205,7 @@ class InventoryOutputCustodyOwnerExecutor:
                 or window.to_time.canonical_time_value != read_set.cadence.window_end
                 or window.input_cutoff.canonical_time_value != read_set.cadence.window_end
                 or window.confirmation_boundary.canonical_time_value != read_set.cadence.window_end
-                or window.participant_scope != (self.OWNER_REF,)
+                or window.participant_scope != POPULATION_SETTLEMENT_PARTICIPANT_SCOPE
                 or window.late_input_policy_ref != "reject_after_cutoff"
                 or window.ordering_policy_ref != "source_revision_then_event_ref"
             ):

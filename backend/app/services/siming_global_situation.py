@@ -3,10 +3,12 @@ from __future__ import annotations
 import re
 import hashlib
 import json
+from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.contracts.owner_fact_query import FactTypeValue, OwnerFactQuery
 from app.models.object_anchor import append_unique_lineage, derive_world_anchor_id
 from app.models.siming_event import FairnessStateSnapshot, InterventionCandidate
 from app.models.siming_runtime_state import FairnessDimensionSnapshot
@@ -108,9 +110,18 @@ class SimingGlobalSituationSnapshot(BaseModel):
 
 
 class SimingGlobalSituationLayer:
-    def __init__(self) -> None:
+    def __init__(self, *, owner_query: OwnerFactQuery | None = None) -> None:
+        self._owner_query = owner_query
         self.snapshots: dict[str, SimingGlobalSituationSnapshot] = {}
         self.trace: list[dict[str, object]] = []
+
+    def get_state(self, actor_id: str, fact_types: Iterable[FactTypeValue]) -> dict[FactTypeValue, Mapping[str, object]]:
+        if self._owner_query is None:
+            raise ValueError("owner_fact_query_required")
+        projections = self._owner_query.query_facts(
+            fact_types, actor_refs=[actor_id], audience="siming_internal"
+        )
+        return {projection.fact_type: projection.payload for projection in projections}
 
     def assemble_snapshot(
         self,

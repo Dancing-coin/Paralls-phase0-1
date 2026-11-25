@@ -16,7 +16,20 @@ from app.population_continuity.social_input import FrozenSocialPlanningInput
 from app.population_continuity.source_inputs import HouseholdScheduleInput, OrganizationScheduleInput
 from app.population_continuity.models import BatchIntentCandidate
 from app.population_continuity.seed_planner import CharacterSeedPlanner
-from app.population_continuity.siming_contracts import PopulationB0BatchStats, PopulationB0ContinuousDelta, PopulationBatchReport, PopulationCadenceInput, PopulationCognitionStats, PopulationCycleResult, PopulationOwnerBatchResult, PopulationOwnerReceipt, PopulationProjection, PopulationReadSet
+from app.population_continuity.siming_contracts import (
+    PopulationB0BatchStats,
+    PopulationB0ContinuousDelta,
+    PopulationBatchReport,
+    PopulationCadenceInput,
+    PopulationCognitionStats,
+    PopulationCycleResult,
+    PopulationOwnerBatchResult,
+    PopulationOwnerReceipt,
+    PopulationProjection,
+    PopulationReadSet,
+    register_b0_delta_fields_from_population_state,
+    _validate_b0_delta_extension_fields,
+)
 from app.population_continuity.decision_surface import PopulationCapabilityCatalog, PopulationCapabilityDescriptor, PopulationDecision, PopulationDecisionPlanner, PopulationDecisionPolicy
 from app.population_continuity.driver_arbitration import DriverArbitrator
 from app.population_continuity.fair_focus import FairFocusQueue
@@ -282,7 +295,7 @@ class PopulationSimulationCapability:
                 or isinstance(raw_cursor, bool)
                 or (
                     raw_from_tick != cadence_input.window_start
-                    and not (raw_from_tick == 0 and raw_revision == 0)
+                    and raw_from_tick != 0
                 )
                 or raw_to_tick != cadence_input.window_end
                 or raw_cursor != cadence_input.window_end
@@ -306,9 +319,14 @@ class PopulationSimulationCapability:
             canonical_idempotency_key = f"b0:{cadence_input.cadence_id}:{actor_ref}"
             if payload.get("idempotency_key") != canonical_idempotency_key:
                 raise ValueError("b0_idempotency_invalid")
-            unknown_state = set(state_deltas).difference(HOT_FIELDS)
-            if unknown_state:
-                raise ValueError("b0_state_field_not_allowed")
+            population_state = payload.get("population_state", {})
+            if not isinstance(population_state, Mapping):
+                raise ValueError("b0_state_schema_invalid")
+            population_state_schema = payload.get("population_state_schema", {})
+            if not isinstance(population_state_schema, Mapping):
+                raise ValueError("b0_state_schema_invalid")
+            register_b0_delta_fields_from_population_state(population_state, population_state_schema)
+            _validate_b0_delta_extension_fields(state_deltas)
             for key, value in state_deltas.items():
                 if key in {"last_update_tick", "next_due_tick"} and (
                     not isinstance(value, int) or isinstance(value, bool) or value < 0

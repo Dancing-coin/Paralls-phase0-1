@@ -14,6 +14,18 @@ _PRODUCTION_OWNER = "actor_gameplay.organization_domain"
 _PRODUCTION_ACCEPTED = "gameplay.organization.production_work_contribution_accepted"
 _INVENTORY_ADMITTED_SCOPES = frozenset({"organization:summary", "public"})
 _OUTPUT_CERTIFIED_EVENT = "gameplay.construction_production.production_output_certified@1"
+INVENTORY_OUTPUT_CUSTODY_PROJECTION_FIELDS = frozenset({
+    "candidate_kind", "behavior_kind", "capability_id", "intent_kind", "actor_ref", "source_domain",
+    "source_certification_event_id", "source_certification_revision", "source_stream_ref", "source_event_refs",
+    "evidence_refs", "idempotency_key", "objective_risk", "unresolved_owner_consequence",
+    "expected_inventory_stream_revision",
+})
+
+
+def validate_inventory_output_custody_projection(payload: Mapping[str, object]) -> None:
+    unknown = set(payload).difference(INVENTORY_OUTPUT_CUSTODY_PROJECTION_FIELDS)
+    if unknown:
+        raise ValueError(f"inventory_output_custody_field_undeclared:{sorted(unknown)}")
 _SOCIAL_SIGNAL_ADMITTED_SCOPES = frozenset({"public"})
 _SOCIAL_SIGNAL_CAPABILITY = "population:social-population-signal:v1"
 _TAX_PRESSURE_ADMITTED_SCOPES = frozenset({"public"})
@@ -329,6 +341,7 @@ def inventory_output_custody_population_projections(
         }
         if isinstance(expected_inventory_revision, int) and not isinstance(expected_inventory_revision, bool) and expected_inventory_revision >= 0:
             projection_payload["expected_inventory_stream_revision"] = expected_inventory_revision
+        validate_inventory_output_custody_projection(projection_payload)
         projections.append(
             PopulationProjection(
                 ref=f"projection:inventory-output-custody:{event_id}",

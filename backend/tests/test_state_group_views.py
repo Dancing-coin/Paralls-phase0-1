@@ -147,3 +147,4 @@ def test_population_view_can_use_package_declared_definition_fields_without_dupl
     )
 
     assert population.groups["character.commitments"].payload == {"next_due_tick": 120}
+    assert population.groups["character.commitments"].population_allowed_fields == ("next_due_tick",)

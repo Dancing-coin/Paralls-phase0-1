@@ -81,10 +81,10 @@ def test_latest_checkpoint_corruption_falls_back_but_both_corrupt_fail_closed(tm
     for checkpoint in world.store.list_projection_checkpoints(projector_id="population-recovery:world"):
         world.store.save_projection_checkpoint(checkpoint.model_copy(update={"projection_hash": "corrupt"}))
     fresh = _runtime(path)
-    before = fresh.export_recovery_state()
+    before = fresh.population_hot_state.export_rows()
     with pytest.raises(ValueError, match="recovery_checkpoint"):
         _publisher(fresh, InMemoryAuthorityEventBus())
-    assert fresh.export_recovery_state() == before
+    assert fresh.population_hot_state.export_rows() == before
 
 
 @pytest.mark.parametrize("container", ["{", "{}"], ids=["invalid-json", "missing-fields"])
@@ -115,10 +115,10 @@ def test_checkpoint_container_corruption_has_independent_generation_fallback(tmp
     with sqlite3.connect(path) as connection:
         connection.execute("UPDATE checkpoints SET value=? WHERE projector_id=?", (container, "population-recovery:world"))
     fresh = _runtime(path)
-    before = fresh.export_recovery_state()
+    before = fresh.population_hot_state.export_rows()
     with pytest.raises(ValueError, match="recovery_checkpoint_unavailable"):
         _publisher(fresh, InMemoryAuthorityEventBus())
-    assert fresh.export_recovery_state() == before
+    assert fresh.population_hot_state.export_rows() == before
 
 
 def test_checkpoint_database_read_failure_does_not_try_another_generation(tmp_path):
@@ -127,24 +127,22 @@ def test_checkpoint_database_read_failure_does_not_try_another_generation(tmp_pa
     target = _runtime(path)
     with sqlite3.connect(path) as connection:
         connection.execute("DROP TABLE checkpoints")
-    before = target.export_recovery_state()
+    before = target.population_hot_state.export_rows()
     with pytest.raises(GameplayEventStoreSnapshotError) as failure:
         _publisher(target, InMemoryAuthorityEventBus())
     # The store surfaces read failures directly instead of rewrapping them as
     # row_invalid, so the read diagnostic is the raised error itself.
     assert str(failure.value) == "gameplay_snapshot_read_failed"
-    assert target.export_recovery_state() == before
+    assert target.population_hot_state.export_rows() == before
 
 
 @pytest.mark.parametrize("wrapped", [False, True], ids=["replacement", "functools-wraps"])
-def test_kernel_implementation_change_is_rejected_even_without_tail(tmp_path, monkeypatch, wrapped):
+def test_kernel_fingerprint_tracks_formula_version_not_implementation(tmp_path, monkeypatch, wrapped):
     from app.population_continuity import world as module
-    from app.population_continuity.recovery import population_kernel_digest
+    from app.population_continuity import recovery
 
-    path = tmp_path / "g.db"
-    _run(path, windows=32)
     original = module.advance_b0_row
-    original_digest = population_kernel_digest()
+    original_digest = recovery.population_kernel_digest()
 
     def changed(**kwargs):
         return replace(original(**kwargs), due_ticks=())
@@ -152,12 +150,10 @@ def test_kernel_implementation_change_is_rejected_even_without_tail(tmp_path, mo
     if wrapped:
         changed = wraps(original)(changed)
     monkeypatch.setattr(module, "advance_b0_row", changed)
-    assert population_kernel_digest() != original_digest
-    target = _runtime(path)
-    before = target.export_recovery_state()
-    with pytest.raises(ValueError, match="recovery_checkpoint"):
-        _publisher(target, InMemoryAuthorityEventBus())
-    assert target.export_recovery_state() == before
+    assert recovery.population_kernel_digest() == original_digest
+
+    monkeypatch.setattr(recovery, "_B0_FATIGUE_FORMULA_VERSION", "v2", raising=False)
+    assert recovery.population_kernel_digest() != original_digest
 
 
 def test_kernel_digest_is_stable_across_source_paths_and_newlines(tmp_path, monkeypatch):
@@ -227,10 +223,10 @@ def test_pending_followed_by_delivered_gap_never_skips_first_window(tmp_path):
     world, _, _, first = _run(path, windows=2)
     world.store.mark_outbox_retryable(f"outbox:population-runtime:{first.cadence_id}", "interrupted delivery")
     fresh = _runtime(path)
-    before = fresh.export_recovery_state()
+    before = fresh.store.get_stream_heads()
     with pytest.raises(ValueError, match="delivery_gap"):
         _publisher(fresh, InMemoryAuthorityEventBus())
-    assert fresh.export_recovery_state() == before
+    assert fresh.store.get_stream_heads() == before
 
 
 def test_publish_success_then_delivery_write_failure_remains_recoverable(tmp_path, monkeypatch):

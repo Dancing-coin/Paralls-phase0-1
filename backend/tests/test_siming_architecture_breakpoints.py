@@ -1,10 +1,13 @@
 import pytest
 
 from app.gameplay import event_schema_registry
+from app.gameplay.event_store import GameplayEventStore
 from app.models.fact_type import FACT_TYPE_REGISTRY
 from app.services.authority_graph_projector import HeavenlyAuthorityEventProjector
 from app.services.in_memory_heavenly_graph import InMemoryHeavenlyGraphAdapter
+from app.services.owner_fact_query_impl import OwnerFactQueryImpl
 from app.services.siming_observe import SimingObservePipeline
+from app.services.siming_event_consumer import SimingEventConsumer
 
 
 def test_s3_projector_startup_rejects_unmapped_gameplay_schema(monkeypatch):
@@ -12,13 +15,25 @@ def test_s3_projector_startup_rejects_unmapped_gameplay_schema(monkeypatch):
     monkeypatch.setattr(event_schema_registry, "gameplay_schema_event_types",
                         lambda: (*existing, "gameplay.new_owner.unmapped@1"))
     with pytest.raises(RuntimeError, match="gameplay.new_owner.unmapped@1"):
-        HeavenlyAuthorityEventProjector(InMemoryHeavenlyGraphAdapter(), scope_resolver=lambda _: None)
+        HeavenlyAuthorityEventProjector(
+            InMemoryHeavenlyGraphAdapter(),
+            OwnerFactQueryImpl(GameplayEventStore()),
+            scope_resolver=lambda _: None,
+        )
 
 
 def test_s3_registry_covers_current_schemas_and_preserves_declared_domain():
     FACT_TYPE_REGISTRY.validate_event_type_coverage()
     assert HeavenlyAuthorityEventProjector._domain_for("gameplay.survival.body_changed") == "survival_body"
     assert HeavenlyAuthorityEventProjector._domain_for("gameplay.survival.undeclared") is None
+
+
+def test_no_hardcoded_keys():
+    from app.models.fact_type import FactType
+
+    assert FactType.DAILY_RHYTHM_NEXT_DUE_TICK in SimingObservePipeline.get_observed_fact_types()
+    assert FactType.DAILY_RHYTHM_LAST_UPDATE_TICK in SimingEventConsumer.ALLOWED_FACT_TYPES
+    assert not hasattr(SimingObservePipeline, "OBSERVED_EVENT_TYPES")
 
 
 def test_s2_observer_startup_rejects_unmapped_gameplay_schema(monkeypatch):
@@ -55,6 +70,24 @@ def test_s1_state_tree_reads_fields_from_typed_payload_schema():
     assert snapshot.environment.summary["target_object_id"] == "obj_custom"
     assert snapshot.environment.summary["established_fact_id"] == "fact:custom"
     assert snapshot.character.summary["target_actor_id"] == "actor_custom"
+
+
+def test_read_from_owner_query():
+    from app.models.fact_type import FactType
+    from app.services.siming_state_tree import InMemorySimingStateTree
+
+    class Query:
+        def query_facts(self, fact_types, *, actor_refs=None, at_revision=None, audience="siming_internal"):
+            assert tuple(fact_types) == (FactType.DAILY_RHYTHM_FATIGUE_STATE,)
+            assert actor_refs == ["char_a"]
+            return [type("Projection", (), {"fact_type": FactType.DAILY_RHYTHM_FATIGUE_STATE,
+                "payload": {"fatigue": 0.8}})()]
+
+    tree = InMemorySimingStateTree(owner_query=Query())
+
+    assert tree.get_state("char_a", [FactType.DAILY_RHYTHM_FATIGUE_STATE]) == {
+        FactType.DAILY_RHYTHM_FATIGUE_STATE: {"fatigue": 0.8}
+    }
 
 
 def test_s1_state_tree_does_not_guess_undeclared_gameplay_payload_fields():

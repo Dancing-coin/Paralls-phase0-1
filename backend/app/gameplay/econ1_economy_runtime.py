@@ -7,6 +7,7 @@ import json
 
 from pydantic import ConfigDict, Field
 
+from app.contracts.owner_registry import OWNER_REGISTRY
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AtomicEventBatch, AppendBatchResult, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
@@ -96,7 +97,7 @@ class BusinessPeriod(StrictGameplayModel):
 
 
 class EconomyAuthority:
-    _PRINCIPAL = "actor_gameplay.econ1_economy_domain"
+    _PRINCIPAL = OWNER_REGISTRY.get("economy").principal_ref
     _P2DR_ORGANIZATION_REF = "org:bakery-authored"
     _P2DR_COUNTER_REF = "character:char_c"
     _P2DR_COUNTER_WORK_ORDER_REF = "work:flour"

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 from pydantic import Field, StrictInt, StrictStr, TypeAdapter, model_validator
 
@@ -15,6 +15,55 @@ from app.population_continuity.hot_state import HOT_FIELDS
 def _check_vector(value: dict[str, int]) -> None:
     if any(not key or isinstance(revision, bool) or revision < 0 for key, revision in value.items()):
         raise ValueError("revision_vector_invalid")
+
+
+_B0_DELTA_FIELD_SCHEMA: dict[str, type] = {}
+
+
+def register_b0_delta_fields(fields: Mapping[str, type]) -> None:
+    """Register extension fields from their declared state schema."""
+    supported = {int, float, str, bool}
+    if any(not name or name in HOT_FIELDS or value_type not in supported
+           for name, value_type in fields.items()):
+        raise ValueError("b0_delta_schema_invalid")
+    for name, value_type in fields.items():
+        existing = _B0_DELTA_FIELD_SCHEMA.get(name)
+        if existing is not None and existing is not value_type:
+            raise ValueError("b0_delta_schema_conflict")
+        _B0_DELTA_FIELD_SCHEMA[name] = value_type
+
+
+def register_b0_delta_fields_from_population_state(
+    population_state: Mapping[str, object],
+    population_state_schema: Mapping[str, object],
+) -> None:
+    if set(population_state) != set(population_state_schema):
+        raise ValueError("b0_delta_population_schema_invalid")
+    fields: dict[str, type] = {}
+    for group_id, raw_fields in population_state.items():
+        declared = population_state_schema[group_id]
+        if (not isinstance(group_id, str) or not group_id or not isinstance(raw_fields, Mapping)
+                or not isinstance(declared, (list, tuple))
+                or any(not isinstance(name, str) or not name for name in declared)
+                or not set(raw_fields).issubset(declared)):
+            raise ValueError("b0_delta_population_schema_invalid")
+        for field_name, value in raw_fields.items():
+            if not isinstance(field_name, str) or not field_name:
+                raise ValueError("b0_delta_population_schema_invalid")
+            if type(value) in {int, float, str, bool}:
+                fields[f"{group_id}.{field_name}"] = type(value)
+    if fields:
+        register_b0_delta_fields(fields)
+
+
+def _validate_b0_delta_extension_fields(values: Mapping[str, object]) -> None:
+    unknown = set(values).difference(HOT_FIELDS, _B0_DELTA_FIELD_SCHEMA)
+    if unknown:
+        raise ValueError("b0_state_field_not_allowed")
+    for name, value in values.items():
+        expected_type = _B0_DELTA_FIELD_SCHEMA.get(name)
+        if expected_type is not None and type(value) is not expected_type:
+            raise ValueError("b0_state_value_invalid")
 
 
 class PopulationCadenceInput(ContinuityModel):
@@ -160,9 +209,7 @@ class PopulationB0ContinuousDelta(ContinuityModel):
         if self.simulation_tick_cursor != self.to_tick:
             raise ValueError("b0_cursor_invalid")
         _check_vector(self.source_revision_vector)
-        unknown = set(self.state_deltas).difference(HOT_FIELDS)
-        if unknown:
-            raise ValueError("b0_state_field_not_allowed")
+        _validate_b0_delta_extension_fields(self.state_deltas)
         integer_fields = {"last_update_tick", "next_due_tick"}
         numeric_fields = {"fatigue", "need_pressure", "starvation_credit"}
         for key, value in self.state_deltas.items():
@@ -213,7 +260,7 @@ class PopulationReadSet(ContinuityModel):
     # Temporal pins are authority inputs.  A normal ``str | int`` union can
     # coerce ``True`` to ``1`` before validation, turning a forged timestamp
     # into a valid world tick.  Preserve scalar types exactly on this boundary.
-    temporal_pins: dict[str, StrictStr | StrictInt] = Field(default_factory=dict)
+    temporal_pins: dict[str, object] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def validate_projection_refs(self) -> "PopulationReadSet":
@@ -238,7 +285,11 @@ class PopulationReadSet(ContinuityModel):
                 raise ValueError("read_set_temporal_start_mismatch")
             if self.temporal_pins["window_ticks"] != self.cadence.window_end - self.cadence.window_start:
                 raise ValueError("read_set_temporal_window_mismatch")
-            if not all(isinstance(self.temporal_pins[key], (str, int)) for key in required):
+            if not all(type(self.temporal_pins[key]) in {str, int} for key in required):
+                raise ValueError("read_set_temporal_pin_type_invalid")
+            scope = self.temporal_pins.get("settlement_participant_scope")
+            if (scope is not None and (not isinstance(scope, (list, tuple)) or not scope
+                    or any(not isinstance(item, str) or not item for item in scope))):
                 raise ValueError("read_set_temporal_pin_type_invalid")
         return self
 
@@ -247,7 +298,7 @@ class PopulationReadSet(ContinuityModel):
         cls,
         cadence: PopulationCadenceInput,
         projections: Sequence[PopulationProjection],
-        temporal_pins: dict[str, str | int] | None = None,
+        temporal_pins: dict[str, object] | None = None,
     ) -> "PopulationReadSet":
         ordered = tuple(sorted(projections, key=lambda item: item.ref))
         refs = tuple(item.ref for item in ordered)

@@ -12,15 +12,15 @@ class SimingObservePipeline:
     def __init__(self) -> None:
         FACT_TYPE_REGISTRY.validate_event_type_coverage()
 
-    ALLOWED_FACT_TYPES = frozenset({
-        FactType.WORLD_FACT,
-        FactType.VISUAL_FACT,
-        FactType.ESM_RESULT,
-        FactType.CHARACTER_BEHAVIOR,
-        FactType.CONVERSATION_RESOLUTION,
-        FactType.CONSTRAINT_STATE,
-        FactType.POPULATION_CADENCE,
-    })
+    @staticmethod
+    def get_observed_fact_types() -> frozenset[FactType | FactTypeRef]:
+        return frozenset(
+            fact_type
+            for event_type in FACT_TYPE_REGISTRY.event_types()
+            if (fact_type := FACT_TYPE_REGISTRY.from_event_type(event_type)) is not None
+        )
+
+    ALLOWED_FACT_TYPES = get_observed_fact_types.__func__()
     def observe(self, events: list[AuthorityEvent]) -> list[ObservedSimingEvent]:
         observed: list[ObservedSimingEvent] = []
         for event in events:

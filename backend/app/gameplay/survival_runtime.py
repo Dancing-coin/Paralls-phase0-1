@@ -11,6 +11,7 @@ from typing import Literal, Mapping, Sequence
 
 from pydantic import ConfigDict, Field
 
+from app.contracts.owner_registry import OWNER_REGISTRY
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
@@ -257,7 +258,7 @@ class SurvivalProjector:
 
 
 class SurvivalAuthority:
-    _PRINCIPAL = "actor_gameplay.survival_domain"
+    _PRINCIPAL = OWNER_REGISTRY.get("survival").principal_ref
 
     def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
         self._store = store

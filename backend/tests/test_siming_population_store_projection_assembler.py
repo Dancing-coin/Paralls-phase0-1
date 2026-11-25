@@ -64,6 +64,25 @@ def _cadence(*, scope: str, revision_vector: dict[str, int]) -> PopulationCadenc
     )
 
 
+def test_assembler_rejects_unregistered_declared_fact_type():
+    store = GameplayEventStore()
+    stream = "owner:future:actor"
+    _commit(
+        store,
+        event_id="event:future-fact",
+        event_type="gameplay.future.state_updated",
+        stream_id=stream,
+        payload={"actor_id": "actor:a", "fact_types": ["gameplay.future.unregistered"]},
+    )
+
+    with pytest.raises(ValueError, match="fact_type_not_registered:gameplay.future.unregistered"):
+        assemble_committed_population_projections(
+            store=store,
+            cadence=_cadence(scope="public", revision_vector={stream: 1}),
+            organization_projection={"scope": "public"},
+        )
+
+
 def _organization_projection(*, revision: int = 2, scope: str = "organization:summary") -> dict[str, object]:
     return {
         "scope": scope,
@@ -442,3 +461,22 @@ def test_assembler_drops_duplicate_signal_refs() -> None:
     assert assemble_committed_population_projections(
         store=store, cadence=cadence, organization_projection={"scope": "public"}
     ) == ()
+
+@pytest.mark.parametrize("declared", ["gameplay.future.unregistered", {"fact_type": "gameplay.future.unregistered"}, 7])
+def test_assembler_rejects_malformed_fact_type_declaration(declared):
+    store = GameplayEventStore()
+    stream = "owner:future:actor"
+    _commit(
+        store,
+        event_id="event:malformed-fact-declaration",
+        event_type="gameplay.future.state_updated",
+        stream_id=stream,
+        payload={"actor_id": "actor:a", "fact_types": declared},
+    )
+
+    with pytest.raises(ValueError, match="fact_types_declaration_invalid"):
+        assemble_committed_population_projections(
+            store=store,
+            cadence=_cadence(scope="public", revision_vector={stream: 1}),
+            organization_projection={"scope": "public"},
+        )

@@ -11,6 +11,14 @@ import json
 from typing import Literal
 
 
+POPULATION_INVENTORY_AUTHORIZATION_REF = "authorization:population-inventory-output-custody@2"
+POPULATION_SETTLEMENT_PARTICIPANT_SCOPE = (
+    "actor_gameplay.inventory_domain",
+    "daily_rhythm_runtime",
+    "actor_gameplay.organization_domain",
+)
+
+
 @dataclass(frozen=True)
 class TemporalProfile:
     profile_id: str

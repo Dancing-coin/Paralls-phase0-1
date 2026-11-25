@@ -148,6 +148,7 @@ class RuntimeCadencePublisher:
         self.dispatcher = GameplayOutboxDispatcher(store=self.store, bus=self.bus, event_transform=self._hydrate,
             event_publisher=self._publish_prepared_population)
         self._restore()
+        self.world._daily_rhythm_projection.resume_live()
         self._domain_source = OrganizationWindowDueSource(store=self.store, world_ref=self.world.mode.world_ref,
                                                          roster=self.world.roster)
         self._domain_dispatcher = GameplayOutboxDispatcher(store=self.store, bus=self.bus,
@@ -345,6 +346,7 @@ class RuntimeCadencePublisher:
         else:
             if checkpoints or failure is not None:
                 raise ValueError("population_recovery_checkpoint_unavailable") from failure
+            self.world.reset_population_projection_for_replay()
         tail = self.store.read_stream(self.stream_id, from_revision=revision + 1, limit=tail_limit + 1)
         if len(tail) > tail_limit:
             raise ValueError("population_recovery_checkpoint_rebuild_required")
@@ -485,10 +487,15 @@ class RuntimeCadencePublisher:
                 values.pop("revision")
                 updates.append((actor_id, values, row["revision"], row["revision"] + 1))
         previous = self.world._character_participation
-        previous_state = self.world.export_recovery_state()
         try:
-            self.world.population_hot_state.commit_batch_atomic(updates)
             for actor_id, values, _, revision in updates:
+                self.world._daily_rhythm.publish_state(
+                    actor_id,
+                    values,
+                    tick=self.confirmed_tick,
+                    revision=revision,
+                )
+                self.world._daily_rhythm_projection.rebuild(actor_id, until_revision=revision)
                 self.world.requeue_due_population_work(actor_id, "b0:presentation-threshold",
                     values["next_due_tick"], revision=revision)
             self.world.configure_character_participation(resolutions=resolutions,
@@ -509,7 +516,6 @@ class RuntimeCadencePublisher:
         except Exception:
             self.world.configure_character_participation(resolutions=previous,
                 activation_authority=self.world._character_activation_authority, cohort_ref=previous_cohort)
-            self.world.restore_recovery_state(previous_state)
             raise
 
     def _validate_record(self, record: dict) -> PopulationCadenceInput:

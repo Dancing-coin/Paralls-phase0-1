@@ -46,6 +46,7 @@ class StateGroupRuntimeViewEnvelope:
     projection_revision: str
     source_revision_vector: Mapping[str, int]
     payload: Mapping[str, Any]
+    population_allowed_fields: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -191,6 +192,9 @@ class StateGroupViewProjector:
                 projection_revision=envelope.projection_revision,
                 source_revision_vector=_freeze_mapping(_thaw(envelope.source_revision_vector)),
                 payload=payload,
+                population_allowed_fields=(
+                    tuple(allowed_fields or ()) if consumer == "population" else ()
+                ),
             )
         frozen_groups = MappingProxyType(groups)
         checksum = _digest(

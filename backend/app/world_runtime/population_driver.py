@@ -15,7 +15,9 @@ from app.population_continuity.world import WorldContinuityRuntime
 
 from .simulation_clock import SimulationClock, calculate_window_bounds
 from .temporal_contracts import (ClockMapping, ScheduledWork, SimulationTime, SimulationTimeline,
-                                  TemporalAuthorization, TemporalProfile)
+                                  TemporalAuthorization, TemporalProfile,
+                                  POPULATION_INVENTORY_AUTHORIZATION_REF,
+                                  POPULATION_SETTLEMENT_PARTICIPANT_SCOPE)
 from .scheduling import select_temporal_work
 
 
@@ -128,13 +130,13 @@ class PopulationCadenceDriver:
             # Population -> Inventory custody is the currently admitted
             # settlement participant. These pins are issued with the durable
             # cadence authority record and rechecked by the Inventory owner.
-            "settlement_participant_scope": "actor_gameplay.inventory_domain",
+            "settlement_participant_scope": list(POPULATION_SETTLEMENT_PARTICIPANT_SCOPE),
             "input_cutoff": window_end,
             "late_input_policy_ref": "reject_after_cutoff",
             "confirmation_boundary": window_end,
             "ordering_policy_ref": "source_revision_then_event_ref",
-            "temporal_authorization_ref": "authorization:population-inventory-output-custody@1",
-            "temporal_authorization_revision": "authorization:population-inventory-output-custody@1",
+            "temporal_authorization_ref": POPULATION_INVENTORY_AUTHORIZATION_REF,
+            "temporal_authorization_revision": POPULATION_INVENTORY_AUTHORIZATION_REF,
             "temporal_authorization_issuer_ref": f"world_runtime.population_cadence:{self.world_runtime.mode.world_ref}",
             "temporal_authorization_valid_until": window_end,
         }
@@ -143,7 +145,7 @@ class PopulationCadenceDriver:
             revision=str(pins["temporal_authorization_revision"]),
             issuer_ref=str(pins["temporal_authorization_issuer_ref"]),
             timeline_id=str(pins["timeline_id"]),
-            participant_scope=(str(pins["settlement_participant_scope"]),),
+            participant_scope=POPULATION_SETTLEMENT_PARTICIPANT_SCOPE,
             input_cutoff=int(pins["input_cutoff"]),
             confirmation_boundary=int(pins["confirmation_boundary"]),
             late_input_policy_ref=str(pins["late_input_policy_ref"]),

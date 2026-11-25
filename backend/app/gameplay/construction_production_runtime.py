@@ -10,6 +10,7 @@ from typing import Literal, Mapping, Sequence
 
 from pydantic import ConfigDict, Field
 
+from app.contracts.owner_registry import OWNER_REGISTRY
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
@@ -2121,7 +2122,7 @@ class ConstructionProductionProjector:
 
 class ConstructionProductionAuthority:
     owner = "construction-production"
-    _PRINCIPAL = "actor_gameplay.construction_production_domain"
+    _PRINCIPAL = OWNER_REGISTRY.get("construction_production").principal_ref
 
     def __init__(self, *, store: GameplayEventStore, package_registry: object | None = None) -> None:
         self._store = store

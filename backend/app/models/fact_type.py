@@ -16,6 +16,8 @@ class FactType(StrEnum):
     DAILY_RHYTHM_NEED_PRESSURE_STATE = "daily_rhythm.need_pressure_state"
     DAILY_RHYTHM_STARVATION_CREDIT_STATE = "daily_rhythm.starvation_credit_state"
     DAILY_RHYTHM_ACTIVITY_PHASE_STATE = "daily_rhythm.activity_phase_state"
+    DAILY_RHYTHM_NEXT_DUE_TICK = "daily_rhythm.next_due_tick"
+    DAILY_RHYTHM_LAST_UPDATE_TICK = "daily_rhythm.last_update_tick"
 
     @classmethod
     def from_event_type(cls, event_type: str) -> "FactType | None":
@@ -40,6 +42,8 @@ _DOMAINS = {
     FactType.DAILY_RHYTHM_NEED_PRESSURE_STATE: "daily_rhythm",
     FactType.DAILY_RHYTHM_STARVATION_CREDIT_STATE: "daily_rhythm",
     FactType.DAILY_RHYTHM_ACTIVITY_PHASE_STATE: "daily_rhythm",
+    FactType.DAILY_RHYTHM_NEXT_DUE_TICK: "daily_rhythm",
+    FactType.DAILY_RHYTHM_LAST_UPDATE_TICK: "daily_rhythm",
 }
 
 _GAMEPLAY_FACT_DOMAINS = {
@@ -87,6 +91,11 @@ class FactTypeRegistry:
 
     def domain_for(self, fact_type: FactType | FactTypeRef) -> str:
         return _DOMAINS.get(fact_type, fact_type.domain if isinstance(fact_type, FactTypeRef) else "unknown")
+
+    def get_owner_for_fact_type(self, fact_type: FactType | FactTypeRef) -> str:
+        if self.domain_for(fact_type) == "daily_rhythm":
+            return "daily_rhythm_runtime"
+        return self.domain_for(fact_type)
 
     def register_event_type(self, event_type: str) -> FactTypeRef | None:
         return self.from_event_type(event_type)

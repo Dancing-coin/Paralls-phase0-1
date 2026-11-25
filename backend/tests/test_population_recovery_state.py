@@ -28,14 +28,22 @@ def _confirmed():
     return world, cadence
 
 
-def test_recovery_state_restores_all_valid_due_keys_and_continues_exactly():
+def test_recovery_state_migrates_into_owner_projection_and_continues_exactly():
     source, cadence = _confirmed()
     state = json.loads(json.dumps(source.export_recovery_state()))
     target = _runtime(3)
     before_facts = target.store.export_snapshot()
     target.restore_recovery_state(state)
-    assert target.store.export_snapshot() == before_facts
+    migrated = target.store.export_snapshot()
+    assert migrated != before_facts
+    assert [event["event_type"] for event in migrated["events"] if event["event_type"].startswith("daily_rhythm.")] == [
+        "daily_rhythm.state_updated",
+        "daily_rhythm.state_updated",
+        "daily_rhythm.state_updated",
+    ]
     assert target.export_recovery_state() == state
+    target.restore_recovery_state(state)
+    assert target.store.export_snapshot() == migrated
     assert target._population_due_index.get(source.roster.actor_ids[0], "b1:work") == (9, 2)
     assert len(target._population_due_index._heap) == len(target._population_due_index._entries) == 5
     assert target.confirm_population_cadence(cadence).status == "idempotent_replay"
@@ -109,8 +117,10 @@ def test_recovery_pins_roster_order_used_by_rotating_selection():
 
 def test_recovery_canonicalizes_valid_integer_hot_fractions():
     source = _runtime(3)
-    source.population_hot_state.upsert(source.roster.actor_ids[0], {"fatigue": 1}, revision=1)
-    source.requeue_due_population_work(source.roster.actor_ids[0], "b0:presentation-threshold", 21_600, revision=1)
+    actor_id = source.roster.actor_ids[0]
+    source._daily_rhythm.publish_state(actor_id, {"fatigue": 1}, tick=0, revision=1)
+    source._daily_rhythm_projection.rebuild(actor_id)
+    source.requeue_due_population_work(actor_id, "b0:presentation-threshold", 21_600, revision=1)
     target = _runtime(3)
     target.restore_recovery_state(source.export_recovery_state())
     assert target.export_recovery_state() == source.export_recovery_state()
