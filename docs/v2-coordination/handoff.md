@@ -544,3 +544,14 @@
 - Focused package migration, schema, and rule-pack validator tests returned 148 passed. M5-3 selection (20 nodes) and Ownership (24 nodes) reported zero problems and improvements.
 - The shared-replay selection did not complete. Ten 40-node batches passed, then the next batch stalled at `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]` without log progress for over ten minutes. The comparator was interrupted and produced no aggregate result. Cause remains unclassified. No unidentified process was terminated. The full backend suite was not run.
 - This API does not parse or authenticate a deployment manifest and does not settle cross-language canonical serialization. The caller must supply trusted pins from a deployment-controlled source. No production v2 package consumer or startup wiring exists. Production Gate values remain unconfigured; `integration` was not modified.
+
+### H-A-070 | M5-3 shared-replay verification resumed | 2026-11-26
+
+- Revalidated current A code state `24b369c0`; the M5-3 runtime source is unchanged from `2a5d6640`. Frozen shared-replay completed with `selected=990 problems=0 improvements=0`, superseding the incomplete comparison in H-A-069.
+- Root cause of the earlier stall was the runner's PowerShell `Get-NetTCPConnection` listener query hanging in `subprocess.communicate()`. A fresh `netstat -ano -p tcp` check showed port 8000 unbound before rerun. A temporary F-drive `powershell.exe` name shim was applied only to that lookup; no external process was stopped.
+- Python `3.12.2`, SQLite `3.43.1`, A worktree import path verified. Raw output: `F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/shared-replay/`. Full backend suite remains unrun. Deployment manifest loading and package startup wiring remain open.
+
+### H-A-071 | M6-5 tracked Gate profile template | 2026-11-26
+
+- Commit `24b369c0` adds the exercised `gate-03` profile to tracked `.env.example`. Its JSON parsed through `FacilityGateProfileSettings`; focused config and M6-5 runtime tests returned 52 passed, 6 warnings.
+- This provides version-controlled deployment input, not evidence that a production server has loaded it. No deployment target or server manifest exists in this repository. Raw output: `F:/paralls-verification/thread-a/m6-5-gate-profile-template-20261126-02/pytest.log`.

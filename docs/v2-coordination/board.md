@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。当前 A 分支 tip 为 `2a5d6640`；最新增量为 M5-3 可信 archive bootstrap API。M6-5 的 gate-03 profile 已写入本地 A worktree `.env` 并完成配置探针。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新 A 代码提交为 `24b369c0`，包含 M6-5 `gate-03` 环境模板。M5-3 可信 archive bootstrap API 的 shared-replay 990 节点已在当前代码状态复验为零差异。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -92,3 +92,7 @@
 ### M6-5 tracked Gate profile follow-up（2026-11-26）
 
 - 已将本地验证过的 `gate-03` integrity/durability 初始值、阈值与 battering-ram delta 写入跟踪的根 `.env.example`。配置 JSON 通过 `FacilityGateProfileSettings` 验证；A worktree 定向配置/runtime 测试 `52 passed, 6 warnings`，原始输出 `F:/paralls-verification/thread-a/m6-5-gate-profile-template-20261126-02/pytest.log`。应用启动通过 `SIEGE_FACILITY_GATE_PROFILES_JSON` 消费该配置。仓库没有生产部署清单或服务器目标，故不声称生产实例已加载。M6-5 保持进行中。
+
+### M5-3 shared-replay revalidation（2026-11-26）
+
+- 当前 A 代码状态下 frozen shared-replay `selected=990 problems=0 improvements=0`。停滞节点单独通过。根因为 `common._find_listener_pid` 的 PowerShell listener 查询挂起；独立 `netstat` 确认端口 8000 无监听后，通过 F 盘临时 shim 完成完整比较，没有停止外部进程。原始输出在 `F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/shared-replay/`。M5-3 的部署 manifest 与 package startup wiring 仍未完成。

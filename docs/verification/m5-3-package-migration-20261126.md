@@ -34,7 +34,7 @@ The shared-replay comparator used the existing F-drive `powershell.exe` name shi
 | Production immutable archive bootstrap and trusted deployment hash manifest | Not implemented |
 | Production package consumer/startup wiring | Not implemented; no production v2 `load_pack` caller was found |
 | Full backend suite | Not run |
-| Production Gate values | Still unconfigured; this M5-3 unit does not configure them |
+| M6-5 Gate configuration | `gate-03` values are now included in tracked `.env.example`; actual production deployment remains unverified |
 
 M5-3's control-event/runtime slice is implemented and selected tests pass. This does not complete production package migration, M5 as a whole, Architecture v2, or full-suite validation.
 
@@ -56,4 +56,13 @@ Implementation commit: `2a5d66402aaf566bb8414ec61d51aa5cb5999b45`.
 
 The shared-replay runner stall lasted over ten minutes with no log progress. The cause is unclassified, and the full 990-node selection is not verified. No unidentified process was terminated. The backend full suite was not run.
 
-This bootstrap API does not define cross-language canonical serialization. `load_pack` still computes effective hashes using its existing Python implementation; the formal cross-language canonicalization decision remains open. There is still no production v2 package consumer, deployment manifest reader, or startup wiring. Production Gate values remain unconfigured, and no change was made to `integration`.
+This bootstrap API does not define cross-language canonical serialization. `load_pack` still computes effective hashes using its existing Python implementation; the formal cross-language canonicalization decision remains open. There is still no production v2 package consumer, deployment manifest reader, or startup wiring. M6-5's tracked Gate environment template is recorded separately; no live production environment is configured. No change was made to `integration`.
+
+## Shared-Replay Revalidation Follow-up (2026-11-26)
+
+- Revalidated the current A tip `24b369c0` after the code-identical bootstrap commit `2a5d6640`. The profile-template commit after `2a5d6640` changed only `.env.example` and evidence/coordination files.
+- The original stall was reproduced on the isolated-storage node. Pytest's faulthandler showed it blocked in `scripts/verification/common.py:_find_listener_pid` while waiting for the `powershell -NoProfile -Command Get-NetTCPConnection` subprocess. Before rerunning, `netstat -ano -p tcp` showed no listener on port 8000.
+- A temporary F-drive `powershell.exe` name shim was used only for that listener lookup. The previously stalled node passed alone, then the complete frozen shared-replay comparison completed: `selected=990 problems=0 improvements=0`. No external process was stopped.
+- Python `3.12.2`, SQLite `3.43.1`, `PYTHONPATH=F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend`; `app.__file__` resolved under the A worktree. `TEMP`, `TMP`, pytest basetemp, comparator output, and raw logs were directed under `F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/`.
+- Command: `python -B docs/verification/absorb-main-3bf3418e/compare_selection.py --repo F:/codex-temp/paralls-v2-thread-a-bond-20261121 --selection docs/verification/absorb-main-3bf3418e/shared-replay.json --output F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/shared-replay`.
+- This completes the M5-3 shared-replay regression evidence for the current code state. It does not implement deployment manifest loading, a production package consumer/startup wiring, cross-language hash canonicalization, or a live production deployment. The backend full suite was not run.
