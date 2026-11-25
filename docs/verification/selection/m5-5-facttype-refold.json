@@ -1,6 +1,6 @@
 {
-  "head": "64421f00a6049a4598d642a1a0736dd409db7cf9",
-  "description": "M5-5 FactType refold, scope, primitive, naming, process-kind, package primitive-definition diagnostics, and deterministic Owner-ordered resolution",
+  "head": "964cc5e4f3d58093deae61ab9de7993da1c61f50",
+  "description": "M5-5 FactType and resolver validator rules, package diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_distribution_fact_without_refold_model",
@@ -81,6 +81,16 @@
       "outcome": "passed",
       "failures": [],
       "test_name": "tests/test_credential_fact_type_registry.py::test_unrelated_fact_types_follow_owner_order_with_stable_fact_id_tiebreak"
+    },
+    {
+      "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_layer_output_must_be_in_model_write_set",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_rejects_unfixed_randomness_policy",
+      "outcome": "passed",
+      "failures": []
     }
   ]
 }

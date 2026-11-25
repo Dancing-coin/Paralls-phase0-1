@@ -210,3 +210,18 @@ The first regression fixture used `Body` IDs whose lexical order matched Owner o
 | U11 | The M5-5 selection now records 16 regression nodes at `64421f00a6049a4598d642a1a0736dd409db7cf9`. |
 
 This follow-up does not complete M5-5. The `event_schema_ref` alias contract and other validator/package lifecycle requirements remain open. No merge or Architecture v2 completion claim is made.
+
+## Resolver rejection coverage follow-up
+
+Test-only commit: `964cc5e4f3d58093deae61ab9de7993da1c61f50`.
+
+The validator already rejected a resolver layer whose outputs exceed the model-level `writes_fact_types` set and a resolver policy with unfixed randomness. Those two compiler rejection branches had no dedicated regression tests. Tests now assert the exact `resolver_writes_undeclared` and `resolver_missing_determinism` violation codes. No runtime behavior changed.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| Focused registry and rejection tests before commit | `12 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-resolver-coverage-20261125-01\pytest.log` |
+| Exact M5-5 regression selection | `selected=18 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-resolver-exact-selection-964cc5e4\` |
+| Import environment | Python 3.12.2; `app.__file__` in A worktree; SQLite 3.43.1 | Import path printed before selection; focused pytest paths are on F |
+| Full validation | Not run for this test-only commit | No full backend suite or shared-replay claim is made |
+
+The M5-5 selection manifest now registers 18 tests at this exact commit. Other validator/package requirements, including the unresolved `event_schema_ref` registry mapping, remain open.

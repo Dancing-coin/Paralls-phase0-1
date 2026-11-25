@@ -428,3 +428,9 @@
 - Per the project lead's accepted recommendation, the A worktree root `.env` now configures `gate-03` with three 0–100 durability layers, initial values 100, integrity breach enter/reset thresholds 40/45, and battering-ram impact delta -20. The file is Git-ignored and was not committed or distributed as a production deployment configuration.
 - With Python 3.12.2 and `app.__file__` in the A worktree, the configured smoke processed 14 signed and revision-pinned Gate impacts, emitted one breach-enter event at integrity 20, depleted door and latch durability, and emitted no Place facts. This preserves the separate Presence decision path.
 - Focused tests: `184 passed, 6 warnings`. Exact M6-5 selection: `selected=21 problems=0 improvements=0`. Full backend suite, shared-replay, production deployment and real Unreal transport were not rerun. Raw evidence paths are recorded in `docs/verification/m6-5-impact-gate-layered-execution-20261124.md`.
+
+### H-A-054 | M5-5 Resolver rejection regression coverage | 2026-11-25
+
+- Test-only commit `964cc5e4f3d58093deae61ab9de7993da1c61f50` adds witnesses for `resolver_writes_undeclared` when a layer output is absent from the model write set, and `resolver_missing_determinism` when randomness is not fixed to `none`.
+- Focused FactType registry/rejection tests: `12 passed, 2 warnings`. Exact M5-5 selection: `selected=18 problems=0 improvements=0`. The `m5-5-facttype-refold.json` manifest records the two nodes at the exact commit.
+- No runtime behavior changed. Full backend suite and shared-replay were not run for this test-only commit. Evidence is in `docs/verification/m5-5-facttype-refold-20261125.md`.
