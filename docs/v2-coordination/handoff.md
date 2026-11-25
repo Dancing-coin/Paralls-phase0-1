@@ -555,3 +555,10 @@
 
 - Commit `24b369c0` adds the exercised `gate-03` profile to tracked `.env.example`. Its JSON parsed through `FacilityGateProfileSettings`; focused config and M6-5 runtime tests returned 52 passed, 6 warnings.
 - This provides version-controlled deployment input, not evidence that a production server has loaded it. No deployment target or server manifest exists in this repository. Raw output: `F:/paralls-verification/thread-a/m6-5-gate-profile-template-20261126-02/pytest.log`.
+
+### H-A-072 | M6-5 versioned Gate profile input contract | 2026-11-26
+
+- Commit `d693686b` adds a schema-versioned `FacilityGateProfileSettings` contract. Missing version remains compatible as v1; unsupported versions, unknown fields, non-finite or float/bool decimal inputs, invalid thresholds, non-negative impact deltas, and invalid layered bounds reject.
+- The tracked `.env.example` values are marked demonstration-only. Production Gate values remain unset per H-A-039; no deployment target, production config, or `integration` change was made.
+- Python `3.12.2`, SQLite `3.43.1`, the A worktree `app.__file__`, and F-drive temp paths were verified. Focused tests returned `71 passed, 6 warnings`; the registered profile contract selection returned `selected=19 problems=0 improvements=0`. P-1 staged-line credential-pattern scan reported zero hits.
+- The backend full-suite attempt reached approximately 31% after about 40 minutes and was interrupted. Two failure markers appeared, but no node IDs or final summary were recorded, so this run is incomplete and its failures are unclassified. Raw output is under `F:/paralls-verification/thread-a/m6-5-gate-profile-contract-full-20261126-01/`; focused evidence is `docs/verification/m6-5-gate-profile-contract-20261126.md`.

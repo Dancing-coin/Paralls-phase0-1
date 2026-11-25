@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新 A 代码提交为 `24b369c0`，包含 M6-5 `gate-03` 环境模板。M5-3 可信 archive bootstrap API 的 shared-replay 990 节点已在当前代码状态复验为零差异。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新 A 代码提交为 `d693686b`，补充 M6-5 Gate profile v1 输入合同校验。M5-3 可信 archive bootstrap API 的 shared-replay 990 节点已在当前代码状态复验为零差异。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -74,7 +74,7 @@
 | S-7 | 11-09 的逐域探针并入成功标准 8 | 验收口径 | 未决 |
 | — | 谁做 M4 各波（A 或 B 或轮换） | 全部域迁移 | 未决，等 M0-6 |
 | — | M2-6 选哪条生产流受 epoch 保护 | L0 强制 | 未决 |
-| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；M5-3/Ownership 选择 20/24 零差异，shared-replay 990 比较因 runner stall 未完成。部署 manifest 来源/解析、生产 consumer/startup wiring、跨语言 canonicalization 待后续处理，见 H-A-068、H-A-069 |
+| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；M5-3/Ownership 选择 20/24 零差异，shared-replay 990 零差异（H-A-070）。部署 manifest 来源/解析、生产 consumer/startup wiring、跨语言 canonicalization 待后续处理，见 H-A-068 至 H-A-070 |
 
 ## 四、更新规则
 
@@ -96,3 +96,9 @@
 ### M5-3 shared-replay revalidation（2026-11-26）
 
 - 当前 A 代码状态下 frozen shared-replay `selected=990 problems=0 improvements=0`。停滞节点单独通过。根因为 `common._find_listener_pid` 的 PowerShell listener 查询挂起；独立 `netstat` 确认端口 8000 无监听后，通过 F 盘临时 shim 完成完整比较，没有停止外部进程。原始输出在 `F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/shared-replay/`。M5-3 的部署 manifest 与 package startup wiring 仍未完成。
+
+### M6-5 versioned Gate profile contract（2026-11-26）
+
+- Commit `d693686b` adds compatible `schema_version=1` parsing and rejects invalid or unknown Gate profile fields. Focused tests returned `71 passed, 6 warnings`; the 19-node registered selection returned `problems=0 improvements=0`.
+- The backend full-suite attempt was interrupted at about 31% after roughly 40 minutes. Two failure markers had appeared, but no node IDs or final summary were captured, so they remain unclassified. Evidence: `docs/verification/m6-5-gate-profile-contract-20261126.md`.
+- Production Gate values remain unset under H-A-039. The profile values in `.env.example` are explicitly a demonstration profile; M6-5 remains in progress.
