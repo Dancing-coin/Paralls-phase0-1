@@ -37,3 +37,23 @@ The shared-replay comparator used the existing F-drive `powershell.exe` name shi
 | Production Gate values | Still unconfigured; this M5-3 unit does not configure them |
 
 M5-3's control-event/runtime slice is implemented and selected tests pass. This does not complete production package migration, M5 as a whole, Architecture v2, or full-suite validation.
+
+## Trusted Archive Bootstrap Follow-up (2026-11-26)
+
+Implementation commit: `2a5d66402aaf566bb8414ec61d51aa5cb5999b45`.
+
+`load_package_archive` accepts an explicit package identity-to-directory mapping and a trusted identity-to-hash mapping. It resolves declared parent packages through `load_pack`, checks each loaded identity, and constructs `PackageArchive` only after every loaded effective hash matches its trusted pin. The caller remains responsible for sourcing the trusted mapping from deployment-controlled data.
+
+| Check | Result | Raw output |
+|---|---|---|
+| TDD red | Collection failed because `load_package_archive` did not exist | Conversation output; expected missing-symbol failure |
+| Bootstrap regression tests | 4 passed, including valid load, missing pin rejection, changed directory rejection, and parent overlay resolution | `F:\paralls-verification\thread-a\m5-3-archive-bootstrap-20261126-01\bootstrap.log` |
+| Package migration, event schema, and rule-pack validator tests | 148 passed, 2 dependency deprecation warnings | `F:\paralls-verification\thread-a\m5-3-archive-bootstrap-20261126-01\targeted.log` |
+| Environment | Python 3.12.2; `app.__file__` resolved inside this A worktree; SQLite 3.43.1 | `F:\paralls-verification\thread-a\m5-3-archive-bootstrap-20261126-01\environment.log` |
+| M5-3 registered selection | 20 nodes, `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-3-archive-bootstrap-20261126-01\m5-3-selection.json` |
+| Frozen Ownership selection | 24 nodes, `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-3-archive-bootstrap-20261126-01\ownership.json` |
+| Frozen shared-replay selection | Incomplete. Ten 40-node batches completed with 40 passed each. Batch 11 stopped after five passed tests at `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`; no aggregate comparison result was produced | `F:\paralls-verification\thread-a\m5-3-archive-bootstrap-20261126-01\shared-replay.json` |
+
+The shared-replay runner stall lasted over ten minutes with no log progress. The cause is unclassified, and the full 990-node selection is not verified. No unidentified process was terminated. The backend full suite was not run.
+
+This bootstrap API does not define cross-language canonical serialization. `load_pack` still computes effective hashes using its existing Python implementation; the formal cross-language canonicalization decision remains open. There is still no production v2 package consumer, deployment manifest reader, or startup wiring. Production Gate values remain unconfigured, and no change was made to `integration`.

@@ -1,10 +1,14 @@
 {
-  "head": "aa8711683068ae220c3602e89f3da0a871f7f284",
-  "description": "M5-3 platform package migration authority, immutable archive pins, replay, and schema registration",
+  "head": "2a5d66402aaf566bb8414ec61d51aa5cb5999b45",
+  "description": "M5-3 platform package migration authority, trusted archive bootstrap, immutable pins, replay, and schema registration",
   "tests": [
     {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_resolves_immutable_package_identity","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_rejects_conflicting_hash_for_same_identity","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_rejects_content_hash_changed_from_archive_pin","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_bootstrap_loads_directory_against_trusted_hash_pin","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_bootstrap_requires_a_trusted_hash_for_every_directory","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_bootstrap_rejects_directory_content_changed_after_pin","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_bootstrap_resolves_and_pins_parent_overlay","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_without_migrations_uses_initial_package_set","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_without_migrations_requires_an_initial_package_set","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_uses_from_before_and_to_at_or_after_migration_sequence","outcome":"passed","failures":[]},

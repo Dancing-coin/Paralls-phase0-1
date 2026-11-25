@@ -537,3 +537,10 @@
 - Tests cover normal and durable commits, duplicate retry after reopening, changed duplicate rejection, stale source pins, revision conflicts, missing archive identities, changed archive hashes, malformed history, and package resolution before/at/after the migration sequence.
 - Implementation commit is `aa8711683068ae220c3602e89f3da0a871f7f284`. Final targeted results and the M5-3/Ownership/shared-replay selections (16/24/990 nodes) are recorded in `docs/verification/m5-3-package-migration-20261126.md`; raw output is under `F:\paralls-verification\thread-a\m5-3-package-migration-20261126-final\`.
 - The production archive bootstrap must provide the trusted immutable hash manifest. No production v2 `load_pack` consumer exists, so production bootstrap and startup wiring remain deferred and are not claimed as verified. The backend full suite was not run for this unit.
+
+### H-A-069 | M5-3 trusted archive bootstrap API | 2026-11-26
+
+- Commit `2a5d66402aaf566bb8414ec61d51aa5cb5999b45` adds `load_package_archive`. Callers provide explicit `PackageRef` to directory mappings and a trusted `PackageRef` to content-hash mapping. The loader resolves parent directories, validates loaded identities, and `PackageArchive` rejects missing or mismatched pins.
+- Focused package migration, schema, and rule-pack validator tests returned 148 passed. M5-3 selection (20 nodes) and Ownership (24 nodes) reported zero problems and improvements.
+- The shared-replay selection did not complete. Ten 40-node batches passed, then the next batch stalled at `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]` without log progress for over ten minutes. The comparator was interrupted and produced no aggregate result. Cause remains unclassified. No unidentified process was terminated. The full backend suite was not run.
+- This API does not parse or authenticate a deployment manifest and does not settle cross-language canonical serialization. The caller must supply trusted pins from a deployment-controlled source. No production v2 package consumer or startup wiring exists. Production Gate values remain unconfigured; `integration` was not modified.

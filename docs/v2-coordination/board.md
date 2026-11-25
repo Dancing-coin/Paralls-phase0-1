@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。当前 A 分支 tip 为 `022f774d`；最新增量为 M5-3 平台包迁移控制事件与验证证据。M6-5 的 gate-03 profile 已写入本地 A worktree `.env` 并完成配置探针。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。当前 A 分支 tip 为 `2a5d6640`；最新增量为 M5-3 可信 archive bootstrap API。M6-5 的 gate-03 profile 已写入本地 A worktree `.env` 并完成配置探针。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -40,7 +40,7 @@
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |
 | M4 第 3 波（含 debt） | 未定 | 待开工 | 同上 | debt 归属 Economy/Market，枢纽 | 1–11 |
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
-| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-3 控制面事件/authority/archive hash-pin/global-sequence replay 实现提交 `aa871168`；定向 28 passed，M5-3/ownership/shared-replay 选集 16/24/990 均零差异，证据 `docs/verification/m5-3-package-migration-20261126.md`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`、`event_schema_ref` 注册解析和 Resolver 确定性策略（`14f4fbd7`）；当前 tip M5-5 登记选择 `22` 节点零差异见 `../verification/a-current-tip-g5-20261126.md`。全量未运行。 | M5-3 运行切片已验证；生产可信 archive manifest bootstrap 与 production package consumer/startup wiring 未做。M5-5 仍在进行中；Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，生产命令注册及 package-version 写边界仍未完成。生产 Gate 数值未配置；A worktree 的 `.env` 仅为本地演示配置。全量未运行。详见 H-A-066、H-A-068 | 5 |
+| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-3 控制面事件/authority/archive hash-pin/global-sequence replay 实现 `aa871168`，可信 archive bootstrap API `2a5d6640`；M5-3 定向 148 passed，M5-3 选择 20、Ownership 24 均零差异，shared-replay 990 节点比较因 runner stall 未完成，详见 `docs/verification/m5-3-package-migration-20261126.md`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`、`event_schema_ref` 注册解析和 Resolver 确定性策略（`14f4fbd7`）；当前 tip M5-5 登记选择 `22` 节点零差异见 `../verification/a-current-tip-g5-20261126.md`。全量未运行。 | M5-3 运行切片与 bootstrap API 已验证；部署可信 manifest 的来源/解析、production package consumer/startup wiring 与完整 shared-replay 比较仍未做。M5-5 仍在进行中；Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，生产命令注册及 package-version 写边界仍未完成。正式跨语言 hash canonicalization 未定。生产 Gate 数值未配置；A worktree 的 `.env` 仅为本地演示配置。全量未运行。详见 H-A-066、H-A-068、H-A-069 | 5 |
 | M6 L5 引擎 | A | 进行中 | M6-1 reaction dispatch `dabb7f4e`、精确输出校验 `90af2255`、Place machine 输出兼容 `4023c182`；[dispatch evidence](../verification/m6-1-l5-dispatch-runtime-20261124.md)、[Place 输出 evidence](../verification/m6-5-place-machine-output-type-20261124.md)；声明加载 `6e7da420` 待门禁 | 新增 Place 输出单元定向 20 passed、ownership 24 零差异、自有选集 3 零差异；shared-replay 990 有两项外部 Port 8000 失败。`main.py` 生产注册、Morale/Presence handlers、条件/规则包加载、持久义务恢复未做；gate-impact 输入来源待项目负责人确认 | 6 |
 | M6-1 Reaction 离线校验 | A | 待门禁 | `40df5929`、`7b0d69bf`；[证据](../verification/m6-1-reaction-20261123.md) | 定向 113 passed，17 组选集 1,268 节点零差异。全量 31 failed，其中 7 项额外路径错误在同 SHA 短路径复跑通过。异步触发前置见 H-A-011 | 6 |
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
@@ -74,7 +74,7 @@
 | S-7 | 11-09 的逐域探针并入成功标准 8 | 验收口径 | 未决 |
 | — | 谁做 M4 各波（A 或 B 或轮换） | 全部域迁移 | 未决，等 M0-6 |
 | — | M2-6 选哪条生产流受 epoch 保护 | L0 强制 | 未决 |
-| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定，运行切片提交 `aa871168` 且选集验证完成；生产 manifest bootstrap/consumer wiring 待后续处理，见 H-A-068 |
+| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；M5-3/Ownership 选择 20/24 零差异，shared-replay 990 比较因 runner stall 未完成。部署 manifest 来源/解析、生产 consumer/startup wiring、跨语言 canonicalization 待后续处理，见 H-A-068、H-A-069 |
 
 ## 四、更新规则
 
