@@ -211,6 +211,37 @@ The first regression fixture used `Body` IDs whose lexical order matched Owner o
 
 This follow-up does not complete M5-5. The `event_schema_ref` alias contract and other validator/package lifecycle requirements remain open. No merge or Architecture v2 completion claim is made.
 
+## Follow-up event schema reference registration
+
+The rule-pack loader now validates an explicit `event_schema_ref` against the production event-schema registry. The registry accepts the canonical and compatibility spellings used by current packs. `pool@v1`, `gameplay.pool@1`, `holdings@v1`, `gameplay.holdings@1`, `machine@v1`, `gameplay.information.report@1`, and `gameplay.information.reaction@1` resolve to registered schemas. The historical `credential_link_legacy_v1` symbol remains registered for old packs and persisted compatibility paths. An unregistered reference is rejected with `facttype_schema_unknown`.
+
+This unit adds the Holdings pack reference and regression coverage for both successful registration and rejection of an unknown schema. It does not change persisted event payloads, remove legacy schema symbols, or claim that the Inventory production command path has migrated to Holdings. `inventory_runtime.py` remains a shared boundary and is covered by H-A-061.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| Focused Validator, Information wiring, and Holdings registry/runtime tests | `130 passed, 6 warnings` | `F:/paralls-verification/thread-a/m5-5-event-schema-ref-20261125-02/pytest.log` |
+| M5-5 registered selection | `selected=18 problems=0 improvements=0` | `F:/paralls-verification/thread-a/m5-5-event-schema-ref-20261125-02/` |
+| M1-2 Holdings registered selection | `selected=24 problems=0 improvements=0` | `F:/paralls-verification/thread-a/m5-5-event-schema-ref-20261125-02/` |
+| Frozen ownership selection | `selected=24 problems=0 improvements=0` | Same run directory |
+| Frozen modifier selection | `selected=12 problems=0 improvements=0` | Same run directory |
+| Frozen equipment selection | `selected=87 problems=0 improvements=0` | Same run directory |
+| Frozen inventory selection | `selected=56 problems=0 improvements=0` | Same run directory |
+| Frozen shared-replay selection | Not completed. The run stopped in the websocket-session batch while waiting for the backend startup path; no final selection result exists. | Same run directory and `powershell.cmd` shim record |
+| Full backend suite | Not run for this uncommitted unit | No full-suite claim |
+
+The focused run used Python 3.12.2, pytest 9.1.1, SQLite 3.43.1, and `PYTHONPATH=F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend`. `app.__file__` resolved to the A worktree. The temporary PowerShell name mapping was used only to bypass a nonresponsive local PowerShell port query after `netstat` showed no listener on port 8000. It did not exercise occupied-port detection and did not modify Harness code.
+
+| Unit DoD | Status |
+|---|---|
+| U1, U2 | 未做。本单元不声明 Owner 或迁移域。 |
+| U3 | 部分验证。显式 `event_schema_ref` 必须命中注册表，旧 Credential 符号保留。 |
+| U4–U8 | 未做。本单元不改变 Resolver、Owner 写入、读取方、投影或 checkpoint。 |
+| U9 | 定向测试、M5-5 与 M1-2 选集及四组冻结域选集通过。shared-replay 未完成，全量未运行。 |
+| U10 | 已记录环境、命令结果、原始输出位置和未覆盖范围。 |
+| U11 | M5-5 选择集保持 18 个登记节点。 |
+
+本单元未完成 M5-5，也不表示 Architecture v2、Holdings 生产迁移或全量回归已完成。
+
 ## Resolver rejection coverage follow-up
 
 Test-only commit: `964cc5e4f3d58093deae61ab9de7993da1c61f50`.

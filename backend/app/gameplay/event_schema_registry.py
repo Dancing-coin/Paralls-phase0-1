@@ -229,6 +229,7 @@ class EventSchemaRegistry:
         except KeyError as exc:
             raise EventSchemaRegistryError("event_schema_unregistered") from exc
 
+
     def export_snapshot(self) -> dict[str, Any]:
         """Return the immutable schema identities required to reopen a store."""
         return {
@@ -281,6 +282,46 @@ class EventSchemaRegistry:
                 raise
             raise EventSchemaRegistryError("event_schema_registry_snapshot_invalid") from exc
         return registry
+
+
+def require_event_schema_ref(registry: EventSchemaRegistry, schema_ref: object) -> None:
+    """Resolve the versioned FactType schema references used by v2 packs."""
+    from app.gameplay.pool_event_schema import POOL_EVENT_TYPES
+
+    pool_entries = tuple((event_type, 1) for event_type in POOL_EVENT_TYPES)
+    from app.gameplay.holdings_event_schema import HOLDINGS_EVENT_TYPES
+
+    holdings_entries = tuple((event_type, 1) for event_type in HOLDINGS_EVENT_TYPES)
+    references = {
+        "pool@v1": pool_entries,
+        "gameplay.pool@1": pool_entries,
+        "holdings@v1": holdings_entries,
+        "gameplay.holdings@1": holdings_entries,
+        "machine@v1": (("gameplay.machine.transitioned", 1),),
+        "gameplay.machine.transitioned@1": (("gameplay.machine.transitioned", 1),),
+        "gameplay.information.siege_report_published@1": (
+            ("gameplay.information.siege_report_published@1", 1),
+        ),
+        "gameplay.information.knowledge_updated@1": (
+            ("gameplay.information.knowledge_updated@1", 1),
+        ),
+    }
+    if schema_ref == "credential_link_legacy_v1":
+        from app.gameplay.credential_v2_event_schema import CREDENTIAL_V1_EVENT_TYPES
+
+        if CREDENTIAL_V1_EVENT_TYPES != (
+            "gameplay.credential.issued",
+            "gameplay.credential.revoked",
+            "gameplay.credential.superseded",
+        ):
+            raise EventSchemaRegistryError("event_schema_unregistered")
+        return
+
+    entries = references.get(schema_ref) if isinstance(schema_ref, str) else None
+    if entries is None:
+        raise EventSchemaRegistryError("event_schema_unregistered")
+    for event_type, schema_version in entries:
+        registry.require(event_type, schema_version)
 
 
 _GENERAL_ECONOMY_PLATFORM_EVENTS = (

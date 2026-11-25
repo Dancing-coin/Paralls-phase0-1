@@ -18,6 +18,10 @@ from app.gameplay.fact_type_registry import (
     REGISTERED_FACT_TYPE_PRIMITIVES, REGISTERED_OWNER_IDS, FactTypeRegistry,
     RegistrationRejected, Violation, freeze,
 )
+from app.gameplay.event_schema_registry import (
+    EventSchemaRegistry, EventSchemaRegistryError, create_stormnight_event_schema_registry,
+    require_event_schema_ref,
+)
 from app.gameplay.l5_pipeline import Pipeline, compile_pipeline, impact_layers_cross_hosts
 from app.gameplay.l5_play_pattern import PlayPattern, PlayPatternRejected, compile_play_pattern
 from app.gameplay.l5_reaction import Reaction, ReactionRejected, compile_reactions
@@ -425,7 +429,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
                     continue
                 valid = (
                     isinstance(spec.get("owner_ref"), str)
-                    and (primitive is None or primitive in ("machine", "pool"))
+                    and (primitive is None or primitive in REGISTERED_FACT_TYPE_PRIMITIVES)
                     and ("visibility" not in spec or isinstance(spec["visibility"], dict))
                     and (
                         primitive is None
@@ -494,6 +498,7 @@ def load_pack(
     expected_content_hash: str | None = None,
     owner_domains: Mapping[str, str] | None = None,
     command_fact_outputs: Mapping[str, set[str] | frozenset[str]] | None = None,
+    event_schema_registry: EventSchemaRegistry | None = None,
 ) -> LoadedPack:
     leaf = _read_pack(directory, running=running)
     manifest_path = leaf.manifest_path
@@ -558,6 +563,16 @@ def load_pack(
 
     order = manifest.get("resolve_order")
     owners = manifest["owners"]
+    schema_registry = (
+        create_stormnight_event_schema_registry()
+        if event_schema_registry is None else event_schema_registry
+    )
+    for target, spec in sections["fact_types"].items():
+        file, line = locations["fact_types", target]
+        try:
+            require_event_schema_ref(schema_registry, spec.get("event_schema_ref"))
+        except EventSchemaRegistryError:
+            reject("facttype_schema_unknown", target, file, line, "reference a registered event schema")
     registered_domains = {
         owner: domain for owner, domain in (owner_domains or {}).items()
         if owner in REGISTERED_OWNER_IDS and owner != "Credential"
