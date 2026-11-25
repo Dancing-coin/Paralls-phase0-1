@@ -154,3 +154,28 @@ The formal FactType schema constrains the domain segment to lowercase letters an
 | Runtime environment | Python 3.12.2, pytest 9.1.1, SQLite 3.43.1; `PYTHONPATH` targeted each exact worktree and `app.__file__` resolved inside it | `full\environment.json` in each full-run directory and isolated command output |
 
 The full suite remains non-green. The exact-commit comparison is compatible with the parent baseline, with two one-off failures swapped between runs and both passing in isolated reruns. The FactType naming unit does not claim broader M5 or Architecture v2 completion.
+
+### Follow-up `facttype_process_kind_invalid`
+
+The FactType schema defines `process_kind` only for the `process` primitive. The compiler previously ignored this field on other primitives. Commit `d02e8c736a9b9f9e36e661d65f96f046fe89371f` now emits `facttype_process_kind_invalid` when a non-process FactType declares it. This does not implement the Process primitive.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| TDD regression before implementation | Failed as expected because `load_pack` did not raise `RegistrationRejected` | `F:\paralls-verification\thread-a\m5-5-process-kind-red-20261125-01\pytest.log` |
+| Focused Validator and FactType registry tests | `118 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-process-kind-focused-20261125-01\pytest.log` |
+| Frozen selection comparison | 5 selections, 1,169 nodes, all `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-process-kind-gates-d02e8c73-20261125\gate-run.log` |
+| Registered selection comparison | 25 manifests, 236 nodes, all `problems=0 improvements=0`; M5-5 selection has 15 nodes | Same directory, per-selection results |
+| Current exact-commit backend suite | `10,639 passed, 23 failed, 2 skipped, 2 xfailed`, exit code 1; 10,666 collected | `F:\paralls-verification\thread-a\m5-5-process-kind-full-d02e8c73-20261125\full-console.log` and `full\results.json` |
+| Parent full-suite comparison at `3a0e35b6` | 23 failure nodes matched with the same phase and error data. `test_recovery_owner_probe_measures_original_startup_before_full_oracle` failed in the parent run but passed at this commit. The prior isolated reruns also passed on `3a0e35b6` and `aa1f2507`, consistent with an intermittent test. The new `process_kind` regression passed in the full run. | `F:\paralls-verification\thread-a\m5-5-facttype-naming-full-3a0e35b6-20261125\full\results.json` and current full results |
+| Runtime environment | Python 3.12.2, pytest 9.1.1, SQLite 3.43.1; `PYTHONPATH` targeted the A worktree and `app.__file__` resolved inside it | `full\environment.json`, `full\invocation.json`, and `full-console.log` in this run directory |
+
+| Unit DoD | Status |
+|---|---|
+| U1, U2 | Not done. This compile-time validator slice does not declare Owners or migrate a domain. |
+| U3 | Verified for the specific invalid `process_kind` combination. Process primitive support remains outside this slice. |
+| U4–U8 | Not done. This slice does not change Resolver execution, Owner writes, readers, projections, or replay. |
+| U9 | Focused, frozen and registered selections have zero differences. The full suite exited 1 with 23 failures, all matched to the parent by node, phase, and error data. |
+| U10 | This evidence records commands, environments, raw outputs and remaining scope. |
+| U11 | `docs/verification/selection/m5-5-facttype-refold.json` registers 15 M5-5 regression nodes at this commit. |
+
+The exact-commit full suite remains non-green. This unit does not establish Process support, broader M5 completion or Architecture v2 completion.

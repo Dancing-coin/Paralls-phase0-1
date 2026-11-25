@@ -54,6 +54,16 @@
 
 命令目录通过受信任调用方提供的 Owner → domain 映射校验命令名及处理方，见 `rule_pack_validator.py:204`。规则包加载器也已接入 `aggregation_models`、技能消耗 `bindings` 与 `impact_profiles`。运行态加载拒绝仍由调用方传入 `running`，生产装配待做。以上是代码静态核对，各切片的运行证据见对应验证文件。
 
+## 截至 `d02e8c73` 的 M5-5 FactType 校验增量
+
+| 规范规则 | 当前状态 | 代码与边界 |
+|---|---|---|
+| `facttype_naming_invalid` | 已实现 | `fact_type_registry.py` 校验 domain/name 字符集与各段长度及 FactType ID 总长；6 个非法 ID 回归由 `3a0e35b6` 加入。 |
+| `facttype_process_kind_invalid` | 已实现 | `fact_type_registry.py` 拒绝非 `process` 原语声明 `process_kind`；定向回归在 `test_rule_pack_validator.py::test_pack_rejects_process_kind_on_non_process_fact_type`。这不实现 Process 原语。 |
+| `facttype_schema_unknown` 对 `event_schema_ref` | 未实现 | 正式例子有 `pool@v1`、`machine@v1`，当前包还有 `gameplay.pool@1`、具体事件类型引用和历史 Credential 符号。运行时 EventSchema registry 仅按 `(event_type, schema_version)` 登记，尚无 schema-ref 名称空间及其别名映射合同。 |
+
+`d02e8c73` 定向 FactType/Validator 测试为 118 passed；冻结五组选集 1,169 节点及登记 25 组选集 236 节点均 `problems=0 improvements=0`。该提交全量退出 1，`10,639 passed, 23 failed, 2 skipped, 2 xfailed`；23 个失败与父提交 `3a0e35b6` 全量相比，节点、阶段和错误数据一致。详细命令、环境与原始输出见 [M5-5 验证记录](m5-5-facttype-refold-20261125.md)。
+
 ## 截至 `6e7da420` 的 L5 增量核对
 
 本表为静态读取代码与定向测试的映射。各版本实际执行结果见 [Pipeline](m6-2-pipeline-20261123.md)、[Workflow](m6-3-workflow-declarations-20261123.md) 与 [组合包加载](m6-composition-pack-loading-20261123.md) 证据。
