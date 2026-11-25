@@ -418,3 +418,7 @@
 - Frozen shared-replay remains incomplete after 400 batch nodes and five isolated nodes returned zero differences. The sixth isolated websocket-session probe exceeded 12 minutes without a result and was interrupted. Full backend suite was interrupted around 31% after 53 minutes with no final summary, JUnit or exit code. Neither run is a pass.
 - Detailed evidence and raw-output paths are in `docs/verification/m5-5-facttype-refold-20261125.md`; the M5-5 selection manifest points at the exact commit. Python 3.12.2 and SQLite 3.43.1 were used, with `app.__file__` in the A worktree. Only this run's two pytest temporary directories were moved from D to `F:/paralls-verification/thread-a/pytest-temp-recovery-20261125-01/`.
 - M5-5 remains in progress. This change does not implement Process support, `event_schema_ref` resolution, remaining package lifecycle requirements, or Architecture v2 completion.
+
+### H-A-052 | Exact M5-5 selection rerun | 2026-11-25
+
+- Re-ran the 16-node M5-5 selection at implementation commit `64421f00a6049a4598d642a1a0736dd409db7cf9` after recording the unit evidence. Result: `selected=16 problems=0 improvements=0`. The import check resolved `app.__file__` to the A worktree backend. Raw output is under `F:/paralls-verification/thread-a/m5-5-owner-order-exact-selection-20261125-01/`.
