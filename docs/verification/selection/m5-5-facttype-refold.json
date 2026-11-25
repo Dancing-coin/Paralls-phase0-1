@@ -1,5 +1,5 @@
 {
-  "head": "d02e8c736a9b9f9e36e661d65f96f046fe89371f",
+  "head": "64421f00a6049a4598d642a1a0736dd409db7cf9",
   "description": "M5-5 FactType refold, scope, primitive, naming, process-kind, package primitive-definition diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {

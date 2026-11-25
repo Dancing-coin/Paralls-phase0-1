@@ -179,3 +179,33 @@ The FactType schema defines `process_kind` only for the `process` primitive. The
 | U11 | `docs/verification/selection/m5-5-facttype-refold.json` registers 15 M5-5 regression nodes at this commit. |
 
 The exact-commit full suite remains non-green. This unit does not establish Process support, broader M5 completion or Architecture v2 completion.
+
+## Owner-ordered resolution tie-break follow-up
+
+Implementation commit: `64421f00a6049a4598d642a1a0736dd409db7cf9`.
+
+The formal FactType schema delegates numeric order generation to the runtime. The resolution-order contract requires a deterministic Owner-based tie-break when multiple FactTypes are ready and have no declared precedence relation. `FactTypeRegistry.compile` previously ordered ready facts only by FactType ID. The compiler now orders ready nodes by `(owner_ref, fact_type_id)`. Declared precedence edges remain authoritative. The `Production`/`facility` and `Ownership` example ensures the regression distinguishes Owner ordering from fact-ID ordering, and two Production facts verify the stable ID tie-break.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| TDD red | The corrected regression failed as expected: `fact:facility:*:alpha-gate` was emitted before `fact:ownership:*:title` | `F:\paralls-verification\thread-a\m5-5-owner-order-red-20261125-02\pytest.log` |
+| Focused FactType, Validator and Information reader tests | `136 passed, 6 warnings` | `F:\paralls-verification\thread-a\m5-5-owner-order-focused-20261125-01\pytest.log` |
+| Frozen selections completed | Ownership, modifier, equipment and inventory: 179 nodes total, all `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-owner-order-gates-20261125-01\` |
+| Frozen shared-replay partial | Batches 0–9: 400 nodes, all `problems=0 improvements=0`. Batch 10 produced no result after 28 minutes. The first five nodes of that batch were rerun individually and had zero differences. Its sixth node, `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`, ran for more than 12 minutes without a result and was interrupted. The remaining nodes were not run. The 990-node selection is incomplete. | `F:\paralls-verification\thread-a\m5-5-owner-order-gates-20261125-01\frozen-shared-replay\`; isolated runs under `F:\paralls-verification\thread-a\m5-5-owner-order-diagnose-20261125-01\` |
+| Registered selections | 25 manifests, 237 nodes including the updated 16-node M5-5 selection. All returned `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-owner-order-registered-gates-20261125-01\` and `F:\paralls-verification\thread-a\m5-5-owner-order-current-selection-20261125-01\` |
+| Full backend suite attempt | Interrupted at about 31% after 53 minutes. The raw progress log contains 3 failure markers, but no final summary, JUnit, or exit status. The final suite result is unverified. It had not advanced past the websocket-session probe temp directory for 48 minutes. | `F:\paralls-verification\thread-a\m5-5-owner-order-full-20261125-01\pytest.log`, `command.json`, and `environment.txt` |
+| Runtime environment | Python 3.12.2, SQLite 3.43.1, `app.__file__` in the A worktree. Full-suite pytest temp, cache and JUnit paths were configured on F. | `F:\paralls-verification\thread-a\m5-5-owner-order-full-20261125-01\environment.txt` |
+| D-drive test temp recovery | Two pytest temp directories created by isolated probes were moved to F. Their two unique SQLite files total 221,184 bytes. No sibling temp directories were changed. | `F:\paralls-verification\thread-a\pytest-temp-recovery-20261125-01\` |
+
+The first regression fixture used `Body` IDs whose lexical order matched Owner order and therefore passed before the implementation. That fixture was replaced before production code changed. The corrected test produced the expected red result above.
+
+| Unit DoD | Status |
+|---|---|
+| U1, U2 | Not done. This registry-ordering follow-up does not add Owner declarations or migrate a domain. |
+| U3 | Partially verified. It changes no event type or graph registration. |
+| U4–U8 | Not done. It does not change Owner writes, Resolver behavior, visibility, reads or replay. |
+| U9 | Partial. Focused and registered selections passed; four frozen selections passed. Shared-replay and full-suite runs did not complete. |
+| U10 | This evidence records the exact commit, outcomes, interruption, environment and remaining scope. |
+| U11 | The M5-5 selection now records 16 regression nodes at `64421f00a6049a4598d642a1a0736dd409db7cf9`. |
+
+This follow-up does not complete M5-5. The `event_schema_ref` alias contract and other validator/package lifecycle requirements remain open. No merge or Architecture v2 completion claim is made.

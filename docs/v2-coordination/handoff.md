@@ -410,3 +410,11 @@
 - Exact backend full suite: `10,639 passed, 23 failed, 2 skipped, 2 xfailed`, exit 1. Against parent `3a0e35b6`, all 23 failures match by node, phase and error data. The parent's one additional intermittent failure passed at the current commit. The new regression passed in the full suite. Full result remains non-green.
 - Environment: Python 3.12.2, pytest 9.1.1, SQLite 3.43.1, with `app.__file__` in the A worktree. Detailed results and F-drive raw outputs are in `docs/verification/m5-5-facttype-refold-20261125.md`.
 - This is a Validator rule only. It does not implement Process primitive runtime, `event_schema_ref` resolution, or broader M5/Architecture v2 requirements.
+
+### H-A-051 | Owner-ordered FactType resolution follow-up | 2026-11-25
+
+- Commit `64421f00a6049a4598d642a1a0736dd409db7cf9` changes topological ready-node ordering to `(owner_ref, fact_type_id)`, matching the formal resolution-order contract. Corrected regression coverage distinguishes Owner ordering from FactType ID ordering.
+- Focused FactType, Validator and Information-reader tests: `136 passed, 6 warnings`. Registered selections: 25 manifests, 237 nodes, zero problems/improvements. Frozen ownership, modifier, equipment and inventory selections: 179 nodes, zero differences.
+- Frozen shared-replay remains incomplete after 400 batch nodes and five isolated nodes returned zero differences. The sixth isolated websocket-session probe exceeded 12 minutes without a result and was interrupted. Full backend suite was interrupted around 31% after 53 minutes with no final summary, JUnit or exit code. Neither run is a pass.
+- Detailed evidence and raw-output paths are in `docs/verification/m5-5-facttype-refold-20261125.md`; the M5-5 selection manifest points at the exact commit. Python 3.12.2 and SQLite 3.43.1 were used, with `app.__file__` in the A worktree. Only this run's two pytest temporary directories were moved from D to `F:/paralls-verification/thread-a/pytest-temp-recovery-20261125-01/`.
+- M5-5 remains in progress. This change does not implement Process support, `event_schema_ref` resolution, remaining package lifecycle requirements, or Architecture v2 completion.
