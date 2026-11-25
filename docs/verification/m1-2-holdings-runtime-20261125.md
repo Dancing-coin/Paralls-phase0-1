@@ -31,7 +31,7 @@ M1-2 继续进行中。checkpoint 按现有 Ownership 的 `checkpoint_at` 全局
 
 ## 2026-11-25 恢复验证补记
 
-- 本次使用同一未提交工作区状态，未启动本地 backend。冻结 selections 仍通过 `docs/verification/absorb-main-3bf3418e/compare_selection.py` 串行分批执行。Windows PowerShell 在空闲端口 listener 查询中不返回，因此验证目录中的临时 `powershell.cmd` 只接受该条 `Get-NetTCPConnection -LocalPort 8000 -State Listen` 查询，并返回无 listener。运行前后均以 `netstat -ano -p tcp` 确认端口 8000 无监听；未改仓库测试或 Harness 代码。
+- 最终成功的 shared-replay 990 节点重跑使用同一代码状态，期间未启动本地 backend。冻结 selections 仍通过 `docs/verification/absorb-main-3bf3418e/compare_selection.py` 串行分批执行。Windows PowerShell 在空闲端口 listener 查询中不返回，因此验证目录中的临时 `powershell.cmd` 只接受该条 `Get-NetTCPConnection -LocalPort 8000 -State Listen` 查询，并返回无 listener。运行前后均以 `netstat -ano -p tcp` 确认端口 8000 无监听；未改仓库测试或 Harness 代码。本轮曾为诊断短暂启动一个 F 盘数据目录下的临时 backend，发现它会按 `prefer_fresh_backend` 合同导致两项测试拒绝复用；该进程已关闭，成功重跑时端口空闲。
 - 重新验证 ownership 24、modifier 12、equipment 87、inventory 56、M1-2 Holdings 22 和 shared-replay 990 节点。各组输出分别为 `selected=24 problems=0 improvements=0`、`selected=12 problems=0 improvements=0`、`selected=87 problems=0 improvements=0`、`selected=56 problems=0 improvements=0`、`selected=22 problems=0 improvements=0`、`selected=990 problems=0 improvements=0`。原始日志与逐批结果位于 `F:\paralls-verification\thread-a\m1-2-holdings-resume-20261125-01\`。
 - 卡点节点定向复跑 `backend/tests/test_embodied_interaction_session_runner.py`：`2 passed, 6 warnings in 21.63s`。此前两项失败批次来自本轮临时 backend 占用端口；停止该自有服务后，重跑完整选集无差异。它们不是 Holdings 断言失败。
 - 本次覆盖冻结五组选集中的四个非 shared-replay 选择集和 shared-replay，以及 Holdings 自有选集。此前 19 个其它登记选择集的 304 项结果发生在 checkpoint 改动前，不纳入本次代码集合回归结论。全量 backend suite 未运行。
