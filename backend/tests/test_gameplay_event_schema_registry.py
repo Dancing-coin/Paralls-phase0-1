@@ -4,7 +4,13 @@ import sqlite3
 
 import pytest
 
-from app.gameplay.event_schema_registry import EventSchemaRegistration, EventSchemaRegistry, EventSchemaRegistryError, create_stormnight_event_schema_registry
+from app.gameplay.event_schema_registry import (
+    EventSchemaRegistration,
+    EventSchemaRegistry,
+    EventSchemaRegistryError,
+    create_stormnight_event_schema_registry,
+    gameplay_schema_event_types,
+)
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 
 from test_gameplay_event_store_contract import _batch, _event, _outbox
@@ -50,6 +56,15 @@ def test_stormnight_case_schema_bundle_is_registered() -> None:
         "gameplay.p5.mystery.case_outcome_resolved@1",
     ):
         registry.require(event_type, 1)
+
+
+def test_platform_package_migration_schema_is_registered_outside_gameplay_discovery() -> None:
+    registry = create_stormnight_event_schema_registry()
+
+    registration = registry.get("pack.migrated", 1)
+    assert registration is not None
+    assert registration.schema_digest == "sha256:platform:pack-migrated:v1"
+    assert "pack.migrated" not in gameplay_schema_event_types()
 
 
 def test_stormnight_case_schema_bundle_includes_pool_write_events() -> None:

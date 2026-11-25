@@ -63,6 +63,10 @@ SOCIAL_DELIVERY_EVENT_SCHEMAS = (
     ),
 )
 
+PLATFORM_PACKAGE_MIGRATION_EVENT_SCHEMAS = (
+    EventSchemaRegistration("pack.migrated", 1, "sha256:platform:pack-migrated:v1"),
+)
+
 
 INF3_GRAIN_HARVEST_EVENT_SCHEMAS = (
     EventSchemaRegistration(
@@ -465,7 +469,8 @@ def gameplay_schema_event_types() -> tuple[str, ...]:
         if isinstance(value, tuple):
             for item in value:
                 if isinstance(item, EventSchemaRegistration):
-                    values.add(item.event_type)
+                    if item.event_type.startswith("gameplay."):
+                        values.add(item.event_type)
                 elif isinstance(item, str) and item.startswith("gameplay."):
                     values.add(item)
     for schema_path in sorted(Path(__file__).parent.glob("*_event_schema.py")):
@@ -503,6 +508,8 @@ def create_stormnight_event_schema_registry() -> EventSchemaRegistry:
     register_siege_physical_input_event_schemas(registry)
     register_social_delivery_event_schemas(registry)
     register_information_event_schemas(registry)
+    for registration in PLATFORM_PACKAGE_MIGRATION_EVENT_SCHEMAS:
+        registry.register(registration)
     for event_type, digest in (
         ("gameplay.social.knowledge_observed", "sha256:stormnight-social-knowledge-v1"),
         ("gameplay.quest.evidence_registered", "sha256:stormnight-quest-evidence-v1"),
