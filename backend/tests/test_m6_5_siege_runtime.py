@@ -10,10 +10,15 @@ from app.config import FacilityGateProfileSettings, Settings
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.m6_5_siege_runtime import (
+    INFORMATION_PACK,
+    M6_5_PACK,
+    MORALE_OWNER_DOMAINS,
     build_facility_integrity_authority,
     build_facility_gate_layered_authority,
     build_m6_5_siege_runtime,
 )
+from app.gameplay.package_migration_runtime import PackageArchive, PackageRef
+from app.gameplay.rule_pack_validator import load_pack
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.settlement_plan import build_atomic_event_batch
 from app.gameplay.siege_physical_input_runtime import (
@@ -68,6 +73,70 @@ def _facility_pool():
         initial=Decimal("100"),
         thresholds=(PoolThreshold("breach", Decimal("40"), Decimal("45")),),
     )
+
+
+def _m6_5_archive():
+    morale_ref = PackageRef("county_siege_morale_presence", "1.0.0")
+    information_ref = PackageRef("county_siege_information", "1.0.0")
+    morale_pack = load_pack(
+        M6_5_PACK,
+        handlers={},
+        owner_domains=MORALE_OWNER_DOMAINS,
+        command_fact_outputs={
+            "morale.refold": {MORALE_FACT},
+            "presence.reevaluate": {PLACE_STREAM},
+        },
+    )
+    information_pack = load_pack(
+        INFORMATION_PACK,
+        handlers={},
+        owner_domains={"Information": "information"},
+        command_fact_outputs={
+            "information.update_knowledge": {"fact:information:knowledge"},
+        },
+    )
+    return PackageArchive(
+        (morale_pack, information_pack),
+        expected_content_hashes={
+            morale_ref: morale_pack.content_hash,
+            information_ref: information_pack.content_hash,
+        },
+    ), {"morale_presence": morale_ref, "information": information_ref}
+
+
+def test_m6_5_runtime_can_consume_world_pinned_package_archive(monkeypatch):
+    archive, refs = _m6_5_archive()
+    monkeypatch.setattr(
+        "app.gameplay.m6_5_siege_runtime.load_pack",
+        lambda *args, **kwargs: pytest.fail("legacy package loader used"),
+    )
+    runtime = build_m6_5_siege_runtime(
+        store=GameplayEventStore(),
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        package_archive=archive,
+        package_refs=refs,
+    )
+
+    assert runtime.information is not None
+
+
+def test_m6_5_runtime_rejects_incomplete_package_consumer_configuration():
+    archive, _ = _m6_5_archive()
+
+    with pytest.raises(ValueError, match="m6_5_package_consumer_configuration_incomplete"):
+        build_m6_5_siege_runtime(
+            store=GameplayEventStore(),
+            morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+            package_archive=archive,
+        )
+
+    with pytest.raises(ValueError, match="m6_5_package_consumer_package_refs_missing"):
+        build_m6_5_siege_runtime(
+            store=GameplayEventStore(),
+            morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+            package_archive=archive,
+            package_refs={},
+        )
 
 
 def test_m6_5_production_dispatch_refolds_morale_and_keeps_missing_presence_input_unknown():

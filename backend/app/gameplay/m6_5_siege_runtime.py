@@ -46,6 +46,7 @@ from app.gameplay.siege_physical_input_runtime import (
     SiegePhysicalInputAuthority,
 )
 from app.gameplay.rule_pack_validator import load_pack
+from app.gameplay.package_migration_runtime import PackageArchive, PackageRef
 
 
 M6_5_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence"
@@ -278,6 +279,8 @@ def build_m6_5_siege_runtime(
     layered_facility: FacilityGateLayeredAuthority | None = None,
     information_report_authority_secrets: Mapping[str, str] | None = None,
     world_tick_provider: Callable[[], int | None] | None = None,
+    package_archive: PackageArchive | None = None,
+    package_refs: Mapping[str, PackageRef] | None = None,
 ) -> M6_5SiegeRuntime:
     if (facility is not None and facility.store is not store) or (
         layered_facility is not None and layered_facility.store is not store
@@ -306,21 +309,34 @@ def build_m6_5_siege_runtime(
         "morale.refold": {definition.fact_type for definition in morale_definitions.values()},
         "presence.reevaluate": {presence.stream_id("gate-03")},
     }
-    pack = load_pack(
-        M6_5_PACK,
-        handlers={},
-        owner_domains=MORALE_OWNER_DOMAINS,
-        command_fact_outputs=command_outputs,
-    )
+    if (package_archive is None) != (package_refs is None):
+        raise ValueError("m6_5_package_consumer_configuration_incomplete")
+    if package_archive is None:
+        pack = load_pack(
+            M6_5_PACK,
+            handlers={},
+            owner_domains=MORALE_OWNER_DOMAINS,
+            command_fact_outputs=command_outputs,
+        )
+    else:
+        assert package_refs is not None
+        morale_ref = package_refs.get("morale_presence")
+        information_ref = package_refs.get("information")
+        if not isinstance(morale_ref, PackageRef) or not isinstance(information_ref, PackageRef):
+            raise ValueError("m6_5_package_consumer_package_refs_missing")
+        pack = package_archive.resolve(morale_ref)
     information_outputs = {
         "information.update_knowledge": {INFORMATION_KNOWLEDGE_FACT_TYPE},
     }
-    information_pack = load_pack(
-        INFORMATION_PACK,
-        handlers={},
-        owner_domains={"Information": "information"},
-        command_fact_outputs=information_outputs,
-    )
+    if package_archive is None:
+        information_pack = load_pack(
+            INFORMATION_PACK,
+            handlers={},
+            owner_domains={"Information": "information"},
+            command_fact_outputs=information_outputs,
+        )
+    else:
+        information_pack = package_archive.resolve(information_ref)
     all_command_outputs = {**command_outputs, **information_outputs}
     gateway = TrustedGameplayCommandGateway(
         handlers={
