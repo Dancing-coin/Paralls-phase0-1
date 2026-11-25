@@ -709,3 +709,86 @@ def test_settings_reject_duplicate_gate_content_profiles():
 
     with pytest.raises(ValueError, match="siege_facility_gate_profile_duplicate"):
         Settings(siege_facility_gate_profiles=[profile, profile])
+
+
+def _valid_gate_profile(**updates):
+    profile = {
+        "gate_ref": GATE,
+        "integrity_lower": "0",
+        "integrity_upper": "100",
+        "integrity_initial": "100",
+        "breach_threshold": "40",
+        "breach_reset_threshold": "45",
+        "impact_deltas": {"impact_kind:battering-ram@1": "-20"},
+    }
+    profile.update(updates)
+    return profile
+
+
+def test_gate_profile_defaults_to_compatible_v1_contract():
+    profile = FacilityGateProfileSettings.model_validate(_valid_gate_profile())
+
+    assert profile.schema_version == 1
+
+
+def test_gate_profile_accepts_explicit_v1_schema_version():
+    profile = FacilityGateProfileSettings.model_validate(
+        _valid_gate_profile(schema_version=1)
+    )
+
+    assert profile.schema_version == 1
+
+
+def test_gate_profile_rejects_unsupported_schema_version():
+    with pytest.raises(ValueError, match="siege_facility_profile_version_unsupported"):
+        FacilityGateProfileSettings.model_validate(
+            _valid_gate_profile(schema_version=2)
+        )
+
+
+@pytest.mark.parametrize(
+    ("updates", "error_code"),
+    [
+        ({"gate_ref": ""}, "siege_facility_gate_ref_invalid"),
+        ({"gate_ref": " gate-03"}, "siege_facility_gate_ref_invalid"),
+        ({"integrity_upper": "0"}, "siege_facility_integrity_bounds_invalid"),
+        ({"integrity_initial": "101"}, "siege_facility_integrity_initial_invalid"),
+        ({"breach_threshold": "-1"}, "siege_facility_breach_thresholds_invalid"),
+        ({"breach_reset_threshold": "39"}, "siege_facility_breach_thresholds_invalid"),
+        ({"integrity_lower": "NaN"}, "siege_facility_numeric_value_invalid"),
+        ({"integrity_initial": 100.0}, "siege_facility_decimal_string_required"),
+        ({"integrity_initial": True}, "siege_facility_decimal_string_required"),
+        ({"impact_deltas": {"": "-20"}}, "siege_facility_impact_profile_invalid"),
+        ({"impact_deltas": {}}, "siege_facility_impact_profile_invalid"),
+        ({"impact_deltas": {"impact_kind:battering-ram@1": "0"}}, "siege_facility_impact_profile_invalid"),
+        ({"impact_deltas": {"impact_kind:battering-ram@1": "20"}}, "siege_facility_impact_profile_invalid"),
+        ({
+            "durability_lower": "0",
+            "durability_upper": "0",
+            "durability_initial": "0",
+            "latch_durability_lower": "0",
+            "latch_durability_upper": "100",
+            "latch_durability_initial": "100",
+        }, "siege_facility_layer_bounds_invalid"),
+        ({
+            "durability_lower": "0",
+            "durability_upper": "100",
+            "durability_initial": "101",
+            "latch_durability_lower": "0",
+            "latch_durability_upper": "100",
+            "latch_durability_initial": "100",
+        }, "siege_facility_layer_initial_invalid"),
+    ],
+)
+def test_gate_profile_rejects_invalid_v1_contract_values(updates, error_code):
+    with pytest.raises(ValueError, match=error_code):
+        FacilityGateProfileSettings.model_validate(_valid_gate_profile(**updates))
+
+
+def test_gate_profile_rejects_unknown_fields():
+    with pytest.raises(ValueError) as raised:
+        FacilityGateProfileSettings.model_validate(
+            _valid_gate_profile(integrity_inital="100")
+        )
+
+    assert "integrity_inital" in str(raised.value)

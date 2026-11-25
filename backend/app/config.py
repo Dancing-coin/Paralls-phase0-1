@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -57,13 +57,16 @@ class WorldAdminCredentialSettings(BaseModel):
 
 
 class FacilityGateProfileSettings(BaseModel):
-    gate_ref: str = Field(min_length=1)
+    model_config = ConfigDict(extra="forbid")
+
+    schema_version: int = Field(default=1, strict=True)
+    gate_ref: str
     integrity_lower: Decimal
     integrity_upper: Decimal
     integrity_initial: Decimal
     breach_threshold: Decimal
     breach_reset_threshold: Decimal
-    impact_deltas: dict[str, Decimal] = Field(min_length=1)
+    impact_deltas: dict[str, Decimal]
     durability_lower: Decimal | None = None
     durability_upper: Decimal | None = None
     durability_initial: Decimal | None = None
@@ -71,8 +74,86 @@ class FacilityGateProfileSettings(BaseModel):
     latch_durability_upper: Decimal | None = None
     latch_durability_initial: Decimal | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def validate_decimal_wire_values(cls, values: object) -> object:
+        if not isinstance(values, dict):
+            return values
+        decimal_fields = (
+            "integrity_lower",
+            "integrity_upper",
+            "integrity_initial",
+            "breach_threshold",
+            "breach_reset_threshold",
+            "durability_lower",
+            "durability_upper",
+            "durability_initial",
+            "latch_durability_lower",
+            "latch_durability_upper",
+            "latch_durability_initial",
+        )
+        for field_name in decimal_fields:
+            value = values.get(field_name)
+            if isinstance(value, (float, bool)):
+                raise ValueError("siege_facility_decimal_string_required")
+            if type(value) in (str, int) or isinstance(value, Decimal):
+                try:
+                    if not Decimal(value).is_finite():
+                        raise ValueError("siege_facility_numeric_value_invalid")
+                except InvalidOperation:
+                    pass
+        impact_deltas = values.get("impact_deltas")
+        if isinstance(impact_deltas, dict) and any(
+            isinstance(value, (float, bool)) for value in impact_deltas.values()
+        ):
+            raise ValueError("siege_facility_decimal_string_required")
+        if isinstance(impact_deltas, dict):
+            for value in impact_deltas.values():
+                if type(value) not in (str, int) and not isinstance(value, Decimal):
+                    continue
+                try:
+                    if not Decimal(value).is_finite():
+                        raise ValueError("siege_facility_numeric_value_invalid")
+                except InvalidOperation:
+                    pass
+        return values
+
+    @field_validator("gate_ref")
+    @classmethod
+    def validate_gate_ref(cls, value: str) -> str:
+        if not value.strip() or value != value.strip():
+            raise ValueError("siege_facility_gate_ref_invalid")
+        return value
+
+    @field_validator("impact_deltas")
+    @classmethod
+    def validate_impact_deltas(cls, values: dict[str, Decimal]) -> dict[str, Decimal]:
+        if not values or any(
+            not impact_kind_ref.strip()
+            or impact_kind_ref != impact_kind_ref.strip()
+            or not delta.is_finite()
+            or delta >= 0
+            for impact_kind_ref, delta in values.items()
+        ):
+            raise ValueError("siege_facility_impact_profile_invalid")
+        return values
+
     @model_validator(mode="after")
-    def validate_layered_profile(self) -> "FacilityGateProfileSettings":
+    def validate_profile_contract(self) -> "FacilityGateProfileSettings":
+        if self.schema_version != 1:
+            raise ValueError("siege_facility_profile_version_unsupported")
+
+        if self.integrity_lower >= self.integrity_upper:
+            raise ValueError("siege_facility_integrity_bounds_invalid")
+        if not self.integrity_lower <= self.integrity_initial <= self.integrity_upper:
+            raise ValueError("siege_facility_integrity_initial_invalid")
+        if not (
+            self.integrity_lower <= self.breach_threshold
+            < self.breach_reset_threshold
+            <= self.integrity_upper
+        ):
+            raise ValueError("siege_facility_breach_thresholds_invalid")
+
         layered_values = (
             self.durability_lower,
             self.durability_upper,
@@ -85,6 +166,20 @@ class FacilityGateProfileSettings(BaseModel):
             value is None for value in layered_values
         ):
             raise ValueError("siege_facility_layered_profile_incomplete")
+        for lower, upper, initial in (
+            (self.durability_lower, self.durability_upper, self.durability_initial),
+            (
+                self.latch_durability_lower,
+                self.latch_durability_upper,
+                self.latch_durability_initial,
+            ),
+        ):
+            if lower is None:
+                continue
+            if lower >= upper:
+                raise ValueError("siege_facility_layer_bounds_invalid")
+            if not lower <= initial <= upper:
+                raise ValueError("siege_facility_layer_initial_invalid")
         return self
 
 

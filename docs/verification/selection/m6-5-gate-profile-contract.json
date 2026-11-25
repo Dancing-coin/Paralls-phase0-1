@@ -1,0 +1,25 @@
+{
+  "head": "working-tree",
+  "description": "M6-5 versioned Facility Gate profile input contract",
+  "tests": [
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_defaults_to_compatible_v1_contract","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_accepts_explicit_v1_schema_version","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_unsupported_schema_version","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates0-siege_facility_gate_ref_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates1-siege_facility_gate_ref_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates2-siege_facility_integrity_bounds_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates3-siege_facility_integrity_initial_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates4-siege_facility_breach_thresholds_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates5-siege_facility_breach_thresholds_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates6-siege_facility_numeric_value_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates7-siege_facility_decimal_string_required]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates8-siege_facility_decimal_string_required]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates9-siege_facility_impact_profile_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates10-siege_facility_impact_profile_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates11-siege_facility_impact_profile_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates12-siege_facility_impact_profile_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates13-siege_facility_layer_bounds_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_invalid_v1_contract_values[updates14-siege_facility_layer_initial_invalid]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_gate_profile_rejects_unknown_fields","outcome":"passed","failures":[]}
+  ]
+}
