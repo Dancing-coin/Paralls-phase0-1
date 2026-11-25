@@ -40,7 +40,7 @@
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |
 | M4 第 3 波（含 debt） | 未定 | 待开工 | 同上 | debt 归属 Economy/Market，枢纽 | 1–11 |
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
-| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`、`event_schema_ref` 注册解析和 Resolver 确定性策略（`14f4fbd7`）。本次 Validator/Information/Holdings/Credential/Resolver 定向测试 150 passed；M5-5 22、M1-2 24、ownership 24、modifier 12、equipment 87、inventory 56 选择均零差异。shared-replay 990 在前一验证轮已通过。全量未运行。证据 `docs/verification/m5-5-facttype-refold-20261125.md` | M5-5 仍在进行中。Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，不能实现包校验或生产加载；生产命令注册、package-version 写边界、M5-3/M5-4 也仍未完成。生产 Gate 数值未配置；A worktree 的 `.env` 仅为本地演示配置。全量未运行。详见 H-A-066 | 5 |
+| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-3 控制面事件/authority/archive hash-pin/global-sequence replay 实现提交 `aa871168`；定向 28 passed，M5-3/ownership/shared-replay 选集 16/24/990 均零差异，证据 `docs/verification/m5-3-package-migration-20261126.md`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`、`event_schema_ref` 注册解析和 Resolver 确定性策略（`14f4fbd7`）。全量未运行。 | M5-3 运行切片已验证；生产可信 archive manifest bootstrap 与 production package consumer/startup wiring 未做。M5-5 仍在进行中；Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，生产命令注册及 package-version 写边界仍未完成。生产 Gate 数值未配置；A worktree 的 `.env` 仅为本地演示配置。全量未运行。详见 H-A-066、H-A-068 | 5 |
 | M6 L5 引擎 | A | 进行中 | M6-1 reaction dispatch `dabb7f4e`、精确输出校验 `90af2255`、Place machine 输出兼容 `4023c182`；[dispatch evidence](../verification/m6-1-l5-dispatch-runtime-20261124.md)、[Place 输出 evidence](../verification/m6-5-place-machine-output-type-20261124.md)；声明加载 `6e7da420` 待门禁 | 新增 Place 输出单元定向 20 passed、ownership 24 零差异、自有选集 3 零差异；shared-replay 990 有两项外部 Port 8000 失败。`main.py` 生产注册、Morale/Presence handlers、条件/规则包加载、持久义务恢复未做；gate-impact 输入来源待项目负责人确认 | 6 |
 | M6-1 Reaction 离线校验 | A | 待门禁 | `40df5929`、`7b0d69bf`；[证据](../verification/m6-1-reaction-20261123.md) | 定向 113 passed，17 组选集 1,268 节点零差异。全量 31 failed，其中 7 项额外路径错误在同 SHA 短路径复跑通过。异步触发前置见 H-A-011 | 6 |
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
@@ -74,7 +74,7 @@
 | S-7 | 11-09 的逐域探针并入成功标准 8 | 验收口径 | 未决 |
 | — | 谁做 M4 各波（A 或 B 或轮换） | 全部域迁移 | 未决，等 M0-6 |
 | — | M2-6 选哪条生产流受 epoch 保护 | L0 强制 | 未决 |
-| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 阻塞；建议作为不新增玩法 Owner 的 L4 平台控制面生命周期事件，待项目负责人裁定，见 H-A-067 |
+| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定，运行切片提交 `aa871168` 且选集验证完成；生产 manifest bootstrap/consumer wiring 待后续处理，见 H-A-068 |
 
 ## 四、更新规则
 

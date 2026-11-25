@@ -1,0 +1,22 @@
+{
+  "head": "aa8711683068ae220c3602e89f3da0a871f7f284",
+  "description": "M5-3 platform package migration authority, immutable archive pins, replay, and schema registration",
+  "tests": [
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_resolves_immutable_package_identity","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_rejects_conflicting_hash_for_same_identity","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_rejects_content_hash_changed_from_archive_pin","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_without_migrations_uses_initial_package_set","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_without_migrations_requires_an_initial_package_set","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_uses_from_before_and_to_at_or_after_migration_sequence","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_rejects_broken_from_chain","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_rejects_ambiguous_global_sequence","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_rejects_malformed_package_identity_in_event_payload","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_migration_commits_formal_payload_and_duplicate_replays_before_pin_check","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_durable_migration_reopens_and_replays_at_historical_sequence","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_changed_duplicate_payload_is_rejected_without_writing","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_stale_source_package_set_is_rejected_without_writing","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_rejected_migration_writes_nothing[9-from_packages0-to_packages0-revision_conflict]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_rejected_migration_writes_nothing[0-from_packages1-to_packages1-package_archive_identity_unknown]","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_gameplay_event_schema_registry.py::test_platform_package_migration_schema_is_registered_outside_gameplay_discovery","outcome":"passed","failures":[]}
+  ]
+}

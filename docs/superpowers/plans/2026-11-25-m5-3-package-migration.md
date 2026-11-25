@@ -84,7 +84,7 @@
 - Create `docs/verification/m5-3-package-migration-20261125.md`
 - Update `docs/v2-coordination/board.md`, `handoff.md`, and `daily/2026-11-25.md`
 
-- [ ] Run final targeted tests with TEMP, TMP, and basetemp under a new F-drive run directory.
-- [ ] Run M5-3 and the appropriate frozen Ownership/shared-replay selections, then record exact counts and any environment failure without relabeling it as success.
-- [ ] Register the focused M5-3 nodes at the implementation commit and record deferred production startup wiring.
-- [ ] Check `git diff --check`, stage only listed paths, commit, and push the A branch.
+- [x] Run final targeted tests with TEMP, TMP, and basetemp under a new F-drive run directory.
+- [x] Run M5-3 and the appropriate frozen Ownership/shared-replay selections, then record exact counts and any environment failure without relabeling it as success.
+- [x] Register the focused M5-3 nodes at the implementation commit and record deferred production startup wiring.
+- [x] Check `git diff --check`, stage only listed paths, and commit the implementation. Evidence and coordination updates are a separate follow-up commit.
