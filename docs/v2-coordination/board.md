@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新 A 代码提交为 `d693686b`，补充 M6-5 Gate profile v1 输入合同校验。M5-3 可信 archive bootstrap API 的 shared-replay 990 节点已在当前代码状态复验为零差异。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新 A 分支 tip 为 `2729774e`，包含 M5-3 deployment contract/startup archive wiring 的 exact-tip 证据。M5-3 可信 archive bootstrap API 的 shared-replay 990 节点曾在先前代码状态复验为零差异，本轮 exact-tip runner 在已知 listener 查询点未完成。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -74,7 +74,7 @@
 | S-7 | 11-09 的逐域探针并入成功标准 8 | 验收口径 | 未决 |
 | — | 谁做 M4 各波（A 或 B 或轮换） | 全部域迁移 | 未决，等 M0-6 |
 | — | M2-6 选哪条生产流受 epoch 保护 | L0 强制 | 未决 |
-| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；M5-3/Ownership 选择 20/24 零差异，shared-replay 990 零差异（H-A-070）。生产接线复核见 H-A-075：`main.py` 里的 M6-5 package consumer 是全局单例且不携带 `world_ref`，无法按 world migration stream 选版本；部署侧仍需给出世界上下文与初始 pin 合同 |
+| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；`main.py` 启动合同与 archive consumer 已在 `45480fb2` 接入，exact-tip M5-3/Ownership 选择 22/24 零差异（H-A-078）。shared-replay 990 本轮在已知 listener 查询点未完成。仍需部署侧提供真实 world 上下文、初始 pin、archive 目录和可信 hash，并完成生产启动与历史 replay |
 
 ## 四、更新规则
 
