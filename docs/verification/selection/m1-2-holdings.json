@@ -23,6 +23,8 @@
     {"test_name": "tests/test_holdings_runtime.py::test_historical_checkpoint_preserves_closed_lots_after_split", "outcome": "passed", "failures": []},
     {"test_name": "tests/test_holdings_runtime.py::test_negative_checkpoint_is_rejected", "outcome": "passed", "failures": []},
     {"test_name": "tests/test_holdings_fact_type_registry.py::test_holdings_fact_type_compiles_without_machine_or_pool_definition", "outcome": "passed", "failures": []},
-    {"test_name": "tests/test_holdings_fact_type_registry.py::test_holdings_fact_type_rejects_machine_state_set_reference", "outcome": "passed", "failures": []}
+    {"test_name": "tests/test_holdings_fact_type_registry.py::test_holdings_fact_type_rejects_machine_state_set_reference", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_duplicate_retry_rejects_receipt_without_result", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_fact_type_registry.py::test_holdings_sum_fact_type_loads_from_rule_pack", "outcome": "passed", "failures": []}
   ]
 }

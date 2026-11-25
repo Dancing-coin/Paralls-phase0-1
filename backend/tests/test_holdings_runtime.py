@@ -414,17 +414,13 @@ def test_changed_create_retry_is_rejected_without_writes():
     assert store.read_stream(FACT_TYPE) == before
 
 
-class MissingEventReceiptStore(GameplayEventStore):
-    missing_event_id: str | None = None
-
-    def get_event(self, event_id: str) -> GameplayEvent:
-        if event_id == self.missing_event_id:
-            raise KeyError(event_id)
-        return super().get_event(event_id)
+class MissingResultReceiptStore(GameplayEventStore):
+    def get_by_idempotency(self, principal_ref: str, idempotency_key: str):
+        return None
 
 
-def test_duplicate_retry_rejects_receipt_with_missing_committed_event():
-    store = MissingEventReceiptStore(event_schema_registry=create_stormnight_event_schema_registry())
+def test_duplicate_retry_rejects_receipt_without_result():
+    store = MissingResultReceiptStore(event_schema_registry=create_stormnight_event_schema_registry())
     service = HoldingsAuthorityService(
         store=store,
         definitions={FACT_TYPE: HoldingsDefinition(FACT_TYPE, Decimal("100"))},
@@ -438,10 +434,9 @@ def test_duplicate_retry_rejects_receipt_with_missing_committed_event():
         command_id="holdings:create-lot", idempotency_key="create-lot",
         expected_revision=0, causation_id="event:seed", correlation_id="corr:holdings",
     )
-    store.missing_event_id = first.committed_event_ids[0]
     before = store.read_stream(FACT_TYPE)
 
-    with pytest.raises(HoldingsError, match="holdings_replay_event_missing"):
+    with pytest.raises(HoldingsError, match="holdings_idempotency_missing_result"):
         service.create_lot(
             fact_type=FACT_TYPE, lot_ref="lot:wheat-01", item_ref=ITEM,
             quantity=Decimal("10"), container_ref="container:store-01",

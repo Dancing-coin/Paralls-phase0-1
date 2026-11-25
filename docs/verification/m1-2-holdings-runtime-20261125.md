@@ -41,16 +41,34 @@ M1-2 继续进行中。checkpoint 按现有 Ownership 的 `checkpoint_at` 全局
 
 | 项 | 状态 | 证据 / 缺口 |
 |---|---|---|
-| U1 Owner 声明与分类 | 仅静态 | 当前 FactType 使用 `Inventory` Owner ID；尚未在本单元核实其 native/stewarded 分类决定。 |
-| U2 FactType 声明 | 部分 | `holdings` primitive 已登记并可编译；生产规则包中的 Holdings FactType 声明未接入。 |
+| U1 Owner 声明与分类 | 仅静态 | 正式 Owner 定义表将 Inventory / Resource 分类为 stewarded；本代码单元没有 Inventory Owner 声明实现。 |
+| U2 FactType 声明 | 部分 | `holdings` primitive 已登记并可编译，临时规则包加载回归通过；生产规则包中的 Holdings FactType 声明未接入。 |
 | U3 事件 schema 与图可见性 | 已验证 | schema factory 注册 Holdings 事件；定向测试断言事件进入图可见注册表。 |
 | U4 共享机制 | 已验证 | `OwnerCommitBuilder` 与 `replay_duplicate` 已用于 Owner 写入路径，定向覆盖提交与重试。 |
 | U5 R1/R2/R3 | 部分 | revision 连续性、幂等重放、checkpoint 边界重建有专项测试；尚无持久化 Holdings checkpoint 格式。 |
 | U6 读取方清单与专项测试 | 部分 | 静态读取方为 schema registry、Holdings projector 及其命令服务/测试；没有生产 Resolver 消费者。 |
 | U7 面向主体读取分类 | 未做 | 事件目前为 `authority_only`；`read_as` 和主体可见性读取点未接通。 |
 | U8 规则包与 Resolver | 未做 | 尚无生产 Holdings 规则包、Resolver 注册或真实消费调用点。 |
-| U9 探针与基线对照 | 部分 | 定向 22 passed；本补记所列 1,191 个冻结/登记选集节点零差异；全量 backend suite 未运行。 |
+| U9 探针与基线对照 | 部分 | 定向 24 passed。M1-2 选集 24 和 M5-5 FactType 选集 18 零差异。G5 冻结五组选集 1,169 节点均零差异，见下方 2026-11-25 恢复验证。26 组登记选集与全量 backend suite 未运行。 |
 | U10 文件与证据等级 | 已验证 | 本文件列出实现、测试与选择集状态；完整改动路径见下表。 |
-| U11 单元选择集登记 | 已验证 | `docs/verification/selection/m1-2-holdings.json` 已登记 22 个节点。 |
+| U11 单元选择集登记 | 已验证 | `docs/verification/selection/m1-2-holdings.json` 已登记 24 个节点，新增缺失 receipt 与规则包加载回归。 |
 
 本工作区的单元相关路径为 `backend/app/gameplay/event_schema_registry.py`、`backend/app/gameplay/fact_type_registry.py`、`backend/app/gameplay/holdings_event_schema.py`、`backend/app/gameplay/holdings_runtime.py`、`backend/tests/test_holdings_fact_type_registry.py`、`backend/tests/test_holdings_runtime.py`、`docs/verification/selection/m1-2-holdings.json`、本证据文件，以及 `docs/v2-coordination/board.md`、`docs/v2-coordination/handoff.md` 和 `docs/v2-coordination/daily/2026-11-25.md`。其中前三个既有文件为修改，Holdings 模块、测试、选择集和证据为新增，协作文档是状态记录。
+
+## 2026-11-25 continued verification and block
+
+- Verification used branch HEAD 9f565d69c446ba11a752cdce6c7964d0eda6b775 with the listed uncommitted M1-2 changes. Python remained 3.12.2, SQLite 3.43.1, and app.__file__ resolved to F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend/app/__init__.py. TEMP, TMP, pytest basetemp, and all retained logs were on F:.
+- test_holdings_runtime.py plus test_holdings_fact_type_registry.py: 24 passed, 2 warnings. Raw output is F:/paralls-verification/thread-a/m1-2-holdings-final-20261125-04/pytest.log.
+- Updated docs/verification/selection/m1-2-holdings.json to include the missing-result retry case and rule-pack loading case. Result selected=24 problems=0 improvements=0 is in F:/paralls-verification/thread-a/m1-2-holdings-selection-final-20261125-01.log. M5-5 FactType selection result was selected=18 problems=0 improvements=0, in F:/paralls-verification/thread-a/m1-2-holdings-m5-5-selection-20261125-01.log.
+- The exact failure behind the earlier extra retry test was an unsupported expectation that the shared replay_duplicate helper fetches each committed event by ID. Static inspection shows the helper checks the idempotency record and saved result only. The regression case now covers the explicit missing-result rejection path. No runtime code changed for retry semantics.
+- G5 attempt m1-2-holdings-gates-20261125-01 completed frozen equipment 87, inventory 56, modifier 12, and ownership 24 with zero problems and improvements. Shared-replay batches 0–9 completed 400 passed. Batch 10 collected 40 nodes and logged five passes before stopping at test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]. No final result file or exit code exists.
+- A second G5 attempt at m1-2-holdings-gates-20261125-02 reproduced the same stop with a temporary powershell.cmd shim. The direct Windows PowerShell listener query did not return within 10 seconds and was interrupted. netstat just before the second run showed no listener on port 8000. The frozen set totals 1,169 nodes and remains incomplete. The 26 registered selection groups did not run. The full backend suite was not run.
+- The repository has no production Inventory Owner declaration or Resolver consumer. Formal Owner documentation classifies Inventory/Resource as stewarded, while U1–U11 evidence remains incomplete. M1-2 stays blocked until the repeated G5 environment stop is resolved and the remaining unit requirements are addressed.
+
+## 2026-11-25 G5 frozen selection recovery
+
+- Verification used branch HEAD 9f565d69c446ba11a752cdce6c7964d0eda6b775 with the uncommitted M1-2 changes. Python 3.12.2, SQLite 3.43.1, `PYTHONPATH=F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend`; `app.__file__` resolved to `F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend/app/__init__.py`. `TEMP`, `TMP`, and all verification output remained under `F:/paralls-verification/thread-a/m1-2-holdings-g5-resume-20261125-03/`.
+- The native Windows PowerShell executable and PowerShell 7 both failed to return even for a minimal exit command. Before running tests, `netstat -ano -p tcp | findstr 8000` returned no listener. To allow the baseline runner to exercise the known-empty-port path, a temporary `powershell.exe` name mapped to the standalone Python 3.12.2 executable. It rejected PowerShell flags and returned no stdout, matching the empty listener result. No repository test or harness file changed. After the run, port 8000 had only `TIME_WAIT` connections and no listener. The adapter does not test detection of an occupied port.
+- The repeated test `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]` passed independently: `1 passed, 6 warnings in 14.61s`.
+- Frozen comparisons completed serially: ownership `selected=24 problems=0 improvements=0`; inventory `selected=56 problems=0 improvements=0`; equipment `selected=87 problems=0 improvements=0`; modifier `selected=12 problems=0 improvements=0`; shared-replay `selected=990 problems=0 improvements=0`. The shared-replay summary had exit code 0. Each comparison log and batch result is under `F:/paralls-verification/thread-a/m1-2-holdings-g5-resume-20261125-03/selections/`.
+- This recovers the G5 frozen-selection evidence for the current uncommitted worktree. The 26 registered selections, full backend suite, Inventory Owner declaration, production Resolver consumer, and remaining U1–U11 evidence remain unverified or incomplete. M1-2 remains in progress.

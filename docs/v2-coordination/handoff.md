@@ -464,3 +464,38 @@
 - 更正 H-A-057 的 shared-replay 未完成状态：在同一未提交工作区重新运行 frozen ownership/modifier/equipment/inventory、M1-2 Holdings 和 shared-replay selections，共 1,191 节点，均 `problems=0 improvements=0`。完整 990 节点 shared-replay 本次通过。
 - Windows PowerShell 空闲端口 listener 查询在该环境下未返回。验证目录内临时 shim 仅响应 `Get-NetTCPConnection -LocalPort 8000 -State Listen` 并报告当时已由 `netstat -ano -p tcp` 确认的空闲状态；没有修改仓库 Harness 或测试代码。此前一次 full selection 运行中本线程自己的临时 backend 占用了端口并导致两节点失败，停止后单测复跑 2 passed，随后完整选择集通过。
 - 全量 backend suite 未运行。生产 Resolver 消费、持久化 checkpoint 编码及 U1–U11 其余未完成项仍未完成，M1-2 继续进行中。
+
+### H-A-059 | M1-2 FactType/规则包增补与 G5 阻塞 | 2026-11-25
+
+- 在 A worktree 9f565d69c446ba11a752cdce6c7964d0eda6b775 的未提交工作区中，rule_pack_validator.py 改为读取 REGISTERED_FACT_TYPE_PRIMITIVES，避免新 primitive 只被 FactType 编译器接受、却被规则包入口拒绝。新增 holdings 规则包加载测试，并将 M1-2 登记选集从 22 项扩至 24 项。
+- 复核发现原有缺失事件重试测试假设 replay_duplicate 会读取每个 committed_event_id 对应事件。实际共享 helper 只读取幂等记录和持久化 receipt，未调用 get_event。测试改为验证 helper 已声明的“幂等记录存在但结果 receipt 缺失”拒绝路径，未更改生产重试行为。
+- 定向测试 24 passed、2 warnings，原始日志 F:/paralls-verification/thread-a/m1-2-holdings-final-20261125-04/pytest.log。M1-2 选集 selected=24 problems=0 improvements=0，M5-5 FactType 选集 selected=18 problems=0 improvements=0。
+- G5 首次尝试在 frozen shared-replay 第 11 批停于 test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]。此前四组选集 equipment 87、inventory 56、modifier 12、ownership 24 均零差异，shared-replay 批次 0–9 共 400 项完成且通过。第 11 批无最终结果文件，日志显示该节点之前 5 项通过后停住。
+- 第二次在临时目录 F:/paralls-verification/thread-a/m1-2-holdings-gates-20261125-02/ 重跑，使用只响应 8000 端口查询的 powershell.cmd 后仍停在同一节点。直接运行 powershell.exe -NoProfile -NonInteractive 查询命令 10 秒无输出后中断。紧邻重跑前 netstat -ano -p tcp 没有 LISTEN 记录。shim 无法替代 Python subprocess 启动的 PowerShell 进程。没有修改 Harness 源码，没有终止其他进程。
+- G5 冻结五组选集共 1,169 节点未完成，26 组已登记选择集未启动，全量 backend suite 未运行。完整记录在 docs/verification/m1-2-holdings-runtime-20261125.md。连续两次门禁运行停在同一环境检查，M1-2 依 AUTONOMY §二转为阻塞。
+- 正式 Owner 定义表将 Inventory/Resource 列为 stewarded。代码中尚无 Inventory Owner 声明或 Resolver 消费者。M1-2 的 Owner 声明、Resolver 消费接线、读取主体分类与其余 U1–U11 状态未改变。
+
+### H-A-060 | M1-2 G5 冻结选集恢复 | 2026-11-25
+
+- 更正 H-A-059 的 G5 阻塞：在未提交 M1-2 工作区重新运行 ownership 24、inventory 56、equipment 87、modifier 12 与 shared-replay 990 节点，全部 `problems=0 improvements=0`。shared-replay 的第 11 批（包含此前卡住的 `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`）40 项通过。
+- 原因是 PowerShell 子进程在此环境中连最小退出命令也不返回。运行前由 `netstat -ano -p tcp` 确认 8000 没有 listener，运行后也没有 listener。本轮临时将 Python 3.12.2 可执行文件放在 F 盘验证目录并命名为 `powershell.exe`，使该空闲端口查询返回空 stdout。这个替身没有验证“端口已被其他进程占用”时的读取路径；未修改仓库测试或 Harness 源码，也未终止其他进程。准确命令摘要与原始 batch 输出位于 `F:/paralls-verification/thread-a/m1-2-holdings-g5-resume-20261125-03/`。
+- M1-2 的 G5 冻结选集门禁已恢复，账本回到 `进行中`。26 组登记选择集、全量 backend suite、Inventory Owner 声明、生产 Resolver 消费与 U1–U11 其余证据仍未完成。
+
+### H-A-061 | M1-2 Inventory 生产接线共同边界 | 2026-11-25
+
+- 正式承接映射要求 `inventory_runtime.py` 保留为 Inventory Owner 领域规则层，其 FactType 声明指向 Holdings 与 Pool。当前旧 Inventory 命令消费仍直接调用该 runtime；A 侧 Holdings 原语虽能独立写入/重建，尚未接管该生产调用链。
+- `docs/v2-coordination/BOUNDARIES.md` 将 `inventory_runtime.py` 列为 A/B 共同边界，禁止线程 A 单方面修改。将旧命令切换到 Holdings/Pool 会改变该边界文件及相关生产消费者，不能以新增并行 Inventory writer 代替，因为那会留下两套数量事实源。
+- M1-2 已完成原语和 G5 冻结选择集验证，生产迁移暂标阻塞。后续需由共同边界负责人决定接线归属与调用面，再完成 Owner 声明、Resolver 消费及完整 U1–U11 证据。未修改 `inventory_runtime.py`、外部文档仓库或 `integration`。
+
+### H-A-062 | M5-5 event_schema_ref 注册解析增量 | 2026-11-25
+
+- 当前未提交工作区实现了显式 `event_schema_ref` 的生产注册解析。支持 `pool@v1`、`gameplay.pool@1`、`holdings@v1`、`gameplay.holdings@1`、`machine@v1`、Information 报告与 reaction 两个事件引用，并保留 `credential_link_legacy_v1` 历史兼容符号。未注册引用由 RulePack Validator 返回 `facttype_schema_unknown`。
+- Holdings 规则包已加入 `holdings@v1` 引用，新增未知 schema 拒绝和注册加载回归。定向 Validator/Information/Holdings 测试 `130 passed, 6 warnings`。M5-5 18 节点和 M1-2 24 节点选集，以及 ownership 24、modifier 12、equipment 87、inventory 56 冻结选集均 `problems=0 improvements=0`。
+- shared-replay 在 websocket-session 批次的 backend 启动路径停住，没有最终结果文件，不能记为通过。全量 backend suite 未运行。验证原始输出位于 `F:/paralls-verification/thread-a/m5-5-event-schema-ref-20261125-02/`。
+- 本增量不改变持久事件 payload，不移除 Credential 历史符号，也不接管 `inventory_runtime.py`。M1-2 生产迁移仍受 H-A-061 的共同边界阻塞。生产 Gate 数值仍未配置到生产环境，本地 `.env` 仅为 A worktree 演示配置。
+
+### H-A-063 | M5-5 event_schema_ref follow-up verification | 2026-11-25
+
+- 提交 `76a2c155` 记录了 `16ad9b9c` 的独立回归验证，未混入 M1-2 工作区文件。Validator、Information production wiring、Holdings FactType registry 和 Credential schema compatibility 定向测试为 `138 passed, 6 warnings`。
+- 原始输出位于 `F:/paralls-verification/thread-a/m5-5-event-schema-ref-20261125-03/pytest.log`，证据文件为 `docs/verification/m5-5-event-schema-ref-followup-20261125.md`。本轮未运行全量 backend suite，也未重跑冻结选择集。
+- M5-5 仍有 package lifecycle、生产注册和 M5-3/M5-4 未完成项。M1-2 仍因共同 `inventory_runtime.py` 边界阻塞。生产 Gate 数值仍未配置，不能将本地 `.env` 视为生产部署。
