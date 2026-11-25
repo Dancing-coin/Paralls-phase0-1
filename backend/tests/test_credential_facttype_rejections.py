@@ -102,3 +102,41 @@ def test_resolver_rejects_unfixed_randomness_policy():
 
     with pytest.raises(RegistrationRejected, match="resolver_missing_determinism"):
         FactTypeRegistry.compile(**data)
+
+
+def test_resolver_accepts_float64_numeric_precision():
+    data = declarations()
+    model_spec = model([])
+    model_spec["determinism_policy"]["numeric_precision"] = "float64"
+    data["models"] = {"credential@1": model_spec}
+    data["handlers"] = {"credential@1": lambda inputs, params: True}
+
+    registry = FactTypeRegistry.compile(**data)
+
+    assert registry.models["credential@1"].determinism_policy["numeric_precision"] == "float64"
+
+
+@pytest.mark.parametrize("seed_source", ["world_tick", "command_id"])
+def test_resolver_accepts_seeded_randomness_with_declared_source(seed_source):
+    data = declarations()
+    model_spec = model([])
+    model_spec["determinism_policy"].update(random="seeded", seed_source=seed_source)
+    data["models"] = {"credential@1": model_spec}
+    data["handlers"] = {"credential@1": lambda inputs, params: True}
+
+    registry = FactTypeRegistry.compile(**data)
+
+    policy = registry.models["credential@1"].determinism_policy
+    assert policy["random"] == "seeded"
+    assert policy["seed_source"] == seed_source
+
+
+def test_resolver_rejects_seeded_randomness_with_unknown_source():
+    data = declarations()
+    model_spec = model([])
+    model_spec["determinism_policy"].update(random="seeded", seed_source="system_time")
+    data["models"] = {"credential@1": model_spec}
+    data["handlers"] = {"credential@1": lambda inputs, params: True}
+
+    with pytest.raises(RegistrationRejected, match="resolver_missing_determinism"):
+        FactTypeRegistry.compile(**data)

@@ -231,8 +231,15 @@ class FactTypeRegistry:
                     if fact not in writes:
                         reject("resolver_writes_undeclared", target, "layer outputs must belong to the model write set")
             policy = spec.get("determinism_policy", {})
-            if (policy.get("iteration_order") != "resolution_order" or policy.get("random") != "none"
-                    or policy.get("numeric_precision") not in ("fixed_point", "decimal")
+            random_policy = policy.get("random")
+            seeded_source_valid = (
+                random_policy != "seeded"
+                or policy.get("seed_source") in ("world_tick", "command_id")
+            )
+            if (policy.get("iteration_order") != "resolution_order"
+                    or random_policy not in ("none", "seeded")
+                    or not seeded_source_valid
+                    or policy.get("numeric_precision") not in ("fixed_point", "decimal", "float64")
                     or policy.get("rounding") not in ("half_up", "floor", "truncate")):
                 reject("resolver_missing_determinism", target, "pin precision, rounding, iteration order and randomness")
             kind = spec.get("implementation")
