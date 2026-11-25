@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。当前 A 分支 tip 为证据提交 `4fcdde27`，最新代码为 FactType Owner 顺序 tie-break `64421f00`；M6-5 的 gate-03 profile 已写入本地 A worktree `.env` 并完成配置探针。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。当前 A 分支 tip 为 `e1de1090`；最新代码增量为 Holdings 重试/选择恢复和 `event_schema_ref` 注册解析。M6-5 的 gate-03 profile 已写入本地 A worktree `.env` 并完成配置探针。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -40,7 +40,7 @@
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |
 | M4 第 3 波（含 debt） | 未定 | 待开工 | 同上 | debt 归属 Economy/Market，枢纽 | 1–11 |
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
-| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`，相关提交分别为 `f0c9108d`、`3907d4eb`、`a5823c4b`、`553c35bd`、`888ec615`、`1fb14ba4`、`3a0e35b6`、`d02e8c73`；原语登记整理 `cbee0c6c`。Owner-ordered resolution `64421f00`；Resolver rejection regression coverage `964cc5e4`。当前未提交增量已加入 `event_schema_ref` 注册解析、Holdings schema alias 与未知引用拒绝；代码定向 130 passed，M5-5 选集 18、M1-2 选集 24 及 ownership/modifier/equipment/inventory 冻结选集均零差异。证据 `docs/verification/m5-5-facttype-refold-20261125.md`，回归选集 `m5-5-facttype-refold.json` | `event_schema_ref` 单元仍在进行中。shared-replay 在 websocket-session 启动路径未完成，全量未运行。Credential 历史 schema 符号保留；M1-2 生产接线仍受共同边界阻塞。`temporal_effects`、生产命令注册、package-version 写边界、M5-3/M5-4 仍未完成。详见 H-A-062 | 5 |
+| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid` 和 `event_schema_ref` 注册解析；对应提交含 `16ad9b9c`。本轮 exact tip 定向测试 138 passed；M5-5 18、M1-2 24、ownership 24、modifier 12、equipment 87、inventory 56 选择均零差异。`shared-replay` 本轮在第 10 批启动 backend listener 探测前卡住，未完成；全量未运行。证据 `docs/verification/m5-5-facttype-refold-20261125.md` 与 `m5-5-event-schema-ref-followup-20261125.md` | M5-5 仍在进行中。Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，不能实现包校验或生产加载；生产命令注册、package-version 写边界、M5-3/M5-4 也仍未完成。shared-replay 与全量未验证，详见 H-A-064 | 5 |
 | M6 L5 引擎 | A | 进行中 | M6-1 reaction dispatch `dabb7f4e`、精确输出校验 `90af2255`、Place machine 输出兼容 `4023c182`；[dispatch evidence](../verification/m6-1-l5-dispatch-runtime-20261124.md)、[Place 输出 evidence](../verification/m6-5-place-machine-output-type-20261124.md)；声明加载 `6e7da420` 待门禁 | 新增 Place 输出单元定向 20 passed、ownership 24 零差异、自有选集 3 零差异；shared-replay 990 有两项外部 Port 8000 失败。`main.py` 生产注册、Morale/Presence handlers、条件/规则包加载、持久义务恢复未做；gate-impact 输入来源待项目负责人确认 | 6 |
 | M6-1 Reaction 离线校验 | A | 待门禁 | `40df5929`、`7b0d69bf`；[证据](../verification/m6-1-reaction-20261123.md) | 定向 113 passed，17 组选集 1,268 节点零差异。全量 31 failed，其中 7 项额外路径错误在同 SHA 短路径复跑通过。异步触发前置见 H-A-011 | 6 |
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |

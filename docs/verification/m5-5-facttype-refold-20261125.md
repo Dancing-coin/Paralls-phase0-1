@@ -1,5 +1,32 @@
 # M5-5 FactType distribution refold requirement
 
+## Verification Resume at `e1de1090` (2026-11-25)
+
+This rerun covers the M5-5 `event_schema_ref` increment already committed at `16ad9b9c` and the exact A branch tip `e1de1090f3070b3dcdb073e86423ae0af00bc3a7`. It does not complete M5-5.
+
+Environment: Python 3.12.2 from `D:\Temp\paralls-g0-py312\Scripts\python.exe`, pytest 9.1.1, Windows 11. The frozen-selection runner recorded the A worktree as the repository, `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`, unchanged source, and `git_status_before/after` empty. Pytest reported the backend worktree as `rootdir`. Earlier evidence for this worktree records SQLite 3.43.1; this rerun did not independently query SQLite.
+
+Commands and results:
+
+| Check | Result |
+|---|---|
+| `set PYTHONPATH=<A worktree>\backend && D:\Temp\paralls-g0-py312\Scripts\python.exe -m pytest -q backend/tests/test_rule_pack_validator.py backend/tests/test_information_production_wiring.py backend/tests/test_holdings_fact_type_registry.py backend/tests/test_credential_v2_event_schema.py` | `138 passed, 6 warnings in 5.42s`, exit 0 |
+| Frozen `m5-5-facttype-refold.json` | `selected=18 problems=0 improvements=0` |
+| Frozen `ownership.json` | `selected=24 problems=0 improvements=0` |
+| Frozen `modifier.json` | `selected=12 problems=0 improvements=0` |
+| Frozen `equipment.json` | `selected=87 problems=0 improvements=0` |
+| Frozen `inventory.json` | `selected=56 problems=0 improvements=0` |
+| Registered `m1-2-holdings.json` | `selected=24 problems=0 improvements=0` |
+| Frozen `shared-replay.json` | Incomplete. Batches 0–9 produced passing pytest logs; batch 10 created collection/environment metadata but no test log or `results.json`. Runner was interrupted after the batch stalled before backend listener detection returned. This is not a pass. |
+
+The focused pytest command was repeated with `TEMP`, `TMP`, and `--basetemp` directed to the fresh F-drive `pytest-temp-focused` directory. Raw console output is at `F:\paralls-verification\thread-a\m5-5-resume-20261125-01\focused-rerun\pytest.log`, with the result `138 passed, 6 warnings in 5.99s`, exit 0. Other raw outputs are under the same run root. The shared-replay batch-10 startup path invokes PowerShell `Get-NetTCPConnection`; a direct PowerShell query in this environment also failed to return. No other process was terminated. Full backend suite was not run. The earlier selection runs inherited `TEMP/TMP` under `D:\CODEX-~1\USER-T~1`, so pytest `tmp_path` data from those runs may remain there. The directory is shared with concurrent processes and contains unrelated data, so no cleanup or move was attempted. Future pytest invocations will set `--basetemp` under the unique F-drive output directory. The configured interpreter and site-packages remain on D; repository, selection reports, and retained raw outputs are on F.
+
+The current verification supports the focused `event_schema_ref` increment and the five completed regression selections. It does not verify shared-replay, full-suite behavior, package-version write boundaries, `temporal_effects`, production command registration, M5-3/M5-4, or M1-2 production consumption.
+
+## `temporal_effects` contract audit
+
+The migration plan lists `temporal_effects` as an M5-1 content type and requires each newly supported content type to have validation and rejection codes. The formal package-format document shows a `temporal_effects/` directory and manifest names `bleeding` and `burning`, but defines no entry fields or reference rules. The formal Validator Rules catalog has no temporal-effect rule or diagnostic. A code and pack search also found no temporal-effect package entries or production consumer. Implementing this category now would require inventing persisted package semantics and runtime consumption. M5-5 cannot close this item until its field schema, reference namespace, validity rules, rejection-code set, and intended consumer are specified.
+
 Date: 2026-11-25
 
 ## Scope and implementation
