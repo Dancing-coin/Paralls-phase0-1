@@ -1,6 +1,6 @@
 {
-  "head": "2a5d66402aaf566bb8414ec61d51aa5cb5999b45",
-  "description": "M5-3 platform package migration authority, trusted archive bootstrap, immutable pins, replay, and schema registration",
+  "head": "29492189",
+  "description": "M5-3 platform package migration authority, trusted archive bootstrap, immutable pins, replay, schema registration, and world-pinned M6-5 consumer",
   "tests": [
     {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_resolves_immutable_package_identity","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_package_archive_rejects_conflicting_hash_for_same_identity","outcome":"passed","failures":[]},
@@ -21,6 +21,8 @@
     {"test_name":"tests/test_package_migration_runtime.py::test_stale_source_package_set_is_rejected_without_writing","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_rejected_migration_writes_nothing[9-from_packages0-to_packages0-revision_conflict]","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_rejected_migration_writes_nothing[0-from_packages1-to_packages1-package_archive_identity_unknown]","outcome":"passed","failures":[]},
-    {"test_name":"tests/test_gameplay_event_schema_registry.py::test_platform_package_migration_schema_is_registered_outside_gameplay_discovery","outcome":"passed","failures":[]}
+    {"test_name":"tests/test_gameplay_event_schema_registry.py::test_platform_package_migration_schema_is_registered_outside_gameplay_discovery","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_m6_5_runtime_can_consume_world_pinned_package_archive","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_m6_5_siege_runtime.py::test_m6_5_runtime_rejects_incomplete_package_consumer_configuration","outcome":"passed","failures":[]}
   ]
 }
