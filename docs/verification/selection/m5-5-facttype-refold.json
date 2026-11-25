@@ -1,6 +1,6 @@
 {
-  "head": "1fb14ba45df0ebd3f9ff9448de9d754b40122c40",
-  "description": "M5-5 FactType refold/scope/primitive and package primitive-definition diagnostics, including the six-value primitive registry contract",
+  "head": "3a0e35b6bf9d02ce7f34e3a9e43010946c49005f",
+  "description": "M5-5 FactType refold, scope, primitive, naming, and package primitive-definition diagnostics, including the six-value primitive registry contract",
   "tests": [
     {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_distribution_fact_without_refold_model",
@@ -41,6 +41,36 @@
       "test_name": "tests/test_rule_pack_validator.py::test_fact_type_primitive_registry_has_exactly_six_code_registered_values",
       "outcome": "passed",
       "failures": []
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_with_invalid_domain_or_name[fact:cred-ential:*:link]"
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_with_invalid_domain_or_name[fact:c:*:link]"
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_with_invalid_domain_or_name[fact:credential:*:l]"
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_with_invalid_domain_or_name[fact:credential:*:Link]"
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_with_invalid_domain_or_name[fact:credential:*:link!]"
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_fact_type_with_invalid_domain_or_name[fact:credential:xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx:link]"
     }
   ]
 }

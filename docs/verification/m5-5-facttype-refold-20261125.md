@@ -138,3 +138,19 @@ Commit 1fb14ba45df0ebd3f9ff9448de9d754b40122c40 adds a regression asserting that
 | Full backend suite | Not rerun at 1fb14ba4. The nearest clean full run is the predecessor M5-5 result 10,650 passed, 4 failed, 2 skipped, 2 xfailed, exit code 1; it is not evidence for the exact test-only commit | F:/paralls-verification/thread-a/m5-5-primitive-unknown-full-9bd3859f809244019c3c8b23ed37cccf/full-console.log |
 
 The frozen and registered comparisons used the current A worktree HEAD 1fb14ba45df0ebd3f9ff9448de9d754b40122c40. The full-suite result is historical to its recorded predecessor and remains non-green. The unit does not claim broader M5 or Architecture v2 completion.
+
+### Follow-up FactType ID naming limits
+
+The formal FactType schema constrains the domain segment to lowercase letters and underscores with length 2–24, the name segment to lowercase letters, digits, underscores, and hyphens with length 2–48, and the full ID to at most 128 characters. Commit `3a0e35b6bf9d02ce7f34e3a9e43010946c49005f` applies these checks during FactType registration while retaining the dedicated `facttype_scope_missing` result for absent or empty scope. Six invalid forms now have regression coverage.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| Focused `test_rule_pack_validator.py` | `117 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-facttype-naming-focused-20261125-01\pytest.log` |
+| Frozen selection comparison | 5 selections, 1,169 nodes, all `problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-facttype-naming-gates-3a0e35b6-20261125\gate-run.log` |
+| Registered selection comparison | 25 selections, 235 nodes, all `problems=0 improvements=0`; M5-5 selection has 14 nodes | Same directory, per-selection results |
+| Current exact-commit backend suite | `10,637 passed, 24 failed, 2 skipped, 2 xfailed`, exit code 1; 10,665 collected | `F:\paralls-verification\thread-a\m5-5-facttype-naming-full-3a0e35b6-20261125\full-console.log` and `full\results.json` |
+| Parent exact-commit backend suite at `aa1f2507` | `10,631 passed, 24 failed, 2 skipped, 2 xfailed`, exit code 1; 10,659 collected | `F:\paralls-verification\thread-a\m5-5-facttype-naming-parent-full-aa1f2507-20261125\full-console.log` and `full\results.json` |
+| Full-suite failure comparison | 23 failed nodes have matching phase and error data. The current-only `test_recovery_owner_probe_measures_original_startup_before_full_oracle` and parent-only `test_original_owner_outbox_recovers_after_hard_kill[domain]` each passed when rerun alone on both commits, so those swapped failures are intermittent. No persistent new failure was observed. | Full result JSON files and isolated outputs under `F:\paralls-verification\thread-a\m5-5-facttype-naming-{current,parent}-unique-failure-20261125-01\pytest.log` |
+| Runtime environment | Python 3.12.2, pytest 9.1.1, SQLite 3.43.1; `PYTHONPATH` targeted each exact worktree and `app.__file__` resolved inside it | `full\environment.json` in each full-run directory and isolated command output |
+
+The full suite remains non-green. The exact-commit comparison is compatible with the parent baseline, with two one-off failures swapped between runs and both passing in isolated reruns. The FactType naming unit does not claim broader M5 or Architecture v2 completion.
