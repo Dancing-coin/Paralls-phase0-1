@@ -202,16 +202,16 @@ class FactTypeRegistry:
         for target in facts:
             if target not in covered:
                 reject("facttype_resolution_order_missing", target, "declare a before edge or explicit unrelated membership")
-        ready = [name for name, degree in degrees.items() if degree == 0]
+        ready = [(facts[name]["owner_ref"], name) for name, degree in degrees.items() if degree == 0]
         heapq.heapify(ready)
         ordered = []
         while ready:
-            name = heapq.heappop(ready)
+            _, name = heapq.heappop(ready)
             ordered.append(name)
             for next_name in sorted(adjacency[name]):
                 degrees[next_name] -= 1
                 if degrees[next_name] == 0:
-                    heapq.heappush(ready, next_name)
+                    heapq.heappush(ready, (facts[next_name]["owner_ref"], next_name))
         if len(ordered) != len(facts):
             reject("facttype_resolution_order_cycle", "resolve_order", "remove the dependency cycle")
 

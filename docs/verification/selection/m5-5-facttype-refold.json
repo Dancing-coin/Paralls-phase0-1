@@ -1,6 +1,6 @@
 {
   "head": "d02e8c736a9b9f9e36e661d65f96f046fe89371f",
-  "description": "M5-5 FactType refold, scope, primitive, naming, process-kind, and package primitive-definition diagnostics, including the six-value primitive registry contract",
+  "description": "M5-5 FactType refold, scope, primitive, naming, process-kind, package primitive-definition diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_distribution_fact_without_refold_model",
@@ -76,6 +76,11 @@
       "outcome": "passed",
       "failures": [],
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_process_kind_on_non_process_fact_type"
+    },
+    {
+      "outcome": "passed",
+      "failures": [],
+      "test_name": "tests/test_credential_fact_type_registry.py::test_unrelated_fact_types_follow_owner_order_with_stable_fact_id_tiebreak"
     }
   ]
 }

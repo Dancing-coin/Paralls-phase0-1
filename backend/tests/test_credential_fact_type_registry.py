@@ -42,6 +42,29 @@ def test_topology_uses_stable_ids_and_dense_order_and_rejects_cycles():
         FactTypeRegistry.compile(**data)
 
 
+def test_unrelated_fact_types_follow_owner_order_with_stable_fact_id_tiebreak():
+    data = declarations()
+    ownership = "fact:ownership:*:title"
+    facility_alpha = "fact:facility:*:alpha-gate"
+    facility_omega = "fact:facility:*:omega-gate"
+    ownership_fact = deepcopy(data["facts"][FACT])
+    facility_fact = deepcopy(data["facts"][FACT])
+    ownership_fact["owner_ref"] = "Ownership"
+    facility_fact["owner_ref"] = "Production"
+    data["facts"].update({
+        facility_omega: deepcopy(facility_fact),
+        ownership: ownership_fact,
+        facility_alpha: facility_fact,
+    })
+    data["owners"].extend(["Ownership", "Production"])
+    data["resolve_order"]["unrelated"] = list(data["facts"])
+
+    registry = FactTypeRegistry.compile(**data)
+
+    assert list(registry.facts) == [FACT, ownership, facility_alpha, facility_omega]
+    assert [fact.resolution_order for fact in registry.facts.values()] == [10, 11, 12, 13]
+
+
 def test_code_and_data_models_share_registration_and_evaluation():
     data = declarations()
     def condition(inputs, params):
