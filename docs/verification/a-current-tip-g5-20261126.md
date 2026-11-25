@@ -17,8 +17,11 @@ This is a cross-unit regression addendum for A branch tip `022f774d07fbbadc262a0
 | `m5-5-facttype-refold.json` | `selected=22 problems=0 improvements=0` |
 | `m1-2-holdings.json` | `selected=24 problems=0 improvements=0` |
 | `m3-2-store-read-snapshot.json` | `selected=7 problems=0 improvements=0` |
+| Frozen `modifier.json` | `selected=12 problems=0 improvements=0` |
+| Frozen `equipment.json` | `selected=87 problems=0 improvements=0` |
+| Frozen `inventory.json` | `selected=56 problems=0 improvements=0` |
 
-Raw logs are `m1-3-pool.log`, `m5-5.log`, `m1-2.log`, and `m3-2.log` in the output directory. M3-1, M5-3, Ownership, and shared-replay current-tip results are recorded in their unit evidence and the same branch tip was used for this run.
+Raw logs are `m1-3-pool.log`, `m5-5.log`, `m1-2.log`, `m3-2.log`, `modifier-run02.log`, `equipment-run02.log`, and `inventory-run02.log` in the output directory. M3-1, M5-3, Ownership, and shared-replay current-tip results are recorded in their unit evidence and the same branch tip was used for this run.
 
 ## Interpretation
 
