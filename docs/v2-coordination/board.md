@@ -101,4 +101,5 @@
 
 - Commit `d693686b` adds compatible `schema_version=1` parsing and rejects invalid or unknown Gate profile fields. Focused tests returned `71 passed, 6 warnings`; the 19-node registered selection returned `problems=0 improvements=0`.
 - The backend full-suite attempt was interrupted at about 31% after roughly 40 minutes. The first failure was reproduced on parent `6d31a831` as the same missing-`tokenizers` baseline failure; the second marker remains unclassified. Evidence: `docs/verification/m6-5-gate-profile-contract-20261126.md`.
+- Follow-up triage located the second marker at node 2308, `test_task45_headless_probe_observes_shared_path_and_contact_contract`. It fails with the same Godot `CharacterMotor` parse errors on current `cdf99158` and parent `6d31a831`. Both visible failures are pre-existing for this change; the interrupted full suite is still incomplete. See H-A-073 and the evidence addendum.
 - Production Gate values remain unset under H-A-039. The profile values in `.env.example` are explicitly a demonstration profile; M6-5 remains in progress.
