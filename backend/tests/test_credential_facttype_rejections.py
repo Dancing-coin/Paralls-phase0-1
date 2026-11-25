@@ -73,3 +73,32 @@ def test_resolver_input_undeclared_during_actual_evaluation():
         registry.evaluate("credential@1", {
             "ownership.rights@1": {}, "inventory.actor@1": {"item": "present"}})
     assert accessed == ["executed"]
+
+
+def test_resolver_layer_output_must_be_in_model_write_set():
+    data = declarations()
+    model_spec = model([])
+    model_spec["writes_fact_types"] = []
+    model_spec["layers"] = [
+        {"owner_ref": "Credential", "writes_fact_types": [FACT]},
+    ]
+    data["models"] = {"credential@1": model_spec}
+    data["handlers"] = {"credential@1": lambda inputs, params: True}
+
+    with pytest.raises(RegistrationRejected) as error:
+        FactTypeRegistry.compile(**data)
+
+    assert "resolver_writes_undeclared" in {
+        violation.code for violation in error.value.violations
+    }
+
+
+def test_resolver_rejects_unfixed_randomness_policy():
+    data = declarations()
+    model_spec = model([])
+    model_spec["determinism_policy"]["random"] = "seeded"
+    data["models"] = {"credential@1": model_spec}
+    data["handlers"] = {"credential@1": lambda inputs, params: True}
+
+    with pytest.raises(RegistrationRejected, match="resolver_missing_determinism"):
+        FactTypeRegistry.compile(**data)
