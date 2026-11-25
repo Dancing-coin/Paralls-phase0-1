@@ -158,8 +158,11 @@ class FactTypeRegistry:
                     reject("facttype_schema_unknown", target, "pool facts do not declare a machine state set")
                 if pool_defs is None or target not in pool_defs:
                     reject("facttype_schema_unknown", target, "register the Pool definition for this FactType")
+            elif primitive == "holdings":
+                if spec.get("state_set_ref") is not None:
+                    reject("facttype_schema_unknown", target, "holdings facts do not declare a machine state set")
             else:
-                reject("facttype_primitive_unknown", target, "declare a registered machine or pool primitive")
+                reject("facttype_primitive_unknown", target, "declare a registered FactType primitive")
             parts = target.split(":")
             has_missing_scope = (
                 (len(parts) == 3 and parts[0] == "fact" and all(parts[1:]))

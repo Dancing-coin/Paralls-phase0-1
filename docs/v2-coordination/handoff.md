@@ -440,3 +440,27 @@
 
 - 使用 A worktree 本地 `.env` 的 `gate-03` profile，Python 3.12.2 / SQLite 3.43.1 / A worktree `app.__file__`。14 次独立签名 Gate impacts 产生一个 breach-enter；随后对 impact 14 提交独立签名 Presence assessment。实际输出为 integrity `20`、Place commit `1`、passability `passable`、`impact_gate` obligation `settled`。损伤未回滚。
 - 原始输出 `F:/paralls-verification/thread-a/m6-5-gate-presence-obligation-20261125-01/runtime.log`。这补齐本地 Gate→Presence→obligation 运行链，不构成生产部署、UE 实机传输或完整 siege playthrough 证据；M6-5 仍进行中。
+
+### H-A-056 | M1-2 Holdings additive event contract ruling | 2026-11-25
+
+- 为解除 H-A-006 中缺少 release/settlement 与 reservation-transfer 关联的机制阻塞，本轮按项目负责人此前授予的“线 A 全权授权”采用最小追加合同，不修改 Architecture v2 文档仓库。
+- v1 正式事件 `lot_created`、`reserved`、`transferred`、`consumed`、`split`、`merged`、`lost` 保留类型名与既有字段。Projector 读取正式 v1 字段；`lot_created.quality` 可选但仅校验格式，质量仍由 Pool 管理。
+- 为使 H2 可验证，新增首版事件 `reservation_released`、`reservation_settled`、`reservation_transferred`。后者将活动 reservation_ref 从源 lot 移至目标 lot，并与转移一同提交；新事件不改变既有 v1 事件语义。
+- 投影定义 `lot.quantity` 为未预留可用量，reservation 单列；`total_quantity = available + reserved`。当前 transfer 是同一 FactType stream 内即时转移，`in_transit` 固定为零且不声称覆盖异步运输。capacity 按该 FactType stream 的可用量与预留量总和校验。拆分/合并要求没有活动 reservation；合并要求单位、规格兼容且容器一致。
+- 在代码、测试、脚本中枚举 `gameplay.holdings.*` 的读取方，只有本轮 Holdings runtime/schema 与对应测试；未发现既有生产消费者或历史 Holdings 写入方。正式 v1 payload 的投影重建由 `test_formal_v1_holdings_events_rebuild_with_quality_kept_out_of_quantity` 验证。
+- 当前定向验证已通过 58 项相关测试与 14 项 FactType/Validator 测试。M1-2 仍未完成： checkpoint 恢复、完整聚合/Resolver、完整 R1/R2/R3、U1–U11、冻结选集、所有登记选集及全量验证待完成。不得据此宣称 Holdings 或 v2 已完成。
+
+### H-A-057 | M1-2 checkpoint 回放增量与验证状态 | 2026-11-25
+
+- `HoldingsProjector.rebuild` 增加 `checkpoint_at`，按既有 `OwnershipProjector` 的全局序号边界合同先重建前缀，再从投影状态继续回放后缀。投影保留关闭 lot 引用，避免 checkpoint 后丢失 split/merge 生命周期状态。新增 checkpoint 后缀等价、关闭 lot 保留和负边界拒绝测试。
+- `HoldingsProjection.sum_by_item` 汇总多 lot 的 available/reserved/total quantity，并附带 item definition 的 unit/spec，保持不同物料各自聚合。依据正式聚合规格，这是 `sum` 型守恒总量，**不是**不守恒的 `distribution` refold。固定向量覆盖同物料多 lot 与不同 unit/spec 的隔离。
+- 当前 Holdings 与 FactType 定向测试为 22 passed、2 warnings，Python 3.12.2 / SQLite 3.43.1，`app.__file__` 位于 A worktree。完整命令和逐项证据见 `docs/verification/m1-2-holdings-runtime-20261125.md`。
+- 新增 22 节点选集 `docs/verification/selection/m1-2-holdings.json` 并对当前工作区运行冻结比较器，原始结果 `selected=22 problems=0 improvements=0`。
+- 19 个非 shared-replay 登记选择集共 304 项通过。shared-replay 前 10 批共 400 项通过，第 11 批停在既有 `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`，没有最终结果或退出码；该测试单独复跑也停在该用例后被本线程中断。完整 shared-replay 选择集和全量未验证。
+- 此实现是事件流边界的 checkpoint 重建，不定义或存储持久化快照格式。Resolver 消费接线及 U1–U11 证据仍待核对，M1-2 继续进行中。
+
+### H-A-058 | M1-2 shared-replay 验证恢复 | 2026-11-25
+
+- 更正 H-A-057 的 shared-replay 未完成状态：在同一未提交工作区重新运行 frozen ownership/modifier/equipment/inventory、M1-2 Holdings 和 shared-replay selections，共 1,191 节点，均 `problems=0 improvements=0`。完整 990 节点 shared-replay 本次通过。
+- Windows PowerShell 空闲端口 listener 查询在该环境下未返回。验证目录内临时 shim 仅响应 `Get-NetTCPConnection -LocalPort 8000 -State Listen` 并报告当时已由 `netstat -ano -p tcp` 确认的空闲状态；没有修改仓库 Harness 或测试代码。此前一次 full selection 运行中本线程自己的临时 backend 占用了端口并导致两节点失败，停止后单测复跑 2 passed，随后完整选择集通过。
+- 全量 backend suite 未运行。生产 Resolver 消费、持久化 checkpoint 编码及 U1–U11 其余未完成项仍未完成，M1-2 继续进行中。

@@ -1,0 +1,28 @@
+{
+  "head": "88d1903f19f18a1869f3b0a0e4d905bd4f6507e1",
+  "description": "M1-2 Holdings command, projection, conserved quantity sums, event schema registration, FactType primitive, v1 rebuild, checkpoint replay, idempotency, and zero-write rejection",
+  "tests": [
+    {"test_name": "tests/test_holdings_runtime.py::test_release_and_partial_settlement_restore_only_unconsumed_quantity", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_reserve_beyond_available_is_rejected_without_writes", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_settlement_above_reserved_amount_is_rejected_without_writes", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_holdings_events_are_visible_and_registered_in_production_schema_factory", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_reservation_references_are_unique_across_all_lots_in_the_collection", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_reserved_quantity_is_a_partition_of_total_stock", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_projection_sum_aggregates_by_item_without_mixing_unit_or_specification", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_transfer_moves_stock_between_existing_lots_without_changing_total", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_transfer_rejects_incompatible_item_specification_without_writes", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_reserved_transfer_moves_reservation_and_quantity_in_one_event", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_split_and_merge_preserve_total_quantity", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_consumption_and_loss_reduce_stock_without_consuming_reservations", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_exact_create_retry_returns_original_receipt_without_another_event", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_changed_create_retry_is_rejected_without_writes", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_capacity_counts_reserved_stock_and_rejects_addition_without_writes", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_formal_v1_holdings_events_rebuild_with_quality_kept_out_of_quantity", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_rebuilding_the_event_stream_matches_the_live_projection", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_rebuilding_after_historical_checkpoint_matches_full_replay", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_historical_checkpoint_preserves_closed_lots_after_split", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_runtime.py::test_negative_checkpoint_is_rejected", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_fact_type_registry.py::test_holdings_fact_type_compiles_without_machine_or_pool_definition", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_holdings_fact_type_registry.py::test_holdings_fact_type_rejects_machine_state_set_reference", "outcome": "passed", "failures": []}
+  ]
+}
