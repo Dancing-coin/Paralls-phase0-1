@@ -300,3 +300,23 @@ The validator already rejected a resolver layer whose outputs exceed the model-l
 | Full validation | Not run for this test-only commit | No full backend suite or shared-replay claim is made |
 
 The M5-5 selection manifest now registers 18 tests at this exact commit. Other validator/package requirements, including the unresolved `event_schema_ref` registry mapping, remain open.
+
+## Resolver determinism policy follow-up
+
+Implementation commit: `14f4fbd70579ab902665faefcdde417638c242d3`.
+
+The formal Resolver contract permits `fixed_point`, `decimal`, and `float64` numeric precision. Randomness may be `none` or `seeded`; a seeded policy must name `world_tick` or `command_id` as its seed source. The registry rejected `float64` and every seeded policy. It now accepts the declared policy forms while continuing to reject seeded randomness without a supported source and unknown seed sources.
+
+| Check | Result | Raw evidence |
+|---|---|---|
+| TDD red | Three positive cases failed with `resolver_missing_determinism`; the unknown-source rejection passed | `F:\paralls-verification\thread-a\m5-5-resolver-policy-20261125-01\pytest-red.log` |
+| FactType rejection tests | `12 passed, 2 warnings` | `F:\paralls-verification\thread-a\m5-5-resolver-policy-20261125-02\pytest.log` |
+| Focused Validator, Information wiring, Holdings registry, Credential schema and Resolver tests | `150 passed, 6 warnings` | `F:\paralls-verification\thread-a\m5-5-resolver-policy-20261125-02\focused.log` |
+| M5-5 selection | `selected=22 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-5-resolver-policy-20261125-02\selection-m5-5-current.log` |
+| Ownership, modifier, equipment and inventory frozen selections | 24, 12, 87 and 56 selected respectively; all zero problems and improvements | `F:\paralls-verification\thread-a\m5-5-resolver-policy-20261125-02\selection-summary.log` |
+| Registered M1-2 Holdings selection | `selected=24 problems=0 improvements=0` | Same run directory |
+| Full backend suite | Not run | No full-suite claim is made |
+
+The run used Python 3.12.2, pytest 9.1.1 and `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`. `app.__file__` resolved to that worktree. `TEMP`, `TMP`, pytest basetemp and retained output were directed to the unique F-drive run directory. The interpreter remained at its existing D-drive location. SQLite was not independently queried for this follow-up.
+
+The M5-5 selection manifest now registers 22 nodes at implementation commit `14f4fbd7`. This follow-up only changes compile-time Resolver policy validation and does not change event persistence or Resolver execution. M5-5 remains in progress. `temporal_effects`, production command registration, package-version write boundaries and M5-3/M5-4 remain open. The production Gate values also remain unconfigured on the production server; the ignored local `.env` profile is only a worktree demo configuration.

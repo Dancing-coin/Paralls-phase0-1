@@ -1,5 +1,5 @@
 {
-  "head": "964cc5e4f3d58093deae61ab9de7993da1c61f50",
+  "head": "14f4fbd70579ab902665faefcdde417638c242d3",
   "description": "M5-5 FactType and resolver validator rules, package diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {
@@ -89,6 +89,26 @@
     },
     {
       "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_rejects_unfixed_randomness_policy",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_accepts_float64_numeric_precision",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_accepts_seeded_randomness_with_declared_source[world_tick]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_accepts_seeded_randomness_with_declared_source[command_id]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_facttype_rejections.py::test_resolver_rejects_seeded_randomness_with_unknown_source",
       "outcome": "passed",
       "failures": []
     }
