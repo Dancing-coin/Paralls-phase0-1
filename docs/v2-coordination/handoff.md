@@ -882,3 +882,7 @@
 - The valid current-tip focused L5 command returned `32 passed, 2 warnings` across play-pattern compilation, reaction validation, and dispatch runtime tests under Python 3.12.2 and the A-worktree import path.
 - An initial command included nonexistent `backend/tests/test_l5_pipeline.py` and exited during collection. No test or source file was changed, and the corrected command produced the result above.
 - This verifies existing offline composition and dispatch behavior. Application registration/activation and production package dispatch remain unverified, so M6-4 stays pending gate.
+### H-A-127 | M6-1 to M6-4 current-tip composition regression | 2026-11-27
+
+- The current A tip passed the combined L5 declaration and loading regression: `test_rule_pack_validator.py`, `test_l5_reaction.py`, `test_l5_play_pattern.py`, and `test_l5_workflow.py` returned `162 passed, 2 warnings` with Python 3.12.2 and the A-worktree import path.
+- This verifies offline reaction, pipeline/workflow/play-pattern contracts and rule-pack loading. Production application activation, deployment package dispatch, UE transport, and a complete siege run remain unverified.
