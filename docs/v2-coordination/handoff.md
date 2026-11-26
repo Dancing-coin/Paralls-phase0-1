@@ -750,5 +750,5 @@
 ### H-A-105 | M5-5 primitive field regression coverage completion | 2026-11-26
 
 - The regression suite now exercises incompatible values for all five fields in `_FACT_TYPE_FIELD_PRIMITIVES`. The `state_set_ref` negative case is tested directly through `FactTypeRegistry.compile`, because package parsing already rejects the field shape before registry compilation for non-machine primitives.
-- At implementation commit `0f56f7af6123992a8536a780dcc51fac1939ca4e`, focused validator/registry tests returned `136 passed, 2 warnings`; the updated M5-5 selection returned `38/0/0`. The raw selection result is under `F:/paralls-verification/thread-a/m5-5-field-coverage-selection-20261126-01/`.
+- At pushed tip `30c4bf5051ebf789e7e724a3fbd19ba793da6d29`, focused validator/registry tests returned `136 passed, 2 warnings`; the updated M5-5 selection returned `38/0/0`. Both exact-tip outputs and F-drive temporary data are under `F:/paralls-verification/thread-a/m5-5-field-coverage-exacttip-20261126-01/`.
 - The earlier full run at `1be69ba3` used the same production implementation but preceded these test-only changes. Its `62` failures remain unclassified; the full suite was not rerun after the additional tests.

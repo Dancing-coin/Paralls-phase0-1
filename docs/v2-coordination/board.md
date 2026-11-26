@@ -52,7 +52,7 @@
 
 ### M5-5 FactType primitive-field increment (2026-11-26)
 
-- 本增量证据：`docs/verification/m5-5-facttype-primitives-20261126.md`。定向 136 passed；M5-5 selection 38/0/0；冻结 ownership/modifier/equipment/inventory/shared-replay 选择分别 24/0/0、12/0/0、87/0/0、56/0/0、990/0/0。
+- 本增量证据：`docs/verification/m5-5-facttype-primitives-20261126.md`。在 exact tip `30c4bf50` 定向 136 passed；M5-5 selection 38/0/0；冻结 ownership/modifier/equipment/inventory/shared-replay 选择分别 24/0/0、12/0/0、87/0/0、56/0/0、990/0/0。
 - 合并工作区全量在 `1be69ba3` collected 10,759，exit 1：10,693 passed、62 failed、2 skipped、2 xfailed。失败尚未逐项对照 parent 基线，保持未分类。M5-5 仍进行中。
 
 ## 三、待决（负责人需表态）

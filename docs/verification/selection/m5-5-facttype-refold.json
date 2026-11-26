@@ -1,5 +1,5 @@
 {
-  "head": "0f56f7af6123992a8536a780dcc51fac1939ca4e",
+  "head": "30c4bf5051ebf789e7e724a3fbd19ba793da6d29",
   "description": "M5-5 FactType and resolver validator rules, package diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {
