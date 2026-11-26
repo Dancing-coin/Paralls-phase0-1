@@ -704,3 +704,8 @@
 
 - The 27 registered groups run at `83d1dd12` returned 286 selections, zero problems and zero improvements. With the 23-node M5-3 group at `c9a22c53`, this is 28 groups and 309 selections, counting a shared node once per group. The commits differ only in evidence documentation.
 - The per-group table is in `docs/verification/m5-3-package-migration-20261126.md`. The full backend run is queued behind B's full run. Production deployment remains unverified.
+
+### H-A-097 | A full backend regression at current tip | 2026-11-26
+
+- At `7ab4d72e08ed2afa17db4deb8d1cac262f5dd50b`, the frozen G0 backend suite collected 10,745 nodes and exited 1: 10,718 passed, 23 failed, 4 skipped including 2 xfailed, 239 warnings, in approximately 1,332.86 seconds. Python 3.12.2 and the A worktree import path were verified. Twenty-two failed node IDs match the frozen README table and one additional ID is absent. This is not a zero-difference result. Evidence: `docs/verification/m5-3-full-backend-20261126.md`.
+- Registered selection evidence remains 28 groups, 309 node selections, zero problems and zero improvements.
