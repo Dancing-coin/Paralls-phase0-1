@@ -777,3 +777,9 @@
 - At A tip `ad6ef57cc575ff87b0daa86cfec1552d93a51942`, the Information, Morale, and Presence reads added by M6-5 were statically classified in `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`.
 - Information report publication and recipient-knowledge updates are trusted signed or post-delivery Owner writes. Morale reads roster/LifeState history at the committed casualty sequence before its Pool write. Presence validates breach/impact evidence and pinned revisions before writing Place. The HTTP routes accept authority inputs and return command results. No subject-facing production query route was found in the inspected A call graph.
 - This is static-only evidence. It does not implement `read_as` or establish absence of external readers. Principal qualification, visibility-to-FactType mapping, and `known_time` remain M2-2 dependencies. No code behavior changed and no tests ran.
+
+### H-A-110 | M5-5 Owner and invariant contract scope correction | 2026-11-26
+
+- The formal Owner definition already specifies declaration fields (`kind`, `domain`, `writes`, `denies`, `invariants`, `commands`, `resolvers`, `reads`, and related metadata). The gap is in implementation: A code has only an Owner ID allowlist, with no machine-readable declaration registry/compiler or complete code-consumable declaration set for migrated Owners. Package files intentionally do not own these declarations.
+- The invariant document requires a restricted expression and gives examples, but no complete grammar/operator registry was found. Resolver purity is required by the Resolver contract, but the package format has no consumed code-capability or side-effect attestation. M5-5 cannot safely implement those checks by inventing syntax or declarations.
+- Updated static catalog evidence: `docs/verification/m5-5-rule-catalog-coverage-20261126.md`. No code or tests changed. The audit is static-only and does not complete M5-5.

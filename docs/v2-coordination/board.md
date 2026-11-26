@@ -68,7 +68,7 @@
 ### M5-5 rule-catalog current-tip correction (2026-11-26)
 
 - At A tip `27c2aaa0`, resolution-order uniqueness/density and all four FactType identity values have regression coverage; the earlier H-A-099 statement that direct ordering assertions were absent is superseded by H-A-101/H-A-102. Current-tip validator/registry tests: `136 passed, 2 warnings in 3.32s`; evidence is `docs/verification/m5-5-rule-catalog-coverage-20261126.md` and raw output is `F:/paralls-verification/thread-a/m5-5-rule-catalog-current-tip-20261126-01/focused.log`.
-- M5-5 remains in progress. Remaining rules require an Owner declaration contract, a Resolver purity registration contract, or an invariant-expression contract, or are structurally inapplicable to the current flat impact-profile format. `temporal_effects` also lacks its formal entry/consumer/persistence contract. No implementation fields were invented.
+- M5-5 remains in progress. Formal Owner declaration fields exist, but code has no machine-readable declaration registry/compiler or complete code-consumable declaration set. Invariant expressions lack a complete grammar; Resolver purity lacks a consumed capability/side-effect attestation. Impact-profile cycles are not expressible in the flat format, and `temporal_effects` still lacks its entry/consumer/persistence contract. Clarified in H-A-110 and `docs/verification/m5-5-rule-catalog-coverage-20261126.md`.
 
 ## 三、待决（负责人需表态）
 
