@@ -1,9 +1,9 @@
 """Atomic Production/Facility resolution for the layered M6-5 gate impact."""
 from __future__ import annotations
 
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 import re
-from typing import Mapping
+from typing import Callable, Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, OwnerAuthorizedFragment
@@ -138,6 +138,7 @@ class FacilityGateLayeredAuthority:
         input_authority: SiegePhysicalInputAuthority,
         authority_ref: str,
         receipt_id: str,
+        resolver: Callable[..., Mapping[str, str]] | None = None,
     ) -> AppendBatchResult:
         input_event = input_authority.gate_impact_event_v2(
             authority_ref=authority_ref,
@@ -184,11 +185,46 @@ class FacilityGateLayeredAuthority:
         for layer in _LAYER_NAMES:
             projection = projections[layer]
             capacity = projection.value - projection.lower
-            applied = min(capacity, remaining)
+            fact_type = self.fact_type_for(receipt.gate_ref, layer)
+            if resolver is None:
+                applied = min(capacity, remaining)
+                next_value = projection.value - applied
+                next_remaining = remaining - applied
+            else:
+                plan = resolver(
+                    fact_type=fact_type,
+                    current_value=projection.value,
+                    lower_bound=projection.lower,
+                    remaining_damage=remaining,
+                )
+                if (
+                    not isinstance(plan, Mapping)
+                    or set(plan) != {
+                        "fact_type", "applied", "next_value", "remaining_damage",
+                    }
+                    or any(type(plan.get(field)) is not str for field in (
+                        "fact_type", "applied", "next_value", "remaining_damage",
+                    ))
+                ):
+                    return self._reject(receipt_id, "facility_gate_resolver_output_invalid")
+                try:
+                    applied = Decimal(plan["applied"])
+                    next_value = Decimal(plan["next_value"])
+                    next_remaining = Decimal(plan["remaining_damage"])
+                except InvalidOperation:
+                    return self._reject(receipt_id, "facility_gate_resolver_output_invalid")
+                if (
+                    plan["fact_type"] != fact_type
+                    or not applied.is_finite()
+                    or not next_value.is_finite()
+                    or not next_remaining.is_finite()
+                    or applied != min(capacity, remaining)
+                    or next_value != projection.value - applied
+                    or next_remaining != remaining - applied
+                ):
+                    return self._reject(receipt_id, "facility_gate_resolver_output_invalid")
             if applied <= 0:
                 continue
-            next_value = projection.value - applied
-            fact_type = self.fact_type_for(receipt.gate_ref, layer)
             specs = [("gameplay.pool.adjusted", {
                 "fact_type": fact_type,
                 "previous": format(projection.value, "f"),
@@ -198,7 +234,7 @@ class FacilityGateLayeredAuthority:
             })]
             specs.extend(self._threshold_events(projection, next_value, pools[fact_type]))
             event_specs[fact_type] = specs
-            remaining -= applied
+            remaining = next_remaining
             if layer == "latch-durability":
                 updated_latch_value = next_value
             if remaining <= 0:

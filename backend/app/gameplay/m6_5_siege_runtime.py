@@ -13,6 +13,8 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.facility_gate_layered_runtime import FacilityGateLayeredAuthority
 from app.gameplay.impact_gate_obligation import rebuild_impact_gate_obligations
+from app.gameplay.fact_type_registry import FactTypeRegistry
+from app.gameplay.l5_pipeline import Pipeline
 from app.gameplay.information_runtime import (
     INFORMATION_REPORT_EVENT,
     INFORMATION_REPORT_FACT_TYPE,
@@ -49,7 +51,9 @@ from app.gameplay.rule_pack_validator import load_pack
 from app.gameplay.package_migration_runtime import PackageArchive, PackageRef
 
 
-M6_5_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence"
+M6_5_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence_1_0_1"
+M6_5_LEGACY_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence"
+FACILITY_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_facility"
 INFORMATION_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_information"
 MORALE_OWNER_DOMAINS = {
     "Morale": "morale",
@@ -70,6 +74,30 @@ DEFAULT_MORALE_DEFINITIONS = MappingProxyType({
 PlaceResolver = Callable[
     [str, GameplayEvent], PlacePassabilityAssessment | None
 ]
+
+
+def _resolve_facility_gate_impact(inputs: Mapping[str, object], _params: Mapping[str, object]):
+    fact_type = inputs["fact_type"]
+    current_value = Decimal(str(inputs["current_value"]))
+    lower_bound = Decimal(str(inputs["lower_bound"]))
+    remaining_damage = Decimal(str(inputs["remaining_damage"]))
+    applied = min(max(current_value - lower_bound, Decimal(0)), remaining_damage)
+    return {
+        "fact_type": fact_type,
+        "applied": format(applied, "f"),
+        "next_value": format(current_value - applied, "f"),
+        "remaining_damage": format(remaining_damage - applied, "f"),
+    }
+
+
+def _resolve_presence_assessment(inputs: Mapping[str, object], _params: Mapping[str, object]):
+    return {"state": inputs["state"], "source_event_ids": inputs["source_event_ids"]}
+
+
+M6_5_RESOLVER_HANDLERS = {
+    "facility_gate_impact@1": _resolve_facility_gate_impact,
+    "presence_assessment@1": _resolve_presence_assessment,
+}
 
 
 def build_facility_integrity_authority(
@@ -163,6 +191,8 @@ class M6_5SiegeRuntime:
     facility: FacilityIntegrityAuthority | None
     layered_facility: FacilityGateLayeredAuthority | None
     information: InformationAuthority
+    impact_pipeline: Pipeline | None
+    impact_registry: FactTypeRegistry
     world_ref: str | None = None
     world_tick_provider: Callable[[], int | None] | None = None
 
@@ -193,12 +223,21 @@ class M6_5SiegeRuntime:
 
     def record_gate_impact_v2(self, receipt: GateImpactReceiptV2):
         evidence = self.physical_inputs.record_gate_impact_v2(receipt)
-        if not evidence.committed or self.layered_facility is None:
+        if not evidence.committed:
+            return evidence, None, ()
+        impact_event = self.physical_inputs.store().get_event(evidence.committed_event_ids[0])
+        if self.impact_pipeline is not None:
+            self._bind_impact_pipeline(impact_event)
+        if self.layered_facility is None:
             return evidence, None, ()
         result = self.layered_facility.apply_signed_impact(
             input_authority=self.physical_inputs,
             authority_ref=receipt.authority_ref,
             receipt_id=receipt.receipt_id,
+            resolver=(
+                self._resolve_facility_layer
+                if self.impact_pipeline is not None else None
+            ),
         )
         transaction = self.physical_inputs.store().get_transaction(result.transaction_id)
         dispatch_results = (
@@ -208,16 +247,78 @@ class M6_5SiegeRuntime:
         )
         return evidence, result, dispatch_results
 
+    def _resolve_facility_layer(
+        self, *, fact_type: str, current_value: Decimal, lower_bound: Decimal,
+        remaining_damage: Decimal,
+    ) -> Mapping[str, str]:
+        step = next(
+            step for step in self.impact_pipeline.steps
+            if step.fact_type_pattern == fact_type
+        )
+        return self.impact_registry.evaluate(step.resolver, {
+            "fact_type": fact_type,
+            "current_value": format(current_value, "f"),
+            "lower_bound": format(lower_bound, "f"),
+            "remaining_damage": format(remaining_damage, "f"),
+        })
+
+    def _bind_impact_pipeline(self, impact_event: GameplayEvent) -> Mapping[str, int]:
+        if self.impact_pipeline is None:
+            raise ValueError("m6_5_impact_pipeline_missing")
+        obligation = next(
+            item for item in rebuild_impact_gate_obligations(self.physical_inputs.store())
+            if item.obligation_id == f"impact_gate:{impact_event.event_id}"
+        )
+        revision_vector = dict(obligation.input_revision_vector)
+        return self.impact_pipeline.bind_inputs(
+            scopes=(obligation.gate_ref,) * len(self.impact_pipeline.steps),
+            revision_vectors=(revision_vector,) * len(self.impact_pipeline.steps),
+        )
+
     def record_presence_assessment(self, receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2):
         evidence = self.physical_inputs.record_presence_assessment(receipt)
         if not evidence.committed:
             return evidence, None
+        resolver_plan = None
+        if isinstance(receipt, PresenceAssessmentReceiptV2):
+            input_event = self.physical_inputs.store().get_event(evidence.committed_event_ids[0])
+            if self.impact_pipeline is None:
+                resolver_plan = {
+                    "state": receipt.state,
+                    "source_event_ids": (receipt.impact_event_id, input_event.event_id),
+                }
+            else:
+                impact_event = self.physical_inputs.store().get_event(receipt.impact_event_id)
+                self._bind_impact_pipeline(impact_event)
+                resolver_plan = self._resolve_presence_assessment(
+                    receipt=receipt,
+                    input_event=input_event,
+                )
         committed = self.presence.commit_signed_assessment(
             input_authority=self.physical_inputs,
             authority_ref=receipt.authority_ref,
             receipt_id=receipt.receipt_id,
+            resolver_plan=resolver_plan,
         )
         return evidence, committed
+
+    def _resolve_presence_assessment(
+        self,
+        *,
+        receipt: PresenceAssessmentReceiptV2,
+        input_event: GameplayEvent,
+    ) -> Mapping[str, object]:
+        fact_type = self.presence.stream_id(receipt.gate_ref).replace(
+            "place:", "fact:place:", 1,
+        )
+        step = next(
+            step for step in self.impact_pipeline.steps
+            if step.fact_type_pattern == fact_type
+        )
+        return self.impact_registry.evaluate(step.resolver, {
+            "state": receipt.state,
+            "source_event_ids": [receipt.impact_event_id, input_event.event_id],
+        })
 
     def recover_physical_input_obligations(
         self,
@@ -241,10 +342,16 @@ class M6_5SiegeRuntime:
                 event_type=GATE_IMPACT_INPUT_EVENT_V2,
             ):
                 receipt = GateImpactReceiptV2.model_validate(event.payload["receipt"])
+                if self.impact_pipeline is not None:
+                    self._bind_impact_pipeline(event)
                 result = self.layered_facility.apply_signed_impact(
                     input_authority=self.physical_inputs,
                     authority_ref=receipt.authority_ref,
                     receipt_id=receipt.receipt_id,
+                    resolver=(
+                        self._resolve_facility_layer
+                        if self.impact_pipeline is not None else None
+                    ),
                 )
                 transaction = self.physical_inputs.store().get_transaction(result.transaction_id)
                 if result.committed and transaction is not None:
@@ -260,11 +367,7 @@ class M6_5SiegeRuntime:
             if receipt_model is None:
                 continue
             receipt = receipt_model.model_validate(event.payload["receipt"])
-            result = self.presence.commit_signed_assessment(
-                input_authority=self.physical_inputs,
-                authority_ref=receipt.authority_ref,
-                receipt_id=receipt.receipt_id,
-            )
+            _, result = self.record_presence_assessment(receipt)
             results.append((event.event_id, result))
         return tuple(results)
 
@@ -318,7 +421,8 @@ def build_m6_5_siege_runtime(
     if package_archive is None:
         pack = load_pack(
             M6_5_PACK,
-            handlers={},
+            handlers=M6_5_RESOLVER_HANDLERS,
+            parent_packs={("county_siege_facility", "1.0.0"): FACILITY_PACK},
             owner_domains=MORALE_OWNER_DOMAINS,
             command_fact_outputs=command_outputs,
         )
@@ -329,6 +433,7 @@ def build_m6_5_siege_runtime(
         if not isinstance(morale_ref, PackageRef) or not isinstance(information_ref, PackageRef):
             raise ValueError("m6_5_package_consumer_package_refs_missing")
         pack = package_archive.resolve(morale_ref)
+    impact_pipeline = pack.pipelines.get("impact_gate")
     information_outputs = {
         "information.update_knowledge": {INFORMATION_KNOWLEDGE_FACT_TYPE},
     }
@@ -378,6 +483,8 @@ def build_m6_5_siege_runtime(
         facility=facility,
         layered_facility=layered_facility,
         information=information,
+        impact_pipeline=impact_pipeline,
+        impact_registry=pack.registry,
         world_ref=world_ref,
         world_tick_provider=world_tick_provider,
     )

@@ -1,0 +1,33 @@
+facility_gate_impact@1:
+  implementation: "code"
+  owner_ref: "Production"
+  reads: ["fact_type", "current_value", "lower_bound", "remaining_damage"]
+  writes_fact_types:
+    - "fact:facility:gate-03:durability"
+    - "fact:facility:gate-03:latch-durability"
+    - "fact:facility:gate-03:integrity"
+  input_schema: "impact_gate_layer_input@1"
+  output_schema: "impact_gate_layer_plan@1"
+  determinism_policy:
+    iteration_order: "resolution_order"
+    random: "none"
+    numeric_precision: "decimal"
+    rounding: "truncate"
+  layers:
+    - owner_ref: "Production"
+      writes_fact_types:
+        - "fact:facility:gate-03:durability"
+        - "fact:facility:gate-03:latch-durability"
+        - "fact:facility:gate-03:integrity"
+presence_assessment@1:
+  implementation: "code"
+  owner_ref: "Presence"
+  reads: ["state", "source_event_ids"]
+  writes_fact_types: ["fact:place:gate-03:passability"]
+  input_schema: "presence_assessment_input@1"
+  output_schema: "presence_assessment_plan@1"
+  determinism_policy:
+    iteration_order: "resolution_order"
+    random: "none"
+    numeric_precision: "fixed_point"
+    rounding: "truncate"

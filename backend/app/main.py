@@ -72,6 +72,7 @@ from app.gameplay.information_runtime import (
 from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
     INFORMATION_KNOWLEDGE_FACT_TYPE,
+    M6_5_RESOLVER_HANDLERS,
     MORALE_OWNER_DOMAINS,
     build_facility_gate_layered_authority,
     build_facility_integrity_authority,
@@ -1988,7 +1989,7 @@ def _reset_runtime_state(*, restore_gameplay: bool = False) -> None:
             deployment.archive_directories,
             deployment.trusted_content_hashes,
             base_directory=Path(WORKTREE_ROOT),
-            handlers={},
+            handlers=M6_5_RESOLVER_HANDLERS,
             owner_domains={**MORALE_OWNER_DOMAINS, "Information": "information"},
             command_fact_outputs={
                 "morale.refold": {

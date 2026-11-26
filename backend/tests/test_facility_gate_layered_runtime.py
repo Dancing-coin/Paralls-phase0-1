@@ -18,8 +18,10 @@ from app.gameplay.facility_gate_layered_runtime import (
 )
 from app.gameplay.m6_5_siege_runtime import (
     DEFAULT_MORALE_DEFINITIONS,
+    M6_5_RESOLVER_HANDLERS,
     build_m6_5_siege_runtime,
 )
+from app.gameplay.l5_pipeline import Pipeline
 from app.gameplay.pool_runtime import PoolDefinition, PoolThreshold
 from app.gameplay.siege_physical_input_runtime import (
     GateImpactReceiptV2,
@@ -175,9 +177,9 @@ def test_impact_gate_rebuild_pins_the_shared_input_revision_vector(tmp_path):
     assessment = PresenceAssessmentReceiptV2.model_validate(
         _presence_input(store, impact, "presence:shared-input-vector")
     )
-    assert runtime.record_presence_assessment(assessment)[1].committed
+    _, assessment_result = runtime.record_presence_assessment(assessment)
+    assert assessment_result.committed, assessment_result.failure
     store.close()
-
     reopened = DurableGameplayEventStore(
         database_path,
         event_schema_registry=create_stormnight_event_schema_registry(),
@@ -187,6 +189,114 @@ def test_impact_gate_rebuild_pins_the_shared_input_revision_vector(tmp_path):
         assert rebuilt.input_revision_vector == obligation.input_revision_vector
     finally:
         reopened.close()
+
+
+def test_impact_pipeline_binds_the_durable_input_snapshot(monkeypatch):
+    store, _, facility = _authorities()
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+    observed = []
+    original_bind_inputs = Pipeline.bind_inputs
+
+    def observe_binding(pipeline, *, scopes, revision_vectors):
+        observed.append((
+            bool(store.read_events(event_type="gameplay.facility.gate_impact_input_received@2")),
+            dict(revision_vectors[0]),
+        ))
+        return original_bind_inputs(
+            pipeline, scopes=scopes, revision_vectors=revision_vectors,
+        )
+
+    monkeypatch.setattr(Pipeline, "bind_inputs", observe_binding)
+    evidence, impact_result, _ = runtime.record_gate_impact_v2(
+        _receipt("impact:pipeline-input-snapshot")
+    )
+
+    assert evidence.committed and impact_result.committed
+    obligation, = runtime.impact_gate_obligations()
+    revision_vector = dict(obligation.input_revision_vector)
+    impact = store.get_event(evidence.committed_event_ids[0])
+    assessment = PresenceAssessmentReceiptV2.model_validate(
+        _presence_input(store, impact, "presence:pipeline-input-snapshot")
+    )
+    _, place_result = runtime.record_presence_assessment(assessment)
+
+    assert place_result.committed
+    assert observed == [(True, revision_vector), (True, revision_vector)]
+
+
+def test_presence_owner_rejects_pipeline_plan_that_disagrees_with_signed_input(monkeypatch):
+    def conflicting_presence_plan(inputs, _params):
+        return {
+            "state": "blocked",
+            "source_event_ids": inputs["source_event_ids"],
+        }
+
+    monkeypatch.setitem(
+        M6_5_RESOLVER_HANDLERS,
+        "presence_assessment@1",
+        conflicting_presence_plan,
+    )
+    store, _, facility = _authorities(magnitude="270")
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+    evidence, impact_result, _ = runtime.record_gate_impact_v2(
+        _receipt("impact:pipeline-presence-plan")
+    )
+    assert evidence.committed and impact_result.committed
+    impact = store.get_event(evidence.committed_event_ids[0])
+    assessment = PresenceAssessmentReceiptV2.model_validate(
+        _presence_input(store, impact, "presence:resolver-disagreement")
+    )
+    place_before = store.read_stream("place:gate-03:passability")
+
+    signed_input, place_result = runtime.record_presence_assessment(assessment)
+
+    assert signed_input.committed
+    assert place_result.failure.error_code == "place_assessment_resolver_output_invalid"
+    assert store.read_stream("place:gate-03:passability") == place_before
+
+
+def test_facility_owner_rejects_pipeline_plan_without_writing_pool_facts():
+    store, inputs, authority = _authorities()
+    receipt = _receipt("impact:resolver-plan-disagreement")
+    assert inputs.record_gate_impact_v2(receipt).committed
+    before = {
+        stream: store.read_stream(stream)
+        for stream in (
+            *(FacilityGateLayeredAuthority.fact_type_for(GATE, layer) for layer in LAYERS),
+            FacilityGateLayeredAuthority.latch_fact_type_for(GATE),
+        )
+    }
+
+    def conflicting_plan(*, fact_type, **_inputs):
+        return {
+            "fact_type": fact_type,
+            "applied": "19",
+            "next_value": "81",
+            "remaining_damage": "1",
+        }
+
+    result = authority.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=receipt.receipt_id,
+        resolver=conflicting_plan,
+    )
+
+    assert result.failure.error_code == "facility_gate_resolver_output_invalid"
+    assert {
+        stream: store.read_stream(stream)
+        for stream in before
+    } == before
 
 
 def test_layered_initialization_reuses_existing_integrity_stream():

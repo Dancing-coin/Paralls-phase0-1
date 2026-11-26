@@ -173,6 +173,7 @@ class PlacePassabilityAuthority:
         input_authority: SiegePhysicalInputAuthority,
         authority_ref: str,
         receipt_id: str,
+        resolver_plan: Mapping[str, object] | None = None,
     ) -> AppendBatchResult:
         input_event = input_authority.presence_assessment_event(
             authority_ref=authority_ref,
@@ -184,7 +185,7 @@ class PlacePassabilityAuthority:
             return self._reject(receipt_id, "place_assessment_input_store_mismatch")
         if input_event.event_type == PRESENCE_ASSESSMENT_INPUT_EVENT_V2:
             receipt_v2 = PresenceAssessmentReceiptV2.model_validate(input_event.payload["receipt"])
-            return self._commit_impact_assessment(receipt_v2, input_event)
+            return self._commit_impact_assessment(receipt_v2, input_event, resolver_plan)
         receipt = PresenceAssessmentReceipt.model_validate(input_event.payload["receipt"])
         assessment = PlacePassabilityAssessment(
             state=receipt.state,
@@ -213,7 +214,10 @@ class PlacePassabilityAuthority:
         )
 
     def _commit_impact_assessment(
-        self, receipt: PresenceAssessmentReceiptV2, input_event: GameplayEvent
+        self,
+        receipt: PresenceAssessmentReceiptV2,
+        input_event: GameplayEvent,
+        resolver_plan: Mapping[str, object] | None,
     ) -> AppendBatchResult:
         command_id = f"place-impact-assessment:{receipt.impact_event_id}"
         prior = self.store.get_by_idempotency(_PRESENCE_PRINCIPAL, command_id)
@@ -222,6 +226,15 @@ class PlacePassabilityAuthority:
             if input_event.event_id not in event.payload["source_event_ids"]:
                 return self._reject(command_id, "place_impact_already_assessed")
             return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+
+        expected_sources = (receipt.impact_event_id, input_event.event_id)
+        if (
+            not isinstance(resolver_plan, Mapping)
+            or set(resolver_plan) != {"state", "source_event_ids"}
+            or resolver_plan.get("state") != receipt.state
+            or resolver_plan.get("source_event_ids") != expected_sources
+        ):
+            return self._reject(command_id, "place_assessment_resolver_output_invalid")
 
         impact_event = self.store.get_event(receipt.impact_event_id)
         place_stream = self.stream_id(receipt.gate_ref)

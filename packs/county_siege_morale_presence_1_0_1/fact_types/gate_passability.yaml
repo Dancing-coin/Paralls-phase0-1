@@ -1,0 +1,15 @@
+"fact:place:gate-03:passability":
+  owner_ref: "Presence"
+  primitive: "place"
+  place_kind: "passability"
+  identity: "entity_ref"
+  visibility:
+    class: "faction"
+    learnable_by: ["faction:zhaoling-garrison"]
+    channel: "direct"
+    persistence: "permanent"
+  event_schema_ref: "place@v1"
+  invariant_refs: ["P1", "P6", "P7"]
+  cadence: "event"
+  host: "ue"
+  unknown_policy: "reject"

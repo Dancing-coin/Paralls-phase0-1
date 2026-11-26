@@ -14,8 +14,11 @@ from app.config import (
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.facility_integrity_runtime import FacilityIntegrityAuthority
 from app.gameplay.m6_5_siege_runtime import (
+    FACILITY_PACK,
     INFORMATION_PACK,
+    M6_5_LEGACY_PACK,
     M6_5_PACK,
+    M6_5_RESOLVER_HANDLERS,
     MORALE_OWNER_DOMAINS,
     build_facility_integrity_authority,
     build_facility_gate_layered_authority,
@@ -84,11 +87,23 @@ def _facility_pool():
 
 
 def _m6_5_archive():
-    morale_ref = PackageRef("county_siege_morale_presence", "1.0.0")
+    morale_ref = PackageRef("county_siege_morale_presence", "1.0.1")
+    legacy_morale_ref = PackageRef("county_siege_morale_presence", "1.0.0")
     information_ref = PackageRef("county_siege_information", "1.0.0")
+    facility_pack = load_pack(FACILITY_PACK, handlers={})
+    legacy_morale_pack = load_pack(
+        M6_5_LEGACY_PACK,
+        handlers={},
+        owner_domains=MORALE_OWNER_DOMAINS,
+        command_fact_outputs={
+            "morale.refold": {MORALE_FACT},
+            "presence.reevaluate": {PLACE_STREAM},
+        },
+    )
     morale_pack = load_pack(
         M6_5_PACK,
-        handlers={},
+        handlers=M6_5_RESOLVER_HANDLERS,
+        parent_packs={("county_siege_facility", "1.0.0"): FACILITY_PACK},
         owner_domains=MORALE_OWNER_DOMAINS,
         command_fact_outputs={
             "morale.refold": {MORALE_FACT},
@@ -104,12 +119,18 @@ def _m6_5_archive():
         },
     )
     return PackageArchive(
-        (morale_pack, information_pack),
+        (facility_pack, legacy_morale_pack, morale_pack, information_pack),
         expected_content_hashes={
+            PackageRef("county_siege_facility", "1.0.0"): facility_pack.content_hash,
+            legacy_morale_ref: legacy_morale_pack.content_hash,
             morale_ref: morale_pack.content_hash,
             information_ref: information_pack.content_hash,
         },
-    ), {"morale_presence": morale_ref, "information": information_ref}
+    ), {
+        "morale_presence": morale_ref,
+        "legacy_morale_presence": legacy_morale_ref,
+        "information": information_ref,
+    }
 
 
 def test_m6_5_runtime_can_consume_world_pinned_package_archive(monkeypatch):
@@ -126,12 +147,30 @@ def test_m6_5_runtime_can_consume_world_pinned_package_archive(monkeypatch):
     )
 
     assert runtime.information is not None
+    assert runtime.impact_pipeline.pipeline_id == "impact_gate"
+    assert len(runtime.impact_pipeline.steps) == 4
+
+
+def test_m6_5_runtime_keeps_legacy_package_pin_without_compiled_pipeline():
+    archive, refs = _m6_5_archive()
+    runtime = build_m6_5_siege_runtime(
+        store=GameplayEventStore(),
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        package_archive=archive,
+        package_refs={
+            "morale_presence": refs["legacy_morale_presence"],
+            "information": refs["information"],
+        },
+    )
+
+    assert runtime.impact_pipeline is None
 
 
 def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
     morale_hash = load_pack(
         M6_5_PACK,
-        handlers={},
+        handlers=M6_5_RESOLVER_HANDLERS,
+        parent_packs={("county_siege_facility", "1.0.0"): FACILITY_PACK},
         owner_domains=MORALE_OWNER_DOMAINS,
         command_fact_outputs={
             "morale.refold": {MORALE_FACT},
@@ -146,17 +185,30 @@ def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
             "information.update_knowledge": {"fact:information:knowledge"},
         },
     ).content_hash
+    facility_hash = load_pack(FACILITY_PACK, handlers={}).content_hash
     archive = load_deployment_package_archive(
         {
+            "county_siege_facility@1.0.0": "packs/county_siege_facility",
             "county_siege_morale_presence@1.0.0": "packs/county_siege_morale_presence",
+            "county_siege_morale_presence@1.0.1": "packs/county_siege_morale_presence_1_0_1",
             "county_siege_information@1.0.0": "packs/county_siege_information",
         },
         {
-            "county_siege_morale_presence@1.0.0": morale_hash,
+            "county_siege_facility@1.0.0": facility_hash,
+            "county_siege_morale_presence@1.0.0": load_pack(
+                M6_5_LEGACY_PACK,
+                handlers={},
+                owner_domains=MORALE_OWNER_DOMAINS,
+                command_fact_outputs={
+                    "morale.refold": {MORALE_FACT},
+                    "presence.reevaluate": {PLACE_STREAM},
+                },
+            ).content_hash,
+            "county_siege_morale_presence@1.0.1": morale_hash,
             "county_siege_information@1.0.0": information_hash,
         },
         base_directory=M6_5_PACK.parents[1],
-        handlers={},
+        handlers=M6_5_RESOLVER_HANDLERS,
         owner_domains={**MORALE_OWNER_DOMAINS, "Information": "information"},
         command_fact_outputs={
             "morale.refold": {MORALE_FACT},
@@ -169,7 +221,7 @@ def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
         morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
         package_archive=archive,
         package_refs={
-            "morale_presence": PackageRef("county_siege_morale_presence", "1.0.0"),
+            "morale_presence": PackageRef("county_siege_morale_presence", "1.0.1"),
             "information": PackageRef("county_siege_information", "1.0.0"),
         },
         world_ref="world:siege",

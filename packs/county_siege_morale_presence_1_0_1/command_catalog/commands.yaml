@@ -1,0 +1,14 @@
+morale.refold:
+  version: 1
+  handled_by: "Morale"
+  payload_schema: "casualty_event_ref@1"
+  requires_authority: true
+  idempotency_shape: "command_id"
+  description: "Refold configured garrison morale from committed casualty evidence."
+presence.reevaluate:
+  version: 1
+  handled_by: "Presence"
+  payload_schema: "breach_event_ref@1"
+  requires_authority: true
+  idempotency_shape: "command_id"
+  description: "Reevaluate gate passability from trusted Presence inputs."

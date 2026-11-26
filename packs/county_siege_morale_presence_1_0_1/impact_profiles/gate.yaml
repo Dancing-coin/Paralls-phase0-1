@@ -1,0 +1,16 @@
+gate@1:
+  target_entity_type: "gate"
+  atomicity: "obligation"
+  layers:
+    - order: 10
+      fact_type: "fact:facility:gate-03:durability"
+      resolver: "facility_gate_impact@1"
+    - order: 20
+      fact_type: "fact:facility:gate-03:latch-durability"
+      resolver: "facility_gate_impact@1"
+    - order: 30
+      fact_type: "fact:facility:gate-03:integrity"
+      resolver: "facility_gate_impact@1"
+    - order: 40
+      fact_type: "fact:place:gate-03:passability"
+      resolver: "presence_assessment@1"

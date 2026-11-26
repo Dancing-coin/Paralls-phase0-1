@@ -1,6 +1,6 @@
 {
-  "head": "2e6cc2ee",
-  "description": "M6-5 layered gate impact runtime, durable input recovery, HTTP route and Facility Pool FactType registration",
+  "head": "b70308aa",
+  "description": "M6-5 layered gate impact runtime, durable input recovery, HTTP route, Facility Pool FactType registration and Pipeline Resolver execution",
   "tests": [
     {"test_name":"tests/test_world_replay_checkpoint_application.py::test_siege_physical_input_participant_survives_durable_cut_tail","outcome":"passed","failures":[]},
     {"test_name":"tests/test_facility_gate_layered_runtime.py::test_impact_gate_rebuild_pins_the_shared_input_revision_vector","outcome":"passed","failures":[]},
@@ -24,6 +24,9 @@
     {"test_name":"tests/test_m6_5_siege_runtime.py::test_m6_5_layered_gate_impact_http_gateway_commits_facility_layers","outcome":"passed","failures":[]},
     {"test_name":"tests/test_m6_5_siege_runtime.py::test_layered_gate_profile_builds_three_owner_pools_without_demo_defaults","outcome":"passed","failures":[]},
     {"test_name":"tests/test_m6_5_siege_runtime.py::test_layered_gate_profile_requires_all_durability_layer_values","outcome":"passed","failures":[]},
-    {"test_name":"tests/test_rule_pack_validator.py::test_facility_gate_pack_registers_pool_and_machine_fact_types","outcome":"passed","failures":[]}
+    {"test_name":"tests/test_rule_pack_validator.py::test_facility_gate_pack_registers_pool_and_machine_fact_types","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_impact_pipeline_binds_the_durable_input_snapshot","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_presence_owner_rejects_pipeline_plan_that_disagrees_with_signed_input","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_facility_gate_layered_runtime.py::test_facility_owner_rejects_pipeline_plan_without_writing_pool_facts","outcome":"passed","failures":[]}
   ]
 }
