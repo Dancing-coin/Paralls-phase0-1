@@ -33,6 +33,18 @@ After implementation, with the same `PYTHONPATH` and interpreter:
 
 Raw command output is under `F:\paralls-verification\thread-a\m2-2-information-event-time-20261127-02\`. The full backend suite was not run for this increment.
 
+## Full backend verification
+
+The required full backend run was then executed with `PYTHONPATH` set to the A worktree, `GIT_CONFIG_COUNT=0`, and `TEMP`, `TMP`, `TMPDIR`, and pytest `--basetemp` all rooted under `F:\paralls-verification\thread-a\m2-2-information-event-time-full-20261127-01\`. Python 3.12.2 and the A worktree `app.__file__` were verified before the run.
+
+```text
+pytest -v backend/tests
+10,744 passed, 22 failed, 2 skipped, 2 xfailed, 227 warnings in 1377.68s (0:22:57)
+exit code 1
+```
+
+The 21 failures in the calibration, Godot or external-engine, cold-ready, population harness/capacity/recovery, and role-presentation files reproduced at parent `207dd8d7` in a focused parent run. The remaining full-run `runtime_process_transport` failure passed when isolated on both parent and current tip, so it is an order/environment-sensitive full-run failure rather than an Information regression. No Information report test failed. This is a full-run result with failures, not a full-suite pass. The first interrupted attempt wrote a D-drive pytest directory before its process was stopped. Its owned 546.70 MB of regular files were moved to the F-drive evidence directory. The rerun and all retained pytest basetemp data used F drive only.
+
 ## Remaining M2-2 work
 
 M2-2 remains blocked and U7 is unmet. There is no shared principal qualification source or selector interpreter, no production event-type-to-FactType visibility mapping, and no identified subject-facing Ownership/Credential reader to wire. Other event types still have unknown `event_time` unless their authoritative producer is explicitly connected.
