@@ -886,3 +886,7 @@
 
 - The current A tip passed the combined L5 declaration and loading regression: `test_rule_pack_validator.py`, `test_l5_reaction.py`, `test_l5_play_pattern.py`, and `test_l5_workflow.py` returned `162 passed, 2 warnings` with Python 3.12.2 and the A-worktree import path.
 - This verifies offline reaction, pipeline/workflow/play-pattern contracts and rule-pack loading. Production application activation, deployment package dispatch, UE transport, and a complete siege run remain unverified.
+### H-A-128 | M6-5 startup and runtime current-tip verification | 2026-11-27
+
+- The current A tip passed `test_m6_5_siege_runtime.py` and `test_runtime_asgi.py`: `55 passed, 6 warnings` with Python 3.12.2 and the A-worktree import path.
+- The tests cover package-consumer construction, startup assembly, dispatch/recovery paths, and ASGI lifecycle behavior. Production deployment, authoritative Gate values, UE transport, and a complete external siege run remain unverified.
