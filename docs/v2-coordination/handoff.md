@@ -904,3 +904,9 @@
 
 - Files from the A full-run pytest directory `D:/codex-temp/user-temp/pytest-of-User/pytest-3354` were moved to `F:/paralls-verification/thread-a/migrated-pytest-3354/`. The source was verified file-empty afterward.
 - Deleting only the empty source directory was attempted but rejected by execution policy. No other D-drive content was touched.
+
+### H-A-132 | M3-1 current-tip revalidation | 2026-11-27
+
+- At A tip `3978f4f9ecc02990e2be8d09681a3beaed40ad58`, `OwnerCommitBuilder` focused tests returned `23 passed, 2 warnings`. Frozen ownership selection returned `selected=24 problems=0 improvements=0`; frozen shared-replay returned `selected=990 problems=0 improvements=0`.
+- Raw outputs are retained under `F:/paralls-verification/thread-a/m3-1-current-tip-20261127-02/`. This is slice-level current-tip evidence. The latest full backend suite remains a merge-state result with `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit code 1, and is not attributed to M3-1.
+- M3-1 remains `待门禁`; no integration or main branch was modified.

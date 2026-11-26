@@ -48,7 +48,7 @@
 | M2-4 投影增量推进 | A | 待门禁 | 现有 `GameplayProjectionReplay` / `GameplayProjectionStartup`；证据 `docs/verification/m2-4-projection-incremental-20261123.md` | replay/startup 定向 15 passed；cursor、stream 连续性、失败关闭与 checkpoint-free rebuild 有测试；未修改共享 replay 源码。缓存性能方案已由共享 Owner 文档改列 M3-2 `StoreReadSnapshot` | 7 |
 | M2-5 B4 前置设计 | A | 待门禁 | `docs/verification/g2-visibility-budget/b4-handoff-design-20261122.md` | 当前调用链与事务接口已静态核对。实施须负责人确认。 | 4 |
 | M2-6 首条生产流受 epoch 保护 | A | 阻塞 | 实现 + 证据 | 待负责人选流并确定存储核心变更边界，见 H-A-008 | 4 |
-| M3-1 `OwnerCommitBuilder` | A | 待门禁 | `docs/verification/m3-1-owner-commit-builder-20261122.md`；当前 tip `9cee2f25` 重验证定向 23 passed，ownership/shared-replay 24/990 problems=0；旧全量证据 10,418 passed、24 个既有失败，逐节点对照新增 0 | 共享机制已在当前 tip 重验证；全量未在当前 tip 重跑，仍需合并门禁 | 3 |
+| M3-1 `OwnerCommitBuilder` | A | 待门禁 | `docs/verification/m3-1-owner-commit-builder-20261122.md`；当前 tip `3978f4f9` 重验证定向 23 passed，ownership/shared-replay 24/990 problems=0 | 共享机制当前 tip 已重验证；最新全量仍为合并状态非绿（10,761 passed、5 failed），仍需合并门禁 | 3 |
 | M3-2 `StoreReadSnapshot` 推广 | A | 待门禁 | `7c24d136`，Credential supersede 与 LandRight presentation；`docs/verification/m3-2-store-read-snapshot-20261122.md` | 定向 33 passed，七组选集 1,191 节点零差异。全量退出 1，24 失败与 M1-3 同签名，比 22 节点冻结基线多两项既有本地失败 | 3 |
 | M3-3 R2 推广 | A/B | 待开工 | 按域并入 | 每域单独提交 | 7 |
 | M3-4 `pinned_revisions` 校验 | A | 阻塞 | — | S-4 未决 | 3 |
