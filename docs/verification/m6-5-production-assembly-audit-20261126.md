@@ -47,3 +47,9 @@ This correction is static-only at A tip `38f88408`. No code or tests changed in 
 - The documentation-only follow-up did not change runtime source files. At exact tip `f9ed782d690f4796dbc1ae517bbc105fa8fddbbe`, `test_m6_5_siege_runtime.py` plus `test_facility_gate_layered_runtime.py` returned `51 passed, 6 warnings in 1.96s`, exit 0.
 - Python `3.12.2`, SQLite `3.43.1`, and `app.__file__` under the A worktree were verified. Raw output is `F:/paralls-verification/thread-a/m6-5-current-tip-20261126-04/pytest.log`.
 - This verifies the focused recovery/runtime tests at the current documentation tip. It does not verify the missing formal obligation metadata, production deployment, Gate values, UE transport, frozen selections, or the full backend suite.
+
+## Formal obligation shape cross-check
+
+The external Architecture v2 settlement contract (`docs/architecture-v2/06-模型与结算/02-跨域结算.md`, lines 131-161) defines the required obligation shape as `obligation_id`, `pipeline_ref`, `completed_steps`, `pending_steps`, `pending_reason` with values `rejected | unknown | timeout | host_unavailable`, `owner_refs`, `recovery_action` with values `retry | reconcile | manual | compensate`, and `deadline_world_tick`. It also requires unknown outcomes to be checked by the original idempotency key before retry, timeout to remain unknown without automatic rollback, and compensation to append events.
+
+This narrows the implementation gap. `impact_gate_obligation.py` still lacks all fields beyond `obligation_id`, `gate_ref`, `status`, and receipt IDs. The formal source does not specify the M6-5 pipeline reference, responsible Owner mapping, or deadline source. Those inputs remain required before adding the projection fields. No placeholder deadline or inferred pipeline was added.

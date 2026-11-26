@@ -659,3 +659,9 @@
 - At A tip `f9ed782d690f4796dbc1ae517bbc105fa8fddbbe`, the documentation-only follow-up was verified with `test_m6_5_siege_runtime.py` and `test_facility_gate_layered_runtime.py`: `51 passed, 6 warnings in 1.96s`, exit 0.
 - Python 3.12.2, SQLite 3.43.1, and A-worktree `app.__file__` were verified. Raw output: `F:/paralls-verification/thread-a/m6-5-current-tip-20261126-04/pytest.log`.
 - This is focused runtime evidence only. Formal obligation metadata, production Gate configuration, deployment, UE transport, frozen selections, and full backend regression remain unverified.
+
+### H-A-089 | M6-5 obligation formal shape cross-check | 2026-11-26
+
+- The external settlement contract now confirms the obligation fields and enums: `pipeline_ref`, `completed_steps`, `pending_steps`, `pending_reason` (`rejected | unknown | timeout | host_unavailable`), `owner_refs`, `recovery_action` (`retry | reconcile | manual | compensate`), and `deadline_world_tick`, alongside `obligation_id`.
+- The same contract requires original-idempotency lookup before retrying unknown results, no automatic rollback on timeout, and append-only compensation events.
+- This removes ambiguity about field names and allowed values. It does not provide M6-5-specific pipeline identity, Owner mapping, or deadline source. The runtime will not invent those values. `impact_gate_obligation.py` remains incomplete and no code was changed.
