@@ -890,3 +890,8 @@
 
 - The current A tip passed `test_m6_5_siege_runtime.py` and `test_runtime_asgi.py`: `55 passed, 6 warnings` with Python 3.12.2 and the A-worktree import path.
 - The tests cover package-consumer construction, startup assembly, dispatch/recovery paths, and ASGI lifecycle behavior. Production deployment, authoritative Gate values, UE transport, and a complete external siege run remain unverified.
+### H-A-129 | Current A-tip full backend suite | 2026-11-27
+
+- Full `backend/tests` run at current A tip with Python 3.12.2 and all pytest temporary paths on F: returned `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit code 1, after about 22 minutes.
+- The five failures were external or pre-existing environment/runtime families: missing `tokenizers`, Godot headless parse errors, population cold-ready report schema, recovery probe Git configuration, and a role-presentation Godot headless probe. This run does not establish a full-suite pass and does not identify an Architecture v2 M5/M6 focused-path failure.
+- The result is recorded as merge-state full-suite evidence only, separate from individual slice verification.
