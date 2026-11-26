@@ -27,7 +27,7 @@
 | M1-4 Place 原语 | A | 待开工 | 同上 | 第 3 波后 | 3 |
 | M1-5 Process 归并 | A | 待开工 | 同上 | S-5 已定：排在域迁移之后 | 3 |
 | M2-1 读取边界清单更新 | A | 进行中 | Ownership / Credential 及 M6-5 Information、Morale、Presence、impact Pipeline 当前调用静态分类见 `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`；H-A-074、H-A-086、H-A-109、H-A-116 | 本增量为静态完成；随各域迁移继续更新。主体读取仍依赖 M2-2 | 4 |
-| M2-2 `read_as` | A | 阻塞 | 静态合同审计 `docs/verification/m2-2-read-as-contract-audit-20261126.md`，event_time 存储增量见 H-A-117 | GameplayEvent 顶层可选 event_time 已实现，旧事件读取为 unknown 且序列化时省略；仍缺权威时间生产者、公共 principal selector 解释器与 event_type→FactType/visibility 映射。Ownership/Credential 调用方已完成静态分类，后续新读者仍须分类 | 4 |
+| M2-2 `read_as` | A | 阻塞 | 静态合同审计 `docs/verification/m2-2-read-as-contract-audit-20261126.md`；存储基础 H-A-117；Information 报告事件时间生产者 `583cf8df`，证据 `docs/verification/m2-2-information-event-time-20261127.md` | Information 报告发布将已验证的 `world_now` 写入顶层 `event_time`；旧事件仍为 unknown。仍缺跨域权威时间生产者、公共 principal qualification/selector 解释器与 event_type→FactType/visibility 映射。Ownership/Credential 当前调用均为可信内部读取，无已识别主体读取入口；新读者仍须分类 | 4 |
 | M2-3 known_time 推广 | A | 待开工 | 同上 | 随 M2-2 | 4 |
 | M2-4 投影增量推进 | A | 待门禁 | 现有 `GameplayProjectionReplay` / `GameplayProjectionStartup`；证据 `docs/verification/m2-4-projection-incremental-20261123.md` | replay/startup 定向 15 passed；cursor、stream 连续性、失败关闭与 checkpoint-free rebuild 有测试；未修改共享 replay 源码。缓存性能方案已由共享 Owner 文档改列 M3-2 `StoreReadSnapshot` | 7 |
 | M2-5 B4 前置设计 | A | 待门禁 | `docs/verification/g2-visibility-budget/b4-handoff-design-20261122.md` | 当前调用链与事务接口已静态核对。实施须负责人确认。 | 4 |

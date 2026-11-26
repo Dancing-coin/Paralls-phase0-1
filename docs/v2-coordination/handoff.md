@@ -831,3 +831,10 @@
 - Full backend suite: 10,761 passed, 5 failed, 2 skipped, 2 xfailed, exit 1. Four failures reproduced on parent `6bea7490`; the recovery-measurement node passed on both parent and current after clearing malformed process Git-config override state.
 - Evidence: `docs/verification/m2-2-read-as-contract-audit-20261126.md`; raw outputs: `F:/paralls-verification/thread-a/m2-2-event-time-20261127-01/`.
 - M2-2 remains blocked. There is still no authoritative event-time producer, shared principal selector interpreter, or production event-type to FactType/visibility mapping. This increment does not implement `read_as` or satisfy U7.
+
+### H-A-118 | M2-2 Information report event-time producer | 2026-11-27
+
+- Commit `583cf8df` writes the validated publication `world_now` to the top-level `GameplayEvent.event_time` for Information report facts. The existing `published_at_world_tick` payload, event identity, visibility, and retry contract remain unchanged. Legacy events remain unknown.
+- TDD evidence: before the implementation, `test_information_owner_publishes_signed_report_and_replays_after_window` failed because `report.event_time` was `None`; after implementation the Information runtime file returned 12 passed and the event persistence file returned 26 passed.
+- Frozen results: Information report selection `25/0/0`, Ownership `24/0/0`, shared-replay `990/0/0`. Python 3.12.2, SQLite 3.43.1, `app.__file__` inside the A worktree. Raw outputs are under `F:/paralls-verification/thread-a/m2-2-information-event-time-20261127-02/`.
+- This provides a producer for this Information event only. M2-2 remains blocked and U7 remains unmet pending principal qualification and selector semantics, event-type-to-FactType visibility mapping, and a subject-facing reader. Full backend suite was not run for this increment.
