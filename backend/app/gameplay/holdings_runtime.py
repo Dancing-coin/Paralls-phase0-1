@@ -748,6 +748,9 @@ class HoldingsAuthorityService:
             self._store, principal=self._principal_ref, idempotency_key=idempotency_key,
             payload_digest=digest, error_factory=HoldingsError,
             missing_result_code="holdings_idempotency_missing_result",
+            transaction_mismatch_code="holdings_replay_transaction_mismatch",
+            event_count_mismatch_code="holdings_replay_event_count_mismatch",
+            event_missing_code="holdings_replay_event_missing",
         )
 
     def _append(

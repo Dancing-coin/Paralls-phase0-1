@@ -1260,6 +1260,9 @@ class OwnershipAuthorityService:
             self._store, principal=self._PRINCIPAL, idempotency_key=idempotency_key,
             payload_digest=digest, error_factory=OwnershipRuntimeError,
             missing_result_code="ownership_idempotency_missing_result",
+            transaction_mismatch_code="ownership_replay_transaction_mismatch",
+            event_count_mismatch_code="ownership_replay_event_count_mismatch",
+            event_missing_code="ownership_replay_event_missing",
         )
 
     def _append(self, command_id: str, idempotency_key: str, digest: str, event_type: str, payload: dict[str, str], causation_id: str, correlation_id: str, projection: OwnershipProjection) -> AppendBatchResult:

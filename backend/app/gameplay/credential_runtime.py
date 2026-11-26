@@ -603,33 +603,13 @@ class CredentialAuthorityService:
             self._store, principal=principal, idempotency_key=idempotency_key,
             payload_digest=digest, error_factory=CredentialRuntimeError,
             missing_result_code="credential_idempotency_missing_result",
+            transaction_mismatch_code="credential_replay_transaction_mismatch",
+            event_count_mismatch_code="credential_replay_event_count_mismatch",
+            event_missing_code="credential_replay_event_missing",
+            expected_event_types=event_types,
+            expected_command_id=command_id,
+            expected_transaction_id=f"tx:{command_id}",
         )
-        if result is None:
-            return None
-        if not result.committed or result.command_id != command_id or result.transaction_id != f"tx:{command_id}":
-            raise CredentialRuntimeError("credential_replay_transaction_mismatch")
-        batch = self._store.get_transaction(result.transaction_id)
-        if (batch is None or batch.transaction_id != result.transaction_id or batch.command_id != command_id
-                or batch.idempotency_record.principal_ref != principal
-                or batch.idempotency_record.idempotency_key != idempotency_key
-                or batch.idempotency_record.payload_digest != digest):
-            raise CredentialRuntimeError("credential_replay_transaction_mismatch")
-        ids = result.committed_event_ids
-        if len(ids) != len(event_types) or len(set(ids)) != len(ids) or len(batch.events) != len(event_types):
-            raise CredentialRuntimeError("credential_replay_event_count_mismatch")
-        resolved = []
-        for event_id in ids:
-            try:
-                resolved.append(self._store.get_event(event_id))
-            except KeyError as error:
-                raise CredentialRuntimeError("credential_replay_event_missing") from error
-        if (ids != [event.event_id for event in batch.events]
-                or tuple(event.event_type for event in resolved) != event_types
-                or any(event != original or event.transaction_id != batch.transaction_id or event.command_id != command_id
-                       for event, original in zip(resolved, batch.events))
-                or result.global_sequence_range != (resolved[0].global_sequence, resolved[-1].global_sequence)
-                or result.resulting_stream_revisions != {event.stream_id: event.stream_revision for event in resolved}):
-            raise CredentialRuntimeError("credential_replay_transaction_mismatch")
         return result
 
 
