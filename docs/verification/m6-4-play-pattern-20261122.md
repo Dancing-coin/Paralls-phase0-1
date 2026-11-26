@@ -6,6 +6,18 @@
 
 H8 / C6 由严格的声明字段和输出类型约束。发现顶层 `writes` 返回 `pattern_declares_writes`。其他未知字段、内联定义和无版本的包引用返回 `pattern_schema_invalid`。名称必须已在对应目录登记。运行时入口尚未接线。
 
+## Current-tip revalidation, 2026-11-27
+
+At A tip `90e72a67`, the focused Play Pattern, RulePack Validator, Reaction and Workflow command returned **162 passed, 2 warnings** under Python 3.12.2 with the A-worktree `PYTHONPATH` and explicit F-drive pytest basetemp.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| M6-4 Play Pattern, 12 nodes | `selected=12 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-4-current-tip-20261127-01\play-pattern\` |
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-4-current-tip-20261127-01\ownership\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-4-current-tip-20261127-01\shared-replay\` |
+
+No code changed in this revalidation. Production application registration/activation, combined pattern execution, UE transport, complete siege execution and the current-tip full backend suite remain unverified. M6-4 remains `待门禁`.
+
 ## 验证
 
 Python 3.12.2，SQLite 3.43.1。`PYTHONPATH=F:/codex-temp/a-ip-f759a465/backend`，`app.__file__` 核验为该检出内的 `backend/app/__init__.py`。
