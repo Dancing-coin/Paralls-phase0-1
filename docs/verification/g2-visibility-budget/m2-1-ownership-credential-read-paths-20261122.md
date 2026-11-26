@@ -58,3 +58,17 @@ Code snapshot: A tip `29976744c6b43a4f67c71c9fc2fa9196f3de4281`. Static search a
 | `fixed_offer_purchase`, `gift_runtime`, `ownership_contract_debt_sample` | Trusted domain preconditions or sample-only | Purchase/gift writers verify the seller/donor right before append. The collateral reader is a sample flow and remains outside a production read claim. |
 
 No Ownership/Credential production subject-facing query path was identified in the inspected A call graph. This does not establish that callers elsewhere cannot expose these results. The public validator remains an unconnected candidate interface, and any future production route must pass through a principal-aware boundary. The exact direct callers and unresolved deployment surface are static-only; M2-2 remains responsible for enforcement once the event-time and principal qualification contracts are available.
+
+## 2026-11-27 M6-5 impact Pipeline read-path update
+
+Code snapshot: A branch tip `2a46df6303228993161ccb9f02e1f789083b4134`. Static search covered `backend/app`, `backend/tests`, and `scripts` for `record_gate_impact_v2`, `record_presence_assessment`, `impact_gate_obligations`, `recover_physical_input_obligations`, and `impact_pipeline`.
+
+| Read path | Classification | Evidence and scope |
+|---|---|---|
+| `M6_5SiegeRuntime._bind_impact_pipeline` and `_resolve_facility_layer` | Trusted Owner settlement input | Called from signed Gate-impact processing and durable recovery. It reconstructs the obligation snapshot from the authenticated impact event sequence, binds the compiled Pipeline to that four-stream revision vector, and evaluates the registered Facility resolver. `FacilityGateLayeredAuthority.apply_signed_impact` validates the plan against the signed impact and current Pool state before committing. |
+| `M6_5SiegeRuntime._resolve_presence_assessment` | Trusted Presence settlement input | Called after signed Presence evidence is stored. It evaluates the registered Presence resolver; `PlacePassabilityAuthority` checks the plan's state and exact source events against the signed receipt before writing Place. A mismatch rejects without writing Place facts. |
+| `M6_5SiegeRuntime.impact_gate_obligations` | Test projection API; no production caller found | Searches found calls only in M6-5 tests. It rebuilds obligation metadata and is not exposed by `main.py`. |
+| `/api/v2/siege/gate-impact-input-v2`, `/api/v2/siege/presence-assessment-input` | Signed command ingress and result response | `SiegePhysicalInputAuthority` validates each receipt signature before storing it. The route invokes the corresponding Owner workflow and returns the input evidence and command result. These routes do not expose arbitrary Pipeline or obligation queries. |
+| `recover_physical_input_obligations` at `main.py` startup | Trusted durable recovery | Reconciles committed signed inputs with idempotent Facility and Presence Owner receipts. It is not a subject-facing reader. |
+
+No production principal-facing query for Pipeline or impact-gate obligation projections was found in the inspected call graph. This remains bounded static evidence and does not establish the absence of external callers. It does not implement `read_as`, principal qualification, visibility-to-FactType mapping, or `known_time`; those remain M2-2 work. No tests were run for this classification.
