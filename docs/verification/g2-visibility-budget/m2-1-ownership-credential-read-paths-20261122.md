@@ -28,6 +28,20 @@
 
 搜索依据：`rg -n 'morale\.projection|presence\.state|information\.view|information.*knowledge' backend/app backend/tests scripts`；并逐行检查 `information_runtime.py`、`morale_refold_runtime.py`、`place_passability_runtime.py` 与 `m6_5_siege_runtime.py`。这些新增路径当前属于可信权威/恢复或测试查询，不证明已经提供 `read_as(principal)` 主体读取能力。principal 资格解析、FactType visibility 授权和 `known_time` 仍由 M2-2 处理。
 
+## 2026-11-26 current-tip M6-5 read-path classification
+
+Code snapshot: A tip `ad6ef57cc575ff87b0daa86cfec1552d93a51942`. This is static call-graph evidence for the current M6-5 implementation. No tests were run.
+
+| Read path | Classification | Evidence and scope |
+|---|---|---|
+| `InformationAuthority.publish_siege_report` (`information_runtime.py:118-267`) | Trusted signed publisher command and idempotent recovery | Validates authority signature, source event/stream/revision and report window. It reads the idempotency receipt to recover the original private report event, then publishes to `actor:<recipient>` and records delivery. `main.py:3069-3093` is a signed-input command route, not a report query route. |
+| `InformationAuthority.update_from_delivery` / `update_knowledge` (`information_runtime.py:273-314`) | Trusted post-delivery Owner write | The L5 reaction handler at `m6_5_siege_runtime.py:357-363` runs on the committed delivery event. It checks delivery/report and recipient evidence before appending recipient-scoped knowledge. No production caller returns a subject's report or knowledge projection. |
+| `MoraleRefoldAuthority.refold_after_casualty` (`morale_refold_runtime.py:71-155`) | Trusted Owner decision and historical replay input | Reads the committed death event, Organization roster and member LifeState histories at the death's `global_sequence`, then pins current source heads for the Morale Pool commit. The L5 handler at `m6_5_siege_runtime.py:347-349` is the production caller. `projection` at lines 157-164 has no production caller in `backend/app`; observed callers are tests. |
+| `PlacePassabilityAuthority.commit_assessment` / `_commit_impact_assessment` (`place_passability_runtime.py:56-155,215-270`) | Trusted assessment validation and idempotent recovery | Resolves committed breach/impact and evidence events, checks transaction ownership and pinned source heads, then writes Place. Production entry points are the signed Presence route (`main.py:3053-3066`) and L5 reaction (`m6_5_siege_runtime.py:350-356`). The route returns the assessment receipt/result to its input caller. |
+| `PlacePassabilityAuthority.state` (`place_passability_runtime.py:272-285`) | Owner-internal projection read | Rebuilds current passability to validate transitions. Callers are within the Presence authority; no subject-facing production read route was found. |
+
+Searches covered `backend/app`, `backend/tests`, and `scripts` for the authority methods, report/knowledge routes, and `morale.projection` / `presence.state` callers. Information reports and knowledge are actor-scoped, and the inspected HTTP routes are input/write routes. No production principal-facing query for these three domains was identified in the inspected A call graph. This is a bounded static result, not proof about external callers. `read_as` enforcement, principal qualification, visibility-to-FactType mapping, and `known_time` remain M2-2 work.
+
 ## 2026-11-26 current-tip Ownership/Credential caller classification
 
 Code snapshot: A tip `29976744c6b43a4f67c71c9fc2fa9196f3de4281`. Static search and direct-call tracing update the earlier `e349187e` snapshot classifications.
