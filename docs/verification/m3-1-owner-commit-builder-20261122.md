@@ -67,3 +67,14 @@ An earlier full run used a long pytest temporary root and reported 53 failures a
 | U10 Evidence | Verified | This record and retained raw outputs above. |
 
 M3-1 is a shared-mechanism unit only. It does not establish completion of Architecture v2 or any Owner migration.
+
+## Current-tip revalidation, 2026-11-26
+
+At A tip `9cee2f25911dcc6221c43e89b9b42ace38ae3d06`, the focused command returned **23 passed, 2 warnings**. Python was 3.12.2 and `app.__file__` resolved to the current A worktree backend.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261126-01\ownership\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261126-01\shared-replay\` |
+
+This is current-tip focused and frozen-selection evidence. The full backend suite was not rerun at this tip. M3-1 remains `待门禁`.

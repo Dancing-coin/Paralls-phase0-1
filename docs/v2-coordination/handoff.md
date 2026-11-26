@@ -726,6 +726,11 @@
 - 提交：`38a1ccd0`。补充 `collection_ref` 和 `region_ref` 合法 identity 的规则包正例，四种正式 identity 均有运行覆盖。完整 validator 定向 `123 passed, 2 warnings`；M5-5 选择集 `29/0/0`。原始输出在 `F:/paralls-verification/thread-a/m5-5-identity-enum-20261126-02/focused.log` 与 `F:/paralls-verification/thread-a/m5-5-identity-enum-selection-20261126-01/`。
 - 该测试增量仍只验证现有 FactType schema，不新增 Owner 或持久事件语义。
 
+### H-A-103 | M3-1 OwnerCommitBuilder current-tip revalidation | 2026-11-26
+
+- At current A tip `9cee2f25911dcc6221c43e89b9b42ace38ae3d06`, focused OwnerCommitBuilder/Ownership/Credential tests returned 23 passed, 2 warnings. Frozen selections returned ownership 24/0/0 and shared-replay 990/0/0. Python 3.12.2 and current A worktree `app.__file__` were verified.
+- Raw evidence is under `F:/paralls-verification/thread-a/m3-1-current-tip-20261126-01/`. Full backend suite was not rerun. M3-1 remains `待门禁`.
+
 ### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
 
 - The additional node is `tests/test_population_cold_ready_gate.py::test_cold_ready`; it fails because `report["resource_bounds"]["passed"]` is false. The test, its `scripts/verification/verify_population_long_session_recovery.py` runner, and `backend/app/population/` have no changes relative to `origin/integration`. This lies outside the Architecture v2 A scope, so no code change was made. Detailed result is in `docs/verification/m5-3-full-backend-20261126.md`.
