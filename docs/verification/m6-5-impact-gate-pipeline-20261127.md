@@ -3,6 +3,7 @@
 ## Scope
 
 - Base: `b70308aa628ca12a6f2b3b70f70e2746f4074862`.
+- Implementation commit: `3c003e42`.
 - Adds the four-step `impact_gate` declaration to `county_siege_morale_presence@1.0.1`, layered on `county_siege_facility@1.0.0`. The existing `county_siege_morale_presence@1.0.0` remains available for historical pins and keeps the legacy path without a compiled Pipeline.
 - The production runtime binds the Pipeline to the original four-stream revision snapshot reconstructed from the durable signed-input event sequence. Facility and Presence Owners keep their current CAS read sets. Resolver outputs are checked against the signed input before Owner facts commit; disagreement rejects without writing Facility or Place facts.
 - Startup and package archive loading register the code Resolver handlers required by the versioned package.
