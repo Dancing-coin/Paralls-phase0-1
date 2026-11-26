@@ -153,6 +153,8 @@
 
 - M6-1 current-tip revalidation: A tip `1e318bb5`, focused `154 passed, 2 warnings`; Reaction selection `14/0/0`; L5 dispatch selection `5/0/0`. Evidence `docs/verification/m6-1-reaction-20261123.md` and H-A-136. Offline behavior is current-tip verified; production dispatch remains unverified and task stays pending gate.
 
+- M6-2 current-tip revalidation: A tip `9f4cfd82`, focused `154 passed, 2 warnings`; Pipeline selection `8/0/0`; ownership `24/0/0`; shared-replay `990/0/0`. Evidence `docs/verification/m6-2-pipeline-20261123.md` and H-A-137. Offline behavior is current-tip verified; production activation remains unverified and task stays pending gate.
+
 ### M5-5 FactType identity contract increment (2026-11-26)
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。

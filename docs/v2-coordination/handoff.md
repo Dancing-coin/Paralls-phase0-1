@@ -933,3 +933,8 @@
 
 - At A tip `1e318bb5`, focused Reaction, Play Pattern and RulePack Validator tests returned `154 passed, 2 warnings`. The Reaction registered selection returned `selected=14 problems=0 improvements=0`; L5 dispatch runtime returned `selected=5 problems=0 improvements=0`.
 - This is offline declaration/loader evidence only. Production asynchronous trigger scheduling, target authorization, cooldown/idempotency dispatch, UE transport and a complete siege run remain unverified. M6-1 remains `待门禁`.
+
+### H-A-137 | M6-2 current-tip Pipeline revalidation | 2026-11-27
+
+- At A tip `9f4cfd82`, focused RulePack Validator, Reaction and Play Pattern tests returned `154 passed, 2 warnings`. Pipeline selection returned `8/0/0`, ownership `24/0/0`, and shared-replay `990/0/0`.
+- This confirms offline declaration and input-binding behavior. Production settlement, durable obligation execution/recovery and application activation remain unverified. M6-2 remains `待门禁`.
