@@ -53,6 +53,7 @@ from app.services.siming_projection import (
     StubGroupSimulationBridge,
     StubStorylineProjection,
 )
+from app.services.rule_based_storyline_projection import RuleBasedStorylineProjection
 from app.services.siming_quality_monitor import (
     QualityMonitorResult,
     SimingQualityMonitor,
@@ -136,6 +137,7 @@ class SimingRuntime:
         obligation_ledger: InMemoryNarrativeObligationLedger | None = None,
         storyline_projection: StorylineProjectionPort | None = None,
         group_bridge: GroupSimulationBridgePort | None = None,
+        world_runtime=None,
         read_model_builder: SimingReadModelBuilder | None = None,
         heavenly_support: SimingHeavenlyRuntimeSupport | None = None,
         behavior_turn_recorder: BehaviorTurnRecorder | None = None,
@@ -180,8 +182,14 @@ class SimingRuntime:
         self._obligation_ledger = (
             obligation_ledger or InMemoryNarrativeObligationLedger()
         )
-        self._storyline_projection = storyline_projection or StubStorylineProjection()
-        self._group_bridge = group_bridge or StubGroupSimulationBridge()
+        self._storyline_projection = storyline_projection or RuleBasedStorylineProjection()
+        if group_bridge is not None:
+            self._group_bridge = group_bridge
+        elif world_runtime is not None:
+            from app.services.population_simulation_bridge import PopulationGroupSimulationBridge
+            self._group_bridge = PopulationGroupSimulationBridge(world_runtime)
+        else:
+            self._group_bridge = StubGroupSimulationBridge()
         self._read_model_builder = read_model_builder or SimingReadModelBuilder()
         self._heavenly_support = heavenly_support
         self._behavior_turn_recorder = behavior_turn_recorder
@@ -198,13 +206,18 @@ class SimingRuntime:
         self._siming_pending = {}
         self._siming_receipts = OrderedDict()
         self._sync_tick_lock = RLock()
-        # 共享完整前缀，保存精确整数；其他 ID 保留原字节，不淘汰历史审计键。
         self._recorded_behavior_turn_correlations: set[bytes | int] = set()
         self._behavior_correlation_prefixes: dict[tuple[bytes, bytes], int] = {}
         self._behavior_turn_lock = RLock()
         self._population_capability = population_capability
         self._population_read_set_builder = population_read_set_builder or default_population_read_set_builder
         self._population_model_observer = population_model_observer
+
+    def attach_world_runtime(self, world_runtime) -> None:
+        if world_runtime is None:
+            raise ValueError("world_runtime_required")
+        from app.services.population_simulation_bridge import PopulationGroupSimulationBridge
+        self._group_bridge = PopulationGroupSimulationBridge(world_runtime)
 
     @property
     def heavenly_support(self) -> SimingHeavenlyRuntimeSupport | None:

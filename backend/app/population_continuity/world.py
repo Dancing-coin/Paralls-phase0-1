@@ -111,6 +111,10 @@ class WorldContinuityRuntime:
     def latest_confirmation(self) -> PopulationCadenceConfirmationReceipt | None:
         return self.last_population_confirmation
 
+    def export_rows(self) -> tuple[tuple[str, Mapping[str, object]], ...]:
+        """Return current actor projections for read-only Siming summaries."""
+        return self.population_hot_state.export_rows()
+
     def configure_character_participation(self, *, resolutions, activation_authority, cohort_ref: str) -> None:
         """装配已解析参与策略；未配置的既有运行保持原人口合同。"""
         expected = {f"character:{actor}" for actor in self.roster.actor_ids}

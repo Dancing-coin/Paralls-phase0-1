@@ -772,6 +772,7 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
         event_bus=authority_event_bus,
         owner_store=gameplay_event_store,
     )
+    siming_event_pipeline._runtime.attach_world_runtime(world_runtime)
     world_stream_ref = f"world:{mode.world_ref}"
     clock_profile = population_clock_profile(settings.population_runtime_profile)
     window_size = int(clock_profile["window_ticks"])

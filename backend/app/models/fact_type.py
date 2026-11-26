@@ -46,6 +46,22 @@ _DOMAINS = {
     FactType.DAILY_RHYTHM_LAST_UPDATE_TICK: "daily_rhythm",
 }
 
+FACT_TYPE_TO_OWNER: dict[FactType, str] = {
+    FactType.WORLD_FACT: "world",
+    FactType.VISUAL_FACT: "visual",
+    FactType.ESM_RESULT: "esm_world",
+    FactType.CHARACTER_BEHAVIOR: "character",
+    FactType.CONVERSATION_RESOLUTION: "conversation",
+    FactType.CONSTRAINT_STATE: "esm_world",
+    FactType.POPULATION_CADENCE: "population",
+    FactType.DAILY_RHYTHM_FATIGUE_STATE: "daily_rhythm_runtime",
+    FactType.DAILY_RHYTHM_NEED_PRESSURE_STATE: "daily_rhythm_runtime",
+    FactType.DAILY_RHYTHM_STARVATION_CREDIT_STATE: "daily_rhythm_runtime",
+    FactType.DAILY_RHYTHM_ACTIVITY_PHASE_STATE: "daily_rhythm_runtime",
+    FactType.DAILY_RHYTHM_NEXT_DUE_TICK: "daily_rhythm_runtime",
+    FactType.DAILY_RHYTHM_LAST_UPDATE_TICK: "daily_rhythm_runtime",
+}
+
 _GAMEPLAY_FACT_DOMAINS = {
     "gameplay.inventory.item_moved": "inventory",
     "gameplay.organization.production_work_contribution_accepted": "organization",
@@ -93,6 +109,8 @@ class FactTypeRegistry:
         return _DOMAINS.get(fact_type, fact_type.domain if isinstance(fact_type, FactTypeRef) else "unknown")
 
     def get_owner_for_fact_type(self, fact_type: FactType | FactTypeRef) -> str:
+        if isinstance(fact_type, FactType):
+            return FACT_TYPE_TO_OWNER[fact_type]
         if self.domain_for(fact_type) == "daily_rhythm":
             return "daily_rhythm_runtime"
         return self.domain_for(fact_type)
@@ -121,4 +139,4 @@ def get_domain_for_fact_type(fact_type: FactType) -> str:
     return _DOMAINS.get(fact_type, "unknown")
 
 
-__all__ = ["FACT_TYPE_REGISTRY", "FactType", "FactTypeRef", "FactTypeRegistry", "get_domain_for_fact_type"]
+__all__ = ["FACT_TYPE_REGISTRY", "FACT_TYPE_TO_OWNER", "FactType", "FactTypeRef", "FactTypeRegistry", "get_domain_for_fact_type"]

@@ -18,3 +18,11 @@ def test_owner_principals_resolve_from_owner_registry():
 def test_owner_registry_rejects_undeclared_owner():
     with pytest.raises(ValueError, match="owner_declaration_unknown:future_owner"):
         OWNER_REGISTRY.get("future_owner")
+
+
+def test_all_fact_types_have_owner_in_registry():
+    from app.models.fact_type import FACT_TYPE_TO_OWNER, FactType
+
+    for fact_type in FactType:
+        owner_id = FACT_TYPE_TO_OWNER[fact_type]
+        assert OWNER_REGISTRY.get(owner_id).owner_ref == owner_id
