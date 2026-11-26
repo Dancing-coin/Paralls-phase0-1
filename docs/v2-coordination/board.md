@@ -8,7 +8,7 @@
 
 ## 一、当前里程碑
 
-线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。最新 A 分支 tip 为 `2729774e`，包含 M5-3 deployment contract/startup archive wiring 的 exact-tip 证据。M5-3 可信 archive bootstrap API 的 shared-replay 990 节点曾在先前代码状态复验为零差异，本轮 exact-tip runner 在已知 listener 查询点未完成。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
+线程 A 已提交 M0.5、M1-1、Pool、共享提交构造与快照读取、部分规则包内容校验和 L5 声明编译。M5-3 deployment contract/startup archive wiring 已提交，listener 查询修复提交 `4d366b9e` 后，冻结 shared-replay 990 节点为零差异（H-A-081）。Pool 与 M6-5 后续均未进入 `origin/integration`。生产部署、生产执行与域级 U1–U11 仍有缺项，具体状态见任务表及各单元证据。线程 B 的进度以其交付的账本更新为准。
 
 ## 二、任务表
 
@@ -40,7 +40,7 @@
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |
 | M4 第 3 波（含 debt） | 未定 | 待开工 | 同上 | debt 归属 Economy/Market，枢纽 | 1–11 |
 | M4 第 4 波（枢纽） | 未定 | 待开工 | 同上 | 前序波次回归证据 | 1–11 |
-| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-3 控制面事件/authority/archive hash-pin/global-sequence replay 实现 `aa871168`，可信 archive bootstrap API `2a5d6640`；世界级 M6-5 package consumer 接线 `29492189`，部署合同与启动 archive wiring 提交 `45480fb2`，exact-tip 定向 71 passed，证据 `docs/verification/m5-3-startup-contract-20261126.md`。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`、`event_schema_ref` 注册解析和 Resolver 确定性策略（`14f4fbd7`）；当前 tip M5-5 登记选择 `22` 节点零差异见 `../verification/a-current-tip-g5-20261126.md`，`temporal_effects` 正式合同审计见 `../verification/m5-5-temporal-effects-contract-audit-20261126.md`。全量未运行。 | M5-3 runtime、bootstrap API、显式 M6-5 consumer 和可选部署合同已验证；exact-tip shared-replay 990 本轮未完成，停在已知 listener 查询点。真实服务器仍需提供四项环境输入，可信外部 manifest 来源、跨语言 hash canonicalization、生产启动和 UE transport 未验证。M5-5 仍在进行中；Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，生产命令注册及 package-version 写边界仍未完成，详见 H-A-079。生产 Gate 数值未配置；A worktree 的 `.env` 仅为本地演示配置。全量未运行。详见 H-A-066、H-A-068、H-A-069、H-A-076、H-A-077、H-A-078、H-A-079 | 5 |
+| M5 规则包完整化 | A | 进行中 | M5-1 已接入 6 种离线声明，最新 `eebd34e5`。M5-2 父包叠层与哈希 `4747acaf`。M5-3 控制面事件/authority/archive hash-pin/global-sequence replay 实现 `aa871168`，可信 archive bootstrap API `2a5d6640`；世界级 M6-5 package consumer 接线 `29492189`，部署合同与启动 archive wiring 提交 `45480fb2`，exact-tip 定向 71 passed，证据 `docs/verification/m5-3-startup-contract-20261126.md`。listener 查询修复 `4d366b9e` 后 shared-replay `990/0/0`（H-A-081）。M5-5 已提交 `facttype_refold_missing`、`facttype_scope_missing`、`primitive_missing`、`pack_defines_primitive`、`primitive_unknown`、`primitive_count_exceeded` 结构保证、FactType ID naming limits、`facttype_process_kind_invalid`、`event_schema_ref` 注册解析和 Resolver 确定性策略（`14f4fbd7`）；当前 tip M5-5 登记选择 `22` 节点零差异见 `../verification/a-current-tip-g5-20261126.md`，`temporal_effects` 正式合同审计见 `../verification/m5-5-temporal-effects-contract-audit-20261126.md`。全量未运行。 | M5-3 runtime、bootstrap API、显式 M6-5 consumer 和可选部署合同已验证；冻结 shared-replay 990 节点在 `4d366b9e` 为零差异。真实服务器仍需提供四项环境输入，可信外部 manifest 来源、跨语言 hash canonicalization、生产启动和 UE transport 未验证。M5-5 仍在进行中；Credential 历史 schema 符号保留；M1-2 生产接线仍受共同 `inventory_runtime.py` 边界阻塞。`temporal_effects` 缺条目字段、引用空间、校验规则/拒绝码和消费者合同，生产命令注册及 package-version 写边界仍未完成，详见 H-A-079。生产 Gate 数值未配置；A worktree 的 `.env` 仅为本地演示配置。全量未运行。详见 H-A-066、H-A-068、H-A-069、H-A-076、H-A-077、H-A-078、H-A-079、H-A-081 | 5 |
 | M6 L5 引擎 | A | 进行中 | M6-1 reaction dispatch `dabb7f4e`、精确输出校验 `90af2255`、Place machine 输出兼容 `4023c182`；[dispatch evidence](../verification/m6-1-l5-dispatch-runtime-20261124.md)、[Place 输出 evidence](../verification/m6-5-place-machine-output-type-20261124.md)；声明加载 `6e7da420` 待门禁 | 新增 Place 输出单元定向 20 passed、ownership 24 零差异、自有选集 3 零差异；shared-replay 990 有两项外部 Port 8000 失败。`main.py` 生产注册、Morale/Presence handlers、条件/规则包加载、持久义务恢复未做；gate-impact 输入来源待项目负责人确认 | 6 |
 | M6-1 Reaction 离线校验 | A | 待门禁 | `40df5929`、`7b0d69bf`；[证据](../verification/m6-1-reaction-20261123.md) | 定向 113 passed，17 组选集 1,268 节点零差异。全量 31 failed，其中 7 项额外路径错误在同 SHA 短路径复跑通过。异步触发前置见 H-A-011 | 6 |
 | M6-2 Pipeline 声明与输入绑定 | A | 待门禁 | `abfe1443`；[证据](../verification/m6-2-pipeline-20261123.md) | 定向 121 passed，18 组选集 1,276 节点零差异。全量 24 个既有失败。生产前置见 H-A-012 | 6 |
@@ -74,7 +74,7 @@
 | S-7 | 11-09 的逐域探针并入成功标准 8 | 验收口径 | 未决 |
 | — | 谁做 M4 各波（A 或 B 或轮换） | 全部域迁移 | 未决，等 M0-6 |
 | — | M2-6 选哪条生产流受 epoch 保护 | L0 强制 | 未决 |
-| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；`main.py` 启动合同与 archive consumer 已在 `45480fb2` 接入，exact-tip M5-3/Ownership 选择 22/24 零差异（H-A-078）。shared-replay 990 本轮在已知 listener 查询点未完成。仍需部署侧提供真实 world 上下文、初始 pin、archive 目录和可信 hash，并完成生产启动与历史 replay |
+| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；`main.py` 启动合同与 archive consumer 已在 `45480fb2` 接入，exact-tip M5-3/Ownership 选择 22/24 零差异（H-A-078）；修复验证 listener 查询后，精确 A 代码提交 `4d366b9e` 的 shared-replay `990/0/0`（H-A-081）。仍需部署侧提供真实 world 上下文、初始 pin、archive 目录和可信 hash，并完成生产启动与历史 replay |
 
 ## 四、更新规则
 
@@ -100,6 +100,7 @@
 ### M5-3 shared-replay current-tip attempt（2026-11-26）
 
 - At `bd02be3c`, the frozen 990-node comparison completed 10 of 25 batches, then stopped in batch 0010 at `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`. The run has no aggregate result and is incomplete. Evidence: `docs/verification/m5-3-shared-replay-current-tip-20261126.md`; raw output: `F:/paralls-verification/thread-a/m5-3-shared-replay-exact-tip-20261126-02/`.
+- This partial attempt was superseded by the completed exact-code comparison at `4d366b9e`, recorded in H-A-081.
 
 ### M6-5 versioned Gate profile contract（2026-11-26）
 

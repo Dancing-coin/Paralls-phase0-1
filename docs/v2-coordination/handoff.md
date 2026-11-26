@@ -611,3 +611,8 @@
 - At `bd02be3cbf3949742113c2e79d5216a7c23c20d1`, the frozen 990-node shared-replay runner completed batches 0000-0009 (400 nodes) and logged five passing tests in batch 0010 before pausing at `test_embodied_interaction_session_runner.py::test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`.
 - The current runner was interrupted after no progress; it produced no aggregate `selected/problems/improvements` result. This is incomplete, not a pass. Raw output and exact environment are recorded in `docs/verification/m5-3-shared-replay-current-tip-20261126.md` and `F:/paralls-verification/thread-a/m5-3-shared-replay-exact-tip-20261126-02/`.
 - Python 3.12.2 and the A worktree `app.__file__` were verified. SQLite was 3.43.1. Port 8000 had no listener before or after the run. No external process was stopped.
+
+### H-A-081 | M5-3 shared-replay listener inspection repair | 2026-11-26
+- Commit `4d366b9e7e7c9d542f15b1dba0ad9c7ffeb96aea` replaces the unbounded PowerShell listener lookup with a bounded `netstat` TCP listener query. The exact-commit `test_harness_processes.py` run returned `15 passed in 4.59s`.
+- At that commit the frozen shared-replay comparison returned `selected=990 problems=0 improvements=0`. The previously stalled batch-0010 WebSocket cases passed. Exact environment, commands, and raw-output paths are in `docs/verification/m5-3-shared-replay-netstat-20261126.md` and `F:/paralls-verification/thread-a/m5-3-shared-replay-netstat-20261126-01/`.
+- Python 3.12.2, A worktree `app.__file__`, and SQLite 3.43.1 were verified. `head_after` matched the tested commit, source hashes were unchanged, and no external process was stopped. Full backend regression and production deployment were not run.
