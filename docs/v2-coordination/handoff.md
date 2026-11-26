@@ -916,3 +916,9 @@
 - At A tip `259314e2`, the `StoreReadSnapshot` focused tests returned `34 passed, 2 warnings`. Its registered selection returned `selected=7 problems=0 improvements=0`. Frozen ownership, modifier, equipment, inventory and shared-replay returned `24/0/0`, `12/0/0`, `87/0/0`, `56/0/0` and `990/0/0` respectively.
 - Raw outputs are retained under `F:/paralls-verification/thread-a/m3-2-current-tip-20261127-01/`. This is current-tip mechanism evidence only. The current-tip full backend suite was not rerun for M3-2.
 - M3-2 remains `待门禁`; no integration or main branch was modified.
+
+### H-A-134 | M2-1 shared-mechanism read-path update | 2026-11-27
+
+- Static inspection at A tip `bc639342` enumerated `OwnerCommitBuilder.build` production callers in Credential, Holdings, Ownership and Pool, plus `StoreReadSnapshot` callers in Credential and LandRight.
+- These are trusted append-envelope and validation snapshot helpers. No subject-facing production query or `read_as(principal)` route was found. The evidence was appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`.
+- This increment ran no tests and does not resolve M2-2 principal qualification, selector semantics, FactType visibility mapping or `known_time`.

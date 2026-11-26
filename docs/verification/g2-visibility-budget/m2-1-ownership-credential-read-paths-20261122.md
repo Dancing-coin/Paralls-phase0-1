@@ -72,3 +72,14 @@ Code snapshot: A branch tip `2a46df6303228993161ccb9f02e1f789083b4134`. Static s
 | `recover_physical_input_obligations` at `main.py` startup | Trusted durable recovery | Reconciles committed signed inputs with idempotent Facility and Presence Owner receipts. It is not a subject-facing reader. |
 
 No production principal-facing query for Pipeline or impact-gate obligation projections was found in the inspected call graph. This remains bounded static evidence and does not establish the absence of external callers. It does not implement `read_as`, principal qualification, visibility-to-FactType mapping, or `known_time`; those remain M2-2 work. No tests were run for this classification.
+
+## 2026-11-27 current-tip shared-mechanism call-site update
+
+Code snapshot: A tip `bc639342`. Static search covered `backend/app` and `backend/tests` for `OwnerCommitBuilder` and `StoreReadSnapshot`.
+
+| Mechanism | Current production call sites | Classification |
+|---|---|---|
+| `OwnerCommitBuilder.build` | `credential_runtime.py:547`, `holdings_runtime.py:796`, `ownership_runtime.py:1269`, `pool_runtime.py:657` | Shared append-envelope construction after each domain has validated its own inputs. It does not select a principal, expose a projection, or choose FactType visibility. |
+| `StoreReadSnapshot` | `credential_runtime.py:273`, `land_right_runtime.py:55` | Trusted Owner read snapshot used by Credential and LandRight validation/presentation paths. It supplies immutable event tuples to internal decision and write preparation code. |
+
+The only non-production `StoreReadSnapshot` reference found was `backend/tests/test_owner_runtime_base.py`. `OwnerCommitBuilder` has its unit tests plus the four production domain call sites above. No subject-facing production query or `read_as(principal)` route was found in this increment. This is static call-graph evidence only. Principal qualification, selector semantics, FactType visibility mapping and `known_time` remain M2-2 work.
