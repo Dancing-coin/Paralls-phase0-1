@@ -25,3 +25,11 @@ Read-only audit at A branch commit `195c2795d` of the M6-5 runtime assembly, tru
 ## Conclusion
 
 Static-only. No test or runtime result is claimed.
+
+## Current-tip correction at `38f88408`
+
+The prior gap statement overstated the missing recovery path. `backend/app/main.py:2396` invokes `m6_5_siege_runtime.recover_physical_input_obligations()` during startup. `backend/app/gameplay/m6_5_siege_runtime.py:222-260` replays durable signed Gate and Presence inputs through the existing Owner authorities and dispatches the layered Gate transaction. `backend/tests/test_facility_gate_layered_runtime.py` includes a durable-store restart case that verifies receipt replay and no repeated damage, documented in `docs/verification/m6-5-obligation-recovery-20261124.md`.
+
+The remaining gap is the formal obligation contract, not absence of restart recovery. `backend/app/gameplay/impact_gate_obligation.py:16-23` currently exposes `obligation_id`, `gate_ref`, `status`, and step receipt IDs. It does not expose `pipeline_ref`, completed/pending step sets, pending reason, responsible Owner refs, recovery action, or a deadline tick. The existing event-derived projection and startup reconciliation avoid a separate workflow ledger, but they do not yet provide those required lifecycle fields or classify unresolved work. The M6-5 runtime also does not consume a compiled `Pipeline` for this flow.
+
+This correction is static-only at A tip `38f88408`. No code or tests changed in this correction. A prior exact-slice test result remains in the linked recovery evidence and is not presented as a rerun at this tip.
