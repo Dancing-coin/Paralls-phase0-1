@@ -113,3 +113,4 @@
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。
 - 本增量状态为待门禁。定向 124 passed；M5-5 登记选集 27/0/0；冻结五组选集 ownership 24/0/0、modifier 12/0/0、equipment 87/0/0、inventory 56/0/0、shared-replay 990/0/0。全量 10,745 节点未因本增量重跑，M5-5 broader catalog 仍进行中。
+- 后续测试断言增量已提交 `7690df59deb49f5af179dcca92f552a1caaf890f`，验证 resolution order 唯一且从 10 连续递增。M5-5 broader catalog 仍进行中。
