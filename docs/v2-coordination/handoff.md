@@ -862,3 +862,8 @@
 - At A tip `e99de108`, the focused package migration/control-plane, schema registry, Information production wiring, siege runtime, Morale refold, Pool runtime, and siege Information tests returned `119 passed, 6 warnings` with Python 3.12.2. `app.__file__` was resolved from the A worktree and pytest temporary paths were directed to `F:`.
 - This is current-tip focused evidence. It does not verify production Gate values, a deployment target, UE transport, a complete siege run, subject-facing `read_as`, or the full backend suite.
 - The approved M5-3 ownership decision remains in force. `pack.migrated` is an L4 platform control-plane event and does not add a gameplay Owner.
+### H-A-123 | M1-4 Place contract audit | 2026-11-27
+
+- Static audit recorded in `docs/verification/m1-4-place-contract-audit-20261127.md`.
+- The formal Place primitive requires general occupancy/movement semantics, revisioned path and occupancy facts, independent passability commits, and a space-registry reference. Current A code only provides Presence-specific passability assessment and Place event schema entries for that path.
+- No general Place runtime or space registry was found in the inspected A code and tests. Reusing Presence would conflate authorities, so no code was changed. M1-4 remains queued pending the space-registry, Owner mapping, persistence-event, and producer/reader contracts.
