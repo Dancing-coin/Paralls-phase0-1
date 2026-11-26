@@ -627,6 +627,19 @@ def test_pool_rejects_invalid_aggregation_and_owner_fragment_inputs():
             correlation_id="corr:pool",
         )
 
+    with pytest.raises(PoolError, match="^pool_event_time_invalid$"):
+        service.adjust(
+            fact_type=FACT_TYPE,
+            delta=Decimal("1"),
+            reason_code="grant",
+            event_time=True,
+            command_id="pool:bad-event-time",
+            idempotency_key="pool:bad-event-time",
+            expected_revision=1,
+            causation_id="evt:seed",
+            correlation_id="corr:pool",
+        )
+
 
 def test_pool_events_are_visible_to_gameplay_graph_registry():
     event_types = set(gameplay_schema_event_types())

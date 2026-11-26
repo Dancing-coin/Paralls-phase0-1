@@ -369,8 +369,11 @@ class PoolAuthorityService:
                correlation_id: str, window_ref: str | None = None, model_ref: str | None = None,
                thresholds: tuple[PoolThreshold, ...] | None = None,
                input_revision_vector: Mapping[str, int] | None = None,
-               read_stream_revisions: Mapping[str, int] | None = None) -> AppendBatchResult:
+               read_stream_revisions: Mapping[str, int] | None = None,
+               event_time: int | None = None) -> AppendBatchResult:
         _finite_decimal(delta, "pool_delta_invalid")
+        if event_time is not None and (type(event_time) is not int or event_time < 0):
+            raise PoolError("pool_event_time_invalid")
         if reason_code not in self._REASONS:
             raise PoolError("pool_adjust_reason_invalid")
         if window_ref is not None and not window_ref:
@@ -400,6 +403,8 @@ class PoolAuthorityService:
         digest_payload = {"kind": "adjust", "fact_type": fact_type, "delta": _decimal_text(delta),
                           "reason_code": reason_code, "window_ref": window_ref,
                           "model_ref": model_ref}
+        if event_time is not None:
+            digest_payload["event_time"] = event_time
         if input_revision_vector is not None:
             digest_payload["input_revision_vector"] = dict(input_revision_vector)
         if read_stream_revisions is not None:
@@ -432,6 +437,7 @@ class PoolAuthorityService:
             event_specs=tuple(event_specs), expected_revision=expected_revision,
             digest_payload=digest_payload, input_revision_vector=input_revision_vector,
             read_stream_revisions=read_stream_revisions,
+            event_time=event_time,
         )
 
     def integrate(self, *, fact_type: str, ticks: int, window_ref: str, command_id: str,
@@ -600,7 +606,8 @@ class PoolAuthorityService:
                 event_specs: Sequence[tuple[str, Mapping[str, object]]], expected_revision: int,
                 digest_payload: Mapping[str, object],
                 input_revision_vector: Mapping[str, int] | None = None,
-                read_stream_revisions: Mapping[str, int] | None = None) -> AppendBatchResult:
+                read_stream_revisions: Mapping[str, int] | None = None,
+                event_time: int | None = None) -> AppendBatchResult:
         if not command_id or not idempotency_key or not causation_id or not correlation_id:
             raise PoolError("pool_command_identity_invalid")
         digest = "sha256:" + sha256(_canonical_json(digest_payload)).hexdigest()
@@ -614,6 +621,7 @@ class PoolAuthorityService:
             "global_sequence": 0, "transaction_id": transaction_id, "command_id": command_id,
             "causation_id": causation_id, "correlation_id": correlation_id,
             "visibility_policy": "authority_only", "payload": dict(payload),
+            **({"event_time": event_time} if event_time is not None else {}),
         } for index, (event_type, payload) in enumerate(event_specs)]
         read_revisions = {fact_type: expected_revision}
         revision_vector = (

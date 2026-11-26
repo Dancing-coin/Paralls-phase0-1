@@ -152,6 +152,7 @@ class MoraleRefoldAuthority:
             model_ref="morale_refold@1",
             input_revision_vector=input_pins,
             read_stream_revisions=current_reads,
+            event_time=death.event_time,
         )
 
     def projection(self, fact_type: str):

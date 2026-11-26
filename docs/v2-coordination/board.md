@@ -1,5 +1,10 @@
 # 迁移任务账本
 
+### M2-2 Morale event-time producer (2026-11-27)
+
+- Morale casualty refold now forwards an optional trusted `event_time` through the Pool adjustment commit. Evidence: `docs/verification/m2-2-morale-event-time-20261127.md` and H-A-121.
+- M2-2 remains `阻塞` because the shared principal qualification/selector contract, event-to-FactType visibility mapping, and a subject-facing `read_as` entry point are still absent.
+
 - 版本 1（2026-11-22）。配套：[AUTONOMY.md](AUTONOMY.md)（自主推进规则与门禁）、[PROTOCOL.md](PROTOCOL.md)、[BOUNDARIES.md](BOUNDARIES.md)。
 - 上位文档（文档仓库）：`docs/superpowers/specs/2026-11-22-architecture-v2-migration-spec.md`（成功标准 1–11、单元 DoD U1–U10）、`docs/superpowers/plans/2026-11-22-architecture-v2-migration.md`（里程碑 M0–M8）。
 - **本文件是"现在在做什么"的唯一权威。** 状态只在这里更新；线程每完成一个单元或换任务，改本文件对应行，不要只在对话里说。

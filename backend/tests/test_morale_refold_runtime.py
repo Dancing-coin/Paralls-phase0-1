@@ -11,9 +11,9 @@ ROLE = "role:garrison-defender@1"
 MORALE_FACT = "fact:unit:garrison-east:morale"
 
 
-def _append(store, *, principal, stream_id, event_type, payload, command_id):
+def _append(store, *, principal, stream_id, event_type, payload, command_id, event_time=None):
     revision = store.get_stream_head(stream_id)
-    result = store.append_batch(build_atomic_event_batch(
+    batch = build_atomic_event_batch(
         command_id=command_id,
         principal_ref=principal,
         stream_id=stream_id,
@@ -22,7 +22,12 @@ def _append(store, *, principal, stream_id, event_type, payload, command_id):
         idempotency_key=command_id,
         causation_id=f"cause:{command_id}",
         correlation_id="corr:siege-east",
-    ))
+    )
+    if event_time is not None:
+        batch = batch.model_copy(update={
+            "events": [batch.events[0].model_copy(update={"event_time": event_time})]
+        }, deep=True)
+    result = store.append_batch(batch)
     assert result.committed
     return store.get_event(result.committed_event_ids[0])
 
@@ -101,6 +106,7 @@ def test_morale_refold_uses_historical_roster_and_life_states_at_death():
         event_type="gameplay.character.life_state_changed",
         payload={"actor_ref": members[0], "from_state": "alive", "to_state": "dead"},
         command_id="life-dead:defender-0",
+        event_time=42,
     )
     _append(
         store,
@@ -131,6 +137,8 @@ def test_morale_refold_uses_historical_roster_and_life_states_at_death():
     assert transaction.pinned_revisions[
         f"input:gameplay:character:life:{members[1]}"
     ] == 1
+    adjusted = store.get_event(result.committed_event_ids[0])
+    assert adjusted.event_time == 42
 
     _append(
         store,

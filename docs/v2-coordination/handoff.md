@@ -850,3 +850,9 @@
 - At the current A tip `d98d442f`, the focused M5-3 package migration/control-plane tests, M6-5 siege assembly, Morale refold, Presence admission, and Information production wiring tests returned `128 passed, 6 warnings` in `8.77s` with Python 3.12.2. `PYTHONPATH` resolved to the A worktree backend and pytest temporary data was directed to `F:/paralls-verification/thread-a/m5-m6-current-tip-20261127/`.
 - This verifies the existing platform `pack.migrated` replay path and the current Morale/Presence/Information wiring. It does not provide production Gate values, a deployment target, UE transport, a subject-facing `read_as` route, or a formal `temporal_effects` contract.
 - Morale production writes currently flow through the shared Pool commit path, which has no trusted `world_now` input. Presence code inspected in this pass is a source reader/admission path, not an event-time producer. Adding event-time fields there would require a new shared Pool or source-event contract, so no code was changed in this pass.
+
+### H-A-121 | M2-2 Morale event-time producer | 2026-11-27
+
+- The Morale refold path now passes a casualty event's optional strict nonnegative `event_time` through the Pool adjustment commit. The value is included in the idempotency digest. Legacy callers omit it and preserve the prior event shape. Code and tests are in the current A worktree.
+- TDD evidence: the new propagation test first failed with `adjusted.event_time is None`; after the minimal Pool/Morale change, Pool + Morale returned `22 passed, 2 warnings`. The broader M5-3/M6-5/Morale/Presence/Information + Pool set returned `147 passed, 6 warnings`.
+- This is one additional event-time producer. It does not implement `read_as`, selector qualification, event-to-FactType visibility mapping, or a Presence event-time producer. Full backend verification was not run.
