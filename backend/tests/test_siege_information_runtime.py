@@ -283,6 +283,7 @@ def test_information_owner_publishes_signed_report_and_replays_after_window():
 
     assert first.committed
     report, = store.read_events(event_type=REPORT_EVENT)
+    assert report.event_time == 15
     assert report.payload == {
         "fact_type": REPORT_FACT,
         "report_ref": receipt.report_ref,

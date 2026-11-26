@@ -204,6 +204,7 @@ class InformationAuthority:
             batch = batch.model_copy(update={
                 "events": [batch.events[0].model_copy(update={
                     "visibility_policy": f"actor:{receipt.recipient_ref}",
+                    "event_time": world_now,
                 }, deep=True)],
                 "outbox_entries": [GameplayOutboxEntry(
                     outbox_id=f"outbox:{batch.events[0].event_id}:siege-report",
