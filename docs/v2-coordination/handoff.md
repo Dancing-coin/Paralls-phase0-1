@@ -693,3 +693,9 @@
 ### H-A-094 | M6-5 selection count and revision correction | 2026-11-26
 
 - Raw `results.json` reports confirm that the six H-A-093 groups ran at `a294fce4` and cover 61 nodes. The two H-A-092 groups ran at `20c67b18` and cover 27 nodes. The eight groups cover 88 unique nodes with zero problems and zero improvements. The intermediate commit changed only documentation.
+
+### H-A-095 | M5-3 historical package replay across multiple migrations | 2026-11-26
+
+- Commit `c9a22c53` fixes historical replay after two or more committed migrations. The chain validator advances through every migration, while the returned package set advances through the requested sequence. The v1 event schema and write path are unchanged.
+- The regression failed with `package_migration_from_chain_invalid` before the fix. Package migration and schema registry tests returned 35 passed and two warnings with Python 3.12.2, SQLite 3.43.1, and the A worktree app import.
+- At `c9a22c53`, the 23-node M5-3 selection and the five frozen groups (24, 12, 87, 56, 990) each reported zero problems and improvements. Logs are under `F:/paralls-verification/thread-a/m5-3-history-20261126-01/`. Other registered groups, full backend regression, and production deployment were not run for this fix.
