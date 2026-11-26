@@ -1,0 +1,51 @@
+{
+  "head": "78fa4548",
+  "description": "Shared Owner replay validates committed transactions, event references, event counts, and Credential legacy/current retry contracts",
+  "tests": [
+    {
+      "test_name": "tests/test_owner_runtime_base.py::test_owner_duplicate_rejects_unresolvable_committed_event_id",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_owner_runtime_base.py::test_owner_duplicate_rejects_committed_event_count_mismatch",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_owner_runtime_base.py::test_owner_duplicate_rejects_missing_transaction",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_ownership_runtime.py::test_duplicate_or_wrong_holder_does_not_change_title",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_window_adjustment_rejects_duplicate_and_exact_retry_replays",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_holdings_runtime.py::test_exact_create_retry_returns_original_receipt_without_another_event",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_replay_integrity.py::test_normal_retry_returns_original_receipt[issue_credential]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_replay_integrity.py::test_normal_retry_returns_original_receipt[revoke_credential]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_replay_integrity.py::test_normal_retry_returns_original_receipt[supersede_credential]",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

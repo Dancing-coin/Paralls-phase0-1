@@ -20,6 +20,10 @@
 
 - Static search and M6-5 call-path trace found source-time writes only for Information report publication and Morale propagation from an already timed casualty event. Signed physics `physics_tick` has no established mapping to session `world_tick`; Facility and Presence events have no demonstrated authoritative event-time producer. Evidence: `docs/verification/m2-2-event-time-producer-audit-20261127.md`, H-A-143. No tests ran and M2-2 remains blocked.
 
+### M3-3 shared Owner replay receipt validation increment (2026-11-27)
+
+- Commit `78fa4548`: `replay_duplicate` now validates the durable transaction and all committed event references before returning a duplicate receipt. Credential's local R2 check moved to the shared helper while preserving legacy/current event-type expectations. Focused shared and domain tests: 112 passed; other helper callers: 87 passed. New M3-3 selection `9/0/0`; frozen five selections `1,169` nodes with zero differences. Evidence: `docs/verification/m3-3-shared-owner-replay-validation-20261127.md`, H-A-144. M3-3 remains in progress because replay paths not using this helper still need inventory and validation. Full backend suite not run.
+
 - 版本 1（2026-11-22）。配套：[AUTONOMY.md](AUTONOMY.md)（自主推进规则与门禁）、[PROTOCOL.md](PROTOCOL.md)、[BOUNDARIES.md](BOUNDARIES.md)。
 - 上位文档（文档仓库）：`docs/superpowers/specs/2026-11-22-architecture-v2-migration-spec.md`（成功标准 1–11、单元 DoD U1–U10）、`docs/superpowers/plans/2026-11-22-architecture-v2-migration.md`（里程碑 M0–M8）。
 - **本文件是"现在在做什么"的唯一权威。** 状态只在这里更新；线程每完成一个单元或换任务，改本文件对应行，不要只在对话里说。
@@ -54,7 +58,7 @@
 | M2-6 首条生产流受 epoch 保护 | A | 阻塞 | 实现 + 证据 | 待负责人选流并确定存储核心变更边界，见 H-A-008 | 4 |
 | M3-1 `OwnerCommitBuilder` | A | 待门禁 | `docs/verification/m3-1-owner-commit-builder-20261122.md`；当前 tip `3978f4f9` 重验证定向 23 passed，ownership/shared-replay 24/990 problems=0 | 共享机制当前 tip 已重验证；最新全量仍为合并状态非绿（10,761 passed、5 failed），仍需合并门禁 | 3 |
 | M3-2 `StoreReadSnapshot` 推广 | A | 待门禁 | `7c24d136`，Credential supersede 与 LandRight presentation；`docs/verification/m3-2-store-read-snapshot-20261122.md` | 定向 33 passed，七组选集 1,191 节点零差异。全量退出 1，24 失败与 M1-3 同签名，比 22 节点冻结基线多两项既有本地失败 | 3 |
-| M3-3 R2 推广 | A/B | 待开工 | 按域并入 | 每域单独提交 | 7 |
+| M3-3 R2 推广 | A/B | 进行中 | Shared `replay_duplicate` R2 validation increment and selection; evidence `docs/verification/m3-3-shared-owner-replay-validation-20261127.md` / H-A-144 | A-owned shared-helper callers verified; other replay paths remain to inventory and validate. No domain completion implied. | 7 |
 | M3-4 `pinned_revisions` 校验 | A | 阻塞 | — | S-4 未决 | 3 |
 | M4 第 1 波其余域 | 未定 | 待开工 | 每域一份设计与证据 | 待 M0-6 | 1–11 |
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |

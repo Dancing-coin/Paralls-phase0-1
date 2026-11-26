@@ -972,3 +972,10 @@
 - Static `rg -n event_time backend/app/gameplay backend/app/main.py` inventory and M6-5 call-path trace are recorded in `docs/verification/m2-2-event-time-producer-audit-20261127.md`.
 - The only source-time producer is Information report publication. Morale propagates time only when the casualty source event already has one. The M6-5 Presence route does not pass a world tick, and signed physical receipts persist `physics_tick` without an established mapping to the session world-tick epoch. Facility and Presence source-time producers remain absent.
 - This was static-only. No code or tests changed. M2-2 remains blocked on the shared principal/selector and FactType visibility contracts, subject-facing `read_as`, and authoritative event-time sources for the other domains.
+
+### H-A-144 | M3-3 shared Owner replay receipt validation | 2026-11-27
+
+- `owner_runtime_base.replay_duplicate` now validates committed result/transaction identity, idempotency record identity, committed event count and uniqueness, event resolution and exact transaction membership, optional expected event types, global sequence range, and resulting stream revisions before returning a duplicate receipt. Credential's duplicate path uses this shared validation with its existing event-type and error-code expectations.
+- Code commit: `78fa4548` (`feat-owner-replay-validation`).
+- Three failing-first Ownership tests proved absent validation for a missing event, event count mismatch, and missing transaction. Current focused shared/primary-domain tests returned `112 passed, 2 warnings`; tests for other helper callers returned `87 passed, 6 warnings`. The new M3-3 selection returned `9/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay returned `24/12/87/56/990`, all zero differences.
+- Evidence: `docs/verification/m3-3-shared-owner-replay-validation-20261127.md`. Full backend suite was not run. Replay paths bypassing `replay_duplicate` and remaining domain R2 promotions are not covered; M3-3 remains in progress.
