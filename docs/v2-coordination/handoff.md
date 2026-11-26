@@ -900,3 +900,7 @@
 
 - M6-5 siege runtime and ASGI tests returned `55 passed, 6 warnings` under Python 3.12.2 with explicit F-drive `TEMP`, `TMP`, `PYTHONPYCACHEPREFIX`, and `--basetemp`.
 - Raw pytest temporary data is under `F:/paralls-verification/thread-a/m6-basetemp-20261127-01/`. This closes the prior focused-test environment difference only. Production deployment, Gate values, UE transport, and full siege execution remain unverified.
+### H-A-131 | Verification temp migration follow-up | 2026-11-27
+
+- Files from the A full-run pytest directory `D:/codex-temp/user-temp/pytest-of-User/pytest-3354` were moved to `F:/paralls-verification/thread-a/migrated-pytest-3354/`. The source was verified file-empty afterward.
+- Deleting only the empty source directory was attempted but rejected by execution policy. No other D-drive content was touched.
