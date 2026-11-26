@@ -8,7 +8,7 @@ The direct `FactTypeRegistry.compile` test fixture now supplies `entity_ref`, ma
 
 ## Verification
 
-Implementation commit: `177765ba300a26f6aebfc77bcdb291e58da480ad`.
+Implementation commit: `177765ba300a26f6aebfc77bcdb291e58da480ad`. Enum coverage commit: `38a1ccd0`.
 
 - Python: `D:\Temp\paralls-g0-py312\Scripts\python.exe --version` returned `Python 3.12.2`.
 - Import path: with `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`, importing `app` returned `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.

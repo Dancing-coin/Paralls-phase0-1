@@ -1,5 +1,5 @@
 {
-  "head": "WORKTREE-UNCOMMITTED-2026-11-26-IDENTITY-ENUM",
+  "head": "38a1ccd0",
   "description": "M5-5 FactType and resolver validator rules, package diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {

@@ -723,7 +723,7 @@
 
 ### H-A-102 | M5-5 identity enum positive coverage | 2026-11-26
 
-- 补充 `collection_ref` 和 `region_ref` 合法 identity 的规则包正例，四种正式 identity 均有运行覆盖。完整 validator 定向 `123 passed, 2 warnings`；M5-5 选择集 `29/0/0`。原始输出在 `F:/paralls-verification/thread-a/m5-5-identity-enum-20261126-02/focused.log` 与 `F:/paralls-verification/thread-a/m5-5-identity-enum-selection-20261126-01/`。
+- 提交：`38a1ccd0`。补充 `collection_ref` 和 `region_ref` 合法 identity 的规则包正例，四种正式 identity 均有运行覆盖。完整 validator 定向 `123 passed, 2 warnings`；M5-5 选择集 `29/0/0`。原始输出在 `F:/paralls-verification/thread-a/m5-5-identity-enum-20261126-02/focused.log` 与 `F:/paralls-verification/thread-a/m5-5-identity-enum-selection-20261126-01/`。
 - 该测试增量仍只验证现有 FactType schema，不新增 Owner 或持久事件语义。
 
 ### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
