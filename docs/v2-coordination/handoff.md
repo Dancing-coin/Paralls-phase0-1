@@ -653,3 +653,9 @@
 - 项目负责人决定：`pack.migrated` 按平台控制面事件处理，不新增玩法 Owner。
 - Current implementation evidence: `PackageMigrationAuthority.PRINCIPAL_REF` is `authority:platform:rule-pack-migration`; the per-world stream is `platform:rule-packs:<world_ref>`; schema v1 is registered for `pack.migrated`. The replay resolver validates and applies the persisted migration chain by global sequence.
 - Existing tests cover durable reopen and historical sequence resolution, exact idempotent retry, changed-payload rejection, stale-source rejection, and rejected-command zero-write behavior. At exact tip `299767446515338576a615c36c6fccfa03cacda5`, `test_package_migration_runtime.py` returned `21 passed, 2 warnings in 0.46s`. Python 3.12.2, SQLite 3.43.1, and `app.__file__` under the A worktree were verified. Raw output: `F:/paralls-verification/thread-a/m5-3-platform-event-20261126-02/pytest.log`. This verifies the migration runtime tests, not production deployment or external manifest supply.
+
+### H-A-088 | M6-5 exact-tip focused recovery verification | 2026-11-26
+
+- At A tip `f9ed782d690f4796dbc1ae517bbc105fa8fddbbe`, the documentation-only follow-up was verified with `test_m6_5_siege_runtime.py` and `test_facility_gate_layered_runtime.py`: `51 passed, 6 warnings in 1.96s`, exit 0.
+- Python 3.12.2, SQLite 3.43.1, and A-worktree `app.__file__` were verified. Raw output: `F:/paralls-verification/thread-a/m6-5-current-tip-20261126-04/pytest.log`.
+- This is focused runtime evidence only. Formal obligation metadata, production Gate configuration, deployment, UE transport, frozen selections, and full backend regression remain unverified.

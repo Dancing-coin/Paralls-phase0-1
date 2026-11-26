@@ -41,3 +41,9 @@ This correction is static-only at A tip `38f88408`. No code or tests changed in 
 - Result: `51 passed, 6 warnings in 1.59s`, exit 0. This includes the durable layered-impact restart recovery test.
 - Raw output: `F:\paralls-verification\thread-a\m6-5-obligation-current-tip-20261126-03\pytest.log`. Temporary files are under the same F-drive run directory.
 - Frozen selections and the full backend suite were not run. Production server startup, Gate values, UE transport, and a complete siege session remain unverified.
+
+## Exact-tip documentation follow-up at `f9ed782d`
+
+- The documentation-only follow-up did not change runtime source files. At exact tip `f9ed782d690f4796dbc1ae517bbc105fa8fddbbe`, `test_m6_5_siege_runtime.py` plus `test_facility_gate_layered_runtime.py` returned `51 passed, 6 warnings in 1.96s`, exit 0.
+- Python `3.12.2`, SQLite `3.43.1`, and `app.__file__` under the A worktree were verified. Raw output is `F:/paralls-verification/thread-a/m6-5-current-tip-20261126-04/pytest.log`.
+- This verifies the focused recovery/runtime tests at the current documentation tip. It does not verify the missing formal obligation metadata, production deployment, Gate values, UE transport, frozen selections, or the full backend suite.
