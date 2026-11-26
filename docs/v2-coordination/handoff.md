@@ -606,3 +606,8 @@
 - The external Architecture v2 sources specify `temporal_effect` as `primitive: process` with `process_kind: temporal`, and the temporal-process abstract fields `tick_policy`, `next_tick`, `exit_condition`, plus idempotency `process_id + scheduled_world_tick`.
 - The formal rule-pack format only declares the `temporal_effects/` directory and example IDs `bleeding` and `burning`. It does not define entry fields, reference namespaces, validation/rejection codes, a production scheduler/consumer, or package-version and persistence boundaries. A-tip code and pack search found no temporal-effect entries or consumer.
 - Evidence: `docs/verification/m5-5-temporal-effects-contract-audit-20261126.md`. This is static-only. M5-5 remains blocked on the formal input contract, and no temporal-effect code or package content was added.
+
+### H-A-080 | M5-3 shared-replay current-tip attempt | 2026-11-26
+- At `bd02be3cbf3949742113c2e79d5216a7c23c20d1`, the frozen 990-node shared-replay runner completed batches 0000-0009 (400 nodes) and logged five passing tests in batch 0010 before pausing at `test_embodied_interaction_session_runner.py::test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`.
+- The current runner was interrupted after no progress; it produced no aggregate `selected/problems/improvements` result. This is incomplete, not a pass. Raw output and exact environment are recorded in `docs/verification/m5-3-shared-replay-current-tip-20261126.md` and `F:/paralls-verification/thread-a/m5-3-shared-replay-exact-tip-20261126-02/`.
+- Python 3.12.2 and the A worktree `app.__file__` were verified. SQLite was 3.43.1. Port 8000 had no listener before or after the run. No external process was stopped.

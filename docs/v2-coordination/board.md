@@ -97,6 +97,10 @@
 
 - 当前 A 代码状态下 frozen shared-replay `selected=990 problems=0 improvements=0`。停滞节点单独通过。根因为 `common._find_listener_pid` 的 PowerShell listener 查询挂起；独立 `netstat` 确认端口 8000 无监听后，通过 F 盘临时 shim 完成完整比较，没有停止外部进程。原始输出在 `F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/shared-replay/`。M5-3 的部署 manifest 与 package startup wiring 仍未完成。
 
+### M5-3 shared-replay current-tip attempt（2026-11-26）
+
+- At `bd02be3c`, the frozen 990-node comparison completed 10 of 25 batches, then stopped in batch 0010 at `test_profile_repeated_in_one_run_receives_fresh_events[isolated-storage]`. The run has no aggregate result and is incomplete. Evidence: `docs/verification/m5-3-shared-replay-current-tip-20261126.md`; raw output: `F:/paralls-verification/thread-a/m5-3-shared-replay-exact-tip-20261126-02/`.
+
 ### M6-5 versioned Gate profile contract（2026-11-26）
 
 - Commit `d693686b` adds compatible `schema_version=1` parsing and rejects invalid or unknown Gate profile fields. Focused tests returned `71 passed, 6 warnings`; the 19-node registered selection returned `problems=0 improvements=0`.
