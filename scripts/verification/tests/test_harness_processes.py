@@ -130,6 +130,39 @@ def test_stop_backend_preserves_reused_backend() -> None:
     common.stop_backend(None)
 
 
+def test_find_listener_pid_reads_ipv4_ipv6_and_exact_port_rows(monkeypatch) -> None:
+    output = """Active Connections
+  Proto  Local Address          Foreign Address        State           PID
+  TCP    0.0.0.0:8000           0.0.0.0:0              LISTENING       1234
+  TCP    [::]:8001              [::]:0                 LISTENING       5678
+  TCP    0.0.0.0:80000          0.0.0.0:0              LISTENING       9012
+  TCP    127.0.0.1:8002         127.0.0.1:9000         ESTABLISHED     3456
+"""
+    calls = []
+
+    def run(args, **kwargs):
+        calls.append((args, kwargs))
+        return subprocess.CompletedProcess(args, 0, output, "")
+
+    monkeypatch.setattr(common.subprocess, "run", run)
+
+    assert common._find_listener_pid(8000) == 1234
+    assert common._find_listener_pid(8001) == 5678
+    assert common._find_listener_pid(8002) is None
+    assert calls[0][0] == ["netstat", "-ano", "-p", "tcp"]
+    assert calls[0][1]["timeout"] == 5
+
+
+def test_find_listener_pid_fails_closed_when_netstat_fails(monkeypatch) -> None:
+    def run(args, **kwargs):
+        return subprocess.CompletedProcess(args, 1, "", "netstat failed")
+
+    monkeypatch.setattr(common.subprocess, "run", run)
+
+    with pytest.raises(RuntimeError, match="listener_inspection_failed"):
+        common._find_listener_pid(8000)
+
+
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job退出语义")
 @pytest.mark.parametrize(("parent_exits", "child_exits"), [(False, False), (True, False), (True, True)])
 def test_owned_job_waits_for_sqlite_child_exit_before_returning(tmp_path: Path, parent_exits, child_exits) -> None:

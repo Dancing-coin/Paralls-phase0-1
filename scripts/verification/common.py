@@ -250,30 +250,31 @@ def get_health(url: str = "http://127.0.0.1:8000/health") -> dict[str, object] |
 
 
 def _find_listener_pid(port: int) -> int | None:
-    try:
-        result = subprocess.run(
-            [
-                "powershell",
-                "-NoProfile",
-                "-Command",
-                f"(Get-NetTCPConnection -LocalPort {port} -State Listen | Select-Object -First 1 -ExpandProperty OwningProcess)",
-            ],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            check=False,
-        )
-    except OSError:
-        return None
-    value = result.stdout.strip()
-    if value == "":
-        return None
-    try:
-        return int(value)
-    except ValueError:
-        return None
+    result = subprocess.run(
+        ["netstat", "-ano", "-p", "tcp"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+        timeout=5,
+    )
+    if result.returncode != 0:
+        raise RuntimeError("listener_inspection_failed")
+
+    expected_port = str(port)
+    for line in result.stdout.splitlines():
+        fields = line.split()
+        if (len(fields) < 5 or fields[0].upper() != "TCP"
+                or fields[-2].upper() != "LISTENING"
+                or fields[1].rsplit(":", 1)[-1] != expected_port):
+            continue
+        try:
+            return int(fields[-1])
+        except ValueError as error:
+            raise RuntimeError("listener_inspection_failed") from error
+    return None
 
 
 def _terminate_listener_pid(pid: int) -> None:
