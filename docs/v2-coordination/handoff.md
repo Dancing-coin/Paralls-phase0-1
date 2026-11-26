@@ -896,3 +896,7 @@
 - The five failures were external or pre-existing environment/runtime families: missing `tokenizers`, Godot headless parse errors, population cold-ready report schema, recovery probe Git configuration, and a role-presentation Godot headless probe. This run does not establish a full-suite pass and does not identify an Architecture v2 M5/M6 focused-path failure.
 - The result is recorded as merge-state full-suite evidence only, separate from individual slice verification.
 - Environment difference: one pytest `tmp_path` diagnostic resolved under inherited `D:\codex-temp\user-temp` despite F-drive `TEMP/TMP`; no unrelated D-drive content was moved or deleted. A future rerun must pass an explicit F-drive `--basetemp`.
+### H-A-130 | M6-5 explicit F-drive pytest basetemp recheck | 2026-11-27
+
+- M6-5 siege runtime and ASGI tests returned `55 passed, 6 warnings` under Python 3.12.2 with explicit F-drive `TEMP`, `TMP`, `PYTHONPYCACHEPREFIX`, and `--basetemp`.
+- Raw pytest temporary data is under `F:/paralls-verification/thread-a/m6-basetemp-20261127-01/`. This closes the prior focused-test environment difference only. Production deployment, Gate values, UE transport, and full siege execution remain unverified.
