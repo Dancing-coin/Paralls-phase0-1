@@ -635,3 +635,9 @@
 - The actual gap is the formal L5 obligation lifecycle shape. `ImpactGateObligation` currently contains only ID, gate ref, open/settled status, and durable step receipt IDs. It has no pipeline ref, completed/pending steps, pending reason, responsible Owner refs, recovery action, or deadline tick. The runtime does not consume a compiled `Pipeline` for this flow.
 - Reusing event-derived receipts and startup reconciliation remains the selected direction because the formal contract says Workflow state is rebuildable and is not a second domain fact ledger. The missing fields need a package/runtime contract, especially a source for deadline and failure classification. Do not invent production deadlines or treat the demo Gate profile as production values.
 - Corrected static evidence is `docs/verification/m6-5-production-assembly-audit-20261126.md`. This correction did not rerun tests and does not claim M6-5 complete.
+
+### H-A-085 | M6-5 obligation recovery exact-tip test | 2026-11-26
+
+- At A tip `9b77738d`, Python 3.12.2, SQLite 3.43.1, and the A worktree `app.__file__` were verified. `test_m6_5_siege_runtime.py` plus `test_facility_gate_layered_runtime.py` returned `51 passed, 6 warnings in 1.59s`, exit 0. This includes durable-store restart and idempotent Owner receipt recovery.
+- Raw output is `F:/paralls-verification/thread-a/m6-5-obligation-current-tip-20261126-03/pytest.log`; pytest temporary data is under the same F-drive run root. Failed command-line quoting attempts are separately retained in run IDs `...-01` and `...-02`; neither reached pytest.
+- No frozen selection or full backend suite was run. The result verifies the focused recovery path only; it does not verify full L5 obligation metadata, production deployment, or UE transport.

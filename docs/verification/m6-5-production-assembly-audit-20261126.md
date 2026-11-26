@@ -33,3 +33,11 @@ The prior gap statement overstated the missing recovery path. `backend/app/main.
 The remaining gap is the formal obligation contract, not absence of restart recovery. `backend/app/gameplay/impact_gate_obligation.py:16-23` currently exposes `obligation_id`, `gate_ref`, `status`, and step receipt IDs. It does not expose `pipeline_ref`, completed/pending step sets, pending reason, responsible Owner refs, recovery action, or a deadline tick. The existing event-derived projection and startup reconciliation avoid a separate workflow ledger, but they do not yet provide those required lifecycle fields or classify unresolved work. The M6-5 runtime also does not consume a compiled `Pipeline` for this flow.
 
 This correction is static-only at A tip `38f88408`. No code or tests changed in this correction. A prior exact-slice test result remains in the linked recovery evidence and is not presented as a rerun at this tip.
+
+## Exact-tip recovery verification at `9b77738d`
+
+- Python `3.12.2`; SQLite `3.43.1`; `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`; `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
+- Command: Python 3.12.2 `pytest.main` with `-q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\m6-5-obligation-current-tip-20261126-03\pytest-tmp backend/tests/test_m6_5_siege_runtime.py backend/tests/test_facility_gate_layered_runtime.py`.
+- Result: `51 passed, 6 warnings in 1.59s`, exit 0. This includes the durable layered-impact restart recovery test.
+- Raw output: `F:\paralls-verification\thread-a\m6-5-obligation-current-tip-20261126-03\pytest.log`. Temporary files are under the same F-drive run directory.
+- Frozen selections and the full backend suite were not run. Production server startup, Gate values, UE transport, and a complete siege session remain unverified.
