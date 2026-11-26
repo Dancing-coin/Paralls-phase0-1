@@ -718,8 +718,8 @@
 
 ### H-A-101 | M5-5 resolution-order regression assertion | 2026-11-26
 
-- 在已有 credential registry 测试中补充 resolution order 唯一性与从 10 开始连续性的回归断言。定向节点 `1 passed, 2 warnings`，原始输出在 `F:/paralls-verification/thread-a/m5-5-order-contract-20261126-01/focused.log`。
-- 该断言只验证编译器已实现的结构性保证，未新增规则包语义或 Owner。待随 M5-5 增量提交。
+- 提交：`7690df59deb49f5af179dcca92f552a1caaf890f`。在已有 credential registry 测试中补充 resolution order 唯一性与从 10 开始连续性的回归断言。定向节点 `1 passed, 2 warnings`，原始输出在 `F:/paralls-verification/thread-a/m5-5-order-contract-20261126-01/focused.log`。
+- 该断言只验证编译器已实现的结构性保证，未新增规则包语义或 Owner。
 
 ### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
 
