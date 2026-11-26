@@ -85,7 +85,7 @@ At A tip `3978f4f9ecc02990e2be8d09681a3beaed40ad58`, the focused command returne
 
 | Selection | Current-tip result | Raw output |
 |---|---|---|
-| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-1-current-tip-20261127-02\\ownership\\` |
-| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-1-current-tip-20261127-02\\shared-replay\\` |
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-02\ownership\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-02\shared-replay\` |
 
 The full backend suite was not rerun for this M3-1 check. The latest recorded A-tip full suite remains `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit code 1, and is a merge-state result rather than slice evidence. M3-1 remains `待门禁`.

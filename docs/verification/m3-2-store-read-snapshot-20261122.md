@@ -38,12 +38,12 @@ At A tip `259314e2`, the focused M3-2 command returned **34 passed, 2 warnings**
 
 | Selection | Current-tip result | Raw output |
 |---|---|---|
-| M3-2 registered selection, 7 nodes | `selected=7 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-2-current-tip-20261127-01\\m3-2\\` |
-| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-2-current-tip-20261127-01\\ownership\\` |
-| modifier, 12 nodes | `selected=12 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-2-current-tip-20261127-01\\modifier\\` |
-| equipment, 87 nodes | `selected=87 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-2-current-tip-20261127-01\\equipment\\` |
-| inventory, 56 nodes | `selected=56 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-2-current-tip-20261127-01\\inventory\\` |
-| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\\paralls-verification\\thread-a\\m3-2-current-tip-20261127-01\\shared-replay\\` |
+| M3-2 registered selection, 7 nodes | `selected=7 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-2-current-tip-20261127-01\m3-2\` |
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-2-current-tip-20261127-01\ownership\` |
+| modifier, 12 nodes | `selected=12 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-2-current-tip-20261127-01\modifier\` |
+| equipment, 87 nodes | `selected=87 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-2-current-tip-20261127-01\equipment\` |
+| inventory, 56 nodes | `selected=56 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-2-current-tip-20261127-01\inventory\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-2-current-tip-20261127-01\shared-replay\` |
 
 The current-tip full backend suite was not rerun for this M3-2 check. The latest recorded full suite remains a non-green merge-state result and is not attributed to this mechanism slice. M3-2 remains `待门禁`.
 | M1-3 Pool | 15 | 0 | 0 |
