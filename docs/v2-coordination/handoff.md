@@ -752,3 +752,10 @@
 - The regression suite now exercises incompatible values for all five fields in `_FACT_TYPE_FIELD_PRIMITIVES`. The `state_set_ref` negative case is tested directly through `FactTypeRegistry.compile`, because package parsing already rejects the field shape before registry compilation for non-machine primitives.
 - At pushed tip `30c4bf5051ebf789e7e724a3fbd19ba793da6d29`, focused validator/registry tests returned `136 passed, 2 warnings`; the updated M5-5 selection returned `38/0/0`. Both exact-tip outputs and F-drive temporary data are under `F:/paralls-verification/thread-a/m5-5-field-coverage-exacttip-20261126-01/`.
 - The earlier full run at `1be69ba3` used the same production implementation but preceded these test-only changes. Its `62` failures remain unclassified; the full suite was not rerun after the additional tests.
+
+### H-A-106 | M5-5 full-suite failure triage and Holdings fixture alignment | 2026-11-26
+
+- Commit `955fd258` adds the required `identity: entity_ref` to the M1-2 Holdings test fixtures and updates the expected rejection for `state_set_ref` on a Holdings primitive to `facttype_field_primitive_invalid`.
+- The original 62 full-suite failure node IDs were rerun with an F-drive basetemp. Result: `57 passed, 5 failed`. The five remaining node IDs reproduced at parent `9cee2f25`; this sampled comparison is not the frozen G0 baseline comparison. Focused validator/registry/Holdings tests returned `139 passed, 2 warnings`; M5-5 selection returned `38/0/0`.
+- The prior full-suite run was at commit `1be69ba3` with uncommitted M5-5 source and test changes. Its backslash-form pytest temp setting produced 32 `FileNotFoundError` failures and a malformed temp tree under `backend`. The run-owned tree remains preserved with the F-drive evidence. Full backend suite at exact tip `955fd258` has not been run.
+- Evidence: `docs/verification/m5-5-facttype-primitives-20261126.md`. Raw triage output: `F:/paralls-verification/thread-a/m5-5-failure-triage-20261126-03/`, `m5-5-failure-triage-parent-20261126-01/`, and `m5-5-holdings-fixture-20261126-02/`.
