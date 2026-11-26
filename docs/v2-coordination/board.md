@@ -60,6 +60,11 @@
 - `955fd258` aligns the M1-2 Holdings test fixtures with the required FactType identity and primitive-field rejection contract. Focused validator/registry/Holdings tests: `139 passed`; M5-5 selection: `38/0/0`.
 - The prior 62 full-suite failure node IDs now return `57 passed, 5 failed`; those five node IDs reproduce at parent `9cee2f25`. This is a sampled parent comparison, not full-suite or frozen G0 baseline evidence. Full backend suite at exact tip `955fd258` remains unrun. Details: `docs/verification/m5-5-facttype-primitives-20261126.md` and H-A-106.
 
+### M5-5 exact-tip backend regression follow-up (2026-11-26)
+
+- Backend suite at `8febee38`, scoped to `backend/tests`: `10,750 passed, 7 failed, 2 skipped, 2 xfailed`, exit 1. Three failures match frozen G0; `cold_ready` is the known out-of-scope H-A-098 failure; recovery-measurement reproduces at parent `c0f85969`; two repeated-profile variants conflict with the existing `D:\cl-laya` backend on Port 8000. No new M5-5 failure was identified.
+- Raw output: `F:/paralls-verification/thread-a/m5-5-current-tip-backend-full-20261126-01/full.log`. Full suite is not a zero-failure pass. M5-5 remains in progress.
+
 ## 三、待决（负责人需表态）
 
 ### M6-5 最新进展（2026-11-24）
