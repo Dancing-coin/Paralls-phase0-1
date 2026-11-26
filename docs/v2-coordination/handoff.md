@@ -721,6 +721,11 @@
 - 提交：`7690df59deb49f5af179dcca92f552a1caaf890f`。在已有 credential registry 测试中补充 resolution order 唯一性与从 10 开始连续性的回归断言。定向节点 `1 passed, 2 warnings`，原始输出在 `F:/paralls-verification/thread-a/m5-5-order-contract-20261126-01/focused.log`。
 - 该断言只验证编译器已实现的结构性保证，未新增规则包语义或 Owner。
 
+### H-A-102 | M5-5 identity enum positive coverage | 2026-11-26
+
+- 补充 `collection_ref` 和 `region_ref` 合法 identity 的规则包正例，四种正式 identity 均有运行覆盖。完整 validator 定向 `123 passed, 2 warnings`；M5-5 选择集 `29/0/0`。原始输出在 `F:/paralls-verification/thread-a/m5-5-identity-enum-20261126-02/focused.log` 与 `F:/paralls-verification/thread-a/m5-5-identity-enum-selection-20261126-01/`。
+- 该测试增量仍只验证现有 FactType schema，不新增 Owner 或持久事件语义。
+
 ### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
 
 - The additional node is `tests/test_population_cold_ready_gate.py::test_cold_ready`; it fails because `report["resource_bounds"]["passed"]` is false. The test, its `scripts/verification/verify_population_long_session_recovery.py` runner, and `backend/app/population/` have no changes relative to `origin/integration`. This lies outside the Architecture v2 A scope, so no code change was made. Detailed result is in `docs/verification/m5-3-full-backend-20261126.md`.

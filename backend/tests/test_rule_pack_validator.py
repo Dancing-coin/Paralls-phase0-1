@@ -101,6 +101,18 @@ def test_pack_rejects_missing_or_unknown_fact_type_identity(tmp_path, identity_l
     assert [violation.target for violation in matching] == ["fact:credential:*:link"]
 
 
+@pytest.mark.parametrize("identity", ["collection_ref", "region_ref"])
+def test_pack_accepts_non_singleton_fact_type_identities(tmp_path, identity):
+    destination = shutil.copytree(PACK, tmp_path / f"{identity}-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(fact_type.replace('identity: "entity_ref"', f'identity: "{identity}"', 1), encoding="utf-8")
+
+    loaded = load_pack(destination, handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:*:link"].fact_type_id == "fact:credential:*:link"
+
+
 def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
     loaded = load_pack(PACK, handlers=HANDLERS)
 
