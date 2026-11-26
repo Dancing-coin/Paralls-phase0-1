@@ -145,6 +145,8 @@
 - Follow-up triage located the second marker at node 2308, `test_task45_headless_probe_observes_shared_path_and_contact_contract`. It fails with the same Godot `CharacterMotor` parse errors on current `cdf99158` and parent `6d31a831`. Both visible failures are pre-existing for this change; the interrupted full suite is still incomplete. See H-A-073 and the evidence addendum.
 - Production Gate values remain unset under H-A-039. The profile values in `.env.example` are explicitly a demonstration profile; M6-5 remains in progress.
 
+- M3-2 current-tip revalidation: A tip `259314e2`, focused `34 passed, 2 warnings`; registered selection `7/0/0`; frozen ownership/modifier/equipment/inventory/shared-replay selections `24/12/87/56/990`, all `problems=0 improvements=0`. Evidence: `docs/verification/m3-2-store-read-snapshot-20261122.md`. The M3-2 task remains pending integration gate.
+
 ### M5-5 FactType identity contract increment (2026-11-26)
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。

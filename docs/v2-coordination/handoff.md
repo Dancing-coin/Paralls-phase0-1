@@ -910,3 +910,9 @@
 - At A tip `3978f4f9ecc02990e2be8d09681a3beaed40ad58`, `OwnerCommitBuilder` focused tests returned `23 passed, 2 warnings`. Frozen ownership selection returned `selected=24 problems=0 improvements=0`; frozen shared-replay returned `selected=990 problems=0 improvements=0`.
 - Raw outputs are retained under `F:/paralls-verification/thread-a/m3-1-current-tip-20261127-02/`. This is slice-level current-tip evidence. The latest full backend suite remains a merge-state result with `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit code 1, and is not attributed to M3-1.
 - M3-1 remains `待门禁`; no integration or main branch was modified.
+
+### H-A-133 | M3-2 current-tip revalidation | 2026-11-27
+
+- At A tip `259314e2`, the `StoreReadSnapshot` focused tests returned `34 passed, 2 warnings`. Its registered selection returned `selected=7 problems=0 improvements=0`. Frozen ownership, modifier, equipment, inventory and shared-replay returned `24/0/0`, `12/0/0`, `87/0/0`, `56/0/0` and `990/0/0` respectively.
+- Raw outputs are retained under `F:/paralls-verification/thread-a/m3-2-current-tip-20261127-01/`. This is current-tip mechanism evidence only. The current-tip full backend suite was not rerun for M3-2.
+- M3-2 remains `待门禁`; no integration or main branch was modified.
