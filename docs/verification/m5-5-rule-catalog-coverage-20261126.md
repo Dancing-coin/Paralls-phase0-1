@@ -54,3 +54,11 @@ The supported package sections in `rule_pack_validator.py` are FactTypes, machin
 The catalog items marked structurally prevented have explicit source-level guarantees but lack direct regression assertions. Resolver purity and executable invariant checks need formal registration/schema contracts. Owner checks belong to an Owner declaration registry, which this package loader does not currently consume. Impact-profile cycles cannot occur with the current list-only layer format. No unsupported fields, Owner model, or package semantics were invented in this audit.
 
 The audit does not establish complete M5-5 acceptance. It identifies where package validation is implemented, where structure makes a condition impossible, and where the formal rule catalog lacks a representation consumed by the current loader.
+
+## Current-tip correction (2026-11-26)
+
+The initial audit above predates commits `7690df59` and `38a1ccd0`. At A tip `27c2aaa0`, the credential registry tests now assert stable topological ordering, unique and dense `resolution_order` values starting at 10, cycle rejection, and positive coverage for all four registered identity values. The resolution-order duplicate/gap entries are covered by regression assertions; their prior status as assertion gaps is superseded.
+
+At the same tip, validator and registry tests returned `136 passed, 2 warnings in 3.32s` with Python 3.12.2, SQLite 3.43.1, and `app.__file__` resolving under the A worktree. Raw pytest output is `F:/paralls-verification/thread-a/m5-5-rule-catalog-current-tip-20261126-01/focused.log`; pytest temporary data is under the same F-drive run directory.
+
+Remaining M5-5 catalog limits are unchanged: Owner write-set and invariant rules need an Owner declaration contract; Resolver purity needs a registration/capability contract; impact-profile cycles are not expressible in the current flat layer format; executable invariant validation has no invariant-expression section. `temporal_effects` remains blocked separately on its entry schema, reference namespace, validation/rejection contract, consumer, and effect-instance persistence boundary. No package fields or runtime semantics were inferred from the directory name or examples.
