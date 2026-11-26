@@ -11,6 +11,18 @@
 
 《组合总纲》补给例的 `reserve` 继承默认超时策略 `record_obligation`，恢复表未列该步骤。按《跨域结算》的义务恢复要求，当前编译器要求每个可打开义务的步骤声明恢复动作。接入该样例需要补 `reserve` 的恢复声明或覆盖其超时动作。
 
+## Current-tip revalidation, 2026-11-27
+
+At A tip `8ff452c7`, the focused Workflow, RulePack Validator, Reaction and Play Pattern command returned **162 passed, 2 warnings** under Python 3.12.2 with the A-worktree `PYTHONPATH` and explicit F-drive pytest basetemp.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| M6-3 Workflow, 8 nodes | `selected=8 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-3-current-tip-20261127-01\workflow\` |
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-3-current-tip-20261127-01\ownership\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-3-current-tip-20261127-01\shared-replay\` |
+
+No code changed in this revalidation. Production workflow execution, durable obligation recovery, Gateway activation, UE transport and complete siege execution remain unverified. The current-tip full backend suite was not rerun. M6-3 remains `待门禁`.
+
 ## 已验证
 
 Python 3.12.2，SQLite 3.43.1。定向测试和选集使用 `F:/codex-temp/a-m6-2-8cb4ecca/backend`，已核验 `app.__file__`。

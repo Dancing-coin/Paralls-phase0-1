@@ -938,3 +938,8 @@
 
 - At A tip `9f4cfd82`, focused RulePack Validator, Reaction and Play Pattern tests returned `154 passed, 2 warnings`. Pipeline selection returned `8/0/0`, ownership `24/0/0`, and shared-replay `990/0/0`.
 - This confirms offline declaration and input-binding behavior. Production settlement, durable obligation execution/recovery and application activation remain unverified. M6-2 remains `待门禁`.
+
+### H-A-138 | M6-3 current-tip Workflow revalidation | 2026-11-27
+
+- At A tip `8ff452c7`, focused Workflow, RulePack Validator, Reaction and Play Pattern tests returned `162 passed, 2 warnings`. Workflow selection returned `8/0/0`, ownership `24/0/0`, and shared-replay `990/0/0`.
+- This verifies offline declaration and package loading. Production workflow execution, durable obligation recovery and Gateway activation remain unverified. M6-3 remains `待门禁`.
