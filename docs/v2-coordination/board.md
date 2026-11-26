@@ -161,6 +161,8 @@
 
 - M6-5 current-tip regression at `cd1b1c9b`: focused `228 passed, 6 warnings`; layered impact/production wiring/Information selections `26/6/25`, each zero differences; frozen ownership/shared-replay `24/990`, zero differences. Evidence `docs/verification/m6-5-impact-gate-pipeline-20261127.md`, H-A-140. Production Gate values, deployment target, UE transport and complete siege execution remain unverified; `deadline_world_tick` unknown; M6-5 remains in progress.
 
+- M5-5 current-tip validator/registry revalidation at `e002eb24`: focused `165 passed, 2 warnings`; M5-5 selection `38/0/0`; frozen five selections 1,169 nodes, all zero differences. Evidence `docs/verification/m5-5-facttype-primitives-20261126.md`, H-A-141. Machine-readable Owner declarations, invariant grammar, Resolver capability attestation and `temporal_effects` remain unspecified; M5-5 remains in progress.
+
 ### M5-5 FactType identity contract increment (2026-11-26)
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。

@@ -24,4 +24,12 @@ Raw output is under `F:/paralls-verification/thread-a/m5-5-field-primitive-20261
 
 ## Scope and remaining work
 
+## Current-tip revalidation, 2026-11-27
+
+At A tip `e002eb24`, the focused RulePack Validator, FactType registry, EventSchema registry, Credential FactType registry, and Credential FactType rejection tests returned **165 passed, 2 warnings** with Python 3.12.2 and the A-worktree `PYTHONPATH`. The M5-5 registered selection returned `38/0/0`. Frozen Ownership, modifier, equipment, inventory, and shared-replay selections returned `24/0/0`, `12/0/0`, `87/0/0`, `56/0/0`, and `990/0/0` respectively.
+
+The first invocation failed during `tmp_path` setup because the unique F-drive `--basetemp` parent directory had not yet been created. It did not execute test bodies. The parent was created and the same test command then passed. Raw current-tip outputs are under `F:/paralls-verification/thread-a/m5-5-current-tip-20261127-01/`.
+
+The broader M5-5 contract remains incomplete. The formal machine-readable Owner declaration registry, complete invariant grammar, Resolver capability/side-effect attestation, and `temporal_effects` package/runtime contract remain unspecified. The current-tip full backend suite was not rerun.
+
 This verifies the primitive-specific schema-field contract increment and corrects the Holdings test fixtures for the required identity and primitive-field contracts. It does not complete M5-5. The exact-tip backend suite has seven classified failures and is not a zero-failure pass. The broader catalog still has missing formal package or runtime contracts, including `temporal_effects`, as recorded in the catalog and contract audits. Production package migration and deployment validation remain outside this increment.

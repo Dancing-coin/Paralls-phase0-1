@@ -954,3 +954,9 @@
 - At A tip `cd1b1c9b`, eight focused M6-5 test files returned `228 passed, 6 warnings`. Layered impact, production wiring and Information selections returned `26/0/0`, `6/0/0` and `25/0/0`; frozen Ownership and shared-replay returned `24/0/0` and `990/0/0`.
 - This verifies local tested startup, command, Owner and replay paths. No production Gate values, deployment target, UE transport or complete external siege execution were supplied. `deadline_world_tick` remains unknown. The full backend suite was not rerun.
 - Raw outputs are under `F:/paralls-verification/thread-a/m6-5-current-tip-20261127-01/`. M6-5 remains in progress.
+
+### H-A-141 | M5-5 current-tip validator and registry revalidation | 2026-11-27
+
+- At A tip `e002eb24`, five focused validator/registry/EventSchema files returned `165 passed, 2 warnings`. M5-5 selection returned `38/0/0`; frozen Ownership/modifier/equipment/inventory/shared-replay returned `24/12/87/56/990`, all zero differences.
+- The first invocation did not reach test execution because the explicit F-drive `--basetemp` parent directory was absent. After creating that run-owned directory, the identical test command passed.
+- Raw outputs are under `F:/paralls-verification/thread-a/m5-5-current-tip-20261127-01/`. Formal Owner registry/compiler, invariant grammar, Resolver capability attestation, and `temporal_effects` remain unresolved; M5-5 remains in progress.
