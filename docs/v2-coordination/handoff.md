@@ -872,3 +872,8 @@
 
 - After the M1-4 audit, the current A tip was rechecked with the frozen comparator. Ownership returned `selected=24 problems=0 improvements=0`; shared-replay returned `selected=990 problems=0 improvements=0`.
 - Raw outputs are under `F:/paralls-verification/thread-a/tip-20261127-01/`. This is selection evidence only and does not close M1-4, M2-2, production deployment, Gate configuration, UE transport, or the full backend suite.
+
+### H-A-125 | M5-5 validator current-tip check | 2026-11-27
+
+- Current A-tip validator coverage passed `144 tests, 2 warnings` across `test_rule_pack_validator.py`, `test_fact_type_registry.py`, and `test_gameplay_event_schema_registry.py` under Python 3.12.2 with the A-worktree import path. Temporary paths were directed to `F:/paralls-verification/thread-a/m5-5-validator-20261127-01/`.
+- This is verification of the existing contract only. M5-5 remains open because the formal machine-readable Owner declaration registry, invariant expression grammar, Resolver capability/side-effect attestation, and `temporal_effects` package/runtime contract are still unspecified.
