@@ -143,6 +143,52 @@ def test_layered_impact_applies_to_first_available_durability_layer():
     ))
 
 
+def test_impact_gate_rebuild_pins_the_shared_input_revision_vector(tmp_path):
+    database_path = tmp_path / "impact-gate-input-vector.db"
+    store = DurableGameplayEventStore(
+        database_path,
+        event_schema_registry=create_stormnight_event_schema_registry(),
+    )
+    _, _, facility = _authorities_for_store(store)
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+
+    evidence, impact_result, _ = runtime.record_gate_impact_v2(
+        _receipt("impact:shared-input-vector")
+    )
+    assert impact_result.committed
+    impact = store.get_event(evidence.committed_event_ids[0])
+    obligation, = runtime.impact_gate_obligations()
+
+    assert dict(obligation.input_revision_vector) == {
+        **{
+            FacilityGateLayeredAuthority.fact_type_for(GATE, layer): 1
+            for layer in LAYERS
+        },
+        runtime.presence.stream_id(GATE): 0,
+    }
+
+    assessment = PresenceAssessmentReceiptV2.model_validate(
+        _presence_input(store, impact, "presence:shared-input-vector")
+    )
+    assert runtime.record_presence_assessment(assessment)[1].committed
+    store.close()
+
+    reopened = DurableGameplayEventStore(
+        database_path,
+        event_schema_registry=create_stormnight_event_schema_registry(),
+    )
+    try:
+        rebuilt, = rebuild_impact_gate_obligations(reopened)
+        assert rebuilt.input_revision_vector == obligation.input_revision_vector
+    finally:
+        reopened.close()
+
+
 def test_layered_initialization_reuses_existing_integrity_stream():
     store = GameplayEventStore()
     definition = _pool("integrity", "100")

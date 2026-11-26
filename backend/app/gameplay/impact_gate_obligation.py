@@ -8,6 +8,7 @@ from app.gameplay.models import GameplayEvent
 from app.gameplay.place_event_schema import PLACE_ASSESSMENT_CONFIRMED_EVENT
 from app.gameplay.siege_physical_input_runtime import (
     FACILITY_GATE_PRINCIPAL,
+    GateImpactReceiptV2,
     GATE_IMPACT_INPUT_EVENT_V2,
     PRESENCE_ASSESSMENT_INPUT_EVENT,
     PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
@@ -32,6 +33,7 @@ class ImpactGateObligation:
     owner_refs: tuple[str, ...]
     recovery_action: str | None
     deadline_world_tick: int | None
+    input_revision_vector: tuple[tuple[str, int], ...]
 
 
 def rebuild_impact_gate_obligations(
@@ -140,5 +142,23 @@ def rebuild_impact_gate_obligations(
             owner_refs=owner_refs,
             recovery_action=None if settled else "reconcile",
             deadline_world_tick=None,
+            input_revision_vector=_input_revision_vector(events, impact),
         ))
     return tuple(obligations)
+
+
+def _input_revision_vector(
+    events: list[GameplayEvent], impact: GameplayEvent,
+) -> tuple[tuple[str, int], ...]:
+    receipt = GateImpactReceiptV2.model_validate(impact.payload["receipt"])
+    streams = {
+        *receipt.expected_layer_revisions,
+        f"place:{receipt.gate_ref}:passability",
+    }
+    revisions = {stream_id: 0 for stream_id in streams}
+    for event in events:
+        if event.global_sequence >= impact.global_sequence:
+            continue
+        if event.stream_id in revisions:
+            revisions[event.stream_id] = event.stream_revision
+    return tuple(sorted(revisions.items()))
