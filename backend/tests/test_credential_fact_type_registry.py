@@ -82,3 +82,21 @@ def test_code_and_data_models_share_registration_and_evaluation():
     assert set(registry.models) == {"code@1", "data@1"}
     assert registry.evaluate("code@1", {"threshold": 2}) is True
     assert registry.evaluate("data@1", {"threshold": 1}) is False
+
+
+@pytest.mark.parametrize(("primitive", "fields"), [
+    pytest.param("holdings", {}, id="holdings"),
+    pytest.param("bond", {"bond_types": ["title"]}, id="bond"),
+    pytest.param("process", {"process_kind": "temporal"}, id="process"),
+    pytest.param("place", {"place_kind": "location"}, id="place"),
+])
+def test_registry_accepts_registered_non_machine_primitives(primitive, fields):
+    data = declarations()
+    fact = data["facts"][FACT]
+    fact["primitive"] = primitive
+    fact.pop("state_set_ref")
+    fact.update(fields)
+
+    registry = FactTypeRegistry.compile(**data)
+
+    assert registry.facts[FACT].primitive == primitive

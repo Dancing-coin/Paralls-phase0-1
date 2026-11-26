@@ -232,6 +232,27 @@ def test_pack_rejects_process_kind_on_non_process_fact_type(tmp_path):
     assert [violation.target for violation in matching] == ["fact:facility:gate-03:latch"]
 
 
+@pytest.mark.parametrize(("field", "value"), [
+    pytest.param("aggregation", '"sum"', id="aggregation"),
+    pytest.param("bond_types", '["title"]', id="bond-types"),
+    pytest.param("place_kind", '"location"', id="place-kind"),
+])
+def test_pack_rejects_primitive_incompatible_fact_type_fields(tmp_path, field, value):
+    destination = shutil.copytree(PACK, tmp_path / f"machine-{field}-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(fact_type.replace(
+        '  primitive: "machine"\n', f'  primitive: "machine"\n  {field}: {value}\n', 1,
+    ), encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_field_primitive_invalid"]
+    assert [violation.target for violation in matching] == ["fact:credential:*:link"]
+
+
 def test_pack_rejects_fact_type_without_primitive_using_missing_diagnostic(tmp_path):
     destination = shutil.copytree(PACK, tmp_path / "primitive-pack")
     fact_type_path = destination / "fact_types/credential_link.yaml"

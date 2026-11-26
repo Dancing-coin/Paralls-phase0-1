@@ -739,3 +739,10 @@
 
 - Cross-checked every code in the formal Validator rule directory against the current A implementation, tests, and supported pack sections. Evidence is docs/verification/m5-5-rule-catalog-coverage-20261126.md.
 - FactType resolution-order duplicates and gaps are prevented by enumerating a topological ordering from 10, though direct assertions are absent. primitive_count_exceeded is prevented by the fixed six-value registry and package primitive rejection. Owner-set rules, executable-invariant validation, Resolver purity attestation, and impact-profile cycle validation have no corresponding package declaration or graph contract in the current loader. No such package fields or semantics were invented. M5-5 remains incomplete. Static-only; no tests were run.
+
+### H-A-104 | M5-5 FactType primitive field contract increment | 2026-11-26
+
+- The package validator now rejects primitive-incompatible `aggregation`, `refold_model_ref`, `state_set_ref`, `bond_types`, and `place_kind` fields. The registry accepts the registered `holdings`, `bond`, `process`, and `place` primitives as well as existing `machine` and `pool` primitives. No new primitive was registered.
+- Focused validator/registry tests: `134 passed, 2 warnings`. M5-5 selection: `36/0/0`; frozen selections ownership/modifier/equipment/inventory/shared-replay: `24/0/0`, `12/0/0`, `87/0/0`, `56/0/0`, `990/0/0`. Evidence: `docs/verification/m5-5-facttype-primitives-20261126.md` and raw outputs under `F:/paralls-verification/thread-a/`.
+- The full backend run at `1be69ba3` collected 10,759 and exited 1 with `10,693 passed, 62 failed, 2 skipped, 2 xfailed, 236 warnings`. Failures were not compared against parent or frozen baseline and remain unclassified. `source_unchanged=true`. A run-created malformed pytest temp directory was moved intact from the A backend to the run evidence directory on F: after pytest exited.
+- M5-5 remains in progress; this increment does not establish full-suite success or complete the rule catalog.

@@ -37,6 +37,13 @@ REGISTERED_OWNER_IDS = frozenset({
 REGISTERED_FACT_TYPE_PRIMITIVES = frozenset({"pool", "machine", "holdings", "bond", "process", "place"})
 _FACT_TYPE_DOMAIN_PATTERN = re.compile(r"^[a-z_]{2,24}$")
 _FACT_TYPE_NAME_PATTERN = re.compile(r"^[a-z0-9_-]{2,48}$")
+_FACT_TYPE_FIELD_PRIMITIVES = {
+    "aggregation": {"pool", "holdings"},
+    "refold_model_ref": {"pool", "holdings"},
+    "state_set_ref": {"machine"},
+    "bond_types": {"bond"},
+    "place_kind": {"place"},
+}
 
 
 @dataclass(frozen=True)
@@ -148,21 +155,20 @@ class FactTypeRegistry:
             if "process_kind" in spec and primitive != "process":
                 reject("facttype_process_kind_invalid", target,
                        "process_kind is only valid for the process primitive")
+            if any(field in spec and primitive not in allowed_primitives
+                   for field, allowed_primitives in _FACT_TYPE_FIELD_PRIMITIVES.items()):
+                reject("facttype_field_primitive_invalid", target,
+                       "remove fields that are not supported by the FactType primitive")
             if primitive is None:
                 reject("primitive_missing", target, "declare one of the registered FactType primitives")
+            elif primitive not in REGISTERED_FACT_TYPE_PRIMITIVES:
+                reject("facttype_primitive_unknown", target, "declare a registered FactType primitive")
             elif primitive == "machine":
                 if spec.get("state_set_ref") not in machines:
                     reject("facttype_schema_unknown", target, "register the machine state set")
             elif primitive == "pool":
-                if spec.get("state_set_ref") is not None:
-                    reject("facttype_schema_unknown", target, "pool facts do not declare a machine state set")
                 if pool_defs is None or target not in pool_defs:
                     reject("facttype_schema_unknown", target, "register the Pool definition for this FactType")
-            elif primitive == "holdings":
-                if spec.get("state_set_ref") is not None:
-                    reject("facttype_schema_unknown", target, "holdings facts do not declare a machine state set")
-            else:
-                reject("facttype_primitive_unknown", target, "declare a registered FactType primitive")
             parts = target.split(":")
             has_missing_scope = (
                 (len(parts) == 3 and parts[0] == "fact" and all(parts[1:]))
