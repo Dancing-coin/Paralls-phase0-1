@@ -746,3 +746,9 @@
 - Focused validator/registry tests: `134 passed, 2 warnings`. M5-5 selection: `36/0/0`; frozen selections ownership/modifier/equipment/inventory/shared-replay: `24/0/0`, `12/0/0`, `87/0/0`, `56/0/0`, `990/0/0`. Evidence: `docs/verification/m5-5-facttype-primitives-20261126.md` and raw outputs under `F:/paralls-verification/thread-a/`.
 - The full backend run at `1be69ba3` collected 10,759 and exited 1 with `10,693 passed, 62 failed, 2 skipped, 2 xfailed, 236 warnings`. Failures were not compared against parent or frozen baseline and remain unclassified. `source_unchanged=true`. A run-created malformed pytest temp directory was moved intact from the A backend to the run evidence directory on F: after pytest exited.
 - M5-5 remains in progress; this increment does not establish full-suite success or complete the rule catalog.
+
+### H-A-105 | M5-5 primitive field regression coverage completion | 2026-11-26
+
+- The regression suite now exercises incompatible values for all five fields in `_FACT_TYPE_FIELD_PRIMITIVES`. The `state_set_ref` negative case is tested directly through `FactTypeRegistry.compile`, because package parsing already rejects the field shape before registry compilation for non-machine primitives.
+- At implementation commit `0f56f7af6123992a8536a780dcc51fac1939ca4e`, focused validator/registry tests returned `136 passed, 2 warnings`; the updated M5-5 selection returned `38/0/0`. The raw selection result is under `F:/paralls-verification/thread-a/m5-5-field-coverage-selection-20261126-01/`.
+- The earlier full run at `1be69ba3` used the same production implementation but preceded these test-only changes. Its `62` failures remain unclassified; the full suite was not rerun after the additional tests.

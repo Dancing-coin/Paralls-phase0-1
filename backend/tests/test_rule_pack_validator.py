@@ -232,17 +232,20 @@ def test_pack_rejects_process_kind_on_non_process_fact_type(tmp_path):
     assert [violation.target for violation in matching] == ["fact:facility:gate-03:latch"]
 
 
-@pytest.mark.parametrize(("field", "value"), [
-    pytest.param("aggregation", '"sum"', id="aggregation"),
-    pytest.param("bond_types", '["title"]', id="bond-types"),
-    pytest.param("place_kind", '"location"', id="place-kind"),
+@pytest.mark.parametrize(("field", "value", "primitive"), [
+    pytest.param("aggregation", '"sum"', "machine", id="aggregation"),
+    pytest.param("refold_model_ref", '"resolver@1"', "machine", id="refold-model"),
+    pytest.param("bond_types", '["title"]', "machine", id="bond-types"),
+    pytest.param("place_kind", '"location"', "machine", id="place-kind"),
 ])
-def test_pack_rejects_primitive_incompatible_fact_type_fields(tmp_path, field, value):
+def test_pack_rejects_primitive_incompatible_fact_type_fields(
+    tmp_path, field, value, primitive,
+):
     destination = shutil.copytree(PACK, tmp_path / f"machine-{field}-pack")
     fact_type_path = destination / "fact_types/credential_link.yaml"
     fact_type = fact_type_path.read_text(encoding="utf-8")
     fact_type_path.write_text(fact_type.replace(
-        '  primitive: "machine"\n', f'  primitive: "machine"\n  {field}: {value}\n', 1,
+        '  primitive: "machine"\n', f'  primitive: "{primitive}"\n  {field}: {value}\n', 1,
     ), encoding="utf-8")
 
     with pytest.raises(RegistrationRejected) as error:

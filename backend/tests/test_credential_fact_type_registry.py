@@ -100,3 +100,17 @@ def test_registry_accepts_registered_non_machine_primitives(primitive, fields):
     registry = FactTypeRegistry.compile(**data)
 
     assert registry.facts[FACT].primitive == primitive
+
+
+def test_registry_rejects_state_set_on_non_machine_primitive():
+    data = declarations()
+    data["facts"][FACT]["primitive"] = "bond"
+
+    with pytest.raises(RegistrationRejected) as error:
+        FactTypeRegistry.compile(**data)
+
+    matching = [
+        violation for violation in error.value.violations
+        if violation.code == "facttype_field_primitive_invalid"
+    ]
+    assert [violation.target for violation in matching] == [FACT]

@@ -1,5 +1,5 @@
 {
-  "head": "1be69ba3ba7b034cb626a788229604d4cb6ee867",
+  "head": "0f56f7af6123992a8536a780dcc51fac1939ca4e",
   "description": "M5-5 FactType and resolver validator rules, package diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {
@@ -153,6 +153,11 @@
       "failures": []
     },
     {
+      "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_primitive_incompatible_fact_type_fields[refold-model]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
       "test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_primitive_incompatible_fact_type_fields[bond-types]",
       "outcome": "passed",
       "failures": []
@@ -179,6 +184,11 @@
     },
     {
       "test_name": "tests/test_credential_fact_type_registry.py::test_registry_accepts_registered_non_machine_primitives[place]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_state_set_on_non_machine_primitive",
       "outcome": "passed",
       "failures": []
     }
