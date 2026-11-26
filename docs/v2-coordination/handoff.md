@@ -641,3 +641,15 @@
 - At A tip `9b77738d`, Python 3.12.2, SQLite 3.43.1, and the A worktree `app.__file__` were verified. `test_m6_5_siege_runtime.py` plus `test_facility_gate_layered_runtime.py` returned `51 passed, 6 warnings in 1.59s`, exit 0. This includes durable-store restart and idempotent Owner receipt recovery.
 - Raw output is `F:/paralls-verification/thread-a/m6-5-obligation-current-tip-20261126-03/pytest.log`; pytest temporary data is under the same F-drive run root. Failed command-line quoting attempts are separately retained in run IDs `...-01` and `...-02`; neither reached pytest.
 - No frozen selection or full backend suite was run. The result verifies the focused recovery path only; it does not verify full L5 obligation metadata, production deployment, or UE transport.
+
+### H-A-086 | M2-1 Ownership/Credential caller classification current-tip update | 2026-11-26
+
+- At A tip `299767446515338576a615c36c6fccfa03cacda5`, static classification of the listed Ownership/Credential reads is recorded in `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md` and appended to `docs/verification/m2-2-read-as-contract-audit-20261126.md`.
+- The inspected paths are trusted Owner preconditions, resolver snapshots, idempotent recovery, sample/debug projections, or replay/checkpoint verification. `CredentialPresentationValidator.verify_right_holder_presentation` has no production caller in the inspected application call graph. No production subject-facing Ownership/Credential projection route was identified.
+- This completes only the static classification of the enumerated A-side callers. It does not establish absence of readers outside the inspected tree and does not provide `read_as` enforcement. Newly migrated readers still require classification. M2-2 remains blocked on persisted event-time semantics, principal qualification/selector semantics, and the event-to-FactType visibility contract. No code or test behavior changed; no tests were run.
+
+### H-A-087 | M5-3 `pack.migrated` ownership decision recorded | 2026-11-26
+
+- 项目负责人决定：`pack.migrated` 按平台控制面事件处理，不新增玩法 Owner。
+- Current implementation evidence: `PackageMigrationAuthority.PRINCIPAL_REF` is `authority:platform:rule-pack-migration`; the per-world stream is `platform:rule-packs:<world_ref>`; schema v1 is registered for `pack.migrated`. The replay resolver validates and applies the persisted migration chain by global sequence.
+- Existing tests cover durable reopen and historical sequence resolution, exact idempotent retry, changed-payload rejection, stale-source rejection, and rejected-command zero-write behavior. At exact tip `299767446515338576a615c36c6fccfa03cacda5`, `test_package_migration_runtime.py` returned `21 passed, 2 warnings in 0.46s`. Python 3.12.2, SQLite 3.43.1, and `app.__file__` under the A worktree were verified. Raw output: `F:/paralls-verification/thread-a/m5-3-platform-event-20261126-02/pytest.log`. This verifies the migration runtime tests, not production deployment or external manifest supply.

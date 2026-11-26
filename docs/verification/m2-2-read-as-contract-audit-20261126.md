@@ -47,3 +47,10 @@ No code, persisted event, or test contract was changed. Once the storage contrac
 | U9 | Static only; no tests or frozen selections run. |
 | U10 | This file records the inspected source paths and the static-only status. |
 | U11 | Not applicable to an audit with no code or domain migration. |
+
+## 2026-11-26 current-tip caller classification addendum
+
+- Current A tip inspected: `299767446515338576a615c36c6fccfa03cacda5`.
+- Ownership/Credential caller classification is now recorded in `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. The inspected reads are trusted Owner preconditions, trusted resolver snapshots, idempotent recovery, sample/debug views, or replay/checkpoint verification. `CredentialPresentationValidator.verify_right_holder_presentation` has test callers but no production caller in the inspected `main.py` call graph. No production subject-facing Ownership/Credential projection route was identified.
+- This completes the static classification of the listed A-side Ownership/Credential callers for U6. It does not prove that no caller exists outside the inspected application and test trees, and it does not implement visibility enforcement. Newly migrated readers still require classification.
+- U6 status: static caller inventory and classification recorded. U7 remains not met; M2-2 remains blocked on authoritative persisted event time, principal qualification and selector semantics, and event-to-FactType visibility mapping.

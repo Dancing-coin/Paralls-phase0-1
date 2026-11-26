@@ -27,3 +27,20 @@
 | `PlacePassabilityAuthority.commit_assessment` 与 `state` | 可信权威输入校验 / 投影读取 | assessment 校验 Facility breach、可信证据事件、transaction Owner 与 revision；`state(gate_ref)` 从 Place stream 重建当前状态。`rg` 未发现生产主体读取调用，现有命中来自测试和 authority 内部恢复。 |
 
 搜索依据：`rg -n 'morale\.projection|presence\.state|information\.view|information.*knowledge' backend/app backend/tests scripts`；并逐行检查 `information_runtime.py`、`morale_refold_runtime.py`、`place_passability_runtime.py` 与 `m6_5_siege_runtime.py`。这些新增路径当前属于可信权威/恢复或测试查询，不证明已经提供 `read_as(principal)` 主体读取能力。principal 资格解析、FactType visibility 授权和 `known_time` 仍由 M2-2 处理。
+
+## 2026-11-26 current-tip Ownership/Credential caller classification
+
+Code snapshot: A tip `29976744c6b43a4f67c71c9fc2fa9196f3de4281`. Static search and direct-call tracing update the earlier `e349187e` snapshot classifications.
+
+| Read path | Current classification | Evidence and scope |
+|---|---|---|
+| `CredentialPresentationValidator.verify_right_holder_presentation` (`credential_runtime.py:192-197`) | Candidate subject decision API; no production caller found | `rg -n verify_right_holder_presentation backend/app backend/tests` finds the definition and test callers only. It returns an authorization decision for a supplied `presenter_ref`, not a fact projection. |
+| `LandRightTransferAuthority.transfer_title` (`land_right_runtime.py`) | Trusted Owner write precondition | The transfer path calls the validator's private `_verify_presentation_from_events` over its frozen event inputs, then uses the decision to accept or reject an Ownership write. Search found no production HTTP/Gateway route for this method in `main.py`; scenario invocation is in the sample facade. |
+| `CredentialAuthorityService` (`credential_runtime.py:350,419`) | Trusted Owner command validation and idempotent replay | Reads are used to reconstruct credential links before issue/revoke writes. They do not expose event payloads to the requesting principal. |
+| `OwnershipAuthorityService` methods (`ownership_runtime.py:356,372,413,469,553,632,685,768,891,972,1143,1216`) | Trusted Owner command validation, revision checks, and evidence resolution | Each read precedes a write or validates a source/contract. No production player-facing query endpoint was found in `main.py`. The municipal certificate path checks a fulfilled Contract before granting a right; package exchange checks the seller's current right. |
+| `CredentialReferenceChain.freeze_inputs` (`credential_reference_chain.py:101`) | Trusted resolver input snapshot | Its production-in-module caller executes the declared resolver and uses the frozen Inventory/Credential/Ownership projections to prepare domain writes. It is not a principal query API. |
+| `AdventureBasicScenario*.read_*` methods (`adventure_basic_reference.py`) | Sample/debug projections; not established as production reads | Ownership and Credential projection reads at lines 821 and 1102, and neighboring scenario snapshots, have direct callers in tests and `adventure_basic_closure.py`; no production `main.py` route or non-sample service caller was found. |
+| `capture_adventure_basic_closure` (`adventure_basic_closure.py:82,87`) | Trusted replay/checkpoint verification | Compares live, full replay, and checkpoint-tail rebuilt projections. It is an evidence harness, not a subject output path. |
+| `fixed_offer_purchase`, `gift_runtime`, `ownership_contract_debt_sample` | Trusted domain preconditions or sample-only | Purchase/gift writers verify the seller/donor right before append. The collateral reader is a sample flow and remains outside a production read claim. |
+
+No Ownership/Credential production subject-facing query path was identified in the inspected A call graph. This does not establish that callers elsewhere cannot expose these results. The public validator remains an unconnected candidate interface, and any future production route must pass through a principal-aware boundary. The exact direct callers and unresolved deployment surface are static-only; M2-2 remains responsible for enforcement once the event-time and principal qualification contracts are available.
