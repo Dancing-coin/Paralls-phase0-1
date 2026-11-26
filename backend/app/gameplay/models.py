@@ -89,6 +89,7 @@ class GameplayEvent(StrictGameplayModel):
     causation_id: str = Field(min_length=1)
     correlation_id: str = Field(min_length=1)
     visibility_policy: str = Field(min_length=1)
+    event_time: int | None = Field(default=None, ge=0, strict=True, exclude_if=lambda value: value is None)
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

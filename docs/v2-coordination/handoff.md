@@ -822,3 +822,12 @@
 - Static caller review at A tip `2a46df6303228993161ccb9f02e1f789083b4134` classifies Pipeline vector reconstruction and both Resolver reads as trusted inputs to Facility/Presence settlement. Their production callers are the signed-input command path and startup recovery; both Owners validate the resolved plan against signed evidence before fact writes.
 - `impact_gate_obligations()` has no production caller in the inspected `backend/app` call graph; matches are tests. The Gateway routes accept signed command receipts and return their own command result, with no general Pipeline/obligation query route found.
 - No production principal-facing query path was found by the inspected searches. This is static-only evidence and does not prove the absence of external callers. It does not satisfy M2-2 `read_as`, principal qualification, visibility mapping, or `known_time`. Evidence is appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. No tests ran.
+
+### H-A-117 | M2-2 optional persisted event_time foundation | 2026-11-27
+
+- Project-owner authorization for the A thread covers this storage-core increment. `GameplayEvent.event_time` is now an optional strict nonnegative integer. Legacy events without the field load as unknown and keep their prior serialized shape. No sequence-based fallback is used.
+- Exact implementation code is in the current A worktree after `6bea7490`; it is not committed yet. Tests cover durable reopen, snapshot round-trip, legacy snapshot compatibility, and invalid bool rejection.
+- Focused event-store/persistence/replay tests: 50 passed. Frozen selections: ownership 24/0/0, modifier 12/0/0, equipment 87/0/0, inventory 56/0/0, shared-replay 990/0/0. All 28 registered selections had zero problems.
+- Full backend suite: 10,761 passed, 5 failed, 2 skipped, 2 xfailed, exit 1. Four failures reproduced on parent `6bea7490`; the recovery-measurement node passed on both parent and current after clearing malformed process Git-config override state.
+- Evidence: `docs/verification/m2-2-read-as-contract-audit-20261126.md`; raw outputs: `F:/paralls-verification/thread-a/m2-2-event-time-20261127-01/`.
+- M2-2 remains blocked. There is still no authoritative event-time producer, shared principal selector interpreter, or production event-type to FactType/visibility mapping. This increment does not implement `read_as` or satisfy U7.

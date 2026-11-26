@@ -89,6 +89,50 @@ def test_snapshot_round_trip_recovers_events_idempotency_and_outbox_state(tmp_pa
     assert [event.event_id for event in restored.read_events()] == ["evt:persisted"]
 
 
+def test_event_time_survives_durable_reopen_and_snapshot_round_trip(tmp_path) -> None:
+    path = tmp_path / "event-time.db"
+    event = _event("evt:timed", stream_id="stream:timed")
+    event["event_time"] = 42
+    store = DurableGameplayEventStore(path)
+    assert store.append_batch(_batch(events=[event], expected={"stream:timed": 0})).committed
+    store.close()
+
+    reopened = DurableGameplayEventStore(path)
+    assert reopened.read_events()[0].event_time == 42
+    snapshot = reopened.export_snapshot()
+    restored = GameplayEventStore.from_snapshot(snapshot)
+    assert restored.read_events()[0].event_time == 42
+
+
+def test_event_time_rejects_boolean_values_without_mutation() -> None:
+    store = GameplayEventStore()
+    event = _event("evt:invalid-time", stream_id="stream:invalid-time")
+    event["event_time"] = True
+
+    result = store.append_batch(_batch(events=[event], expected={"stream:invalid-time": 0}))
+
+    assert not result.committed
+    assert result.failure is not None
+    assert result.failure.error_code == "invalid_event_schema"
+    assert store.read_events() == []
+
+
+def test_legacy_snapshot_without_event_time_loads_with_unknown_time() -> None:
+    store = GameplayEventStore()
+    assert store.append_batch(_batch()).committed
+    snapshot = store.export_snapshot()
+    for event in snapshot["events"]:
+        event.pop("event_time", None)
+    for transaction in snapshot["transactions"]:
+        for event in transaction["events"]:
+            event.pop("event_time", None)
+
+    restored = GameplayEventStore.from_snapshot(snapshot)
+
+    assert [event.event_time for event in restored.read_events()] == [None, None]
+    assert all("event_time" not in event.model_dump(mode="json") for event in restored.read_events())
+
+
 def test_snapshot_load_fails_closed_for_corrupt_or_unsupported_data(tmp_path) -> None:
     corrupt = tmp_path / "corrupt.json"
     corrupt.write_text("{not-json", encoding="utf-8")
