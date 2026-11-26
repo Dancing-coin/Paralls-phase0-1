@@ -12,6 +12,7 @@ def declarations():
         facts={FACT: {
             "owner_ref": "Inventory",
             "primitive": "holdings",
+            "identity": "entity_ref",
             "visibility": {"class": "authority_only"},
         }},
         machines={}, owners=["Inventory"],
@@ -31,7 +32,7 @@ def test_holdings_fact_type_rejects_machine_state_set_reference():
     data = declarations()
     data["facts"][FACT]["state_set_ref"] = "machine_def:inventory@1"
 
-    with pytest.raises(RegistrationRejected, match="facttype_schema_unknown"):
+    with pytest.raises(RegistrationRejected, match="facttype_field_primitive_invalid"):
         FactTypeRegistry.compile(**data)
 
 
@@ -58,6 +59,7 @@ resolve_order:
         """fact:inventory:store-01:holdings:
   owner_ref: "Inventory"
   primitive: "holdings"
+  identity: "entity_ref"
   event_schema_ref: "holdings@v1"
   visibility:
     class: "authority_only"
