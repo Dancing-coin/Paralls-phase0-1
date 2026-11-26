@@ -1,5 +1,5 @@
 {
-  "head": "working-tree",
+  "head": "2e6cc2ee",
   "description": "M6-5 layered gate impact runtime, durable input recovery, HTTP route and Facility Pool FactType registration",
   "tests": [
     {"test_name":"tests/test_world_replay_checkpoint_application.py::test_siege_physical_input_participant_survives_durable_cut_tail","outcome":"passed","failures":[]},

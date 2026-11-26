@@ -8,7 +8,7 @@ This increment adds `place@v1` to the schema-reference mapping. It resolves the 
 
 ## Verification
 
-- Base: `dc71c55497a6ca1a2d7f125f49602e792195db4f`; Python 3.12.2; SQLite 3.43.1; `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
+- Implementation commit: `2e6cc2ee`; base: `dc71c55497a6ca1a2d7f125f49602e792195db4f`; Python 3.12.2; SQLite 3.43.1; `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
 - Regression-first evidence: before the production change, the new test failed with `EventSchemaRegistryError: event_schema_unregistered` for `place@v1`.
 - Focused tests: `test_gameplay_event_schema_registry.py` and `test_rule_pack_validator.py` returned `141 passed, 2 warnings`.
 - Registered impact-gate selection: `selected=23 problems=0 improvements=0`.
