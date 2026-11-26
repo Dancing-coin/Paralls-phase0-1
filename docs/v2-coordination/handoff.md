@@ -867,3 +867,8 @@
 - Static audit recorded in `docs/verification/m1-4-place-contract-audit-20261127.md`.
 - The formal Place primitive requires general occupancy/movement semantics, revisioned path and occupancy facts, independent passability commits, and a space-registry reference. Current A code only provides Presence-specific passability assessment and Place event schema entries for that path.
 - No general Place runtime or space registry was found in the inspected A code and tests. Reusing Presence would conflate authorities, so no code was changed. M1-4 remains queued pending the space-registry, Owner mapping, persistence-event, and producer/reader contracts.
+
+### H-A-124 | A current-tip frozen selection recheck | 2026-11-27
+
+- After the M1-4 audit, the current A tip was rechecked with the frozen comparator. Ownership returned `selected=24 problems=0 improvements=0`; shared-replay returned `selected=990 problems=0 improvements=0`.
+- Raw outputs are under `F:/paralls-verification/thread-a/tip-20261127-01/`. This is selection evidence only and does not close M1-4, M2-2, production deployment, Gate configuration, UE transport, or the full backend suite.
