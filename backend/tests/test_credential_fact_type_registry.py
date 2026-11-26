@@ -63,7 +63,10 @@ def test_unrelated_fact_types_follow_owner_order_with_stable_fact_id_tiebreak():
     registry = FactTypeRegistry.compile(**data)
 
     assert list(registry.facts) == [FACT, ownership, facility_alpha, facility_omega]
-    assert [fact.resolution_order for fact in registry.facts.values()] == [10, 11, 12, 13]
+    orders = [fact.resolution_order for fact in registry.facts.values()]
+    assert orders == [10, 11, 12, 13]
+    assert len(orders) == len(set(orders))
+    assert orders == list(range(10, 10 + len(orders)))
 
 
 def test_code_and_data_models_share_registration_and_evaluation():

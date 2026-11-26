@@ -716,6 +716,11 @@
 - 证据：`docs/verification/m5-5-facttype-identity-20261126.md`。定向 `124 passed, 2 warnings`；M5-5 选集 `selected=27 problems=0 improvements=0`；ownership/modifier/equipment/inventory/shared-replay 分别 `24/0/0`、`12/0/0`、`87/0/0`、`56/0/0`、`990/0/0`。
 - 该增量只完成 FactType identity/schema 一致性，M5-5 规则目录中需要正式 Resolver、Owner 或 temporal_effects 合同的项目仍未完成。全量 10,745 节点未因本增量重跑。
 
+### H-A-101 | M5-5 resolution-order regression assertion | 2026-11-26
+
+- 在已有 credential registry 测试中补充 resolution order 唯一性与从 10 开始连续性的回归断言。定向节点 `1 passed, 2 warnings`，原始输出在 `F:/paralls-verification/thread-a/m5-5-order-contract-20261126-01/focused.log`。
+- 该断言只验证编译器已实现的结构性保证，未新增规则包语义或 Owner。待随 M5-5 增量提交。
+
 ### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
 
 - The additional node is `tests/test_population_cold_ready_gate.py::test_cold_ready`; it fails because `report["resource_bounds"]["passed"]` is false. The test, its `scripts/verification/verify_population_long_session_recovery.py` runner, and `backend/app/population/` have no changes relative to `origin/integration`. This lies outside the Architecture v2 A scope, so no code change was made. Detailed result is in `docs/verification/m5-3-full-backend-20261126.md`.

@@ -14,6 +14,7 @@ Implementation commit: `177765ba300a26f6aebfc77bcdb291e58da480ad`.
 - Import path: with `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`, importing `app` returned `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`.
 - Red test: the two new missing/unknown identity cases failed before the validator change with `Failed: DID NOT RAISE RegistrationRejected`.
 - Focused tests: `python -m pytest -q backend\tests\test_rule_pack_validator.py backend\tests\test_credential_fact_type_registry.py backend\tests\test_credential_facttype_rejections.py` returned **124 passed, 2 warnings**. Warnings are the existing Starlette/httpx and anyio deprecations.
+- Resolution-order regression assertion: `test_unrelated_fact_types_follow_owner_order_with_stable_fact_id_tiebreak` returned **1 passed, 2 warnings**, asserting uniqueness and consecutive values starting at 10.
 - M5-5 registered selection: 27 selected, 0 problems, 0 improvements.
 - Frozen G5 selections: ownership 24/0/0, modifier 12/0/0, equipment 87/0/0, inventory 56/0/0, shared-replay 990/0/0 (selected/problems/improvements).
 - Raw commands and outputs are in `F:/paralls-verification/thread-a/m5-5-identity-contract-20261126-01/`, `m5-5-facttype-selection-20261126-02/`, and `m5-5-g5-20261126-01/`.
