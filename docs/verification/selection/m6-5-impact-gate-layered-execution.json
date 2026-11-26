@@ -20,6 +20,7 @@
     {"test_name":"tests/test_siege_physical_input_runtime.py::test_layered_gate_impact_evidence_has_its_own_registered_version_and_replays","outcome":"passed","failures":[]},
     {"test_name":"tests/test_siege_physical_input_runtime.py::test_v2_presence_input_is_registered_and_reconstructed_with_physical_inputs","outcome":"passed","failures":[]},
     {"test_name":"tests/test_siege_physical_input_runtime.py::test_layered_gate_impact_receipt_requires_exact_layer_revision_vector","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_gameplay_event_schema_registry.py::test_place_fact_type_schema_reference_resolves_registered_place_events","outcome":"passed","failures":[]},
     {"test_name":"tests/test_m6_5_siege_runtime.py::test_m6_5_layered_gate_impact_http_gateway_commits_facility_layers","outcome":"passed","failures":[]},
     {"test_name":"tests/test_m6_5_siege_runtime.py::test_layered_gate_profile_builds_three_owner_pools_without_demo_defaults","outcome":"passed","failures":[]},
     {"test_name":"tests/test_m6_5_siege_runtime.py::test_layered_gate_profile_requires_all_durability_layer_values","outcome":"passed","failures":[]},

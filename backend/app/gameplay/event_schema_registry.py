@@ -296,11 +296,18 @@ def require_event_schema_ref(registry: EventSchemaRegistry, schema_ref: object) 
     from app.gameplay.holdings_event_schema import HOLDINGS_EVENT_TYPES
 
     holdings_entries = tuple((event_type, 1) for event_type in HOLDINGS_EVENT_TYPES)
+    from app.gameplay.place_event_schema import PLACE_EVENT_SCHEMAS
+
+    place_entries = tuple(
+        (registration.event_type, registration.schema_version)
+        for registration in PLACE_EVENT_SCHEMAS
+    )
     references = {
         "pool@v1": pool_entries,
         "gameplay.pool@1": pool_entries,
         "holdings@v1": holdings_entries,
         "gameplay.holdings@1": holdings_entries,
+        "place@v1": place_entries,
         "machine@v1": (("gameplay.machine.transitioned", 1),),
         "gameplay.machine.transitioned@1": (("gameplay.machine.transitioned", 1),),
         "gameplay.information.siege_report_published@1": (

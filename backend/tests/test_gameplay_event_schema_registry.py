@@ -10,6 +10,7 @@ from app.gameplay.event_schema_registry import (
     EventSchemaRegistryError,
     create_stormnight_event_schema_registry,
     gameplay_schema_event_types,
+    require_event_schema_ref,
 )
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 
@@ -89,6 +90,18 @@ def test_stormnight_explicit_world_death_confirmation_schemas_are_registered() -
         "gameplay.conflict.world_death_commit_rejected",
     ):
         registry.require(event_type, 1)
+
+
+def test_place_fact_type_schema_reference_resolves_registered_place_events() -> None:
+    registry = create_stormnight_event_schema_registry()
+
+    require_event_schema_ref(registry, "place@v1")
+
+    for event_type in (
+        "gameplay.presence.place_passability_changed",
+        "gameplay.presence.place_passability_confirmed",
+    ):
+        assert registry.get(event_type, 1) is not None
 
 
 def test_durable_snapshot_restores_opt_in_write_gate(tmp_path) -> None:
