@@ -108,3 +108,8 @@
 - The backend full-suite attempt was interrupted at about 31% after roughly 40 minutes. The first failure was reproduced on parent `6d31a831` as the same missing-`tokenizers` baseline failure; the second marker remains unclassified. Evidence: `docs/verification/m6-5-gate-profile-contract-20261126.md`.
 - Follow-up triage located the second marker at node 2308, `test_task45_headless_probe_observes_shared_path_and_contact_contract`. It fails with the same Godot `CharacterMotor` parse errors on current `cdf99158` and parent `6d31a831`. Both visible failures are pre-existing for this change; the interrupted full suite is still incomplete. See H-A-073 and the evidence addendum.
 - Production Gate values remain unset under H-A-039. The profile values in `.env.example` are explicitly a demonstration profile; M6-5 remains in progress.
+
+### M5-5 FactType identity contract increment (2026-11-26)
+
+- A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。
+- 本增量状态为待门禁。定向 124 passed；M5-5 登记选集 27/0/0；冻结五组选集 ownership 24/0/0、modifier 12/0/0、equipment 87/0/0、inventory 56/0/0、shared-replay 990/0/0。全量 10,745 节点未因本增量重跑，M5-5 broader catalog 仍进行中。

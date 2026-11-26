@@ -180,6 +180,17 @@ class FactTypeRegistry:
                 or not _FACT_TYPE_NAME_PATTERN.fullmatch(parts[3])
             ):
                 reject("facttype_naming_invalid", target, "use fact:domain:scope:name")
+            else:
+                identity = spec.get("identity")
+                scope = parts[2]
+                if identity is None:
+                    reject("facttype_identity_missing", target, "declare one of the registered FactType identities")
+                elif identity not in ("singleton", "entity_ref", "collection_ref", "region_ref"):
+                    reject("facttype_identity_invalid", target, "use a registered FactType identity")
+                elif identity == "singleton" and scope != "global":
+                    reject("facttype_identity_scope_mismatch", target, "singleton FactTypes must use the global scope")
+                elif identity != "singleton" and scope == "global":
+                    reject("facttype_identity_scope_mismatch", target, "only singleton FactTypes may use the global scope")
 
         for target, machine in machines.items():
             states = machine.get("states", [])

@@ -10,7 +10,8 @@ MACHINE = "machine_def/credential_link@1"
 
 def declarations():
     return dict(
-        facts={FACT: dict(owner_ref="Credential", primitive="machine", visibility={"class": "private"}, state_set_ref=MACHINE)},
+        facts={FACT: dict(owner_ref="Credential", primitive="machine", identity="entity_ref",
+                          visibility={"class": "private"}, state_set_ref=MACHINE)},
         machines={MACHINE: dict(states=["absent", "issued", "revoked", "superseded"],
             terminal_states=["revoked", "superseded"], transitions=[["absent", "issued"], ["issued", "revoked"], ["issued", "superseded"]])},
         owners=["Credential"], resolve_order={"before": [], "unrelated": [FACT]}, models={}, handlers={},

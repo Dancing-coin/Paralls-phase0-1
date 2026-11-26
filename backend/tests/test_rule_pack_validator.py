@@ -41,6 +41,66 @@ def test_pack_load_is_repeatable_and_evaluates_registered_code():
     assert first.registry.facts["fact:credential:*:link"].resolution_order == 10
 
 
+def test_pack_rejects_singleton_identity_with_non_global_scope(tmp_path):
+    destination = shutil.copytree(PACK, tmp_path / "identity-scope-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(fact_type.replace('identity: "entity_ref"', 'identity: "singleton"', 1), encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_identity_scope_mismatch"]
+    assert [violation.target for violation in matching] == ["fact:credential:*:link"]
+
+
+def test_pack_rejects_entity_identity_with_global_scope(tmp_path):
+    destination = shutil.copytree(PACK, tmp_path / "global-entity-scope-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    fact_type_path.write_text(fact_type.replace('"fact:credential:*:link"', '"fact:credential:global:link"', 1), encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code == "facttype_identity_scope_mismatch"]
+    assert [violation.target for violation in matching] == ["fact:credential:global:link"]
+
+
+def test_pack_accepts_singleton_identity_with_global_scope(tmp_path):
+    destination = shutil.copytree(PACK, tmp_path / "singleton-global-scope-pack")
+    for path in destination.rglob("*.yaml"):
+        contents = path.read_text(encoding="utf-8")
+        contents = contents.replace("fact:credential:*:link", "fact:credential:global:link")
+        contents = contents.replace('identity: "entity_ref"', 'identity: "singleton"')
+        path.write_text(contents, encoding="utf-8")
+
+    loaded = load_pack(destination, handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:global:link"].fact_type_id == "fact:credential:global:link"
+
+
+@pytest.mark.parametrize(("identity_line", "replacement", "code"), [
+    pytest.param('  identity: "entity_ref"\n', "", "facttype_identity_missing", id="missing"),
+    pytest.param('  identity: "entity_ref"\n', '  identity: "unsupported"\n',
+                 "facttype_identity_invalid", id="unknown"),
+])
+def test_pack_rejects_missing_or_unknown_fact_type_identity(tmp_path, identity_line, replacement, code):
+    destination = shutil.copytree(PACK, tmp_path / "invalid-identity-pack")
+    fact_type_path = destination / "fact_types/credential_link.yaml"
+    fact_type = fact_type_path.read_text(encoding="utf-8")
+    assert identity_line in fact_type
+    fact_type_path.write_text(fact_type.replace(identity_line, replacement, 1), encoding="utf-8")
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers=HANDLERS)
+
+    matching = [violation for violation in error.value.violations if violation.code == code]
+    assert [violation.target for violation in matching] == ["fact:credential:*:link"]
+
+
 def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
     loaded = load_pack(PACK, handlers=HANDLERS)
 
