@@ -665,3 +665,9 @@
 - The external settlement contract now confirms the obligation fields and enums: `pipeline_ref`, `completed_steps`, `pending_steps`, `pending_reason` (`rejected | unknown | timeout | host_unavailable`), `owner_refs`, `recovery_action` (`retry | reconcile | manual | compensate`), and `deadline_world_tick`, alongside `obligation_id`.
 - The same contract requires original-idempotency lookup before retrying unknown results, no automatic rollback on timeout, and append-only compensation events.
 - This removes ambiguity about field names and allowed values. It does not provide M6-5-specific pipeline identity, Owner mapping, or deadline source. The runtime will not invent those values. `impact_gate_obligation.py` remains incomplete and no code was changed.
+
+### H-A-090 | M6-5 obligation implementation dependencies narrowed | 2026-11-26
+
+- M6-2 evidence confirms `l5_pipeline.py` currently compiles and binds versioned impact profiles, but production host resolution, committed obligation step receipts, and query-failure handling are not connected. The county siege packs contain no pipeline declaration that can supply an `impact_gate` pipeline identity.
+- Before implementation, three concrete inputs are required: a versioned pipeline declaration/ref for the Gate impact to Facility integrity to Presence passability path; the authoritative Owner refs for each pending step; and a world-tick/deadline policy with its source and unknown behavior.
+- The existing evidence can map durable receipts to completed steps (`impact`, `facility`, `presence_input`, `passability`) and known principals, but it cannot derive the missing pipeline/deadline contract. No placeholder values or runtime fields were added.
