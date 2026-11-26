@@ -960,3 +960,9 @@
 - At A tip `e002eb24`, five focused validator/registry/EventSchema files returned `165 passed, 2 warnings`. M5-5 selection returned `38/0/0`; frozen Ownership/modifier/equipment/inventory/shared-replay returned `24/12/87/56/990`, all zero differences.
 - The first invocation did not reach test execution because the explicit F-drive `--basetemp` parent directory was absent. After creating that run-owned directory, the identical test command passed.
 - Raw outputs are under `F:/paralls-verification/thread-a/m5-5-current-tip-20261127-01/`. Formal Owner registry/compiler, invariant grammar, Resolver capability attestation, and `temporal_effects` remain unresolved; M5-5 remains in progress.
+
+### H-A-142 | M5-3 current-tip package migration and archive revalidation | 2026-11-27
+
+- At A tip `e09bcf1a`, package migration, EventSchema registry and M6-5 runtime focused tests returned `74 passed, 6 warnings`. Current M5-3 selection returned `23/0/0`, Ownership `24/0/0`, and shared-replay `990/0/0`.
+- The M5-3 selection file now contains 23 nodes; this supersedes the older 22-node count in prior evidence. Production manifest trust source, cross-language hash canonicalization, production deployment, Gate values, UE transport and complete siege execution remain unverified.
+- Raw outputs are under `F:/paralls-verification/thread-a/m5-3-current-tip-20261127-01/`. M5-3 remains in progress pending deployment inputs.

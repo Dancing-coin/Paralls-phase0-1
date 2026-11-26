@@ -163,6 +163,8 @@
 
 - M5-5 current-tip validator/registry revalidation at `e002eb24`: focused `165 passed, 2 warnings`; M5-5 selection `38/0/0`; frozen five selections 1,169 nodes, all zero differences. Evidence `docs/verification/m5-5-facttype-primitives-20261126.md`, H-A-141. Machine-readable Owner declarations, invariant grammar, Resolver capability attestation and `temporal_effects` remain unspecified; M5-5 remains in progress.
 
+- M5-3 current-tip package migration/archive revalidation at `e09bcf1a`: focused `74 passed, 6 warnings`; M5-3 selection 23/0/0; Ownership 24/0/0; shared-replay 990/0/0. Evidence `docs/verification/m5-3-startup-contract-20261126.md`, H-A-142. Production manifest trust source, cross-language hash canonicalization, Gate values, deployment target, UE transport and complete siege execution remain unverified; M5-3/M6-5 remain in progress.
+
 ### M5-5 FactType identity contract increment (2026-11-26)
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。

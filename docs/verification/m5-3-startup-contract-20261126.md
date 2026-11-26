@@ -45,6 +45,18 @@ This evidence verifies the deployment contract and startup archive assembly in c
 
 ## Conclusion
 
+## Current A-tip revalidation, 2026-11-27
+
+At A tip `e09bcf1a`, the focused package migration, EventSchema registry, and M6-5 siege runtime command returned **74 passed, 6 warnings** with Python 3.12.2, the A-worktree `PYTHONPATH`, and explicit F-drive pytest basetemp.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| M5-3 package migration, 23 nodes | `selected=23 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-3-current-tip-20261127-01\m5-3\` |
+| Ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-3-current-tip-20261127-01\ownership\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m5-3-current-tip-20261127-01\shared-replay\` |
+
+The current selection file contains 23 nodes. This current-tip result supersedes the older 22-node registration count above for this selection. Production manifest trust source, cross-language hash canonicalization, production Gate values, deployment target, UE transport, and complete siege execution remain unverified. The current-tip full backend suite was not rerun.
+
 | Area | Level |
 |---|---|
 | Deployment contract validation | Verified |
