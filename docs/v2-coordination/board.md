@@ -1,5 +1,10 @@
 # 迁移任务账本
 
+### M2-2 Morale event-time producer selection follow-up (2026-11-27)
+
+- Code commit `4b2caed1` is now covered by registered U11 selection `docs/verification/selection/m2-2-morale-event-time.json`; frozen-baseline comparison returned `selected=2 problems=0 improvements=0`.
+- Evidence: `docs/verification/m2-2-morale-event-time-20261127.md`. M2-2 remains blocked on shared principal/selector semantics, event-to-FactType visibility mapping, and a subject-facing reader.
+
 ### M2-2 Morale event-time producer (2026-11-27)
 
 - Morale casualty refold now forwards an optional trusted `event_time` through the Pool adjustment commit. Evidence: `docs/verification/m2-2-morale-event-time-20261127.md` and H-A-121.

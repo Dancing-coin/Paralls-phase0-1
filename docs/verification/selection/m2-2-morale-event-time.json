@@ -1,0 +1,16 @@
+{
+  "head": "4b2caed1",
+  "description": "Morale refold preserves the authoritative casualty event_time on its Pool adjustment, while Pool rejects invalid event_time input",
+  "tests": [
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_refold_uses_historical_roster_and_life_states_at_death",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_rejects_invalid_aggregation_and_owner_fragment_inputs",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

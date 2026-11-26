@@ -20,7 +20,10 @@ provide a time retain the legacy omitted field and remain replay-compatible.
 - Python: 3.12.2 (`D:\Temp\paralls-g0-py312\Scripts\python.exe`)
 - Focused Pool + Morale: `22 passed, 2 warnings`
 - M5-3/M6-5/Morale/Presence/Information + Pool: `147 passed, 6 warnings`
+- Frozen-baseline registered selection: `selected=2 problems=0 improvements=0`, manifest `docs/verification/selection/m2-2-morale-event-time.json`
+- Import check: `app.__file__ = F:\\codex-temp\\paralls-v2-thread-a-bond-20261121\\backend\\app\\__init__.py`
 - Temporary pytest paths: `F:/paralls-verification/thread-a/m2-2-morale-time-20261127/`
+- Selection comparison output: `F:/paralls-verification/thread-a/m2-2-morale-event-time-selection-20261127-01/`
 - Full backend suite: not run for this increment.
 
 ## Boundaries
