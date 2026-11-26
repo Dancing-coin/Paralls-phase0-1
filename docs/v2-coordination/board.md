@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### Current A-tip verification update (2026-11-27)
+
+- M6-5 focused startup/runtime recheck with explicit F-drive pytest `--basetemp`: `55 passed, 6 warnings`; evidence H-A-130.
+- Current A-tip full backend suite: `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1. The five failures are external or pre-existing environment/runtime families recorded in H-A-129. This is merge-state evidence and is not a full-suite pass.
+- M6-1 through M6-4 combined offline composition regression: `162 passed, 2 warnings`; evidence H-A-127. Production application activation and deployment dispatch remain unverified.
+
 ### M2-2 Morale event-time producer selection follow-up (2026-11-27)
 
 - Code commit `4b2caed1` is now covered by registered U11 selection `docs/verification/selection/m2-2-morale-event-time.json`; frozen-baseline comparison returned `selected=2 problems=0 improvements=0`.
