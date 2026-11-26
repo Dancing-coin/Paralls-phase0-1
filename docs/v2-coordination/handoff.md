@@ -895,3 +895,4 @@
 - Full `backend/tests` run at current A tip with Python 3.12.2 and all pytest temporary paths on F: returned `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit code 1, after about 22 minutes.
 - The five failures were external or pre-existing environment/runtime families: missing `tokenizers`, Godot headless parse errors, population cold-ready report schema, recovery probe Git configuration, and a role-presentation Godot headless probe. This run does not establish a full-suite pass and does not identify an Architecture v2 M5/M6 focused-path failure.
 - The result is recorded as merge-state full-suite evidence only, separate from individual slice verification.
+- Environment difference: one pytest `tmp_path` diagnostic resolved under inherited `D:\codex-temp\user-temp` despite F-drive `TEMP/TMP`; no unrelated D-drive content was moved or deleted. A future rerun must pass an explicit F-drive `--basetemp`.
