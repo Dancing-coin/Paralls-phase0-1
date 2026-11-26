@@ -678,3 +678,8 @@
 - `deadline_world_tick` is explicitly `None` because no M6-5 deadline policy or authoritative tick source exists. No value is inferred from physics ticks, global sequence, or the demo profile.
 - Focused M6-5 tests returned `51 passed, 6 warnings in 1.74s`. Raw output: `F:/paralls-verification/thread-a/m6-5-obligation-metadata-full-20261126-01/pytest.log`.
 - This is a rebuildable projection over existing receipts. No new persisted event or workflow ledger was introduced. Production deployment, authoritative Gate values, UE transport, frozen selections, and full backend regression remain unverified.
+
+### H-A-092 | M6-5 obligation metadata selection verification | 2026-11-26
+
+- At exact tip `20c67b18`, `m6-5-impact-gate-layered-execution.json` returned `selected=21 problems=0 improvements=0` and `m6-5-production-wiring.json` returned `selected=6 problems=0 improvements=0`.
+- Raw outputs are under `F:/paralls-verification/thread-a/m6-5-obligation-selection-20261126-01/`. This is registered-selection evidence only; full backend regression, production deployment, Gate values, and UE transport remain unverified.
