@@ -857,3 +857,8 @@
 - TDD evidence: the new propagation test first failed with `adjusted.event_time is None`; after the minimal Pool/Morale change, Pool + Morale returned `22 passed, 2 warnings`. The broader M5-3/M6-5/Morale/Presence/Information + Pool set returned `147 passed, 6 warnings`.
 - This is one additional event-time producer. It does not implement `read_as`, selector qualification, event-to-FactType visibility mapping, or a Presence event-time producer. Full backend verification was not run.
 - The two direct regression nodes are registered in `docs/verification/selection/m2-2-morale-event-time.json`. Frozen-baseline comparison: `selected=2 problems=0 improvements=0`; raw output is under `F:/paralls-verification/thread-a/m2-2-morale-event-time-selection-20261127-01/`.
+### H-A-122 | M5-3/M6-5 current-tip regression follow-up | 2026-11-27
+
+- At A tip `e99de108`, the focused package migration/control-plane, schema registry, Information production wiring, siege runtime, Morale refold, Pool runtime, and siege Information tests returned `119 passed, 6 warnings` with Python 3.12.2. `app.__file__` was resolved from the A worktree and pytest temporary paths were directed to `F:`.
+- This is current-tip focused evidence. It does not verify production Gate values, a deployment target, UE transport, a complete siege run, subject-facing `read_as`, or the full backend suite.
+- The approved M5-3 ownership decision remains in force. `pack.migrated` is an L4 platform control-plane event and does not add a gameplay Owner.
