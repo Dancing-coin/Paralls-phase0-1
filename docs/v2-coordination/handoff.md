@@ -709,3 +709,7 @@
 
 - At `7ab4d72e08ed2afa17db4deb8d1cac262f5dd50b`, the frozen G0 backend suite collected 10,745 nodes and exited 1: 10,718 passed, 23 failed, 4 skipped including 2 xfailed, 239 warnings, in approximately 1,332.86 seconds. Python 3.12.2 and the A worktree import path were verified. Twenty-two failed node IDs match the frozen README table and one additional ID is absent. This is not a zero-difference result. Evidence: `docs/verification/m5-3-full-backend-20261126.md`.
 - Registered selection evidence remains 28 groups, 309 node selections, zero problems and zero improvements.
+
+### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
+
+- The additional node is `tests/test_population_cold_ready_gate.py::test_cold_ready`; it fails because `report["resource_bounds"]["passed"]` is false. The test, its `scripts/verification/verify_population_long_session_recovery.py` runner, and `backend/app/population/` have no changes relative to `origin/integration`. This lies outside the Architecture v2 A scope, so no code change was made. Detailed result is in `docs/verification/m5-3-full-backend-20261126.md`.

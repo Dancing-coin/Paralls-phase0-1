@@ -13,6 +13,7 @@
 
 - Exit code `1`. Collected `10,745`. Passed `10,718`. Failed `23`. Skipped `4`, including `2 xfailed`. Warnings `239`. Duration approximately `1,332.86 seconds`.
 - Twenty-two failed node IDs also appear in the frozen README failure table. One additional node ID is absent: `tests/test_population_cold_ready_gate.py::test_cold_ready` (`AssertionError`). This is a node-ID comparison only, so the run is not reported as zero-difference.
+- The additional node's assertion is `report["resource_bounds"]["passed"] == False`. Neither that test nor `scripts/verification/verify_population_long_session_recovery.py` nor `backend/app/population/` changed between `origin/integration` and this A tip. The finding is outside the Architecture v2 A scope and was not modified.
 - The separate 28 registered selections remain 309 node selections with zero problems and zero improvements. The five frozen selections remain 1,169 nodes with zero problems and zero improvements.
 - Two earlier launch attempts with bad path overrides were aborted and excluded. The process and malformed temporary directory owned by those attempts were cleaned. They did not change tracked source.
 
