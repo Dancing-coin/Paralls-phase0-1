@@ -126,6 +126,13 @@ def test_layered_impact_applies_to_first_available_durability_layer():
     assert store.read_stream("fact:facility:gate-03:latch") == []
     obligation, = rebuild_impact_gate_obligations(store)
     assert obligation.status == "open"
+    assert obligation.pipeline_ref == "impact_gate"
+    assert obligation.completed_steps == ("impact", "facility")
+    assert obligation.pending_steps == ("presence_input", "passability")
+    assert obligation.pending_reason == "unknown"
+    assert obligation.owner_refs == ("Presence",)
+    assert obligation.recovery_action == "reconcile"
+    assert obligation.deadline_world_tick is None
     assert obligation.step_receipts[0] == ("impact", (
         store.read_events(event_type="gameplay.facility.gate_impact_input_received@2")[0].event_id,
     ))
@@ -370,6 +377,13 @@ def test_signed_impact_presence_gateway_settles_without_requiring_breach(monkeyp
     assert place_event.payload["read_stream_revisions"][impact.stream_id] == impact.stream_revision
     obligation, = runtime.impact_gate_obligations()
     assert obligation.status == "settled"
+    assert obligation.pipeline_ref == "impact_gate"
+    assert obligation.completed_steps == ("impact", "facility", "presence_input", "passability")
+    assert obligation.pending_steps == ()
+    assert obligation.pending_reason is None
+    assert obligation.owner_refs == ()
+    assert obligation.recovery_action is None
+    assert obligation.deadline_world_tick is None
     assert dict(obligation.step_receipts)["presence_input"] == tuple(
         data["evidence"]["committed_event_ids"]
     )

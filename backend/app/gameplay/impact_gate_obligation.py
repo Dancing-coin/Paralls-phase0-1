@@ -25,6 +25,13 @@ class ImpactGateObligation:
     gate_ref: str
     status: str
     step_receipts: tuple[tuple[str, tuple[str, ...]], ...]
+    pipeline_ref: str
+    completed_steps: tuple[str, ...]
+    pending_steps: tuple[str, ...]
+    pending_reason: str | None
+    owner_refs: tuple[str, ...]
+    recovery_action: str | None
+    deadline_world_tick: int | None
 
 
 def rebuild_impact_gate_obligations(
@@ -107,10 +114,31 @@ def rebuild_impact_gate_obligations(
             ("presence_input", tuple(event.event_id for event in presence_inputs)),
             ("passability", tuple(event.event_id for event in place_events)),
         )
+        completed_steps = tuple(step for step, step_receipts in receipts if step_receipts)
+        pending_steps = tuple(step for step, step_receipts in receipts if not step_receipts)
+        pending_owner_by_step = {
+            "facility": "Production",
+            "presence_input": "Presence",
+            "passability": "Presence",
+        }
+        pending_owners: list[str] = []
+        for step in pending_steps:
+            owner = pending_owner_by_step.get(step)
+            if owner is not None and owner not in pending_owners:
+                pending_owners.append(owner)
+        owner_refs = tuple(pending_owners)
+        settled = not pending_steps
         obligations.append(ImpactGateObligation(
             obligation_id=f"impact_gate:{impact.event_id}",
             gate_ref=str(impact.payload["gate_ref"]),
-            status="settled" if place_events else "open",
+            status="settled" if settled else "open",
             step_receipts=receipts,
+            pipeline_ref="impact_gate",
+            completed_steps=completed_steps,
+            pending_steps=pending_steps,
+            pending_reason=None if settled else "unknown",
+            owner_refs=owner_refs,
+            recovery_action=None if settled else "reconcile",
+            deadline_world_tick=None,
         ))
     return tuple(obligations)

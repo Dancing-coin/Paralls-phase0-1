@@ -671,3 +671,10 @@
 - M6-2 evidence confirms `l5_pipeline.py` currently compiles and binds versioned impact profiles, but production host resolution, committed obligation step receipts, and query-failure handling are not connected. The county siege packs contain no pipeline declaration that can supply an `impact_gate` pipeline identity.
 - Before implementation, three concrete inputs are required: a versioned pipeline declaration/ref for the Gate impact to Facility integrity to Presence passability path; the authoritative Owner refs for each pending step; and a world-tick/deadline policy with its source and unknown behavior.
 - The existing evidence can map durable receipts to completed steps (`impact`, `facility`, `presence_input`, `passability`) and known principals, but it cannot derive the missing pipeline/deadline contract. No placeholder values or runtime fields were added.
+
+### H-A-091 | M6-5 rebuildable obligation metadata implemented | 2026-11-26
+
+- `ImpactGateObligation` now exposes the formal metadata from the existing durable receipt projection. `pipeline_ref="impact_gate"`; completed and pending steps derive from `impact`, `facility`, `presence_input`, and `passability` receipts. Pending Owner refs are `Production` for facility work and `Presence` for presence/passability work. Open state uses `pending_reason="unknown"` and `recovery_action="reconcile"`; settled state has no pending fields.
+- `deadline_world_tick` is explicitly `None` because no M6-5 deadline policy or authoritative tick source exists. No value is inferred from physics ticks, global sequence, or the demo profile.
+- Focused M6-5 tests returned `51 passed, 6 warnings in 1.74s`. Raw output: `F:/paralls-verification/thread-a/m6-5-obligation-metadata-full-20261126-01/pytest.log`.
+- This is a rebuildable projection over existing receipts. No new persisted event or workflow ledger was introduced. Production deployment, authoritative Gate values, UE transport, frozen selections, and full backend regression remain unverified.
