@@ -928,3 +928,8 @@
 - At A tip `74a291c4`, `test_gameplay_event_replay.py` and `test_gameplay_projection_startup.py` returned `15 passed, 2 warnings` with explicit F-drive pytest basetemp.
 - This is a mechanism-focused revalidation. It covers cursor/tail replay, stream revision continuity, failure without partial installation, checkpoint-free rebuild and checkpoint-plus-tail digest equality. No code changed and no current-tip full suite was run.
 - Raw output is under `F:/paralls-verification/thread-a/m2-4-current-tip-20261127-01/`; M2-4 remains `待门禁`.
+
+### H-A-136 | M6-1 current-tip Reaction revalidation | 2026-11-27
+
+- At A tip `1e318bb5`, focused Reaction, Play Pattern and RulePack Validator tests returned `154 passed, 2 warnings`. The Reaction registered selection returned `selected=14 problems=0 improvements=0`; L5 dispatch runtime returned `selected=5 problems=0 improvements=0`.
+- This is offline declaration/loader evidence only. Production asynchronous trigger scheduling, target authorization, cooldown/idempotency dispatch, UE transport and a complete siege run remain unverified. M6-1 remains `待门禁`.
