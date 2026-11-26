@@ -66,3 +66,43 @@ This bootstrap API does not define cross-language canonical serialization. `load
 - Python `3.12.2`, SQLite `3.43.1`, `PYTHONPATH=F:/codex-temp/paralls-v2-thread-a-bond-20261121/backend`; `app.__file__` resolved under the A worktree. `TEMP`, `TMP`, pytest basetemp, comparator output, and raw logs were directed under `F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/`.
 - Command: `python -B docs/verification/absorb-main-3bf3418e/compare_selection.py --repo F:/codex-temp/paralls-v2-thread-a-bond-20261121 --selection docs/verification/absorb-main-3bf3418e/shared-replay.json --output F:/paralls-verification/thread-a/m5-3-shared-replay-complete-20261126-01/shared-replay`.
 - This completes the M5-3 shared-replay regression evidence for the current code state. It does not implement deployment manifest loading, a production package consumer/startup wiring, cross-language hash canonicalization, or a live production deployment. The backend full suite was not run.
+
+## Historical replay regression and registered selections (2026-11-26)
+
+At `c9a22c53`, Python 3.12.2 and SQLite 3.43.1 loaded `app` from the A worktree. Targeted migration and schema checks returned 35 passed and two warnings. The five frozen groups returned 1,169 node selections with zero problems and zero improvements.
+
+The registered M5-3 selection ran at `c9a22c53`. The other 27 registered groups ran at `83d1dd12`. Only evidence documentation changed between those revisions. The counts below count a node once per group.
+
+| Registered selection | Selected | Problems | Improvements |
+|---|---:|---:|---:|
+| m5-3-package-migration | 23 | 0 | 0 |
+| m1-1-land-right-credential-compatibility | 1 | 0 | 0 |
+| m1-2-holdings | 24 | 0 | 0 |
+| m1-3-pool-domain-owner | 1 | 0 | 0 |
+| m1-3-pool | 17 | 0 | 0 |
+| m3-2-store-read-snapshot | 7 | 0 | 0 |
+| m5-1-aggregation-models | 6 | 0 | 0 |
+| m5-1-command-catalog | 14 | 0 | 0 |
+| m5-1-cost-bindings | 5 | 0 | 0 |
+| m5-1-entity-types | 5 | 0 | 0 |
+| m5-1-impact-profiles | 7 | 0 | 0 |
+| m5-1-pool-definitions | 9 | 0 | 0 |
+| m5-2-parent-pack | 8 | 0 | 0 |
+| m5-5-facttype-refold | 22 | 0 | 0 |
+| m6-1-l5-dispatch-runtime | 5 | 0 | 0 |
+| m6-1-reaction | 14 | 0 | 0 |
+| m6-2-pipeline | 8 | 0 | 0 |
+| m6-3-workflow | 8 | 0 | 0 |
+| m6-4-play-pattern | 12 | 0 | 0 |
+| m6-5-facility-integrity | 5 | 0 | 0 |
+| m6-5-gate-profile-contract | 19 | 0 | 0 |
+| m6-5-impact-gate-layered-execution | 21 | 0 | 0 |
+| m6-5-information-report-source | 25 | 0 | 0 |
+| m6-5-organization-roster | 3 | 0 | 0 |
+| m6-5-place-output-types | 3 | 0 | 0 |
+| m6-5-presence-passability | 6 | 0 | 0 |
+| m6-5-production-wiring | 6 | 0 | 0 |
+| siege_information | 25 | 0 | 0 |
+| Total | 309 | 0 | 0 |
+
+Raw comparator output and batch reports are under `F:/paralls-verification/thread-a/m5-3-history-20261126-01/`. The comparator was invoked with `--repo`, `--selection` and a distinct `--output` for each group. The full backend run was pending while thread B ran its full suite. Production startup with a trusted external archive manifest and cross-language hash canonicalization remain unverified.

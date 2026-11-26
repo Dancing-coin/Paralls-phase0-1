@@ -699,3 +699,8 @@
 - Commit `c9a22c53` fixes historical replay after two or more committed migrations. The chain validator advances through every migration, while the returned package set advances through the requested sequence. The v1 event schema and write path are unchanged.
 - The regression failed with `package_migration_from_chain_invalid` before the fix. Package migration and schema registry tests returned 35 passed and two warnings with Python 3.12.2, SQLite 3.43.1, and the A worktree app import.
 - At `c9a22c53`, the 23-node M5-3 selection and the five frozen groups (24, 12, 87, 56, 990) each reported zero problems and improvements. Logs are under `F:/paralls-verification/thread-a/m5-3-history-20261126-01/`. Other registered groups, full backend regression, and production deployment were not run for this fix.
+
+### H-A-096 | M5-3 historical replay registered selection follow-up | 2026-11-26
+
+- The 27 registered groups run at `83d1dd12` returned 286 selections, zero problems and zero improvements. With the 23-node M5-3 group at `c9a22c53`, this is 28 groups and 309 selections, counting a shared node once per group. The commits differ only in evidence documentation.
+- The per-group table is in `docs/verification/m5-3-package-migration-20261126.md`. The full backend run is queued behind B's full run. Production deployment remains unverified.

@@ -74,7 +74,7 @@
 | S-7 | 11-09 的逐域探针并入成功标准 8 | 验收口径 | 未决 |
 | — | 谁做 M4 各波（A 或 B 或轮换） | 全部域迁移 | 未决，等 M0-6 |
 | — | M2-6 选哪条生产流受 epoch 保护 | L0 强制 | 未决 |
-| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；`main.py` 启动合同与 archive consumer 已在 `45480fb2` 接入，exact-tip M5-3/Ownership 选择 22/24 零差异（H-A-078）；修复验证 listener 查询后，精确 A 代码提交 `4d366b9e` 的 shared-replay `990/0/0`（H-A-081）。仍需部署侧提供真实 world 上下文、初始 pin、archive 目录和可信 hash，并完成生产启动与历史 replay |
+| M5-3 | `pack.migrated` 的 authority 分类及初始包版本/归档/replay 接线 | M5 L4 | 平台控制事件分类已决定；运行切片 `aa871168`、目录/hash bootstrap API `2a5d6640`；`main.py` 启动合同与 archive consumer 已在 `45480fb2` 接入，exact-tip M5-3/Ownership 选择 22/24 零差异（H-A-078）；修复验证 listener 查询后，精确 A 代码提交 `4d366b9e` 的 shared-replay `990/0/0`（H-A-081）。历史多次迁移回放修复 `c9a22c53` 定向 35 passed，冻结选集 1,169 节点、28 组登记选集 309 次节点选择均零差异（H-A-095、H-A-096）。仍需部署侧提供真实 world 上下文、初始 pin、archive 目录和可信 hash，并完成生产启动与历史 replay |
 
 ## 四、更新规则
 
