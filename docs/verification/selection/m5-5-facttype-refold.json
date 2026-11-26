@@ -1,5 +1,5 @@
 {
-  "head": "WORKTREE-UNCOMMITTED-2026-11-26",
+  "head": "177765ba300a26f6aebfc77bcdb291e58da480ad",
   "description": "M5-5 FactType and resolver validator rules, package diagnostics, and deterministic Owner-ordered resolution",
   "tests": [
     {

@@ -712,7 +712,7 @@
 
 ### H-A-100 | M5-5 FactType identity and scope contract increment | 2026-11-26
 
-- 提交前状态：工作区增量，尚未提交。`fact_type_registry.py` 现在拒绝缺失或未知 `identity`，并强制 `singleton` 只配 `global`、其他三种 identity 不配 `global`。直接编译的 credential test fixture 已声明 `entity_ref`。
+- 提交：`177765ba300a26f6aebfc77bcdb291e58da480ad`。`fact_type_registry.py` 现在拒绝缺失或未知 `identity`，并强制 `singleton` 只配 `global`、其他三种 identity 不配 `global`。直接编译的 credential test fixture 已声明 `entity_ref`。
 - 证据：`docs/verification/m5-5-facttype-identity-20261126.md`。定向 `124 passed, 2 warnings`；M5-5 选集 `selected=27 problems=0 improvements=0`；ownership/modifier/equipment/inventory/shared-replay 分别 `24/0/0`、`12/0/0`、`87/0/0`、`56/0/0`、`990/0/0`。
 - 该增量只完成 FactType identity/schema 一致性，M5-5 规则目录中需要正式 Resolver、Owner 或 temporal_effects 合同的项目仍未完成。全量 10,745 节点未因本增量重跑。
 
