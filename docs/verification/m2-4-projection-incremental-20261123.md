@@ -38,6 +38,18 @@ Command and result:
 
 The warnings are Starlette/httpx deprecations. Raw console and JUnit are retained in the output directory above. This was a focused mechanism run; no new full-suite run was performed for this verification-only unit.
 
+## Current-tip revalidation, 2026-11-27
+
+At A tip `74a291c4`, the same replay/startup command returned **15 passed, 2 warnings** with Python 3.12.2, the A-worktree `PYTHONPATH`, and explicit F-drive pytest basetemp.
+
+Command:
+
+```text
+D:\Temp\paralls-g0-py312\Scripts\python.exe -m pytest -q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\m2-4-current-tip-20261127-01\basetemp --junitxml F:\paralls-verification\thread-a\m2-4-current-tip-20261127-01\junit.xml backend/tests/test_gameplay_event_replay.py backend/tests/test_gameplay_projection_startup.py
+```
+
+Raw JUnit and temporary data are retained under `F:\paralls-verification\thread-a\m2-4-current-tip-20261127-01\`. No code changed in this revalidation. The current-tip full backend suite was not rerun, and M2-4 remains pending integration gate.
+
 ## DoD mapping
 
 This is a shared projection mechanism audit, not a domain migration. U1, U2, U3, U4, U5, U6, U7, U8, and U11 are not applicable to this unit. U9 is verified for the two focused replay/startup test files at the stated depth. U10 is documented here with raw output retained externally.

@@ -149,6 +149,8 @@
 
 - M2-1 current-tip static increment: A tip `bc639342` enumerated `OwnerCommitBuilder` callers in Credential, Holdings, Ownership and Pool, and `StoreReadSnapshot` callers in Credential and LandRight. Evidence appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md` and H-A-134. No tests ran; M2-2 contracts remain open.
 
+- M2-4 current-tip revalidation: A tip `74a291c4`, replay/startup focused `15 passed, 2 warnings`, explicit F-drive basetemp. Evidence `docs/verification/m2-4-projection-incremental-20261123.md` and H-A-135. No code changed; task remains pending integration gate.
+
 ### M5-5 FactType identity contract increment (2026-11-26)
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。

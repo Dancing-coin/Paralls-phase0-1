@@ -922,3 +922,9 @@
 - Static inspection at A tip `bc639342` enumerated `OwnerCommitBuilder.build` production callers in Credential, Holdings, Ownership and Pool, plus `StoreReadSnapshot` callers in Credential and LandRight.
 - These are trusted append-envelope and validation snapshot helpers. No subject-facing production query or `read_as(principal)` route was found. The evidence was appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`.
 - This increment ran no tests and does not resolve M2-2 principal qualification, selector semantics, FactType visibility mapping or `known_time`.
+
+### H-A-135 | M2-4 current-tip replay/startup revalidation | 2026-11-27
+
+- At A tip `74a291c4`, `test_gameplay_event_replay.py` and `test_gameplay_projection_startup.py` returned `15 passed, 2 warnings` with explicit F-drive pytest basetemp.
+- This is a mechanism-focused revalidation. It covers cursor/tail replay, stream revision continuity, failure without partial installation, checkpoint-free rebuild and checkpoint-plus-tail digest equality. No code changed and no current-tip full suite was run.
+- Raw output is under `F:/paralls-verification/thread-a/m2-4-current-tip-20261127-01/`; M2-4 remains `待门禁`.
