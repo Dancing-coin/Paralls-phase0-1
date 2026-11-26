@@ -877,3 +877,8 @@
 
 - Current A-tip validator coverage passed `144 tests, 2 warnings` across `test_rule_pack_validator.py`, `test_fact_type_registry.py`, and `test_gameplay_event_schema_registry.py` under Python 3.12.2 with the A-worktree import path. Temporary paths were directed to `F:/paralls-verification/thread-a/m5-5-validator-20261127-01/`.
 - This is verification of the existing contract only. M5-5 remains open because the formal machine-readable Owner declaration registry, invariant expression grammar, Resolver capability/side-effect attestation, and `temporal_effects` package/runtime contract are still unspecified.
+### H-A-126 | M6-4 L5 composition current-tip check | 2026-11-27
+
+- The valid current-tip focused L5 command returned `32 passed, 2 warnings` across play-pattern compilation, reaction validation, and dispatch runtime tests under Python 3.12.2 and the A-worktree import path.
+- An initial command included nonexistent `backend/tests/test_l5_pipeline.py` and exited during collection. No test or source file was changed, and the corrected command produced the result above.
+- This verifies existing offline composition and dispatch behavior. Application registration/activation and production package dispatch remain unverified, so M6-4 stays pending gate.
