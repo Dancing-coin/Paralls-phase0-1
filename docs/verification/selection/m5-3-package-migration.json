@@ -12,6 +12,7 @@
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_without_migrations_uses_initial_package_set","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_without_migrations_requires_an_initial_package_set","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_uses_from_before_and_to_at_or_after_migration_sequence","outcome":"passed","failures":[]},
+    {"test_name":"tests/test_package_migration_runtime.py::test_replay_resolves_history_before_multiple_committed_migrations","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_rejects_broken_from_chain","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_rejects_ambiguous_global_sequence","outcome":"passed","failures":[]},
     {"test_name":"tests/test_package_migration_runtime.py::test_replay_rejects_malformed_package_identity_in_event_payload","outcome":"passed","failures":[]},

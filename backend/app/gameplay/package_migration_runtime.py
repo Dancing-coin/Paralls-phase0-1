@@ -280,9 +280,11 @@ def resolve_package_set_at(
             raise PackageMigrationError("package_migration_payload_invalid") from exc
         for ref in (*source, *target):
             archive.resolve(ref)
-        if selected is not None and selected != source:
+        if state is not None and state != source:
             raise PackageMigrationError("package_migration_from_chain_invalid")
-        selected = source if selected is None else selected
+        state = target
+        if selected is None:
+            selected = source
         if event.global_sequence <= global_sequence:
             selected = target
 

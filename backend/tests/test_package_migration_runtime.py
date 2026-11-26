@@ -197,6 +197,28 @@ def test_replay_uses_from_before_and_to_at_or_after_migration_sequence() -> None
     assert resolve_package_set_at(events, archive, sequence + 1) == (new,)
 
 
+def test_replay_resolves_history_before_multiple_committed_migrations() -> None:
+    packs = tuple(_pack("rules", version) for version in ("1", "2", "3"))
+    archive = _archive(packs)
+    store, authority = _authority(archive)
+    sequences = []
+    for revision in range(2):
+        result = authority.migrate(
+            command_id=f"migrate-{revision}", idempotency_key=f"idem:migrate-{revision}",
+            expected_revision=revision,
+            from_packages=[PackageRef("rules", packs[revision].version)],
+            to_packages=[PackageRef("rules", packs[revision + 1].version)],
+            migration_ref=f"migration:rules-{revision + 2}", affected_fact_types=[],
+        )
+        assert result.committed and result.global_sequence_range is not None
+        sequences.append(result.global_sequence_range[1])
+    events = store.read_stream("platform:rule-packs:world:test")
+
+    assert resolve_package_set_at(events, archive, sequences[0] - 1) == packs[:1]
+    assert resolve_package_set_at(events, archive, sequences[0]) == packs[1:2]
+    assert resolve_package_set_at(events, archive, sequences[1]) == packs[2:]
+
+
 def test_replay_rejects_broken_from_chain() -> None:
     old = _pack("rules", "1")
     new = _pack("rules", "2")
