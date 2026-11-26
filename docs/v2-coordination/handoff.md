@@ -689,3 +689,7 @@
 - At exact tip `20c67b18`, the remaining M6-5 registered selections returned: facility-integrity `5/0/0`, gate-profile-contract `19/0/0`, information-report-source `25/0/0`, organization-roster `3/0/0`, place-output-types `3/0/0`, presence-passability `6/0/0` (`selected/problems/improvements`).
 - Combined with H-A-092, M6-5 registered coverage is `81 selected, 0 problems, 0 improvements`. Raw outputs: `F:/paralls-verification/thread-a/m6-5-all-selections-20261126-01/`.
 - This does not establish production deployment, authoritative Gate values, UE transport, or full backend regression.
+
+### H-A-094 | M6-5 selection count and revision correction | 2026-11-26
+
+- Raw `results.json` reports confirm that the six H-A-093 groups ran at `a294fce4` and cover 61 nodes. The two H-A-092 groups ran at `20c67b18` and cover 27 nodes. The eight groups cover 88 unique nodes with zero problems and zero improvements. The intermediate commit changed only documentation.
