@@ -23,3 +23,17 @@
 - M6-5 remains in progress. No authoritative production Gate values or deployment target are present in the repository. `.env.example` remains a demonstration profile. No production deployment, UE transport, complete siege run, or full backend suite was verified.
 - `deadline_world_tick` remains unknown because no deadline policy/source is defined.
 - This increment does not claim U1-U11 or Architecture v2 completion.
+
+## Current A-tip revalidation, 2026-11-27
+
+At A tip `cd1b1c9b`, the expanded M6-5 focused command covered Facility layered runtime, siege runtime assembly, EventSchema registry, RulePack validation, Information, Morale, Presence, and signed physical input tests. It returned **228 passed, 6 warnings** with Python 3.12.2 and the A-worktree `PYTHONPATH`; pytest `--basetemp` was on F:.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| M6-5 layered impact | `selected=26 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-5-current-tip-20261127-01\impact-gate\` |
+| M6-5 production wiring | `selected=6 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-5-current-tip-20261127-01\production-wiring\` |
+| Information report source | `selected=25 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-5-current-tip-20261127-01\information\` |
+| frozen Ownership | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-5-current-tip-20261127-01\ownership\` |
+| frozen shared-replay | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m6-5-current-tip-20261127-01\shared-replay\` |
+
+This is current local test and frozen-selection evidence. It does not supply production Gate values, a deployment target, UE transport or an external complete siege run. `deadline_world_tick` remains unknown. The full backend suite was not rerun at this tip. M6-5 remains in progress.

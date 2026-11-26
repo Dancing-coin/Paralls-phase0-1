@@ -948,3 +948,9 @@
 
 - At A tip `90e72a67`, focused Play Pattern, RulePack Validator, Reaction and Workflow tests returned `162 passed, 2 warnings`. Play Pattern selection returned `12/0/0`, ownership `24/0/0`, and shared-replay `990/0/0`.
 - This verifies offline declaration and package-loading behavior. Production application activation and combined pattern execution remain unverified. M6-4 remains `待门禁`.
+
+### H-A-140 | M6-5 current-tip production-path regression | 2026-11-27
+
+- At A tip `cd1b1c9b`, eight focused M6-5 test files returned `228 passed, 6 warnings`. Layered impact, production wiring and Information selections returned `26/0/0`, `6/0/0` and `25/0/0`; frozen Ownership and shared-replay returned `24/0/0` and `990/0/0`.
+- This verifies local tested startup, command, Owner and replay paths. No production Gate values, deployment target, UE transport or complete external siege execution were supplied. `deadline_world_tick` remains unknown. The full backend suite was not rerun.
+- Raw outputs are under `F:/paralls-verification/thread-a/m6-5-current-tip-20261127-01/`. M6-5 remains in progress.

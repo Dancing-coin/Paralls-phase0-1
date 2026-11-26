@@ -159,6 +159,8 @@
 
 - M6-4 current-tip revalidation: A tip `90e72a67`, focused `162 passed, 2 warnings`; Play Pattern selection `12/0/0`; ownership `24/0/0`; shared-replay `990/0/0`. Evidence `docs/verification/m6-4-play-pattern-20261122.md` and H-A-139. Offline behavior is current-tip verified; production activation remains unverified and task stays pending gate.
 
+- M6-5 current-tip regression at `cd1b1c9b`: focused `228 passed, 6 warnings`; layered impact/production wiring/Information selections `26/6/25`, each zero differences; frozen ownership/shared-replay `24/990`, zero differences. Evidence `docs/verification/m6-5-impact-gate-pipeline-20261127.md`, H-A-140. Production Gate values, deployment target, UE transport and complete siege execution remain unverified; `deadline_world_tick` unknown; M6-5 remains in progress.
+
 ### M5-5 FactType identity contract increment (2026-11-26)
 
 - A 将正式 FactType identity contract 接入 `fact_type_registry.py`。缺失 identity、未知 identity、singleton 与非 global scope、以及非 singleton 与 global scope 均有专用拒绝路径和回归测试；直接编译测试 fixture 已补齐 `entity_ref`。证据：`docs/verification/m5-5-facttype-identity-20261126.md`。
