@@ -966,3 +966,9 @@
 - At A tip `e09bcf1a`, package migration, EventSchema registry and M6-5 runtime focused tests returned `74 passed, 6 warnings`. Current M5-3 selection returned `23/0/0`, Ownership `24/0/0`, and shared-replay `990/0/0`.
 - The M5-3 selection file now contains 23 nodes; this supersedes the older 22-node count in prior evidence. Production manifest trust source, cross-language hash canonicalization, production deployment, Gate values, UE transport and complete siege execution remain unverified.
 - Raw outputs are under `F:/paralls-verification/thread-a/m5-3-current-tip-20261127-01/`. M5-3 remains in progress pending deployment inputs.
+
+### H-A-143 | M2-2 event-time producer audit | 2026-11-27
+
+- Static `rg -n event_time backend/app/gameplay backend/app/main.py` inventory and M6-5 call-path trace are recorded in `docs/verification/m2-2-event-time-producer-audit-20261127.md`.
+- The only source-time producer is Information report publication. Morale propagates time only when the casualty source event already has one. The M6-5 Presence route does not pass a world tick, and signed physical receipts persist `physics_tick` without an established mapping to the session world-tick epoch. Facility and Presence source-time producers remain absent.
+- This was static-only. No code or tests changed. M2-2 remains blocked on the shared principal/selector and FactType visibility contracts, subject-facing `read_as`, and authoritative event-time sources for the other domains.
