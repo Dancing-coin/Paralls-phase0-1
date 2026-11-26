@@ -713,3 +713,8 @@
 ### H-A-098 | Additional full-suite failure scope classification | 2026-11-26
 
 - The additional node is `tests/test_population_cold_ready_gate.py::test_cold_ready`; it fails because `report["resource_bounds"]["passed"]` is false. The test, its `scripts/verification/verify_population_long_session_recovery.py` runner, and `backend/app/population/` have no changes relative to `origin/integration`. This lies outside the Architecture v2 A scope, so no code change was made. Detailed result is in `docs/verification/m5-3-full-backend-20261126.md`.
+
+### H-A-099 | M5-5 formal Validator rule catalog coverage | 2026-11-26
+
+- Cross-checked every code in the formal Validator rule directory against the current A implementation, tests, and supported pack sections. Evidence is docs/verification/m5-5-rule-catalog-coverage-20261126.md.
+- FactType resolution-order duplicates and gaps are prevented by enumerating a topological ordering from 10, though direct assertions are absent. primitive_count_exceeded is prevented by the fixed six-value registry and package primitive rejection. Owner-set rules, executable-invariant validation, Resolver purity attestation, and impact-profile cycle validation have no corresponding package declaration or graph contract in the current loader. No such package fields or semantics were invented. M5-5 remains incomplete. Static-only; no tests were run.
