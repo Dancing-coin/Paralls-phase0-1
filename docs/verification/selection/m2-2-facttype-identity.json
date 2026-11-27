@@ -1,0 +1,11 @@
+{
+  "head": "57d8f4f4b21f985282f472633e6e193a8641e6a8",
+  "description": "Preserve the validated FactType identity field in compiled runtime metadata",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_compiled_fact_retains_declared_identity",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
