@@ -1010,3 +1010,8 @@
 - Current A tip `c821c558` full backend suite: `10,783 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1.
 - The five failing node IDs were rerun at parent `e8c9f841` and all five failed there with the same failure families. No failure was attributed to the M2-2 FactType schema-ref retention or reverse-index changes.
 - Evidence: `docs/verification/a-tip-full-backend-20261127.md`. This is merge-state regression evidence, not a full-suite pass. M2-2 remains blocked.
+### H-A-150 | M3-3 A-owned current-tip replay audit | 2026-11-27
+
+- At A tip `684b4b1f`, the A-owned migrated command paths use the shared `replay_duplicate` helper. The municipal drought assessment certificate path remains a special settlement-plan flow. Its durable payload digest derives from the complete `GameplayCommandEnvelope`, and its duplicate check validates the committed certificate against advisory, causation, and correlation fields after admission. No behavior was changed without a path-specific contract.
+- Focused municipal certificate and shared-helper tests returned `17 passed, 2 warnings` under Python 3.12.2 with F-drive temporary data. Evidence: `docs/verification/m3-3-a-owned-current-tip-audit-20261127.md`.
+- M3-3 remains in progress. Repository-wide R2 completion and the special path's contract-specific migration remain unverified.

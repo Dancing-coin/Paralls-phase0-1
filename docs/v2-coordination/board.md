@@ -24,6 +24,11 @@
 
 - Commit `78fa4548`: `replay_duplicate` now validates the durable transaction and all committed event references before returning a duplicate receipt. Credential's local R2 check moved to the shared helper while preserving legacy/current event-type expectations. Focused shared and domain tests: 112 passed; other helper callers: 87 passed. New M3-3 selection `9/0/0`; frozen five selections `1,169` nodes with zero differences. Evidence: `docs/verification/m3-3-shared-owner-replay-validation-20261127.md`, H-A-144. M3-3 remains in progress because replay paths not using this helper still need inventory and validation. Full backend suite not run.
 
+### M3-3 A-owned current-tip audit (2026-11-27)
+
+- At current tip `684b4b1f`, Credential, Ownership, LandRight, Holdings, Pool, and package migration migrated command paths use `replay_duplicate`. The municipal drought assessment certificate remains a special settlement-plan path whose durable digest derives from the full command envelope after advisory/contract admission. It was classified without changing its contract. Focused municipal certificate and shared-helper tests returned `17 passed, 2 warnings`. Evidence: `docs/verification/m3-3-a-owned-current-tip-audit-20261127.md`.
+- M3-3 remains `进行中`; repository-wide direct/custom paths and the municipal certificate path still need contract-specific review.
+
 - 版本 1（2026-11-22）。配套：[AUTONOMY.md](AUTONOMY.md)（自主推进规则与门禁）、[PROTOCOL.md](PROTOCOL.md)、[BOUNDARIES.md](BOUNDARIES.md)。
 - 上位文档（文档仓库）：`docs/superpowers/specs/2026-11-22-architecture-v2-migration-spec.md`（成功标准 1–11、单元 DoD U1–U10）、`docs/superpowers/plans/2026-11-22-architecture-v2-migration.md`（里程碑 M0–M8）。
 - **本文件是"现在在做什么"的唯一权威。** 状态只在这里更新；线程每完成一个单元或换任务，改本文件对应行，不要只在对话里说。
