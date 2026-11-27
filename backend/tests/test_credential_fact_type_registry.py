@@ -114,3 +114,55 @@ def test_registry_rejects_state_set_on_non_machine_primitive():
         if violation.code == "facttype_field_primitive_invalid"
     ]
     assert [violation.target for violation in matching] == [FACT]
+
+
+@pytest.mark.parametrize("selector", [
+    "world",
+    "self",
+    "faction:militia",
+    "role:guard",
+    "group_of(faction:militia)",
+    "owner_of(fact:organization:*:roster)",
+    "holder_of(bond:gate:owner)",
+    "recipient_of(subject)",
+])
+def test_registry_accepts_supported_learnable_by_selectors(selector):
+    data = declarations()
+    data["facts"][FACT]["visibility"]["learnable_by"] = [selector]
+
+    registry = FactTypeRegistry.compile(**data)
+
+    assert registry.facts[FACT].visibility["learnable_by"] == (selector,)
+
+
+@pytest.mark.parametrize("selector", [
+    "",
+    "faction:",
+    "role:",
+    "owner_of()",
+    "holder_of()",
+    "group_of()",
+    "group_of(group_of(faction:militia))",
+    "group_of(faction:)",
+])
+def test_registry_rejects_malformed_learnable_by_selectors(selector):
+    data = declarations()
+    data["facts"][FACT]["visibility"]["learnable_by"] = [selector]
+
+    with pytest.raises(RegistrationRejected) as error:
+        FactTypeRegistry.compile(**data)
+
+    matching = [violation for violation in error.value.violations
+                if violation.code in ("facttype_selector_invalid", "facttype_selector_nesting_invalid")]
+    assert len(matching) == 1
+    assert matching[0].target == FACT
+
+
+def test_registry_rejects_nested_group_selector_with_schema_code():
+    data = declarations()
+    data["facts"][FACT]["visibility"]["learnable_by"] = ["group_of(group_of(faction:militia))"]
+
+    with pytest.raises(RegistrationRejected) as error:
+        FactTypeRegistry.compile(**data)
+
+    assert "facttype_selector_nesting_invalid" in str(error.value)

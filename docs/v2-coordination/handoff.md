@@ -979,3 +979,10 @@
 - Code commit: `78fa4548` (`feat-owner-replay-validation`).
 - Three failing-first Ownership tests proved absent validation for a missing event, event count mismatch, and missing transaction. Current focused shared/primary-domain tests returned `112 passed, 2 warnings`; tests for other helper callers returned `87 passed, 6 warnings`. The new M3-3 selection returned `9/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay returned `24/12/87/56/990`, all zero differences.
 - Evidence: `docs/verification/m3-3-shared-owner-replay-validation-20261127.md`. Full backend suite was not run. Replay paths bypassing `replay_duplicate` and remaining domain R2 promotions are not covered; M3-3 remains in progress.
+
+### H-A-145 | M5-5 principal selector registration | 2026-11-27
+
+- The current A worktree validates FactType `learnable_by` selector syntax at registration and rejects nested `group_of` selectors with `facttype_selector_nesting_invalid`. Existing Information `recipient_of(subject)` declarations remain accepted.
+- This is schema registration only. It does not implement principal qualification sources, runtime selector evaluation, event-to-FactType visibility mapping, or `read_as`.
+- Evidence: `docs/verification/m5-5-selector-registration-20261127.md`. Focused tests returned `218 passed, 6 warnings`; new selection `6/0/0`; 30 existing registered selections and frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections all returned zero differences. Full backend suite was not run.
+- M2-2 remains blocked and M5-5 remains in progress.

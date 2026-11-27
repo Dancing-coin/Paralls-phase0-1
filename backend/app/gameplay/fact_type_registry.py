@@ -44,6 +44,29 @@ _FACT_TYPE_FIELD_PRIMITIVES = {
     "bond_types": {"bond"},
     "place_kind": {"place"},
 }
+_SELECTOR_REFERENCE_PATTERN = re.compile(r"^[^\s()]+$")
+
+
+def _principal_selector_error(selector: Any) -> str | None:
+    if not isinstance(selector, str) or not selector or selector != selector.strip():
+        return "facttype_selector_invalid"
+    if selector in ("world", "self", "recipient_of(subject)"):
+        return None
+    for prefix in ("faction:", "role:"):
+        if selector.startswith(prefix):
+            reference = selector[len(prefix):]
+            return None if _SELECTOR_REFERENCE_PATTERN.fullmatch(reference) else "facttype_selector_invalid"
+    for function in ("owner_of", "holder_of"):
+        prefix = f"{function}("
+        if selector.startswith(prefix) and selector.endswith(")"):
+            reference = selector[len(prefix):-1]
+            return None if _SELECTOR_REFERENCE_PATTERN.fullmatch(reference) else "facttype_selector_invalid"
+    if selector.startswith("group_of(") and selector.endswith(")"):
+        nested = selector[len("group_of("):-1]
+        if nested.startswith("group_of("):
+            return "facttype_selector_nesting_invalid"
+        return _principal_selector_error(nested) or None
+    return "facttype_selector_invalid"
 
 
 @dataclass(frozen=True)
@@ -145,6 +168,16 @@ class FactTypeRegistry:
         for target, spec in facts.items():
             if not spec.get("visibility"):
                 reject("facttype_visibility_missing", target, "visibility must be explicitly nonempty")
+            visibility = spec.get("visibility")
+            if isinstance(visibility, Mapping) and "learnable_by" in visibility:
+                selectors = visibility["learnable_by"]
+                if not isinstance(selectors, (list, tuple)):
+                    reject("facttype_selector_invalid", target, "learnable_by must be a list of principal selectors")
+                else:
+                    for selector in selectors:
+                        code = _principal_selector_error(selector)
+                        if code is not None:
+                            reject(code, target, "use a registered principal selector with at most one group_of layer")
             if spec.get("owner_ref") not in owners:
                 reject("facttype_owner_unknown", target, "register the fact owner first")
             if spec.get("aggregation") == "distribution":

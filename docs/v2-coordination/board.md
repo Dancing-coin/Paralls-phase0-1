@@ -171,6 +171,8 @@
 
 - M5-5 current-tip validator/registry revalidation at `e002eb24`: focused `165 passed, 2 warnings`; M5-5 selection `38/0/0`; frozen five selections 1,169 nodes, all zero differences. Evidence `docs/verification/m5-5-facttype-primitives-20261126.md`, H-A-141. Machine-readable Owner declarations, invariant grammar, Resolver capability attestation and `temporal_effects` remain unspecified; M5-5 remains in progress.
 
+- M5-5 principal selector registration increment at current worktree: FactType `learnable_by` selector syntax and nested `group_of` rejection. Evidence `docs/verification/m5-5-selector-registration-20261127.md`; new selection `6/0/0`; focused FactType/RulePack/package/Information tests `218 passed, 6 warnings`. All 30 existing registered selections plus frozen five selections completed with zero differences. Runtime principal qualification and `read_as` remain unimplemented; M2-2 remains blocked and M5-5 remains in progress. Full backend suite not run for this increment.
+
 - M5-3 current-tip package migration/archive revalidation at `e09bcf1a`: focused `74 passed, 6 warnings`; M5-3 selection 23/0/0; Ownership 24/0/0; shared-replay 990/0/0. Evidence `docs/verification/m5-3-startup-contract-20261126.md`, H-A-142. Production manifest trust source, cross-language hash canonicalization, Gate values, deployment target, UE transport and complete siege execution remain unverified; M5-3/M6-5 remain in progress.
 
 ### M5-5 FactType identity contract increment (2026-11-26)

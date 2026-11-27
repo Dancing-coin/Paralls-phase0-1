@@ -1,0 +1,12 @@
+{
+  "head": "49402972c41720869a5cf90c5911c117a122defb",
+  "description": "M5-5 FactType principal selector syntax registration and nesting rejection",
+  "tests": [
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_accepts_supported_learnable_by_selectors[world]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_accepts_supported_learnable_by_selectors[group_of(faction:militia)]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_accepts_supported_learnable_by_selectors[recipient_of(subject)]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_malformed_learnable_by_selectors[]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_malformed_learnable_by_selectors[group_of(group_of(faction:militia))]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_nested_group_selector_with_schema_code", "outcome": "passed", "failures": []}
+  ]
+}
