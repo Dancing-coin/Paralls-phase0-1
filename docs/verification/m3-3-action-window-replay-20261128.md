@@ -28,6 +28,7 @@
 ## Limits
 
 - Raw outputs are under `F:\paralls-verification\thread-a\m3-3-action-window-replay-20261128-01\`.
+- P-1 branch-addition scan relative to `origin/integration` checked five credential-pattern families and found zero credential hits after excluding three explicit test-fixture placeholders. The excluded matches are recorded with file, line, pattern, SHA-256 prefix `66e7c82b`, and `public=no` in `p1-scan-branch-delta.log`; matched values were not emitted.
 - SQLite `3.43.1` is below the frozen baseline's `3.51.3` WAL-checkpoint requirement; the two environment-gated nodes are not counted as passed by the baseline selections.
 - This closes only the `resolve_action_window` duplicate path. Other direct/custom replay paths remain under M3-3 audit. No Owner/domain completion is implied.
 - `Godot/` was preserved. `integration` was not modified.
