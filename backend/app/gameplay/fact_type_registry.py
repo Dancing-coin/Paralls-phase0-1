@@ -134,6 +134,12 @@ class FactType:
 
 
 @dataclass(frozen=True)
+class FactTypeInstance:
+    fact_type: FactType
+    fact_type_ref: str
+
+
+@dataclass(frozen=True)
 class Model:
     model_ref: str
     owner_ref: str
@@ -340,3 +346,34 @@ class FactTypeRegistry:
         self, event_type: str, schema_version: int,
     ) -> tuple[FactType, ...]:
         return self.facts_by_event_schema_key.get((event_type, schema_version), ())
+
+    def resolve_event_fact_type(
+        self, *, event_type: str, schema_version: int, stream_id: str,
+        payload: Mapping[str, Any],
+    ) -> FactTypeInstance | None:
+        candidates = self.fact_types_for_event(event_type, schema_version)
+        matches = [
+            fact for fact in candidates
+            if _matches_fact_type_instance(fact, stream_id)
+        ]
+        if len(matches) != 1:
+            return None
+
+        payload_fact_type = payload.get("fact_type")
+        if payload_fact_type is not None and payload_fact_type != stream_id:
+            return None
+        return FactTypeInstance(matches[0], stream_id)
+
+
+def _matches_fact_type_instance(fact: FactType, fact_type_ref: str) -> bool:
+    declaration = fact.fact_type_id.split(":")
+    instance = fact_type_ref.split(":")
+    if len(declaration) != 4 or len(instance) != 4:
+        return False
+    if declaration[:2] != instance[:2] or declaration[3] != instance[3]:
+        return False
+    if declaration[2] not in ("*", instance[2]):
+        return False
+    if fact.identity == "singleton":
+        return declaration[2] == "global" and instance[2] == "global"
+    return instance[2] not in ("", "*", "global")

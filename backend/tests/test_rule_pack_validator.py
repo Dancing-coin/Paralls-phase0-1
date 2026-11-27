@@ -165,6 +165,60 @@ def test_compiled_registry_resolves_legacy_credential_schema_alias():
     assert tuple(fact.fact_type_id for fact in candidates) == ("fact:credential:*:link",)
 
 
+def test_compiled_registry_resolves_event_instance_from_fact_type_stream():
+    loaded = load_pack(FACILITY_PACK, handlers={})
+
+    resolved = loaded.registry.resolve_event_fact_type(
+        event_type="gameplay.pool.adjusted",
+        schema_version=1,
+        stream_id="fact:facility:gate-03:integrity",
+        payload={"fact_type": "fact:facility:gate-03:integrity"},
+    )
+
+    assert resolved.fact_type.fact_type_id == "fact:facility:gate-03:integrity"
+    assert resolved.fact_type_ref == "fact:facility:gate-03:integrity"
+
+
+def test_compiled_registry_resolves_template_fact_type_scope_from_stream():
+    loaded = load_pack(PACK, handlers=HANDLERS)
+
+    resolved = loaded.registry.resolve_event_fact_type(
+        event_type="gameplay.credential.issued",
+        schema_version=1,
+        stream_id="fact:credential:credential-17:link",
+        payload={},
+    )
+
+    assert resolved.fact_type.fact_type_id == "fact:credential:*:link"
+    assert resolved.fact_type_ref == "fact:credential:credential-17:link"
+
+
+def test_compiled_registry_rejects_fact_type_payload_conflicting_with_stream():
+    loaded = load_pack(FACILITY_PACK, handlers={})
+
+    resolved = loaded.registry.resolve_event_fact_type(
+        event_type="gameplay.pool.adjusted",
+        schema_version=1,
+        stream_id="fact:facility:gate-03:integrity",
+        payload={"fact_type": "fact:facility:gate-03:durability"},
+    )
+
+    assert resolved is None
+
+
+def test_compiled_registry_does_not_infer_fact_type_from_legacy_domain_stream():
+    loaded = load_pack(FACILITY_PACK, handlers={})
+
+    resolved = loaded.registry.resolve_event_fact_type(
+        event_type="gameplay.pool.adjusted",
+        schema_version=1,
+        stream_id="gameplay:facility:gate-03",
+        payload={"fact_type": "fact:facility:gate-03:integrity"},
+    )
+
+    assert resolved is None
+
+
 def test_facility_gate_pack_registers_pool_and_machine_fact_types():
     loaded = load_pack(FACILITY_PACK, handlers={})
 
