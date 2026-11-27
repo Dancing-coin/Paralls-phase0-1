@@ -310,6 +310,9 @@ def test_information_report_read_uses_bound_actor_scope_and_authoritative_world_
         InformationAuthority,
         SiegeReportPublicationReceipt,
     )
+    from app.gameplay.m6_5_siege_runtime import INFORMATION_PACK
+    from app.gameplay.read_as import GameplayReadAs
+    from app.gameplay.rule_pack_validator import load_pack
     from app.gameplay.settlement_plan import build_atomic_event_batch
 
     reset_runtime_state()
@@ -373,8 +376,27 @@ def test_information_report_read_uses_bound_actor_scope_and_authoritative_world_
         receipt=receipt.model_copy(update={"signature": signature}), world_now=15,
     )
     assert publication.committed
-    main.m6_5_siege_runtime = type("SiegeRuntimeStub", (), {"information": authority})()
+    information_pack = load_pack(
+        INFORMATION_PACK,
+        handlers={},
+        owner_domains={"Information": "information"},
+        command_fact_outputs={
+            "information.update_knowledge": {"fact:information:siege:report_knowledge"},
+        },
+    )
+    read_as = GameplayReadAs(authority=authority, registry=information_pack.registry)
+    main.m6_5_siege_runtime = type(
+        "SiegeRuntimeStub", (), {"information": authority, "read_as": read_as}
+    )()
     monkeypatch.setattr(main, "_session_world_clock_tick", lambda: 16)
+    read_as_calls = []
+    original_read_as = read_as.read_as
+
+    def track_read_as(**kwargs):
+        read_as_calls.append(kwargs)
+        return original_read_as(**kwargs)
+
+    monkeypatch.setattr(read_as, "read_as", track_read_as)
 
     delivery_event_id, = publication.delivery_append_result.committed_event_ids
     knowledge = authority.update_from_delivery(
@@ -426,6 +448,9 @@ def test_information_report_read_uses_bound_actor_scope_and_authoritative_world_
     )
     assert unauthorized_knowledge[0]["payload"]["accepted"] is False
     assert future_knowledge[0]["payload"]["accepted"] is False
+    assert [call["fact_types"] for call in read_as_calls] == [
+        ("fact:information:siege:report_knowledge",),
+    ]
 
     result = _handle_envelope(
         Envelope(message_type="information_report_read", payload={
@@ -467,6 +492,10 @@ def test_information_report_read_uses_bound_actor_scope_and_authoritative_world_
     )
     assert forbidden[0]["payload"] == future[0]["payload"]
     assert forbidden[0]["payload"]["accepted"] is False
+    assert [call["fact_types"] for call in read_as_calls] == [
+        ("fact:information:siege:report_knowledge",),
+        ("fact:information:siege:report",),
+    ]
 
 
 def test_gameplay_mirror_subscription_fails_closed_without_backend_projection() -> None:

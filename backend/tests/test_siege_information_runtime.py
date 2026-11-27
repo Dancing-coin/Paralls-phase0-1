@@ -560,6 +560,81 @@ def test_information_knowledge_read_requires_committed_private_chain_and_as_of_t
     ) is None
 
 
+def test_gameplay_read_as_projects_registered_information_fact_types():
+    from app.gameplay.m6_5_siege_runtime import INFORMATION_PACK
+    from app.gameplay.read_as import GameplayReadAs
+    from app.gameplay.rule_pack_validator import load_pack
+
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    receipt = _signed_report_receipt(source)
+    authority = _report_authority(store)
+    publication = authority.publish_siege_report(receipt=receipt, world_now=15)
+    assert publication.committed and publication.report_append_result is not None
+    assert publication.delivery_append_result is not None
+    report_event_id, = publication.report_append_result.committed_event_ids
+    delivery_event_id, = publication.delivery_append_result.committed_event_ids
+    update = authority.update_from_delivery(
+        delivery=store.get_event(delivery_event_id),
+        world_now=16,
+        command_id="knowledge:east-gate:read-as",
+        idempotency_key="knowledge:east-gate:read-as",
+        correlation_id="correlation:east-gate",
+    )
+    assert update.committed
+
+    information_pack = load_pack(
+        INFORMATION_PACK,
+        handlers={},
+        owner_domains={"Information": "information"},
+        command_fact_outputs={
+            "information.update_knowledge": {"fact:information:siege:report_knowledge"},
+        },
+    )
+    reader = GameplayReadAs(authority=authority, registry=information_pack.registry)
+
+    projection = reader.read_as(
+        principal=receipt.recipient_ref,
+        scope={"report_ref": receipt.report_ref, "report_event_id": report_event_id},
+        as_of_tick=16,
+        fact_types=(REPORT_FACT, "fact:information:siege:report_knowledge"),
+    )
+
+    assert [fact.fact_type_ref for fact in projection.facts] == [
+        REPORT_FACT, "fact:information:siege:report_knowledge",
+    ]
+    assert projection.facts[0].source_owner_ref == "Information"
+    assert projection.facts[0].event_time == 15
+    assert projection.facts[0].known_time == 15
+    assert projection.facts[0].freshness == 1
+    assert projection.facts[0].confidence == "full"
+    assert projection.facts[0].value["summary"] == receipt.summary
+    assert projection.facts[1].event_time == 16
+    assert projection.facts[1].known_time == 15
+
+    with pytest.raises(ValueError, match="read_as_fact_type_unknown"):
+        reader.read_as(
+            principal=receipt.recipient_ref,
+            scope={"report_ref": receipt.report_ref},
+            as_of_tick=16,
+            fact_types=("fact:information:unknown:record",),
+        )
+    with pytest.raises(ValueError, match="read_as_scope_invalid"):
+        reader.read_as(
+            principal=receipt.recipient_ref,
+            scope={"report_ref": receipt.report_ref, "recipient_ref": receipt.recipient_ref},
+            as_of_tick=16,
+            fact_types=(REPORT_FACT,),
+        )
+    with pytest.raises(ValueError, match="read_as_scope_invalid"):
+        reader.read_as(
+            principal=receipt.recipient_ref,
+            scope={"report_ref": receipt.report_ref},
+            as_of_tick=16,
+            fact_types=(REPORT_FACT, "fact:information:siege:report_knowledge"),
+        )
+
+
 def test_information_report_read_is_recipient_private_and_respects_delivery_window():
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
     source = _report_source(store)

@@ -66,6 +66,7 @@ from app.gameplay.dispatcher import GameplayOutboxDispatcher
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.information_runtime import (
     INFORMATION_KNOWLEDGE_EVENT_TYPE,
+    INFORMATION_REPORT_FACT_TYPE,
     INFORMATION_REPORT_EVENT,
     SiegeReportPublicationReceipt,
 )
@@ -5571,19 +5572,20 @@ def _handle_envelope(
                 "accepted": False, "error_code": "information_report_read_unavailable",
             })]
         try:
-            view = m6_5_siege_runtime.information.read_report_for_recipient(
-                recipient_ref=payload["actor_ref"],
-                report_ref=payload["report_ref"],
+            projection = m6_5_siege_runtime.read_as.read_as(
+                principal=payload["actor_ref"],
+                scope={"report_ref": payload["report_ref"]},
                 as_of_tick=payload["as_of_tick"],
+                fact_types=(INFORMATION_REPORT_FACT_TYPE,),
             )
         except ValueError:
-            view = None
-        if view is None:
+            projection = None
+        if projection is None or not projection.facts:
             return [_as_envelope("information_report_read_result", {
                 "accepted": False, "error_code": "information_report_read_unavailable",
             })]
         return [_as_envelope("information_report_read_result", {
-            "accepted": True, "report": asdict(view),
+            "accepted": True, "report": projection.facts[0].value,
         })]
 
     if envelope.message_type == "information_knowledge_read":
@@ -5618,19 +5620,20 @@ def _handle_envelope(
                 "accepted": False, "error_code": "information_knowledge_read_unavailable",
             })]
         try:
-            view = m6_5_siege_runtime.information.read_knowledge_for_recipient(
-                recipient_ref=payload["actor_ref"],
-                report_event_id=payload["report_event_id"],
+            projection = m6_5_siege_runtime.read_as.read_as(
+                principal=payload["actor_ref"],
+                scope={"report_event_id": payload["report_event_id"]},
                 as_of_tick=payload["as_of_tick"],
+                fact_types=(INFORMATION_KNOWLEDGE_FACT_TYPE,),
             )
         except ValueError:
-            view = None
-        if view is None:
+            projection = None
+        if projection is None or not projection.facts:
             return [_as_envelope("information_knowledge_read_result", {
                 "accepted": False, "error_code": "information_knowledge_read_unavailable",
             })]
         return [_as_envelope("information_knowledge_read_result", {
-            "accepted": True, "knowledge": asdict(view),
+            "accepted": True, "knowledge": projection.facts[0].value,
         })]
 
     if envelope.message_type == "gameplay_government_drought_advisory_subscribe":

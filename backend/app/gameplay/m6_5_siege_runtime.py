@@ -16,6 +16,7 @@ from app.gameplay.impact_gate_obligation import rebuild_impact_gate_obligations
 from app.gameplay.fact_type_registry import FactTypeRegistry
 from app.gameplay.l5_pipeline import Pipeline
 from app.gameplay.information_runtime import (
+    INFORMATION_KNOWLEDGE_FACT_TYPE,
     INFORMATION_REPORT_EVENT,
     INFORMATION_REPORT_FACT_TYPE,
     INFORMATION_REPORT_PRINCIPAL,
@@ -23,6 +24,7 @@ from app.gameplay.information_runtime import (
     InformationReportPublicationResult,
     SiegeReportPublicationReceipt,
 )
+from app.gameplay.read_as import GameplayReadAs
 from app.gameplay.l5_dispatch_runtime import (
     L5ReactionDispatcher,
     TriggeredGameplayCommand,
@@ -59,7 +61,6 @@ MORALE_OWNER_DOMAINS = {
     "Morale": "morale",
     "Presence": "presence",
 }
-INFORMATION_KNOWLEDGE_FACT_TYPE = "fact:information:siege:report_knowledge"
 INFORMATION_DELIVERY_EVENT_TYPE = "gameplay.social.delivery_recorded@2"
 DEFAULT_MORALE_DEFINITIONS = MappingProxyType({
     ("organization:garrison:east@1", "role:garrison-defender@1"): PoolDefinition(
@@ -191,6 +192,7 @@ class M6_5SiegeRuntime:
     facility: FacilityIntegrityAuthority | None
     layered_facility: FacilityGateLayeredAuthority | None
     information: InformationAuthority
+    read_as: GameplayReadAs
     impact_pipeline: Pipeline | None
     impact_registry: FactTypeRegistry
     world_ref: str | None = None
@@ -510,6 +512,7 @@ def build_m6_5_siege_runtime(
         facility=facility,
         layered_facility=layered_facility,
         information=information,
+        read_as=GameplayReadAs(authority=information, registry=information_pack.registry),
         impact_pipeline=impact_pipeline,
         impact_registry=pack.registry,
         world_ref=world_ref,
