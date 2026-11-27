@@ -217,6 +217,30 @@ def test_inf4ao_duplicate_and_changed_duplicate_do_not_write() -> None:
     assert store.export_snapshot() == before
 
 
+def test_inf4ao_duplicate_rejects_transaction_command_mismatch_without_writing() -> None:
+    store, notice = _notice()
+    authority = SocialFactAuthority(registry=_social_registry(), store=store)
+    request = _request(store, notice)
+    first = authority.record_public_milling_notice_social_acknowledgment(**request)
+    assert first.receipt is not None
+    transaction_id = first.receipt.transaction_id
+    transaction_index = next(
+        index for index, transaction in enumerate(store._transactions)
+        if transaction.transaction_id == transaction_id
+    )
+    store._transactions[transaction_index] = store._transactions[transaction_index].model_copy(
+        update={"command_id": "command:forged"},
+        deep=True,
+    )
+    corrupted_snapshot = store.export_snapshot()
+
+    duplicate = authority.record_public_milling_notice_social_acknowledgment(**request)
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "public_milling_notice_social_acknowledgment_idempotency_key_reused"
+    assert store.export_snapshot() == corrupted_snapshot
+
+
 def test_inf4ao_unknown_private_stale_and_caller_selected_fields_are_zero_write() -> None:
     store, notice = _notice()
     authority = SocialFactAuthority(registry=_social_registry(), store=store)

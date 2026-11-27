@@ -9,6 +9,7 @@ from typing import Any, Mapping
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import GameplayOutboxEntry, OwnerAuthorizedFragment
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.patch_runtime import GameplayPatchRegistry
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult, build_directed_relationship_ref
 from app.gameplay.p5.registry import P5PolicyRegistry
@@ -894,18 +895,26 @@ class SocialFactAuthority:
         )
         if idempotency_key != canonical_key:
             return self._rejected("public_milling_notice_social_acknowledgment_idempotency_key_invalid")
-        existing = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
-        if existing is not None:
-            previous_events = tuple(
-                event
-                for event in self._store.read_events()
-                if event.event_id in set(existing.committed_event_ids)
-            )
+        idempotency_record = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="public_milling_notice_social_acknowledgment_idempotency_key_reused",
+                    expected_event_types=(_PUBLIC_MILLING_ACK_EVENT, _PUBLIC_MILLING_ACK_EVENT),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
+                return self._rejected("public_milling_notice_social_acknowledgment_idempotency_key_reused")
+            if existing is None:
+                return self._rejected("public_milling_notice_social_acknowledgment_idempotency_key_reused")
+            previous_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
             if (
-                len(previous_events) == 2
-                and all(event.event_type == _PUBLIC_MILLING_ACK_EVENT for event in previous_events)
-                and all(event.command_id == command_id for event in previous_events)
-                and all(event.payload.get("source_notice_event_id") == notice_event_id for event in previous_events)
+                all(event.payload.get("source_notice_event_id") == notice_event_id for event in previous_events)
                 and all(
                     event.causation_id == causation_id and event.correlation_id == correlation_id
                     for event in previous_events
