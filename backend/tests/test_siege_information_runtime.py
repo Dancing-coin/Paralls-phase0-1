@@ -677,6 +677,57 @@ def test_gameplay_read_as_projects_registered_information_fact_types():
                 fact_types=(REPORT_FACT,),
             )
 
+    non_information_ref = "fact:facility:gate:restricted_report"
+    non_information_declaration = replace(
+        report_declaration,
+        fact_type_id=non_information_ref,
+        owner_ref="Facility",
+        event_schema_ref=None,
+    )
+    for visibility_class in ("secret", "debug_only"):
+        restricted_registry = FactTypeRegistry(
+            facts={
+                **information_pack.registry.facts,
+                non_information_ref: replace(
+                    non_information_declaration,
+                    visibility={**report_declaration.visibility, "class": visibility_class},
+                ),
+            },
+            models=information_pack.registry.models,
+            machines=information_pack.registry.machines,
+        )
+        restricted_reader = GameplayReadAs(authority=authority, registry=restricted_registry)
+        with pytest.raises(ValueError, match="read_as_visibility_forbidden"):
+            restricted_reader.read_as(
+                principal=receipt.recipient_ref,
+                scope={},
+                as_of_tick=16,
+                fact_types=(non_information_ref,),
+            )
+
+    delayed_registry = FactTypeRegistry(
+        facts={
+            **information_pack.registry.facts,
+            non_information_ref: replace(
+                non_information_declaration,
+                visibility={
+                    **report_declaration.visibility,
+                    "delay": {"model_ref": "report_delay@1"},
+                },
+            ),
+        },
+        models=information_pack.registry.models,
+        machines=information_pack.registry.machines,
+    )
+    delayed_reader = GameplayReadAs(authority=authority, registry=delayed_registry)
+    with pytest.raises(ValueError, match="read_as_visibility_model_unavailable"):
+        delayed_reader.read_as(
+            principal=receipt.recipient_ref,
+            scope={},
+            as_of_tick=16,
+            fact_types=(non_information_ref,),
+        )
+
 
 def test_information_report_read_is_recipient_private_and_respects_delivery_window():
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
