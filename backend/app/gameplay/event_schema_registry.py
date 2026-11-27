@@ -288,8 +288,8 @@ class EventSchemaRegistry:
         return registry
 
 
-def require_event_schema_ref(registry: EventSchemaRegistry, schema_ref: object) -> None:
-    """Resolve the versioned FactType schema references used by v2 packs."""
+def resolve_event_schema_ref(schema_ref: object) -> tuple[tuple[str, int], ...]:
+    """Return the exact event type and version keys declared by a schema reference."""
     from app.gameplay.pool_event_schema import POOL_EVENT_TYPES
 
     pool_entries = tuple((event_type, 1) for event_type in POOL_EVENT_TYPES)
@@ -326,11 +326,19 @@ def require_event_schema_ref(registry: EventSchemaRegistry, schema_ref: object) 
             "gameplay.credential.superseded",
         ):
             raise EventSchemaRegistryError("event_schema_unregistered")
-        return
+        return tuple((event_type, 1) for event_type in CREDENTIAL_V1_EVENT_TYPES)
 
     entries = references.get(schema_ref) if isinstance(schema_ref, str) else None
     if entries is None:
         raise EventSchemaRegistryError("event_schema_unregistered")
+    return entries
+
+
+def require_event_schema_ref(registry: EventSchemaRegistry, schema_ref: object) -> None:
+    """Reject references whose explicitly declared schemas are not registered."""
+    entries = resolve_event_schema_ref(schema_ref)
+    if schema_ref == "credential_link_legacy_v1":
+        return
     for event_type, schema_version in entries:
         registry.require(event_type, schema_version)
 

@@ -11,6 +11,7 @@ from app.gameplay.event_schema_registry import (
     create_stormnight_event_schema_registry,
     gameplay_schema_event_types,
     require_event_schema_ref,
+    resolve_event_schema_ref,
 )
 from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 
@@ -102,6 +103,21 @@ def test_place_fact_type_schema_reference_resolves_registered_place_events() -> 
         "gameplay.presence.place_passability_confirmed",
     ):
         assert registry.get(event_type, 1) is not None
+
+
+def test_event_schema_reference_resolves_exact_event_type_and_version_keys() -> None:
+    assert resolve_event_schema_ref("place@v1") == (
+        ("gameplay.presence.place_passability_changed", 1),
+        ("gameplay.presence.place_passability_confirmed", 1),
+    )
+    assert resolve_event_schema_ref("gameplay.information.knowledge_updated@1") == (
+        ("gameplay.information.knowledge_updated@1", 1),
+    )
+
+
+def test_event_schema_reference_rejects_unknown_aliases() -> None:
+    with pytest.raises(EventSchemaRegistryError, match="event_schema_unregistered"):
+        resolve_event_schema_ref("gameplay.presence.place_passability_changed")
 
 
 def test_durable_snapshot_restores_opt_in_write_gate(tmp_path) -> None:
