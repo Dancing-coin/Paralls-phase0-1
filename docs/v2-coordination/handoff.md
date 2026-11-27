@@ -1092,3 +1092,10 @@
 - Legacy inputs and casualty events without time remain unknown. No time was inferred from global sequence, stream revision, or Bond expiry ticks. `embodied_interaction_session_service.py` has a separate `known_time` payload field and is not part of the `GameplayEvent.event_time` producer set.
 - Evidence: `docs/verification/m2-2-event-time-source-audit-20261127.md`. Static only; no tests ran.
 - The current A-side source inventory is recorded. M2-2 remains blocked on trusted principal qualification/selector execution, FactType/visibility enforcement, classifying future migrated readers, and subject-facing `read_as`. U7 is incomplete.
+
+### H-A-161 | M2-2 authenticated principal source and bounded read recommendation | 2026-11-27
+
+- Static tracing found `WebSocketSessionAuthService` binding a deployment-verified or trusted-loopback `principal_ref` and fixed `allowed_actor_refs` into backend-held connection state. Existing session projection checks resolve the current binding before authorizing an actor scope.
+- This supplies a potential trusted identity root for a recipient-private read. It does not supply faction, role, group, `owner_of`, or `holder_of` qualifications, and it is not itself the gameplay `read_as` mechanism.
+- Recommendation: first implement a narrow recipient-private read using the authenticated binding and explicit actor scope. Add other selectors only when their owning fact sources can resolve historical qualifications. Do not accept qualifications from request payloads. Measure a bounded query under D6 before expanding event history reads.
+- Evidence: the authenticated principal source follow-up in `docs/verification/m2-2-read-as-contract-audit-20261126.md`. Static only; no tests ran. M2-2 remains blocked and U7 is incomplete.
