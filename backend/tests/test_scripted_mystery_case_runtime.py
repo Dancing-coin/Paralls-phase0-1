@@ -37,6 +37,46 @@ def test_duplicate_and_changed_duplicate_are_fail_closed() -> None:
     assert len(authority.store.read_events()) == 1
 
 
+def test_corrupt_phase_receipt_is_rejected_without_writes() -> None:
+    authority = _authority()
+    intent = CaseOpenIntent(case_ref=authority.package.content.case_ref, case_revision=authority.package.content.case_revision, command_id="open", idempotency_key="open", causation_id="cause", correlation_id="corr", submitted_at="now")
+    assert authority.open_case(intent).committed
+    stored = authority.store._idempotency_results[("authority:p5:scripted-mystery-case", "open")]
+    authority.store._idempotency_results[("authority:p5:scripted-mystery-case", "open")] = stored.model_copy(update={"command_id": "corrupt-command"}, deep=True)
+
+    duplicate = authority.open_case(intent)
+
+    assert not duplicate.committed
+    assert duplicate.error_code == "idempotency_key_reused"
+    assert len(authority.store.read_events()) == 1
+
+
+def test_corrupt_outcome_receipt_is_rejected_without_writes() -> None:
+    authority = _authority()
+    content = authority.package.content
+    opened = authority.open_case(CaseOpenIntent(case_ref=content.case_ref, case_revision=content.case_revision, command_id="open", idempotency_key="open", causation_id="cause", correlation_id="corr", submitted_at="now"))
+    assert opened.committed
+    authority._append(
+        "accusation",
+        "accusation",
+        1,
+        "cause",
+        "corr",
+        "gameplay.p5.mystery.accusation_submitted@1",
+        authority._payload(case_ref=content.case_ref, case_revision=content.case_revision, target_ref=content.culprit_actor_ref),
+    )
+    outcome = authority.resolve_outcome(command_id="outcome", idempotency_key="outcome", outcome_kind="case_solved", expected_revision=2, causation_id="cause", correlation_id="corr")
+    assert outcome.committed
+    stored = authority.store._idempotency_results[("authority:p5:scripted-mystery-case", "outcome")]
+    authority.store._idempotency_results[("authority:p5:scripted-mystery-case", "outcome")] = stored.model_copy(update={"command_id": "corrupt-command"}, deep=True)
+
+    duplicate = authority.resolve_outcome(command_id="outcome", idempotency_key="outcome", outcome_kind="case_solved", expected_revision=2, causation_id="cause", correlation_id="corr")
+
+    assert not duplicate.committed
+    assert duplicate.error_code == "idempotency_key_reused"
+    assert len(authority.store.read_events()) == 3
+
+
 def test_stale_phase_and_unknown_outcome_are_zero_write() -> None:
     authority = _authority()
     intent = CaseOpenIntent(case_ref=authority.package.content.case_ref, case_revision=authority.package.content.case_revision, command_id="open", idempotency_key="open", causation_id="cause", correlation_id="corr", submitted_at="now")

@@ -10,6 +10,7 @@ from app.gameplay.models import ProjectionCheckpoint, ReplayResult, StrictGamepl
 from pydantic import Field
 from app.gameplay.p5.scripted_mystery_case_package import StormnightCasePackage, load_stormnight_case_package
 from app.gameplay.p5.contracts import canonical_sha256_digest
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
@@ -127,8 +128,29 @@ class ScriptedMysteryCaseAuthority:
     def resolve_outcome(self, *, command_id: str, idempotency_key: str, outcome_kind: Literal["case_solved", "false_accusation", "culprit_escaped", "investigator_captured"], expected_revision: int, causation_id: str, correlation_id: str) -> CaseOutcomeResult:
         existing = self.store.get_idempotency_record(_PRINCIPAL, idempotency_key)
         if existing is not None:
-            receipt = self.store.get_by_idempotency(_PRINCIPAL, idempotency_key)
-            return CaseOutcomeResult(committed=True, outcome_kind=outcome_kind, idempotency_status="duplicate_replayed", event_id=receipt.committed_event_ids[0] if receipt and receipt.committed_event_ids else None)
+            try:
+                receipt = replay_duplicate(
+                    self.store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="idempotency_key_reused",
+                    expected_event_types=(_CASE_EVENTS["case_outcome_resolved"],),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
+                return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="idempotency_key_reused")
+            event = self.store.get_event(receipt.committed_event_ids[0]) if receipt else None
+            expected_payload = self._payload(
+                case_ref=self.package.content.case_ref,
+                case_revision=self.package.content.case_revision,
+                phase_ref=self.project().phase_ref,
+                outcome_kind=outcome_kind,
+            )
+            if event is None or event.payload != expected_payload or event.causation_id != causation_id or event.correlation_id != correlation_id:
+                return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="idempotency_key_reused")
+            return CaseOutcomeResult(committed=True, outcome_kind=outcome_kind, idempotency_status="duplicate_replayed", event_id=event.event_id)
         projection = self.project()
         if self.store.get_stream_head(self.stream_id) != expected_revision:
             return CaseOutcomeResult(committed=False, outcome_kind=outcome_kind, idempotency_status="rejected", error_code="case_revision_stale")
@@ -236,8 +258,24 @@ class ScriptedMysteryCaseAuthority:
     def _append_phase(self, intent: CaseOpenIntent, *, phase_ref: str, event_name: str) -> CasePhaseResult:
         existing = self.store.get_idempotency_record(_PRINCIPAL, intent.idempotency_key)
         if existing is not None:
-            receipt = self.store.get_by_idempotency(_PRINCIPAL, intent.idempotency_key)
-            return CasePhaseResult(committed=True, phase_ref=phase_ref, idempotency_status="duplicate_replayed", event_id=receipt.committed_event_ids[0] if receipt and receipt.committed_event_ids else None)
+            try:
+                receipt = replay_duplicate(
+                    self.store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=intent.idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="idempotency_key_reused",
+                    expected_event_types=(event_name,),
+                    expected_command_id=intent.command_id,
+                )
+            except ValueError:
+                return CasePhaseResult(committed=False, phase_ref=phase_ref, idempotency_status="rejected", error_code="idempotency_key_reused")
+            event = self.store.get_event(receipt.committed_event_ids[0]) if receipt else None
+            expected_payload = self._payload(case_ref=intent.case_ref, case_revision=intent.case_revision, phase_ref=phase_ref)
+            if event is None or event.payload != expected_payload or event.causation_id != intent.causation_id or event.correlation_id != intent.correlation_id:
+                return CasePhaseResult(committed=False, phase_ref=phase_ref, idempotency_status="rejected", error_code="idempotency_key_reused")
+            return CasePhaseResult(committed=True, phase_ref=phase_ref, idempotency_status="duplicate_replayed", event_id=event.event_id)
         if self.store.get_stream_head(self.stream_id) != intent.expected_stream_revision:
             return CasePhaseResult(committed=False, phase_ref=phase_ref, idempotency_status="rejected", error_code="case_revision_stale")
         payload = self._payload(case_ref=intent.case_ref, case_revision=intent.case_revision, phase_ref=phase_ref)
