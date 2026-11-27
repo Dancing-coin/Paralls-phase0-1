@@ -1,0 +1,11 @@
+{
+  "head": "f431c8969025ebc0b409183c5ff769251fc19246",
+  "description": "Completed-handshake actor-private history retries validate durable transaction and committed-event references",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4ai_p5_actor_private_expression.py::test_handshake_shared_experience_duplicate_rejects_transaction_command_mismatch_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
