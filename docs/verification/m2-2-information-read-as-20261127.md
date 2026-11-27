@@ -29,3 +29,13 @@
 - This result does not close M2-2 or U7. Historical qualification for faction, role, group, owner, and holder selectors; broad FactType visibility execution; other Owner read paths; D6 workload evidence; and legacy stream attribution remain incomplete.
 - Production dispatch, deployment configuration, live Unreal transport, and a full siege run were not tested by this increment.
 - `integration` was not modified.
+
+## Follow-up: reject unimplemented visibility models
+
+- Code commit: `e941b91b` adds explicit rejection when a registered FactType declares a non-null `delay`, `delay_model`, `distortion`, or `distortion_model` that this reader does not execute.
+- TDD red reproduced the defect: a registered Information report declaration with `distortion` returned a projection instead of raising. The test failed with `Failed: DID NOT RAISE` before the guard was added.
+- Exact follow-up focused result: `81 passed, 6 warnings in 7.29s`, exit 0. The same Information selection returned `3/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all zero differences.
+- Raw red output: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-02\red.log`.
+- Raw focused output and selection runs: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-03\`.
+- P-1 scan of the 27 added code lines in `e941b91b` returned zero hits across the five credential-pattern families. Raw output: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-03\p1-e941.log`.
+- The follow-up does not implement delay or distortion models. M2-2 remains blocked and the full backend suite was not run.

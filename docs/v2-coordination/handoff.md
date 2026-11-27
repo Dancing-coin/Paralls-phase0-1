@@ -1147,3 +1147,10 @@
 - Focused Information runtime, checkpoint-tail, production-wiring, WebSocket, and M6-5 tests returned `81 passed, 6 warnings`; the new 3-node selection returned `3/0/0`; frozen five selections returned `24/12/87/56/990`, all zero differences. Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. All temporary/output paths were on F:.
 - Evidence: `docs/verification/m2-2-information-read-as-20261127.md`; raw outputs under `F:/paralls-verification/thread-a/m2-2-read-as-info-20261127-01/`.
 - This does not implement historical qualification for other selectors, FactType-wide visibility execution, legacy domain-stream attribution, or full U7. The full backend suite was not run. M2-2 remains blocked; `integration` was not modified.
+
+### H-A-168 | M2-2 reject unsupported visibility models | 2026-11-27
+
+- Commit `e941b91b` rejects non-null `delay`, `delay_model`, `distortion`, and `distortion_model` declarations when the registered Information reader has no executor for them.
+- TDD red showed an Information FactType with a distortion declaration still returned a projection. After the guard, focused Information/checkpoint/wiring/WebSocket/M6-5 tests returned `81 passed, 6 warnings`; the Information selection returned `3/0/0`; frozen five selections totaled `1,169/0/0`.
+- Evidence is appended to `docs/verification/m2-2-information-read-as-20261127.md`; raw output is under `F:/paralls-verification/thread-a/m2-2-read-as-info-20261127-02/` and `...-03/`.
+- Delay/distortion models remain unimplemented. M2-2 remains blocked and U7 incomplete; the full backend suite was not run.

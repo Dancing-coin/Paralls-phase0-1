@@ -1,5 +1,5 @@
 {
-  "head": "97c21f06b2e00e69926e6e77515aa967bae4c805",
+  "head": "e941b91b5d461273b94d6a330bb7dee36fc43e00",
   "description": "Information recipient-private report and knowledge reads through the registered FactType read_as boundary, including unsupported FactType and scope rejection",
   "tests": [
     {
