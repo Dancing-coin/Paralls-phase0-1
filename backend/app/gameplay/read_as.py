@@ -79,6 +79,8 @@ class GameplayReadAs:
                 "delay", "delay_model", "distortion", "distortion_model",
             )):
                 raise GameplayReadAsError("read_as_visibility_model_unavailable")
+            if declaration.visibility.get("class") in {"secret", "debug_only"}:
+                raise GameplayReadAsError("read_as_visibility_forbidden")
             if (declaration.owner_ref != "Information"
                     or declaration.visibility.get("class") != "private"
                     or tuple(declaration.visibility.get("learnable_by", ())) != (_RECIPIENT_SELECTOR,)):

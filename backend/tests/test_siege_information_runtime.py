@@ -657,6 +657,26 @@ def test_gameplay_read_as_projects_registered_information_fact_types():
             fact_types=(REPORT_FACT,),
         )
 
+    for visibility_class in ("secret", "debug_only"):
+        denied_visibility = dict(report_declaration.visibility)
+        denied_visibility["class"] = visibility_class
+        denied_registry = FactTypeRegistry(
+            facts={
+                **information_pack.registry.facts,
+                REPORT_FACT: replace(report_declaration, visibility=denied_visibility),
+            },
+            models=information_pack.registry.models,
+            machines=information_pack.registry.machines,
+        )
+        denied_reader = GameplayReadAs(authority=authority, registry=denied_registry)
+        with pytest.raises(ValueError, match="read_as_visibility_forbidden"):
+            denied_reader.read_as(
+                principal=receipt.recipient_ref,
+                scope={"report_ref": receipt.report_ref},
+                as_of_tick=16,
+                fact_types=(REPORT_FACT,),
+            )
+
 
 def test_information_report_read_is_recipient_private_and_respects_delivery_window():
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
