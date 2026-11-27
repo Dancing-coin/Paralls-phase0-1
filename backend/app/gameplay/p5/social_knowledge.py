@@ -1097,22 +1097,14 @@ class SocialFactAuthority:
                 (batch for batch in self._store.read_transactions() if any(item.event_id == prior_event.event_id for item in batch.events)),
                 None,
             )
-            prior_result = self._store.get_by_idempotency(
-                _PRINCIPAL,
-                prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
+            if prior_batch is None:
+                return self._rejected("private_follow_on_idempotency_key_reused")
+            return self._replay_private_follow_on_duplicate(
+                idempotency_key=prior_batch.idempotency_record.idempotency_key,
+                notice_event_id=notice.event_id,
+                command_id=typed_intent.command_id,
+                correlation_id=typed_intent.correlation_id,
             )
-            if (
-                prior_result is not None
-                and prior_event.command_id == typed_intent.command_id
-                and prior_event.causation_id == notice.event_id
-                and prior_event.correlation_id == typed_intent.correlation_id
-            ):
-                receipt = SettlementReceipt.from_append_result(
-                    result=prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
-                    audit_refs=(f"private_follow_on:{prior_result.transaction_id}",),
-                )
-                return self._committed_result(receipt, settlement_plan=None)
-            return self._rejected("private_follow_on_idempotency_key_reused")
         target_revisions = tuple(
             self._store.get_stream_head(f"gameplay:social:public-milling-notice-acknowledgment:{participant}")
             for participant in participants
@@ -1132,6 +1124,48 @@ class SocialFactAuthority:
             family_ref="private_follow_on@1",
         )
         return result
+
+    def _replay_private_follow_on_duplicate(
+        self,
+        *,
+        idempotency_key: str,
+        notice_event_id: str,
+        command_id: str,
+        correlation_id: str,
+    ) -> SocialFactAuthorityResult:
+        idempotency_record = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
+        if idempotency_record is None:
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        try:
+            existing = replay_duplicate(
+                self._store,
+                principal=_PRINCIPAL,
+                idempotency_key=idempotency_key,
+                payload_digest=idempotency_record.payload_digest,
+                error_factory=ValueError,
+                missing_result_code="private_follow_on_idempotency_key_reused",
+                expected_event_types=(_PUBLIC_MILLING_ACK_EVENT, _PUBLIC_MILLING_ACK_EVENT),
+                expected_command_id=command_id,
+                expected_transaction_id=f"transaction:{command_id}",
+            )
+        except ValueError:
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        if existing is None:
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
+        if not all(
+            event.payload.get("family_ref") == "private_follow_on@1"
+            and event.payload.get("source_notice_event_id") == notice_event_id
+            and event.causation_id == notice_event_id
+            and event.correlation_id == correlation_id
+            for event in events
+        ):
+            return self._rejected("private_follow_on_idempotency_key_reused")
+        receipt = SettlementReceipt.from_append_result(
+            result=existing,
+            audit_refs=(f"private_follow_on:{existing.transaction_id}",),
+        )
+        return self._committed_result(receipt, settlement_plan=None)
 
     def _resolve_private_follow_on_row(
         self,
@@ -1243,22 +1277,14 @@ class SocialFactAuthority:
                 ),
                 None,
             )
-            prior_result = self._store.get_by_idempotency(
-                _PRINCIPAL,
-                prior_batch.idempotency_record.idempotency_key if prior_batch is not None else "",
+            if prior_batch is None:
+                return self._rejected("private_follow_on_idempotency_key_reused")
+            return self._replay_private_follow_on_duplicate(
+                idempotency_key=prior_batch.idempotency_record.idempotency_key,
+                notice_event_id=notice.event_id,
+                command_id=command_id,
+                correlation_id=correlation_id,
             )
-            if (
-                prior_result is not None
-                and prior_event.command_id == command_id
-                and prior_event.causation_id == notice.event_id
-                and prior_event.correlation_id == correlation_id
-            ):
-                receipt = SettlementReceipt.from_append_result(
-                    result=prior_result.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
-                    audit_refs=(f"private_follow_on:{prior_result.transaction_id}",),
-                )
-                return self._committed_result(receipt, settlement_plan=None)
-            return self._rejected("private_follow_on_idempotency_key_reused")
         target_revisions = tuple(
             self._store.get_stream_head(
                 f"gameplay:social:public-milling-notice-acknowledgment:{participant}"
@@ -1269,26 +1295,13 @@ class SocialFactAuthority:
             f"social:public-milling-notice-ack:{notice.event_id}:{notice.stream_revision}:"
             f"{target_revisions[0]}:{target_revisions[1]}:v1"
         )
-        existing = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
-        if existing is not None:
-            prior_events = tuple(
-                event
-                for event in self._store.read_events()
-                if event.event_id in set(existing.committed_event_ids)
+        if self._store.get_idempotency_record(_PRINCIPAL, idempotency_key) is not None:
+            return self._replay_private_follow_on_duplicate(
+                idempotency_key=idempotency_key,
+                notice_event_id=notice.event_id,
+                command_id=command_id,
+                correlation_id=correlation_id,
             )
-            if (
-                len(prior_events) == 2
-                and all(event.event_type == _PUBLIC_MILLING_ACK_EVENT for event in prior_events)
-                and all(event.payload.get("source_notice_event_id") == notice.event_id for event in prior_events)
-                and all(event.causation_id == notice.event_id for event in prior_events)
-                and all(event.correlation_id == correlation_id for event in prior_events)
-            ):
-                receipt = SettlementReceipt.from_append_result(
-                    result=existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
-                    audit_refs=(f"private_follow_on:{existing.transaction_id}",),
-                )
-                return self._committed_result(receipt, settlement_plan=None)
-            return self._rejected("private_follow_on_idempotency_key_reused")
         event_specs: dict[str, tuple[tuple[str, Mapping[str, object]], ...]] = {}
         visibility: dict[str, tuple[str, ...]] = {}
         for participant_ref, counterpart_ref in zip(

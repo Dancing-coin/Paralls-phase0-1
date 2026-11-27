@@ -117,6 +117,36 @@ def test_private_follow_on_replays_duplicate_and_matches_each_participant_tail()
         assert full == tail
 
 
+def test_private_follow_on_rejects_corrupt_transaction_on_retry_without_write() -> None:
+    store, notice = _notice()
+    authority = SocialFactAuthority(store=store, registry=_social_registry())
+    intent = PrivateFollowOnIntent(
+        notice_event_id=notice.event_id,
+        expected_notice_revision=notice.stream_revision,
+        command_id="command:private-follow-on:corrupt-transaction",
+        correlation_id="corr:private-follow-on:corrupt-transaction",
+    )
+    first = authority.settle_private_follow_on(intent=intent)
+    assert first.receipt is not None
+
+    transaction_index = next(
+        index for index, transaction in enumerate(store._transactions)
+        if transaction.transaction_id == first.receipt.transaction_id
+    )
+    store._transactions[transaction_index] = store._transactions[transaction_index].model_copy(
+        update={"command_id": "command:forged"},
+        deep=True,
+    )
+    corrupted_snapshot = store.export_snapshot()
+
+    duplicate = authority.settle_private_follow_on(intent=intent)
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "private_follow_on_idempotency_key_reused"
+    assert duplicate.receipt is None
+    assert store.export_snapshot() == corrupted_snapshot
+
+
 def test_private_follow_on_stays_bounded_to_the_exact_notice_chain() -> None:
     family = next(item for item in CLOSED_GAMEPLAY_FAMILIES if item.family_ref == "private_follow_on@1")
     assert family.status == "generic_implemented"
@@ -295,6 +325,36 @@ def test_private_follow_on_generic_contents_replay_and_changed_duplicate_are_zer
             key.startswith("gameplay:organization:")
             for key in full.source_revision_vector
         )
+
+
+def test_private_follow_on_generic_rejects_corrupt_transaction_on_retry_without_write() -> None:
+    store, notice = _workshop_notice()
+    authority, _registry = _family_authority(store)
+    intent = PrivateFollowOnIntent(
+        notice_event_id=notice.event_id,
+        expected_notice_revision=notice.stream_revision,
+        command_id="command:private-follow-on:generic-corrupt-transaction",
+        correlation_id="corr:private-follow-on:generic-corrupt-transaction",
+    )
+    first = authority.settle_private_follow_on(intent=intent)
+    assert first.receipt is not None
+
+    transaction_index = next(
+        index for index, transaction in enumerate(store._transactions)
+        if transaction.transaction_id == first.receipt.transaction_id
+    )
+    store._transactions[transaction_index] = store._transactions[transaction_index].model_copy(
+        update={"command_id": "command:forged"},
+        deep=True,
+    )
+    corrupted_snapshot = store.export_snapshot()
+
+    duplicate = authority.settle_private_follow_on(intent=intent)
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "private_follow_on_idempotency_key_reused"
+    assert duplicate.receipt is None
+    assert store.export_snapshot() == corrupted_snapshot
 
 
 def test_private_follow_on_derives_alternate_provider_from_committed_notice_chain() -> None:
