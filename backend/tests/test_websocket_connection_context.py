@@ -376,6 +376,57 @@ def test_information_report_read_uses_bound_actor_scope_and_authoritative_world_
     main.m6_5_siege_runtime = type("SiegeRuntimeStub", (), {"information": authority})()
     monkeypatch.setattr(main, "_session_world_clock_tick", lambda: 16)
 
+    delivery_event_id, = publication.delivery_append_result.committed_event_ids
+    knowledge = authority.update_from_delivery(
+        delivery=store.get_event(delivery_event_id),
+        world_now=15,
+        command_id="information-read:knowledge",
+        idempotency_key="information-read:knowledge",
+        correlation_id="correlation:east-gate",
+    )
+    assert knowledge.committed
+    report_event_id, = publication.report_append_result.committed_event_ids
+
+    knowledge_result = _handle_envelope(
+        Envelope(message_type="information_knowledge_read", payload={
+            "actor_ref": "character:defender-1",
+            "report_event_id": report_event_id,
+            "as_of_tick": 16,
+        }),
+        connection_context=context,
+    )
+
+    assert knowledge_result[0]["payload"]["accepted"] is True
+    assert knowledge_result[0]["payload"]["knowledge"] == {
+        "fact_type": "fact:information:siege:report_knowledge",
+        "recipient_ref": "character:defender-1",
+        "report_event_id": report_event_id,
+        "source_owner_ref": "Information",
+        "source_revision": 1,
+        "event_time": 15,
+        "known_time": 15,
+        "freshness": 1,
+    }
+
+    unauthorized_knowledge = _handle_envelope(
+        Envelope(message_type="information_knowledge_read", payload={
+            "actor_ref": "character:other",
+            "report_event_id": report_event_id,
+            "as_of_tick": 16,
+        }),
+        connection_context=context,
+    )
+    future_knowledge = _handle_envelope(
+        Envelope(message_type="information_knowledge_read", payload={
+            "actor_ref": "character:defender-1",
+            "report_event_id": report_event_id,
+            "as_of_tick": 17,
+        }),
+        connection_context=context,
+    )
+    assert unauthorized_knowledge[0]["payload"]["accepted"] is False
+    assert future_knowledge[0]["payload"]["accepted"] is False
+
     result = _handle_envelope(
         Envelope(message_type="information_report_read", payload={
             "actor_ref": "character:defender-1",

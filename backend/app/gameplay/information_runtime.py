@@ -116,6 +116,18 @@ class InformationReportView:
     freshness: int
 
 
+@dataclass(frozen=True)
+class InformationKnowledgeView:
+    fact_type: str
+    recipient_ref: str
+    report_event_id: str
+    source_owner_ref: str
+    source_revision: int
+    event_time: int
+    known_time: int
+    freshness: int
+
+
 class InformationAuthority:
     """Publish signed siege reports and record knowledge from committed Social delivery."""
 
@@ -386,6 +398,89 @@ class InformationAuthority:
             source_owner_ref="Information",
             source_revision=report.stream_revision,
             event_time=report.event_time,
+            known_time=known_time,
+            freshness=max(0, as_of_tick - known_time),
+        )
+
+    def read_knowledge_for_recipient(
+        self, *, recipient_ref: str, report_event_id: str, as_of_tick: int,
+    ) -> InformationKnowledgeView | None:
+        if (not isinstance(recipient_ref, str) or not recipient_ref.startswith("character:")
+                or len(recipient_ref) > 160
+                or not isinstance(report_event_id, str) or not report_event_id.startswith("event:")
+                or len(report_event_id) > 200
+                or type(as_of_tick) is not int or as_of_tick < 0):
+            raise ValueError("information_knowledge_read_input_invalid")
+
+        report = self._event(report_event_id)
+        if (report is None or report.event_type != INFORMATION_REPORT_EVENT
+                or report.schema_version != 1
+                or report.payload.get("recipient_ref") != recipient_ref
+                or not isinstance(report.payload.get("report_ref"), str)):
+            return None
+        report_view = self.read_report_for_recipient(
+            recipient_ref=recipient_ref,
+            report_ref=report.payload["report_ref"],
+            as_of_tick=as_of_tick,
+        )
+        if report_view is None or report_view.source_revision != report.stream_revision:
+            return None
+
+        knowledge_stream = self.stream_id(
+            recipient_ref=recipient_ref,
+            report_ref=report_event_id,
+        )
+        knowledge_events = self._store.read_stream(
+            knowledge_stream, event_type=INFORMATION_KNOWLEDGE_EVENT_TYPE,
+        )
+        knowledge = next((event for event in reversed(knowledge_events)
+                          if event.event_time is not None and event.event_time <= as_of_tick), None)
+        if knowledge is None:
+            return None
+        payload = knowledge.payload
+        known_time = payload.get("known_at_world_tick")
+        delivery_event_id = payload.get("delivery_event_id")
+        if (knowledge.schema_version != 1
+                or knowledge.visibility_policy != f"actor:{recipient_ref}"
+                or payload.get("recipient_ref") != recipient_ref
+                or payload.get("report_ref") != report_event_id
+                or payload.get("source_stream_id") != report.stream_id
+                or payload.get("source_revision") != report.stream_revision
+                or type(known_time) is not int or known_time < 0 or known_time > as_of_tick
+                or not isinstance(delivery_event_id, str)):
+            return None
+
+        delivery = self._event(delivery_event_id)
+        if (delivery is None or delivery.event_type != _DELIVERY_EVENT
+                or delivery.schema_version != 2
+                or delivery.visibility_policy != f"actor:{recipient_ref}"
+                or delivery.payload.get("recipient_ref") != recipient_ref
+                or delivery.payload.get("source_event_id") != report_event_id
+                or delivery.payload.get("source_stream_id") != report.stream_id
+                or delivery.payload.get("source_revision") != report.stream_revision
+                or delivery.payload.get("known_at_world_tick") != known_time
+                or knowledge.causation_id != delivery.event_id
+                or not self._has_committed_delivery(delivery)):
+            return None
+
+        transaction = self._store.get_transaction(knowledge.transaction_id)
+        if (transaction is None
+                or transaction.idempotency_record.principal_ref != _INFORMATION_PRINCIPAL
+                or len(transaction.events) != 1
+                or transaction.events[0].event_id != knowledge.event_id
+                or transaction.read_stream_revisions != {
+                    delivery.stream_id: delivery.stream_revision,
+                    report.stream_id: report.stream_revision,
+                }):
+            return None
+
+        return InformationKnowledgeView(
+            fact_type="fact:information:siege:report_knowledge",
+            recipient_ref=recipient_ref,
+            report_event_id=report_event_id,
+            source_owner_ref="Information",
+            source_revision=knowledge.stream_revision,
+            event_time=knowledge.event_time,
             known_time=known_time,
             freshness=max(0, as_of_tick - known_time),
         )

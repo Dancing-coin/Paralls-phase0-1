@@ -513,6 +513,53 @@ def test_information_report_read_requires_report_and_delivery_known_by_as_of_tic
     assert view.known_time == 15
 
 
+def test_information_knowledge_read_requires_committed_private_chain_and_as_of_time():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    receipt = _signed_report_receipt(source)
+    authority = _report_authority(store)
+    publication = authority.publish_siege_report(receipt=receipt, world_now=15)
+    assert publication.committed and publication.report_append_result is not None
+    assert publication.delivery_append_result is not None
+    report_event_id, = publication.report_append_result.committed_event_ids
+    delivery_event_id, = publication.delivery_append_result.committed_event_ids
+    knowledge = authority.update_from_delivery(
+        delivery=store.get_event(delivery_event_id),
+        world_now=16,
+        command_id="knowledge:east-gate:defender",
+        idempotency_key="knowledge:east-gate:defender",
+        correlation_id="correlation:east-gate",
+    )
+    assert knowledge.committed
+
+    before_commit = authority.read_knowledge_for_recipient(
+        recipient_ref=receipt.recipient_ref,
+        report_event_id=report_event_id,
+        as_of_tick=15,
+    )
+    visible = authority.read_knowledge_for_recipient(
+        recipient_ref=receipt.recipient_ref,
+        report_event_id=report_event_id,
+        as_of_tick=16,
+    )
+
+    assert before_commit is None
+    assert visible is not None
+    assert visible.fact_type == "fact:information:siege:report_knowledge"
+    assert visible.recipient_ref == receipt.recipient_ref
+    assert visible.report_event_id == report_event_id
+    assert visible.source_owner_ref == "Information"
+    assert visible.source_revision == 1
+    assert visible.event_time == 16
+    assert visible.known_time == 15
+    assert visible.freshness == 1
+    assert authority.read_knowledge_for_recipient(
+        recipient_ref="character:other",
+        report_event_id=report_event_id,
+        as_of_tick=16,
+    ) is None
+
+
 def test_information_report_read_is_recipient_private_and_respects_delivery_window():
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
     source = _report_source(store)
