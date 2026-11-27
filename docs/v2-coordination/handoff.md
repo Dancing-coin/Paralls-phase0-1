@@ -1174,3 +1174,9 @@
 - Static inspection of the read-only formal siege demo definition and PRD found the four-layer `impact_gate` order and `gate-03` target, but no authoritative numeric durability, breach, reset, or impact-delta values. The searched PRD also supplied no numeric profile.
 - The tracked `.env.example` profile uses the locally exercised `gate-03` values but labels them demonstration-only. `SIEGE_FACILITY_GATE_PROFILES_JSON` is already parsed by settings; an empty profile leaves Facility unconfigured. No production target or manifest was found. Evidence: `docs/verification/m6-5-gate-production-input-audit-20261127.md`.
 - No source code, production config, or tests changed. Production Gate configuration remains open pending an authorized per-Gate parameter table and the deployment target that loads it. The demo values were not promoted. M6-5 remains in progress; `integration` was not modified.
+
+### H-A-172 | M3-1 current-tip revalidation | 2026-11-27
+
+- At A tip `caa062aa`, the `OwnerCommitBuilder`, Ownership, and Credential focused tests returned `23 passed, 2 warnings`. The frozen Ownership selection returned `24/0/0`; shared-replay returned `990/0/0`.
+- Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. Pytest temp and raw output are under `F:/paralls-verification/thread-a/m3-1-current-tip-20261127-03/`.
+- This is M3-1 slice-level evidence. The full backend suite was not run; M3-1 remains `待门禁`, and `integration` was not modified.

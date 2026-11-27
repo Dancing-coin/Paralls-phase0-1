@@ -89,3 +89,14 @@ At A tip `3978f4f9ecc02990e2be8d09681a3beaed40ad58`, the focused command returne
 | shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-02\shared-replay\` |
 
 The full backend suite was not rerun for this M3-1 check. The latest recorded A-tip full suite remains `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit code 1, and is a merge-state result rather than slice evidence. M3-1 remains `待门禁`.
+
+## Current-tip revalidation, 2026-11-27 follow-up
+
+At A tip `caa062aadc6726687a6f220bd3e450334e457629`, the focused command returned **23 passed, 2 warnings**. Python was `3.12.2`, SQLite `3.43.1`, and `app.__file__` resolved to the current A worktree backend.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-03\ownership\` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-03\shared-replay\` |
+
+Focused output is `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-03\focused.log`; environment output is in `environment.log`. Pytest temporary files and selection outputs used the new F-drive run directory. Full backend suite was not run. M3-1 remains `待门禁`.
