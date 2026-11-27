@@ -47,3 +47,4 @@
 - Exact follow-up focused result: `81 passed, 6 warnings in 6.55s`, exit 0. Information selection `3/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections `24/12/87/56/990`, all zero differences.
 - Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. Pytest temporary data and selection outputs are under `F:\paralls-verification\thread-a\m2-2-information-class-denial-20261127-02\`.
 - This implements explicit denial in the supported read boundary; it does not add a privileged debug path or implement general selector qualification. M2-2 remains blocked and the full backend suite was not run.
+- P-1 scan of the two commits since the previous A remote tip checked 42 added lines; assignment-shaped secret, AWS key, GitHub token, JWT, and private-key-header patterns each returned zero hits. Raw output: `F:\paralls-verification\thread-a\m2-2-information-class-denial-20261127-02\p1-branch-delta.log`.
