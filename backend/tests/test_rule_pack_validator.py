@@ -206,6 +206,19 @@ def test_compiled_registry_rejects_fact_type_payload_conflicting_with_stream():
     assert resolved is None
 
 
+def test_compiled_registry_rejects_null_fact_type_payload():
+    loaded = load_pack(FACILITY_PACK, handlers={})
+
+    resolved = loaded.registry.resolve_event_fact_type(
+        event_type="gameplay.pool.adjusted",
+        schema_version=1,
+        stream_id="fact:facility:gate-03:integrity",
+        payload={"fact_type": None},
+    )
+
+    assert resolved is None
+
+
 def test_compiled_registry_does_not_infer_fact_type_from_legacy_domain_stream():
     loaded = load_pack(FACILITY_PACK, handlers={})
 

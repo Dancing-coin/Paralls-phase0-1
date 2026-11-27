@@ -359,8 +359,7 @@ class FactTypeRegistry:
         if len(matches) != 1:
             return None
 
-        payload_fact_type = payload.get("fact_type")
-        if payload_fact_type is not None and payload_fact_type != stream_id:
+        if "fact_type" in payload and payload["fact_type"] != stream_id:
             return None
         return FactTypeInstance(matches[0], stream_id)
 
