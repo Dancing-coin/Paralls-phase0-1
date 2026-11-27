@@ -1,0 +1,16 @@
+{
+  "head": "8e6d70df",
+  "description": "Scripted mystery phase and outcome retries validate durable transaction and event references",
+  "tests": [
+    {
+      "test_name": "tests/test_scripted_mystery_case_runtime.py::test_corrupt_phase_receipt_is_rejected_without_writes",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_scripted_mystery_case_runtime.py::test_corrupt_outcome_receipt_is_rejected_without_writes",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
