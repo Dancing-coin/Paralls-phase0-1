@@ -1085,3 +1085,10 @@
 - Focused registry/RulePack/FactType/EventSchema/Holdings/selector tests returned `147 passed, 2 warnings`; the new selection returned `2/0/0`; related schema selections returned `2/0/0`, `1/0/0`, and `1/0/0`; principal-selector registration returned `6/0/0`. Frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990` with zero differences.
 - Evidence: `docs/verification/m2-2-facttype-event-mapping-20261127.md`; raw outputs under `F:/paralls-verification/thread-a/m2-2-facttype-event-mapping-focused-20261127-01/` and `F:/paralls-verification/thread-a/m2-2-facttype-event-mapping-20261127-01/`.
 - This index returns candidates only. It does not establish instance FactType attribution, visibility, selector evaluation, or subject-facing `read_as`. M2-2 remains blocked and U7 remains incomplete. Full backend suite was not run for this increment.
+
+### H-A-160 | M2-2 migrated-domain event-time source inventory | 2026-11-27
+
+- Static repository search found event-time writes in Information report/knowledge publication and M6-5 signed physical input; derived Facility, Presence, and Morale events preserve their committed source event time. Ownership/Credential have no `GameplayEvent.event_time` producer in their runtimes. Their Bond/Credential `world_tick` fields are for term/expiry semantics and cannot substitute for event occurrence time.
+- Legacy inputs and casualty events without time remain unknown. No time was inferred from global sequence, stream revision, or Bond expiry ticks. `embodied_interaction_session_service.py` has a separate `known_time` payload field and is not part of the `GameplayEvent.event_time` producer set.
+- Evidence: `docs/verification/m2-2-event-time-source-audit-20261127.md`. Static only; no tests ran.
+- The current A-side source inventory is recorded. M2-2 remains blocked on trusted principal qualification/selector execution, FactType/visibility enforcement, classifying future migrated readers, and subject-facing `read_as`. U7 is incomplete.
