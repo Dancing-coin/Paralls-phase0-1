@@ -367,6 +367,33 @@ def test_layered_impact_exact_retry_replays_after_pool_revisions_advance():
     assert store.read_stream("fact:facility:gate-03:durability")[-1].payload["next"] == "80"
 
 
+def test_layered_impact_rejects_incomplete_replay_receipt_without_writing():
+    store, inputs, authority = _authorities(magnitude="270")
+    receipt = _receipt("impact:layered-corrupt-replay")
+    assert inputs.record_gate_impact_v2(receipt).committed
+    first = authority.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=receipt.receipt_id,
+    )
+    assert first.committed and len(first.committed_event_ids) > 1
+    key = (FACILITY_PRINCIPAL, first.command_id)
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": first.committed_event_ids[:-1]}, deep=True
+    )
+    before = store.export_snapshot()
+
+    replay = authority.apply_signed_impact(
+        input_authority=inputs,
+        authority_ref=AUTHORITY,
+        receipt_id=receipt.receipt_id,
+    )
+
+    assert not replay.committed
+    assert replay.failure.error_code == "facility_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_stale_layer_vector_rejects_without_writing_facility_facts():
     store, inputs, authority = _authorities()
     receipt = _receipt(
@@ -610,6 +637,51 @@ def test_presence_assessment_uses_signed_revisions_and_confirms_unchanged_state(
     assert event.visibility_policy == "authority_only"
     assert store.get_stream_head(place_stream) == 1
     assert [entry.status for entry in runtime.impact_gate_obligations()] == ["settled", "settled"]
+
+
+@pytest.mark.parametrize("unchanged", [False, True])
+def test_presence_rejects_corrupt_replay_receipt_without_writing(unchanged):
+    store, _, facility = _authorities()
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+    )
+    evidence, damage, _ = runtime.record_gate_impact_v2(_receipt("impact:presence-corrupt-1"))
+    assert damage.committed
+    impact = store.get_event(evidence.committed_event_ids[0])
+    assessment = PresenceAssessmentReceiptV2.model_validate(
+        _presence_input(store, impact, "presence:corrupt-1")
+    )
+    if unchanged:
+        _, changed = runtime.record_presence_assessment(assessment)
+        assert changed.committed
+        revisions = {
+            stream: store.get_stream_head(stream)
+            for stream in impact.payload["receipt"]["expected_layer_revisions"]
+        }
+        evidence, damage, _ = runtime.record_gate_impact_v2(
+            _receipt("impact:presence-corrupt-2", revisions)
+        )
+        assert damage.committed
+        impact = store.get_event(evidence.committed_event_ids[0])
+        assessment = PresenceAssessmentReceiptV2.model_validate(
+            _presence_input(store, impact, "presence:corrupt-2")
+        )
+    _, first = runtime.record_presence_assessment(assessment)
+    assert first.committed
+    key = ("population.presence_authority", first.command_id)
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": []}, deep=True
+    )
+    before = store.export_snapshot()
+
+    _, replay = runtime.record_presence_assessment(assessment)
+
+    assert not replay.committed
+    assert replay.failure.error_code == "presence_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
 
 
 def test_impact_presence_recovery_settles_durable_assessment_without_double_damage(tmp_path):

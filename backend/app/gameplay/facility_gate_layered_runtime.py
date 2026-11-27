@@ -7,6 +7,7 @@ from typing import Callable, Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, OwnerAuthorizedFragment
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.pool_runtime import (
     PoolDefinition,
     PoolError,
@@ -149,12 +150,28 @@ class FacilityGateLayeredAuthority:
 
         receipt = GateImpactReceiptV2.model_validate(input_event.payload["receipt"])
         command_id = facility_impact_command_id(input_event.event_id)
-        previous_result = self.store.get_by_idempotency(FACILITY_PRINCIPAL, command_id)
-        if previous_result is not None:
-            return previous_result.model_copy(
-                update={"idempotency_status": "duplicate_replayed"},
-                deep=True,
-            )
+        idempotency_record = self.store.get_idempotency_record(
+            FACILITY_PRINCIPAL, command_id
+        )
+        if idempotency_record is not None:
+            try:
+                previous_result = replay_duplicate(
+                    self.store,
+                    principal=FACILITY_PRINCIPAL,
+                    idempotency_key=command_id,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=PoolError,
+                    missing_result_code="facility_replay_missing_result",
+                    transaction_mismatch_code="facility_replay_transaction_mismatch",
+                    event_count_mismatch_code="facility_replay_event_count_mismatch",
+                    event_missing_code="facility_replay_event_missing",
+                    expected_command_id=command_id,
+                    expected_transaction_id=f"transaction:{command_id}",
+                )
+            except PoolError as error:
+                return self._reject(receipt_id, str(error))
+            if previous_result is not None:
+                return previous_result
         pools = self._definitions.get(receipt.gate_ref)
         magnitude = self._impact_magnitudes.get(receipt.gate_ref, {}).get(
             receipt.impact_kind_ref

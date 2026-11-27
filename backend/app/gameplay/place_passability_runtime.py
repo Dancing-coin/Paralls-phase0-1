@@ -8,6 +8,7 @@ from typing import Literal
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.place_event_schema import PLACE_ASSESSMENT_CONFIRMED_EVENT
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch
 from app.gameplay.siege_physical_input_runtime import (
@@ -75,19 +76,33 @@ class PlacePassabilityAuthority:
         if not self._valid_breach(breach, gate_ref):
             return self._reject(command_id, "place_breach_source_invalid")
 
-        prior = self.store.get_by_idempotency(
+        record = self.store.get_idempotency_record(
             _PRESENCE_PRINCIPAL, command_id
         )
-        if prior is not None:
-            if self._is_exact_retry(
-                prior,
-                command_id=command_id,
-                gate_ref=gate_ref,
-                breach_event_id=breach_event_id,
-            ):
-                return prior.model_copy(
-                    update={"idempotency_status": "duplicate_replayed"}, deep=True
+        if record is not None:
+            try:
+                replay = replay_duplicate(
+                    self.store,
+                    principal=_PRESENCE_PRINCIPAL,
+                    idempotency_key=command_id,
+                    payload_digest=record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="presence_replay_missing_result",
+                    transaction_mismatch_code="presence_replay_transaction_mismatch",
+                    event_count_mismatch_code="presence_replay_event_count_mismatch",
+                    event_missing_code="presence_replay_event_missing",
+                    expected_event_types=(_PASSABILITY_EVENT,),
+                    expected_command_id=command_id,
                 )
+            except ValueError as error:
+                return self._reject(command_id, str(error))
+            if replay is not None:
+                event = self.store.get_event(replay.committed_event_ids[0])
+                if (
+                    event.stream_id == self.stream_id(gate_ref)
+                    and event.causation_id == breach_event_id
+                ):
+                    return replay
             return self._reject(command_id, "place_assessment_idempotency_key_reused")
 
         assessment = (
@@ -220,12 +235,43 @@ class PlacePassabilityAuthority:
         resolver_plan: Mapping[str, object] | None,
     ) -> AppendBatchResult:
         command_id = f"place-impact-assessment:{receipt.impact_event_id}"
-        prior = self.store.get_by_idempotency(_PRESENCE_PRINCIPAL, command_id)
-        if prior is not None:
-            event = self.store.get_event(prior.committed_event_ids[0])
-            if input_event.event_id not in event.payload["source_event_ids"]:
-                return self._reject(command_id, "place_impact_already_assessed")
-            return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        idempotency_record = self.store.get_idempotency_record(
+            _PRESENCE_PRINCIPAL, command_id
+        )
+        if idempotency_record is not None:
+            try:
+                prior = replay_duplicate(
+                    self.store,
+                    principal=_PRESENCE_PRINCIPAL,
+                    idempotency_key=command_id,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="presence_replay_missing_result",
+                    transaction_mismatch_code="presence_replay_transaction_mismatch",
+                    event_count_mismatch_code="presence_replay_event_count_mismatch",
+                    event_missing_code="presence_replay_event_missing",
+                    expected_command_id=command_id,
+                )
+            except ValueError as error:
+                return self._reject(command_id, str(error))
+            if prior is not None:
+                event = self.store.get_event(prior.committed_event_ids[0])
+                valid_state_change = (
+                    event.event_type == _PASSABILITY_EVENT
+                    and event.stream_id == self.stream_id(receipt.gate_ref)
+                )
+                valid_confirmation = (
+                    event.event_type == PLACE_ASSESSMENT_CONFIRMED_EVENT
+                    and event.stream_id
+                    == f"{self.stream_id(receipt.gate_ref)}:assessments"
+                )
+                if event.payload.get("source_event_ids") != [
+                    receipt.impact_event_id, input_event.event_id
+                ]:
+                    return self._reject(command_id, "place_impact_already_assessed")
+                if valid_state_change or valid_confirmation:
+                    return prior
+                return self._reject(command_id, "presence_replay_transaction_mismatch")
 
         expected_sources = (receipt.impact_event_id, input_event.event_id)
         if (
@@ -329,32 +375,6 @@ class PlacePassabilityAuthority:
                 event_id=event.event_id,
                 principal_ref=principal,
             )
-        )
-
-    def _is_exact_retry(
-        self,
-        receipt: AppendBatchResult,
-        *,
-        command_id: str,
-        gate_ref: str,
-        breach_event_id: str,
-    ) -> bool:
-        batch = self.store.get_transaction(receipt.transaction_id)
-        if (
-            not receipt.committed
-            or receipt.command_id != command_id
-            or batch is None
-            or batch.idempotency_record.principal_ref != _PRESENCE_PRINCIPAL
-            or batch.idempotency_record.idempotency_key != command_id
-            or len(batch.events) != 1
-            or receipt.committed_event_ids != [batch.events[0].event_id]
-        ):
-            return False
-        event = batch.events[0]
-        return (
-            event.event_type == _PASSABILITY_EVENT
-            and event.stream_id == self.stream_id(gate_ref)
-            and event.causation_id == breach_event_id
         )
 
     @staticmethod

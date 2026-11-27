@@ -129,6 +129,48 @@ def test_breach_does_not_write_passability_until_presence_commits_its_decision()
     assert PlacePassabilityAuthority(store=restored).state(GATE) == "passable"
 
 
+def test_legacy_presence_retry_rejects_incomplete_receipt_without_writing():
+    store = _store()
+    breach = _breach(store)
+    presence_input = _presence_evidence(store)
+    decision = PlacePassabilityAssessment(
+        state="passable",
+        assessment_ref="resolver:gate-clearance@1",
+        read_stream_revisions={
+            INTEGRITY: store.get_stream_head(INTEGRITY),
+            presence_input.stream_id: presence_input.stream_revision,
+        },
+        source_event_ids=(breach.event_id, presence_input.event_id),
+    )
+    authority = PlacePassabilityAuthority(
+        store=store,
+        resolver=lambda _gate_ref, _breach: decision,
+        evidence_event_principals={
+            "population.presence.spawned": "population.presence_authority",
+        },
+    )
+    first = authority.commit_assessment(
+        gate_ref=GATE,
+        breach_event_id=breach.event_id,
+        expected_revision=0,
+    )
+    assert first.committed
+    store._idempotency_results[("population.presence_authority", first.command_id)] = (
+        first.model_copy(update={"committed_event_ids": []}, deep=True)
+    )
+    before = store.export_snapshot()
+
+    replay = authority.commit_assessment(
+        gate_ref=GATE,
+        breach_event_id=breach.event_id,
+        expected_revision=0,
+    )
+
+    assert not replay.committed
+    assert replay.failure.error_code == "presence_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_missing_presence_assessment_returns_unknown_without_writing():
     store = _store()
     breach = _breach(store)
