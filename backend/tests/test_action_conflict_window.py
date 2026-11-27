@@ -278,6 +278,39 @@ def test_action_window_duplicate_replays_without_new_write() -> None:
     assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 4
 
 
+def test_action_window_corrupt_transaction_receipt_is_zero_write() -> None:
+    store = GameplayEventStore()
+    _seed_source(store)
+    authority = InvestigationConflictAuthority(registry=_registry(), store=store)
+    command = _command()
+    first = authority.resolve_action_window(
+        command=command,
+        intent=_intent(),
+        graph=_graph(),
+        spatial_snapshot=_snapshot(),
+        role_ref=ROLE_REF,
+        now="2026-09-05T00:00:00Z",
+    )
+    assert first.committed
+    stored = store._idempotency_results[(command.principal_ref, command.idempotency_key)]
+    store._idempotency_results[(command.principal_ref, command.idempotency_key)] = stored.model_copy(
+        update={"command_id": "corrupt-command"}, deep=True
+    )
+
+    duplicate = authority.resolve_action_window(
+        command=command,
+        intent=_intent(),
+        graph=_graph(),
+        spatial_snapshot=_snapshot(),
+        role_ref=ROLE_REF,
+        now="2026-09-05T00:00:00Z",
+    )
+
+    assert not duplicate.committed
+    assert duplicate.error_code == "action_window_idempotency_reused"
+    assert len([event for event in store.read_events() if event.event_type in EVENT_TYPES]) == 4
+
+
 def test_action_window_changed_duplicate_is_zero_write() -> None:
     store = GameplayEventStore()
     _seed_source(store)

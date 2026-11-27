@@ -17,6 +17,7 @@ from app.gameplay.p5.contracts import (
 )
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
@@ -123,8 +124,25 @@ class InvestigationConflictAuthority:
         # Committed requests keep historical pins even after clock/profile changes.
         existing = self._store.get_idempotency_record(_PRINCIPAL, command.idempotency_key)
         if existing is not None:
-            receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
-            prior = self._store.get_event(receipt.committed_event_ids[0]) if receipt and receipt.committed_event_ids else None
+            replay_command_id = f"action-window:{intent.attempt_ref}:{intent.window_index}"
+            try:
+                receipt = replay_duplicate(
+                    self._store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=command.idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="action_window_idempotency_reused",
+                    transaction_mismatch_code="action_window_idempotency_reused",
+                    event_count_mismatch_code="action_window_idempotency_reused",
+                    event_missing_code="action_window_idempotency_reused",
+                    expected_event_types=_ACTION_WINDOW_EVENTS,
+                    expected_command_id=replay_command_id,
+                    expected_transaction_id=f"transaction:{replay_command_id}",
+                )
+            except ValueError:
+                return ActionWindowConflictResult(False, "rejected", error_code="action_window_idempotency_reused")
+            prior = self._store.get_event(receipt.committed_event_ids[0]) if receipt else None
             intent_digest = canonical_sha256_digest(action_intent_payload(intent))
             if (prior is None or prior.payload.get("intent_digest") != intent_digest
                     or prior.payload.get("command_digest") != canonical_sha256_digest(command.model_dump(mode="json"))
