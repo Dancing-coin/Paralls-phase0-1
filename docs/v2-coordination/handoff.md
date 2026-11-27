@@ -1133,3 +1133,10 @@
 - Python `3.12.2` was run from `F:\codex-temp\thread-a-python312\Scripts\python.exe`; SQLite `3.43.1`; `app.__file__` resolved to this A worktree. `PYTHONPATH`, all temporary/cache paths, and outputs were on F:.
 - The tested B checkpoint-tail contribution was already present in A through prior selective commits; no duplicate cherry-pick or code change was needed. This recheck did not rerun the frozen five selections or the full backend suite.
 - Evidence and raw logs: `docs/verification/m3-3-information-knowledge-replay-20261127.md` and `F:/paralls-verification/thread-a/information-replay-current-tip-20261127-01/`. M2-2/U7 and M3-3 remain open. `integration` was not modified.
+
+### H-A-166 | M2-2 Information knowledge recipient read | 2026-11-27
+
+- Commit `ebb28f737840f5786c3c5789d68d7c5458f57847` adds the recipient-private `information_knowledge_read` WebSocket message and its Information-owned reader. Access is anchored to the active bound session actor and server world clock. The reader validates the report, recipient-private delivery, knowledge transaction, causation relationship and source revision vector before returning `report_knowledge` with `event_time`, `known_time` and freshness.
+- Exact-tip focused Information runtime, checkpoint-tail replay, production-wiring and WebSocket tests returned `42 passed, 6 warnings`. The existing five-node Information recipient-read frozen selection returned `selected=5 problems=0 improvements=0`. Frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all zero differences. Python 3.12.2 and the A-worktree import path were verified; temporary paths were on F:.
+- Evidence and raw output: `docs/verification/m2-2-information-knowledge-read-20261127.md` and `F:/paralls-verification/thread-a/m2-2-information-knowledge-read-20261127-04/`.
+- This adds a bounded Information consumer only. Generic `read_as`, historical selector qualification, FactType-wide visibility execution, legacy stream attribution, U7 and full backend regression remain unverified. M2-2 stays blocked. `integration` was not modified.
