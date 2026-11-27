@@ -1004,3 +1004,9 @@
 - `FactTypeRegistry` now exposes an immutable exact-reference index from validated `event_schema_ref` values to compiled FactTypes. It does not canonicalize aliases or infer event types.
 - Evidence: `docs/verification/m2-2-event-schema-index-20261127.md`. Registry/RulePack/FactType/EventSchema tests returned `169 passed, 2 warnings`; related package tests returned `44 passed, 6 warnings`; new selection `1/0/0`.
 - This remains a mapping input only. Principal qualification, visibility projection, `read_as`, and event-time producer gaps remain. M2-2 is blocked.
+
+### H-A-149 | A tip full backend regression | 2026-11-27
+
+- Current A tip `c821c558` full backend suite: `10,783 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1.
+- The five failing node IDs were rerun at parent `e8c9f841` and all five failed there with the same failure families. No failure was attributed to the M2-2 FactType schema-ref retention or reverse-index changes.
+- Evidence: `docs/verification/a-tip-full-backend-20261127.md`. This is merge-state regression evidence, not a full-suite pass. M2-2 remains blocked.
