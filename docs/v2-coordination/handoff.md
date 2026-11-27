@@ -1209,3 +1209,10 @@
 - Full backend suite returned `10,805 passed, 14 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1. Ten failed cases passed isolated short-path/clean-environment reruns. Four failure families match the prior A-tip record. A parent full-suite comparison was not run. Evidence: `docs/verification/m3-3-social-delivery-replay-20261128.md`; raw output under `F:/paralls-verification/thread-a/m3-3-social-delivery-20261127-04/` through `...-08/`.
 - P-1 final supplemental scan checked the 6 documentation lines added after the 155-line branch scan, with zero hits for assignment-shaped secrets, AWS access keys, GitHub tokens, JWTs and private-key headers. Raw output: `F:/paralls-verification/thread-a/m3-3-social-delivery-followup-20261128-04/p1-scan.log`.
 - M3-3 remains in progress because other direct/custom replay paths need ownership and contract review. `BOUNDARIES.md` and `integration` were not modified.
+
+### H-A-177 | M2-1 SocialDelivery / Information read-path classification | 2026-11-28
+
+- At A tip `1c41fb5c`, static tracing found `SocialDeliveryAuthority.view_for` is consumed by `InformationAuthority.update_knowledge` to validate a recipient's committed delivery and by the scoped checkpoint/tail participant to reconstruct a recipient projection. No production transport route exposes the generic SocialDelivery projection directly.
+- Principal-facing Information report and knowledge reads remain behind the registered Information FactTypes and session-bound `GameplayReadAs` WebSocket handlers. The SocialDelivery projection is an internal validation/reconstruction input, not a second query authority.
+- Evidence: `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. Static-only; no tests ran. M2-2's generic selector qualification, FactType-wide visibility enforcement, legacy attribution, and U7 remain open. `integration` was not modified.
+- P-1 scan of this documentation increment found zero hits in all five credential-pattern families. Raw output: `F:/paralls-verification/thread-a/m2-1-read-path-20261128-01/p1-scan.log`.
