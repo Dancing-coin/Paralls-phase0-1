@@ -99,11 +99,8 @@ class MoraleRefoldAuthority:
                 )
             except PoolError as exc:
                 return self._reject(command_id, str(exc))
-            if prior is not None and self._is_exact_retry(
-                prior, death=death, command_id=command_id, principal_ref=principal
-            ):
-                return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
-            return self._reject(command_id, "morale_idempotency_key_reused")
+            if prior is not None:
+                return prior
 
         actor_ref = death.payload.get("actor_ref")
         selected: tuple[tuple[str, str], PoolDefinition] | None = None
@@ -237,34 +234,6 @@ class MoraleRefoldAuthority:
             previous_sequence = event.global_sequence
             previous_revision = event.stream_revision
         return state, previous_revision
-
-    def _is_exact_retry(
-        self, receipt: AppendBatchResult, *, death: GameplayEvent,
-        command_id: str, principal_ref: str,
-    ) -> bool:
-        batch = self.store.get_transaction(receipt.transaction_id)
-        if (
-            not receipt.committed
-            or receipt.command_id != command_id
-            or batch is None
-            or batch.idempotency_record.principal_ref != principal_ref
-            or batch.idempotency_record.idempotency_key != command_id
-            or batch.command_id != command_id
-            or not batch.events
-            or receipt.committed_event_ids != [event.event_id for event in batch.events]
-        ):
-            return False
-        event = batch.events[0]
-        return (
-            event.causation_id == death.event_id
-            and event.command_id == command_id
-            and event.event_type == "gameplay.pool.adjusted"
-            and event.stream_id == event.payload.get("fact_type")
-            and event.stream_id in {
-                definition.fact_type for definition in self._definitions.values()
-            }
-            and event.payload.get("model_ref") == "morale_refold@1"
-        )
 
     @staticmethod
     def _reject(command_id: str, code: str) -> AppendBatchResult:

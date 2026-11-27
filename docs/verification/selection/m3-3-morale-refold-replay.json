@@ -1,0 +1,11 @@
+{
+  "head": "11fd1754",
+  "description": "Morale casualty refold retries validate the durable Owner transaction and committed event references",
+  "tests": [
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_duplicate_rejects_incomplete_committed_event_receipt",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
