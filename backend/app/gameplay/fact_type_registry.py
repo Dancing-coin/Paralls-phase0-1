@@ -150,12 +150,22 @@ class FactTypeRegistry:
     def __init__(self, facts: Mapping[str, FactType], models: Mapping[str, Model], machines: Mapping[str, Any]):
         self.facts = MappingProxyType(dict(facts))
         by_schema_ref: dict[str, list[FactType]] = {}
+        by_event_schema_key: dict[tuple[str, int], list[FactType]] = {}
+        if any(fact.event_schema_ref is not None for fact in self.facts.values()):
+            from app.gameplay.event_schema_registry import resolve_event_schema_ref
+
         for fact in self.facts.values():
             if fact.event_schema_ref is not None:
                 by_schema_ref.setdefault(fact.event_schema_ref, []).append(fact)
+                for event_schema_key in resolve_event_schema_ref(fact.event_schema_ref):
+                    by_event_schema_key.setdefault(event_schema_key, []).append(fact)
         self.facts_by_event_schema_ref = MappingProxyType({
             schema_ref: tuple(values)
             for schema_ref, values in by_schema_ref.items()
+        })
+        self.facts_by_event_schema_key = MappingProxyType({
+            event_schema_key: tuple(sorted(values, key=lambda fact: fact.fact_type_id))
+            for event_schema_key, values in by_event_schema_key.items()
         })
         # Code and data models use this same table and evaluation entry point.
         self.models = MappingProxyType(dict(models))
@@ -324,3 +334,8 @@ class FactTypeRegistry:
     def evaluate(self, model_ref: str, values: Mapping[str, Any]) -> Any:
         model = self.models[model_ref]
         return model.handler(RestrictedInputs(values, model.reads), model.params)
+
+    def fact_types_for_event(
+        self, event_type: str, schema_version: int,
+    ) -> tuple[FactType, ...]:
+        return self.facts_by_event_schema_key.get((event_type, schema_version), ())

@@ -138,6 +138,27 @@ def test_compiled_registry_indexes_facts_by_event_schema_reference():
     assert tuple(fact.fact_type_id for fact in indexed) == ("fact:credential:*:link",)
 
 
+def test_compiled_registry_resolves_event_type_to_all_exact_fact_type_candidates():
+    loaded = load_pack(FACILITY_PACK, handlers={})
+
+    candidates = loaded.registry.fact_types_for_event("gameplay.pool.adjusted", 1)
+
+    assert tuple(fact.fact_type_id for fact in candidates) == (
+        "fact:facility:gate-03:durability",
+        "fact:facility:gate-03:integrity",
+        "fact:facility:gate-03:latch-durability",
+    )
+    assert loaded.registry.fact_types_for_event("gameplay.pool.adjusted", 2) == ()
+
+
+def test_compiled_registry_resolves_legacy_credential_schema_alias():
+    loaded = load_pack(PACK, handlers=HANDLERS)
+
+    candidates = loaded.registry.fact_types_for_event("gameplay.credential.issued", 1)
+
+    assert tuple(fact.fact_type_id for fact in candidates) == ("fact:credential:*:link",)
+
+
 def test_facility_gate_pack_registers_pool_and_machine_fact_types():
     loaded = load_pack(FACILITY_PACK, handlers={})
 
