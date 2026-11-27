@@ -15,7 +15,8 @@
 - New registered selection: `selected=2 problems=0 improvements=0`.
 - Frozen selections: ownership 24, modifier 12, equipment 87, inventory 56, shared-replay 990; all five returned zero problems and improvements, 1,169 nodes total.
 - All 47 registered selections completed with exit 0 and zero problems/improvements per selection, including the new SocialDelivery selection. Raw batch logs: `F:/paralls-verification/thread-a/m3-3-social-delivery-20261127-05/selections/`.
-- P-1 scan covered 133 added lines across the branch code delta and staged documentation. Assignment-shaped secret, AWS access key, GitHub token, JWT and private-key-header rules each reported zero hits. Raw output: `F:/paralls-verification/thread-a/m3-3-social-delivery-20261128-02/p1-scan.log`.
+- Current-tip focused rerun at documentation commit `617e965a`: `80 passed, 6 warnings`, exit 0, covering SocialDelivery, its caller, and Information production/siege readers. Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Raw output: `F:/paralls-verification/thread-a/m3-3-social-delivery-followup-20261128-01/focused.log`.
+- P-1 scan of the then-current 155 added lines across the branch code delta and staged documentation reported zero hits in all five credential-pattern families. Raw output: `F:/paralls-verification/thread-a/m3-3-social-delivery-followup-20261128-02/p1-scan.log`. The supplemental final scans of documentation-only additions are recorded in the daily and handoff entries.
 
 ## Full backend regression
 
