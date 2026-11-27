@@ -304,6 +304,38 @@ def test_handshake_shared_experience_replays_duplicate_and_rejects_changed_dupli
     assert store.export_snapshot() == before
 
 
+def test_handshake_shared_experience_duplicate_rejects_transaction_command_mismatch_without_writing() -> None:
+    store, committed_event, _result = _completed_handshake()
+    authority = SocialFactAuthority(registry=_handshake_registry(), store=store)
+    request = {
+        "session_event_id": committed_event.event_id,
+        "expected_session_revision": committed_event.stream_revision,
+        "expected_target_revisions": (0, 0),
+        "command_id": "command:inf4ai:damaged-receipt",
+        "idempotency_key": f"social:handshake-shared-experience:{committed_event.event_id}:7:0:0:v1",
+        "causation_id": committed_event.event_id,
+        "correlation_id": "correlation:inf4ai:damaged-receipt",
+    }
+    first = authority.record_completed_handshake_shared_experience(**request)
+    assert first.receipt is not None
+    transaction_id = first.receipt.transaction_id
+    transaction_index = next(
+        index for index, transaction in enumerate(store._transactions)
+        if transaction.transaction_id == transaction_id
+    )
+    store._transactions[transaction_index] = store._transactions[transaction_index].model_copy(
+        update={"command_id": "command:forged"},
+        deep=True,
+    )
+    corrupted_snapshot = store.export_snapshot()
+
+    duplicate = authority.record_completed_handshake_shared_experience(**request)
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "handshake_shared_experience_idempotency_key_reused"
+    assert store.export_snapshot() == corrupted_snapshot
+
+
 def test_handshake_shared_experience_is_private_and_checkpoint_tail_replay_is_equal() -> None:
     store, committed_event, _result = _completed_handshake()
     authority = SocialFactAuthority(registry=_handshake_registry(), store=store)

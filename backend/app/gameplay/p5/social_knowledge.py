@@ -687,14 +687,26 @@ class SocialFactAuthority:
         )
         if idempotency_key != canonical_key:
             return self._rejected("handshake_shared_experience_idempotency_key_invalid")
-        existing = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
-        if existing is not None:
-            previous_events = tuple(event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids))
+        idempotency_record = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="handshake_shared_experience_idempotency_key_reused",
+                    expected_event_types=(_HANDSHAKE_SHARED_EXPERIENCE_EVENT, _HANDSHAKE_SHARED_EXPERIENCE_EVENT),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
+                return self._rejected("handshake_shared_experience_idempotency_key_reused")
+            if existing is None:
+                return self._rejected("handshake_shared_experience_idempotency_key_reused")
+            previous_events = tuple(self._store.get_event(event_id) for event_id in existing.committed_event_ids)
             if (
-                len(previous_events) == 2
-                and all(event.event_type == _HANDSHAKE_SHARED_EXPERIENCE_EVENT for event in previous_events)
-                and all(event.command_id == command_id for event in previous_events)
-                and all(event.payload.get("session_event_id") == session_event_id for event in previous_events)
+                all(event.payload.get("session_event_id") == session_event_id for event in previous_events)
                 and all(event.causation_id == causation_id and event.correlation_id == correlation_id for event in previous_events)
             ):
                 receipt = SettlementReceipt.from_append_result(
