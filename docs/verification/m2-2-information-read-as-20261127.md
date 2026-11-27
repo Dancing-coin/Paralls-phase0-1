@@ -20,6 +20,7 @@
 - Frozen selections: Ownership `24/0/0`, Modifier `12/0/0`, Equipment `87/0/0`, Inventory `56/0/0`, shared-replay `990/0/0`; total 1,169 selected nodes and zero problems or improvements.
 - Raw focused log: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-01\focused-final.log`.
 - Raw selection outputs: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-01\selection` and sibling directories `ownership`, `modifier`, `equipment`, `inventory`, and `shared-replay`.
+- P-1 scan covered 306 added lines from the two commits in this increment. Assignment-shaped secret, AWS key, GitHub token, JWT, and private-key-header patterns each returned zero hits. Raw output: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-01\p1-scan.log`.
 - Pytest temporary files and the comparison runner's `TEMP`/`TMP` were on F:.
 
 ## Not covered
