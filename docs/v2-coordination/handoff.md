@@ -1140,3 +1140,10 @@
 - Exact-tip focused Information runtime, checkpoint-tail replay, production-wiring and WebSocket tests returned `42 passed, 6 warnings`. The existing five-node Information recipient-read frozen selection returned `selected=5 problems=0 improvements=0`. Frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all zero differences. Python 3.12.2 and the A-worktree import path were verified; temporary paths were on F:.
 - Evidence and raw output: `docs/verification/m2-2-information-knowledge-read-20261127.md` and `F:/paralls-verification/thread-a/m2-2-information-knowledge-read-20261127-04/`.
 - This adds a bounded Information consumer only. Generic `read_as`, historical selector qualification, FactType-wide visibility execution, legacy stream attribution, U7 and full backend regression remain unverified. M2-2 stays blocked. `integration` was not modified.
+
+### H-A-167 | M2-2 Information `read_as` wiring | 2026-11-27
+
+- Commit `97c21f06b2e00e69926e6e77515aa967bae4c805` adds `GameplayReadAs` and routes the report and report-knowledge WebSocket reads through it. It accepts only the two registered Information FactTypes with private visibility and `recipient_of(subject)`, exact scope keys, the session-bound character, and the server world tick. The Information authority validates the recipient-private source chain and revision evidence.
+- Focused Information runtime, checkpoint-tail, production-wiring, WebSocket, and M6-5 tests returned `81 passed, 6 warnings`; the new 3-node selection returned `3/0/0`; frozen five selections returned `24/12/87/56/990`, all zero differences. Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. All temporary/output paths were on F:.
+- Evidence: `docs/verification/m2-2-information-read-as-20261127.md`; raw outputs under `F:/paralls-verification/thread-a/m2-2-read-as-info-20261127-01/`.
+- This does not implement historical qualification for other selectors, FactType-wide visibility execution, legacy domain-stream attribution, or full U7. The full backend suite was not run. M2-2 remains blocked; `integration` was not modified.

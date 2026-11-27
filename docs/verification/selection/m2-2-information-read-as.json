@@ -1,0 +1,21 @@
+{
+  "head": "97c21f06b2e00e69926e6e77515aa967bae4c805",
+  "description": "Information recipient-private report and knowledge reads through the registered FactType read_as boundary, including unsupported FactType and scope rejection",
+  "tests": [
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_gameplay_read_as_projects_registered_information_fact_types",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_report_read_is_recipient_private_and_respects_delivery_window",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_websocket_connection_context.py::test_information_report_read_uses_bound_actor_scope_and_authoritative_world_clock",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
