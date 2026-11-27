@@ -583,6 +583,31 @@ def test_idempotency_replays_the_original_investigation_result() -> None:
     assert first.receipt is not None and second.receipt is not None
 
 
+def test_idempotency_rejects_corrupt_transaction_receipt_without_write() -> None:
+    authority_type = _load_authority()
+    registry = _registry()
+    store = GameplayEventStore()
+    authority = authority_type(registry=registry, store=store)
+    command = _command(request_id="request:p5c:corrupt-receipt")
+    request = _request(registry, request_id="request:p5c:corrupt-receipt")
+    first = authority.resolve(command=command, request=request, now="2026-08-11T00:00:00Z")
+    assert first.receipt is not None and first.receipt.committed
+
+    key = ("authority:p5:investigation-conflict", command.idempotency_key)
+    stored = store._idempotency_results[key]
+    store._idempotency_results[key] = stored.model_copy(
+        update={"command_id": "command:corrupt"}, deep=True
+    )
+    before_retry = _snapshot_hash(store)
+
+    duplicate = authority.resolve(command=command, request=request, now="2026-08-11T00:00:00Z")
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "idempotency_key_reused"
+    assert duplicate.receipt is None
+    assert _snapshot_hash(store) == before_retry
+
+
 def test_privacy_redacts_hidden_clue_from_public_view() -> None:
     authority_type = _load_authority()
     registry = _registry()
