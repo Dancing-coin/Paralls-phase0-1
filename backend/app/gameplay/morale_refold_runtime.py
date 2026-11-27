@@ -6,6 +6,7 @@ from typing import Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.organization_government_social_platform_runtime import (
     OrganizationGarrisonRosterSnapshot,
     organization_garrison_roster_at,
@@ -79,9 +80,26 @@ class MoraleRefoldAuthority:
         principal = _MORALE_PRINCIPAL
         command_id = f"morale-refold:{death.event_id}"
         idempotency_key = command_id
-        prior = self.store.get_by_idempotency(principal, idempotency_key)
-        if prior is not None:
-            if self._is_exact_retry(
+        idempotency_record = self.store.get_idempotency_record(principal, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                prior = replay_duplicate(
+                    self.store,
+                    principal=principal,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=PoolError,
+                    missing_result_code="morale_idempotency_missing_result",
+                    transaction_mismatch_code="morale_replay_transaction_mismatch",
+                    event_count_mismatch_code="morale_replay_event_count_mismatch",
+                    event_missing_code="morale_replay_event_missing",
+                    expected_event_types=("gameplay.pool.adjusted",),
+                    expected_command_id=command_id,
+                    expected_transaction_id=f"tx:{command_id}",
+                )
+            except PoolError as exc:
+                return self._reject(command_id, str(exc))
+            if prior is not None and self._is_exact_retry(
                 prior, death=death, command_id=command_id, principal_ref=principal
             ):
                 return prior.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)

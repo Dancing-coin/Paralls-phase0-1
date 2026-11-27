@@ -210,3 +210,35 @@ def test_first_valid_casualty_initializes_and_refolds_morale_from_the_configured
         "gameplay.pool.initialized",
         "gameplay.pool.adjusted",
     ]
+
+
+def test_morale_duplicate_rejects_incomplete_committed_event_receipt():
+    store = GameplayEventStore()
+    member = "character:defender-1"
+    _seed_garrison(store, members=(member,))
+    death = _append(
+        store,
+        principal="authority:character:life-state",
+        stream_id=f"gameplay:character:life:{member}",
+        event_type="gameplay.character.life_state_changed",
+        payload={"actor_ref": member, "from_state": "alive", "to_state": "dead"},
+        command_id="life-death:duplicate-integrity",
+    )
+    authority = _authority(store)
+    first = authority.refold_after_casualty(death_event_id=death.event_id)
+    assert first.committed
+    idempotency_key = f"morale-refold:{death.event_id}"
+    result_key = ("actor_gameplay.morale_domain", idempotency_key)
+    store._idempotency_results[result_key] = first.model_copy(
+        update={"committed_event_ids": []}, deep=True
+    )
+    transaction_count = len(store.read_transactions())
+    event_count = len(store.read_events())
+
+    retry = authority.refold_after_casualty(death_event_id=death.event_id)
+
+    assert not retry.committed
+    assert retry.failure is not None
+    assert retry.failure.error_code == "morale_replay_event_count_mismatch"
+    assert len(store.read_transactions()) == transaction_count
+    assert len(store.read_events()) == event_count
