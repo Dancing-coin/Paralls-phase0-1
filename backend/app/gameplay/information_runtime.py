@@ -370,17 +370,27 @@ class InformationAuthority:
         }
         existing = self._store.get_idempotency_record(_INFORMATION_PRINCIPAL, idempotency_key)
         if existing is not None:
-            result = self._store.get_by_idempotency(_INFORMATION_PRINCIPAL, idempotency_key)
+            try:
+                result = replay_duplicate(
+                    self._store,
+                    principal=_INFORMATION_PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="knowledge_replay_missing_result",
+                    transaction_mismatch_code="knowledge_replay_transaction_mismatch",
+                    event_count_mismatch_code="knowledge_replay_event_count_mismatch",
+                    event_missing_code="knowledge_replay_event_missing",
+                    expected_event_types=(INFORMATION_KNOWLEDGE_EVENT_TYPE,),
+                )
+            except ValueError as error:
+                return self._reject(f"information_{error}")
             prior = self._prior_event(result)
             if (prior is not None and prior.event_type == INFORMATION_KNOWLEDGE_EVENT_TYPE
                     and prior.stream_id == stream_id and prior.payload == event_payload
                     and prior.command_id == command_id
                     and prior.causation_id == causation_id and prior.correlation_id == correlation_id):
-                return InformationUpdateResult(
-                    True, append_result=result.model_copy(
-                        update={"idempotency_status": "duplicate_replayed"}, deep=True
-                    ),
-                )
+                return InformationUpdateResult(True, append_result=result)
             return self._reject("information_idempotency_key_reused")
 
         visible = self._delivery.view_for(recipient_ref=recipient_ref, world_now=world_now)

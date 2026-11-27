@@ -133,6 +133,29 @@ def test_information_update_replay_returns_original_receipt():
     assert len(store.read_events(event_type="gameplay.information.knowledge_updated@1")) == 1
 
 
+def test_information_update_retry_rejects_incomplete_receipt_without_writing():
+    store, delivery_id = _store()
+    authority = InformationAuthority(store=store)
+    first = _update(authority, store, delivery_id)
+    assert first.committed
+    event = store.get_event(first.append_result.committed_event_ids[0])
+    transaction = store.get_transaction(event.transaction_id)
+    key = (
+        transaction.idempotency_record.principal_ref,
+        transaction.idempotency_record.idempotency_key,
+    )
+    store._idempotency_results[key] = first.append_result.model_copy(
+        update={"committed_event_ids": []}, deep=True
+    )
+    before = store.export_snapshot()
+
+    retry = _update(authority, store, delivery_id)
+
+    assert not retry.committed
+    assert retry.error_code == "information_knowledge_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_information_reaction_uses_committed_recipient_and_current_time():
     store, delivery_id = _store()
     authority = InformationAuthority(store=store)
