@@ -95,3 +95,15 @@ Code snapshot: A tip `805ec4215db73eeba178b5fbefc90c44c09c55cd`. Static inspecti
 | `GameplayReadAs.read_as` (`read_as.py`) | Narrow production read boundary for two registered Information FactTypes | Validates the principal/scope request, checks Owner, `private` visibility, the exact recipient selector, EventSchema mapping, and scope keys. It rejects unsupported delay/distortion models and `secret`/`debug_only`. Other FactTypes have no reader implementation through this boundary. |
 
 These are production subject-facing reads for Information, contrary to the earlier snapshots that found none. They do not establish generic selector qualification or visibility execution. Ownership/Credential, Morale, and Presence remain without an identified principal-facing production read in the inspected call graph. Historical qualification for other selectors, FactType-wide visibility enforcement, legacy domain-stream attribution, other-owner reader classification, and complete U7 remain M2-2 work. This is bounded static call-graph evidence; tests were not run for this documentation update.
+
+## 2026-11-27 current-tip Holdings and Pool caller update
+
+Code snapshot: A tip `a3d347ff0495871faa29234ad16e0a0157ef9165`. Static searches covered `backend/app/gameplay/holdings_runtime.py`, `pool_runtime.py`, `facility_integrity_runtime.py`, `facility_gate_layered_runtime.py`, `morale_refold_runtime.py`, `main.py`, and tests for `HoldingsAuthorityService.project`, `_read`, `PoolProjector`, and production routes.
+
+| Read path | Current classification | Evidence and scope |
+|---|---|---|
+| `HoldingsAuthorityService._read` (`holdings_runtime.py:721-726`) | Trusted Owner command preconditions | Called within Holdings mutations to rebuild the current FactType projection for revision, lot, reservation, quantity, and capacity checks. `HoldingsAuthorityService.project` (`:718-719`) has no production caller in `backend/app`; no subject-facing Holdings route was found in `main.py`. |
+| `PoolAuthorityService._read` (`pool_runtime.py:593-596`) | Trusted Owner command preconditions | Called by Pool commands to validate current value, reservation, bounds, or threshold transitions before append. It is private to the authority and no production subject-facing Pool route was found in `main.py`. |
+| `PoolProjector` in Facility and Morale | Trusted Owner settlement/rebuild input | Facility and Morale use the projector to validate or calculate domain-owned writes and historical recovery. These are not subject query APIs. Morale's public `projection` helper still has no production caller in `backend/app`; existing calls are tests. |
+
+This closes the current A-side static classification for Holdings and Pool reads. It does not establish the absence of readers outside the inspected application tree and does not implement `read_as` for these domains. Future migrated subject-facing reads still need classification; generic selector qualification, FactType-wide visibility enforcement, legacy stream attribution, and full U7 remain M2-2 work. Static only; no tests ran.

@@ -1187,3 +1187,9 @@
 - Seven nested `test_population_harness_evidence.py::test_nested_gameplay_evidence[...]` failures were `FileNotFoundError` under the long F-drive temp root. The exact seven-node family passed with short temp root `F:/paralls-verification/thread-a/p3/` (`7 passed, 33 deselected, 2 warnings`). The full run itself remains exit 1.
 - The remaining four failures are missing optional `tokenizers`, the existing Task45 and Task8 Godot parser/type-resolution probes, and the previously recorded out-of-scope `test_cold_ready` resource-bound failure. Prior parent evidence for these failure families is recorded under H-A-129/H-A-098; this follow-up did not rerun them on a parent.
 - Evidence: `docs/verification/a-tip-full-backend-20261127.md`. No full-suite pass is claimed; `integration` was not modified.
+
+### H-A-174 | M2-1 Holdings and Pool read-path classification | 2026-11-27
+
+- At A tip `a3d347ff`, static call tracing classified Holdings and Pool reads. Holdings `_read` and Pool `_read` are internal Owner-command preconditions; `HoldingsAuthorityService.project` has no production caller in `backend/app`. Facility and Morale `PoolProjector` uses are trusted settlement/rebuild inputs, and no subject-facing Holdings/Pool query route was found in `main.py`.
+- The current-tip classification is appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. This is static-only and does not establish absence of callers outside the inspected application tree. No tests ran.
+- M2-2 generic `read_as`, selector qualification, FactType-wide visibility enforcement, legacy stream attribution, and U7 remain incomplete. M2-1 stays open for newly migrated reads; `integration` was not modified.
