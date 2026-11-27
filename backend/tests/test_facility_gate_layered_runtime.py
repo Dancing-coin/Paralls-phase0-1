@@ -589,6 +589,60 @@ def test_signed_impact_presence_gateway_settles_without_requiring_breach(monkeyp
     assert replay["place"]["idempotency_status"] == "duplicate_replayed"
 
 
+def test_m6_5_owner_facts_keep_the_first_authoritative_world_tick_on_retry():
+    store, _, facility = _authorities(magnitude="20")
+    world_ticks = []
+
+    def next_world_tick():
+        tick = 700 + len(world_ticks)
+        world_ticks.append(tick)
+        return tick
+
+    runtime = build_m6_5_siege_runtime(
+        store=store,
+        morale_definitions=DEFAULT_MORALE_DEFINITIONS,
+        physical_authority_secrets={AUTHORITY: SECRET},
+        layered_facility=facility,
+        world_tick_provider=next_world_tick,
+    )
+    impact_receipt = _receipt("impact:event-time")
+
+    evidence, facility_result, _ = runtime.record_gate_impact_v2(impact_receipt)
+    impact = store.get_event(evidence.committed_event_ids[0])
+    facility_events = store.get_transaction(facility_result.transaction_id).events
+
+    assert impact.event_time == 700
+    assert facility_events
+    assert all(event.event_time == 700 for event in facility_events)
+    assert world_ticks == [700]
+
+    replayed_evidence, replayed_facility, _ = runtime.record_gate_impact_v2(impact_receipt)
+    assert replayed_evidence.idempotency_status == "duplicate_replayed"
+    assert replayed_facility.idempotency_status == "duplicate_replayed"
+    assert all(
+        store.get_event(event_id).event_time == 700
+        for event_id in replayed_facility.committed_event_ids
+    )
+    assert world_ticks == [700]
+
+    assessment = PresenceAssessmentReceiptV2.model_validate(
+        _presence_input(store, impact, "presence:event-time")
+    )
+    input_result, place_result = runtime.record_presence_assessment(assessment)
+    presence_input = store.get_event(input_result.committed_event_ids[0])
+    place_event = store.get_event(place_result.committed_event_ids[0])
+
+    assert presence_input.event_time == 701
+    assert place_event.event_time == 701
+    assert world_ticks == [700, 701]
+
+    replayed_input, replayed_place = runtime.record_presence_assessment(assessment)
+    assert replayed_input.idempotency_status == "duplicate_replayed"
+    assert replayed_place.idempotency_status == "duplicate_replayed"
+    assert store.get_event(replayed_place.committed_event_ids[0]).event_time == 701
+    assert world_ticks == [700, 701]
+
+
 def test_presence_assessment_uses_signed_revisions_and_confirms_unchanged_state():
     store, _, facility = _authorities()
     runtime = build_m6_5_siege_runtime(

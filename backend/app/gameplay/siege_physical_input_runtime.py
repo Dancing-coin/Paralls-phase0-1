@@ -173,17 +173,20 @@ class SiegePhysicalInputAuthority:
         }
         self._evidence_event_principals = dict(evidence_event_principals or {})
 
-    def record_gate_impact(self, receipt: GateImpactReceipt) -> AppendBatchResult:
+    def record_gate_impact(
+        self, receipt: GateImpactReceipt, *, event_time: int | None = None,
+    ) -> AppendBatchResult:
         if not self._valid_signature(receipt):
             return self._reject(receipt.receipt_id, "siege_input_signature_invalid")
         return self._record(
             receipt,
             event_type=GATE_IMPACT_INPUT_EVENT,
             stream_id=f"gameplay:combat:gate-impact:{receipt.receipt_id}",
+            event_time=event_time,
         )
 
     def record_gate_impact_v2(
-        self, receipt: GateImpactReceiptV2
+        self, receipt: GateImpactReceiptV2, *, event_time: int | None = None,
     ) -> AppendBatchResult:
         if not self._valid_signature(receipt):
             return self._reject(receipt.receipt_id, "siege_input_signature_invalid")
@@ -191,10 +194,12 @@ class SiegePhysicalInputAuthority:
             receipt,
             event_type=GATE_IMPACT_INPUT_EVENT_V2,
             stream_id=f"gameplay:combat:gate-impact:{receipt.receipt_id}",
+            event_time=event_time,
         )
 
     def record_presence_assessment(
-        self, receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2
+        self, receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2,
+        *, event_time: int | None = None,
     ) -> AppendBatchResult:
         if not self._valid_signature(receipt):
             return self._reject(receipt.receipt_id, "siege_input_signature_invalid")
@@ -203,6 +208,7 @@ class SiegePhysicalInputAuthority:
                 receipt,
                 event_type=PRESENCE_ASSESSMENT_INPUT_EVENT_V2,
                 stream_id=f"gameplay:combat:gate-presence:{receipt.receipt_id}",
+                event_time=event_time,
             )
         if not self._valid_presence_sources(receipt):
             return self._reject(receipt.receipt_id, "siege_presence_evidence_invalid")
@@ -210,6 +216,7 @@ class SiegePhysicalInputAuthority:
             receipt,
             event_type=PRESENCE_ASSESSMENT_INPUT_EVENT,
             stream_id=f"gameplay:combat:gate-presence:{receipt.receipt_id}",
+            event_time=event_time,
         )
 
     def gate_impact_event(self, *, authority_ref: str, receipt_id: str) -> GameplayEvent | None:
@@ -245,7 +252,10 @@ class SiegePhysicalInputAuthority:
         *,
         event_type: str,
         stream_id: str,
+        event_time: int | None,
     ) -> AppendBatchResult:
+        if event_time is not None and (type(event_time) is not int or event_time < 0):
+            return self._reject(receipt.receipt_id, "siege_input_event_time_invalid")
         key = self._idempotency_key(receipt.authority_ref, receipt.receipt_id)
         payload = {
             "receipt": receipt.model_dump(mode="json"),
@@ -284,7 +294,7 @@ class SiegePhysicalInputAuthority:
         if isinstance(receipt, PresenceAssessmentReceiptV2) and not self._valid_impact_source(receipt):
             return self._reject(receipt.receipt_id, "siege_presence_evidence_invalid")
 
-        return self._store.append_batch(build_multi_stream_atomic_event_batch(
+        batch = build_multi_stream_atomic_event_batch(
             command_id=command_id,
             principal_ref=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
             expected_revisions={stream_id: 0},
@@ -293,7 +303,15 @@ class SiegePhysicalInputAuthority:
             causation_id=receipt.receipt_id,
             correlation_id=f"siege:{receipt.gate_ref}",
             event_visibility_policies={stream_id: ("authority_only",)},
-        ))
+        )
+        if event_time is not None:
+            batch = batch.model_copy(update={
+                "events": [
+                    event.model_copy(update={"event_time": event_time}, deep=True)
+                    for event in batch.events
+                ],
+            }, deep=True)
+        return self._store.append_batch(batch)
 
     def _valid_signature(self, receipt: _SignedSiegeReceipt) -> bool:
         secret = self._authority_secrets.get(receipt.authority_ref)

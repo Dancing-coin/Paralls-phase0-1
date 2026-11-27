@@ -77,6 +77,22 @@ def test_gate_impact_evidence_is_signed_persisted_and_exact_retry_replays():
     )
 
 
+def test_gate_impact_rejects_invalid_event_time_without_writing():
+    store = _store()
+    authority = SiegePhysicalInputAuthority(
+        store=store,
+        authority_secrets={AUTHORITY: SECRET},
+    )
+
+    result = authority.record_gate_impact(
+        _gate_impact("impact:invalid-event-time"), event_time=True,
+    )
+
+    assert not result.committed
+    assert result.failure.error_code == "siege_input_event_time_invalid"
+    assert store.read_events() == []
+
+
 def test_physical_input_retry_rejects_incomplete_receipt_without_writing():
     store = _store()
     authority = SiegePhysicalInputAuthority(

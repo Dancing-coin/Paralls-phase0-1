@@ -318,6 +318,15 @@ class FacilityGateLayeredAuthority:
             correlation_id=f"siege:{receipt.gate_ref}",
             fragments=(fragment,),
         )
+        if input_event.event_time is not None:
+            batch = batch.model_copy(update={
+                "events": [
+                    event.model_copy(
+                        update={"event_time": input_event.event_time}, deep=True,
+                    )
+                    for event in batch.events
+                ],
+            }, deep=True)
         return self.store.append_batch(batch)
 
     def _latch_state(

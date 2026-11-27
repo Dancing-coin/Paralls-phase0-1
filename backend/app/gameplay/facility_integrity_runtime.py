@@ -100,6 +100,7 @@ class FacilityIntegrityAuthority:
         causation_id: str,
         correlation_id: str,
         read_stream_revisions: Mapping[str, int] | None = None,
+        event_time: int | None = None,
     ) -> AppendBatchResult:
         definition = self._definition(gate_ref)
         if reason_code not in {"damage", "repair"}:
@@ -114,6 +115,7 @@ class FacilityIntegrityAuthority:
             causation_id=causation_id,
             correlation_id=correlation_id,
             read_stream_revisions=read_stream_revisions,
+            event_time=event_time,
         )
 
     def apply_signed_impact(
@@ -156,6 +158,7 @@ class FacilityIntegrityAuthority:
             causation_id=receipt_event.event_id,
             correlation_id=f"siege:{receipt.gate_ref}",
             read_stream_revisions={receipt_event.stream_id: receipt_event.stream_revision},
+            event_time=receipt_event.event_time,
         )
         return result
 

@@ -60,6 +60,7 @@ class PlacePassabilityAuthority:
         gate_ref: str,
         breach_event_id: str,
         expected_revision: int,
+        event_time: int | None = None,
     ) -> AppendBatchResult:
         command_id = f"place-passability:{gate_ref}:{breach_event_id}"
         if (
@@ -75,6 +76,8 @@ class PlacePassabilityAuthority:
             return self._reject(command_id, "place_breach_source_unknown")
         if not self._valid_breach(breach, gate_ref):
             return self._reject(command_id, "place_breach_source_invalid")
+        if event_time is not None and (type(event_time) is not int or event_time < 0):
+            return self._reject(command_id, "place_assessment_event_time_invalid")
 
         record = self.store.get_idempotency_record(
             _PRESENCE_PRINCIPAL, command_id
@@ -180,6 +183,13 @@ class PlacePassabilityAuthority:
             read_stream_revisions=reads,
             pinned_revisions=reads,
         )
+        if event_time is not None:
+            batch = batch.model_copy(update={
+                "events": [
+                    event.model_copy(update={"event_time": event_time}, deep=True)
+                    for event in batch.events
+                ],
+            }, deep=True)
         return self.store.append_batch(batch)
 
     def commit_signed_assessment(
@@ -226,6 +236,7 @@ class PlacePassabilityAuthority:
             gate_ref=receipt.gate_ref,
             breach_event_id=receipt.breach_event_id,
             expected_revision=self.store.get_stream_head(self.stream_id(receipt.gate_ref)),
+            event_time=input_event.event_time,
         )
 
     def _commit_impact_assessment(
@@ -303,7 +314,7 @@ class PlacePassabilityAuthority:
         }
         if previous == receipt.state:
             stream = f"{place_stream}:assessments"
-            return self.store.append_batch(build_multi_stream_atomic_event_batch(
+            batch = build_multi_stream_atomic_event_batch(
                 command_id=command_id,
                 principal_ref=_PRESENCE_PRINCIPAL,
                 expected_revisions={stream: self.store.get_stream_head(stream)},
@@ -314,8 +325,18 @@ class PlacePassabilityAuthority:
                 read_stream_revisions=reads,
                 pinned_revisions=reads,
                 event_visibility_policies={stream: ("authority_only",)},
-            ))
-        return self.store.append_batch(build_atomic_event_batch(
+            )
+            if input_event.event_time is not None:
+                batch = batch.model_copy(update={
+                    "events": [
+                        event.model_copy(
+                            update={"event_time": input_event.event_time}, deep=True,
+                        )
+                        for event in batch.events
+                    ],
+                }, deep=True)
+            return self.store.append_batch(batch)
+        batch = build_atomic_event_batch(
             command_id=command_id,
             principal_ref=_PRESENCE_PRINCIPAL,
             stream_id=place_stream,
@@ -326,7 +347,17 @@ class PlacePassabilityAuthority:
             correlation_id=f"presence:{receipt.gate_ref}",
             read_stream_revisions=reads,
             pinned_revisions=reads,
-        ))
+        )
+        if input_event.event_time is not None:
+            batch = batch.model_copy(update={
+                "events": [
+                    event.model_copy(
+                        update={"event_time": input_event.event_time}, deep=True,
+                    )
+                    for event in batch.events
+                ],
+            }, deep=True)
+        return self.store.append_batch(batch)
 
     def state(self, gate_ref: str) -> str:
         events = self.store.read_stream(self.stream_id(gate_ref))

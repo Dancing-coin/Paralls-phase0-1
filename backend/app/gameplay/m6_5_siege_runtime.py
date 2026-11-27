@@ -211,7 +211,14 @@ class M6_5SiegeRuntime:
         return self.information.publish_siege_report(receipt=receipt, world_now=world_now)
 
     def record_gate_impact(self, receipt: GateImpactReceipt):
-        evidence = self.physical_inputs.record_gate_impact(receipt)
+        prior_event = self.physical_inputs.gate_impact_event(
+            authority_ref=receipt.authority_ref,
+            receipt_id=receipt.receipt_id,
+        )
+        event_time = self._event_time_for_input(prior_event)
+        evidence = self.physical_inputs.record_gate_impact(
+            receipt, event_time=event_time,
+        )
         if not evidence.committed or self.facility is None:
             return evidence, None
         result = self.facility.apply_signed_impact(
@@ -222,7 +229,14 @@ class M6_5SiegeRuntime:
         return evidence, result
 
     def record_gate_impact_v2(self, receipt: GateImpactReceiptV2):
-        evidence = self.physical_inputs.record_gate_impact_v2(receipt)
+        prior_event = self.physical_inputs.gate_impact_event_v2(
+            authority_ref=receipt.authority_ref,
+            receipt_id=receipt.receipt_id,
+        )
+        event_time = self._event_time_for_input(prior_event)
+        evidence = self.physical_inputs.record_gate_impact_v2(
+            receipt, event_time=event_time,
+        )
         if not evidence.committed:
             return evidence, None, ()
         impact_event = self.physical_inputs.store().get_event(evidence.committed_event_ids[0])
@@ -276,7 +290,14 @@ class M6_5SiegeRuntime:
         )
 
     def record_presence_assessment(self, receipt: PresenceAssessmentReceipt | PresenceAssessmentReceiptV2):
-        evidence = self.physical_inputs.record_presence_assessment(receipt)
+        prior_event = self.physical_inputs.presence_assessment_event(
+            authority_ref=receipt.authority_ref,
+            receipt_id=receipt.receipt_id,
+        )
+        event_time = self._event_time_for_input(prior_event)
+        evidence = self.physical_inputs.record_presence_assessment(
+            receipt, event_time=event_time,
+        )
         if not evidence.committed:
             return evidence, None
         resolver_plan = None
@@ -301,6 +322,11 @@ class M6_5SiegeRuntime:
             resolver_plan=resolver_plan,
         )
         return evidence, committed
+
+    def _event_time_for_input(self, prior_event: GameplayEvent | None) -> int | None:
+        if prior_event is not None:
+            return prior_event.event_time
+        return self.world_tick_provider() if self.world_tick_provider is not None else None
 
     def _resolve_presence_assessment(
         self,
@@ -458,6 +484,7 @@ def build_m6_5_siege_runtime(
                 expected_revision=store.get_stream_head(
                     presence.stream_id(str(command.target["scope"]))
                 ),
+                event_time=command.trigger_event.event_time,
             ),
             "information.update_knowledge": lambda command: information.update_from_delivery(
                 delivery=command.trigger_event,
