@@ -1,0 +1,11 @@
+{
+  "head": "e8c9f841b5b79045260b8ed023361c29b73fed48",
+  "description": "M2-2 read-only FactType index by validated event schema reference",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_compiled_registry_indexes_facts_by_event_schema_reference",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

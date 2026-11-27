@@ -130,6 +130,14 @@ def test_compiled_fact_retains_registered_event_schema_reference():
     assert loaded.registry.facts["fact:credential:*:link"].event_schema_ref == "credential_link_legacy_v1"
 
 
+def test_compiled_registry_indexes_facts_by_event_schema_reference():
+    loaded = load_pack(PACK, handlers=HANDLERS)
+
+    indexed = loaded.registry.facts_by_event_schema_ref["credential_link_legacy_v1"]
+
+    assert tuple(fact.fact_type_id for fact in indexed) == ("fact:credential:*:link",)
+
+
 def test_facility_gate_pack_registers_pool_and_machine_fact_types():
     loaded = load_pack(FACILITY_PACK, handlers={})
 

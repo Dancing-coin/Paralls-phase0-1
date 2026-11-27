@@ -149,6 +149,14 @@ class Model:
 class FactTypeRegistry:
     def __init__(self, facts: Mapping[str, FactType], models: Mapping[str, Model], machines: Mapping[str, Any]):
         self.facts = MappingProxyType(dict(facts))
+        by_schema_ref: dict[str, list[FactType]] = {}
+        for fact in self.facts.values():
+            if fact.event_schema_ref is not None:
+                by_schema_ref.setdefault(fact.event_schema_ref, []).append(fact)
+        self.facts_by_event_schema_ref = MappingProxyType({
+            schema_ref: tuple(values)
+            for schema_ref, values in by_schema_ref.items()
+        })
         # Code and data models use this same table and evaluation entry point.
         self.models = MappingProxyType(dict(models))
         self.machines = freeze(machines)
