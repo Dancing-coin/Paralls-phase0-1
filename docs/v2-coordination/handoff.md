@@ -1180,3 +1180,10 @@
 - At A tip `caa062aa`, the `OwnerCommitBuilder`, Ownership, and Credential focused tests returned `23 passed, 2 warnings`. The frozen Ownership selection returned `24/0/0`; shared-replay returned `990/0/0`.
 - Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. Pytest temp and raw output are under `F:/paralls-verification/thread-a/m3-1-current-tip-20261127-03/`.
 - This is M3-1 slice-level evidence. The full backend suite was not run; M3-1 remains `待门禁`, and `integration` was not modified.
+
+### H-A-173 | Current A-tip full backend regression | 2026-11-27
+
+- At A tip `3e87cadb`, `backend/tests` returned `10,806 passed, 11 failed, 2 skipped, 2 xfailed, 227 warnings` in `1494.01s`, exit 1. Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. All temp and raw output paths were on F:. The raw full log is `F:/paralls-verification/thread-a/a-tip-backend-full-20261127-01/full.log`.
+- Seven nested `test_population_harness_evidence.py::test_nested_gameplay_evidence[...]` failures were `FileNotFoundError` under the long F-drive temp root. The exact seven-node family passed with short temp root `F:/paralls-verification/thread-a/p3/` (`7 passed, 33 deselected, 2 warnings`). The full run itself remains exit 1.
+- The remaining four failures are missing optional `tokenizers`, the existing Task45 and Task8 Godot parser/type-resolution probes, and the previously recorded out-of-scope `test_cold_ready` resource-bound failure. Prior parent evidence for these failure families is recorded under H-A-129/H-A-098; this follow-up did not rerun them on a parent.
+- Evidence: `docs/verification/a-tip-full-backend-20261127.md`. No full-suite pass is claimed; `integration` was not modified.

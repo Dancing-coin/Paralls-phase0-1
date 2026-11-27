@@ -3,7 +3,7 @@
 ### Current A-tip verification update (2026-11-27)
 
 - M6-5 focused startup/runtime recheck with explicit F-drive pytest `--basetemp`: `55 passed, 6 warnings`; evidence H-A-130.
-- Current A-tip full backend suite: `10,761 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1. The five failures are external or pre-existing environment/runtime families recorded in H-A-129. This is merge-state evidence and is not a full-suite pass.
+- Current A-tip full backend suite at `3e87cadb`: `10,806 passed, 11 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1. Seven nested harness evidence failures from the long F-drive temp path passed when rerun with a short F-drive temp root (`7 passed`); the remaining four are known dependency/Godot/runtime failures. Full details: H-A-173 and `docs/verification/a-tip-full-backend-20261127.md`. This is not a full-suite pass.
 - M6-1 through M6-4 combined offline composition regression: `162 passed, 2 warnings`; evidence H-A-127. Production application activation and deployment dispatch remain unverified.
 
 ### M2-2 Morale event-time producer selection follow-up (2026-11-27)
