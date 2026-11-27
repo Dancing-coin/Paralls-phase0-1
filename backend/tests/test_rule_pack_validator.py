@@ -130,6 +130,12 @@ def test_compiled_fact_retains_registered_event_schema_reference():
     assert loaded.registry.facts["fact:credential:*:link"].event_schema_ref == "credential_link_legacy_v1"
 
 
+def test_compiled_fact_retains_declared_identity():
+    loaded = load_pack(PACK, handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:*:link"].identity == "entity_ref"
+
+
 def test_compiled_registry_indexes_facts_by_event_schema_reference():
     loaded = load_pack(PACK, handlers=HANDLERS)
 

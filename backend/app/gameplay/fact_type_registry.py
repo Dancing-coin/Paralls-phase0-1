@@ -130,6 +130,7 @@ class FactType:
     state_set_ref: str | None
     resolution_order: int
     event_schema_ref: str | None = None
+    identity: str | None = None
 
 
 @dataclass(frozen=True)
@@ -327,7 +328,7 @@ class FactTypeRegistry:
             raise RegistrationRejected(sorted(unique.values(), key=lambda v: (v.file, v.line, v.code, v.target)))
         compiled = {name: FactType(name, facts[name]["owner_ref"], facts[name]["primitive"],
             freeze(facts[name]["visibility"]), facts[name].get("state_set_ref"), index + 10,
-            facts[name].get("event_schema_ref"))
+            facts[name].get("event_schema_ref"), facts[name]["identity"])
             for index, name in enumerate(ordered)}
         return cls(compiled, compiled_models, machines)
 
