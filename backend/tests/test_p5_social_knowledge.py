@@ -1212,6 +1212,49 @@ def test_durable_social_authority_reopens_receipts_and_matches_checkpoint_reexec
     checkpoint_store.close()
 
 
+def test_social_resolve_duplicate_rejects_transaction_command_mismatch_without_write(
+    registry: P5PolicyRegistry,
+) -> None:
+    from app.gameplay.p5.social_knowledge import SocialFactAuthority
+
+    store = GameplayEventStore()
+    authority = SocialFactAuthority(registry=registry, store=store)
+    relationship_fact = _relationship_payload()
+    stream = str(relationship_fact["relationship_ref"])
+    command = _record_command(
+        request_id="request:p5:social:duplicate-transaction-mismatch",
+        relationship_fact=relationship_fact,
+        expected_revisions={stream: 0},
+        read_revisions={stream: 0},
+    )
+    request = _request(
+        registry,
+        request_id="request:p5:social:duplicate-transaction-mismatch",
+        relationship_fact=relationship_fact,
+        expected_revisions={stream: 0},
+        read_revisions={stream: 0},
+    )
+    first = authority.resolve(command=command, request=request, now="2026-08-11T00:00:00Z")
+    assert first.receipt is not None and first.receipt.committed
+
+    transaction_index = next(
+        index for index, transaction in enumerate(store._transactions)
+        if transaction.transaction_id == first.receipt.transaction_id
+    )
+    store._transactions[transaction_index] = store._transactions[transaction_index].model_copy(
+        update={"command_id": "command:forged"},
+        deep=True,
+    )
+    corrupted_snapshot = store.export_snapshot()
+
+    duplicate = authority.resolve(command=command, request=request, now="2026-08-11T00:00:00Z")
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "idempotency_key_reused"
+    assert duplicate.receipt is None
+    assert store.export_snapshot() == corrupted_snapshot
+
+
 def test_social_replay_participant_captures_real_projection_and_source_refs(registry: P5PolicyRegistry) -> None:
     from app.gameplay.p5.social_knowledge import SocialFactAuthority
     from app.world_runtime.replay_participants import _social_participant

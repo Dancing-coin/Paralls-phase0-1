@@ -1707,15 +1707,31 @@ class SocialFactAuthority:
         now: str,
     ) -> SocialFactAuthorityResult:
         digest = self._request_digest(command=command, request=request)
-        existing = self._store.get_idempotency_record(_PRINCIPAL, command.idempotency_key)
-        if existing is not None:
-            if existing.payload_digest == digest:
-                receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
-                return self._committed_result(
-                    receipt.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True),
-                    settlement_plan=None,
-                )
+        expected_event_types = tuple(
+            event_type
+            for payload_key, event_type in (
+                ("relationship_fact", _RELATIONSHIP_EVENT),
+                ("knowledge_fact", _KNOWLEDGE_EVENT),
+                ("revocation", _REVOCATION_EVENT),
+            )
+            if command.payload.get(payload_key) is not None
+        )
+        try:
+            existing = replay_duplicate(
+                self._store,
+                principal=_PRINCIPAL,
+                idempotency_key=command.idempotency_key,
+                payload_digest=digest,
+                error_factory=ValueError,
+                missing_result_code="idempotency_key_reused",
+                expected_event_types=expected_event_types,
+                expected_command_id=command.command_id,
+                expected_transaction_id=command.transaction_id or f"tx:{command.command_id}",
+            )
+        except ValueError:
             return self._rejected("idempotency_key_reused")
+        if existing is not None:
+            return self._committed_result(existing, settlement_plan=None)
 
         try:
             request = self._registry.validate_request(request)
