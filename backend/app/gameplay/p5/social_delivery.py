@@ -14,6 +14,7 @@ from typing import Any
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayOutboxEntry, OwnerAuthorizedFragment
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.p5.social_knowledge import _is_visible
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
@@ -93,7 +94,21 @@ class SocialDeliveryAuthority:
         # present-time admission. Recovery never creates a new delivery.
         existing = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
         if existing is not None:
-            result = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
+            try:
+                result = replay_duplicate(
+                    self._store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="idempotency_key_reused",
+                    transaction_mismatch_code="idempotency_key_reused",
+                    event_count_mismatch_code="idempotency_key_reused",
+                    event_missing_code="idempotency_key_reused",
+                    expected_command_id=command_id,
+                )
+            except ValueError:
+                return SocialDeliveryResult(False, "idempotency_key_reused")
             prior = self._prior_event(result)
             identity = {
                 "delivery_ref": delivery_ref, "source_stream_id": source_stream_id,
@@ -106,7 +121,11 @@ class SocialDeliveryAuthority:
                     and prior.causation_id == causation_id
                     and prior.correlation_id == correlation_id
                     and all(prior.payload.get(key) == value for key, value in identity.items())):
-                return SocialDeliveryResult(True, "duplicate_replayed", result)
+                return SocialDeliveryResult(
+                    True,
+                    "duplicate_replayed",
+                    result.model_copy(update={"idempotency_status": "new_commit"}, deep=True),
+                )
             return SocialDeliveryResult(False, "idempotency_key_reused")
         if type(world_now) is not int or world_now < 0:
             return SocialDeliveryResult(False, "social_delivery_world_time_invalid")
@@ -198,7 +217,22 @@ class SocialDeliveryAuthority:
         )
         existing = self._store.get_idempotency_record(_PRINCIPAL, idempotency_key)
         if existing is not None:
-            result = self._store.get_by_idempotency(_PRINCIPAL, idempotency_key)
+            try:
+                result = replay_duplicate(
+                    self._store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="idempotency_key_reused",
+                    transaction_mismatch_code="idempotency_key_reused",
+                    event_count_mismatch_code="idempotency_key_reused",
+                    event_missing_code="idempotency_key_reused",
+                    expected_event_types=(_EXPIRED,),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
+                return SocialDeliveryResult(False, "idempotency_key_reused")
             prior = self._prior_event(result)
             if prior is not None and prior.event_type == _EXPIRED and prior.payload == digest_payload:
                 if (
@@ -208,7 +242,11 @@ class SocialDeliveryAuthority:
                     or prior.transaction_id != result.transaction_id
                 ):
                     return SocialDeliveryResult(False, "idempotency_key_reused")
-                return SocialDeliveryResult(True, "duplicate_replayed", result)
+                return SocialDeliveryResult(
+                    True,
+                    "duplicate_replayed",
+                    result.model_copy(update={"idempotency_status": "new_commit"}, deep=True),
+                )
             return SocialDeliveryResult(False, "idempotency_key_reused")
         source = self._source_event(str(payload["source_stream_id"]), str(payload["source_event_id"]))
         if source is None or self._revoked(source, recipient_ref):

@@ -109,6 +109,55 @@ def test_delivery_duplicate_rejects_corrupt_receipt_refs_without_write():
     assert store.export_snapshot() == before
 
 
+def test_delivery_duplicate_rejects_transaction_metadata_mismatch_without_write(monkeypatch):
+    store, _ = _store()
+    _, _, event_id = _source(store)
+    authority = SocialDeliveryAuthority(store=store)
+    first = _record(authority, source_event_id=event_id)
+    assert first.committed and first.append_result is not None
+    transaction_id = first.append_result.transaction_id
+    get_transaction = store.get_transaction
+    monkeypatch.setattr(store, "get_transaction", lambda value: (
+        get_transaction(value).model_copy(update={"command_id": "tampered-command"}, deep=True)
+        if value == transaction_id else get_transaction(value)
+    ))
+    before = store.export_snapshot()
+
+    duplicate = _record(authority, source_event_id=event_id)
+
+    assert not duplicate.committed and duplicate.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
+def test_expiry_duplicate_rejects_transaction_metadata_mismatch_without_write(monkeypatch):
+    store, _ = _store()
+    _, _, event_id = _source(store)
+    authority = SocialDeliveryAuthority(store=store)
+    assert _record(authority, source_event_id=event_id).committed
+    first = authority.expire_delivery(
+        delivery_ref="delivery:1", recipient_ref="character:recipient", world_now=20,
+        operational_now=30, command_id="expiry-1", idempotency_key="expiry-key",
+        causation_id="c:e", correlation_id="co:e",
+    )
+    assert first.committed and first.append_result is not None
+    transaction_id = first.append_result.transaction_id
+    get_transaction = store.get_transaction
+    monkeypatch.setattr(store, "get_transaction", lambda value: (
+        get_transaction(value).model_copy(update={"command_id": "tampered-command"}, deep=True)
+        if value == transaction_id else get_transaction(value)
+    ))
+    before = store.export_snapshot()
+
+    duplicate = authority.expire_delivery(
+        delivery_ref="delivery:1", recipient_ref="character:recipient", world_now=20,
+        operational_now=30, command_id="expiry-1", idempotency_key="expiry-key",
+        causation_id="c:e", correlation_id="co:e",
+    )
+
+    assert not duplicate.committed and duplicate.error_code == "idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 @pytest.mark.parametrize("operational_now", [None, True, "10", -1])
 def test_delivery_with_cutoff_requires_valid_operational_sample_without_write(operational_now):
     store, _ = _store()
