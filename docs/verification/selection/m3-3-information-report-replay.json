@@ -1,0 +1,11 @@
+{
+  "head": "094669f1c3069e12ae03b8896c29afb86236013c",
+  "description": "Information siege-report publication validates the durable report transaction and event receipt before retry delivery",
+  "tests": [
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_report_retry_rejects_incomplete_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
