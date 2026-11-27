@@ -1,0 +1,11 @@
+{
+  "head": "8faeab2331187b3e13f3c2583fb8c3f6087dd090",
+  "description": "Information recipient-private report read through the backend-bound WebSocket actor scope and authoritative world clock",
+  "tests": [
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_report_read_requires_report_and_delivery_known_by_as_of_tick", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_report_read_is_recipient_private_and_respects_delivery_window", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_report_read_hides_a_revoked_report", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_siege_information_runtime.py::test_information_report_read_rejects_invalid_query_without_store_mutation", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_websocket_connection_context.py::test_information_report_read_uses_bound_actor_scope_and_authoritative_world_clock", "outcome": "passed", "failures": []}
+  ]
+}
