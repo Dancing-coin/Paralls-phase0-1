@@ -1,0 +1,16 @@
+{
+  "head": "c48503c196b1617d5383ec3be83500aae2414f60",
+  "description": "Legacy and generic private follow-on duplicate retries validate durable transactions and committed-event references",
+  "tests": [
+    {
+      "test_name": "tests/test_private_follow_on_family.py::test_private_follow_on_rejects_corrupt_transaction_on_retry_without_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_private_follow_on_family.py::test_private_follow_on_generic_rejects_corrupt_transaction_on_retry_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
