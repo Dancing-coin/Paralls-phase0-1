@@ -1,5 +1,5 @@
 {
-  "head": "9520808e0a67919663d1d167efa389b2fdffb431",
+  "head": "244a120920fc197ef9721bac34992226255e959b",
   "description": "Resolve event FactType instances only from registered FactType-ID streams",
   "tests": [
     {
@@ -14,6 +14,11 @@
     },
     {
       "test_name": "tests/test_rule_pack_validator.py::test_compiled_registry_rejects_fact_type_payload_conflicting_with_stream",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_compiled_registry_rejects_null_fact_type_payload",
       "outcome": "passed",
       "failures": []
     },
