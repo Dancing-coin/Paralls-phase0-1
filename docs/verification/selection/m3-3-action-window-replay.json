@@ -1,0 +1,11 @@
+{
+  "head": "4409b6fe",
+  "description": "Action-window duplicate retries validate the complete durable transaction and four-event set",
+  "tests": [
+    {
+      "test_name": "tests/test_action_conflict_window.py::test_action_window_corrupt_transaction_receipt_is_zero_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
