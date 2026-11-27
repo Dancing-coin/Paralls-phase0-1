@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayOutboxEntry
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.p5.social_delivery import SocialDeliveryAuthority, SocialDeliveryWindow
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
@@ -151,10 +152,29 @@ class InformationAuthority:
             "effective_to": receipt.effective_to,
         }
 
-        report_append_result = self._store.get_by_idempotency(
+        idempotency_record = self._store.get_idempotency_record(
             INFORMATION_REPORT_PRINCIPAL, report_idempotency_key
         )
-        if report_append_result is not None:
+        if idempotency_record is not None:
+            try:
+                report_append_result = replay_duplicate(
+                    self._store,
+                    principal=INFORMATION_REPORT_PRINCIPAL,
+                    idempotency_key=report_idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="report_replay_missing_result",
+                    transaction_mismatch_code="report_replay_transaction_mismatch",
+                    event_count_mismatch_code="report_replay_event_count_mismatch",
+                    event_missing_code="report_replay_event_missing",
+                    expected_event_types=(INFORMATION_REPORT_EVENT,),
+                    expected_command_id=command_id,
+                    expected_transaction_id=f"transaction:{command_id}",
+                )
+            except ValueError as error:
+                return InformationReportPublicationResult(
+                    False, error_code=f"information_{error}"
+                )
             prior_event = self._prior_event(report_append_result)
             if (prior_event is None or prior_event.event_type != INFORMATION_REPORT_EVENT
                     or prior_event.schema_version != 1
@@ -164,9 +184,6 @@ class InformationAuthority:
                 return InformationReportPublicationResult(
                     False, error_code="information_report_idempotency_key_reused"
                 )
-            report_append_result = report_append_result.model_copy(update={
-                "idempotency_status": "duplicate_replayed",
-            }, deep=True)
             report_event = prior_event
         else:
             if type(world_now) is not int or world_now < 0:

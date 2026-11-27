@@ -395,6 +395,34 @@ def test_information_owner_rejects_changed_receipt_content_without_writes():
     assert store.export_snapshot() == before
 
 
+def test_information_report_retry_rejects_incomplete_receipt_without_writing():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    authority = _report_authority(store)
+    first = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source), world_now=15
+    )
+    assert first.committed
+    report = store.get_event(first.report_append_result.committed_event_ids[0])
+    transaction = store.get_transaction(report.transaction_id)
+    key = (
+        transaction.idempotency_record.principal_ref,
+        transaction.idempotency_record.idempotency_key,
+    )
+    store._idempotency_results[key] = first.report_append_result.model_copy(
+        update={"committed_event_ids": []}, deep=True
+    )
+    before = store.export_snapshot()
+
+    retry = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source), world_now=25
+    )
+
+    assert not retry.committed
+    assert retry.error_code == "information_report_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_information_report_retry_recovers_delivery_at_committed_tick(monkeypatch):
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
     source = _report_source(store)
