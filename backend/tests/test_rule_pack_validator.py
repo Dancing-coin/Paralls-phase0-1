@@ -124,6 +124,12 @@ def test_credential_fact_is_owned_by_ownership_without_writing_title_facts():
     assert model.writes_fact_types == ("fact:credential:*:link",)
 
 
+def test_compiled_fact_retains_registered_event_schema_reference():
+    loaded = load_pack(PACK, handlers=HANDLERS)
+
+    assert loaded.registry.facts["fact:credential:*:link"].event_schema_ref == "credential_link_legacy_v1"
+
+
 def test_facility_gate_pack_registers_pool_and_machine_fact_types():
     loaded = load_pack(FACILITY_PACK, handlers={})
 

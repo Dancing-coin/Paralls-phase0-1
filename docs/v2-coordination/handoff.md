@@ -992,3 +992,9 @@
 - Static `rg` inventory at A tip `ea3c727f` confirms A-owned Credential, Ownership, LandRight, Holdings, Pool and package migration command paths use shared `replay_duplicate`.
 - Repository-wide direct idempotency and custom duplicate paths remain in other domains and shared/forbidden files. `event_store.py`, `models.py`, `economy_runtime.py`, and `inventory_runtime.py` were not edited.
 - Evidence: `docs/verification/m3-3-r2-replay-path-audit-20261127.md`. No tests ran. M3-3 remains in progress and is not globally R2-complete.
+
+### H-A-147 | M2-2 compiled FactType event-schema reference retention | 2026-11-27
+
+- The compiled immutable FactType now retains the optional `event_schema_ref` already validated by RulePack loading. Legacy/direct declarations without the field retain `None`.
+- This gives a future visibility projection a read-only schema reference. It does not implement event-to-FactType mapping, principal qualification, selector evaluation, or `read_as`.
+- Evidence: `docs/verification/m2-2-event-schema-ref-retention-20261127.md`. Registry/validator/EventSchema tests returned `168 passed, 2 warnings`; related package tests returned `44 passed, 6 warnings`; new selection `1/0/0`. M2-2 remains blocked.
