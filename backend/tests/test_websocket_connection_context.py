@@ -294,6 +294,130 @@ def test_gameplay_mirror_websocket_routes_use_backend_published_view_and_bound_s
     assert resync[0]["payload"]["error_code"] == "mirror_subscription_required"
 
 
+def test_information_report_read_uses_bound_actor_scope_and_authoritative_world_clock(monkeypatch) -> None:
+    import hashlib
+    import hmac
+
+    import app.main as main
+    from app.gameplay.event_schema_registry import (
+        EventSchemaRegistration,
+        EventSchemaRegistry,
+        register_social_delivery_event_schemas,
+    )
+    from app.gameplay.event_store import GameplayEventStore
+    from app.gameplay.information_event_schema import register_information_event_schemas
+    from app.gameplay.information_runtime import (
+        InformationAuthority,
+        SiegeReportPublicationReceipt,
+    )
+    from app.gameplay.settlement_plan import build_atomic_event_batch
+
+    reset_runtime_state()
+    credential = main.websocket_session_auth_service.create_trusted_local_launch_credential(
+        principal_ref="principal:player:1",
+        allowed_actor_refs=("character:defender-1",),
+        issued_at=10,
+        expires_at=100,
+    )
+    context = WebSocketConnectionContext(remote_host="127.0.0.1", observed_at=11)
+    _handle_envelope(
+        Envelope(
+            message_type="websocket_session_bind",
+            payload={"credential_kind": "trusted_local_launch", "credential": credential, "protocol_version": 1},
+        ),
+        connection_context=context,
+    )
+    registry = EventSchemaRegistry()
+    register_social_delivery_event_schemas(registry)
+    register_information_event_schemas(registry)
+    registry.register(EventSchemaRegistration(
+        "gameplay.social.knowledge_observed", 1, "sha256:test:information-read-source:v1"
+    ))
+    store = GameplayEventStore(event_schema_registry=registry)
+    source_batch = build_atomic_event_batch(
+        command_id="information-read:source",
+        principal_ref="authority:facility:gate",
+        stream_id="gameplay:facility:east-gate:integrity",
+        expected_revision=0,
+        event_specs=(("gameplay.social.knowledge_observed", {
+            "fact_type": "fact:facility:east-gate:integrity",
+            "integrity": "72",
+        }),),
+        idempotency_key="information-read:source",
+        causation_id="event:facility-impact",
+        correlation_id="correlation:east-gate",
+    )
+    source_result = store.append_batch(source_batch)
+    assert source_result.committed
+    source = store.get_event(source_result.committed_event_ids[0])
+    report_secret = "fixture-key"
+    receipt = SiegeReportPublicationReceipt(
+        authority_ref="authority:information:report-publisher",
+        receipt_id="receipt:east-gate:defender",
+        report_ref="report:east-gate",
+        recipient_ref="character:defender-1",
+        summary="The east gate is breached.",
+        source_event_id=source.event_id,
+        source_stream_id=source.stream_id,
+        source_revision=source.stream_revision,
+        effective_from=10,
+        effective_to=20,
+        signature="0" * 64,
+    )
+    signature = hmac.new(report_secret.encode(), receipt.canonical_bytes(), hashlib.sha256).hexdigest()
+    authority = InformationAuthority(
+        store=store,
+        report_authority_secrets={receipt.authority_ref: report_secret},
+    )
+    publication = authority.publish_siege_report(
+        receipt=receipt.model_copy(update={"signature": signature}), world_now=15,
+    )
+    assert publication.committed
+    main.m6_5_siege_runtime = type("SiegeRuntimeStub", (), {"information": authority})()
+    monkeypatch.setattr(main, "_session_world_clock_tick", lambda: 16)
+
+    result = _handle_envelope(
+        Envelope(message_type="information_report_read", payload={
+            "actor_ref": "character:defender-1",
+            "report_ref": "report:east-gate",
+            "as_of_tick": 16,
+        }),
+        connection_context=context,
+    )
+
+    assert result[0]["payload"]["accepted"] is True
+    assert result[0]["payload"]["report"] == {
+        "fact_type": "fact:information:siege:report",
+        "report_ref": "report:east-gate",
+        "recipient_ref": "character:defender-1",
+        "summary": "The east gate is breached.",
+        "source_owner_ref": "Information",
+        "source_revision": 1,
+        "event_time": 15,
+        "known_time": 15,
+        "freshness": 1,
+    }
+
+    forbidden = _handle_envelope(
+        Envelope(message_type="information_report_read", payload={
+            "actor_ref": "character:other",
+            "report_ref": "report:east-gate",
+            "as_of_tick": 16,
+        }),
+        connection_context=context,
+    )
+    future = _handle_envelope(
+        Envelope(message_type="information_report_read", payload={
+            "actor_ref": "character:defender-1",
+            "report_ref": "report:east-gate",
+            "as_of_tick": 17,
+        }),
+        connection_context=context,
+    )
+    assert forbidden[0]["payload"] == future[0]["payload"]
+    assert forbidden[0]["payload"]["accepted"] is False
+
+
 def test_gameplay_mirror_subscription_fails_closed_without_backend_projection() -> None:
     import app.main as main
 

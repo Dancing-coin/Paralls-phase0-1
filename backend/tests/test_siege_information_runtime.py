@@ -296,6 +296,19 @@ def _report_authority(store, secrets=None):
     )
 
 
+def _information_store_with_revocations():
+    registry = EventSchemaRegistry()
+    register_social_delivery_event_schemas(registry)
+    register_information_event_schemas(registry)
+    registry.register(EventSchemaRegistration(
+        "gameplay.social.knowledge_observed", 1, "sha256:test:knowledge:v1"
+    ))
+    registry.register(EventSchemaRegistration(
+        "gameplay.social.visibility_revoked", 1, "sha256:test:visibility-revoked:v1"
+    ))
+    return GameplayEventStore(event_schema_registry=registry)
+
+
 def test_information_owner_publishes_signed_report_and_replays_after_window():
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
     source = _report_source(store)
@@ -467,3 +480,115 @@ def test_information_report_retry_recovers_delivery_at_committed_tick(monkeypatc
     assert recovered.report_append_result.committed_event_ids == first.report_append_result.committed_event_ids
     delivery, = store.read_events(event_type="gameplay.social.delivery_recorded@2")
     assert delivery.payload["known_at_world_tick"] == 15
+
+
+def test_information_report_read_requires_report_and_delivery_known_by_as_of_tick():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    authority = _report_authority(store)
+    published = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source), world_now=15,
+    )
+    assert published.committed
+
+    assert authority.read_report_for_recipient(
+        recipient_ref="character:defender-1",
+        report_ref="report:east-gate:integrity",
+        as_of_tick=14,
+    ) is None
+    view = authority.read_report_for_recipient(
+        recipient_ref="character:defender-1",
+        report_ref="report:east-gate:integrity",
+        as_of_tick=15,
+    )
+
+    assert view is not None
+    assert view.fact_type == REPORT_FACT
+    assert view.report_ref == "report:east-gate:integrity"
+    assert view.recipient_ref == "character:defender-1"
+    assert view.summary == "The east gate integrity is 72."
+    assert view.source_owner_ref == "Information"
+    assert view.source_revision == 1
+    assert view.event_time == 15
+    assert view.known_time == 15
+
+
+def test_information_report_read_is_recipient_private_and_respects_delivery_window():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    source = _report_source(store)
+    authority = _report_authority(store)
+    published = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source), world_now=15,
+    )
+    assert published.committed
+
+    assert authority.read_report_for_recipient(
+        recipient_ref="character:other",
+        report_ref="report:east-gate:integrity",
+        as_of_tick=15,
+    ) is None
+    assert authority.read_report_for_recipient(
+        recipient_ref="character:defender-1",
+        report_ref="report:east-gate:integrity",
+        as_of_tick=20,
+    ) is None
+
+
+def test_information_report_read_hides_a_revoked_report():
+    store = _information_store_with_revocations()
+    source = _report_source(store)
+    authority = _report_authority(store)
+    published = authority.publish_siege_report(
+        receipt=_signed_report_receipt(source), world_now=15,
+    )
+    assert published.committed
+    report, = store.read_stream(
+        InformationAuthority.report_stream_id(
+            recipient_ref="character:defender-1",
+            report_ref="report:east-gate:integrity",
+        ),
+        event_type=REPORT_EVENT,
+        limit=1,
+    )
+    revocation = build_atomic_event_batch(
+        command_id="report:read-revoke",
+        principal_ref="authority:p5:social",
+        stream_id="gameplay:social:visibility-revocations",
+        expected_revision=0,
+        event_specs=(("gameplay.social.visibility_revoked", {
+            "source_event_id": report.event_id,
+            "recipient_ref": "character:defender-1",
+        }),),
+        idempotency_key="report:read-revoke",
+        causation_id=report.event_id,
+        correlation_id="correlation:report-revoked",
+    )
+    assert store.append_batch(revocation).committed
+
+    assert authority.read_report_for_recipient(
+        recipient_ref="character:defender-1",
+        report_ref="report:east-gate:integrity",
+        as_of_tick=15,
+    ) is None
+
+
+def test_information_report_read_rejects_invalid_query_without_store_mutation():
+    store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())
+    authority = _report_authority(store)
+    before = store.export_snapshot()
+
+    with pytest.raises(ValueError, match="information_report_read_input_invalid"):
+        authority.read_report_for_recipient(
+            recipient_ref="character:defender-1",
+            report_ref="not-a-report",
+            as_of_tick=True,
+        )
+
+    with pytest.raises(ValueError, match="information_report_read_input_invalid"):
+        authority.read_report_for_recipient(
+            recipient_ref="character:" + "a" * 161,
+            report_ref="report:east-gate",
+            as_of_tick=15,
+        )
+
+    assert store.export_snapshot() == before

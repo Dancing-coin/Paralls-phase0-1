@@ -5539,6 +5539,53 @@ def _handle_envelope(
             projection,
         ]
 
+    if envelope.message_type == "information_report_read":
+        payload = envelope.payload
+        binding = connection_context.binding
+        if (not isinstance(payload, dict)
+                or set(payload) != {"actor_ref", "report_ref", "as_of_tick"}
+                or not isinstance(payload.get("actor_ref"), str)
+                or not isinstance(payload.get("report_ref"), str)
+                or type(payload.get("as_of_tick")) is not int
+                or payload["as_of_tick"] < 0):
+            return [_as_envelope("information_report_read_result", {
+                "accepted": False, "error_code": "information_report_read_input_invalid",
+            })]
+        if binding is None or binding.binding_state != "bound_active":
+            return [_as_envelope("information_report_read_result", {
+                "accepted": False, "error_code": "websocket_session_required",
+            })]
+        current = websocket_session_auth_service.resolve_binding(binding.session_ref)
+        if (current is None or current != binding or current.binding_state != "bound_active"
+                or connection_context.observed_at >= min(current.lease_expires_at, binding.lease_expires_at)):
+            return [_as_envelope("information_report_read_result", {
+                "accepted": False, "error_code": "websocket_session_renewal_required",
+            })]
+        if payload["actor_ref"] not in binding.allowed_actor_refs:
+            return [_as_envelope("information_report_read_result", {
+                "accepted": False, "error_code": "information_report_read_unavailable",
+            })]
+        world_now = _session_world_clock_tick()
+        if world_now is None or payload["as_of_tick"] > world_now or m6_5_siege_runtime is None:
+            return [_as_envelope("information_report_read_result", {
+                "accepted": False, "error_code": "information_report_read_unavailable",
+            })]
+        try:
+            view = m6_5_siege_runtime.information.read_report_for_recipient(
+                recipient_ref=payload["actor_ref"],
+                report_ref=payload["report_ref"],
+                as_of_tick=payload["as_of_tick"],
+            )
+        except ValueError:
+            view = None
+        if view is None:
+            return [_as_envelope("information_report_read_result", {
+                "accepted": False, "error_code": "information_report_read_unavailable",
+            })]
+        return [_as_envelope("information_report_read_result", {
+            "accepted": True, "report": asdict(view),
+        })]
+
     if envelope.message_type == "gameplay_government_drought_advisory_subscribe":
         try:
             request = GovernmentDroughtAdvisorySubscriptionRequest.model_validate(envelope.payload)

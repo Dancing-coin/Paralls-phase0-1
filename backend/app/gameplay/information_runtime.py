@@ -22,6 +22,10 @@ INFORMATION_KNOWLEDGE_EVENT_TYPE = "gameplay.information.knowledge_updated@1"
 INFORMATION_REPORT_EVENT = "gameplay.information.siege_report_published@1"
 INFORMATION_REPORT_FACT_TYPE = "fact:information:siege:report"
 INFORMATION_REPORT_PRINCIPAL = "authority:information:report-publisher"
+_DELIVERY_EVENT = "gameplay.social.delivery_recorded@2"
+_DELIVERY_EXPIRED_EVENT = "gameplay.social.delivery_expired@1"
+_VISIBILITY_REVOKED_EVENT = "gameplay.social.visibility_revoked"
+_DELIVERY_PRINCIPAL = "authority:p5:social-delivery"
 
 
 class SiegeReportPublicationReceipt(BaseModel):
@@ -97,6 +101,19 @@ class InformationUpdateResult:
     committed: bool
     error_code: str | None = None
     append_result: AppendBatchResult | None = None
+
+
+@dataclass(frozen=True)
+class InformationReportView:
+    fact_type: str
+    report_ref: str
+    recipient_ref: str
+    summary: str
+    source_owner_ref: str
+    source_revision: int
+    event_time: int
+    known_time: int
+    freshness: int
 
 
 class InformationAuthority:
@@ -282,6 +299,95 @@ class InformationAuthority:
             error_code=delivery_result.error_code,
             report_append_result=report_append_result,
             delivery_append_result=delivery_result.append_result,
+        )
+
+    def read_report_for_recipient(
+        self, *, recipient_ref: str, report_ref: str, as_of_tick: int,
+    ) -> InformationReportView | None:
+        if (not isinstance(recipient_ref, str) or not recipient_ref.startswith("character:")
+                or len(recipient_ref) > 160
+                or not isinstance(report_ref, str) or not report_ref.startswith("report:")
+                or len(report_ref) > 160
+                or type(as_of_tick) is not int or as_of_tick < 0):
+            raise ValueError("information_report_read_input_invalid")
+
+        report_stream = self.report_stream_id(
+            recipient_ref=recipient_ref, report_ref=report_ref,
+        )
+        report_events = self._store.read_stream(
+            report_stream, event_type=INFORMATION_REPORT_EVENT, limit=1,
+        )
+        if len(report_events) != 1:
+            return None
+        report = report_events[0]
+        if (report.schema_version != 1 or report.payload.get("fact_type") != INFORMATION_REPORT_FACT_TYPE
+                or report.payload.get("recipient_ref") != recipient_ref
+                or report.payload.get("report_ref") != report_ref
+                or not isinstance(report.payload.get("summary"), str)
+                or not report.payload["summary"].strip()
+                or report.visibility_policy != f"actor:{recipient_ref}"
+                or report.event_time is None or report.event_time > as_of_tick):
+            return None
+        report_transaction = self._store.get_transaction(report.transaction_id)
+        if (report_transaction is None
+                or report_transaction.idempotency_record.principal_ref != INFORMATION_REPORT_PRINCIPAL
+                or len(report_transaction.events) != 1
+                or report_transaction.events[0].event_id != report.event_id):
+            return None
+
+        delivery_ref = f"delivery:{report_ref}:{recipient_ref}"
+        delivery_stream = f"gameplay:social:delivery:{recipient_ref}:{delivery_ref}"
+        deliveries = self._store.read_stream(
+            delivery_stream, event_type=_DELIVERY_EVENT, limit=1,
+        )
+        if len(deliveries) != 1:
+            return None
+        delivery = deliveries[0]
+        delivery_payload = delivery.payload
+        known_time = delivery_payload.get("known_at_world_tick")
+        effective_from = delivery_payload.get("effective_from")
+        effective_to = delivery_payload.get("effective_to")
+        if (delivery.schema_version != 2
+                or delivery.visibility_policy != f"actor:{recipient_ref}"
+                or delivery_payload.get("recipient_ref") != recipient_ref
+                or delivery_payload.get("source_stream_id") != report_stream
+                or delivery_payload.get("source_event_id") != report.event_id
+                or type(delivery_payload.get("source_revision")) is not int
+                or delivery_payload["source_revision"] != report.stream_revision
+                or type(known_time) is not int or known_time < 0 or known_time > as_of_tick
+                or type(effective_from) is not int or effective_from < 0
+                or type(effective_to) is not int or effective_to <= effective_from
+                or not effective_from <= as_of_tick < effective_to):
+            return None
+        delivery_transaction = self._store.get_transaction(delivery.transaction_id)
+        if (delivery_transaction is None
+                or delivery_transaction.idempotency_record.principal_ref != _DELIVERY_PRINCIPAL
+                or len(delivery_transaction.events) != 1
+                or delivery_transaction.events[0].event_id != delivery.event_id):
+            return None
+
+        if self._store.read_stream(
+            delivery_stream, event_type=_DELIVERY_EXPIRED_EVENT, limit=1,
+        ):
+            return None
+        revocations = self._store.read_events(event_type=_VISIBILITY_REVOKED_EVENT)
+        if any(event.payload.get("recipient_ref") == recipient_ref and (
+                event.payload.get("source_event_id") == report.event_id
+                or (event.stream_id == report_stream
+                    and event.payload.get("fact_ref") == report.payload.get("fact_ref")))
+                for event in revocations):
+            return None
+
+        return InformationReportView(
+            fact_type=INFORMATION_REPORT_FACT_TYPE,
+            report_ref=report_ref,
+            recipient_ref=recipient_ref,
+            summary=str(report.payload["summary"]),
+            source_owner_ref="Information",
+            source_revision=report.stream_revision,
+            event_time=report.event_time,
+            known_time=known_time,
+            freshness=max(0, as_of_tick - known_time),
         )
 
     @staticmethod
@@ -481,5 +587,6 @@ class InformationAuthority:
 
 __all__ = [
     "InformationAuthority",
+    "InformationReportView",
     "InformationUpdateResult",
 ]
