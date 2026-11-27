@@ -1216,3 +1216,10 @@
 - Principal-facing Information report and knowledge reads remain behind the registered Information FactTypes and session-bound `GameplayReadAs` WebSocket handlers. The SocialDelivery projection is an internal validation/reconstruction input, not a second query authority.
 - Evidence: `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. Static-only; no tests ran. M2-2's generic selector qualification, FactType-wide visibility enforcement, legacy attribution, and U7 remain open. `integration` was not modified.
 - P-1 scan of this documentation increment found zero hits in all five credential-pattern families. Raw output: `F:/paralls-verification/thread-a/m2-1-read-path-20261128-01/p1-scan.log`.
+
+### H-A-178 | M3-1 current-tip revalidation | 2026-11-28
+
+- At A tip `a1be4c25`, OwnerCommitBuilder/Ownership/Credential tests returned `23 passed, 2 warnings`; frozen ownership and shared-replay selections returned `24/0/0` and `990/0/0`. Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified.
+- Full backend suite was not rerun. M3-1 remains `待门禁`; this is current-tip focused and frozen-selection evidence only.
+- Evidence and raw logs: `docs/verification/m3-1-owner-commit-builder-20261122.md` and `F:/paralls-verification/thread-a/m3-1-current-tip-20261128-01/`.
+- P-1 scan of the staged M3-1 evidence increment found zero hits across all five credential-pattern families. Raw output: `F:/paralls-verification/thread-a/m3-1-current-tip-20261128-03/p1-scan.log`.

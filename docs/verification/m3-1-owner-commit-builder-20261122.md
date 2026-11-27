@@ -100,3 +100,14 @@ At A tip `caa062aadc6726687a6f220bd3e450334e457629`, the focused command returne
 | shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-03\shared-replay\` |
 
 Focused output is `F:\paralls-verification\thread-a\m3-1-current-tip-20261127-03\focused.log`; environment output is in `environment.log`. Pytest temporary files and selection outputs used the new F-drive run directory. Full backend suite was not run. M3-1 remains `待门禁`.
+
+## Current-tip revalidation, 2026-11-28
+
+At A tip `a1be4c259b766f1fe416fbce415fa1c7b723b30b`, the focused OwnerCommitBuilder, Ownership, and Credential tests returned **23 passed, 2 warnings**. Python was `3.12.2`, SQLite `3.43.1`, and `app.__file__` resolved to the A worktree backend.
+
+| Selection | Current-tip result | Raw output |
+|---|---|---|
+| ownership, 24 nodes | `selected=24 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\ownership\`; summary `ownership.log` |
+| shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\shared-replay\`; summary `shared-replay.log` |
+
+Focused command: `F:\codex-temp\thread-a-python312\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\pytest-temp backend/tests/test_owner_commit_builder.py backend/tests/test_ownership_runtime.py backend/tests/test_credential_runtime.py`. Full output: `F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\focused.log`. Full backend suite was not run. This revalidates the shared mechanism at the current tip; M3-1 remains `待门禁`.
