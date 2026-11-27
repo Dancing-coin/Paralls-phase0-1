@@ -1,0 +1,11 @@
+{
+  "head": "0bb4b9e7",
+  "description": "InvestigationConflictAuthority.resolve retries validate the durable transaction and committed event references",
+  "tests": [
+    {
+      "test_name": "tests/test_p5_investigation_conflict.py::test_idempotency_rejects_corrupt_transaction_receipt_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

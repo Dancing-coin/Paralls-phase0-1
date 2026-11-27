@@ -1273,3 +1273,11 @@
 - Full backend suite returned `10,822 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1. The same five node IDs and failure types reproduced at direct parent `d96317a4` in a targeted run. The first parent command had a misspelled Task8 node and failed collection; the corrected command produced the comparison.
 - Evidence: `docs/verification/m3-3-action-window-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-action-window-replay-20261128-01/`. M3-3 remains in progress. `integration` unchanged.
 - P-1 branch-addition scan found zero credential hits after excluding three explicit test-fixture placeholders, with their hashes and `public=no` recorded without emitting matched values. Raw output: `F:/paralls-verification/thread-a/m3-3-action-window-replay-20261128-01/p1-scan-branch-delta.log`.
+
+### H-A-186 | M3-3 InvestigationConflictAuthority resolve durable replay | 2026-11-28
+
+- `InvestigationConflictAuthority.resolve` now routes direct duplicate retries through shared `replay_duplicate`, validating transaction identity, event references, and expected command/transaction IDs. Integrity failures retain `idempotency_key_reused` and make no writes. Code commit `0bb4b9e7`; no event contract or storage-core change.
+- TDD RED reproduced a corrupted committed receipt being returned as `committed_success`. Focused P5/bakery/action-window/scripted-mystery tests returned `39 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `1,169/0/0`.
+- Full backend returned `10,823 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. The same five node IDs and failure types reproduced at direct parent `1127b431` in a targeted run. Evidence: `docs/verification/m3-3-investigation-conflict-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-investigation-conflict-replay-20261128-01/`.
+- P-1 scanned the added code and documentation lines across five credential-pattern families and found zero hits. Raw output: `F:/paralls-verification/thread-a/m3-3-investigation-conflict-replay-20261128-01/p1-scan.log`.
+- M3-3 remains in progress; other direct/custom replay paths remain to inventory. `integration` unchanged. This increment does not configure production Gate numeric thresholds.
