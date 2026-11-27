@@ -1,6 +1,6 @@
 # M2-2 compiled FactType event-schema reference retention
 
-- Base A commit: `38c978e806475d8146953da5ddb76a055edaab79`.
+- Commit: `c373a7e3`.
 - Change: retain the already validated `event_schema_ref` on the compiled immutable `FactType` object. The field is optional and defaults to `None`, so direct declarations and legacy packs without a reference keep their prior shape.
 - Purpose: provide a read-only source for a future event-type to FactType/visibility mapping. This increment does not add a mapping table, principal qualification, or `read_as`.
 - Python: `D:\Temp\paralls-g0-py312\Scripts\python.exe`, Python 3.12.2. `app.__file__` resolved inside the A worktree. Pytest temporary and cache paths were placed under F drive.

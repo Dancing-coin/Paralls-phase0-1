@@ -1,5 +1,5 @@
 {
-  "head": "38c978e806475d8146953da5ddb76a055edaab79",
+  "head": "c373a7e3",
   "description": "M2-2 compiled FactType retains the validated event schema reference",
   "tests": [
     {
