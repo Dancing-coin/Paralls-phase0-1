@@ -1,0 +1,11 @@
+{
+  "head": "7ba82daf",
+  "description": "Municipal certificate retries validate the durable Owner replay receipt before returning a duplicate result",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4u_municipal_drought_assessment_certificate.py::test_certificate_duplicate_rejects_incomplete_committed_event_receipt",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
