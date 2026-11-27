@@ -1,0 +1,11 @@
+{
+  "head": "33a1c38ac8f209721f57195955a5391d3ff7ccda",
+  "description": "Information knowledge-update retries validate the durable receipt before returning the committed result",
+  "tests": [
+    {
+      "test_name": "tests/test_siege_information_runtime.py::test_information_update_retry_rejects_incomplete_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

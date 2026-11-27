@@ -1048,6 +1048,13 @@
 - TDD red showed an empty committed-event list returning generic `siege_input_receipt_conflict`. The new path returns `siege_input_replay_event_count_mismatch` without changing the store snapshot. Focused physical-input/Facility/Presence/M6-5 tests returned `77 passed, 6 warnings`; M3-3 selection `1/0/0`; M6-5 impact-gate selection `26/0/0`; frozen five selections `24/12/87/56/990`, all with zero differences.
 - Evidence: `docs/verification/m3-3-physical-input-replay-20261127.md`. Raw outputs: `F:/paralls-verification/thread-a/m3-3-physical-input-red-20261127-01/`, `m3-3-physical-input-focused-20261127-01/`, and `m3-3-physical-input-selections-20261127-01/`.
 - This does not complete M3-3 or the full backend suite. Other direct/custom replay paths remain; production Gate values remain unconfigured pending an authoritative deployment profile.
+
+### H-A-156 | M3-3 Information knowledge replay and B checkpoint-tail delivery | 2026-11-27
+
+- A commit `33a1c38a` routes Information knowledge-update retries through shared `replay_duplicate` validation. A damaged receipt is rejected without changing the durable snapshot. B commits `a61c93ad` and `a1719826` were selectively cherry-picked as A commits `07db5404` and `400d4ff9`; the knowledge event now persists its existing top-level `event_time`, and durable checkpoint-plus-tail replay is covered by a new test. B's selection update in `e185cfa8` was already present on A and required no duplicate commit.
+- After the selective integration, Information/M6-5/checkpoint focused tests returned `53 passed, 6 warnings`; M3-3 knowledge selection `1/0/0`; B `siege_information` selection `26/0/0`; M6-5 Information report selection `25/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all with zero differences.
+- Evidence: `docs/verification/m3-3-information-knowledge-replay-20261127.md`; raw output `F:/paralls-verification/thread-a/information-b-replay-a-tip-20261127-01/`. Python 3.12.2 and A-worktree import path were verified; all temporary paths were on F:.
+- `integration` was not modified. M3-3 remains in progress because other direct/custom replay paths remain. M6-5 remains in progress because production Gate values, deployment target, live Unreal transport and complete siege execution remain unverified; `deadline_world_tick` is unknown.
 ### H-B-010 | Information durable checkpoint-tail replay verification | 2026-11-27
 
 - B verified on A baseline `99c7be5f5b290e82f4f2f4d70ea0ac40d7499851` that the recipient-private report and SocialDelivery state can be checkpointed, an Information knowledge event can be appended as tail, and durable reopen preserves a checkpoint-plus-tail projection equal to full replay.
