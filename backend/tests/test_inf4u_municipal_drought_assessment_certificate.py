@@ -139,6 +139,28 @@ def test_certificate_exact_retry_and_changed_payload_preserve_receipts() -> None
     assert store.export_snapshot() == before
 
 
+def test_certificate_duplicate_rejects_incomplete_committed_event_receipt() -> None:
+    store, advisory_event_id = _setup_completed_assessment()
+    ownership = OwnershipAuthorityService(store=store)
+    request = _intent_for(store, advisory_event_id)
+    first = ownership.grant_municipal_drought_assessment_certificate(request)
+    assert first.committed
+    result_key = ("actor_gameplay.ownership_domain", request.idempotency_key)
+    store._idempotency_results[result_key] = first.model_copy(
+        update={"committed_event_ids": []}, deep=True
+    )
+    transaction_count = len(store.read_transactions())
+    event_count = len(store.read_events())
+
+    retry = ownership.grant_municipal_drought_assessment_certificate(request)
+
+    assert not retry.committed
+    assert retry.failure is not None
+    assert retry.failure.error_code == "ownership_replay_event_count_mismatch"
+    assert len(store.read_transactions()) == transaction_count
+    assert len(store.read_events()) == event_count
+
+
 def test_generic_initial_title_cannot_reserve_municipal_certificate_identity() -> None:
     store, advisory_event_id = _setup_completed_assessment()
     contract_id = f"contract:municipal-drought-assessment:{JURISDICTION}:{advisory_event_id}"

@@ -1095,21 +1095,14 @@ class OwnershipAuthorityService:
     def grant_municipal_drought_assessment_certificate(
         self, intent: MunicipalDroughtAssessmentCertificateIntentV1
     ) -> AppendBatchResult:
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
-        if existing is not None:
-            if len(existing.committed_event_ids) == 1:
-                prior = self._store.get_event(existing.committed_event_ids[0])
-                if (
-                    prior.event_type == "gameplay.ownership.right_granted"
-                    and prior.payload.get("advisory_event_id") == intent.advisory_event_id
-                    and prior.causation_id == intent.causation_id
-                    and prior.correlation_id == intent.correlation_id
-                ):
-                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
-            return self._rejected_append(intent.command_id, "idempotency_key_reused")
+        idempotency_record = self._store.get_idempotency_record(
+            self._PRINCIPAL, intent.idempotency_key
+        )
         try:
             advisory = self._store.get_event(intent.advisory_event_id)
         except KeyError:
+            if idempotency_record is not None:
+                return self._rejected_append(intent.command_id, "idempotency_key_reused")
             return self._rejected_append(intent.command_id, "municipal_certificate_advisory_missing")
         jurisdiction_ref = advisory.payload.get("jurisdiction_ref")
         if (
@@ -1118,45 +1111,14 @@ class OwnershipAuthorityService:
             or not isinstance(jurisdiction_ref, str)
             or not jurisdiction_ref
         ):
+            if idempotency_record is not None:
+                return self._rejected_append(intent.command_id, "idempotency_key_reused")
             return self._rejected_append(intent.command_id, "municipal_certificate_advisory_invalid")
         contract_id = f"contract:municipal-drought-assessment:{jurisdiction_ref}:{intent.advisory_event_id}"
-        contract_stream = "gameplay:contracts"
-        if self._store.get_stream_head(contract_stream) != intent.expected_contract_revision:
-            return self._rejected_append(intent.command_id, "municipal_certificate_contract_revision_conflict")
-        contracts = ContractProjector().rebuild(self._store.read_stream(contract_stream))
-        contract = contracts.contracts.get(contract_id)
-        if (
-            contract is None
-            or contract.contract_type != "simple_service"
-            or contract.terms_ref != self._MUNICIPAL_TERMS
-            or contract.party_refs != ("organization:municipal-assessment-office", self._MUNICIPAL_HOLDER)
-            or contract.completion_evidence_kind != self._MUNICIPAL_EVIDENCE
-            or contract.completion_evidence_ref is None
-            or contract.status != "fulfilled"
-        ):
-            return self._rejected_append(intent.command_id, "municipal_certificate_contract_invalid")
         ownership_stream = "gameplay:ownership"
-        if self._store.get_stream_head(ownership_stream) != intent.expected_ownership_revision:
-            return self._rejected_append(intent.command_id, "revision_conflict")
+        contract_stream = "gameplay:contracts"
         asset_ref = f"asset:municipal-drought-assessment-certificate:{contract_id}"
         right_id = f"right:municipal-drought-assessment-certificate:{contract_id}"
-        projection = self._projector.rebuild(self._store.read_events())
-        if right_id in projection.rights or asset_ref in projection.active_right_by_asset:
-            return self._rejected_append(intent.command_id, "municipal_certificate_already_granted")
-        canonical_key = f"ownership:municipal-drought-assessment-certificate:{contract_id}:{intent.expected_contract_revision}:{intent.expected_ownership_revision}:v1"
-        if intent.idempotency_key != canonical_key:
-            return self._rejected_append(intent.command_id, "municipal_certificate_idempotency_key_invalid")
-        try:
-            GovernedAuthorityContractCatalog.require_operation(
-                contract_ref="inf:contract-completed-municipal-drought-assessment-certificate@1",
-                contract_kind="settlement",
-                owner_ref=self._PRINCIPAL,
-                stream_ids=(ownership_stream,),
-                event_types=("gameplay.ownership.right_granted",),
-                projection_scope="authority_only",
-            )
-        except GovernedAuthorityContractError as exc:
-            return self._rejected_append(intent.command_id, str(exc))
         command = GameplayCommandEnvelope(
             command_id=intent.command_id,
             command_type="gameplay.ownership.grant_municipal_drought_assessment_certificate",
@@ -1184,6 +1146,61 @@ class OwnershipAuthorityService:
                 "advisory_event_id": intent.advisory_event_id,
             },
         )
+        if idempotency_record is not None:
+            batch = EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch()
+            try:
+                duplicate = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=intent.idempotency_key,
+                    payload_digest=batch.idempotency_record.payload_digest,
+                    error_factory=OwnershipRuntimeError,
+                    missing_result_code="ownership_idempotency_missing_result",
+                    transaction_mismatch_code="ownership_replay_transaction_mismatch",
+                    event_count_mismatch_code="ownership_replay_event_count_mismatch",
+                    event_missing_code="ownership_replay_event_missing",
+                    expected_event_types=("gameplay.ownership.right_granted",),
+                    expected_command_id=intent.command_id,
+                    expected_transaction_id=command.transaction_id,
+                )
+            except OwnershipRuntimeError as exc:
+                return self._rejected_append(intent.command_id, str(exc))
+            if duplicate is not None:
+                return duplicate
+
+        if self._store.get_stream_head(contract_stream) != intent.expected_contract_revision:
+            return self._rejected_append(intent.command_id, "municipal_certificate_contract_revision_conflict")
+        contracts = ContractProjector().rebuild(self._store.read_stream(contract_stream))
+        contract = contracts.contracts.get(contract_id)
+        if (
+            contract is None
+            or contract.contract_type != "simple_service"
+            or contract.terms_ref != self._MUNICIPAL_TERMS
+            or contract.party_refs != ("organization:municipal-assessment-office", self._MUNICIPAL_HOLDER)
+            or contract.completion_evidence_kind != self._MUNICIPAL_EVIDENCE
+            or contract.completion_evidence_ref is None
+            or contract.status != "fulfilled"
+        ):
+            return self._rejected_append(intent.command_id, "municipal_certificate_contract_invalid")
+        if self._store.get_stream_head(ownership_stream) != intent.expected_ownership_revision:
+            return self._rejected_append(intent.command_id, "revision_conflict")
+        projection = self._projector.rebuild(self._store.read_events())
+        if right_id in projection.rights or asset_ref in projection.active_right_by_asset:
+            return self._rejected_append(intent.command_id, "municipal_certificate_already_granted")
+        canonical_key = f"ownership:municipal-drought-assessment-certificate:{contract_id}:{intent.expected_contract_revision}:{intent.expected_ownership_revision}:v1"
+        if intent.idempotency_key != canonical_key:
+            return self._rejected_append(intent.command_id, "municipal_certificate_idempotency_key_invalid")
+        try:
+            GovernedAuthorityContractCatalog.require_operation(
+                contract_ref="inf:contract-completed-municipal-drought-assessment-certificate@1",
+                contract_kind="settlement",
+                owner_ref=self._PRINCIPAL,
+                stream_ids=(ownership_stream,),
+                event_types=("gameplay.ownership.right_granted",),
+                projection_scope="authority_only",
+            )
+        except GovernedAuthorityContractError as exc:
+            return self._rejected_append(intent.command_id, str(exc))
         return self._store.append_batch(EventStoreSettlementPlan.from_command_envelope(command).to_atomic_event_batch())
 
     def build_package_declared_negotiated_exchange_fragment(
