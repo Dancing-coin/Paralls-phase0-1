@@ -1,0 +1,16 @@
+{
+  "head": "b42a1c2420f7c808944243120ec50a27663e9ac6",
+  "description": "Resolve exact event type and version keys to registered FactType candidates",
+  "tests": [
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_compiled_registry_resolves_event_type_to_all_exact_fact_type_candidates",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_rule_pack_validator.py::test_compiled_registry_resolves_legacy_credential_schema_alias",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
