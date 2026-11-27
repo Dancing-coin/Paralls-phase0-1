@@ -1,0 +1,16 @@
+{
+  "head": "aeb339a3aec3c59f4f50667bb9f8a751188965db",
+  "description": "SocialDelivery record and expiry retries validate durable transaction metadata and committed event references",
+  "tests": [
+    {
+      "test_name": "tests/test_p5_social_delivery.py::test_delivery_duplicate_rejects_transaction_metadata_mismatch_without_write",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_p5_social_delivery.py::test_expiry_duplicate_rejects_transaction_metadata_mismatch_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
