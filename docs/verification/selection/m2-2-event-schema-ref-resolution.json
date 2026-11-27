@@ -1,0 +1,16 @@
+{
+  "head": "c55b009f",
+  "description": "M2-2 exact event type and version resolution for registered schema references",
+  "tests": [
+    {
+      "test_name": "tests/test_gameplay_event_schema_registry.py::test_event_schema_reference_resolves_exact_event_type_and_version_keys",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_gameplay_event_schema_registry.py::test_event_schema_reference_rejects_unknown_aliases",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
