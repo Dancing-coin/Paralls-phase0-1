@@ -986,3 +986,9 @@
 - This is schema registration only. It does not implement principal qualification sources, runtime selector evaluation, event-to-FactType visibility mapping, or `read_as`.
 - Evidence: `docs/verification/m5-5-selector-registration-20261127.md`. Focused tests returned `218 passed, 6 warnings`; new selection `6/0/0`; 30 existing registered selections and frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections all returned zero differences. Full backend suite was not run.
 - M2-2 remains blocked and M5-5 remains in progress.
+
+### H-A-146 | M3-3 R2 replay path audit | 2026-11-27
+
+- Static `rg` inventory at A tip `ea3c727f` confirms A-owned Credential, Ownership, LandRight, Holdings, Pool and package migration command paths use shared `replay_duplicate`.
+- Repository-wide direct idempotency and custom duplicate paths remain in other domains and shared/forbidden files. `event_store.py`, `models.py`, `economy_runtime.py`, and `inventory_runtime.py` were not edited.
+- Evidence: `docs/verification/m3-3-r2-replay-path-audit-20261127.md`. No tests ran. M3-3 remains in progress and is not globally R2-complete.

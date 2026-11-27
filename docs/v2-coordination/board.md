@@ -58,7 +58,7 @@
 | M2-6 首条生产流受 epoch 保护 | A | 阻塞 | 实现 + 证据 | 待负责人选流并确定存储核心变更边界，见 H-A-008 | 4 |
 | M3-1 `OwnerCommitBuilder` | A | 待门禁 | `docs/verification/m3-1-owner-commit-builder-20261122.md`；当前 tip `3978f4f9` 重验证定向 23 passed，ownership/shared-replay 24/990 problems=0 | 共享机制当前 tip 已重验证；最新全量仍为合并状态非绿（10,761 passed、5 failed），仍需合并门禁 | 3 |
 | M3-2 `StoreReadSnapshot` 推广 | A | 待门禁 | `7c24d136`，Credential supersede 与 LandRight presentation；`docs/verification/m3-2-store-read-snapshot-20261122.md` | 定向 33 passed，七组选集 1,191 节点零差异。全量退出 1，24 失败与 M1-3 同签名，比 22 节点冻结基线多两项既有本地失败 | 3 |
-| M3-3 R2 推广 | A/B | 进行中 | Shared `replay_duplicate` R2 validation increment and selection; evidence `docs/verification/m3-3-shared-owner-replay-validation-20261127.md` / H-A-144 | A-owned shared-helper callers verified; other replay paths remain to inventory and validate. No domain completion implied. | 7 |
+| M3-3 R2 推广 | A/B | 进行中 | Shared `replay_duplicate` R2 validation increment and selection; evidence `docs/verification/m3-3-shared-owner-replay-validation-20261127.md` / H-A-144; static replay-path audit `docs/verification/m3-3-r2-replay-path-audit-20261127.md` / H-A-146 | A-owned Credential, Ownership, LandRight, Holdings, Pool and package migration command paths use the shared helper. Other direct/custom paths remain to inventory and validate. No domain completion implied. | 7 |
 | M3-4 `pinned_revisions` 校验 | A | 阻塞 | — | S-4 未决 | 3 |
 | M4 第 1 波其余域 | 未定 | 待开工 | 每域一份设计与证据 | 待 M0-6 | 1–11 |
 | M4 第 2 波 | 未定 | 待开工 | 同上 | 待 M0-6 | 1–11 |
