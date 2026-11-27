@@ -31,3 +31,11 @@
 - The registered `siege_information` selection returned `selected=26 problems=0 improvements=0`. No frozen five-group selection was rerun in this check; the existing 1,169-node evidence above remains tied to the earlier A code tip.
 - Raw output: `F:\paralls-verification\thread-a\information-replay-current-tip-20261127-01\pytest-information.log`, `selection-siege-information.log`, and `selection-siege-information\`.
 - This was a recheck only. No code or integration branch changed. M2-2/U7 and M3-3 remain open as documented above.
+
+## Current A-tip recheck at 9ee5c74a
+
+- Python `3.12.2` from `F:\codex-temp\thread-a-python312\Scripts\python.exe`; SQLite `3.43.1`; `PYTHONPATH` and `app.__file__` resolved to the A worktree. `TEMP`, `TMP`, `TMPDIR`, Python bytecode cache and pytest basetemp were under `F:\paralls-verification\thread-a\a-continuation-20261127-02\`.
+- Focused command covered `test_information_replay_checkpoint.py`, `test_siege_information_runtime.py`, `test_information_production_wiring.py`, and `test_m6_5_siege_runtime.py`; result `70 passed, 6 warnings`, exit 0.
+- Current A code contains the B delivery changes. The Information knowledge event persists `event_time`, the durable checkpoint-tail test exists, and the registered selection includes the replay case. B's three source commits were not cherry-picked again because their code/test content was already present through A commits `07db5404` and `400d4ff9`; the selection update from `e185cfa8` was already equivalent on A.
+- Current-tip selections: M3-3 Information knowledge `selected=1 problems=0 improvements=0`; `siege_information` `selected=26 problems=0 improvements=0`.
+- Raw output: `F:\paralls-verification\thread-a\a-continuation-20261127-02\`. The frozen five selections and full backend suite were not rerun in this check.
