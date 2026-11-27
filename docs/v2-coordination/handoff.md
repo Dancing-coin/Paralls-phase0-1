@@ -1168,3 +1168,9 @@
 - At A tip `805ec421`, static call-path inspection confirmed that `information_report_read` and `information_knowledge_read` are principal-facing WebSocket reads through `GameplayReadAs`. Both enforce active session binding, allowed actor membership, live lease and server world-clock bounds before requesting recipient-private Information FactTypes; the Information authority checks the committed recipient/report/delivery/knowledge chain.
 - The current classification is appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. This corrects earlier snapshots that predated the reader wiring. No tests were run for this static documentation update.
 - This narrow Information reader does not complete generic selector qualification, FactType-wide visibility enforcement, legacy stream attribution, other-domain reader classification, or U7. M2-2 remains blocked; `integration` was not modified.
+
+### H-A-171 | M6-5 production Gate input audit | 2026-11-27
+
+- Static inspection of the read-only formal siege demo definition and PRD found the four-layer `impact_gate` order and `gate-03` target, but no authoritative numeric durability, breach, reset, or impact-delta values. The searched PRD also supplied no numeric profile.
+- The tracked `.env.example` profile uses the locally exercised `gate-03` values but labels them demonstration-only. `SIEGE_FACILITY_GATE_PROFILES_JSON` is already parsed by settings; an empty profile leaves Facility unconfigured. No production target or manifest was found. Evidence: `docs/verification/m6-5-gate-production-input-audit-20261127.md`.
+- No source code, production config, or tests changed. Production Gate configuration remains open pending an authorized per-Gate parameter table and the deployment target that loads it. The demo values were not promoted. M6-5 remains in progress; `integration` was not modified.
