@@ -77,6 +77,33 @@ def test_gate_impact_evidence_is_signed_persisted_and_exact_retry_replays():
     )
 
 
+def test_physical_input_retry_rejects_incomplete_receipt_without_writing():
+    store = _store()
+    authority = SiegePhysicalInputAuthority(
+        store=store,
+        authority_secrets={AUTHORITY: SECRET},
+    )
+    receipt = _gate_impact("impact:corrupt-replay")
+    first = authority.record_gate_impact(receipt)
+    assert first.committed
+    event = store.get_event(first.committed_event_ids[0])
+    transaction = store.get_transaction(event.transaction_id)
+    key = (
+        transaction.idempotency_record.principal_ref,
+        transaction.idempotency_record.idempotency_key,
+    )
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": []}, deep=True
+    )
+    before = store.export_snapshot()
+
+    replay = authority.record_gate_impact(receipt)
+
+    assert not replay.committed
+    assert replay.failure.error_code == "siege_input_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_layered_gate_impact_evidence_has_its_own_registered_version_and_replays():
     store = _store()
     authority = SiegePhysicalInputAuthority(

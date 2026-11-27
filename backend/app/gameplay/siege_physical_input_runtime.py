@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from app.gameplay.event_store import GameplayEventStore, GameplayEventStoreSnapshotError
 from app.gameplay.models import AppendBatchResult, GameplayFailure, GameplayEvent
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import build_multi_stream_atomic_event_batch
 from app.gameplay.siege_physical_input_event_schema import (
     GATE_IMPACT_INPUT_EVENT,
@@ -253,19 +254,36 @@ class SiegePhysicalInputAuthority:
             "receipt_id": receipt.receipt_id,
             "gate_ref": receipt.gate_ref,
         }
-        prior = self._store.get_by_idempotency(SIEGE_PHYSICAL_INPUT_PRINCIPAL, key)
-        if prior is not None:
+        command_id = f"siege-input:{key.removeprefix('siege-input:')}"
+        idempotency_record = self._store.get_idempotency_record(
+            SIEGE_PHYSICAL_INPUT_PRINCIPAL, key
+        )
+        if idempotency_record is not None:
+            try:
+                prior = replay_duplicate(
+                    self._store,
+                    principal=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
+                    idempotency_key=key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="replay_missing_result",
+                    transaction_mismatch_code="replay_transaction_mismatch",
+                    event_count_mismatch_code="replay_event_count_mismatch",
+                    event_missing_code="replay_event_missing",
+                    expected_event_types=(event_type,),
+                    expected_command_id=command_id,
+                    expected_transaction_id=f"transaction:{command_id}",
+                )
+            except ValueError as error:
+                return self._reject(receipt.receipt_id, f"siege_input_{error}")
             event = self._receipt_event(prior, event_type)
-            if event is None or event.payload != payload:
+            if event is None or event.stream_id != stream_id or event.payload != payload:
                 return self._reject(receipt.receipt_id, "siege_input_receipt_conflict")
-            return prior.model_copy(
-                update={"idempotency_status": "duplicate_replayed"}, deep=True
-            )
+            return prior
 
         if isinstance(receipt, PresenceAssessmentReceiptV2) and not self._valid_impact_source(receipt):
             return self._reject(receipt.receipt_id, "siege_presence_evidence_invalid")
 
-        command_id = f"siege-input:{key.removeprefix('siege-input:')}"
         return self._store.append_batch(build_multi_stream_atomic_event_batch(
             command_id=command_id,
             principal_ref=SIEGE_PHYSICAL_INPUT_PRINCIPAL,
