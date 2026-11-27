@@ -1,6 +1,6 @@
 {
-  "head": "76a55dd2169b2834de9bbc53693f2a24bc3ea503",
-  "description": "Information recipient-private report and knowledge reads through the registered FactType read_as boundary, including unsupported FactType, scope, secret, and debug_only rejection",
+  "head": "95a56461b7502f9c9d681c9c8429c3c6575d51ed",
+  "description": "Information recipient-private reads and cross-FactType read_as metadata denials before unavailable-reader dispatch",
   "tests": [
     {
       "test_name": "tests/test_siege_information_runtime.py::test_gameplay_read_as_projects_registered_information_fact_types",

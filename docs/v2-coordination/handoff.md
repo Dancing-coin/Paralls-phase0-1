@@ -1223,3 +1223,10 @@
 - Full backend suite was not rerun. M3-1 remains `待门禁`; this is current-tip focused and frozen-selection evidence only.
 - Evidence and raw logs: `docs/verification/m3-1-owner-commit-builder-20261122.md` and `F:/paralls-verification/thread-a/m3-1-current-tip-20261128-01/`.
 - P-1 scan of the staged M3-1 evidence increment found zero hits across all five credential-pattern families. Raw output: `F:/paralls-verification/thread-a/m3-1-current-tip-20261128-03/p1-scan.log`.
+
+### H-A-179 | M2-2 visibility denial ordering | 2026-11-28
+
+- Code commit `95a56461b7502f9c9d681c9c8429c3c6575d51ed` moves unsupported delay/distortion and `secret`/`debug_only` checks before domain reader dispatch. TDD RED reproduced `read_as_fact_type_reader_unavailable` masking the required `read_as_visibility_forbidden`; GREEN related tests returned `32 passed, 6 warnings`.
+- All 47 registered selections and frozen five (1,169 nodes) returned zero problems and improvements. Full backend run returned `10,813 passed, 6 failed, 2 skipped, 2 xfailed`; all six failed node IDs reproduced at parent `f709f82eb041affad7e99f39e5e33c3f479ba914`. The full suite is not green.
+- Evidence: `docs/verification/m2-2-visibility-denial-order-20261128.md`; raw output under `F:/paralls-verification/thread-a/m2-2-read-as-metadata-order-20261128-03/` through `...-08/`.
+- M2-2 remains blocked on historical selector qualification, FactType-wide visibility filtering, legacy domain stream attribution, broader Owner-backed readers, and U7. No integration change.
