@@ -1,0 +1,11 @@
+{
+  "head": "93aa11274730e09830171ea59746f3abb623349b",
+  "description": "Public-milling social acknowledgment duplicate retries validate durable transaction and committed-event references",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4ao_public_milling_social_ack.py::test_inf4ao_duplicate_and_changed_duplicate_do_not_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
