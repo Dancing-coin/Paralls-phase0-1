@@ -1126,3 +1126,10 @@
 - Focused resolver tests returned `5 passed`; RulePack/FactType rejection/Holdings registry modules returned `178 passed, 2 warnings`. Registered selection `5/0/0`; frozen ownership/modifier/equipment/inventory/shared-replay selections `24/12/87/56/990`, all zero differences. Full backend suite not run for this increment.
 - Evidence: `docs/verification/m2-2-facttype-instance-20261127.md`; raw runs under `F:/paralls-verification/thread-a/m2-2-facttype-instance-20261127-01/` through `-08/` and `F:/paralls-verification/thread-a/m2-2-facttype-null-20261127-01/` through `-02/`.
 - Information and legacy Credential events with domain-specific stream IDs do not resolve through this contract. Historical selector qualification, runtime visibility enforcement, and generic `read_as` remain open; M2-2 remains blocked and U7 incomplete.
+
+### H-A-165 | Information checkpoint-tail current-tip recheck | 2026-11-27
+
+- At A tip `a3e9bc3fcc3ee9aa6af17c99b635f86dc976a9c5`, Information replay/runtime/production-wiring tests returned `30 passed, 6 warnings`, exit 0. The registered `siege_information` selection returned `selected=26 problems=0 improvements=0`.
+- Python `3.12.2` was run from `F:\codex-temp\thread-a-python312\Scripts\python.exe`; SQLite `3.43.1`; `app.__file__` resolved to this A worktree. `PYTHONPATH`, all temporary/cache paths, and outputs were on F:.
+- The tested B checkpoint-tail contribution was already present in A through prior selective commits; no duplicate cherry-pick or code change was needed. This recheck did not rerun the frozen five selections or the full backend suite.
+- Evidence and raw logs: `docs/verification/m3-3-information-knowledge-replay-20261127.md` and `F:/paralls-verification/thread-a/information-replay-current-tip-20261127-01/`. M2-2/U7 and M3-3 remain open. `integration` was not modified.

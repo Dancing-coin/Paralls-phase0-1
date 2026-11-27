@@ -22,3 +22,12 @@
 - M3-3 remains in progress because other direct/custom replay paths still need inventory and validation.
 - M6-5 remains in progress. Production Gate values are still unconfigured. `.env.example` contains demonstration values only. No deployment target, live Unreal transport, complete siege execution, or full backend suite was verified. `deadline_world_tick` remains unknown.
 - No changes were made to `integration`.
+
+## Current A-tip recheck
+
+- At A tip `a3e9bc3fcc3ee9aa6af17c99b635f86dc976a9c5`, Information replay/runtime/production-wiring focused tests returned `30 passed, 6 warnings`, exit 0.
+- Command: `F:\codex-temp\thread-a-python312\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\information-replay-current-tip-20261127-01\temp\pytest backend/tests/test_information_replay_checkpoint.py backend/tests/test_siege_information_runtime.py backend/tests/test_information_production_wiring.py`.
+- `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`; Python was `3.12.2`, SQLite `3.43.1`, and `PYTHONPATH`, `TEMP`, `TMP`, `TMPDIR`, `PYTHONPYCACHEPREFIX`, pytest basetemp, and outputs were on F:.
+- The registered `siege_information` selection returned `selected=26 problems=0 improvements=0`. No frozen five-group selection was rerun in this check; the existing 1,169-node evidence above remains tied to the earlier A code tip.
+- Raw output: `F:\paralls-verification\thread-a\information-replay-current-tip-20261127-01\pytest-information.log`, `selection-siege-information.log`, and `selection-siege-information\`.
+- This was a recheck only. No code or integration branch changed. M2-2/U7 and M3-3 remain open as documented above.
