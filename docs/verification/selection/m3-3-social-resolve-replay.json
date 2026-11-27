@@ -1,0 +1,11 @@
+{
+  "head": "8b75524073978f8608ebd229002b37844b65be00",
+  "description": "SocialFactAuthority.resolve duplicate retries validate durable transaction and committed-event references",
+  "tests": [
+    {
+      "test_name": "tests/test_p5_social_knowledge.py::test_social_resolve_duplicate_rejects_transaction_command_mismatch_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
