@@ -39,3 +39,11 @@
 - Raw focused output and selection runs: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-03\`.
 - P-1 scan of the 27 added code lines in `e941b91b` returned zero hits across the five credential-pattern families. Raw output: `F:\paralls-verification\thread-a\m2-2-read-as-info-20261127-03\p1-e941.log`.
 - The follow-up does not implement delay or distortion models. M2-2 remains blocked and the full backend suite was not run.
+
+## Follow-up: explicit denial for `secret` and `debug_only`
+
+- Code commit: `76a55dd2169b2834de9bbc53693f2a24bc3ea503` returns `read_as_visibility_forbidden` for registered `secret` and `debug_only` FactTypes. Both classes are denied before the Information reader is called.
+- TDD red reproduced the prior generic error: the reader rejected both classes with `read_as_qualification_unavailable`, which did not identify a visibility denial. The updated test requires the explicit forbidden result for both classes.
+- Exact follow-up focused result: `81 passed, 6 warnings in 6.55s`, exit 0. Information selection `3/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections `24/12/87/56/990`, all zero differences.
+- Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. Pytest temporary data and selection outputs are under `F:\paralls-verification\thread-a\m2-2-information-class-denial-20261127-02\`.
+- This implements explicit denial in the supported read boundary; it does not add a privileged debug path or implement general selector qualification. M2-2 remains blocked and the full backend suite was not run.

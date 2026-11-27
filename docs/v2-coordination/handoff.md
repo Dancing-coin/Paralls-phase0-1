@@ -1154,3 +1154,11 @@
 - TDD red showed an Information FactType with a distortion declaration still returned a projection. After the guard, focused Information/checkpoint/wiring/WebSocket/M6-5 tests returned `81 passed, 6 warnings`; the Information selection returned `3/0/0`; frozen five selections totaled `1,169/0/0`.
 - Evidence is appended to `docs/verification/m2-2-information-read-as-20261127.md`; raw output is under `F:/paralls-verification/thread-a/m2-2-read-as-info-20261127-02/` and `...-03/`.
 - Delay/distortion models remain unimplemented. M2-2 remains blocked and U7 incomplete; the full backend suite was not run.
+
+### H-A-169 | M2-2 explicit secret/debug visibility denial | 2026-11-27
+
+- Commit `76a55dd2169b2834de9bbc53693f2a24bc3ea503` makes `secret` and `debug_only` visibility return the explicit `read_as_visibility_forbidden` error before invoking an Information reader.
+- TDD red showed these classes already failed closed but were classified as generic qualification failures. The new assertions require the explicit visibility-denial code for both classes.
+- Focused tests returned `81 passed, 6 warnings`; Information selection `3/0/0`; frozen five selections totaled `1,169/0/0`. Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified.
+- Evidence is in `docs/verification/m2-2-information-read-as-20261127.md`; raw outputs are under `F:/paralls-verification/thread-a/m2-2-information-class-denial-20261127-01/` and `...-02/`.
+- No debug access path or other selector qualification was added. M2-2 remains blocked and U7 incomplete; full backend suite not run.
