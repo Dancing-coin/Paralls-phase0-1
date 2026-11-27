@@ -1162,3 +1162,9 @@
 - Focused tests returned `81 passed, 6 warnings`; Information selection `3/0/0`; frozen five selections totaled `1,169/0/0`. Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified.
 - Evidence is in `docs/verification/m2-2-information-read-as-20261127.md`; raw outputs are under `F:/paralls-verification/thread-a/m2-2-information-class-denial-20261127-01/` and `...-02/`.
 - No debug access path or other selector qualification was added. M2-2 remains blocked and U7 incomplete; full backend suite not run.
+
+### H-A-170 | M2-1 Information subject-read classification | 2026-11-27
+
+- At A tip `805ec421`, static call-path inspection confirmed that `information_report_read` and `information_knowledge_read` are principal-facing WebSocket reads through `GameplayReadAs`. Both enforce active session binding, allowed actor membership, live lease and server world-clock bounds before requesting recipient-private Information FactTypes; the Information authority checks the committed recipient/report/delivery/knowledge chain.
+- The current classification is appended to `docs/verification/g2-visibility-budget/m2-1-ownership-credential-read-paths-20261122.md`. This corrects earlier snapshots that predated the reader wiring. No tests were run for this static documentation update.
+- This narrow Information reader does not complete generic selector qualification, FactType-wide visibility enforcement, legacy stream attribution, other-domain reader classification, or U7. M2-2 remains blocked; `integration` was not modified.
