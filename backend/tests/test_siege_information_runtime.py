@@ -634,6 +634,29 @@ def test_gameplay_read_as_projects_registered_information_fact_types():
             fact_types=(REPORT_FACT, "fact:information:siege:report_knowledge"),
         )
 
+    from dataclasses import replace
+    from app.gameplay.fact_type_registry import FactTypeRegistry
+
+    report_declaration = information_pack.registry.facts[REPORT_FACT]
+    visibility_with_distortion = dict(report_declaration.visibility)
+    visibility_with_distortion["distortion"] = {"model_ref": "report_distortion@1"}
+    distorted_registry = FactTypeRegistry(
+        facts={
+            **information_pack.registry.facts,
+            REPORT_FACT: replace(report_declaration, visibility=visibility_with_distortion),
+        },
+        models=information_pack.registry.models,
+        machines=information_pack.registry.machines,
+    )
+    distorted_reader = GameplayReadAs(authority=authority, registry=distorted_registry)
+    with pytest.raises(ValueError, match="read_as_visibility_model_unavailable"):
+        distorted_reader.read_as(
+            principal=receipt.recipient_ref,
+            scope={"report_ref": receipt.report_ref},
+            as_of_tick=16,
+            fact_types=(REPORT_FACT,),
+        )
+
 
 def test_information_report_read_is_recipient_private_and_respects_delivery_window():
     store = GameplayEventStore(event_schema_registry=create_stormnight_event_schema_registry())

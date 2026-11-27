@@ -75,6 +75,10 @@ class GameplayReadAs:
             event_type, scope_key = _INFORMATION_READS.get(fact_type_ref, (None, None))
             if event_type is None:
                 raise GameplayReadAsError("read_as_fact_type_reader_unavailable")
+            if any(declaration.visibility.get(key) is not None for key in (
+                "delay", "delay_model", "distortion", "distortion_model",
+            )):
+                raise GameplayReadAsError("read_as_visibility_model_unavailable")
             if (declaration.owner_ref != "Information"
                     or declaration.visibility.get("class") != "private"
                     or tuple(declaration.visibility.get("learnable_by", ())) != (_RECIPIENT_SELECTOR,)):
