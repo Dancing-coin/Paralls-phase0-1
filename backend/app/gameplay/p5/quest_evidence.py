@@ -12,6 +12,7 @@ from app.gameplay.shared_contracts import SettlementReceipt
 from app.gameplay.p5.contracts import P5ResolutionRequest, P5ResolutionResult
 from app.gameplay.p5.registry import P5PolicyRegistry
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementPlan
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
 
@@ -117,12 +118,24 @@ class QuestEvidenceAuthority:
         now: str,
     ) -> QuestEvidenceAuthorityResult:
         digest = self._request_digest(command=command, request=request, reward_fragments=reward_fragments)
-        existing = self._store.get_idempotency_record(_PRINCIPAL, command.idempotency_key)
-        if existing is not None:
-            if existing.payload_digest == digest:
-                receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
-                return self._committed_result(receipt, duplicate=True)
+        try:
+            receipt = replay_duplicate(
+                self._store,
+                principal=_PRINCIPAL,
+                idempotency_key=command.idempotency_key,
+                payload_digest=digest,
+                error_factory=ValueError,
+                missing_result_code="idempotency_key_reused",
+                transaction_mismatch_code="idempotency_key_reused",
+                event_count_mismatch_code="idempotency_key_reused",
+                event_missing_code="idempotency_key_reused",
+                expected_command_id=command.command_id,
+                expected_transaction_id=command.transaction_id or f"transaction:{command.command_id}",
+            )
+        except ValueError:
             return self._rejected("idempotency_key_reused")
+        if receipt is not None:
+            return self._committed_result(receipt, duplicate=True)
 
         try:
             request = self._registry.validate_request(request)

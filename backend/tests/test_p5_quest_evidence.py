@@ -703,6 +703,41 @@ def test_duplicate_request_returns_prior_receipt_without_duplicate_append(
     assert len(store.read_transactions()) == 1
 
 
+def test_duplicate_request_rejects_corrupt_transaction_receipt_without_write(
+    authority,
+    registry: P5PolicyRegistry,
+    store: GameplayEventStore,
+) -> None:
+    command = _command(request_id="request:p5:quest-evidence:corrupt-receipt")
+    request = _request(registry, request_id="request:p5:quest-evidence:corrupt-receipt")
+    first = authority.resolve(
+        command=command,
+        request=request,
+        reward_fragments=(),
+        now="2026-08-11T00:00:00Z",
+    )
+    assert first.receipt is not None and first.receipt.committed
+
+    key = ("authority:p5:quest-evidence", command.idempotency_key)
+    stored = store._idempotency_results[key]
+    store._idempotency_results[key] = stored.model_copy(
+        update={"command_id": "command:corrupt"}, deep=True
+    )
+    before_retry = _snapshot_hash(store)
+
+    duplicate = authority.resolve(
+        command=command,
+        request=request,
+        reward_fragments=(),
+        now="2026-08-11T00:00:00Z",
+    )
+
+    assert duplicate.resolution.result_kind == "rejected_zero_write"
+    assert duplicate.resolution.failure_code == "idempotency_key_reused"
+    assert duplicate.receipt is None
+    assert _snapshot_hash(store) == before_retry
+
+
 def test_changed_package_digest_changes_idempotency_inputs(
     authority,
     registry: P5PolicyRegistry,
