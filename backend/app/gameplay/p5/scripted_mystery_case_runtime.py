@@ -145,7 +145,7 @@ class ScriptedMysteryCaseAuthority:
             expected_payload = self._payload(
                 case_ref=self.package.content.case_ref,
                 case_revision=self.package.content.case_revision,
-                phase_ref=self.project().phase_ref,
+                phase_ref=event.payload.get("phase_ref") if event else None,
                 outcome_kind=outcome_kind,
             )
             if event is None or event.payload != expected_payload or event.causation_id != causation_id or event.correlation_id != correlation_id:
