@@ -1,0 +1,11 @@
+{
+  "head": "81e047e0d150732ec068854cd6924be3c084c54f",
+  "description": "Signed siege physical-input retries validate the durable transaction and committed event receipt",
+  "tests": [
+    {
+      "test_name": "tests/test_siege_physical_input_runtime.py::test_physical_input_retry_rejects_incomplete_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
