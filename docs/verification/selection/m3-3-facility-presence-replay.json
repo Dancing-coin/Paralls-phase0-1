@@ -1,0 +1,26 @@
+{
+  "head": "32373b52fff0f7c2105e6eb3eda05fdafe875b00",
+  "description": "Facility layered impact and Presence passability retry paths reject damaged durable receipts without appending",
+  "tests": [
+    {
+      "test_name": "tests/test_facility_gate_layered_runtime.py::test_layered_impact_rejects_incomplete_replay_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_facility_gate_layered_runtime.py::test_presence_rejects_corrupt_replay_receipt_without_writing[False]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_facility_gate_layered_runtime.py::test_presence_rejects_corrupt_replay_receipt_without_writing[True]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_place_passability_runtime.py::test_legacy_presence_retry_rejects_incomplete_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
