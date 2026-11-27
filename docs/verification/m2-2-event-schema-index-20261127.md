@@ -1,6 +1,6 @@
 # M2-2 FactType event-schema index
 
-- Commit: pending in this unit's code commit.
+- Commit: `a7de5080`.
 - Change: `FactTypeRegistry` now exposes an immutable `facts_by_event_schema_ref` index derived from the already validated optional `FactType.event_schema_ref` values. Entries preserve compiled FactType objects and are grouped by the exact declared reference.
 - Boundary: no alias canonicalization, event-type inference, principal qualification, visibility evaluation, or `read_as` behavior is introduced.
 - Python: `D:\Temp\paralls-g0-py312\Scripts\python.exe`, Python 3.12.2. `app.__file__` resolved inside the A worktree. Pytest temporary and cache paths were on F drive.
