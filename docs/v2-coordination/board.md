@@ -188,3 +188,7 @@
 - 本增量状态为待门禁。定向 124 passed；M5-5 登记选集 27/0/0；冻结五组选集 ownership 24/0/0、modifier 12/0/0、equipment 87/0/0、inventory 56/0/0、shared-replay 990/0/0。全量 10,745 节点未因本增量重跑，M5-5 broader catalog 仍进行中。
 - 后续测试断言增量已提交 `7690df59deb49f5af179dcca92f552a1caaf890f`，验证 resolution order 唯一且从 10 连续递增。M5-5 broader catalog 仍进行中。
 - 四种 FactType identity 的正反例现均登记在 M5-5 selection，validator 定向 123 passed，29 节点选择零差异；增量提交待创建。全量未重跑，M5-5 broader catalog 仍进行中。
+
+### M6-5 B Information checkpoint-tail replay verification (2026-11-27)
+
+- At A baseline `99c7be5f`, B added a durable Information report/knowledge checkpoint-tail test and persisted the existing top-level `event_time` on the knowledge event. Focused Information tests returned 24 passed. Full backend regression returned 10,769 passed and 22 failed; 17 failed on the unchanged parent, while five other failures passed in isolated reruns on parent and current worktrees. Evidence: `docs/verification/information-replay-20261127/evidence.md`. The Information unit remains pending gate.
