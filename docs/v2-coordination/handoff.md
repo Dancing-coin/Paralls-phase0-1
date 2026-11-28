@@ -1418,3 +1418,10 @@
 - Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused policy-registration tests returned `10 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen five selections `24/12/87/56/990`, all with zero differences. Full backend suite was not run.
 - Evidence: `docs/verification/m3-3-government-policy-registration-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-government-policy-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
 - P-1 scan of 76 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-government-policy-replay-20261128-01/p1-scan-final.log`.
+
+### H-A-209 | M3-3 Government drought advisory replay receipt validation | 2026-11-28
+
+- Code commit `e2d44b667e8c264786054c18c1780742024351b4` replaces the custom duplicate path in `GovernmentAuthority.issue_drought_advisory` with shared `replay_duplicate` validation. A corrupted transaction reference now rejects as `idempotency_key_reused`; source, causation, and correlation checks remain. The test asserts no writes after corruption injection.
+- Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused advisory/assessment/closed-loop tests returned `13 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen selections `24/12/87/56/990`, all with zero differences. Exact retry after Ecology source advancement remains covered. Full backend suite was not run.
+- Evidence: `docs/verification/m3-3-government-drought-advisory-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-government-drought-advisory-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
+- P-1 scan of 75 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-government-drought-advisory-replay-20261128-01/p1-scan-final.log`.

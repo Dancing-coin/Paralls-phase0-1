@@ -1,5 +1,10 @@
 # 迁移任务账本
 
+### M3-3 Government drought advisory replay increment (2026-11-28)
+
+- Code commit `e2d44b66` routes advisory retries through `replay_duplicate`; corrupt transaction receipts reject with `idempotency_key_reused` and no writes. Focused advisory/assessment/closed-loop tests `13 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `24/12/87/56/990`, all zero differences.
+- Evidence: `docs/verification/m3-3-government-drought-advisory-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-government-drought-advisory-replay-20261128-01/`. Full backend suite was not run. M3-3 remains in progress.
+
 ### M3-3 Government commercial policy registration replay increment (2026-11-28)
 
 - Code commit `dff05751` routes policy-registration retries through `replay_duplicate`; corrupt transaction receipts reject with `idempotency_key_reused` and no writes. Focused government policy tests `10 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `24/12/87/56/990`, all zero differences.

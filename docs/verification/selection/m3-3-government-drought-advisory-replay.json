@@ -1,0 +1,11 @@
+{
+  "head": "e2d44b667e8c264786054c18c1780742024351b4",
+  "description": "Government drought advisory retries reject corrupt durable transaction receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_infra_weather_front_government_drought_advisory.py::test_drought_advisory_rejects_corrupt_transaction_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
