@@ -223,3 +223,7 @@
 ### M6-5 B Information checkpoint-tail replay verification (2026-11-27)
 
 - At A baseline `99c7be5f`, B added a durable Information report/knowledge checkpoint-tail test and persisted the existing top-level `event_time` on the knowledge event. Focused Information tests returned 24 passed. Full backend regression returned 10,769 passed and 22 failed; 17 failed on the unchanged parent, while five other failures passed in isolated reruns on parent and current worktrees. Evidence: `docs/verification/information-replay-20261127/evidence.md`. The Information unit remains pending gate.
+
+### M6-5 A-tip Information delivery recheck (2026-11-28)
+
+- B's `a61c93ad`, `a1719826`, and `e185cfa8` have effective equivalents on A. Event-time and selection changes are patch-equivalent, and the checkpoint-tail test blob is identical. No cherry-pick was needed. At A tip `51d88a4c47e9b92bc8cb24080d540034eecf30b3`, focused Information/checkpoint/wiring tests returned `32 passed, 6 warnings`; `siege_information` returned `selected=26 problems=0 improvements=0`. Python `3.12.2`, A-worktree import path, SQLite `3.43.1`. Raw logs: `F:/paralls-verification/thread-a/information-b-recheck-20261128-01/`. Full backend and frozen five selections were not rerun. M6-5 remains in progress.
