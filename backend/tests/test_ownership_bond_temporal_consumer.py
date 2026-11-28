@@ -82,10 +82,6 @@ def _seed_due_bond(store: GameplayEventStore, *, expires_at: int = 10) -> None:
     )
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("app.gameplay.ownership_bond_temporal_consumer") is None,
-    reason="consumer implementation not present yet",
-)
 def test_due_bond_expiry_is_committed_at_confirmed_world_tick_and_retries_stably():
     store = GameplayEventStore()
     _seed_due_bond(store)
@@ -101,10 +97,6 @@ def test_due_bond_expiry_is_committed_at_confirmed_world_tick_and_retries_stably
     assert consumer.last_errors == ()
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("app.gameplay.ownership_bond_temporal_consumer") is None,
-    reason="consumer implementation not present yet",
-)
 @pytest.mark.parametrize("authorized", [False, True])
 def test_missing_or_invalid_ownership_grant_makes_no_expiry_write(authorized):
     store = GameplayEventStore()
@@ -124,10 +116,6 @@ def test_missing_or_invalid_ownership_grant_makes_no_expiry_write(authorized):
     assert consumer.last_errors
 
 
-@pytest.mark.skipif(
-    importlib.util.find_spec("app.gameplay.ownership_bond_temporal_consumer") is None,
-    reason="consumer implementation not present yet",
-)
 def test_bond_expiry_is_not_written_before_term_boundary():
     store = GameplayEventStore()
     _seed_due_bond(store)
