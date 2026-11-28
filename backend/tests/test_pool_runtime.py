@@ -9,7 +9,7 @@ from app.gameplay.event_schema_registry import (
     create_stormnight_event_schema_registry,
     gameplay_schema_event_types,
 )
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.pool_event_schema import register_pool_event_schemas
 from app.gameplay.pool_runtime import (
     PoolAuthorityService,
@@ -26,8 +26,8 @@ FACT_TYPE = "fact:character:char-pool:stamina"
 PRINCIPAL = "owner:body"
 
 
-def service_with_pool(*, initial: str = "50"):
-    store = GameplayEventStore()
+def service_with_pool(*, initial: str = "50", store=None):
+    store = store if store is not None else GameplayEventStore()
     service = PoolAuthorityService(store=store, owner_ref=PRINCIPAL)
     definition = PoolDefinition(
         fact_type=FACT_TYPE,
@@ -53,8 +53,11 @@ def service_with_pool(*, initial: str = "50"):
     return store, service, definition
 
 
-def test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable():
-    store, service, definition = service_with_pool()
+def test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable(tmp_path):
+    database_path = tmp_path / "pool-rebuild.db"
+    store, service, definition = service_with_pool(
+        store=DurableGameplayEventStore(database_path)
+    )
     reserved = service.reserve(
         fact_type=FACT_TYPE,
         reservation_ref="reservation:pool:1",
@@ -91,7 +94,9 @@ def test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable():
     assert projection.reservations == {}
 
     snapshot = store.export_snapshot()
-    restored = GameplayEventStore.from_snapshot(snapshot)
+    assert snapshot["projection_checkpoints"] == []
+    store.close()
+    restored = DurableGameplayEventStore(database_path)
     rebuilt = PoolProjector().rebuild(
         restored.read_stream(FACT_TYPE), definitions={FACT_TYPE: definition}
     )
@@ -118,8 +123,8 @@ def test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable():
         encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return "sha256:" + sha256(encoded).hexdigest()
 
-    assert snapshot["projection_checkpoints"] == []
     assert state_digest(rebuilt) == state_digest(projection)
+    restored.close()
 
 
 def test_pool_commits_persist_owner_fragment_contract_and_ordered_operations():
