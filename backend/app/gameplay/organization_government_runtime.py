@@ -4316,13 +4316,29 @@ class OrganizationAuthority:
             return self._public_project_execution_rejected(
                 command_id, "public_project_execution_reference_invalid"
             )
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if existing is not None:
-            prior = next(
-                (event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)),
-                None,
-            )
-            if prior is not None and prior.event_type == "gameplay.organization.public_project_execution_recorded":
+        idempotency_record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="public_project_execution_idempotency_key_reused",
+                    transaction_mismatch_code="public_project_execution_idempotency_key_reused",
+                    event_count_mismatch_code="public_project_execution_idempotency_key_reused",
+                    event_missing_code="public_project_execution_idempotency_key_reused",
+                    expected_event_types=("gameplay.organization.public_project_execution_recorded",),
+                    expected_command_id=command_id,
+                    expected_transaction_id=f"transaction:{command_id}",
+                )
+            except ValueError:
+                return self._public_project_execution_rejected(
+                    command_id, "public_project_execution_idempotency_key_reused"
+                )
+            prior = self._store.get_event(existing.committed_event_ids[0])
+            if prior.event_type == "gameplay.organization.public_project_execution_recorded":
                 if (
                     prior.payload.get("source_activity_event_id") == activity_event_id
                     and prior.payload.get("source_budget_consumed_event_id") == budget_consumed_event_id
@@ -4333,7 +4349,7 @@ class OrganizationAuthority:
                     and prior.causation_id == causation_id
                     and prior.correlation_id == correlation_id
                 ):
-                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+                    return existing
             return self._public_project_execution_rejected(
                 command_id, "public_project_execution_idempotency_key_reused"
             )

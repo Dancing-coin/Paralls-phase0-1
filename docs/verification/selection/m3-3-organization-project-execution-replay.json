@@ -1,0 +1,10 @@
+{
+  "description": "Organization public project execution retries reject corrupt committed-event vectors without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4aj_public_project_execution.py::test_inf4aj_duplicate_rejects_corrupt_committed_event_vector_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

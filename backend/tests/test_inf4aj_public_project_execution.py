@@ -157,6 +157,27 @@ def test_inf4aj_duplicate_changed_duplicate_private_stale_and_mismatched_sources
     assert store.export_snapshot() == before
 
 
+def test_inf4aj_duplicate_rejects_corrupt_committed_event_vector_without_writing() -> None:
+    store, activity, consumed = _prepared_execution_case()
+    authority = OrganizationAuthority(store=store)
+    request = _request(store, activity, consumed)
+    first = authority.record_public_project_execution(**request)
+    assert first.committed
+
+    key = ("actor_gameplay.organization_domain", request["idempotency_key"])
+    store._idempotency_results[key] = first.model_copy(
+        update={"committed_event_ids": [*first.committed_event_ids, "missing:execution-event"]},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    duplicate = authority.record_public_project_execution(**request)
+
+    assert not duplicate.committed
+    assert duplicate.failure and duplicate.failure.error_code == "public_project_execution_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_inf4aj_catalog_pins_exact_existing_organization_owner_contract() -> None:
     contract = GovernedAuthorityContractCatalog.require(
         contract_ref="inf:organization-public-project-execution@1",
