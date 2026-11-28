@@ -71,6 +71,25 @@ def test_government_policy_registration_replays_an_exact_duplicate_without_writi
     assert _snapshot(store) == before
 
 
+def test_government_policy_registration_rejects_corrupt_transaction_receipt_without_writing() -> None:
+    store = GameplayEventStore()
+    authority = GovernmentAuthority(store=store)
+    assert _register(authority).committed
+    key = (GovernmentAuthority._PRINCIPAL, "policy:register")
+    store._idempotency_results[key] = store._idempotency_results[key].model_copy(
+        update={"transaction_id": "transaction:missing"},
+        deep=True,
+    )
+    before = _snapshot(store)
+
+    rejected = _register(authority)
+
+    assert not rejected.committed
+    assert rejected.failure is not None
+    assert rejected.failure.error_code == "idempotency_key_reused"
+    assert _snapshot(store) == before
+
+
 def test_government_policy_registration_rejects_changed_duplicate_without_writing() -> None:
     store = GameplayEventStore()
     authority = GovernmentAuthority(store=store)

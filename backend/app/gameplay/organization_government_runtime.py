@@ -713,17 +713,26 @@ class GovernmentAuthority:
         if privacy_scope != "project":
             return self._rejected_append(command_id, "government_policy_privacy_denied")
         stream_id = f"gameplay:government:{policy.organization_ref}"
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if existing is not None and existing.committed:
-            if len(existing.committed_event_ids) != 1:
+        idempotency_record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="idempotency_key_reused",
+                    expected_event_types=("gameplay.government.commercial_inspection_policy_registered",),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
                 return self._rejected_append(command_id, "idempotency_key_reused")
-            event = self._store.get_event(existing.committed_event_ids[0])
-            if (
-                event.event_type != "gameplay.government.commercial_inspection_policy_registered"
-                or event.payload != policy.model_dump(mode="json")
-            ):
-                return self._rejected_append(command_id, "idempotency_key_reused")
-            return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            if existing is not None:
+                event = self._store.get_event(existing.committed_event_ids[0])
+                if event.payload == policy.model_dump(mode="json"):
+                    return existing
+            return self._rejected_append(command_id, "idempotency_key_reused")
         if self._store.get_stream_head(stream_id) != expected_revision:
             return self._rejected_append(command_id, "revision_conflict")
         view = self.commercial_inspection_policy_view_for(organization_ref=policy.organization_ref, scope="project")
