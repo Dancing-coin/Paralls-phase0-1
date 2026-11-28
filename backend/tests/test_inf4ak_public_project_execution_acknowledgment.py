@@ -66,6 +66,26 @@ def test_inf4ak_duplicate_and_mismatch_are_zero_write() -> None:
     assert store.export_snapshot() == before
 
 
+def test_inf4ak_rejects_corrupt_transaction_receipt_without_writing() -> None:
+    store, execution = _prepared_case()
+    authority = GovernmentAuthority(store=store)
+    request = _request(store, execution)
+    assert authority.acknowledge_public_project_execution(request).committed
+    key = (GovernmentAuthority._PRINCIPAL, request.idempotency_key)
+    store._idempotency_results[key] = store._idempotency_results[key].model_copy(
+        update={"transaction_id": "transaction:missing"},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    rejected = authority.acknowledge_public_project_execution(request)
+
+    assert not rejected.committed
+    assert rejected.failure is not None
+    assert rejected.failure.error_code == "public_project_execution_acknowledgment_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_inf4ak_private_or_stale_execution_is_zero_write() -> None:
     store, execution = _prepared_case()
     authority = GovernmentAuthority(store=store)

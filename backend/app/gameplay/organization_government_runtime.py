@@ -1775,18 +1775,33 @@ class GovernmentAuthority:
     def acknowledge_public_project_execution(
         self, intent: GovernmentPublicProjectExecutionAcknowledgmentIntentV1
     ) -> AppendBatchResult:
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
-        if existing is not None:
-            if len(existing.committed_event_ids) == 1:
+        idempotency_record = self._store.get_idempotency_record(self._PRINCIPAL, intent.idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=intent.idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="public_project_execution_acknowledgment_idempotency_key_reused",
+                    expected_event_types=("gameplay.government.public_project_execution_acknowledged",),
+                    expected_command_id=intent.command_id,
+                )
+            except ValueError:
+                return self._rejected_append(
+                    intent.command_id,
+                    "public_project_execution_acknowledgment_idempotency_key_reused",
+                )
+            if existing is not None:
                 prior = self._store.get_event(existing.committed_event_ids[0])
                 if (
-                    prior.event_type == "gameplay.government.public_project_execution_acknowledged"
-                    and prior.payload.get("source_execution_event_id") == intent.execution_event_id
+                    prior.payload.get("source_execution_event_id") == intent.execution_event_id
                     and prior.payload.get("source_execution_revision") == intent.expected_execution_revision
                     and prior.causation_id == intent.causation_id
                     and prior.correlation_id == intent.correlation_id
                 ):
-                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+                    return existing
             return self._rejected_append(intent.command_id, "public_project_execution_acknowledgment_idempotency_key_reused")
         try:
             execution = self._store.get_event(intent.execution_event_id)
