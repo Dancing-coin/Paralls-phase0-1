@@ -112,6 +112,14 @@
 | M7 第二真相收口 | A/B | 阻塞 | — | S-2、S-3 未决 | 11 |
 | M8 综合验收 | 负责人 | 待开工 | 逐条对照 | 全部里程碑完成 | 1–11 |
 
+### M3-3 cross-owner replay finding (2026-11-28)
+
+- H-A-194 records a reproducible corrupt-receipt acceptance in B-owned `contract_runtime.py`, limited to public-milling fulfillment. A did not modify the file. The finding is handed to the owning thread; M3-3 remains in progress. Evidence: `docs/verification/m3-3-contract-fulfillment-replay-audit-20261128.md` and the raw reproduction under `F:/paralls-verification/thread-a/m3-3-contract-r2-static-repro-20261128-01/`.
+
+### M6-5 production Gate numeric inputs (2026-11-28)
+
+- H-A-195 confirms the formal demo does not supply production numbers. Existing test values are not authoritative. The deployment/gameplay authority must provide a versioned target-world Gate profile before production deployment and live siege verification. Evidence: `docs/verification/m6-5-production-gate-profile-source-audit-20261128.md`.
+
 ### M5-5 FactType primitive-field increment (2026-11-26)
 
 - 本增量证据：`docs/verification/m5-5-facttype-primitives-20261126.md`。在 exact tip `30c4bf50` 定向 136 passed；M5-5 selection 38/0/0；冻结 ownership/modifier/equipment/inventory/shared-replay 选择分别 24/0/0、12/0/0、87/0/0、56/0/0、990/0/0。

@@ -1324,3 +1324,15 @@
 
 - Follow-up to H-A-191: current code does contain replayable Organization membership/delegation history, resolved at a supplied `global_sequence` by `organization_garrison_roster_at`. The event payload contains organization, member, role, and delegation state but no effective world tick; the writer does not set `event_time`. Its semantics are delegation records, not an established complete roster or faction membership contract.
 - `GameplayReadAs` qualifies facts at `as_of_tick`, so the existing sequence-position snapshot cannot safely establish whether a principal held a role at that tick. Required external input is an Organization-owned, replayable qualification contract with effective world-time and revision semantics, plus an explicit mapping for which `role:` and `faction:` selectors it supports. A can then implement the time-aware qualification reader and keep unsupported selectors denied. Static evidence: `docs/verification/m2-2-selector-qualification-source-audit-20261128.md`; no tests ran. M2-2 remains incomplete.
+
+### H-A-194 | M3-3 Contract public-milling fulfillment replay integrity finding | 2026-11-28
+
+- At A tip `5709368f1bf24b69289ced61d9a3e0a0547fad5a`, static inspection and a prior runtime reproduction found that `ContractAuthorityService.fulfill_public_milling_session_by_policy` validates only the first event in a two-event durable receipt before returning `duplicate_replayed`. Replacing the second event ID with a missing ID still returned `committed=True`, `duplicate_replayed`; raw output is `F:/paralls-verification/thread-a/m3-3-contract-r2-static-repro-20261128-01/repro.log`.
+- `backend/app/gameplay/contract_runtime.py` and its domain tests are B-exclusive under `BOUNDARIES.md`; A made no code changes. B needs to validate the transaction and both ordered event references before replay success. The adjacent facility-commissioning path already loads both references, so the finding is limited to public-milling fulfillment.
+- Evidence: `docs/verification/m3-3-contract-fulfillment-replay-audit-20261128.md`. No tests ran in this audit. M3-3 remains in progress pending the owning thread's fix and verification.
+
+### H-A-195 | M6-5 production Gate numeric source audit | 2026-11-28
+
+- Formal Architecture v2 siege-demo materials specify the `breach` meaning and four-step `impact_gate` order, but do not provide production integrity bounds, breach/reset values, or impact deltas. Test values `40` / `45` are fixtures only.
+- Runtime accepts a versioned profile through `SIEGE_FACILITY_GATE_PROFILES_JSON`; the setting defaults to an empty list and validates the profile's ranges. A did not invent or configure production values. The gameplay/deployment authority must provide the target world's profile before production deployment or live siege verification.
+- Static evidence: `docs/verification/m6-5-production-gate-profile-source-audit-20261128.md`. No tests ran; `integration` and deployment configuration were not changed.
