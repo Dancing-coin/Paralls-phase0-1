@@ -1432,3 +1432,10 @@
 - Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused public notice/private follow-on tests returned `17 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen selections `24/12/87/56/990`, all with zero differences. Full backend suite was not run.
 - Evidence: `docs/verification/m3-3-government-public-notice-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-government-public-notice-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
 - P-1 scan of 75 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-government-public-notice-replay-20261128-01/p1-scan-final.log`.
+
+### H-A-211 | M3-3 Government public milling notice replay receipt validation | 2026-11-28
+
+- Code commit `5f823c51fb34beede353acb8d9bf419df8b2f40f` replaces the custom duplicate path in `GovernmentAuthority.record_public_milling_notice` with shared `replay_duplicate` validation. A corrupted transaction reference now rejects with the existing `public_milling_notice_idempotency_key_reused` domain code; command, source activity, validity window, causation, and correlation checks remain. The regression asserts zero writes after fault injection.
+- Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused milling/acknowledgement/private follow-on tests returned `26 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen selections `24/12/87/56/990`, all with zero differences. Full backend suite was not run.
+- Evidence: `docs/verification/m3-3-government-public-milling-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-government-public-milling-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
+- P-1 scan of 75 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-government-public-milling-replay-20261128-01/p1-scan-final.log`.

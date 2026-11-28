@@ -1,5 +1,10 @@
 # 迁移任务账本
 
+### M3-3 Government public milling notice replay increment (2026-11-28)
+
+- Code commit `5f823c51` routes milling notice retries through `replay_duplicate`; corrupt transaction receipts reject with the existing domain error and no writes. Focused milling/acknowledgement/private follow-on tests `26 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `24/12/87/56/990`, all zero differences.
+- Evidence: `docs/verification/m3-3-government-public-milling-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-government-public-milling-replay-20261128-01/`. Full backend suite was not run. M3-3 remains in progress.
+
 ### M3-3 Government public workshop notice replay increment (2026-11-28)
 
 - Code commit `e1b520d1` routes public notice retries through `replay_duplicate`; corrupt transaction receipts reject with the existing domain error and no writes. Focused public notice/private follow-on tests `17 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `24/12/87/56/990`, all zero differences.

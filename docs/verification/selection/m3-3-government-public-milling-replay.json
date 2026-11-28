@@ -1,0 +1,11 @@
+{
+  "head": "5f823c51fb34beede353acb8d9bf419df8b2f40f",
+  "description": "Government public milling notice retries reject corrupt durable transaction receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4am_public_milling_notice.py::test_inf4am_notice_rejects_corrupt_transaction_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
