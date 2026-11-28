@@ -1406,3 +1406,8 @@
 
 - Static search at code/test commit `2cbe48d5` enumerated Pool stream rebuild, Morale historical-input/Pool reads, Facility integrity/Gate settlement, Pool threshold consumers in Impact obligations, Place passability and signed siege-breach validation, plus the startup graph projector subscription to registered `gameplay.*` types. Paths and read classifications are in `docs/verification/m1-3-morale-rulepack-20261128.md`.
 - No subject-facing Pool or Morale query route was found in the inspected `backend/app` call graph. This is bounded static evidence; it does not establish absence of consumers outside this repository. M1-3 U6 remains partial, U7 remains open, and no runtime code or tests changed in this update.
+
+### H-A-207 | M1-3 Pool tick integration dependency audit | 2026-11-28
+
+- Formal RulePack/primitive provisions define tick-triggered Pool integration through `temporal_process`; the performance contract requires Pool integration and Process ticks to share one compiled loop. Current Facility Gate integrity/durability/latch and Morale packages all use `integration: none`. `PoolAuthorityService.integrate` exists but has no production caller tied to `PopulationDriver.current_tick`.
+- Production integration is therefore an M1-5 Process-path dependency plus authored nonzero rate-bearing content. Existing demo/test values were not promoted or inferred. This is static-only; no runtime code or tests changed, and M1-3 remains in progress.

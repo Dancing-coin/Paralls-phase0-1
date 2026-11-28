@@ -92,6 +92,12 @@ Static search covered `backend/app/gameplay`, `backend/app/services/authority_gr
 
 The Morale `projection` helper has no production caller in `backend/app`; M6-5 dispatch invokes `refold_after_casualty` instead. No subject-facing Pool or Morale query route was found in the inspected `main.py` call graph. This does not prove absence of external callers or downstream consumers outside the searched repository trees. The tested Pool graph projection cases are in `test_authority_graph_projection.py`; Pool/Morale command and settlement readers have focused tests listed above. No runtime behavior changed in this reader-inventory update.
 
+## Pool Tick Integration Dependency
+
+Static comparison of the formal RulePack format and Primitive General provisions with current packages shows that the Facility Gate integrity, Gate durability, latch durability, and Morale Pool definitions all use `integration: {mode: "none"}`. The formal design describes tick-triggered Process work as the mechanism that requests Pool integration, and the performance contract requires Pool integration and `temporal_process` ticks to share one compiled loop. The existing `PoolAuthorityService.integrate` method is a command primitive; no current production scheduler calls it from `PopulationDriver.current_tick`.
+
+This leaves production Pool integration dependent on the M1-5 Process tick path and authored nonzero rate-bearing content. The demo's current Gate and Morale values remain unchanged, and no rate or deployment profile was inferred from test data or examples. M1-5 is still scheduled after domain migration work in the coordination board.
+
 Changed code and test files, verified by focused tests:
 
 - `backend/app/gameplay/m6_5_siege_runtime.py`
