@@ -5,6 +5,7 @@
 - Code/test commit `02534c86` verifies that a casualty-driven Morale Pool projection rebuild after SQLite close/reopen matches the pre-close canonical digest. The event store snapshot has no projection checkpoints, and PoolProjector has no checkpoint input. This is checkpoint-free replay evidence, not physical checkpoint deletion.
 - Focused Morale tests returned `6 passed, 2 warnings`; the new node alone returned `1 passed, 2 warnings`. M1-3 Pool selection is now 35 nodes. Frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all with zero problems and improvements. Full backend suite was not run.
 - Evidence: `docs/verification/m1-3-morale-durable-rebuild-20261128.md`; raw output under `F:/paralls-verification/thread-a/m1-3-morale-durable-rebuild-20261128-01/`. U5 remains partial, and `integration` was not modified.
+- H-A-220 records why U9 is not runnable yet: M1-3 is not frozen, and the formal stage-5 watershed probe depends on completed Inventory migration. Existing package tests remain focused package evidence and are not counted as U9.
 
 ### M1-3 Morale Owner declaration contract audit (2026-11-28)
 

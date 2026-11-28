@@ -1493,3 +1493,9 @@
 - The current `test_infra_economy_tax_payment_owner_admission.py` covers a normal admitted identity and stale revision rejection, but no corrupt-receipt case was found in the relevant tests. No corruption was injected and no runtime claim is made from this static finding.
 - `government_treasury_runtime.py` is not listed as A-owned in `BOUNDARIES.md`. The architecture migration plan assigns domain migrations to B, but the current ownership table names only debt and contract for B. Request explicit domain ownership before changing the runtime. Suggested regression: corrupt/remove the persisted transaction event receipt after the first successful admission, retry the exact command, assert deterministic rejection and unchanged event/outbox snapshots, then route a healthy exact retry through `replay_duplicate`.
 - Evidence level: static candidate only. No tests ran, no code changed, and `integration` was not modified.
+
+### H-A-220 | M1-3 U9 probe readiness audit | 2026-11-28
+
+- The formal migration spec requires a declaration/package-only probe after a domain is frozen. The formal watershed experiment is scheduled for stage 5 after Inventory is fully migrated; experiment A specifically requires the Inventory domain to be complete.
+- M1-3 is not frozen because U1, U5, U6, U7, and production Pool scheduling remain open. M1-2 production integration remains blocked by the shared `inventory_runtime.py` boundary. A package-only Morale probe now would not establish U9 for a frozen domain and could not establish the formal stage-5 watershed experiment.
+- Existing M1-3 package tests and selections remain valid evidence for their stated checks, but are not reclassified as U9. No probe files or runtime code changed; this is a static sequencing audit.
