@@ -1302,3 +1302,9 @@
 - TDD RED reproduced a corrupted `command_id` being accepted as `duplicate_replayed`. Focused Stormnight realtime/action-window/world-death/P5 tests returned `56 passed, 6 warnings`; registered selection `1/0/0`; frozen five selections `1,169/0/0`.
 - Full backend returned `10,826 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. The same five node IDs and failure types reproduced at direct parent `5e178aeb` in a targeted run. Evidence: `docs/verification/m3-3-stormnight-legacy-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-stormnight-replay-20261128-02/`.
 - P-1 scanned the code and test additions across five credential-pattern families and found zero hits. M3-3 remains in progress; this closes only the legacy-compatible realtime adapter path. `integration` unchanged.
+
+### H-A-190 | M3-3 P5 current-tip replay lookup audit | 2026-11-28
+
+- AST inventory at A tip `4e71754f` found four P5 methods that read durable idempotency records without directly calling `replay_duplicate`. Manual call tracing confirmed each only gates or normalizes a result, then forwards duplicate handling to an Owner/helper path that validates the receipt. The P5 adapter path audit is recorded in `docs/verification/m3-3-p5-replay-path-audit-20261128.md`; raw inventory is under `F:/paralls-verification/thread-a/m3-3-p5-current-tip-audit-20261128/`.
+- All P5 direct replay-result paths inspected now route through the shared helper. A-owned migrated Owner paths also use it; the municipal certificate's special settlement-plan path has separate validation evidence.
+- This is static call-path evidence, not global runtime proof. Shared storage, B/other-domain and remaining repository-wide direct/custom paths have not been qualified here. M3-3 remains in progress; `integration` unchanged.
