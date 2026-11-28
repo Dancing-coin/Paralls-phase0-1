@@ -1336,3 +1336,9 @@
 - Formal Architecture v2 siege-demo materials specify the `breach` meaning and four-step `impact_gate` order, but do not provide production integrity bounds, breach/reset values, or impact deltas. Test values `40` / `45` are fixtures only.
 - Runtime accepts a versioned profile through `SIEGE_FACILITY_GATE_PROFILES_JSON`; the setting defaults to an empty list and validates the profile's ranges. A did not invent or configure production values. The gameplay/deployment authority must provide the target world's profile before production deployment or live siege verification.
 - Static evidence: `docs/verification/m6-5-production-gate-profile-source-audit-20261128.md`. No tests ran; `integration` and deployment configuration were not changed.
+
+### H-A-196 | M1-1 Bond formal delta and expiry scheduler audit | 2026-11-28
+
+- Formal Bond spec §4 defines per-type closed attribute keys; the authorized M1-1 task card requested removal of that key whitelist. Current `_bond_attributes` accepts arbitrary string keys up to eight entries, so implementation follows the task card but differs from the read-only formal spec. No behavior was changed in this audit.
+- The formal spec requires world-clock expiry to append `bond.expired`. `expire_bond` exists, but `rg` found no production caller; `active_bonds` filters expired terms only when queried at a supplied tick. This leaves durable scheduled expiry unverified and awaiting an owned Process/world-tick scheduler path.
+- Static evidence: `docs/verification/m1-1-bond-formal-delta-audit-20261128.md`. No tests ran. M1-1 remains pending gate review; this audit does not claim the Bond lifecycle is complete.

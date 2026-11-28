@@ -120,6 +120,10 @@
 
 - H-A-195 confirms the formal demo does not supply production numbers. Existing test values are not authoritative. The deployment/gameplay authority must provide a versioned target-world Gate profile before production deployment and live siege verification. Evidence: `docs/verification/m6-5-production-gate-profile-source-audit-20261128.md`.
 
+### M1-1 Bond formal delta (2026-11-28)
+
+- H-A-196 records the formal closed-attribute-set discrepancy and the missing production world-clock caller for durable `bond.expired` events. The task-card-approved behavior remains in code; M1-1 stays `待门禁` pending specification reconciliation and an owned scheduler/Process path. Evidence: `docs/verification/m1-1-bond-formal-delta-audit-20261128.md`.
+
 ### M5-5 FactType primitive-field increment (2026-11-26)
 
 - 本增量证据：`docs/verification/m5-5-facttype-primitives-20261126.md`。在 exact tip `30c4bf50` 定向 136 passed；M5-5 selection 38/0/0；冻结 ownership/modifier/equipment/inventory/shared-replay 选择分别 24/0/0、12/0/0、87/0/0、56/0/0、990/0/0。
