@@ -1,0 +1,11 @@
+{
+  "head": "20934a37",
+  "description": "Legacy Stormnight action retries reject corrupted durable receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_stormnight_realtime_session.py::test_legacy_action_replay_rejects_corrupt_durable_receipt_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

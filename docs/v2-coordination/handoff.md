@@ -1295,3 +1295,10 @@
 - TDD RED reproduced a corrupted receipt being returned as `duplicate_replayed`. Focused ActionConsequence/LifeState caller/ActionWindow/P5 tests returned `55 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `1,169/0/0`.
 - Full backend returned `10,825 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. The same five node IDs and failure types reproduced at direct parent `335e85be` in a targeted run. Evidence: `docs/verification/m3-3-world-death-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-world-death-replay-20261128-01/`.
 - M3-3 remains in progress; other direct/custom replay paths remain to inventory. `integration` unchanged. Production Gate numeric thresholds remain unconfigured.
+
+### H-A-189 | M3-3 Stormnight legacy-compatible action replay | 2026-11-28
+
+- `StormnightRealtimeSessionService._replay_action` now validates the durable transaction, ordered action-window event set, sequence, and stream revisions through `replay_duplicate` before examining frozen or process-local legacy caller data. Corrupt receipts return `stormnight_player_idempotency_reused` without writes. Code commit `20934a37`; no event contract or storage-core change.
+- TDD RED reproduced a corrupted `command_id` being accepted as `duplicate_replayed`. Focused Stormnight realtime/action-window/world-death/P5 tests returned `56 passed, 6 warnings`; registered selection `1/0/0`; frozen five selections `1,169/0/0`.
+- Full backend returned `10,826 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. The same five node IDs and failure types reproduced at direct parent `5e178aeb` in a targeted run. Evidence: `docs/verification/m3-3-stormnight-legacy-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-stormnight-replay-20261128-02/`.
+- P-1 scanned the code and test additions across five credential-pattern families and found zero hits. M3-3 remains in progress; this closes only the legacy-compatible realtime adapter path. `integration` unchanged.
