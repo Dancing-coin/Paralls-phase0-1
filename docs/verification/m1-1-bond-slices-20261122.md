@@ -111,9 +111,9 @@ RG 全仓调用与 schema 搜索还覆盖测试和脚本。未发现除上述 pr
 | U6 读取方清单及专项测试 | 已验证 | 本节列出 v1/v2/v3 读写方；Credential detached 定向测试 44 passed |
 | U7 主体读取分类 | 未做 | `read_as` 与 visibility 分类属于后续 M2 工作 |
 | U8 规则包设定及 Resolver | 仅静态 | Credential resolver 声明 Bond 输入；尚无 Ownership Bond 自有完整规则包 |
-| U9 探针及冻结基线对照 | 已验证但全量未通过 | 两个代码提交各自的 24/990 冻结选集均无差异；合并状态全量 exit 1，24 个失败含 22 项冻结失败及 2 项在基点复现的失败 |
-| U10 证据文件完整 | 已记录 | 两个代码 SHA、文件路径、验证数、兼容策略、环境与未覆盖项已列；不含全量通过声明 |
-| U11 单元选集登记 | 已验证 | `docs/verification/selection/m1-1-bond-expiry.json` 包含 10 个 scheduler、授权和 legacy-pin 节点；当前比较 `selected=10 problems=0 improvements=0`。这不关闭 Bond 单元其他 U 项 |
+| U9 探针及冻结基线对照 | 已验证但全量未通过 | 当前代码提交 `8bdf01dc` 的登记选择 `12/0/0`，冻结五组 `1,169` 节点零差异；完整 backend 全量有 5 项失败，均在代码父提交 `dbaae2c7` 定向复现 |
+| U10 证据文件完整 | 已记录 | 原始 Bond/Credential 代码 SHA、Population expiry、属性行为收敛提交与测试、文件路径、环境、父提交失败对照和未覆盖项均有记录；不含全量通过声明 |
+| U11 单元选集登记 | 已验证 | `docs/verification/selection/m1-1-bond-expiry.json` 包含 12 个 Bond 属性和 scheduler 回归节点；当前比较 `selected=12 problems=0 improvements=0`。这不关闭 Bond 单元其他 U 项 |
 
 ## 旧版转让入口混合账本兼容补测
 
@@ -146,3 +146,13 @@ RG 全仓调用与 schema 搜索还覆盖测试和脚本。未发现除上述 pr
 环境为 Python 3.12.2，`app.__file__` 为 A worktree 下的 `backend/app/__init__.py`，SQLite 3.43.1。`PYTHONPATH` 指向 A worktree；pytest 临时目录和验证输出位于 F 盘。解释器仍使用既有 D 盘虚拟环境路径，本次没有在 D 盘创建验证产物。比较器第一次调用因预先创建了它要求保持不存在的输出目录而在执行节点前退出，随后使用独立 run id 完成上述选集比较。
 
 此增量只验证 A 本机 Population cadence 到 Ownership expiry 的应用接线，不是 Unreal 实时世界时钟验证。M1-1 仍未完成门禁：Bond 属性白名单的任务卡行为与正式规格封闭属性集合存在差异，U1/U2/U4/U5/U7/U8 仍有未覆盖项，详见 H-A-196。
+
+## Bond 属性类型约束收敛（2026-11-28）
+
+正式规格 `docs/architecture-v2/02-原语/02-六原语规格.md` §4 为五类 Bond 定义封闭属性键。代码提交 `8bdf01dc4539b3f67898a9c4276fa941be90bdda` 使新 grant/supersede 写入按此集合拒绝未知键，行为改变仅限新写入。Ownership projector 继续读取历史事件中的扩展键，避免旧存档重建失败；可变的 obligation `outstanding_amount` 必须由独立 FactType 表达。该实现收敛到正式规格，与 M1-1 任务卡“移除属性白名单”的旧指令不一致，本次在全权持续授权下选择正式 Architecture v2 合同作为最终目标。
+
+TDD RED 在旧实现上重现：obligation Bond 接受 `outstanding_amount` 且未拒绝。GREEN 定向 Ownership/Bond/expiry/Credential 测试 `37 passed, 6 warnings`，U11 更新后 `12/0/0`。Python `3.12.2`，`app.__file__` 在 A worktree，SQLite `3.43.1`。新增测试覆盖非法写入零写入拒绝、旧事件扩展属性 projector 回放、正式 `obligation.amount` Decimal 规范化与精确重试。
+
+冻结 ownership/modifier/equipment/inventory/shared-replay 选择分别为 `24/12/87/56/990` 个节点，均 `problems=0 improvements=0`。完整 backend suite 为 `10,837 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`，退出码 1。五个失败节点在代码父提交 `dbaae2c7` 的隔离 worktree 全部复现；该对照是定向复现，不是父提交全量运行。
+
+原始 RED、focused、选集、full suite 与父提交对照输出分别位于 `F:\paralls-verification\thread-a\bond-closed-attributes-20261128-01\`、`-02\`、`-03\`、`-04\`、`-05\`。本行为变更不修改持久事件 schema，旧事件 payload 继续可读。M1-1 仍待门禁，Bond 生命周期之外的 U1/U2/U4/U5/U7/U8 缺口及全量五项失败仍需单独处理。

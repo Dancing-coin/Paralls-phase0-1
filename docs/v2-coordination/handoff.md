@@ -1374,3 +1374,10 @@
 - Focused Organization descriptor/platform and Morale refold tests returned `25 passed, 3 warnings`; the registered selection returned `1/0/0`; frozen five selections returned 1,169 nodes with zero differences.
 - Full backend returned `10,836 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. All five failed nodes reproduced on clean parent `60d206d4` in a targeted run. Evidence: `docs/verification/m3-3-organization-membership-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/organization-membership-replay-20261128-01/` through `-04/`.
 - M3-3 remains in progress; this closes only the admitted Organization membership custom replay path. `integration` was not modified.
+
+### H-A-202 | M1-1 Bond formal attribute contract convergence | 2026-11-28
+
+- Code commit `8bdf01dc4539b3f67898a9c4276fa941be90bdda` restricts newly granted/superseded Bond attributes to the formal per-type key sets. Historical event projection still accepts prior extension keys, preserving old event/snapshot rebuild. Mutable obligation amount remains outside Bond attributes.
+- TDD RED reproduced acceptance of `outstanding_amount` on obligation Bond. Focused Ownership/Bond/expiry/Credential tests returned `37 passed, 6 warnings`; updated M1-1 selection returned `12/0/0`; frozen five selections returned 1,169 nodes with zero differences.
+- Full backend returned `10,837 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. All five failures reproduced on code parent `dbaae2c7` in a targeted run. Evidence and raw logs: `docs/verification/m1-1-bond-slices-20261122.md` and `F:/paralls-verification/thread-a/bond-closed-attributes-20261128-01/` through `-05/`.
+- This follows the formal Architecture v2 attribute contract and differs from the prior M1-1 task-card instruction to remove the whitelist. M1-1 remains pending gate review; no event schema changed and `integration` was not modified.
