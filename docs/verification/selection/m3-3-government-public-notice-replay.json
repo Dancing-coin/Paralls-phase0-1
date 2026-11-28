@@ -1,0 +1,11 @@
+{
+  "head": "e1b520d17af37112239ea93c0c35695dfe66186b",
+  "description": "Government public workshop notice retries reject corrupt durable transaction receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4ah_public_workshop_notice.py::test_inf4ah_notice_rejects_corrupt_transaction_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
