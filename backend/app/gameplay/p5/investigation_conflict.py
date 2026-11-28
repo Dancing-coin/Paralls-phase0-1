@@ -315,12 +315,30 @@ class InvestigationConflictAuthority:
                 )
         existing = self._store.get_idempotency_record(_PRINCIPAL, command.idempotency_key)
         if existing is not None:
-            receipt = self._store.get_by_idempotency(_PRINCIPAL, command.idempotency_key)
             expected_type = (
                 "gameplay.conflict.world_death_commit_confirmed"
                 if intent.confirmed
                 else "gameplay.conflict.world_death_commit_rejected"
             )
+            try:
+                receipt = replay_duplicate(
+                    self._store,
+                    principal=_PRINCIPAL,
+                    idempotency_key=command.idempotency_key,
+                    payload_digest=existing.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="world_death_idempotency_reused",
+                    transaction_mismatch_code="world_death_idempotency_reused",
+                    event_count_mismatch_code="world_death_idempotency_reused",
+                    event_missing_code="world_death_idempotency_reused",
+                    expected_event_types=(expected_type,),
+                    expected_command_id=command.command_id,
+                    expected_transaction_id=f"transaction:{command.command_id}",
+                )
+            except ValueError:
+                return ActionWindowConflictResult(False, "rejected", error_code="world_death_idempotency_reused")
+            if receipt is None:
+                return ActionWindowConflictResult(False, "rejected", error_code="world_death_idempotency_reused")
             expected_payload = {
                 "source_event_id": intent.source_event_id,
                 "target_actor_ref": intent.target_actor_ref,
@@ -330,14 +348,7 @@ class InvestigationConflictAuthority:
                 "source_revision": intent.expected_source_revision,
                 "visibility_policy": "project",
             }
-            prior = None
-            if receipt is not None and receipt.committed and len(receipt.committed_event_ids) == 1:
-                batch = self._store.get_transaction(receipt.transaction_id)
-                if batch is not None and tuple(event.event_id for event in batch.events) == tuple(receipt.committed_event_ids):
-                    try:
-                        prior = self._store.get_event(receipt.committed_event_ids[0])
-                    except KeyError:
-                        prior = None
+            prior = self._store.get_event(receipt.committed_event_ids[0])
             if (
                 prior is None
                 or prior.event_type != expected_type

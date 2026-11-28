@@ -217,6 +217,45 @@ def test_world_death_confirmation_retry_recovers_receipt_after_lost_response(mon
     assert len([event for event in store.read_events() if event.event_type == "gameplay.conflict.world_death_commit_confirmed"]) == 1
 
 
+def test_world_death_confirmation_rejects_corrupt_receipt_without_write() -> None:
+    store = GameplayEventStore()
+    source_stream = "gameplay:conflict:encounter:case"
+    source = store.append_batch(build_atomic_event_batch(
+        command_id="case-death", principal_ref="authority:p5:investigation-conflict",
+        stream_id=source_stream, expected_revision=0,
+        event_specs=(("gameplay.conflict.terminal_outcome_recorded", {"actor_ref": "character:survivor", "terminal_kind": "case_death"}),),
+        idempotency_key="case-death", causation_id="case", correlation_id="case",
+    ))
+    source_event = store.get_event(source.committed_event_ids[0])
+    authority = InvestigationConflictAuthority(registry=_registry(), store=store)
+    command = GameplayCommandEnvelope(
+        command_id="death-confirm", command_type="gameplay.conflict.confirm_world_death", command_version=1,
+        principal_ref="authority:p5:investigation-conflict", actor_ref="character:survivor", project_ref="project:case",
+        transaction_id="transaction:death-confirm", idempotency_key="death-confirm", expected_revisions={source_stream: 1},
+        causation_id="case-death", correlation_id="case", source_ref=source_event.event_id, submitted_at="now",
+    )
+    intent = WorldDeathConfirmationIntent(
+        source_event_id=source_event.event_id, target_actor_ref="character:survivor", expected_source_revision=1,
+        confirmation_ref="confirmation:case:1", confirmed=True, policy_revision="policy:death@1",
+    )
+    assert authority.confirm_world_death(command=command, intent=intent).committed
+
+    key = ("authority:p5:investigation-conflict", command.idempotency_key)
+    stored = store._idempotency_results[key]
+    store._idempotency_results[key] = stored.model_copy(
+        update={"command_id": "command:corrupt"}, deep=True
+    )
+    event_count = len(store.read_events())
+    transaction_count = len(store.read_transactions())
+
+    duplicate = authority.confirm_world_death(command=command, intent=intent)
+
+    assert not duplicate.committed
+    assert duplicate.error_code == "world_death_idempotency_reused"
+    assert len(store.read_events()) == event_count
+    assert len(store.read_transactions()) == transaction_count
+
+
 def test_world_death_confirmation_changed_duplicate_is_rejected() -> None:
     store = GameplayEventStore()
     source_stream = "gameplay:conflict:encounter:case"
