@@ -68,12 +68,29 @@ The repository-root `pytest` command stopped during collection with exit 2 becau
 | U3 event schema and P-3 | Verified for Pool events | All seven Pool event types are registered, resolve to the `pool` domain, and produce graph nodes in the explicit projector regression. Startup subscription to all registered `gameplay.*` types was statically checked. |
 | U4 shared mechanism | Verified for the tested path | Pool and Morale commits use `OwnerCommitBuilder` and `replay_duplicate`; focused tests cover the Morale caller. |
 | U5 R1/R2/R3 | Partial | Morale exact-retry and corrupt receipt rejection are tested. Checkpoint deletion/state-digest reconstruction was not tested for this increment. |
-| U6 reader inventory and tests | Partial, partly static | M6-5 command dispatch and Morale projection call paths are present. A complete downstream reader inventory and subject-facing tests remain open. |
+| U6 reader inventory and tests | Partial, partly static | The inspected A-side production readers are listed below. Subject-facing reads and consumers outside the inspected repository trees remain unverified. |
 | U7 subject read and visibility | Partial | The package declares faction visibility. `GameplayReadAs` does not provide a Morale reader. |
 | U8 package settings and Resolver | Verified | The selected locked package supplies the Pool definition and registered Resolver. |
 | U9 migration probe and baseline | Partial | The 33-node unit selection and frozen five selections have zero differences. The success-standard probe must run after M1-3 is frozen and only add declarations/rule-pack data; that probe has not been run. |
 | U10 evidence and changed paths | Verified | This file lists the source, test, and package paths changed by the code commit. |
 | U11 registered test selection | Verified | `docs/verification/selection/m1-3-pool.json` contains 33 nodes at code/test commit `2cbe48d5` and compares with zero differences. |
+
+### U6 Current A-Side Reader Inventory
+
+Static search covered `backend/app/gameplay`, `backend/app/services/authority_graph_projector.py`, `backend/app/main.py`, tests, and scripts at code/test commit `2cbe48d5`.
+
+| Reader | Use | Classification |
+|---|---|---|
+| `PoolProjector.rebuild` in `pool_runtime.py` | Rebuilds value, reservations, thresholds, and source revision from one Pool FactType stream | Owner projection/recovery |
+| `MoraleRefoldAuthority.refold_after_casualty` and `.projection` | Reads the Morale Pool and historical Organization/LifeState inputs to commit or report Morale | Trusted settlement and projection helper |
+| `FacilityIntegrityAuthority` in `facility_integrity_runtime.py` | Rebuilds Facility integrity Pool state before integrity commands | Trusted Owner command validation |
+| `FacilityGateLayeredAuthority` in `facility_gate_layered_runtime.py` | Reads layered Gate Pool state, writes Pool adjustments and threshold crossings | Trusted Facility settlement |
+| `ImpactGateObligationProjector` in `impact_gate_obligation.py` | Consumes Pool adjusted and threshold-crossed events for impact obligations | Derived obligation projection |
+| `PlacePassabilityAuthority` in `place_passability_runtime.py` | Consumes Pool threshold crossings to revise Place passability | Trusted cross-domain input |
+| `SiegePhysicalInputAuthority` in `siege_physical_input_runtime.py` | Validates a threshold crossing as the breach source for signed physical input | Trusted source-evidence validation |
+| `HeavenlyAuthorityEventProjector`, subscribed in `main.py` to registered `gameplay.*` types | Projects registered Pool events into Siming's causal-event graph | Derived graph projection |
+
+The Morale `projection` helper has no production caller in `backend/app`; M6-5 dispatch invokes `refold_after_casualty` instead. No subject-facing Pool or Morale query route was found in the inspected `main.py` call graph. This does not prove absence of external callers or downstream consumers outside the searched repository trees. The tested Pool graph projection cases are in `test_authority_graph_projection.py`; Pool/Morale command and settlement readers have focused tests listed above. No runtime behavior changed in this reader-inventory update.
 
 Changed code and test files, verified by focused tests:
 
