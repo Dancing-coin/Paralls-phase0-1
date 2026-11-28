@@ -1,0 +1,16 @@
+{
+  "head": "616d9815053e9309e996cd81998c1c47fc2906e2",
+  "description": "Population-confirmed Ownership Bond expiry, scoped temporal grant validation, and legacy cadence pin compatibility",
+  "tests": [
+    {"test_name": "tests/test_ownership_bond_temporal_consumer.py::test_ownership_bond_expiry_consumer_is_available", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_ownership_bond_temporal_consumer.py::test_due_bond_expiry_is_committed_at_confirmed_world_tick_and_retries_stably", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_ownership_bond_temporal_consumer.py::test_missing_or_invalid_ownership_grant_makes_no_expiry_write[False]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_ownership_bond_temporal_consumer.py::test_missing_or_invalid_ownership_grant_makes_no_expiry_write[True]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_ownership_bond_temporal_consumer.py::test_bond_expiry_is_not_written_before_term_boundary", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_ownership_bond_temporal_consumer.py::test_application_cadence_assembly_registers_the_ownership_expiry_consumer", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_temporal_mapping_contract.py::test_population_pin_match_allows_only_missing_ownership_grant", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_population_durable_cadence_recovery.py::test_driver_persists_inventory_temporal_grant_in_durable_cadence_record", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_population_durable_cadence_recovery.py::test_driver_restores_legacy_cadence_missing_only_ownership_grant", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_population_durable_cadence_recovery.py::test_driver_rejects_legacy_cadence_missing_an_existing_temporal_grant", "outcome": "passed", "failures": []}
+  ]
+}

@@ -113,6 +113,7 @@ RG 全仓调用与 schema 搜索还覆盖测试和脚本。未发现除上述 pr
 | U8 规则包设定及 Resolver | 仅静态 | Credential resolver 声明 Bond 输入；尚无 Ownership Bond 自有完整规则包 |
 | U9 探针及冻结基线对照 | 已验证但全量未通过 | 两个代码提交各自的 24/990 冻结选集均无差异；合并状态全量 exit 1，24 个失败含 22 项冻结失败及 2 项在基点复现的失败 |
 | U10 证据文件完整 | 已记录 | 两个代码 SHA、文件路径、验证数、兼容策略、环境与未覆盖项已列；不含全量通过声明 |
+| U11 单元选集登记 | 已验证 | `docs/verification/selection/m1-1-bond-expiry.json` 包含 10 个 scheduler、授权和 legacy-pin 节点；当前比较 `selected=10 problems=0 improvements=0`。这不关闭 Bond 单元其他 U 项 |
 
 ## 旧版转让入口混合账本兼容补测
 
@@ -122,3 +123,26 @@ RG 全仓调用与 schema 搜索还覆盖测试和脚本。未发现除上述 pr
 - `python -m pytest -q -p no:cacheprovider backend/tests/test_credential_v2_land_right_revision_vector.py -k legacy_land_right_transfer_rejects`。修复前 1 failed、6 deselected，见 `F:/paralls-verification/thread-a/et-e4c044021a/red.txt`。
 - `python -m pytest -q -p no:cacheprovider` 运行 LandRight revision vector、Credential reference chain/runtime、Ownership Bond lifecycle 和 Adventure closure 五个文件，38 passed、2 warnings，退出 0。原始输出 `F:/paralls-verification/thread-a/et-218d73ce84/targeted.txt`。
 - `compare_selection.py --repo <worktree> --selection <selection.json> --output <run>/<selection>`。五组冻结选集 1,169 个节点，十一组登记选集 89 个节点，合计 1,258 个节点，各组 `problems=0 improvements=0`。原始输出 `F:/paralls-verification/thread-a/et-9be8cff326/`。本补丁未跑全量。
+
+## Bond 到期调度接线（2026-11-28）
+
+此增量在 Population 已确认的 cadence boundary 上调用现有 `OwnershipAuthorityService.expire_bond`，不直接写事件。新增的 `ownership` grant 只授权 `actor_gameplay.ownership_domain`；读取 durable cadence pins 后验证 issuer、timeline、boundary、scope 和 digest。到期筛选使用 Bond 的 `term_expires_at`，实际提交的 `world_tick` 使用确认处理 tick，迟到处理不回写未经观察的历史时间。到期命令身份由 `bond_ref` 和 `term_expires_at` 稳定派生，重复 boundary 不增加第二个事件。
+
+代码提交：`aba7dea902a7eb757aaff23b2b4f01334bac1673`。测试可靠性修正：`616d9815053e9309e996cd81998c1c47fc2906e2`。父提交 `6276757fe1629deb772d4444166836c54a9cef88` 上运行同一测试文件，预期缺失 consumer 的 6 项全部失败；当前 consumer 文件 `6 passed`，Bond/Population/temporal 定向组合 `106 passed, 6 warnings`。Bond expiry 独立 U11 选集登记在 `docs/verification/selection/m1-1-bond-expiry.json`，结果 `selected=10 problems=0 improvements=0`。
+
+| 验证 | 结果 | 原始输出 |
+|---|---|---|
+| 父提交 RED | `6 failed`，均因父提交没有 Ownership expiry consumer | `F:/paralls-verification/thread-a/ownership-bond-expiry-red-20261128-13/red.log` |
+| 当前 consumer GREEN | `6 passed, 6 warnings` | `F:/paralls-verification/thread-a/ownership-bond-expiry-green-20261128-14/consumer.log` |
+| Ownership / Population / temporal 定向组合 | `106 passed, 6 warnings` | `F:/paralls-verification/thread-a/ownership-bond-expiry-green-20261128-14/focused.log` |
+| Bond expiry 登记选集 | `selected=10 problems=0 improvements=0` | `F:/paralls-verification/thread-a/ownership-bond-expiry-unit-selection-20261128-16/selection.log` |
+| 冻结 ownership / modifier / equipment / inventory / shared-replay | `24/12/87/56/990` 节点，全部 `problems=0 improvements=0` | `F:/paralls-verification/thread-a/ownership-bond-expiry-current-selections-20261128-12/` |
+| 当前 A 的 Information 三文件重测 | `32 passed, 6 warnings`；`siege_information selected=26 problems=0 improvements=0` | `F:/paralls-verification/thread-a/bond-expiry-information-recheck-20261128-15/` |
+| 合并状态全量 backend | `10,835 passed, 6 failed, 2 skipped, 2 xfailed, 227 warnings`，退出码 1 | `F:/paralls-verification/thread-a/ownership-bond-expiry-full-20261128-02/full.log` |
+| 全量失败节点父提交对照 | 6 个节点中 5 个在父提交以相同类别失败，character recovery 单节点通过 | `F:/paralls-verification/thread-a/ownership-bond-expiry-parent-failures-20261128-03/parent.log` |
+
+全量六个失败节点为 calibration repair contract、Task45 Godot probe、`test_cold_ready`、character recovery probe、recovery measurement 和 Task8 Godot probe。character recovery 节点在父提交隔离复跑和当前提交隔离复跑均通过，当前全量中的 PermissionError 未归因；其余五项在父提交定向对照中同样失败。该比较不是父提交全量运行，也不构成全量通过结论。
+
+环境为 Python 3.12.2，`app.__file__` 为 A worktree 下的 `backend/app/__init__.py`，SQLite 3.43.1。`PYTHONPATH` 指向 A worktree；pytest 临时目录和验证输出位于 F 盘。解释器仍使用既有 D 盘虚拟环境路径，本次没有在 D 盘创建验证产物。比较器第一次调用因预先创建了它要求保持不存在的输出目录而在执行节点前退出，随后使用独立 run id 完成上述选集比较。
+
+此增量只验证 A 本机 Population cadence 到 Ownership expiry 的应用接线，不是 Unreal 实时世界时钟验证。M1-1 仍未完成门禁：Bond 属性白名单的任务卡行为与正式规格封闭属性集合存在差异，U1/U2/U4/U5/U7/U8 仍有未覆盖项，详见 H-A-196。
