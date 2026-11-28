@@ -1,0 +1,11 @@
+{
+  "head": "a47dacd0386d458cd37b7f1d3a22bed326079c55",
+  "description": "Government public project execution acknowledgment retries reject corrupt durable transaction receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_inf4ak_public_project_execution_acknowledgment.py::test_inf4ak_rejects_corrupt_transaction_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

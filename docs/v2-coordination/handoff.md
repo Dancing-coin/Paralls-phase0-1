@@ -1439,3 +1439,10 @@
 - Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused milling/acknowledgement/private follow-on tests returned `26 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen selections `24/12/87/56/990`, all with zero differences. Full backend suite was not run.
 - Evidence: `docs/verification/m3-3-government-public-milling-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-government-public-milling-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
 - P-1 scan of 75 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-government-public-milling-replay-20261128-01/p1-scan-final.log`.
+
+### H-A-212 | M3-3 Public project execution acknowledgment replay receipt validation | 2026-11-28
+
+- Code commit `a47dacd0386d458cd37b7f1d3a22bed326079c55` replaces the custom duplicate path in `GovernmentAuthority.acknowledge_public_project_execution` with shared `replay_duplicate` validation. A corrupted transaction reference now rejects with the existing `public_project_execution_acknowledgment_idempotency_key_reused` domain code; execution source/revision, causation, and correlation checks remain. The regression asserts zero writes after fault injection.
+- Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused acknowledgment/execution/workshop tests returned `16 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen selections `24/12/87/56/990`, all with zero differences. Full backend suite was not run.
+- Evidence: `docs/verification/m3-3-public-project-ack-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-public-project-ack-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
+- P-1 scan of 75 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-public-project-ack-replay-20261128-01/p1-scan-final.log`.

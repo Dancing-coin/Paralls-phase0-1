@@ -1,5 +1,10 @@
 # 迁移任务账本
 
+### M3-3 Public project execution acknowledgment replay increment (2026-11-28)
+
+- Code commit `a47dacd0` routes acknowledgment retries through `replay_duplicate`; corrupt transaction receipts reject with the existing domain error and no writes. Focused acknowledgment/execution/workshop tests `16 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `24/12/87/56/990`, all zero differences.
+- Evidence: `docs/verification/m3-3-public-project-ack-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-public-project-ack-replay-20261128-01/`. Full backend suite was not run. M3-3 remains in progress.
+
 ### M3-3 Government public milling notice replay increment (2026-11-28)
 
 - Code commit `5f823c51` routes milling notice retries through `replay_duplicate`; corrupt transaction receipts reject with the existing domain error and no writes. Focused milling/acknowledgement/private follow-on tests `26 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `24/12/87/56/990`, all zero differences.
