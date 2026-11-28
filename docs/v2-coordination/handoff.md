@@ -1499,3 +1499,9 @@
 - The formal migration spec requires a declaration/package-only probe after a domain is frozen. The formal watershed experiment is scheduled for stage 5 after Inventory is fully migrated; experiment A specifically requires the Inventory domain to be complete.
 - M1-3 is not frozen because U1, U5, U6, U7, and production Pool scheduling remain open. M1-2 production integration remains blocked by the shared `inventory_runtime.py` boundary. A package-only Morale probe now would not establish U9 for a frozen domain and could not establish the formal stage-5 watershed experiment.
 - Existing M1-3 package tests and selections remain valid evidence for their stated checks, but are not reclassified as U9. No probe files or runtime code changed; this is a static sequencing audit.
+
+### H-A-221 | M1-3 Pool R3 and M2-4 replay-contract reconciliation | 2026-11-28
+
+- The M2-4 verification contract defines replay correctness through both full reconstruction when no compatible checkpoint is available and checkpoint-plus-tail reconstruction with an equal projection hash. It explicitly records that the store has no checkpoint deletion API and that its test did not physically delete a persisted checkpoint.
+- Pool has no checkpoint input, persistence, or cache. The durable SQLite reopen test verifies Pool's full reconstruction path and equal canonical state digest. It does not verify Pool checkpoint-plus-tail, because no such Pool path exists, and it does not physically delete a Pool checkpoint.
+- This narrows the open question to whether M1-3 R3 accepts full replay for a consumer that has no checkpoint path, or requires every consumer to demonstrate checkpoint-tail equivalence even when it does not use checkpoints. No code or test changed; leave U5 partial pending that interpretation.

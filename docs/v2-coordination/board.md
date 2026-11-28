@@ -6,6 +6,7 @@
 - Focused Morale tests returned `6 passed, 2 warnings`; the new node alone returned `1 passed, 2 warnings`. M1-3 Pool selection is now 35 nodes. Frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all with zero problems and improvements. Full backend suite was not run.
 - Evidence: `docs/verification/m1-3-morale-durable-rebuild-20261128.md`; raw output under `F:/paralls-verification/thread-a/m1-3-morale-durable-rebuild-20261128-01/`. U5 remains partial, and `integration` was not modified.
 - H-A-220 records why U9 is not runnable yet: M1-3 is not frozen, and the formal stage-5 watershed probe depends on completed Inventory migration. Existing package tests remain focused package evidence and are not counted as U9.
+- H-A-221 reconciles Pool R3 with M2-4: Pool's checkpoint-free durable rebuild is verified, while checkpoint-tail and physical checkpoint deletion are inapplicable to its current implementation. Whether checkpoint-free replay alone satisfies Pool R3 remains pending interpretation; U5 stays partial.
 
 ### M1-3 Morale Owner declaration contract audit (2026-11-28)
 
