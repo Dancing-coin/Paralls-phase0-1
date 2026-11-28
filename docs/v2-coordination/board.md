@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### M1-3 Pool reader inventory current-tip recheck (2026-11-28)
+
+- Static inventory now maps eight A-side production reader/consumer paths across Pool, Morale, Facility integrity/layered settlement, impact obligations, Place passability, siege physical input, and the graph projector. Direct test coverage is mapped per reader. Formal Owner definitions classify Morale/Formation and Production/Facility as domain Owners; Pool remains the shared primitive, not an Owner.
+- Eight focused reader test files returned `142 passed, 6 warnings` at code/test tip `0b7852fe`; Python `3.12.2`, SQLite `3.43.1`, and A-worktree import path verified. No runtime or package content changed.
+- Evidence: `docs/verification/m1-3-pool-reader-inventory-20261128.md`; raw output under `F:/paralls-verification/thread-a/m1-3-reader-inventory-20261128-01/`. This is complete for the searched A repository paths, static for external services, and does not close U7 or all of U6.
+
 ### M1-3 Pool replay receipt consumer check (2026-11-28)
 
 - Test commit `0b7852fe` verifies that Pool maps an unresolvable `committed_event_ids` receipt to `pool_replay_event_missing` and leaves the store snapshot unchanged. Pool U11 is now 34 nodes.
