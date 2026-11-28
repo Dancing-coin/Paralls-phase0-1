@@ -79,6 +79,27 @@ def test_inf4am_duplicate_changed_and_wrong_source_are_zero_write() -> None:
     assert store.export_snapshot() == before
 
 
+def test_inf4am_notice_rejects_corrupt_transaction_receipt_without_writing() -> None:
+    store, _economy, _fulfilled = _economy_setup()
+    activity = _activity(store)
+    authority = GovernmentAuthority(store=store)
+    request = _request(store, activity)
+    assert authority.record_public_milling_notice(**request).committed
+    key = (GovernmentAuthority._PRINCIPAL, request["idempotency_key"])
+    store._idempotency_results[key] = store._idempotency_results[key].model_copy(
+        update={"transaction_id": "transaction:missing"},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    rejected = authority.record_public_milling_notice(**request)
+
+    assert not rejected.committed
+    assert rejected.failure is not None
+    assert rejected.failure.error_code == "public_milling_notice_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_inf4am_replay_rejects_forged_notice_partition() -> None:
     store, _economy, _fulfilled = _economy_setup()
     activity = _activity(store)
