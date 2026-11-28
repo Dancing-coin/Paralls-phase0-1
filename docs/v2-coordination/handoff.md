@@ -1411,3 +1411,10 @@
 
 - Formal RulePack/primitive provisions define tick-triggered Pool integration through `temporal_process`; the performance contract requires Pool integration and Process ticks to share one compiled loop. Current Facility Gate integrity/durability/latch and Morale packages all use `integration: none`. `PoolAuthorityService.integrate` exists but has no production caller tied to `PopulationDriver.current_tick`.
 - Production integration is therefore an M1-5 Process-path dependency plus authored nonzero rate-bearing content. Existing demo/test values were not promoted or inferred. This is static-only; no runtime code or tests changed, and M1-3 remains in progress.
+
+### H-A-208 | M3-3 Government policy registration replay receipt validation | 2026-11-28
+
+- Code commit `dff057516187091f916519b222546036dae5d49a` replaces the custom duplicate path in `GovernmentAuthority.register_commercial_inspection_policy` with shared `replay_duplicate` validation. A corrupted transaction reference now rejects as `idempotency_key_reused`; the test asserts persisted events, outbox, and idempotency state remain unchanged after fault injection. Existing changed-policy retry rejection is preserved.
+- Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Focused policy-registration tests returned `10 passed, 2 warnings`; registered M3-3 selection `1/0/0`; frozen five selections `24/12/87/56/990`, all with zero differences. Full backend suite was not run.
+- Evidence: `docs/verification/m3-3-government-policy-registration-replay-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m3-3-government-policy-replay-20261128-01/`. This closes one custom replay path only; M3-3 remains in progress and `integration` is unchanged.
+- P-1 scan of 76 final staged added lines returned `patterns-scanned=5 credential-pattern-hits=0`; raw output is `F:/paralls-verification/thread-a/m3-3-government-policy-replay-20261128-01/p1-scan-final.log`.

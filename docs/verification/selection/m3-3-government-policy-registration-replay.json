@@ -1,0 +1,11 @@
+{
+  "head": "dff057516187091f916519b222546036dae5d49a",
+  "description": "Government commercial inspection policy retries reject corrupt durable transaction receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_infra_government_policy_registration.py::test_government_policy_registration_rejects_corrupt_transaction_receipt_without_writing",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
