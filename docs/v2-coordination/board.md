@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### M1-3 Morale durable Pool rebuild regression (2026-11-28)
+
+- Code/test commit `02534c86` verifies that a casualty-driven Morale Pool projection rebuild after SQLite close/reopen matches the pre-close canonical digest. The event store snapshot has no projection checkpoints, and PoolProjector has no checkpoint input. This is checkpoint-free replay evidence, not physical checkpoint deletion.
+- Focused Morale tests returned `6 passed, 2 warnings`; the new node alone returned `1 passed, 2 warnings`. M1-3 Pool selection is now 35 nodes. Frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all with zero problems and improvements. Full backend suite was not run.
+- Evidence: `docs/verification/m1-3-morale-durable-rebuild-20261128.md`; raw output under `F:/paralls-verification/thread-a/m1-3-morale-durable-rebuild-20261128-01/`. U5 remains partial, and `integration` was not modified.
+
 ### M1-3 Morale Owner declaration contract audit (2026-11-28)
 
 - Static review confirms the formal Owner table lists Morale / Formation as stewarded, while A has a code-backed `MoraleRefoldAuthority` and code Resolver. The FactType, Resolver and command declarations exist in the package, but the full L3 Owner declaration and code consumer do not.

@@ -1,5 +1,5 @@
 {
-  "head": "0b7852fe",
+  "head": "02534c86",
   "description": "M1-3 Pool primitives, casualty refold, versioned Morale package Resolver, M6-5 package assembly, compatibility, owner fragments, schemas, and hysteresis",
   "tests": [
     {
@@ -109,6 +109,11 @@
     },
     {
       "test_name": "tests/test_morale_refold_runtime.py::test_morale_duplicate_rejects_incomplete_committed_event_receipt",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_pool_rebuild_digest_matches_after_durable_reopen_without_checkpoint",
       "outcome": "passed",
       "failures": []
     },

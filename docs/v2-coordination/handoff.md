@@ -1480,3 +1480,9 @@
 - 静态核对发现，正式 Owner 表将 Morale / Formation 列为 stewarded，但当前 A 代码存在 `MoraleRefoldAuthority` 与 code Resolver。请项目负责人按 D5 裁定，是保留 stewarded 并明确该 runtime 为允许的 Resolver adapter，还是将 Morale 分类裁定为 native。
 - 正式 Owner 字段包括 `writes`、`denies`、跨事实 `invariants`、`commands`、`resolvers`、`reads` 与部署元数据。当前代码只有 `REGISTERED_OWNER_IDS` 名单及包内 FactType/Resolver/command 声明，没有完整的 Owner 声明注册/校验合同。请同时确认 Owner 声明消费正式字段的机制，并避免在 invariant expression grammar 未定义时把 `MORALE_D8_NARROW@1` 擅自翻译为新语法。
 - 证据：`docs/verification/m1-3-owner-declaration-gap-20261128.md`。M1-3 U1 保持 partial，未修改运行时代码或 `integration`。
+
+### H-A-218 | M1-3 Morale Pool durable reopen 重建验证 | 2026-11-28
+
+- Code/test commit `02534c86` adds a durable SQLite Morale Pool projection rebuild regression. The Morale/Pool state digest after closing and reopening the event ledger matches the pre-close digest. Focused Morale tests returned `6 passed, 2 warnings`; the new node alone returned `1 passed, 2 warnings`.
+- The updated M1-3 Pool selection returned `35/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all zero differences. Python `3.12.2`, SQLite `3.43.1`, and the A-worktree `app.__file__` were verified before pytest and comparisons. Full backend suite was not run.
+- This is checkpoint-free durable replay evidence. The snapshot contains no projection checkpoint, and PoolProjector does not accept or consult one, so physical checkpoint deletion remains unverified. Evidence: `docs/verification/m1-3-morale-durable-rebuild-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m1-3-morale-durable-rebuild-20261128-01/`. U5 remains partial; `integration` was not modified.
