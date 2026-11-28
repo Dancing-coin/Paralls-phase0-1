@@ -340,6 +340,95 @@ def test_pack_rejects_process_kind_on_non_process_fact_type(tmp_path):
     assert [violation.target for violation in matching] == ["fact:facility:gate-03:latch"]
 
 
+def _temporal_effect_pack(tmp_path):
+    destination = shutil.copytree(FACILITY_PACK, tmp_path / "temporal-effect-pack")
+    manifest_path = destination / "pack.yaml"
+    manifest = manifest_path.read_text(encoding="utf-8")
+    manifest = manifest.replace(
+        '  fact_types: ["gate_leaf_durability", "gate_latch_durability", "gate_latch", "gate_integrity"]\n',
+        '  fact_types: ["gate_leaf_durability", "gate_latch_durability", "gate_latch", "gate_integrity", "bleeding_process"]\n',
+    )
+    manifest = manifest.replace(
+        'contents:\n', 'contents:\n  temporal_effects: ["bleeding"]\n', 1,
+    )
+    manifest = manifest.replace(
+        '  unrelated: []\n',
+        '  unrelated: ["fact:production:world:bleeding_process"]\n',
+    )
+    manifest_path.write_text(manifest, encoding="utf-8")
+    process_path = destination / "fact_types/bleeding_process.yaml"
+    process_path.write_text(
+        '"fact:production:world:bleeding_process":\n'
+        '  primitive: "process"\n'
+        '  process_kind: "temporal"\n'
+        '  identity: "entity_ref"\n'
+        '  owner_ref: "Production"\n'
+        '  event_schema_ref: "gameplay.pool@1"\n'
+        '  visibility:\n'
+        '    class: "private"\n'
+        '    learnable_by: ["role:production_authority"]\n'
+        '    channel: "direct"\n'
+        '    persistence: "permanent"\n'
+        '  cadence: "event"\n'
+        '  host: "paralls"\n'
+        '  unknown_policy: "reject"\n',
+        encoding="utf-8",
+    )
+    effect_path = destination / "temporal_effects/bleeding.yaml"
+    effect_path.parent.mkdir()
+    effect_path.write_text(
+        '"bleeding":\n'
+        '  process_fact_type_ref: "fact:production:world:bleeding_process"\n'
+        '  pool_fact_type_ref: "fact:facility:gate-03:integrity"\n'
+        '  tick_policy_ref: "tick:daily@1"\n'
+        '  exit_condition_ref: "condition:bleeding_stopped@1"\n',
+        encoding="utf-8",
+    )
+    return destination
+
+
+def test_pack_loads_temporal_effect_declarations_and_resolves_fact_types(tmp_path):
+    loaded = load_pack(_temporal_effect_pack(tmp_path), handlers={})
+
+    assert loaded.temporal_effects["bleeding"]["process_fact_type_ref"] == (
+        "fact:production:world:bleeding_process"
+    )
+
+
+def test_pack_rejects_temporal_effect_that_references_non_temporal_process(tmp_path):
+    destination = _temporal_effect_pack(tmp_path)
+    effect_path = destination / "temporal_effects/bleeding.yaml"
+    effect = effect_path.read_text(encoding="utf-8")
+    effect_path.write_text(
+        effect.replace("fact:production:world:bleeding_process", "fact:facility:gate-03:latch"),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers={})
+
+    assert "temporal_effect_process_facttype_invalid" in {
+        violation.code for violation in error.value.violations
+    }
+
+
+def test_pack_rejects_malformed_temporal_effect_declaration(tmp_path):
+    destination = _temporal_effect_pack(tmp_path)
+    effect_path = destination / "temporal_effects/bleeding.yaml"
+    effect = effect_path.read_text(encoding="utf-8")
+    effect_path.write_text(
+        effect.replace('tick_policy_ref: "tick:daily@1"', 'tick_policy_ref: ""'),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegistrationRejected) as error:
+        load_pack(destination, handlers={})
+
+    assert "temporal_effect_reference_invalid" in {
+        violation.code for violation in error.value.violations
+    }
+
+
 @pytest.mark.parametrize(("field", "value", "primitive"), [
     pytest.param("aggregation", '"sum"', "machine", id="aggregation"),
     pytest.param("refold_model_ref", '"resolver@1"', "machine", id="refold-model"),

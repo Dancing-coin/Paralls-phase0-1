@@ -230,6 +230,11 @@
 - At A tip `27c2aaa0`, resolution-order uniqueness/density and all four FactType identity values have regression coverage; the earlier H-A-099 statement that direct ordering assertions were absent is superseded by H-A-101/H-A-102. Current-tip validator/registry tests: `136 passed, 2 warnings in 3.32s`; evidence is `docs/verification/m5-5-rule-catalog-coverage-20261126.md` and raw output is `F:/paralls-verification/thread-a/m5-5-rule-catalog-current-tip-20261126-01/focused.log`.
 - M5-5 remains in progress. Formal Owner declaration fields exist, but code has no machine-readable declaration registry/compiler or complete code-consumable declaration set. Invariant expressions lack a complete grammar; Resolver purity lacks a consumed capability/side-effect attestation. Impact-profile cycles are not expressible in the flat format, and `temporal_effects` still lacks its entry/consumer/persistence contract. Clarified in H-A-110 and `docs/verification/m5-5-rule-catalog-coverage-20261126.md`.
 
+### M5-5 temporal_effects static package declaration increment (2026-11-28)
+
+- A added offline `temporal_effects` loading and validates references to registered temporal-process and Pool FactTypes. Three new tests, all 140 validator tests, the 38-node M5-5 selection, the new 3-node selection, and frozen five selections (1,169 nodes) returned zero differences. Evidence: `docs/verification/m5-5-temporal-effects-20261128.md`; raw output: `F:/paralls-verification/thread-a/m5-5-temporal-effects-20261128-01/`.
+- The entry shape is provisional. Tick and exit-condition namespaces remain unresolved. No scheduler, persisted process instance, package migration contract, or Pool settlement consumer was implemented. M5-5 remains in progress; full backend suite was not run.
+
 ## 三、待决（负责人需表态）
 
 ### M6-5 最新进展（2026-11-24）

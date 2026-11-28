@@ -1,0 +1,9 @@
+{
+  "head": "b587e9395c5a2e022ab66de1d4725921d2482735",
+  "description": "M5-5 temporal effect static package declaration loading and FactType reference validation",
+  "tests": [
+    {"test_name": "tests/test_rule_pack_validator.py::test_pack_loads_temporal_effect_declarations_and_resolves_fact_types", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_temporal_effect_that_references_non_temporal_process", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_rule_pack_validator.py::test_pack_rejects_malformed_temporal_effect_declaration", "outcome": "passed", "failures": []}
+  ]
+}

@@ -54,6 +54,7 @@ class LoadedPack:
     workflows: Mapping[str, Workflow] = field(default_factory=lambda: MappingProxyType({}))
     reactions: Mapping[str, Reaction] = field(default_factory=lambda: MappingProxyType({}))
     play_patterns: Mapping[str, PlayPattern] = field(default_factory=lambda: MappingProxyType({}))
+    temporal_effects: Mapping[str, Mapping[str, Any]] = field(default_factory=lambda: MappingProxyType({}))
 
 
 def _validate_pool_definition(target: str, spec: Any) -> None:
@@ -214,6 +215,34 @@ def _binding_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[tuple
         yield "pack_binding_model_unknown", "reference a registered cost Resolver"
 
 
+def _temporal_effect_violations(
+    spec: Any, *, fact_specs: Mapping[str, Any], pool_defs: Mapping[str, Any],
+) -> Iterator[tuple[str, str]]:
+    fields = {
+        "process_fact_type_ref", "pool_fact_type_ref", "tick_policy_ref", "exit_condition_ref",
+    }
+    if not isinstance(spec, dict) or spec.keys() != fields:
+        yield "temporal_effect_schema_invalid", "declare process, Pool, tick policy, and exit condition references"
+        return
+
+    reference_pattern = re.compile(r"^[a-z][a-z0-9_.:-]*@[1-9][0-9]*$")
+    for field in ("tick_policy_ref", "exit_condition_ref"):
+        if not isinstance(spec[field], str) or not reference_pattern.fullmatch(spec[field]):
+            yield "temporal_effect_reference_invalid", f"declare a versioned {field}"
+
+    process_ref = spec["process_fact_type_ref"]
+    process = fact_specs.get(process_ref) if isinstance(process_ref, str) else None
+    if (not isinstance(process, dict) or process.get("primitive") != "process"
+            or process.get("process_kind") != "temporal"):
+        yield "temporal_effect_process_facttype_invalid", "reference a process FactType with process_kind temporal"
+
+    pool_ref = spec["pool_fact_type_ref"]
+    pool = fact_specs.get(pool_ref) if isinstance(pool_ref, str) else None
+    if (not isinstance(pool, dict) or pool.get("primitive") != "pool"
+            or pool_ref not in pool_defs):
+        yield "temporal_effect_pool_facttype_invalid", "reference a registered Pool FactType"
+
+
 def _command_violations(
     command_type: str, spec: Mapping[str, Any], owner_domains: Mapping[str, str], owners: list[str],
 ) -> Iterator[tuple[str, str]]:
@@ -368,7 +397,7 @@ def _read_pack(directory: Path, *, running: bool = False) -> _PackSource:
     sections = {name: {} for name in (
         "fact_types", "machine_defs", "models", "pool_defs", "entity_types", "impact_profiles",
         "aggregation_models", "bindings", "command_catalog", "pipelines", "workflows",
-        "reactions", "play_patterns",
+        "reactions", "play_patterns", "temporal_effects",
     )}
     declared = {"pack.yaml"}
     if not isinstance(contents, dict):
@@ -638,6 +667,12 @@ def load_pack(
                 file, line = locations[section, target]
                 for code, hint in validate(spec, registry):
                     reject(code, target, file, line, hint)
+        for target, spec in sections["temporal_effects"].items():
+            file, line = locations["temporal_effects", target]
+            for code, hint in _temporal_effect_violations(
+                spec, fact_specs=sections["fact_types"], pool_defs=sections["pool_defs"],
+            ):
+                reject(code, target, file, line, hint)
         if not issues and sections["reactions"]:
             declarations = []
             for target, spec in sections["reactions"].items():
@@ -680,4 +715,5 @@ def load_pack(
         freeze(sections["aggregation_models"]), freeze(sections["bindings"]), revisions,
         freeze(sections["command_catalog"]), MappingProxyType(pipelines), MappingProxyType(workflows),
         MappingProxyType(reactions), MappingProxyType(play_patterns),
+        freeze(sections["temporal_effects"]),
     )

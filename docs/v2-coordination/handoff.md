@@ -1515,6 +1515,13 @@
 - Evidence: `docs/verification/m3-3-government-treasury-replay-20261128.md`; raw output: `F:/paralls-verification/thread-a/m3-3-government-treasury-replay-20261128-02/`. This verifies one Treasury custom replay path; M3-3 remains in progress and `integration` is unchanged.
 - P-1 scan returned `patterns-scanned=5 credential-pattern-hits=0`; raw output: `F:/paralls-verification/thread-a/m3-3-government-treasury-replay-20261128-02/p1-scan.log`.
 
+### H-A-224 | M5-5 temporal_effects static package declaration increment | 2026-11-28
+
+- The offline rule-pack loader now exposes `temporal_effects` declarations through `LoadedPack`. Each entry references a registered temporal-process FactType and a registered Pool FactType, plus version-shaped tick-policy and exit-condition identifiers.
+- This is a provisional A-side package shape. Tick/exit reference namespaces and package-version migration behavior remain unspecified by the formal package format. `next_tick` remains instance state. No scheduler, process-instance persistence, command registration, or Pool settlement consumer was added.
+- Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Validator tests returned `140 passed, 2 warnings`; M5-5 selections returned `38/0/0` and `3/0/0`; frozen selections Ownership/Modifier/Equipment/Inventory/shared-replay returned `24/12/87/56/990`, all with zero problems and improvements. Full backend suite was not run.
+- Evidence: `docs/verification/m5-5-temporal-effects-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m5-5-temporal-effects-20261128-01/`. M5-5 remains in progress.
+
 ### H-A-223 | M3-3 Organization public project execution replay receipt validation | 2026-11-28
 
 - Code/test/selection commit `956fbe67689d893f61ce2e3d4d8e6d21710e4db8` replaces the custom receipt lookup in `record_public_project_execution` with shared `replay_duplicate` validation before existing request-specific matching. TDD RED reproduced successful duplicate replay with a missing event ID appended to the durable receipt; the retry now rejects with the existing reused-key failure and the store snapshot remains unchanged.
