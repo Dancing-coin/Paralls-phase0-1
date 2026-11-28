@@ -227,3 +227,7 @@
 ### M6-5 A-tip Information delivery recheck (2026-11-28)
 
 - B's `a61c93ad`, `a1719826`, and `e185cfa8` have effective equivalents on A. Event-time and selection changes are patch-equivalent, and the checkpoint-tail test blob is identical. No cherry-pick was needed. At A tip `51d88a4c47e9b92bc8cb24080d540034eecf30b3`, focused Information/checkpoint/wiring tests returned `32 passed, 6 warnings`; `siege_information` returned `selected=26 problems=0 improvements=0`. Python `3.12.2`, A-worktree import path, SQLite `3.43.1`. Raw logs: `F:/paralls-verification/thread-a/information-b-recheck-20261128-01/`. Full backend and frozen five selections were not rerun. M6-5 remains in progress.
+
+### M1-3 current A-tip Pool regression recheck (2026-11-28)
+
+- At A HEAD `72082ffd`, focused Pool/Facility integrity/Morale Pool tests returned `27 passed, 2 warnings`. The M1-3 Pool selection returned `17/0/0`; the domain-owner selection returned `1/0/0`; frozen ownership/modifier/equipment/inventory/shared-replay selections returned `24/12/87/56/990` nodes, all with zero problems and improvements. Python `3.12.2`, A-worktree import path, SQLite `3.43.1`. Evidence and raw output: `docs/verification/m1-3-pool-spec-audit-20261124.md`, `F:/paralls-verification/thread-a/m1-3-current-tip-20261128-01/`. Full backend was not run. M1-3 remains `待门禁`; production scheduling and domain declaration gaps remain open.

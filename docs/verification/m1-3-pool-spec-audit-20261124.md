@@ -37,3 +37,22 @@ The remaining domain-level M1-3 items are unchanged: domain Owner classification
 - Frozen selections and full suite were not rerun for this audit.
 - The latest recorded Pool focused tests and selections remain in the linked M1-3 runtime, factory, and casualty evidence. The combined-state full suite previously exited nonzero and is not a passing result.
 - M1-3 remains `待门禁`; this audit does not claim that Pool or Architecture v2 is complete.
+
+## Current A-tip regression recheck (2026-11-28)
+
+The code and selections were rechecked at A HEAD `72082ffd8d7bb5143fc0b2acda2e5faf7eb354ba`. The commit adds only coordination documentation after code tip `51d88a4c`; no Pool runtime code changed in between.
+
+Environment: Python `3.12.2`, `app.__file__` at `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`, SQLite `3.43.1`. All raw output is under `F:\paralls-verification\thread-a\m1-3-current-tip-20261128-01\`.
+
+| Check | Result |
+|---|---|
+| Pool, Facility integrity, and Morale Pool focused tests | `27 passed, 2 warnings` |
+| M1-3 Pool registered selection | `selected=17 problems=0 improvements=0` |
+| M1-3 domain-owner registered selection | `selected=1 problems=0 improvements=0` |
+| Frozen ownership selection | `selected=24 problems=0 improvements=0` |
+| Frozen modifier selection | `selected=12 problems=0 improvements=0` |
+| Frozen equipment selection | `selected=87 problems=0 improvements=0` |
+| Frozen inventory selection | `selected=56 problems=0 improvements=0` |
+| Frozen shared-replay selection | `selected=990 problems=0 improvements=0` |
+
+This is focused and selection evidence only. The full backend suite was not run. Production Pool scheduling, non-zero rate-bearing Pool content, domain Owner/FactType declaration, domain Resolver registration, R1/R2/R3 evidence, and subject-facing reads remain unverified or incomplete. No `integration` change was made.
