@@ -452,7 +452,7 @@ def test_organization_period_and_commitment_require_admitted_bindings() -> None:
     assert store.get_stream_head("gameplay:organization:organization:millers@1") == 0
 
 
-def test_organization_membership_admitted_write_is_exact_binding_bound() -> None:
+def test_organization_membership_admitted_write_is_exact_binding_bound(monkeypatch) -> None:
     registry = GameplayPatchRegistry(trusted_authors=frozenset({"author:repo"}))
     manifest = _manifest()
     extension = manifest.platform_extension
@@ -491,3 +491,22 @@ def test_organization_membership_admitted_write_is_exact_binding_bound() -> None
         binding_ref="binding:membership@1", command_id="command:membership", idempotency_key="idempotency:membership", causation_id="cause:membership", correlation_id="corr:membership", expected_revision=0,
     )
     assert result.committed
+
+    committed_events = store.read_events()
+    original_get = store.get_by_idempotency
+
+    def corrupted_get(principal_ref: str, idempotency_key: str):
+        existing = original_get(principal_ref, idempotency_key)
+        if principal_ref == authority._PRINCIPAL and idempotency_key == "idempotency:membership":
+            return existing.model_copy(update={"transaction_id": "transaction:missing"}, deep=True)
+        return existing
+
+    monkeypatch.setattr(store, "get_by_idempotency", corrupted_get)
+    replayed = authority.record_admitted_platform_organization_membership(
+        intent=OrganizationMembershipDelegationIntent(organization_ref="organization:millers@1", member_ref="character:ada", role_ref="role:steward@1", provenance_ref="provenance:membership@1", source_revision_pin=0, delegation_state="active"),
+        binding_ref="binding:membership@1", command_id="command:membership", idempotency_key="idempotency:membership", causation_id="cause:membership", correlation_id="corr:membership", expected_revision=0,
+    )
+
+    assert not replayed.committed
+    assert replayed.failure.error_code == "ogs_organization_membership_idempotency_reused"
+    assert store.read_events() == committed_events

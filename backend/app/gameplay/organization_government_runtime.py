@@ -16,6 +16,7 @@ from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.ecology_consumer_admission import EcologyConsumerAdmissionCheck
 from app.gameplay.governed_contract_catalog import GovernedAuthorityContractCatalog, GovernedAuthorityContractError
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure, GameplayOutboxEntry, OwnerAuthorizedFragment, StrictGameplayModel
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementPlan
 from app.gameplay.settlement_plan import build_atomic_event_batch, build_multi_stream_atomic_event_batch_from_fragments
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
@@ -6960,12 +6961,27 @@ class OrganizationAuthority:
             )
         except Exception:
             return self._organization_window_rejected(command_id, "ogs_organization_membership_intent_invalid")
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if existing is not None:
-            if existing.committed and len(existing.committed_event_ids) == 1:
+        idempotency_record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="ogs_organization_membership_idempotency_reused",
+                    transaction_mismatch_code="ogs_organization_membership_idempotency_reused",
+                    event_count_mismatch_code="ogs_organization_membership_idempotency_reused",
+                    event_missing_code="ogs_organization_membership_idempotency_reused",
+                    expected_event_types=("gameplay.organization.membership_delegation_recorded@1",),
+                )
+            except ValueError:
+                return self._organization_window_rejected(command_id, "ogs_organization_membership_idempotency_reused")
+            if existing is not None:
                 previous = self._store.get_event(existing.committed_event_ids[0])
-                if previous.event_type == "gameplay.organization.membership_delegation_recorded@1" and previous.payload == typed.model_dump(mode="json", exclude_none=True):
-                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+                if previous.payload == typed.model_dump(mode="json", exclude_none=True):
+                    return existing
             return self._organization_window_rejected(command_id, "ogs_organization_membership_idempotency_reused")
         if self._store.get_stream_head(stream_id) != expected_revision:
             return self._organization_window_rejected(command_id, "ogs_organization_membership_revision_conflict")
