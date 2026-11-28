@@ -120,6 +120,10 @@
 
 - H-A-195 confirms the formal demo does not supply production numbers. Existing test values are not authoritative. The deployment/gameplay authority must provide a versioned target-world Gate profile before production deployment and live siege verification. Evidence: `docs/verification/m6-5-production-gate-profile-source-audit-20261128.md`.
 
+### M5-3 package migration current-tip revalidation (2026-11-28)
+
+- At code tip `4cf42fa3` (documentation HEAD `d24c303e`), package migration/schema/startup/RulePack focused tests returned `213 passed, 6 warnings`; M5-3 selection `23/0/0`; frozen Ownership/shared-replay `24/0/0` and `990/0/0`. Evidence: `docs/verification/m5-3-startup-contract-20261126.md`; raw output: `F:/paralls-verification/thread-a/m5-3-current-tip-recheck-20261128-01/` and selection outputs under `F:/paralls-verification/thread-a/m3-1-four-owner-current-20261128-01/`. Production manifest trust, target-world invocation, Gate values, cross-language hash contract, deployment startup and UE transport remain unverified.
+
 ### M1-1 Bond formal delta (2026-11-28)
 
 - H-A-196 records the formal closed-attribute-set discrepancy and the missing production world-clock caller for durable `bond.expired` events. The task-card-approved behavior remains in code; M1-1 stays `待门禁` pending specification reconciliation and an owned scheduler/Process path. Evidence: `docs/verification/m1-1-bond-formal-delta-audit-20261128.md`.
