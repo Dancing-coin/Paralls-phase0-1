@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### M3-3 Organization membership replay integrity increment (2026-11-28)
+
+- Code commit `f1f6b30b` routes Organization admitted membership retries through shared `replay_duplicate`; corrupt receipts retain `ogs_organization_membership_idempotency_reused` and make no writes. Focused tests `25 passed, 3 warnings`; new selection `1/0/0`; frozen five selections 1,169 nodes with zero differences.
+- Full backend: `10,836 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. All five failed nodes reproduced on parent `60d206d4` in a targeted comparison. Evidence: `docs/verification/m3-3-organization-membership-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/organization-membership-replay-20261128-01/` through `-04/`.
+- M3-3 remains in progress. This increment verifies one Organization custom replay path only.
+
 ### Current A-tip verification update (2026-11-27)
 
 - M6-5 focused startup/runtime recheck with explicit F-drive pytest `--basetemp`: `55 passed, 6 warnings`; evidence H-A-130.

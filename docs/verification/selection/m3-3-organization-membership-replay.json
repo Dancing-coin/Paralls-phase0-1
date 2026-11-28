@@ -1,0 +1,11 @@
+{
+  "head": "f1f6b30b",
+  "description": "Organization membership retries reject durable receipts whose transaction reference is missing",
+  "tests": [
+    {
+      "test_name": "tests/test_organization_government_social_descriptor_binding.py::test_organization_membership_admitted_write_is_exact_binding_bound",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
