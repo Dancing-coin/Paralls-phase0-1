@@ -1381,3 +1381,9 @@
 - TDD RED reproduced acceptance of `outstanding_amount` on obligation Bond. Focused Ownership/Bond/expiry/Credential tests returned `37 passed, 6 warnings`; updated M1-1 selection returned `12/0/0`; frozen five selections returned 1,169 nodes with zero differences.
 - Full backend returned `10,837 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. All five failures reproduced on code parent `dbaae2c7` in a targeted run. Evidence and raw logs: `docs/verification/m1-1-bond-slices-20261122.md` and `F:/paralls-verification/thread-a/bond-closed-attributes-20261128-01/` through `-05/`.
 - This follows the formal Architecture v2 attribute contract and differs from the prior M1-1 task-card instruction to remove the whitelist. M1-1 remains pending gate review; no event schema changed and `integration` was not modified.
+
+### H-A-203 | M3-1 current-tip registered selection revalidation | 2026-11-28
+
+- At documentation HEAD `e62ce9d8`, all 59 registered selections plus the five frozen selections completed serially: 64 invocations, 1,575 summed selected nodes including overlap, all `problems=0 improvements=0`. The source tree matches code commit `8bdf01dc`; raw outputs are under `F:/paralls-verification/thread-a/m3-1-current-tip-a5e32538/`.
+- The exact source tree full backend result is separately recorded in M1-1 evidence as `10,837 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1; all five failures reproduced on code parent `dbaae2c7` in targeted comparisons. This does not make the full suite green.
+- M3-1 stays `待门禁`; `integration` was not modified. The B Information delivery at `e185cfa8` already has effective equivalents in A and was revalidated under H-A-191/H-A-199, so no B commits were cherry-picked.

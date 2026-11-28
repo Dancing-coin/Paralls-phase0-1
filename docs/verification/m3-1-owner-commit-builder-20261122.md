@@ -131,3 +131,15 @@ All 58 registered selections and the frozen five selections were run serially th
 The full backend suite was not run. U4 is revalidated at current tip across four A-owned consumers; U1 remains static, U2/U5/U8 remain outside this shared-mechanism unit, U3/U6 are not applicable because no event schema or persisted event changed, U7 remains static, and U9/U10 have fresh evidence. M3-1 remains `待门禁`; this evidence does not establish completion of Architecture v2 or any Owner migration.
 
 P-1 scan of the staged documentation additions checked assignment-shaped secrets, AWS access keys, GitHub tokens, JWTs, and private-key headers: `patterns-scanned=5 credential-pattern-hits=0`. Raw output: `F:\paralls-verification\thread-a\m3-1-four-owner-current-20261128-01\p1-scan.log`.
+
+## Current A-tip revalidation, 2026-11-28 follow-up
+
+At documentation HEAD `e62ce9d825f4fd1f317c0165203b9b61c3ab34d5`, the backend and packs source tree matches code commit `8bdf01dc4539b3f67898a9c4276fa941be90bdda`; the intervening commit changes only verification and coordination documentation. The M3-1 focused result above remains `63 passed, 2 warnings` at `4cf42fa3`; this follow-up revalidates regression selections against the current source tree.
+
+Python `3.12.2` at `F:/codex-temp/thread-a-python312/Scripts/python.exe`, `PYTHONPATH` points to the A worktree backend, `app.__file__` resolves under that worktree, and SQLite is `3.43.1`. All 59 registered selections and the frozen five selections were run serially with `docs/verification/absorb-main-3bf3418e/compare_selection.py`: 64 invocations, 1,575 summed selected nodes including overlap, every invocation exited 0 with `problems=0 improvements=0`. The frozen groups selected 24/12/87/56/990 nodes, totaling 1,169 including overlap. Raw outputs and per-group logs are under `F:/paralls-verification/thread-a/m3-1-current-tip-a5e32538/`; `summary.txt` records every result.
+
+The exact source tree's full backend result is recorded separately in `docs/verification/m1-1-bond-slices-20261122.md` for code commit `8bdf01dc`: `10,837 passed, 5 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1. The five failed nodes were reproduced on code parent `dbaae2c7` in targeted comparisons. This is a merge-state full-suite result, not an M3-1 slice result or a green full-suite claim.
+
+P-1 scanned the four changed repository documents across five credential-pattern families: `patterns-scanned=5 credential-pattern-hits=0`. Raw output: `F:/paralls-verification/thread-a/m3-1-current-tip-a5e32538/p1-scan.log`.
+
+M3-1 remains `待门禁`. U4 shared-builder adoption is verified across Ownership, Credential, Holdings, and Pool. U1 is static; U2, U5, and U8 are outside this shared-mechanism unit; U3 and U6 are not applicable because no event schema or persisted event changed; U7 is static. No M3-1 completion or Architecture v2 completion is claimed.
