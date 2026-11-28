@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### M1-3 Pool checkpoint-free state digest recheck (2026-11-28)
+
+- Test commits `d9f1206a` and `b398cddf` make the Pool rebuild regression compare a canonical public projection state digest after SQLite ledger close/reopen and full event replay. The durable snapshot has no projection checkpoints; this verifies the Pool no-checkpoint branch, not physical deletion of a Pool checkpoint.
+- Pool focused tests returned `19 passed, 2 warnings`; M1-3 Pool selection `33/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections `24/12/87/56/990`, all zero differences. Full backend suite was not run.
+- Evidence: `docs/verification/m1-3-pool-r3-checkpoint-free-20261128.md`; raw outputs under `F:/paralls-verification/thread-a/m1-3-pool-r3-checkpoint-free-20261128-02/`. U5 remains partial because physical checkpoint deletion and other M1-3 consumer paths are not covered. M1-3 remains in progress.
+
 ### M3-3 Information replay current-tip recheck (2026-11-28)
 
 - Fetched B Information replay tip `e185cfa8`. Its writer, checkpoint-tail test, and selection are already present in A through `07db5404`, `400d4ff9`, and `0c3173f2`; no B branch merge or duplicate cherry-pick was needed.
