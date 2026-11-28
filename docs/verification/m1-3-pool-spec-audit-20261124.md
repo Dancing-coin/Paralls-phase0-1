@@ -56,3 +56,34 @@ Environment: Python `3.12.2`, `app.__file__` at `F:\codex-temp\paralls-v2-thread
 | Frozen shared-replay selection | `selected=990 problems=0 improvements=0` |
 
 This is focused and selection evidence only. The full backend suite was not run. Production Pool scheduling, non-zero rate-bearing Pool content, domain Owner/FactType declaration, domain Resolver registration, R1/R2/R3 evidence, and subject-facing reads remain unverified or incomplete. No `integration` change was made.
+
+## Current A-tip regression recheck (2026-11-28, second run)
+
+The recheck ran at A documentation HEAD `6f84de9ec82858a6228468733b8c73f038d161d2` and backend code tip `616d9815053e9309e996cd81998c1c47fc2906e2`.
+
+Environment: Python `3.12.2`, SQLite `3.43.1`, and `app.__file__` at `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`. `PYTHONPATH` pointed to the A worktree `backend`; pytest temp, `TEMP`, `TMP`, `TMPDIR`, and raw output were under `F:\paralls-verification\thread-a\m1-3-current-tip-20261128-02\`.
+
+| Check | Result |
+|---|---|
+| Pool, Facility integrity, and Morale Pool focused tests | `27 passed, 2 warnings` |
+| M1-3 Pool registered selection | `selected=17 problems=0 improvements=0` |
+| M1-3 domain-owner registered selection | `selected=1 problems=0 improvements=0` |
+| Frozen ownership selection | `selected=24 problems=0 improvements=0` |
+| Frozen modifier selection | `selected=12 problems=0 improvements=0` |
+| Frozen equipment selection | `selected=87 problems=0 improvements=0` |
+| Frozen inventory selection | `selected=56 problems=0 improvements=0` |
+| Frozen shared-replay selection | `selected=990 problems=0 improvements=0` |
+
+The first frozen-selection invocation used `docs/verification/selection/` for the five frozen manifests, where those files do not exist. It stopped before running the ownership selection and logged the path error. The five were then run from `docs/verification/absorb-main-3bf3418e/`; all returned zero differences. Both the failed invocation and corrected commands are retained in the raw output directory.
+
+Command for the focused tests:
+
+```powershell
+$env:PYTHONPATH='F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend'
+$env:TEMP='F:\paralls-verification\thread-a\m1-3-current-tip-20261128-02\temp'
+$env:TMP=$env:TEMP
+$env:TMPDIR=$env:TEMP
+& 'F:\codex-temp\thread-a-python312\Scripts\python.exe' -B -m pytest -q -p no:cacheprovider --basetemp 'F:\paralls-verification\thread-a\m1-3-current-tip-20261128-02\pytest-temp' backend/tests/test_pool_runtime.py backend/tests/test_facility_integrity_runtime.py backend/tests/test_morale_refold_runtime.py
+```
+
+This is focused and selection evidence only. The full backend suite was not run. Production Pool scheduling, non-zero rate-bearing Pool content, domain Owner/FactType declaration, domain Resolver registration, R1/R2/R3 evidence, and subject-facing reads remain unverified or incomplete. M1-3 remains `待门禁`; `integration` was not modified.

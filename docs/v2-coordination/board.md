@@ -252,6 +252,10 @@
 
 - At A HEAD `72082ffd`, focused Pool/Facility integrity/Morale Pool tests returned `27 passed, 2 warnings`. The M1-3 Pool selection returned `17/0/0`; the domain-owner selection returned `1/0/0`; frozen ownership/modifier/equipment/inventory/shared-replay selections returned `24/12/87/56/990` nodes, all with zero problems and improvements. Python `3.12.2`, A-worktree import path, SQLite `3.43.1`. Evidence and raw output: `docs/verification/m1-3-pool-spec-audit-20261124.md`, `F:/paralls-verification/thread-a/m1-3-current-tip-20261128-01/`. Full backend was not run. M1-3 remains `待门禁`; production scheduling and domain declaration gaps remain open.
 
+### M1-3 Pool regression rechecked after Bond expiry code (2026-11-28)
+
+- At documentation HEAD `6f84de9e` and backend tip `616d9815`, focused Pool/Facility integrity/Morale Pool tests returned `27 passed, 2 warnings`; registered Pool/domain-owner selections returned `17/0/0` and `1/0/0`; frozen five selections returned `24/12/87/56/990`, all zero differences. Python `3.12.2`, SQLite `3.43.1`, A-worktree import path verified. Evidence: `docs/verification/m1-3-pool-spec-audit-20261124.md`; raw output: `F:/paralls-verification/thread-a/m1-3-current-tip-20261128-02/`. An initial frozen-selection path typo was corrected before those five tests ran. Full backend suite not run. M1-3 remains `待门禁`; production scheduling and domain declaration gaps remain open.
+
 ### M2-2 Organization qualification source audit (2026-11-28)
 
 - Static review found Organization membership/delegation history can be reconstructed at `global_sequence`, but its event has no effective world tick and does not define faction membership or a complete membership roster. It cannot establish selector qualification at `read_as(as_of_tick)` without an Organization-owned temporal qualification contract. Evidence: `docs/verification/m2-2-selector-qualification-source-audit-20261128.md`; no tests ran. M2-2 remains incomplete.
