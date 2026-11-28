@@ -4,7 +4,25 @@ from dataclasses import replace
 import pytest
 
 from app.world_runtime.simulation_clock import SimulationClock
-from app.world_runtime.temporal_contracts import TemporalAuthorization, verify_temporal_authorization
+from app.world_runtime.temporal_contracts import (
+    TemporalAuthorization,
+    population_cadence_pins_match,
+    verify_temporal_authorization,
+)
+
+
+def test_population_pin_match_allows_only_missing_ownership_grant():
+    grants = {"economy": {"digest": "sha256:economy"}, "ownership": {"digest": "sha256:ownership"}}
+    expected = {"window_ticks": 60, "temporal_authorizations": grants}
+    legacy = {"window_ticks": 60, "temporal_authorizations": {"economy": grants["economy"]}}
+
+    assert population_cadence_pins_match(expected, legacy)
+    assert not population_cadence_pins_match(expected, legacy | {"window_ticks": 120})
+    assert not population_cadence_pins_match(expected, {
+        "window_ticks": 60,
+        "temporal_authorizations": {"ownership": grants["ownership"]},
+    })
+    assert not population_cadence_pins_match(expected, legacy | {"temporal_authorizations": None})
 
 
 def configured_clock():

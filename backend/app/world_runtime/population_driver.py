@@ -15,7 +15,7 @@ from app.population_continuity.world import WorldContinuityRuntime
 
 from .simulation_clock import SimulationClock, calculate_window_bounds
 from .temporal_contracts import (ClockMapping, ScheduledWork, SimulationTime, SimulationTimeline,
-                                  TemporalAuthorization, TemporalProfile)
+                                  TemporalAuthorization, TemporalProfile, population_cadence_pins_match)
 from .scheduling import select_temporal_work
 
 
@@ -101,7 +101,7 @@ class PopulationCadenceDriver:
             if saved.get("window_ticks") != window_size or saved.get("canonical_unit_ref") != "second":
                 raise ValueError("population_time_migration_required")
             if saved.get("step_duration") == "1/1":
-                if any(saved.get(key) != value for key, value in self._time_pins(confirmed).items()):
+                if not population_cadence_pins_match(self._time_pins(confirmed), saved):
                     raise ValueError("population_time_mapping_stale")
             elif not self.world_runtime.store.read_stream(f"temporal-activation:{self.clock.timeline.timeline_id}"):
                 raise ValueError("population_time_migration_required")
@@ -167,6 +167,7 @@ class PopulationCadenceDriver:
             # the same Population cadence issuer, but never inherits custody
             # or another domain's grant.
             ("resource", "actor_gameplay.resource_domain"),
+            ("ownership", "actor_gameplay.ownership_domain"),
         ):
             grant = TemporalAuthorization(
                 authorization_ref=f"authorization:population-{key}-temporal@1",

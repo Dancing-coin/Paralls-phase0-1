@@ -119,6 +119,11 @@ def test_main_assembly_uses_same_profile_for_mode_and_driver(profile, period, mo
         assert driver.world_runtime.mode.revision.startswith("mode:bakery-district:v1:clock:sha256:")
         assert callable(driver.publish_window.publish_pinned)
         assert driver.mapping.source_unit_ref == "second"
+        calls = []
+        monkeypatch.setattr(main._ownership_bond_expiry_consumer, "advance", lambda current: calls.append(current.current_tick))
+        result = driver.tick(driver.current_tick + driver.window_size)
+        assert result.published_cadence_ids
+        assert calls == [driver.current_tick]
     finally:
         main.close_runtime_resources()
 

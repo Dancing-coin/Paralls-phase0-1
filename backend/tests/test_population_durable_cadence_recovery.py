@@ -90,6 +90,60 @@ def test_driver_persists_inventory_temporal_grant_in_durable_cadence_record(tmp_
     grants = json.loads(pins["temporal_authorizations"])
     assert grants["economy"]["authorization_ref"] == "authorization:population-economy-temporal@1"
     assert grants["status"]["valid_until"] == 60
+    assert grants["ownership"]["authorization_ref"] == "authorization:population-ownership-temporal@1"
+    assert grants["ownership"]["participant_scope"] == ["actor_gameplay.ownership_domain"]
+
+
+def test_driver_restores_legacy_cadence_missing_only_ownership_grant(tmp_path):
+    path = tmp_path / "legacy-ownership-grant.json"
+    world = _runtime(path, ("one",))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    publish_pinned = publisher.publish_pinned
+
+    def publish_legacy(cadence, pins):
+        pins = dict(pins)
+        grants = json.loads(pins["temporal_authorizations"])
+        grants.pop("ownership")
+        pins["temporal_authorizations"] = json.dumps(grants, sort_keys=True, separators=(",", ":"))
+        return publish_pinned(cadence, pins)
+
+    publisher.publish_pinned = publish_legacy
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                     window_size=60, catch_up_limit=1)
+    assert driver.tick(60).published_cadence_ids == ("cadence:world:0",)
+
+    restored_world = _runtime(path, ("one",))
+    restored = _publisher(restored_world, InMemoryAuthorityEventBus())
+    rebuilt = PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                      window_size=60, catch_up_limit=1)
+
+    assert rebuilt.current_tick == 60
+    assert rebuilt.tick(60).published_cadence_ids == ()
+
+
+def test_driver_rejects_legacy_cadence_missing_an_existing_temporal_grant(tmp_path):
+    path = tmp_path / "legacy-economy-grant.json"
+    world = _runtime(path, ("one",))
+    publisher = _publisher(world, InMemoryAuthorityEventBus())
+    publish_pinned = publisher.publish_pinned
+
+    def publish_incomplete(cadence, pins):
+        pins = dict(pins)
+        grants = json.loads(pins["temporal_authorizations"])
+        grants.pop("economy")
+        pins["temporal_authorizations"] = json.dumps(grants, sort_keys=True, separators=(",", ":"))
+        return publish_pinned(cadence, pins)
+
+    publisher.publish_pinned = publish_incomplete
+    driver = PopulationCadenceDriver(world_runtime=world, publish_window=publisher,
+                                     window_size=60, catch_up_limit=1)
+    assert driver.tick(60).published_cadence_ids == ("cadence:world:0",)
+
+    restored_world = _runtime(path, ("one",))
+    restored = _publisher(restored_world, InMemoryAuthorityEventBus())
+    with pytest.raises(ValueError, match="population_time_mapping_stale"):
+        PopulationCadenceDriver(world_runtime=restored_world, publish_window=restored,
+                                window_size=60, catch_up_limit=1)
 
 
 def test_world_admin_revocation_uses_durable_entry_and_exact_replay(tmp_path):

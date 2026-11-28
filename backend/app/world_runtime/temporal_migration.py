@@ -9,7 +9,7 @@ from hashlib import sha256
 import json
 
 from app.gameplay.status_tags import StatusTagTemporalContext
-from .temporal_contracts import ClockMapping, SimulationTime, TemporalProfile
+from .temporal_contracts import ClockMapping, SimulationTime, TemporalProfile, population_cadence_pins_match
 
 
 def _dump(value):
@@ -90,7 +90,7 @@ def restore_clock(driver):
             authoritative_revision=request["expected_timeline_revision"] + 1)
     driver.migration_pending = bool(records and records[-1].event_type.endswith(".prepared"))
     if saved_pins is not None and saved_pins.get("step_duration") != "1/1":
-        if any(saved_pins.get(key) != value for key, value in driver._time_pins(driver.current_tick).items()):
+        if not population_cadence_pins_match(driver._time_pins(driver.current_tick), saved_pins):
             raise ValueError("population_time_mapping_stale")
 
 

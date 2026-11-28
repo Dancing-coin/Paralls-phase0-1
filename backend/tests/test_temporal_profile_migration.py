@@ -54,6 +54,34 @@ async def test_actual_activation_remaining_rounding_receipts_and_durable_restart
 
 
 @pytest.mark.asyncio
+async def test_migrated_legacy_cadence_missing_only_ownership_grant_restores(application):
+    main, start, advance = application
+    await start()
+    await _apply(main, "legacy-migrated-pin", duration=86401)
+    await advance(86400)
+    args = request(main)
+    assert (await asyncio.wrap_future(main.submit_temporal_profile_migration(**args))).committed
+
+    driver = main._population_runtime_driver
+    publish_pinned = driver._pinned_publisher
+
+    def publish_legacy(cadence, pins):
+        pins = dict(pins)
+        grants = json.loads(pins["temporal_authorizations"])
+        grants.pop("ownership")
+        pins["temporal_authorizations"] = json.dumps(grants, sort_keys=True, separators=(",", ":"))
+        return publish_pinned(cadence, pins)
+
+    driver._pinned_publisher = publish_legacy
+    await advance(172800)
+    assert driver._time_pins(driver.current_tick)["step_duration"] == "2/3"
+    await main._stop_population_runtime_on_shutdown()
+    await start()
+
+    assert main._population_runtime_driver.current_tick == 172800
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fault", ["boundary", "mapping", "revision", "unit", "scope", "owner"])
 async def test_invalid_activation_zero_write(application, fault):
     main, start, advance = application

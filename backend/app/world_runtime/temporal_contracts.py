@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from fractions import Fraction
 import hashlib
 import json
-from typing import Literal
+from typing import Literal, Mapping
 
 
 @dataclass(frozen=True)
@@ -186,6 +186,25 @@ class TemporalAuthorization:
     def digest(self) -> str:
         encoded = json.dumps(self.payload(), sort_keys=True, separators=(",", ":"), ensure_ascii=True)
         return "sha256:" + hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def population_cadence_pins_match(expected: Mapping[str, object], saved: Mapping[str, object]) -> bool:
+    expected_grants_raw = expected.get("temporal_authorizations")
+    saved_grants_raw = saved.get("temporal_authorizations")
+    try:
+        expected_grants = json.loads(expected_grants_raw) if isinstance(expected_grants_raw, str) else expected_grants_raw
+        saved_grants = json.loads(saved_grants_raw) if isinstance(saved_grants_raw, str) else saved_grants_raw
+    except (TypeError, json.JSONDecodeError):
+        return False
+    if not isinstance(expected_grants, dict) or not isinstance(saved_grants, dict):
+        return False
+    if "ownership" not in saved_grants:
+        expected_grants = {key: value for key, value in expected_grants.items() if key != "ownership"}
+    return expected_grants == saved_grants and all(
+        saved.get(key) == value
+        for key, value in expected.items()
+        if key != "temporal_authorizations"
+    )
 
 
 def verify_temporal_authorization(*, pins: dict[str, object], expected_participant: str,

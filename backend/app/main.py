@@ -319,6 +319,7 @@ _mirror_transport_routes: dict[str, tuple[str, GameplayMirrorTransportSink]] = {
 _mirror_transport_generation = 0
 _mirror_transport_accepting = True
 _population_runtime_driver: PopulationCadenceDriver | None = None
+_ownership_bond_expiry_consumer = None
 _population_mirror_source: PopulationMirrorSource | None = None
 runtime_execution: RuntimeExecution | None = None
 world_admin_credential_verifier = WorldAdminCredentialVerifier(tuple(settings.world_admin_credentials))
@@ -791,6 +792,7 @@ async def _run_population_runtime(driver: PopulationCadenceDriver, stop_event: a
 
 
 def _build_population_driver() -> PopulationCadenceDriver | None:
+    global _ownership_bond_expiry_consumer
     global ecology_temporal_consumer
     global economy_temporal_consumer
     global economy_random_caller
@@ -851,6 +853,8 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
     )
     # Production consumers must prove admission from the durable cadence pins.
     driver.require_temporal_authorization = True
+    from app.gameplay.ownership_bond_temporal_consumer import OwnershipBondExpiryConsumer
+    _ownership_bond_expiry_consumer = OwnershipBondExpiryConsumer(store=gameplay_event_store)
     # The existing Population driver is the sole source of confirmed temporal
     # pins.  Random business is explicit-demand only; this wiring schedules no
     # lottery, loot, or event choice by itself.
@@ -877,6 +881,7 @@ def _build_population_driver() -> PopulationCadenceDriver | None:
     )
     def advance_confirmed(driver):
         resource_recovery_failures.clear()
+        _ownership_bond_expiry_consumer.advance(driver)
         status_temporal_consumer.advance(driver)
         ecology_temporal_consumer.advance(driver)
         economy_temporal_consumer.advance(driver)
@@ -2830,6 +2835,7 @@ def _population_digest(value: object) -> str:
 
 def _close_status_runtime():
     global status_tag_registry, status_tag_service, status_temporal_consumer, ecology_temporal_consumer, economy_temporal_consumer, economy_random_caller
+    global _ownership_bond_expiry_consumer
     if status_temporal_consumer is not None:
         status_temporal_consumer.close()
     status_temporal_consumer = status_tag_service = status_tag_registry = None
@@ -2840,6 +2846,7 @@ def _close_status_runtime():
         economy_temporal_consumer.close()
     economy_temporal_consumer = None
     economy_random_caller = None
+    _ownership_bond_expiry_consumer = None
 
 
 def _assemble_status_runtime():
