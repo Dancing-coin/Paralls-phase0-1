@@ -182,6 +182,7 @@
 ### M3-3 cross-owner replay finding (2026-11-28)
 
 - H-A-194 records a reproducible corrupt-receipt acceptance in B-owned `contract_runtime.py`, limited to public-milling fulfillment. A did not modify the file. The finding is handed to the owning thread; M3-3 remains in progress. Evidence: `docs/verification/m3-3-contract-fulfillment-replay-audit-20261128.md` and the raw reproduction under `F:/paralls-verification/thread-a/m3-3-contract-r2-static-repro-20261128-01/`.
+- H-A-219 adds a static candidate in `government_treasury_runtime.py`: its duplicate path returns `get_by_idempotency` after digest comparison without shared transaction/event-reference validation. No damaged receipt was injected. The file has no current A/B owner in `BOUNDARIES.md`; assign domain ownership before changing it. This is not yet a reproduced R2 failure.
 
 ### M6-5 production Gate numeric inputs (2026-11-28)
 
