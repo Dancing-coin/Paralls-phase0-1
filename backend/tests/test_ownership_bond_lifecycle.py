@@ -149,18 +149,40 @@ def test_scoped_bonds_coexist_and_do_not_grant_legacy_title():
     assert store.export_snapshot() == before
 
 
-def test_bond_attributes_accept_schema_defined_extension_keys():
+def test_bond_attributes_reject_keys_outside_the_type_contract_without_write():
     store = GameplayEventStore()
     append_source_event(store)
     service = OwnershipAuthorityService(store=store)
+    before = store.export_snapshot()
 
-    result = service.grant_bond(**grant(
-        "extension-key", 0, attributes={"outstanding_amount": 5},
-    ))
+    with pytest.raises(OwnershipRuntimeError, match="^ownership_bond_attributes_invalid$"):
+        service.grant_bond(**grant(
+            "extension-key", 0, attributes={"outstanding_amount": 5},
+        ))
 
-    assert result.committed
-    bond = OwnershipProjector().rebuild(store.read_events()).bonds["bond:extension-key"]
-    assert bond.attributes == {"outstanding_amount": 5}
+    assert store.export_snapshot() == before
+
+
+def test_bond_projection_preserves_legacy_extension_attributes():
+    store = GameplayEventStore()
+    append_source_event(store)
+    service = OwnershipAuthorityService(store=store)
+    assert service.grant_bond(**grant("legacy-extension", 0)).committed
+
+    events = list(store.read_events())
+    grant_index = next(
+        index for index, event in enumerate(events)
+        if event.event_type == "gameplay.ownership.bond_granted"
+    )
+    payload = dict(events[grant_index].payload)
+    payload["attributes"] = {"outstanding_amount": 5}
+    events[grant_index] = events[grant_index].model_copy(update={"payload": payload})
+
+    projection = OwnershipProjector().rebuild(events)
+
+    assert projection.bonds["bond:legacy-extension"].attributes == {
+        "outstanding_amount": 5,
+    }
 
 
 def test_bond_decimal_attributes_round_trip_and_replay_deterministically():
@@ -169,7 +191,8 @@ def test_bond_decimal_attributes_round_trip_and_replay_deterministically():
     service = OwnershipAuthorityService(store=store)
     args = grant(
         "decimal-attribute", 0,
-        attributes={"outstanding_amount": Decimal("5.2500")},
+        bond_type="obligation",
+        attributes={"amount": Decimal("5.2500")},
     )
 
     committed = service.grant_bond(**args)
@@ -181,7 +204,7 @@ def test_bond_decimal_attributes_round_trip_and_replay_deterministically():
 
     assert committed.committed
     assert replayed.idempotency_status == "duplicate_replayed"
-    assert bond.attributes == {"outstanding_amount": "5.2500"}
+    assert bond.attributes == {"amount": "5.2500"}
 
 
 def test_bond_lifecycle_rebuilds_all_history_after_snapshot_restore():

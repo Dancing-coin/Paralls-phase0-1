@@ -20,6 +20,15 @@ from app.gameplay.settlement_plan import SettlementPlan as EventStoreSettlementP
 from app.gameplay.shared_contracts import GameplayCommandEnvelope
 
 
+_BOND_ATTRIBUTE_KEYS = {
+    "ownership": frozenset({"share"}),
+    "custody": frozenset({"capacity"}),
+    "authority": frozenset({"command_scope", "delegable"}),
+    "affiliation": frozenset({"rank", "slot"}),
+    "obligation": frozenset({"amount", "unit", "due_tick"}),
+}
+
+
 class OwnershipRuntimeError(ValueError):
     pass
 
@@ -515,7 +524,11 @@ class OwnershipAuthorityService:
         correlation_id: str,
     ) -> AppendBatchResult:
         _require_world_tick(world_tick)
-        attributes = _bond_attributes({} if attributes is None else attributes, bond_type)
+        attributes = _bond_attributes(
+            {} if attributes is None else attributes,
+            bond_type,
+            enforce_schema_keys=True,
+        )
         _require_ownership_revision(expected_ownership_revision)
         if term_expires_at is not None and (
             isinstance(term_expires_at, bool)
@@ -853,7 +866,11 @@ class OwnershipAuthorityService:
         correlation_id: str,
     ) -> AppendBatchResult:
         _require_world_tick(world_tick)
-        attributes = _bond_attributes({} if attributes is None else attributes, bond_type)
+        attributes = _bond_attributes(
+            {} if attributes is None else attributes,
+            bond_type,
+            enforce_schema_keys=True,
+        )
         _require_ownership_revision(expected_ownership_revision)
         if term_expires_at is not None and (
             isinstance(term_expires_at, bool)
@@ -1323,7 +1340,7 @@ def _active_bond(
 
 
 def _bond_attributes(
-    attributes: object, bond_type: str
+    attributes: object, bond_type: str, *, enforce_schema_keys: bool = False
 ) -> dict[str, object]:
     if bond_type not in OwnershipProjector._BOND_TYPES:
         raise OwnershipRuntimeError("ownership_bond_type_invalid")
@@ -1331,7 +1348,9 @@ def _bond_attributes(
         raise OwnershipRuntimeError("ownership_bond_attributes_invalid")
     normalized: dict[str, object] = {}
     for key, value in attributes.items():
-        if type(key) is not str:
+        if type(key) is not str or (
+            enforce_schema_keys and key not in _BOND_ATTRIBUTE_KEYS[bond_type]
+        ):
             raise OwnershipRuntimeError("ownership_bond_attributes_invalid")
         if isinstance(value, Decimal):
             if not value.is_finite():
