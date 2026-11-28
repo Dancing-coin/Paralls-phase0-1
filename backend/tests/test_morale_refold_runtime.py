@@ -1,6 +1,8 @@
 from decimal import Decimal
+from hashlib import sha256
+import json
 
-from app.gameplay.event_store import GameplayEventStore
+from app.gameplay.event_store import DurableGameplayEventStore, GameplayEventStore
 from app.gameplay.morale_refold_runtime import (
     MoraleRefoldAuthority,
     calculate_morale_percentage,
@@ -168,6 +170,52 @@ def test_morale_refold_uses_historical_roster_and_life_states_at_death():
     assert retry.committed
     assert retry.idempotency_status == "duplicate_replayed"
     assert retry.committed_event_ids == result.committed_event_ids
+
+
+def test_morale_pool_rebuild_digest_matches_after_durable_reopen_without_checkpoint(tmp_path):
+    database_path = tmp_path / "morale-pool-rebuild.db"
+    store = DurableGameplayEventStore(database_path)
+    members = tuple(f"character:durable-defender-{index}" for index in range(4))
+    _seed_garrison(store, members=members)
+    death = _append(
+        store,
+        principal="authority:character:life-state",
+        stream_id=f"gameplay:character:life:{members[0]}",
+        event_type="gameplay.character.life_state_changed",
+        payload={"actor_ref": members[0], "from_state": "alive", "to_state": "dead"},
+        command_id="life-dead:durable-morale",
+    )
+    authority = _authority(store)
+    result = authority.refold_after_casualty(death_event_id=death.event_id)
+    assert result.committed
+    before = authority.projection(MORALE_FACT)
+    assert before.value == Decimal("75")
+    assert store.export_snapshot()["projection_checkpoints"] == []
+    store.close()
+
+    reopened = DurableGameplayEventStore(database_path)
+    try:
+        after = _authority(reopened).projection(MORALE_FACT)
+
+        def state_digest(projection):
+            payload = {
+                "fact_type": projection.fact_type,
+                "lower": str(projection.lower),
+                "upper": str(projection.upper),
+                "value": str(projection.value),
+                "reservations": sorted(projection.reservations),
+                "integrated_windows": sorted(projection.integrated_windows),
+                "active_thresholds": sorted(projection.active_thresholds),
+                "source_revision": projection.source_revision,
+            }
+            encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+            return "sha256:" + sha256(encoded).hexdigest()
+
+        assert state_digest(after) == state_digest(before)
+        assert after == before
+        assert after.value == Decimal("75")
+    finally:
+        reopened.close()
 
 
 def test_morale_refold_with_missing_member_life_state_writes_nothing():
