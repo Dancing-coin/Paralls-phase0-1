@@ -814,18 +814,29 @@ class GovernmentAuthority:
         self, intent: GovernmentDroughtAdvisoryIntentV1
     ) -> AppendBatchResult:
         command_id = intent.command_id
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, intent.idempotency_key)
-        if existing is not None:
-            if len(existing.committed_event_ids) != 1:
+        idempotency_record = self._store.get_idempotency_record(self._PRINCIPAL, intent.idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=intent.idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="idempotency_key_reused",
+                    expected_event_types=("gameplay.government.drought_advisory_issued",),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
                 return self._rejected_append(command_id, "idempotency_key_reused")
-            prior = self._store.get_event(existing.committed_event_ids[0])
-            if (
-                prior.event_type == "gameplay.government.drought_advisory_issued"
-                and prior.payload.get("weather_event_id") == intent.weather_event_id
-                and prior.causation_id == intent.causation_id
-                and prior.correlation_id == intent.correlation_id
-            ):
-                return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+            if existing is not None:
+                prior = self._store.get_event(existing.committed_event_ids[0])
+                if (
+                    prior.payload.get("weather_event_id") == intent.weather_event_id
+                    and prior.causation_id == intent.causation_id
+                    and prior.correlation_id == intent.correlation_id
+                ):
+                    return existing
             return self._rejected_append(command_id, "idempotency_key_reused")
         try:
             weather_event = self._store.get_event(intent.weather_event_id)

@@ -270,6 +270,25 @@ def test_drought_advisory_duplicate_receipt_and_checkpoint_tail_replay_are_fixed
     assert not hasattr(government, "enforce_drought_advisory")
 
 
+def test_drought_advisory_rejects_corrupt_transaction_receipt_without_writing() -> None:
+    store, _ecology, government, weather_event_id = _setup()
+    intent = _intent(store, weather_event_id)
+    assert government.issue_drought_advisory(intent).committed
+    key = (GovernmentAuthority._PRINCIPAL, intent.idempotency_key)
+    store._idempotency_results[key] = store._idempotency_results[key].model_copy(
+        update={"transaction_id": "transaction:missing"},
+        deep=True,
+    )
+    before = _snapshot(store)
+
+    rejected = government.issue_drought_advisory(intent)
+
+    assert not rejected.committed
+    assert rejected.failure is not None
+    assert rejected.failure.error_code == "idempotency_key_reused"
+    assert _snapshot(store) == before
+
+
 def test_drought_advisory_exact_duplicate_replays_after_ecology_source_advances() -> None:
     store, ecology, government, weather_event_id = _setup()
     intent = _intent(store, weather_event_id)
