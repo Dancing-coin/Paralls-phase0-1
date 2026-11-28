@@ -1,0 +1,11 @@
+{
+  "head": "9ee8eb23",
+  "description": "QuestEvidenceAuthority.resolve retries validate the durable transaction and committed event references",
+  "tests": [
+    {
+      "test_name": "tests/test_p5_quest_evidence.py::test_duplicate_request_rejects_corrupt_transaction_receipt_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

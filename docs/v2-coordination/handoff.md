@@ -1281,3 +1281,10 @@
 - Full backend returned `10,823 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. The same five node IDs and failure types reproduced at direct parent `1127b431` in a targeted run. Evidence: `docs/verification/m3-3-investigation-conflict-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-investigation-conflict-replay-20261128-01/`.
 - P-1 scanned the added code and documentation lines across five credential-pattern families and found zero hits. Raw output: `F:/paralls-verification/thread-a/m3-3-investigation-conflict-replay-20261128-01/p1-scan.log`.
 - M3-3 remains in progress; other direct/custom replay paths remain to inventory. `integration` unchanged. This increment does not configure production Gate numeric thresholds.
+
+### H-A-187 | M3-3 QuestEvidenceAuthority resolve durable replay | 2026-11-28
+
+- `QuestEvidenceAuthority.resolve` now routes direct duplicate retries through shared `replay_duplicate`, validating transaction identity, committed event references, and expected command/transaction IDs. Integrity failures retain `idempotency_key_reused` and make no writes. Code commit `9ee8eb23`; no event contract or storage-core change.
+- TDD RED reproduced a corrupted committed receipt being returned as `committed_success`. Focused Quest Evidence/P5 bakery/InvestigationConflict tests returned `49 passed, 2 warnings`; registered selection `1/0/0`; frozen five selections `1,169/0/0`.
+- Full backend returned `10,824 passed, 5 failed, 2 skipped, 2 xfailed`, exit 1. The same five node IDs and failure types reproduced at direct parent `0bb4b9e7` in a targeted run. Evidence: `docs/verification/m3-3-quest-evidence-replay-20261128.md`; raw logs under `F:/paralls-verification/thread-a/m3-3-quest-evidence-replay-20261128-01/`.
+- P-1 scan of added code and documentation lines found zero hits across five credential-pattern families. M3-3 remains in progress; the `confirm_world_death` custom receipt path and other direct/custom replay paths remain to inventory. `integration` unchanged. Production Gate numeric thresholds remain unconfigured.
