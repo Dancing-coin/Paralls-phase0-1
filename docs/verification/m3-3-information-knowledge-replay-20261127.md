@@ -39,3 +39,11 @@
 - Current A code contains the B delivery changes. The Information knowledge event persists `event_time`, the durable checkpoint-tail test exists, and the registered selection includes the replay case. B's three source commits were not cherry-picked again because their code/test content was already present through A commits `07db5404` and `400d4ff9`; the selection update from `e185cfa8` was already equivalent on A.
 - Current-tip selections: M3-3 Information knowledge `selected=1 problems=0 improvements=0`; `siege_information` `selected=26 problems=0 improvements=0`.
 - Raw output: `F:\paralls-verification\thread-a\a-continuation-20261127-02\`. The frozen five selections and full backend suite were not rerun in this check.
+
+## Current A-tip recheck at 66bb9116
+
+- Fetched B tip `e185cfa8a97bac5c8336eff9d15fd7f7fac9f5d9`. The Information knowledge `event_time` writer, checkpoint-tail test, and selection are already present in A through `07db5404`, `400d4ff9`, and `0c3173f2`. No duplicate cherry-pick or B-branch merge was needed.
+- At A HEAD `66bb91166871fb323197bf7a27016d73ddf1aa52`, focused Information replay/runtime/production-wiring tests returned `32 passed, 6 warnings`, exit 0. Python was `3.12.2`, SQLite was `3.43.1`, and `app.__file__` resolved under the A worktree.
+- The registered `siege_information` selection returned `selected=26 problems=0 improvements=0`. Frozen selections returned Ownership `24/0/0`, Modifier `12/0/0`, Equipment `87/0/0`, Inventory `56/0/0`, and shared-replay `990/0/0` (`selected/problems/improvements`).
+- Raw outputs are under `F:\paralls-verification\thread-a\information-b-delivery-current-20261128-01\`. The full backend suite was not run.
+- Static boundary review identified `OrganizationAuthority.record_public_project_execution` in `organization_government_runtime.py` as a potential remaining custom retry path. `BOUNDARIES.md` lists that file as a shared fourth-wave ban, so it was not modified. The municipal certificate path in A-owned `ownership_runtime.py` already uses `replay_duplicate`. M3-3 remains in progress for other-owner and shared paths.
