@@ -31,7 +31,10 @@ from app.gameplay.l5_dispatch_runtime import (
     TrustedGameplayCommandGateway,
 )
 from app.gameplay.models import AppendBatchResult, AtomicEventBatch, GameplayEvent
-from app.gameplay.morale_refold_runtime import MoraleRefoldAuthority
+from app.gameplay.morale_refold_runtime import (
+    MoraleRefoldAuthority,
+    calculate_morale_percentage,
+)
 from app.gameplay.place_passability_runtime import (
     PlacePassabilityAssessment,
     PlacePassabilityAuthority,
@@ -49,11 +52,11 @@ from app.gameplay.siege_physical_input_runtime import (
     PresenceAssessmentReceiptV2,
     SiegePhysicalInputAuthority,
 )
-from app.gameplay.rule_pack_validator import load_pack
+from app.gameplay.rule_pack_validator import LoadedPack, load_pack
 from app.gameplay.package_migration_runtime import PackageArchive, PackageRef
 
 
-M6_5_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence_1_0_1"
+M6_5_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence_1_0_2"
 M6_5_LEGACY_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_morale_presence"
 FACILITY_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_facility"
 INFORMATION_PACK = Path(__file__).resolve().parents[3] / "packs" / "county_siege_information"
@@ -95,10 +98,58 @@ def _resolve_presence_assessment(inputs: Mapping[str, object], _params: Mapping[
     return {"state": inputs["state"], "source_event_ids": inputs["source_event_ids"]}
 
 
+def _resolve_morale_refold(inputs: Mapping[str, object], params: Mapping[str, object]):
+    value = calculate_morale_percentage(
+        inputs["living_count"], inputs["member_count"], params["decimal_places"],
+    )
+    return {"value": format(value, f'.{params["decimal_places"]}f')}
+
+
 M6_5_RESOLVER_HANDLERS = {
     "facility_gate_impact@1": _resolve_facility_gate_impact,
     "presence_assessment@1": _resolve_presence_assessment,
+    "morale_refold@1": _resolve_morale_refold,
 }
+
+
+def _morale_definitions_from_pack(
+    pack: LoadedPack,
+) -> Mapping[tuple[str, str], PoolDefinition]:
+    model = pack.registry.models.get("morale_refold@1")
+    if model is None:
+        return {}
+    if len(model.writes_fact_types) != 1:
+        raise ValueError("m6_5_morale_resolver_output_invalid")
+    fact_type = model.writes_fact_types[0]
+    params = model.params
+    pool = pack.pool_defs[fact_type]
+    aggregation = next((
+        spec for spec in pack.aggregation_models.values()
+        if spec.get("refold_model_ref") == model.model_ref
+    ), None)
+    if aggregation is None:
+        raise ValueError("m6_5_morale_aggregation_model_missing")
+    thresholds = tuple(
+        PoolThreshold(
+            threshold["state"],
+            Decimal(str(threshold["enter_below"])),
+            Decimal(str(threshold["exit_above"])),
+        )
+        for threshold in pool["hysteresis"]
+    )
+    integration = pool["integration"]
+    return {
+        (params["organization_ref"], params["role_ref"]): PoolDefinition(
+            fact_type=fact_type,
+            lower=Decimal(str(pool["bound_lower"])),
+            upper=Decimal(str(pool["bound_upper"])),
+            initial=Decimal(str(pool["initial"])),
+            rate_per_tick=Decimal(str(integration.get("rate_per_tick", "0"))),
+            thresholds=thresholds,
+            aggregation_mode=aggregation["mode"],
+            refold_model_ref=aggregation["refold_model_ref"],
+        ),
+    }
 
 
 def build_facility_integrity_authority(
@@ -431,7 +482,6 @@ def build_m6_5_siege_runtime(
             GATE_IMPACT_INPUT_EVENT_V2: "authority:siege:physical-input",
         },
     )
-    morale = MoraleRefoldAuthority(store=store, definitions=morale_definitions)
     presence = PlacePassabilityAuthority(
         store=store,
         resolver=presence_resolver,
@@ -461,6 +511,23 @@ def build_m6_5_siege_runtime(
         if not isinstance(morale_ref, PackageRef) or not isinstance(information_ref, PackageRef):
             raise ValueError("m6_5_package_consumer_package_refs_missing")
         pack = package_archive.resolve(morale_ref)
+    package_morale_definitions = _morale_definitions_from_pack(pack)
+    if package_morale_definitions:
+        morale_definitions = package_morale_definitions
+    morale_model = pack.registry.models.get("morale_refold@1")
+    morale_resolver = None
+    if morale_model is not None:
+        morale_resolver = lambda living_count, member_count: Decimal(
+            pack.registry.evaluate(
+                morale_model.model_ref,
+                {"living_count": living_count, "member_count": member_count},
+            )["value"]
+        )
+    morale = MoraleRefoldAuthority(
+        store=store,
+        definitions=morale_definitions,
+        **({"refold_resolver": morale_resolver} if morale_resolver is not None else {}),
+    )
     impact_pipeline = pack.pipelines.get("impact_gate")
     information_outputs = {
         "information.update_knowledge": {INFORMATION_KNOWLEDGE_FACT_TYPE},

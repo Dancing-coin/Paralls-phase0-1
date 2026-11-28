@@ -191,7 +191,7 @@ def _aggregation_violations(spec: Any, registry: FactTypeRegistry) -> Iterator[t
 
     if "refold_triggers" in spec:
         triggers = spec["refold_triggers"]
-        supported = ("split", "merge", "fidelity_change", "scope_change")
+        supported = ("split", "merge", "fidelity_change", "scope_change", "casualty")
         if (not isinstance(triggers, list) or not triggers
                 or any(trigger not in supported for trigger in triggers)
                 or len(set(triggers)) != len(triggers)):

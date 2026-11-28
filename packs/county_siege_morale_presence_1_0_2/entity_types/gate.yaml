@@ -1,0 +1,6 @@
+gate:
+  slots:
+    - fact_type_pattern: "fact:facility:gate-03:durability"
+    - fact_type_pattern: "fact:facility:gate-03:latch-durability"
+    - fact_type_pattern: "fact:facility:gate-03:integrity"
+    - fact_type_pattern: "fact:place:gate-03:passability"

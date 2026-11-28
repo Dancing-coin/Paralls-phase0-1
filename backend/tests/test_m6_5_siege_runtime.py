@@ -65,12 +65,12 @@ def _append(store, *, principal, stream_id, event_type, payload, command_id):
     return store.get_transaction(result.transaction_id)
 
 
-def _morale_pool():
+def _morale_pool(initial=Decimal("100")):
     return PoolDefinition(
         fact_type=MORALE_FACT,
         lower=Decimal("0"),
         upper=Decimal("100"),
-        initial=Decimal("100"),
+        initial=initial,
         aggregation_mode="distribution",
         refold_model_ref="morale_refold@1",
     )
@@ -86,14 +86,51 @@ def _facility_pool():
     )
 
 
+def test_m6_5_package_registers_morale_pool_and_casualty_refold():
+    pack = load_pack(
+        M6_5_PACK,
+        handlers=M6_5_RESOLVER_HANDLERS,
+        parent_packs={("county_siege_facility", "1.0.0"): FACILITY_PACK},
+        owner_domains=MORALE_OWNER_DOMAINS,
+        command_fact_outputs={
+            "morale.refold": {MORALE_FACT},
+            "presence.reevaluate": {PLACE_STREAM},
+        },
+    )
+
+    morale_fact = pack.registry.facts[MORALE_FACT]
+    assert morale_fact.owner_ref == "Morale"
+    assert morale_fact.primitive == "pool"
+    assert morale_fact.identity == "entity_ref"
+    assert pack.pool_defs[MORALE_FACT]["initial"] == "100"
+    assert pack.aggregation_models["morale"]["refold_triggers"] == ("casualty",)
+    assert pack.registry.evaluate(
+        "morale_refold@1", {"living_count": 3, "member_count": 4}
+    ) == {"value": "75.00"}
+    assert pack.registry.evaluate(
+        "morale_refold@1", {"living_count": 2, "member_count": 3}
+    ) == {"value": "66.67"}
+
+
 def _m6_5_archive():
-    morale_ref = PackageRef("county_siege_morale_presence", "1.0.1")
+    morale_ref = PackageRef("county_siege_morale_presence", "1.0.2")
     legacy_morale_ref = PackageRef("county_siege_morale_presence", "1.0.0")
+    prior_morale_ref = PackageRef("county_siege_morale_presence", "1.0.1")
     information_ref = PackageRef("county_siege_information", "1.0.0")
     facility_pack = load_pack(FACILITY_PACK, handlers={})
     legacy_morale_pack = load_pack(
         M6_5_LEGACY_PACK,
         handlers={},
+        owner_domains=MORALE_OWNER_DOMAINS,
+        command_fact_outputs={
+            "morale.refold": {MORALE_FACT},
+            "presence.reevaluate": {PLACE_STREAM},
+        },
+    )
+    prior_morale_pack = load_pack(
+        M6_5_PACK.parent / "county_siege_morale_presence_1_0_1",
+        handlers=M6_5_RESOLVER_HANDLERS,
+        parent_packs={("county_siege_facility", "1.0.0"): FACILITY_PACK},
         owner_domains=MORALE_OWNER_DOMAINS,
         command_fact_outputs={
             "morale.refold": {MORALE_FACT},
@@ -119,10 +156,11 @@ def _m6_5_archive():
         },
     )
     return PackageArchive(
-        (facility_pack, legacy_morale_pack, morale_pack, information_pack),
+        (facility_pack, legacy_morale_pack, prior_morale_pack, morale_pack, information_pack),
         expected_content_hashes={
             PackageRef("county_siege_facility", "1.0.0"): facility_pack.content_hash,
             legacy_morale_ref: legacy_morale_pack.content_hash,
+            prior_morale_ref: prior_morale_pack.content_hash,
             morale_ref: morale_pack.content_hash,
             information_ref: information_pack.content_hash,
         },
@@ -135,13 +173,14 @@ def _m6_5_archive():
 
 def test_m6_5_runtime_can_consume_world_pinned_package_archive(monkeypatch):
     archive, refs = _m6_5_archive()
+    store = GameplayEventStore()
     monkeypatch.setattr(
         "app.gameplay.m6_5_siege_runtime.load_pack",
         lambda *args, **kwargs: pytest.fail("legacy package loader used"),
     )
     runtime = build_m6_5_siege_runtime(
-        store=GameplayEventStore(),
-        morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
+        store=store,
+        morale_definitions={(ORGANIZATION, ROLE): _morale_pool(initial=Decimal("50"))},
         package_archive=archive,
         package_refs=refs,
     )
@@ -149,6 +188,15 @@ def test_m6_5_runtime_can_consume_world_pinned_package_archive(monkeypatch):
     assert runtime.information is not None
     assert runtime.impact_pipeline.pipeline_id == "impact_gate"
     assert len(runtime.impact_pipeline.steps) == 4
+    initialized = runtime.morale.initialize(
+        organization_ref=ORGANIZATION,
+        role_ref=ROLE,
+        command_id="morale-package-initialize",
+        idempotency_key="morale-package-initialize",
+    )
+    assert initialized.committed
+    event = store.get_event(initialized.committed_event_ids[0])
+    assert event.payload["initial"] == "100"
 
 
 def test_m6_5_runtime_keeps_legacy_package_pin_without_compiled_pipeline():
@@ -191,6 +239,7 @@ def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
             "county_siege_facility@1.0.0": "packs/county_siege_facility",
             "county_siege_morale_presence@1.0.0": "packs/county_siege_morale_presence",
             "county_siege_morale_presence@1.0.1": "packs/county_siege_morale_presence_1_0_1",
+            "county_siege_morale_presence@1.0.2": "packs/county_siege_morale_presence_1_0_2",
             "county_siege_information@1.0.0": "packs/county_siege_information",
         },
         {
@@ -204,7 +253,17 @@ def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
                     "presence.reevaluate": {PLACE_STREAM},
                 },
             ).content_hash,
-            "county_siege_morale_presence@1.0.1": morale_hash,
+            "county_siege_morale_presence@1.0.1": load_pack(
+                M6_5_PACK.parent / "county_siege_morale_presence_1_0_1",
+                handlers=M6_5_RESOLVER_HANDLERS,
+                parent_packs={("county_siege_facility", "1.0.0"): FACILITY_PACK},
+                owner_domains=MORALE_OWNER_DOMAINS,
+                command_fact_outputs={
+                    "morale.refold": {MORALE_FACT},
+                    "presence.reevaluate": {PLACE_STREAM},
+                },
+            ).content_hash,
+            "county_siege_morale_presence@1.0.2": morale_hash,
             "county_siege_information@1.0.0": information_hash,
         },
         base_directory=M6_5_PACK.parents[1],
@@ -221,7 +280,7 @@ def test_m6_5_runtime_can_bootstrap_from_deployment_manifest():
         morale_definitions={(ORGANIZATION, ROLE): _morale_pool()},
         package_archive=archive,
         package_refs={
-            "morale_presence": PackageRef("county_siege_morale_presence", "1.0.1"),
+            "morale_presence": PackageRef("county_siege_morale_presence", "1.0.2"),
             "information": PackageRef("county_siege_information", "1.0.0"),
         },
         world_ref="world:siege",

@@ -1,0 +1,16 @@
+"fact:unit:garrison-east:morale":
+  owner_ref: "Morale"
+  primitive: "pool"
+  aggregation: "distribution"
+  refold_model_ref: "morale_refold@1"
+  identity: "entity_ref"
+  visibility:
+    class: "faction"
+    learnable_by: ["faction:zhaoling-garrison"]
+    channel: "report"
+    persistence: "permanent"
+  event_schema_ref: "gameplay.pool@1"
+  invariant_refs: ["MORALE_D8_NARROW@1"]
+  cadence: "event"
+  host: "paralls"
+  unknown_policy: "reject"

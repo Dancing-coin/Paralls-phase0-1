@@ -1,0 +1,13 @@
+impact_gate:
+  profile_ref: "impact_profile/gate@1"
+  atomic: false
+  recovery_action: "reconcile"
+  steps:
+    - fact_type_pattern: "fact:facility:gate-03:durability"
+      resolver: "facility_gate_impact@1"
+    - fact_type_pattern: "fact:facility:gate-03:latch-durability"
+      resolver: "facility_gate_impact@1"
+    - fact_type_pattern: "fact:facility:gate-03:integrity"
+      resolver: "facility_gate_impact@1"
+    - fact_type_pattern: "fact:place:gate-03:passability"
+      resolver: "presence_assessment@1"

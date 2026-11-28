@@ -1,0 +1,5 @@
+"morale":
+  mode: "distribution"
+  refold_model_ref: "morale_refold@1"
+  refold_triggers: ["casualty"]
+  version: 1

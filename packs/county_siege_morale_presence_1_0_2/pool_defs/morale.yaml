@@ -1,0 +1,9 @@
+"fact:unit:garrison-east:morale":
+  bound_lower: "0"
+  bound_upper: "100"
+  initial: "100"
+  decimals: 2
+  integration: {mode: "none"}
+  hysteresis: []
+  description: "Siege morale is the replayable garrison living-member percentage."
+  version: 1

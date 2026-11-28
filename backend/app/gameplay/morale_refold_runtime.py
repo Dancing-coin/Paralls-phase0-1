@@ -1,8 +1,8 @@
 """Morale refolds from committed garrison and LifeState history."""
 from __future__ import annotations
 
-from decimal import Decimal
-from typing import Mapping
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Callable, Mapping
 
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.models import AppendBatchResult, GameplayEvent, GameplayFailure
@@ -22,6 +22,26 @@ _LIFE_PRINCIPALS = {
 }
 
 
+def calculate_morale_percentage(
+    living_count: int, member_count: int, decimal_places: int | None = None,
+) -> Decimal:
+    if (
+        type(living_count) is not int
+        or type(member_count) is not int
+        or member_count <= 0
+        or not 0 <= living_count <= member_count
+        or (
+            decimal_places is not None
+            and (type(decimal_places) is not int or decimal_places < 0)
+        )
+    ):
+        raise ValueError("morale_refold_input_invalid")
+    percentage = Decimal(living_count * 100) / Decimal(member_count)
+    if decimal_places is None:
+        return percentage
+    return percentage.quantize(Decimal(1).scaleb(-decimal_places), rounding=ROUND_HALF_UP)
+
+
 class MoraleRefoldAuthority:
     """Commit one siege morale Pool refold for each canonical casualty event."""
 
@@ -30,6 +50,7 @@ class MoraleRefoldAuthority:
         *,
         store: GameplayEventStore,
         definitions: Mapping[tuple[str, str], PoolDefinition],
+        refold_resolver: Callable[[int, int], Decimal] = calculate_morale_percentage,
     ) -> None:
         if not definitions:
             raise ValueError("morale_refold_definition_invalid")
@@ -45,6 +66,7 @@ class MoraleRefoldAuthority:
                 raise ValueError("morale_refold_definition_invalid")
         self.store = store
         self._definitions = dict(definitions)
+        self._refold_resolver = refold_resolver
         self._pool = PoolAuthorityService(
             store=store,
             definitions=tuple(self._definitions.values()),
@@ -150,7 +172,9 @@ class MoraleRefoldAuthority:
             )
             if not initialized.committed:
                 return initialized
-        target = Decimal(100 * sum(state == "alive" for state in states.values())) / Decimal(len(states))
+        target = self._refold_resolver(
+            sum(state == "alive" for state in states.values()), len(states),
+        )
         projection = PoolProjector().rebuild(
             self.store.read_stream(definition.fact_type),
             definitions={definition.fact_type: definition},

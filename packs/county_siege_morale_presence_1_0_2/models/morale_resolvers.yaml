@@ -1,0 +1,16 @@
+"morale_refold@1":
+  implementation: "code"
+  owner_ref: "Morale"
+  reads: ["living_count", "member_count"]
+  writes_fact_types: ["fact:unit:garrison-east:morale"]
+  input_schema: "morale_refold_input@1"
+  output_schema: "morale_refold_output@1"
+  determinism_policy:
+    iteration_order: "resolution_order"
+    random: "none"
+    numeric_precision: "decimal"
+    rounding: "half_up"
+  params:
+    organization_ref: "organization:garrison:east@1"
+    role_ref: "role:garrison-defender@1"
+    decimal_places: 2

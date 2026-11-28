@@ -1,7 +1,10 @@
 from decimal import Decimal
 
 from app.gameplay.event_store import GameplayEventStore
-from app.gameplay.morale_refold_runtime import MoraleRefoldAuthority
+from app.gameplay.morale_refold_runtime import (
+    MoraleRefoldAuthority,
+    calculate_morale_percentage,
+)
 from app.gameplay.pool_runtime import PoolDefinition
 from app.gameplay.settlement_plan import build_atomic_event_batch
 
@@ -9,6 +12,12 @@ from app.gameplay.settlement_plan import build_atomic_event_batch
 ORGANIZATION = "organization:garrison:east@1"
 ROLE = "role:garrison-defender@1"
 MORALE_FACT = "fact:unit:garrison-east:morale"
+
+
+def test_morale_percentage_without_package_precision_preserves_decimal_division():
+    assert calculate_morale_percentage(2, 3) == Decimal(
+        "66.66666666666666666666666667"
+    )
 
 
 def _append(store, *, principal, stream_id, event_type, payload, command_id, event_time=None):
