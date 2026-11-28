@@ -1,0 +1,11 @@
+{
+  "head": "36d589c4",
+  "description": "World-death confirmation retries validate durable receipts and the expected decision event",
+  "tests": [
+    {
+      "test_name": "tests/test_action_consequence_boundaries.py::test_world_death_confirmation_rejects_corrupt_receipt_without_write",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}
