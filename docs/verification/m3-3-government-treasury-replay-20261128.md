@@ -10,6 +10,7 @@ The regression first creates a valid collector admission, corrupts its stored re
 
 - Branch: `thread-a/ownership-bond-followup-20261121`.
 - Base commit: `be9739a721e9872db04bc436c6d5610965b340e3`.
+- Code/test/evidence commit: `6f0214bb` (`fix(government): validate Treasury collector replay receipts`).
 - Python: `3.12.2`, executable `F:\codex-temp\thread-a-python312\Scripts\python.exe`.
 - SQLite: `3.43.1`.
 - `PYTHONPATH`: `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`.
@@ -40,6 +41,10 @@ The registered Treasury regression and frozen selections were compared with `doc
 | shared-replay | 990 | 0 | 0 |
 
 Raw command output and per-batch runner artifacts are under `F:\paralls-verification\thread-a\m3-3-government-treasury-replay-20261128-02\`. The total is 1,170 selected node executions across groups, including overlapping nodes.
+
+P-1 scanned the staged additions across five credential-pattern families and returned `patterns-scanned=5 credential-pattern-hits=0`. Raw output: `F:\paralls-verification\thread-a\m3-3-government-treasury-replay-20261128-02\p1-scan.log`.
+
+The follow-up documentation-only commit scan also returned `patterns-scanned=5 credential-pattern-hits=0`. Raw output: `F:\paralls-verification\thread-a\m3-3-government-treasury-replay-20261128-02\p1-docs-final.log`.
 
 ## Status
 

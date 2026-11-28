@@ -1,4 +1,5 @@
 {
+  "head": "6f0214bbbdd8b3511ec9a07af151873d05192dce",
   "description": "Government Treasury collector retries reject corrupt committed-event receipts without writes",
   "tests": [
     {

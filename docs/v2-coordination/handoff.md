@@ -1509,6 +1509,8 @@
 ### H-A-222 | M3-3 Government Treasury replay receipt validation | 2026-11-28
 
 - A's M3-3 audit found `GovernmentTreasuryCollectorAuthority.admit_collector_account` returned a stored receipt after checking only the payload digest. A added shared `replay_duplicate` validation and a regression that corrupts the committed event reference vector, verifies deterministic rejection, and asserts the event-store snapshot is unchanged.
+- Code/test/evidence commit: `6f0214bb` (`fix(government): validate Treasury collector replay receipts`).
 - The runtime is not assigned in `BOUNDARIES.md`. A notified B in `comms/2026-11-28-thread-a.md`; this work was performed under the project lead's cross-domain authorization. No reply was recorded before validation.
 - Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` verified. Treasury focused tests returned `10 passed, 2 warnings`; registered selection `1/0/0`; frozen selections Ownership/Modifier/Equipment/Inventory/shared-replay returned `24/12/87/56/990`, all zero problems and improvements. Full backend suite was not run.
 - Evidence: `docs/verification/m3-3-government-treasury-replay-20261128.md`; raw output: `F:/paralls-verification/thread-a/m3-3-government-treasury-replay-20261128-02/`. This verifies one Treasury custom replay path; M3-3 remains in progress and `integration` is unchanged.
+- P-1 scan returned `patterns-scanned=5 credential-pattern-hits=0`; raw output: `F:/paralls-verification/thread-a/m3-3-government-treasury-replay-20261128-02/p1-scan.log`.
