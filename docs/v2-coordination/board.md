@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### M1-3 Pool replay receipt consumer check (2026-11-28)
+
+- Test commit `0b7852fe` verifies that Pool maps an unresolvable `committed_event_ids` receipt to `pool_replay_event_missing` and leaves the store snapshot unchanged. Pool U11 is now 34 nodes.
+- Pool focused tests returned `20 passed, 2 warnings`; M1-3 Pool selection `34/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections `24/12/87/56/990`, all zero differences. Full backend suite was not run.
+- Evidence: `docs/verification/m1-3-pool-r2-receipt-consumer-20261128.md`; raw outputs under `F:/paralls-verification/thread-a/m1-3-pool-r2-receipt-consumer-20261128-01/`. This closes the tested Pool consumer R2 path only; M1-3 remains in progress.
+
 ### M1-3 Pool checkpoint-free state digest recheck (2026-11-28)
 
 - Test commits `d9f1206a` and `b398cddf` make the Pool rebuild regression compare a canonical public projection state digest after SQLite ledger close/reopen and full event replay. The durable snapshot has no projection checkpoints; this verifies the Pool no-checkpoint branch, not physical deletion of a Pool checkpoint.

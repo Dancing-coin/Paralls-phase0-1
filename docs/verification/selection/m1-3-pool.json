@@ -1,5 +1,5 @@
 {
-  "head": "b398cddf",
+  "head": "0b7852fe",
   "description": "M1-3 Pool primitives, casualty refold, versioned Morale package Resolver, M6-5 package assembly, compatibility, owner fragments, schemas, and hysteresis",
   "tests": [
     {
@@ -14,6 +14,11 @@
     },
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_window_adjustment_rejects_duplicate_and_exact_retry_replays",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_pool_runtime.py::test_pool_duplicate_rejects_unresolvable_committed_event_id_without_writes",
       "outcome": "passed",
       "failures": []
     },
