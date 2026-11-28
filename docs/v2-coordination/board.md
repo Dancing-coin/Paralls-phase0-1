@@ -6,6 +6,12 @@
 - Python 3.12.2, SQLite 3.43.1 and the A-worktree import path verified. Treasury focused tests returned `10 passed, 2 warnings`; registered selection `1/0/0`; frozen selections Ownership/Modifier/Equipment/Inventory/shared-replay returned `24/12/87/56/990`, all with zero problems and improvements. Full backend suite was not run.
 - Evidence: `docs/verification/m3-3-government-treasury-replay-20261128.md`; raw output under `F:/paralls-verification/thread-a/m3-3-government-treasury-replay-20261128-02/`. `government_treasury_runtime.py` is unassigned in `BOUNDARIES.md`; A notified B in `comms/2026-11-28-thread-a.md`. This closes one candidate path only; M3-3 remains in progress and `integration` is unchanged.
 
+### M3-3 Organization public project execution replay receipt validation (2026-11-28)
+
+- Code/test/selection commit `956fbe67` validates the durable receipt before duplicate success in `record_public_project_execution`. A receipt with an extra missing event ID now rejects with the existing reused-key code and no writes.
+- Python 3.12.2, SQLite 3.43.1 and the A-worktree import path verified. Related tests returned `19 passed, 2 warnings`; registered selection `1/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all zero problems and improvements. Full backend suite was not run.
+- Evidence: `docs/verification/m3-3-organization-project-execution-replay-20261128.md`; raw output under `F:/paralls-verification/thread-a/m3-3-organization-project-execution-replay-20261128-02/`. `organization_government_runtime.py` is a shared fourth-wave boundary; A notified B in comms. This closes one replay path only; M3-3 remains in progress and `integration` is unchanged.
+
 ### M1-3 Morale durable Pool rebuild regression (2026-11-28)
 
 - Code/test commit `02534c86` verifies that a casualty-driven Morale Pool projection rebuild after SQLite close/reopen matches the pre-close canonical digest. The event store snapshot has no projection checkpoints, and PoolProjector has no checkpoint input. This is checkpoint-free replay evidence, not physical checkpoint deletion.
