@@ -1474,3 +1474,9 @@
 - The formal Owner table classifies Morale/Formation and Production/Facility as stewarded Owners. FactType keeps `owner_ref` separate from `primitive`, so Pool remains a shared primitive rather than a new Owner.
 - Python `3.12.2`, SQLite `3.43.1`, and A-worktree `app.__file__` were verified. The eight reader test files returned `142 passed, 6 warnings`. Evidence: `docs/verification/m1-3-pool-reader-inventory-20261128.md`; raw output: `F:/paralls-verification/thread-a/m1-3-reader-inventory-20261128-01/pytest.log` and `junit.xml`.
 - This closes the current searched A-repository reader map only. External consumers remain static/unverified, no Morale/Pool subject-facing `read_as` reader was found, U7 remains open, and M1-3 is not complete. No runtime/package content or `integration` changed.
+
+### H-A-217 | M1-3 Morale Owner 声明合同缺口 | 2026-11-28
+
+- 静态核对发现，正式 Owner 表将 Morale / Formation 列为 stewarded，但当前 A 代码存在 `MoraleRefoldAuthority` 与 code Resolver。请项目负责人按 D5 裁定，是保留 stewarded 并明确该 runtime 为允许的 Resolver adapter，还是将 Morale 分类裁定为 native。
+- 正式 Owner 字段包括 `writes`、`denies`、跨事实 `invariants`、`commands`、`resolvers`、`reads` 与部署元数据。当前代码只有 `REGISTERED_OWNER_IDS` 名单及包内 FactType/Resolver/command 声明，没有完整的 Owner 声明注册/校验合同。请同时确认 Owner 声明消费正式字段的机制，并避免在 invariant expression grammar 未定义时把 `MORALE_D8_NARROW@1` 擅自翻译为新语法。
+- 证据：`docs/verification/m1-3-owner-declaration-gap-20261128.md`。M1-3 U1 保持 partial，未修改运行时代码或 `integration`。

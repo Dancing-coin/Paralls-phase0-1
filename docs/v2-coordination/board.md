@@ -1,5 +1,11 @@
 # 迁移任务账本
 
+### M1-3 Morale Owner declaration contract audit (2026-11-28)
+
+- Static review confirms the formal Owner table lists Morale / Formation as stewarded, while A has a code-backed `MoraleRefoldAuthority` and code Resolver. The FactType, Resolver and command declarations exist in the package, but the full L3 Owner declaration and code consumer do not.
+- U1 remains partial. The Owner classification/runtime discrepancy and missing declaration contract are recorded for project-owner ruling. No Owner write/deny patterns or invariant grammar were inferred.
+- Evidence: `docs/verification/m1-3-owner-declaration-gap-20261128.md`. Static only; no tests ran. `integration` was not modified.
+
 ### M1-3 Pool reader inventory current-tip recheck (2026-11-28)
 
 - Static inventory now maps eight A-side production reader/consumer paths across Pool, Morale, Facility integrity/layered settlement, impact obligations, Place passability, siege physical input, and the graph projector. Direct test coverage is mapped per reader. Formal Owner definitions classify Morale/Formation and Production/Facility as domain Owners; Pool remains the shared primitive, not an Owner.
