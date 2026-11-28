@@ -315,6 +315,37 @@ def test_pool_window_adjustment_rejects_duplicate_and_exact_retry_replays():
     assert PoolProjector().rebuild(store.read_stream(FACT_TYPE)).value == Decimal("45")
 
 
+def test_pool_duplicate_rejects_unresolvable_committed_event_id_without_writes(monkeypatch):
+    store, service, _ = service_with_pool()
+    args = {
+        "fact_type": FACT_TYPE,
+        "delta": Decimal("-5"),
+        "reason_code": "integrate",
+        "window_ref": "window:pool:r2",
+        "command_id": "pool:r2",
+        "idempotency_key": "pool:r2",
+        "expected_revision": 1,
+        "causation_id": "evt:seed",
+        "correlation_id": "corr:pool",
+    }
+    assert service.adjust(**args).committed
+    before = store.export_snapshot()
+    original_get = store.get_by_idempotency
+
+    def corrupted_get(principal_ref, idempotency_key):
+        result = original_get(principal_ref, idempotency_key)
+        if result is None:
+            return None
+        return result.model_copy(update={"committed_event_ids": ["evt:missing"]})
+
+    monkeypatch.setattr(store, "get_by_idempotency", corrupted_get)
+
+    with pytest.raises(PoolError, match="^pool_replay_event_missing$"):
+        service.adjust(**args)
+
+    assert store.export_snapshot() == before
+
+
 def test_pool_hysteresis_records_only_enter_and_exit_crossings():
     store, service, definition = service_with_pool(initial="50")
     commands = ((-25, "w1"), (7, "w2"), (-4, "w3"), (5, "w4"), (5, "w5"))
