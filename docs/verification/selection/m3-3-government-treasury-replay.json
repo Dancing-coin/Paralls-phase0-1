@@ -1,0 +1,10 @@
+{
+  "description": "Government Treasury collector retries reject corrupt committed-event receipts without writes",
+  "tests": [
+    {
+      "test_name": "tests/test_infra_economy_tax_payment_owner_admission.py::test_treasury_collector_rejects_corrupt_committed_event_receipt",
+      "outcome": "passed",
+      "failures": []
+    }
+  ]
+}

@@ -26,6 +26,7 @@ from app.gameplay.models import (
     OwnerAuthorizedFragment,
     StrictGameplayModel,
 )
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.settlement_plan import SettlementPlan
 from app.gameplay.shared_contracts import GameplayCommandEnvelope, SettlementReceipt
 
@@ -194,13 +195,24 @@ class GovernmentTreasuryCollectorAuthority:
             "expected_revision": expected_revision,
         }
         request_digest = _digest(request)
-        prior = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
-        if prior is not None:
-            if prior.payload_digest != request_digest:
-                return self._rejected(command_id, "idempotency_key_reused")
-            replay = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-            if replay is None:
-                return self._rejected(command_id, "idempotency_record_missing_result")
+        try:
+            replay = replay_duplicate(
+                self._store,
+                principal=self._PRINCIPAL,
+                idempotency_key=idempotency_key,
+                payload_digest=request_digest,
+                error_factory=GovernmentTreasuryCollectorError,
+                missing_result_code="treasury_collector_idempotency_missing_result",
+                transaction_mismatch_code="treasury_collector_replay_transaction_mismatch",
+                event_count_mismatch_code="treasury_collector_replay_event_count_mismatch",
+                event_missing_code="treasury_collector_replay_event_missing",
+                expected_event_types=(self._EVENT,),
+                expected_command_id=command_id,
+                expected_transaction_id=f"transaction:{command_id}",
+            )
+        except GovernmentTreasuryCollectorError as exc:
+            return self._rejected(command_id, str(exc))
+        if replay is not None:
             return replay.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
         if current_revision != expected_revision:
             return self._rejected(command_id, "revision_conflict")

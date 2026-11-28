@@ -245,6 +245,35 @@ def test_treasury_collector_identity_is_private_replayable_and_identity_only() -
     assert store.list_outbox() == before_outbox
 
 
+def test_treasury_collector_rejects_corrupt_committed_event_receipt() -> None:
+    store, _service, treasury, _payer_account_opened, _tax_due_event, _obligation_opened = _seed_current_tax_obligation()
+    request = {
+        "command_id": "command:tax-payment:collector-admit",
+        "jurisdiction_ref": "jurisdiction:harbor-city",
+        "currency_ref": "currency:local",
+        "collector_account_ref": "account:treasury:harbor-city",
+        "collector_owner_ref": "government:harbor-city",
+        "idempotency_key": "idem:tax-payment:collector-admit",
+        "causation_id": "cause:tax-payment:collector-admit",
+        "correlation_id": "corr:tax-payment:collector-admit",
+        "expected_revision": 0,
+    }
+    healthy_retry = treasury.admit_collector_account(**request)
+    assert healthy_retry.committed and healthy_retry.idempotency_status == "duplicate_replayed"
+
+    store._idempotency_results[("actor_gameplay.government_treasury_collector", request["idempotency_key"])] = healthy_retry.model_copy(
+        update={"committed_event_ids": [*healthy_retry.committed_event_ids, "missing:treasury-event"]},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    duplicate = treasury.admit_collector_account(**request)
+
+    assert not duplicate.committed and duplicate.failure is not None
+    assert duplicate.failure.error_code == "treasury_collector_replay_event_count_mismatch"
+    assert store.export_snapshot() == before
+
+
 def test_tax_payment_rejects_capability_or_missing_collector_without_writes() -> None:
     store, service, _treasury, _payer_account_opened, _tax_due_event, obligation_opened = _seed_current_tax_obligation()
     before_events, before_outbox = store.read_events(), store.list_outbox()
