@@ -108,6 +108,27 @@ def test_inf4ah_notice_duplicate_changed_duplicate_private_and_wrong_source_are_
     assert store.export_snapshot() == before
 
 
+def test_inf4ah_notice_rejects_corrupt_transaction_receipt_without_writing() -> None:
+    store, _economy = _setup()
+    activity = _activity(store)
+    authority = GovernmentAuthority(store=store)
+    request = _request(store, activity)
+    assert authority.record_public_workshop_notice(**request).committed
+    key = (GovernmentAuthority._PRINCIPAL, request["idempotency_key"])
+    store._idempotency_results[key] = store._idempotency_results[key].model_copy(
+        update={"transaction_id": "transaction:missing"},
+        deep=True,
+    )
+    before = store.export_snapshot()
+
+    rejected = authority.record_public_workshop_notice(**request)
+
+    assert not rejected.committed
+    assert rejected.failure is not None
+    assert rejected.failure.error_code == "public_workshop_notice_idempotency_key_reused"
+    assert store.export_snapshot() == before
+
+
 def test_inf4ah_notice_full_and_checkpoint_tail_replay_match() -> None:
     store, _economy = _setup()
     activity = _activity(store)

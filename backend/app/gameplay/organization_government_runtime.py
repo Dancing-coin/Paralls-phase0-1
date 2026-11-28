@@ -1411,12 +1411,29 @@ class GovernmentAuthority:
         """Publish one project notice for the exact completed workshop activity."""
         if not activity_event_id or expected_activity_revision < 1 or expected_government_revision < 0:
             return self._rejected_append(command_id, "public_workshop_notice_reference_invalid")
-        existing = self._store.get_by_idempotency(self._PRINCIPAL, idempotency_key)
-        if existing is not None:
-            prior = next((event for event in self._store.read_events() if event.event_id in set(existing.committed_event_ids)), None)
-            if prior is not None and prior.event_type == "gameplay.government.public_workshop_notice_recorded":
-                if prior.payload.get("source_activity_event_id") == activity_event_id and prior.causation_id == causation_id and prior.correlation_id == correlation_id:
-                    return existing.model_copy(update={"idempotency_status": "duplicate_replayed"}, deep=True)
+        idempotency_record = self._store.get_idempotency_record(self._PRINCIPAL, idempotency_key)
+        if idempotency_record is not None:
+            try:
+                existing = replay_duplicate(
+                    self._store,
+                    principal=self._PRINCIPAL,
+                    idempotency_key=idempotency_key,
+                    payload_digest=idempotency_record.payload_digest,
+                    error_factory=ValueError,
+                    missing_result_code="public_workshop_notice_idempotency_key_reused",
+                    expected_event_types=("gameplay.government.public_workshop_notice_recorded",),
+                    expected_command_id=command_id,
+                )
+            except ValueError:
+                return self._rejected_append(command_id, "public_workshop_notice_idempotency_key_reused")
+            if existing is not None:
+                prior = self._store.get_event(existing.committed_event_ids[0])
+                if (
+                    prior.payload.get("source_activity_event_id") == activity_event_id
+                    and prior.causation_id == causation_id
+                    and prior.correlation_id == correlation_id
+                ):
+                    return existing
             return self._rejected_append(command_id, "public_workshop_notice_idempotency_key_reused")
         try:
             activity = self._store.get_event(activity_event_id)
