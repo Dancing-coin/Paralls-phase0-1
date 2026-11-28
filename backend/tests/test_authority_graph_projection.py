@@ -90,6 +90,13 @@ def test_authority_domain_event_maps_to_typed_projection_domain(
         ("gameplay.credential.item_released", "credential"),
         ("gameplay.ownership.right_granted", "ownership"),
         ("gameplay.ownership.right_transferred", "ownership"),
+        ("gameplay.pool.initialized", "pool"),
+        ("gameplay.pool.adjusted", "pool"),
+        ("gameplay.pool.reserved", "pool"),
+        ("gameplay.pool.released", "pool"),
+        ("gameplay.pool.consumed", "pool"),
+        ("gameplay.pool.bound_changed", "pool"),
+        ("gameplay.pool.threshold_crossed", "pool"),
     ],
 )
 def test_domain_schema_events_are_discovered_and_projected(event_type, domain):

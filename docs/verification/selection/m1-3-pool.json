@@ -131,6 +131,41 @@
       "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_production_dispatch_refolds_morale_and_keeps_missing_presence_input_unknown",
       "outcome": "passed",
       "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.initialized-pool]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.adjusted-pool]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.reserved-pool]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.released-pool]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.consumed-pool]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.bound_changed-pool]",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_authority_graph_projection.py::test_domain_schema_events_are_discovered_and_projected[gameplay.pool.threshold_crossed-pool]",
+      "outcome": "passed",
+      "failures": []
     }
   ]
 }
