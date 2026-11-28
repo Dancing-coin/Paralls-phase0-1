@@ -211,9 +211,11 @@ class FactTypeRegistry:
                 if not isinstance(refold_model_ref, str) or not refold_model_ref:
                     reject("facttype_refold_missing", target, "distribution FactTypes must reference a refold model")
             primitive = spec.get("primitive")
-            if "process_kind" in spec and primitive != "process":
+            if "process_kind" in spec and (
+                primitive != "process" or spec["process_kind"] not in ("temporal", "stepwise")
+            ):
                 reject("facttype_process_kind_invalid", target,
-                       "process_kind is only valid for the process primitive")
+                       "use temporal or stepwise only for the process primitive")
             if any(field in spec and primitive not in allowed_primitives
                    for field, allowed_primitives in _FACT_TYPE_FIELD_PRIMITIVES.items()):
                 reject("facttype_field_primitive_invalid", target,

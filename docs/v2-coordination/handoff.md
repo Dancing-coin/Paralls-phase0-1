@@ -1522,6 +1522,12 @@
 - Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path were verified. Validator tests returned `140 passed, 2 warnings`; M5-5 selections returned `38/0/0` and `3/0/0`; frozen selections Ownership/Modifier/Equipment/Inventory/shared-replay returned `24/12/87/56/990`, all with zero problems and improvements. Full backend suite was not run.
 - Evidence: `docs/verification/m5-5-temporal-effects-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m5-5-temporal-effects-20261128-01/`. M5-5 remains in progress.
 
+### H-A-225 | M5-5 process_kind value validation | 2026-11-28
+
+- FactType registration now accepts explicit `process_kind` values `temporal` and `stepwise` only when `primitive` is `process`. Omission retains the documented `stepwise` default. Invalid values use `facttype_process_kind_invalid`.
+- RED reproduced three accepted invalid values: an unknown string, `None`, and an integer. GREEN FactType registry and RulePack validator tests returned `169 passed, 2 warnings`; new and existing M5-5 selections returned `3/0/0` and `38/0/0`; frozen Ownership/Modifier/Equipment/Inventory/shared-replay selections returned `24/12/87/56/990`, all with zero differences.
+- Python `3.12.2`, SQLite `3.43.1`, and A-worktree import path were verified. Full backend suite was not run. Evidence: `docs/verification/m5-5-process-kind-20261128.md`; raw outputs: `F:/paralls-verification/thread-a/m5-5-process-kind-20261128-01/`. M5-5 remains in progress.
+
 ### H-A-223 | M3-3 Organization public project execution replay receipt validation | 2026-11-28
 
 - Code/test/selection commit `956fbe67689d893f61ce2e3d4d8e6d21710e4db8` replaces the custom receipt lookup in `record_public_project_execution` with shared `replay_duplicate` validation before existing request-specific matching. TDD RED reproduced successful duplicate replay with a missing event ID appended to the durable receipt; the retry now rejects with the existing reused-key failure and the store snapshot remains unchanged.

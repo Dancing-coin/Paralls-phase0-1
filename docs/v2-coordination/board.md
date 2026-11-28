@@ -235,6 +235,11 @@
 - A added offline `temporal_effects` loading and validates references to registered temporal-process and Pool FactTypes. Three new tests, all 140 validator tests, the 38-node M5-5 selection, the new 3-node selection, and frozen five selections (1,169 nodes) returned zero differences. Evidence: `docs/verification/m5-5-temporal-effects-20261128.md`; raw output: `F:/paralls-verification/thread-a/m5-5-temporal-effects-20261128-01/`.
 - The entry shape is provisional. Tick and exit-condition namespaces remain unresolved. No scheduler, persisted process instance, package migration contract, or Pool settlement consumer was implemented. M5-5 remains in progress; full backend suite was not run.
 
+### M5-5 process_kind enum validation increment (2026-11-28)
+
+- FactType registration now accepts explicit `process_kind` values `temporal` and `stepwise` only on the `process` primitive. Three invalid-value tests, 169 registry/validator tests, the 38-node M5-5 selection, a new 3-node selection, and frozen five selections (1,169 nodes) returned zero differences. Evidence: `docs/verification/m5-5-process-kind-20261128.md`; raw output: `F:/paralls-verification/thread-a/m5-5-process-kind-20261128-01/`.
+- This closes only the `process_kind` value-validation gap. M5-5 remains in progress; full backend suite was not run.
+
 ## 三、待决（负责人需表态）
 
 ### M6-5 最新进展（2026-11-24）

@@ -102,6 +102,18 @@ def test_registry_accepts_registered_non_machine_primitives(primitive, fields):
     assert registry.facts[FACT].primitive == primitive
 
 
+@pytest.mark.parametrize("process_kind", ["unknown", None, 1])
+def test_registry_rejects_unknown_process_kind(process_kind):
+    data = declarations()
+    fact = data["facts"][FACT]
+    fact["primitive"] = "process"
+    fact.pop("state_set_ref")
+    fact["process_kind"] = process_kind
+
+    with pytest.raises(RegistrationRejected, match="facttype_process_kind_invalid"):
+        FactTypeRegistry.compile(**data)
+
+
 def test_registry_rejects_state_set_on_non_machine_primitive():
     data = declarations()
     data["facts"][FACT]["primitive"] = "bond"

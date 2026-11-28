@@ -1,0 +1,9 @@
+{
+  "head": "fd996acc73642a0ef6a639f8b945b492d8281918",
+  "description": "M5-5 process_kind FactType primitive and enum validation",
+  "tests": [
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_unknown_process_kind[unknown]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_unknown_process_kind[None]", "outcome": "passed", "failures": []},
+    {"test_name": "tests/test_credential_fact_type_registry.py::test_registry_rejects_unknown_process_kind[1]", "outcome": "passed", "failures": []}
+  ]
+}
