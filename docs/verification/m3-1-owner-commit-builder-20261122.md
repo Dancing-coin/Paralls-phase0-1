@@ -111,3 +111,23 @@ At A tip `a1be4c259b766f1fe416fbce415fa1c7b723b30b`, the focused OwnerCommitBuil
 | shared-replay, 990 nodes | `selected=990 problems=0 improvements=0` | `F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\shared-replay\`; summary `shared-replay.log` |
 
 Focused command: `F:\codex-temp\thread-a-python312\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\pytest-temp backend/tests/test_owner_commit_builder.py backend/tests/test_ownership_runtime.py backend/tests/test_credential_runtime.py`. Full output: `F:\paralls-verification\thread-a\m3-1-current-tip-20261128-01\focused.log`. Full backend suite was not run. This revalidates the shared mechanism at the current tip; M3-1 remains `待门禁`.
+
+## Current-tip revalidation, 2026-11-28 follow-up
+
+At A tip `4cf42fa33be54c4d0f5432bcc19cced35a0f6e04`, static call-site inspection found `OwnerCommitBuilder` used by Ownership (`ownership_runtime.py`), Credential (`credential_runtime.py`), Holdings (`holdings_runtime.py`), and Pool (`pool_runtime.py`). Package migration remains a platform-control event path and uses its existing atomic batch builder. No code changed in this revalidation.
+
+Environment: Python `3.12.2` at `F:\codex-temp\thread-a-python312\Scripts\python.exe`; `app.__file__` resolved to `F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`; SQLite `3.43.1`. Environment output: `F:\paralls-verification\thread-a\m3-1-four-owner-current-20261128-01\environment.log`.
+
+Focused command:
+
+```powershell
+F:\codex-temp\thread-a-python312\Scripts\python.exe -B -m pytest -q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\m3-1-four-owner-current-20261128-01\pytest-temp backend/tests/test_owner_commit_builder.py backend/tests/test_ownership_runtime.py backend/tests/test_credential_runtime.py backend/tests/test_holdings_runtime.py backend/tests/test_pool_runtime.py
+```
+
+Result: `63 passed, 2 warnings`, exit 0. Full output: `F:\paralls-verification\thread-a\m3-1-four-owner-current-20261128-01\focused.log`.
+
+All 58 registered selections and the frozen five selections were run serially through `docs/verification/absorb-main-3bf3418e/compare_selection.py`: 63 invocations returned exit 0, each with `problems=0 improvements=0`. Frozen selection counts were Ownership 24, modifier 12, equipment 87, inventory 56, and shared-replay 990, totaling 1,169. Per-selection raw outputs and logs are under `F:\paralls-verification\thread-a\m3-1-four-owner-current-20261128-01\selection-runs\` and `selection-logs\`; exact summaries are in `selection-summary.txt`.
+
+The full backend suite was not run. U4 is revalidated at current tip across four A-owned consumers; U1 remains static, U2/U5/U8 remain outside this shared-mechanism unit, U3/U6 are not applicable because no event schema or persisted event changed, U7 remains static, and U9/U10 have fresh evidence. M3-1 remains `待门禁`; this evidence does not establish completion of Architecture v2 or any Owner migration.
+
+P-1 scan of the staged documentation additions checked assignment-shaped secrets, AWS access keys, GitHub tokens, JWTs, and private-key headers: `patterns-scanned=5 credential-pattern-hits=0`. Raw output: `F:\paralls-verification\thread-a\m3-1-four-owner-current-20261128-01\p1-scan.log`.
