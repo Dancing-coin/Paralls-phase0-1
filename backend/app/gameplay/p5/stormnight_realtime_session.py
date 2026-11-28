@@ -18,6 +18,7 @@ from app.gameplay.action_window_runtime import (
 from app.gameplay.event_store import GameplayEventStore
 from app.gameplay.inventory_runtime import ContainerSpec, InventoryAuthorityService, InventoryDefinitionRegistry, ItemDefinition
 from app.gameplay.models import StrictGameplayModel
+from app.gameplay.owner_runtime_base import replay_duplicate
 from app.gameplay.p5.contracts import canonical_sha256_digest
 from app.gameplay.p5.investigation_conflict import InvestigationConflictAuthority
 from app.gameplay.p5.quest_evidence import QuestEvidenceAuthority
@@ -39,6 +40,12 @@ SESSION_REF = "session:stormnight:local@1"
 _SOURCE_STREAM = "world:stormnight:realtime-spatial"
 _CONTAINER_ID = "container:stormnight:character:stormnight-investigator@1:evidence"
 _CLUE_ITEM_DEFINITION = "item:stormnight:clue@1"
+_ACTION_WINDOW_EVENT_TYPES = (
+    "gameplay.conflict.encounter_started",
+    "gameplay.conflict.action_window_resolved",
+    "gameplay.conflict.control_changed",
+    "gameplay.conflict.encounter_closed",
+)
 
 
 class StormnightPlayerIntent(StrictGameplayModel):
@@ -327,10 +334,27 @@ class StormnightRealtimeSessionService:
         return self._response(accepted=True, status="committed", event_ids=tuple(result.receipt.committed_event_ids) if result.receipt else ())
 
     def _replay_action(self, intent: StormnightPlayerIntent, digest: str) -> StormnightRealtimeResponse | None:
-        receipt = self.store.get_by_idempotency("authority:p5:investigation-conflict",
-            f"stormnight:player:{intent.request_id}:action")
-        if receipt is None or not receipt.committed_event_ids:
+        idempotency_key = f"stormnight:player:{intent.request_id}:action"
+        record = self.store.get_idempotency_record("authority:p5:investigation-conflict", idempotency_key)
+        if record is None:
             return None
+        try:
+            receipt = replay_duplicate(
+                self.store,
+                principal="authority:p5:investigation-conflict",
+                idempotency_key=idempotency_key,
+                payload_digest=record.payload_digest,
+                error_factory=ValueError,
+                missing_result_code="stormnight_player_idempotency_reused",
+                transaction_mismatch_code="stormnight_player_idempotency_reused",
+                event_count_mismatch_code="stormnight_player_idempotency_reused",
+                event_missing_code="stormnight_player_idempotency_reused",
+                expected_event_types=_ACTION_WINDOW_EVENT_TYPES,
+            )
+        except ValueError:
+            return self._rejected("stormnight_player_idempotency_reused")
+        if receipt is None:
+            return self._rejected("stormnight_player_idempotency_reused")
         event = self.store.get_event(receipt.committed_event_ids[0])
         frozen = event.payload.get("frozen_action_request") if event is not None else None
         if not isinstance(frozen, dict):

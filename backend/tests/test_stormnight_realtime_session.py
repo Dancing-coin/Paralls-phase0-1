@@ -51,6 +51,29 @@ def test_player_action_is_server_mapped_and_returns_npc_proposal() -> None:
     assert not unbound.accepted and unbound.error_code == "action_time_legacy_request_unbound"
 
 
+def test_legacy_action_replay_rejects_corrupt_durable_receipt_without_write() -> None:
+    service = _service()
+    service.legacy_action_time_compatibility = True
+    assert service.handle(_intent("start", "start")).accepted
+    first = service.handle(_intent("pursue", "pursue"))
+    assert first.accepted
+
+    key = ("authority:p5:investigation-conflict", "stormnight:player:pursue:action")
+    stored = service.store._idempotency_results[key]
+    service.store._idempotency_results[key] = stored.model_copy(
+        update={"command_id": "command:corrupt"}, deep=True
+    )
+    event_count = len(service.store.read_events())
+    transaction_count = len(service.store.read_transactions())
+
+    duplicate = service.handle(_intent("pursue", "pursue"))
+
+    assert not duplicate.accepted
+    assert duplicate.error_code == "stormnight_player_idempotency_reused"
+    assert len(service.store.read_events()) == event_count
+    assert len(service.store.read_transactions()) == transaction_count
+
+
 def test_default_session_action_requires_explicit_time_admission() -> None:
     service = _service()
     assert service.handle(_intent("start", "start")).accepted
