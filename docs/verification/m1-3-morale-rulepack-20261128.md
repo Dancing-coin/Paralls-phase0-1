@@ -43,21 +43,37 @@ Frozen selections: ownership `24/0/0`, modifier `12/0/0`, equipment `87/0/0`, in
 
 The pytest and selection runs used F-drive temporary/output directories. No verification artifacts were added to the repository.
 
+## P-3 Follow-up
+
+Code/test commit `2cbe48d5` adds all seven Pool event types to `test_domain_schema_events_are_discovered_and_projected`. For each event, the test asserts that `FACT_TYPE_REGISTRY` discovers it, passes it to `HeavenlyAuthorityEventProjector`, and receives one graph node with domain `pool`. `main.py` subscribes the graph projector to every registered `gameplay.*` event type during startup.
+
+Environment: Python `3.12.2`, SQLite `3.43.1`, `PYTHONPATH=F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend`, and `app.__file__ = F:\codex-temp\paralls-v2-thread-a-bond-20261121\backend\app\__init__.py`. The focused command `python -B -m pytest -q -p no:cacheprovider --basetemp F:\paralls-verification\thread-a\m1-3-p3-20261128-01\pytest-temp backend/tests/test_authority_graph_projection.py -k pool` returned `7 passed, 26 deselected, 6 warnings`. Raw output is `F:\paralls-verification\thread-a\m1-3-p3-20261128-01\pytest.log`.
+
+The updated 33-node `m1-3-pool` selection returned `33/0/0`; frozen Ownership, Modifier, Equipment, Inventory, and shared-replay returned `24/0/0`, `12/0/0`, `87/0/0`, `56/0/0`, and `990/0/0`. These six serial comparisons cover 1,202 summed selected nodes including overlap. Raw comparison outputs are under `F:\paralls-verification\thread-a\m1-3-p3-20261128-01\selection-runs\`.
+
+## Backend Full-Suite Recheck
+
+At code/test commit `2cbe48d5`, `backend/tests` collected and ran with Python `3.12.2`, SQLite `3.43.1`, and the A-worktree import path. Result: `10,839 passed, 12 failed, 2 skipped, 2 xfailed, 227 warnings`, exit 1, in `1454.40s`. Raw output: `F:\paralls-verification\thread-a\m1-3-p3-backend-full-20261128-01\pytest.log`.
+
+All 12 failed node IDs were rerun at parent `6816a2ee53617ed152e7e22fc03fd3774f397537`, before the P-3 test change. The same 12 node IDs failed with matching categories and output. Parent comparison output: `F:\paralls-verification\thread-a\m1-3-p3-parent-failure-compare-20261128-01\pytest.log`; isolated parent worktree was `F:\codex-temp\a-m13-p3-parent-verify-20261128-01\` and has been removed.
+
+The repository-root `pytest` command stopped during collection with exit 2 because the Python 3.12.2 environment does not contain `jsonschema`, imported by `scripts/verification/tests/test_motion_profile_contract.py`. No project dependency was changed. This is an environment collection failure, separate from the completed backend suite.
+
 ## Unit DoD Status
 
 | Item | Status | Evidence or gap |
 |---|---|---|
-| U1 Owner declaration and classification | Partial | `Morale` is registered and assigned a domain handler. The complete formal Owner declaration/classification is not established by this increment. |
+| U1 Owner declaration and classification | Partial | The formal Owner document classifies `Morale / Formation` as stewarded. The repository still has no complete L3 declaration containing kind, writes, denies, invariants, commands, resolvers, and reads. |
 | U2 FactType declaration | Verified for this FactType | The v1.0.2 package declares and loads the Morale Pool FactType with entity identity. |
-| U3 event schema and P-3 | Partial | `gameplay.pool@1` resolves and Pool graph visibility tests pass; a complete P-3 assertion for this migration was not run. |
+| U3 event schema and P-3 | Verified for Pool events | All seven Pool event types are registered, resolve to the `pool` domain, and produce graph nodes in the explicit projector regression. Startup subscription to all registered `gameplay.*` types was statically checked. |
 | U4 shared mechanism | Verified for the tested path | Pool and Morale commits use `OwnerCommitBuilder` and `replay_duplicate`; focused tests cover the Morale caller. |
 | U5 R1/R2/R3 | Partial | Morale exact-retry and corrupt receipt rejection are tested. Checkpoint deletion/state-digest reconstruction was not tested for this increment. |
 | U6 reader inventory and tests | Partial, partly static | M6-5 command dispatch and Morale projection call paths are present. A complete downstream reader inventory and subject-facing tests remain open. |
 | U7 subject read and visibility | Partial | The package declares faction visibility. `GameplayReadAs` does not provide a Morale reader. |
 | U8 package settings and Resolver | Verified | The selected locked package supplies the Pool definition and registered Resolver. |
-| U9 migration probe | Not verified | No declaration-only probe was run for this increment. |
+| U9 migration probe and baseline | Partial | The 33-node unit selection and frozen five selections have zero differences. The success-standard probe must run after M1-3 is frozen and only add declarations/rule-pack data; that probe has not been run. |
 | U10 evidence and changed paths | Verified | This file lists the source, test, and package paths changed by the code commit. |
-| U11 registered test selection | Verified | `docs/verification/selection/m1-3-pool.json` contains 26 nodes and compares with zero differences. |
+| U11 registered test selection | Verified | `docs/verification/selection/m1-3-pool.json` contains 33 nodes at code/test commit `2cbe48d5` and compares with zero differences. |
 
 Changed code and test files, verified by focused tests:
 
@@ -66,6 +82,10 @@ Changed code and test files, verified by focused tests:
 - `backend/app/gameplay/rule_pack_validator.py`
 - `backend/tests/test_m6_5_siege_runtime.py`
 - `backend/tests/test_morale_refold_runtime.py`
+
+P-3 follow-up test file:
+
+- `backend/tests/test_authority_graph_projection.py`
 
 Changed package data, verified by package loading and locked-hash checks:
 
