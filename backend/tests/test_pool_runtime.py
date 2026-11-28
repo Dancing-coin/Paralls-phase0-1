@@ -1,4 +1,6 @@
 from decimal import Decimal
+from hashlib import sha256
+import json
 
 import pytest
 
@@ -88,11 +90,36 @@ def test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable():
     assert projection.available == Decimal("30")
     assert projection.reservations == {}
 
-    restored = GameplayEventStore.from_snapshot(store.export_snapshot())
+    snapshot = store.export_snapshot()
+    restored = GameplayEventStore.from_snapshot(snapshot)
     rebuilt = PoolProjector().rebuild(
         restored.read_stream(FACT_TYPE), definitions={FACT_TYPE: definition}
     )
     assert rebuilt == projection
+
+    def state_digest(state):
+        payload = {
+            "fact_type": state.fact_type,
+            "lower": str(state.lower),
+            "upper": str(state.upper),
+            "value": str(state.value),
+            "reservations": {
+                key: {
+                    "amount": str(item.amount),
+                    "holder_ref": item.holder_ref,
+                    "purpose_code": item.purpose_code,
+                }
+                for key, item in sorted(state.reservations.items())
+            },
+            "integrated_windows": sorted(state.integrated_windows),
+            "active_thresholds": sorted(state.active_thresholds),
+            "source_revision": state.source_revision,
+        }
+        encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return "sha256:" + sha256(encoded).hexdigest()
+
+    assert snapshot["projection_checkpoints"] == []
+    assert state_digest(rebuilt) == state_digest(projection)
 
 
 def test_pool_commits_persist_owner_fragment_contract_and_ordered_operations():
