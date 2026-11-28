@@ -1,6 +1,6 @@
 {
-  "head": "84d12a87",
-  "description": "M1-3 Pool bounds, reservations, aggregation including casualty refold, owner fragments, event schema registration, and hysteresis tests",
+  "head": "f76089a4",
+  "description": "M1-3 Pool primitives, casualty refold, versioned Morale package Resolver, M6-5 package assembly, compatibility, owner fragments, schemas, and hysteresis",
   "tests": [
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_bounds_reservation_and_consume_are_atomic_and_rebuildable",
@@ -84,6 +84,51 @@
     },
     {
       "test_name": "tests/test_pool_runtime.py::test_pool_distribution_recomputes_after_casualty_with_frozen_revisions",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_percentage_without_package_precision_preserves_decimal_division",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_refold_uses_historical_roster_and_life_states_at_death",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_refold_with_missing_member_life_state_writes_nothing",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_morale_refold_runtime.py::test_morale_duplicate_rejects_incomplete_committed_event_receipt",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_package_registers_morale_pool_and_casualty_refold",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_runtime_can_consume_world_pinned_package_archive",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_runtime_keeps_legacy_package_pin_without_compiled_pipeline",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_runtime_can_bootstrap_from_deployment_manifest",
+      "outcome": "passed",
+      "failures": []
+    },
+    {
+      "test_name": "tests/test_m6_5_siege_runtime.py::test_m6_5_production_dispatch_refolds_morale_and_keeps_missing_presence_input_unknown",
       "outcome": "passed",
       "failures": []
     }
